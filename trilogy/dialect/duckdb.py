@@ -392,13 +392,20 @@ class DuckDBDialect(BaseDialect):
         return url
 
     def render_source(self, address: Address) -> str:
-        location = self._maybe_bust_gcs_url(address.location)
+        hive = ", hive_partitioning=true" if address.partition_columns else ""
+        if address.additional_locations:
+            paths = ", ".join(
+                f"'{self._maybe_bust_gcs_url(p)}'" for p in address.all_locations
+            )
+            location_arg = f"[{paths}]"
+        else:
+            location_arg = f"'{self._maybe_bust_gcs_url(address.location)}'"
         if address.type == AddressType.CSV:
-            return f"read_csv('{location}')"
+            return f"read_csv({location_arg}{hive})"
         if address.type == AddressType.TSV:
-            return f"read_csv('{location}', delim='\\t')"
+            return f"read_csv({location_arg}, delim='\\t'{hive})"
         if address.type == AddressType.PARQUET:
-            return f"read_parquet('{location}')"
+            return f"read_parquet({location_arg}{hive})"
         if address.type == AddressType.PYTHON_SCRIPT:
             from trilogy.dialect.config import DuckDBConfig
 

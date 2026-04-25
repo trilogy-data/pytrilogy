@@ -1,26 +1,17 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import networkx as nx
-import pytest
 from pytest import mark, raises
 
 from trilogy import Dialects
 from trilogy.constants import Rendering
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models.author import (
-    Concept,
-    Grain,
-)
-from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison, Factory
+from trilogy.core.models.author import Concept, Grain
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.discovery_utility import get_upstream_concepts
-from trilogy.core.processing.node_generators.common import (
-    resolve_filter_parent_concepts,
-    resolve_function_parent_concepts,
-)
 from trilogy.core.statements.author import ShowStatement
 from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
@@ -83,8 +74,6 @@ def test_concept_derivation():
 
 
 def test_boolean_derivation():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
 
@@ -437,125 +426,6 @@ select
     assert len(results) == 4
 
 
-def test_array_filtering():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
-    engine = Dialects.DUCK_DB.default_executor()
-    test = """
-key id int;
-
-datasource numbers (
-    id
-)
-grain (id)
-query '''
-select 1 as id union all select 2 union all select 3 union all select 4 union all select 5 union all select 6
-'''
-;
-where id in [1,2,3]
-select id
-;
-    """
-    results = engine.execute_text(test)[0].fetchall()
-    assert len(results) == 3
-
-
-def test_array_inclusion(default_duckdb_engine: Executor):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
-    test = """
-const list <- [1,2,3,4,5,6];
-const list_2 <- [1,2,3,4,5,6,7,8,9,10];
-const orid <- unnest(list);
-const orid_2 <-unnest(list_2);
-auto even_orders <- filter orid where (orid % 2) = 0;
-auto filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
-
-select 
-    filtered_even_orders
-where
-    filtered_even_orders
-;
-    """
-
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 3
-
-
-def test_array_inclusion_aggregate_one(default_duckdb_engine: Executor):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
-    test = """
-const list <- [1,2,3,4,5,6];
-const list_2 <- [1,2,3,4,5,6,7,8,9,10];
-auto orid <- unnest(list);
-auto orid_2 <-unnest(list_2);
-auto even_orders <- filter orid where (orid % 2) = 0;
-auto filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
-metric f_ord_count <- count(filtered_even_orders);
-
-select 
-    f_ord_count
-;
-    """
-    _ = default_duckdb_engine.parse_text(test)[-1]
-    orig_env = default_duckdb_engine.environment
-    env = orig_env.materialize_for_select()
-    agg = env.concepts["f_ord_count"]
-    agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
-    assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, BuildFilterItem)
-    assert isinstance(agg_parent.lineage.where.conditional, BuildSubselectComparison)
-    _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
-    assert len(existence) == 1
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 1
-    assert results[0].f_ord_count == 3
-
-
-def test_array_inclusion_aggregate(default_duckdb_engine: Executor):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
-    test = """
-const list <- [1,2,3,4,5,6];
-const list_2 <- [1,2,3,4,5,6,7,8,9,10];
-auto orid <- unnest(list);
-auto orid_2 <-unnest(list_2);
-auto even_orders <- filter orid where (orid % 2) = 0;
-auto filtered_even_orders <- filter orid_2 where 1=1 and orid_2 in even_orders;
-metric f_ord_count <- count(filtered_even_orders);
-metric ord_count <- count(orid_2);
-
-select 
-    f_ord_count
-;
-    """
-    _ = default_duckdb_engine.parse_text(test)[-1]
-    orig_env = default_duckdb_engine.environment
-    env = orig_env.materialize_for_select()
-    agg = env.concepts["f_ord_count"]
-    agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
-    assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, BuildFilterItem)
-    _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
-    assert len(existence) == 1
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 1
-    assert results[0].f_ord_count == 3
-    comp = """
-where orid_2 in even_orders
-select
-    ord_count
-;
-"""
-    results = default_duckdb_engine.execute_text(comp)[0].fetchall()
-    assert results[0].ord_count == 3
-
-
 def test_agg_demo(default_duckdb_engine: Executor):
     test = """key orid int;
 key store string;
@@ -625,280 +495,7 @@ order by
     assert results[0] == (0, 2)
 
 
-def test_case_group():
-
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-
-    test = """
-const x <- 1;
-const x2 <- x+1;
-
-auto orid <- unnest([1,2,3,6,10]);
-property orid.mod_two <- orid % 2;
-
-property orid.cased <-CASE WHEN mod_two = 0 THEN 1 ELSE 0 END;
-
-auto total_mod_two <- sum(cased);
-
-select 
-    total_mod_two
-  ;
-    """
-    factory = Factory(environment=default_duckdb_engine.environment)
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    cased = factory.build(default_duckdb_engine.environment.concepts["cased"])
-    total = factory.build(default_duckdb_engine.environment.concepts["total_mod_two"])
-    assert cased.purpose == Purpose.PROPERTY
-    assert cased.keys == {"local.orid"}
-    assert total.derivation == Derivation.AGGREGATE
-    x = resolve_function_parent_concepts(
-        total, environment=default_duckdb_engine.environment
-    )
-    assert len(cased.concept_arguments) == 1
-    assert "local.orid" in get_upstream_concepts(cased)
-
-    # for x in total.lineage.concept_arguments:
-    #     if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
-    #         raise SyntaxError(x.keys)
-    assert "local.cased" in x
-    assert "local.orid" in x
-    # function_to_concept(
-    #     parent=function_to_concept()
-    # )
-    assert results[0] == (3,)
-
-
-def test_simple_case_duckdb():
-    """Test simple CASE syntax execution in DuckDB."""
-    executor = Dialects.DUCK_DB.default_executor()
-
-    test = """
-auto category <- unnest(['Seafood', 'Beverages', 'Meat', 'Dairy']);
-property category.bucket <- CASE category
-    WHEN 'Seafood' THEN 'sea'
-    WHEN 'Beverages' THEN 'drink'
-    ELSE 'other'
-END;
-
-select
-    category,
-    bucket
-order by category asc;
-    """
-    results = executor.execute_text(test)[0].fetchall()
-    # Results should be ordered by category: Beverages, Dairy, Meat, Seafood
-    assert len(results) == 4
-    assert results[0] == ("Beverages", "drink")
-    assert results[1] == ("Dairy", "other")
-    assert results[2] == ("Meat", "other")
-    assert results[3] == ("Seafood", "sea")
-
-
-def test_simple_case_duckdb_function():
-    """Test simple CASE syntax execution in DuckDB."""
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=Path(__file__).parent)
-    )
-
-    test = """
-import functions as fun;
-auto category <- unnest(['Seafood', 'Beverages', 'Meat', 'Dairy']);
-
-
-select
-    category,
-    @fun.is_sea(category) as bucket
-order by category asc;
-    """
-    results = executor.execute_text(test)[0].fetchall()
-    # Results should be ordered by category: Beverages, Dairy, Meat, Seafood
-    assert len(results) == 4
-    assert results[3] == ("Seafood", "sea")
-
-
-def test_simple_case_duckdb_uses_native_syntax():
-    """Test that DuckDB uses native simple CASE syntax (not expanded)."""
-    from trilogy.core.query_processor import process_query
-    from trilogy.dialect.duckdb import DuckDBDialect
-    from trilogy.parser import parse_text
-
-    env, parsed = parse_text("""
-auto category <- unnest(['Seafood', 'Beverages']);
-property category.bucket <- CASE category
-    WHEN 'Seafood' THEN 'sea'
-    WHEN 'Beverages' THEN 'drink'
-    ELSE 'other'
-END;
-
-select
-    category,
-    bucket;
-    """)
-    select = parsed[-1]
-    dialect = DuckDBDialect()
-
-    processed = process_query(env, select)
-    compiled = dialect.compile_statement(processed)
-    # DuckDB should use native simple CASE syntax (CASE expr WHEN val THEN result)
-    # not searched CASE (CASE WHEN expr = val THEN result)
-    assert "CASE" in compiled
-    # Simple CASE has "WHEN 'value'" directly without "= 'value'"
-    assert "WHEN 'Seafood' THEN" in compiled
-    # Should NOT have the expanded comparison form
-    assert "= 'Seafood'" not in compiled
-
-
-def test_simple_case_bigquery_expands_syntax():
-    """Test that BigQuery expands simple CASE to searched CASE."""
-    from trilogy.core.query_processor import process_query
-    from trilogy.dialect.bigquery import BigqueryDialect
-    from trilogy.parser import parse_text
-
-    env, parsed = parse_text("""
-auto category <- unnest(['Seafood', 'Beverages']);
-property category.bucket <- CASE category
-    WHEN 'Seafood' THEN 'sea'
-    WHEN 'Beverages' THEN 'drink'
-    ELSE 'other'
-END;
-
-select
-    category,
-    bucket;
-    """)
-    select = parsed[-1]
-    dialect = BigqueryDialect()
-
-    processed = process_query(env, select)
-    compiled = dialect.compile_statement(processed)
-    # BigQuery should expand to searched CASE (CASE WHEN expr = val THEN result)
-    # not simple CASE (CASE expr WHEN val THEN result)
-    assert "CASE" in compiled
-    # BigQuery should use expanded form with equality comparison "= 'value'"
-    assert "= 'Seafood'" in compiled
-    # Searched CASE form should have WHEN with condition, not just value
-    assert "WHEN" in compiled
-
-
-def test_demo_filter():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    test = """const x <- unnest([1,2,2,3]);
-
-auto even_x <- filter x where (x % 2) = 0;
-
-select 
-    x, 
-    even_x
-order by x 
-asc
-;"""
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert results[0] == (1, None)
-    assert results[1] == (2, 2)
-    assert len(results) == 4
-
-
-def test_demo_filter_select():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
-    test = """const x <- unnest([1,2,2,3]);
-
-select
-  ~x,
-  x*x*x -> x_cubed
-where 
-  (x % 2) = 0;"""
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert results[0] == (2, 8)
-    assert len(results) == 2
-
-
-def test_demo_filter_rowset():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    test = """
-const x <- unnest([1,2,3,4]);
-
-with even_squares as select 
-    x, 
-    x*x as x_squared
-having (x_squared %2) = 0;
-
-select 
-    even_squares.x_squared
-order by
-    even_squares.x_squared asc
-;"""
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert results[0] == (4,)
-    assert len(results) == 2
-
-
-def test_filter_count():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    test = """const x <- unnest([1,2,2,3]);
-
-auto y <- x+1;
-
-auto odd_y <- filter x where (x % 2) = 0;
-
-select 
-    count(odd_y) -> odd_y_count,
-    count(x) -> x_count
-;"""
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert results[0] == (2, 4)
-    assert len(results) == 1
-
-
-def test_boolean_filter():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    test = """const x <- unnest([0, 1,2,2,3]);
-
-select 
-    count(x ? x ) -> x_count
-;"""
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert results[0] == (4,)
-
-
-def test_nullif_filter():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    test = """const x <- unnest([0, 1,2,2,3]);
-
-select 
-    count(x ? nullif(x, 2) ) -> x_count
-;"""
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert results[0] == (2,)
-
-
 def test_mod_parse_order():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     test = """
 const x <- unnest([1,2,3,4]);
 
@@ -921,8 +518,6 @@ order by
 
 
 def test_raw_sql():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     test = """
 raw_sql('''
 select unnest([1,2,3,4]) as x
@@ -938,10 +533,6 @@ order by x asc
 
 
 def test_numeric():
-    from decimal import Decimal
-
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     test = """
 const number <- 1.456789;
 const reduced <- cast(number as numeric(3,2));
@@ -957,10 +548,6 @@ select reduced;
 
 
 def test_cast_timestamptz_to_date():
-    from datetime import date
-
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     test = """
 key id int;
 property id.data_updated_through timestamp;
@@ -1002,176 +589,7 @@ select id, update_date, update_date_no_tz, update_datetime order by id asc;
     assert results[1].update_date_no_tz == date(2024, 1, 15)
 
 
-def test_filter_promotion(duckdb_engine: Executor):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    test = """
-SELECT
-    item
-where
-    value>1;
-
-"""
-
-    duckdb_engine.hooks = [DebuggingHook()]
-    results = duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 2
-
-
-def test_filter_promotion_complicated(duckdb_engine: Executor):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    test = """
-auto all_store_count <- sum(count);
-SELECT
-    item,
-    all_store_count
-where
-    store_id in (1,3)
-    and item = 'hammer'
-order by
-    item desc;
-"""
-
-    duckdb_engine.hooks = [DebuggingHook()]
-    results = duckdb_engine.execute_text(test)[0].fetchall()
-    # derived = duckdb_engine.environment.concepts["all_store_count"]
-    # assert isinstance(derived.lineage, AggregateWrapper)
-    # assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
-    assert len(results) == 1
-    assert results[0] == ("hammer", 4)
-
-
-def test_filtered_datasource():
-    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
-
-    test = """key orid int;
-key store string;
-key customer int;
-
-auto customer_orders <- count(orid) by customer;
-datasource filtered_orders(
-  orid: orid,
-  store: store,
-  customer:customer,
-)
-grain(orid)
-query '''
-select 1 orid, 'store1' store, 145 customer
-union all
-select 2, 'store2', 244
-union all
-select 3, 'store2', 244
-union all
-select 4, 'store3', 244
-'''
-where store = 'store2';
-
-
-select 
-    avg(customer_orders) -> avg_customer_orders,
-    avg(count(orid) by store) -> avg_store_orders,
-;"""
-    results = executor.execute_text(test)[0].fetchall()
-
-    assert len(results) == 1
-    assert results[0].avg_customer_orders == 2
-    assert round(results[0].avg_store_orders, 2) == 2
-
-
-def test_cte_filter_promotion():
-    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
-    test = """key orid int;
-key store string;
-key customer int;
-
-
-datasource filtered_orders(
-  orid: orid,
-  store: store,
-  customer:customer,
-)
-grain(orid)
-query '''
-select 1 orid, 'store1' store, 145 customer
-union all
-select 2, 'store2', 244
-union all
-select 3, 'store2', 244
-union all
-select 4, 'store3', 244
-''';
-
-
-with orders_145 as
-SELECT
-    store,
-    count(orid) -> store_order_count
-where
-    customer=145
-;
-
-select
-    orders_145.store,
-    orders_145.store_order_count
-;
-
-
-"""
-    results = executor.execute_text(test)[0].fetchall()
-
-    assert len(results) == 1
-    assert round(results[0].orders_145_store_order_count, 2) == 1
-
-
-def test_filter_promotion_inline_aggregate_filtered(duckdb_engine: Executor):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    test = """
-
-
-WHERE
-    store_id = 1
-SELECT
-    item,
-    sum(count) -> all_store_count
-having
-    all_store_count > 1
-order by
-    item desc;
-"""
-
-    duckdb_engine.hooks = [DebuggingHook()]
-
-    # assert target.grain.components == [duckdb_engine.environment.concepts["item"]]
-    results = duckdb_engine.execute_text(test)[0].fetchall()
-    # derived = parsed.local_concepts["local.all_store_count"]
-    # assert isinstance(derived.lineage, AggregateWrapper)
-    # assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
-    assert len(results) == 1
-    assert results[0] == ("hammer", 2)
-
-
-def test_duckdb_load():
-    env = Environment(working_path=Path(__file__).parent)
-    exec = Dialects.DUCK_DB.default_executor(environment=env)
-
-    results = exec.execute_query(r"""
-        auto csv <- _env_working_path || '/test.csv';
-
-        RAW_SQL('''
-        CREATE TABLE ages AS FROM read_csv(:csv);
-        '''
-        );""")
-
-    results = exec.execute_raw_sql("SELECT * FROM ages;").fetchall()
-
-    assert results[0].age == 23
-
-
 def test_duckdb_string_quotes():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
@@ -1210,8 +628,6 @@ SELECT
 order by
     idx_val asc;"""
 
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
@@ -1221,8 +637,6 @@ order by
 
 
 def test_union():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
@@ -1310,50 +724,6 @@ def test_commit():
     assert len(results) == 0
 
 
-def test_parquet_format_access():
-    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
-    parquet_path = Path(__file__).parent / "customer.parquet"
-    nations_path = Path(__file__).parent / "nation.parquet"
-    executor.parse_text(f"""
-
-key id int;
-property id.text_id string;
-property id.last_name string;
-property id.first_name string;
-property id.salutation string;
-
-property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
-
-key nation_id int;
-property nation_id.nation_name string;
-
-datasource customers (
-    C_CUSTKEY: id,
-    C_NAME: full_name,
-    C_NATIONKEY: nation_id,
-)
-grain (id)
-address `{parquet_path}`;
-
-datasource nations (
-    N_NATIONKEY: nation_id,
-    N_NAME: nation_name,
-)
-grain(nation_id)
-address `{nations_path}`;
-""")
-    _ = executor.execute_raw_sql(f'select * from "{parquet_path}" limit 1;')
-    r = executor.execute_query("select count(id) as customer_count;")
-
-    assert r.fetchall()[0].customer_count == 1500
-
-    r = executor.execute_query(
-        "select nation_name,  count(id) as customer_count order by customer_count desc;"
-    )
-
-    assert r.fetchall()[0].customer_count == 72
-
-
 def test_duckdb_date_add():
     executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
 
@@ -1397,8 +767,6 @@ select game.home_team.name, count(game.id)->game_count;"""
 
 def test_global_aggregate_inclusion():
     """check that including a global aggregate constant in output select doesn't force changed evaluation order"""
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     query = """
     key id int;
@@ -1443,335 +811,7 @@ select max_date, date, avg(score) as avg_id;""")[0].fetchall()
     assert results[0].avg_id == 35.0
 
 
-def test_filter_scalar_aggregate_not_restricted_by_staging():
-    """A by-aggregate used as a filter scalar must compute over its own
-    dimension scope, not be silently restricted by a staging datasource whose
-    `complete where` matches the outer filter.
-
-    Covers four permutations against the same items/sales model:
-      1. Baseline (no staging): filter-scalar avg(price) by category ranges
-         over the full items table.
-      2. With staging whose non_partial_for matches the outer WHERE: the filter
-         scalar must still range over the full items table (the bug).
-      3. Same aggregate used BOTH as SELECT output AND as filter scalar: the
-         filter-scalar sourcing is unfiltered, the SELECT-output sourcing is
-         filtered.
-      4. SELECT-level aggregate with matching outer WHERE: the filter *does*
-         apply (SELECT-level aggregates are not filter scalars).
-    """
-    DebuggingHook()
-
-    model = """
-key item_id int;
-property item_id.category string;
-property item_id.price int;
-
-key sale_id int;
-property sale_id.sale_year int;
-property sale_id.sale_item_id int;
-property sale_id.sale_item_price int;
-
-datasource items (
-    id: item_id,
-    category: category,
-    price: price
-) grain (item_id) address items_tbl;
-
-datasource sales (
-    id: sale_id,
-    year: sale_year,
-    item_id: sale_item_id,
-    item_price: sale_item_price
-) grain (sale_id) address sales_tbl;
-
-merge sale_item_id into ~item_id;
-"""
-
-    staging = """
-datasource staged_sales (
-    sale_id: ~sale_id,
-    sale_year: ~sale_year,
-    item_id: ~item_id,
-    category: ~category,
-    sale_item_price: ~sale_item_price
-) grain (sale_id) complete where sale_year = 2023
-address staged_sales_tbl;
-"""
-
-    def build_executor(include_staging: bool) -> Executor:
-        executor = Dialects.DUCK_DB.default_executor(environment=Environment())
-        executor.execute_raw_sql(
-            "CREATE TABLE items_tbl (id INT, category VARCHAR, price INT)"
-        )
-        executor.execute_raw_sql(
-            "INSERT INTO items_tbl VALUES "
-            "(1,'A',10),(2,'A',20),(3,'A',100),(4,'B',30),(5,'B',40)"
-        )
-        executor.execute_raw_sql(
-            "CREATE TABLE sales_tbl (id INT, year INT, item_id INT, item_price INT)"
-        )
-        executor.execute_raw_sql(
-            "INSERT INTO sales_tbl VALUES "
-            "(1,2023,1,10),(2,2023,2,20),(3,2023,4,30),"
-            "(4,2023,5,40),(5,2022,3,100)"
-        )
-        executor.parse_text(model)
-        if include_staging:
-            executor.execute_raw_sql(
-                "CREATE TABLE staged_sales_tbl AS "
-                "SELECT s.id AS sale_id, s.year AS sale_year, "
-                "i.id AS item_id, i.category AS category, "
-                "s.item_price AS sale_item_price "
-                "FROM sales_tbl s JOIN items_tbl i ON s.item_id = i.id "
-                "WHERE s.year = 2023"
-            )
-            executor.parse_text(staging)
-        return executor
-
-    # Thresholds for avg(price) by category over the full items table:
-    #   A -> (10 + 20 + 100) / 3 = 43.33
-    #   B -> (30 + 40) / 2 = 35.0
-    # Only sale 4 (B, price 40) exceeds its threshold => count = 1.
-    # If the aggregate is incorrectly restricted to 2023 sales only, item 3
-    # (price 100) drops out and A's threshold falls to 15, pulling in sale 2
-    # (A, price 20) as well => count = 2 (bug).
-    filter_scalar_query = """
-where sale_year = 2023
-  and sale_item_price > avg(price) by category
-select count(sale_id) as sale_count;
-"""
-
-    def gen_sql(executor: Executor, query: str) -> str:
-        return executor.generate_sql(executor.parse_text(query)[-1])[0]
-
-    # 1. Baseline: no staging in scope. Must source from items_tbl + sales_tbl.
-    baseline = build_executor(include_staging=False)
-    sql = gen_sql(baseline, filter_scalar_query)
-    assert "items_tbl" in sql
-    assert "sales_tbl" in sql
-    assert "staged_sales_tbl" not in sql
-    result = baseline.execute_text(filter_scalar_query)[0].fetchall()
-    assert result[0].sale_count == 1
-
-    # 2. With staging in scope: aggregate must source items_tbl (full dim),
-    # not staged_sales_tbl (which would restrict it to year=2023).
-    staged = build_executor(include_staging=True)
-    sql = gen_sql(staged, filter_scalar_query)
-    assert "items_tbl" in sql, sql
-    assert "staged_sales_tbl" not in sql, sql
-    result = staged.execute_text(filter_scalar_query)[0].fetchall()
-    assert result[0].sale_count == 1
-
-    # 3. Same by-aggregate used as SELECT output AND filter scalar.
-    # Threshold for B = 35; sale 4 is the only one above that threshold.
-    mixed_query = """
-where sale_item_price > avg(price) by category
-  and category = 'B'
-select category, count(sale_id) as sale_count
-order by category asc;
-"""
-    sql = gen_sql(staged, mixed_query)
-    assert "items_tbl" in sql, sql
-    assert "staged_sales_tbl" not in sql, sql
-    result = staged.execute_text(mixed_query)[0].fetchall()
-    assert len(result) == 1
-    assert result[0].category == "B"
-    assert result[0].sale_count == 1
-
-    # 4. SELECT-level aggregate with outer WHERE — filter DOES apply, so the
-    # planner is free to source from the pre-filtered staging datasource.
-    select_level_query = """
-where sale_year = 2023
-select count(sale_id) as sale_count;
-"""
-    sql = gen_sql(staged, select_level_query)
-    assert "staged_sales_tbl" in sql, sql
-    result = staged.execute_text(select_level_query)[0].fetchall()
-    assert result[0].sale_count == 4
-
-
-def test_tuple_filtering():
-    query = """
-    key case_number int;
-property case_number.primary_type string;
-property case_number.ward string;
-
-datasource crimes (
-    case_number: case_number,
-    primary_type: primary_type,
-    ward: ward
-)
-grain (case_number)
-query '''
-select 1 as case_number, 'HOMICIDE' as primary_type, 'Ward 1' as ward
-union all
-select 2, 'ASSAULT', 'Ward 2'
-union all
-select 3, 'ROBBERY', 'Ward 1'
-''';
-
-"""
-
-    executor: Executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=Path(__file__).parent)
-    )
-    executor.parse_text(query)
-
-    results = executor.execute_text(
-        """select local.ward, count_distinct(local.case_number) as violent_crime_count  
-where local.primary_type in ("HOMICIDE"::string, "ASSAULT"::string, "ROBBERY"::string, "AGGRAVATED ASSAULT"::string)  
-having violent_crime_count > 0
-order by local.ward asc
-                                    ; """
-    )[0].fetchall()
-
-    assert len(results) == 2
-    assert results[0].violent_crime_count == 2
-
-
-def test_multiple_string_filters():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
-    query = """
-    key case_number int;
-property case_number.primary_type string;
-property case_number.ward string;
-
-datasource crimes (
-    case_number: case_number,
-    primary_type: primary_type,
-    ward: ward
-)
-grain (case_number)
-query '''
-select 1 as case_number, 'HOMICIDE' as primary_type, 'Ward 1' as ward
-union all
-select 2, 'ASSAULT', 'Ward 2'
-union all
-select 3, 'ROBBERY', 'Ward 1'
-''';
-"""
-
-    executor: Executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=Path(__file__).parent)
-    )
-    executor.parse_text(query)
-
-    results = executor.execute_text(
-        """where ( local.primary_type = "HOMICIDE"::string or local.primary_type= "ASSAULT"::string)
-        select 1 as test;
-                                    """
-    )[0].fetchall()
-
-    assert len(results) == 1
-
-
-#     assert results[0].test == 1
-
-#     results = executor.execute_text(
-#         """select local.ward, count_distinct(local.case_number) as violent_crime_count
-# where ward='Ward 2' and ( local.primary_type = "HOMICIDE"::string or local.primary_type= "ASSAULT"::string)
-# having violent_crime_count > 0
-# order by local.ward asc
-#                                     ; """
-#     )[0].fetchall()
-
-#     assert len(results) == 1
-#     assert results[0].violent_crime_count == 1
-
-
-# def test_variable_plan_generation():
-#     from trilogy.hooks import DebuggingHook
-#     DebuggingHook()
-#     query = """
-#     key case_number int;
-# property case_number.primary_type string;
-# property case_number.ward string;
-
-# datasource crimes (
-#     case_number: case_number,
-#     primary_type: primary_type,
-#     ward: ward
-# )
-# grain (case_number)
-# query '''
-# select 1 as case_number, 'HOMICIDE' as primary_type, 'Ward 1' as ward
-# union all
-# select 2, 'ASSAULT', 'Ward 2'
-# union all
-# select 3, 'ROBBERY', 'Ward 1'
-# ''';
-
-# """
-
-#     executor: Executor = Dialects.DUCK_DB.default_executor(
-#         environment=Environment(working_path=Path(__file__).parent)
-#     )
-#     executor.parse_text(query)
-
-#     base =  executor.generate_sql(
-#         """select local.ward, count_distinct(local.case_number) as violent_crime_count
-# where local.primary_type in ("HOMICIDE"::string, "ASSAULT"::string, "ROBBERY"::string, "AGGRAVATED ASSAULT"::string)
-# having violent_crime_count > 0
-# order by local.ward asc
-#                                     ; """
-#     )[0]
-#     comp = executor.generate_sql(
-#         """
-# auto homicide <- "HOMICIDE"::string;
-# auto assault <- "ASSAULT"::string;
-# auto robbery <- "ROBBERY"::string;
-
-# select local.ward, count_distinct(local.case_number) as violent_crime_count
-# where local.primary_type in (homicide, assault, robbery)
-# having violent_crime_count > 0
-# order by local.ward asc
-#                                     ; """
-#     )[0]
-
-#     assert base == comp
-
-
-def test_null_filtering():
-    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
-
-    test = """key orid int;
-key store string;
-key customer int;
-
-auto customer_orders <- count(orid) by customer;
-datasource filtered_orders(
-  orid: orid,
-  store: store,
-  customer:customer,
-)
-grain(orid)
-query '''
-select 1 orid, 'store1' store, 145 customer
-union all
-select 2, 'store2', 244
-union all
-select 3, 'store2', null
-union all
-select 4, 'store3', 244
-'''
-where store = 'store2';
-
-where store = 'store2' and customer IS NULL
-select 
-    avg(customer_orders) -> avg_customer_orders,
-    avg(count(orid) by store) -> avg_store_orders,
-;"""
-    results = executor.execute_text(test)[0].fetchall()
-
-    assert len(results) == 1
-    assert results[0].avg_customer_orders == 1
-
-
 def test_recursive():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
 
     executor: Executor = Dialects.DUCK_DB.default_executor(
@@ -1799,8 +839,6 @@ select id, label;
 
 
 def test_recursive_enrichment():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
 
     executor: Executor = Dialects.DUCK_DB.default_executor(
@@ -1836,8 +874,6 @@ select count(id) as a_children;
 
 
 def test_tuple_constant(default_duckdb_engine: Executor):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     test = """
 const list <- (1,2,3,4);
@@ -1850,8 +886,6 @@ select list;"""
 
 
 def test_in_with_array(default_duckdb_engine: Executor):
-
-    from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
     test = """
@@ -1873,8 +907,6 @@ select
 
 def test_map(default_duckdb_engine: Executor):
 
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     test = """
 
@@ -1891,8 +923,6 @@ select
 
 
 def test_regexp(default_duckdb_engine: Executor):
-
-    from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
     test = """
@@ -1972,8 +1002,6 @@ where values = true;
 
 
 def test_log():
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
@@ -2012,55 +1040,6 @@ select trim(values) as trimmed_values order by trimmed_values asc;
     assert results[3].trimmed_values == "mon"
 
 
-def test_filter_constant_unrelated():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    from trilogy.core.processing.utility import get_disconnected_components
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
-    test = """
-key x int;
-
-datasource example (
-x)
-grain (x)
-query '''
-select 1 as x''';
-
-SELECT unnest([1,2,3,4]) as value, 'example' as dim
-having value = 2;
-
-"""
-    default_duckdb_engine.parse_text(test)
-    env = default_duckdb_engine.environment
-    # assert env.concepts['dim'].grain ==
-    graph_count, graphs = get_disconnected_components(
-        concept_map={
-            "example": [env.concepts["value"]],
-            "other": [env.concepts["dim"], env.concepts["x"]],
-        }
-    )
-    test = """
-key x int;
-
-datasource example (
-x)
-grain (x)
-query '''
-select 1 as x''';
-
-where x = 1
-SELECT unnest([1,2,3,4]) as value, 'example' as dim
-having value = 2;
-"""
-
-    # assert graph_count == 1,graphs
-
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-
-    assert len(results) == 1
-
-
 def test_array_to_string():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
@@ -2090,272 +1069,8 @@ select value where not value;
     )
 
 
-def test_validate():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    test = """
-key x int;
-
-datasource example (
-x)
-grain (x)
-query '''
-select 1 as x''';
-
-where x = 1
-SELECT unnest([1,2,3,4]) as value, 'example' as dim
-having value = 2;
-"""
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-
-    test = """validate all;"""
-
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 0
-
-    test = """validate datasources example;"""
-
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 0
-
-
-def test_validate_fix():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    from trilogy.core.validation.fix import validate_and_rewrite
-
-    test = """key x int; # guessing at type
-# but who cares, right
-key y int;
-
-datasource dim_y (
-    y: y
-)
-grain (y)
-query '''
-select 1 as y union all select 2 as y union all select 3 as y''';
-
-# a fun comment
-datasource example (
-    x: x,
-    y: y
-    )
-grain (x)
-query '''
-select 'abc' as x, 1 as y union all select null as x, null as y''';
-"""
-    rewritten = validate_and_rewrite(test, default_duckdb_engine)
-
-    assert rewritten.strip() == """
-key x string; # guessing at type
-# but who cares, right
-key y int;
-
-datasource dim_y (
-    y
-)
-grain (y)
-query '''
-select 1 as y union all select 2 as y union all select 3 as y''';
-datasource example (
-    x: ?x,
-    y: ~?y
-)
-grain (x)
-query '''
-select 'abc' as x, 1 as y union all select null as x, null as y''';
-""".strip(), rewritten.strip()
-
-
-def test_validate_fix_types():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    from trilogy.core.validation.fix import validate_and_rewrite
-
-    test = """
-import std.geography;
-key x int; # guessing at type
-key y int::latitude;
-key z numeric::longitude;
-
-# a fun comment
-datasource example (
-    x: x,
-    y: y,
-    z: z
-)
-grain (x)
-query '''
-select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, null as z''';
-"""
-    rewritten = validate_and_rewrite(test, default_duckdb_engine)
-
-    assert rewritten.strip() == """import std.geography;
-
-key x string; # guessing at type
-key y numeric::latitude;
-key z numeric::longitude;
-
-datasource example (
-    x: ?x,
-    y: ?y,
-    z: ?z
-)
-grain (x)
-query '''
-select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, null as z''';
-""".strip(), rewritten.strip()
-
-
-def test_validate_fix_bytes():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    from trilogy.core.validation.fix import validate_and_rewrite
-
-    test = """
-key id int;
-property id.payload string;
-
-datasource example (
-    id: id,
-    payload: payload
-)
-grain (id)
-query '''
-select 1 as id, CAST('abc' AS BLOB) as payload''';
-"""
-    rewritten = validate_and_rewrite(test, default_duckdb_engine)
-
-    assert rewritten is not None
-    assert "property id.payload bytes;" in rewritten
-
-
-def test_validate_duckdb_geometry_bytes_are_refined():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    from trilogy.core.validation.fix import validate_and_rewrite
-
-    try:
-        default_duckdb_engine.execute_raw_sql("INSTALL spatial;")
-        default_duckdb_engine.execute_raw_sql("LOAD spatial;")
-    except Exception as exc:
-        pytest.skip(f"DuckDB spatial extension unavailable: {exc}")
-
-    test = """
-import std.geography;
-key id int;
-property id.geom geography;
-
-datasource example (
-    id: id,
-    geom: geom
-)
-grain (id)
-query '''
-select 1 as id, ST_GeomFromText('POINT(1 1)') as geom''';
-"""
-    rewritten = validate_and_rewrite(test, default_duckdb_engine)
-
-    assert rewritten is None
-
-
-def test_show_validate():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    test = """
-key x int;
-
-datasource example (
-x)
-grain (x)
-query '''
-select 1 as x''';
-
-where x = 1
-SELECT unnest([1,2,3,4]) as value, 'example' as dim
-having value = 2;
-"""
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-
-    test = """validate all;"""
-
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 0
-    for row in results:
-        assert row.ran is True, str(row)
-
-    test = """show validate all;"""
-
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    # this has to include a DS query
-    # that inline validation doesn't need to run
-    assert len(results) == 1
-    for row in results:
-        assert row.ran is False or row.check_type == "logical"
-
-
-def test_geo_functions_e2e():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    try:
-        default_duckdb_engine.execute_raw_sql("INSTALL spatial;")
-        default_duckdb_engine.execute_raw_sql("LOAD spatial;")
-    except Exception as exc:
-        pytest.skip(f"DuckDB spatial extension unavailable: {exc}")
-
-    test = """
-key id int;
-key raw_wkt string;
-
-datasource geo_shape (
-    id: id,
-    raw_wkt: raw_wkt
-)
-grain (id)
-query '''
-select
-    1 as id,
-    'POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))' as raw_wkt
-''';
-
-auto shape <- geo_from_text(raw_wkt);
-auto centroid <- geo_centroid(shape);
-auto centroid_4326 <- geo_transform(centroid, 4326, 4326);
-auto center_x <- geo_x(centroid_4326);
-auto center_y <- geo_y(centroid_4326);
-
-select center_x, center_y;
-"""
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-
-    assert len(results) == 1
-    assert results[0].center_x is not None
-    assert results[0].center_y is not None
-    assert round(results[0].center_x, 6) == 2.0
-    assert round(results[0].center_y, 6) == 2.0
-
-
-def test_show_validate_generation():
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    test = """
-key x int;
-
-datasource example (
-x)
-grain (x)
-query '''
-select 1 as x''';
-
-where x = 1
-SELECT unnest([1,2,3,4]) as value, 'example' as dim
-having value = 2;
-"""
-    results = default_duckdb_engine.execute_text(test)[0].fetchall()
-
-    test = """show validate all;"""
-
-    results = default_duckdb_engine.parse_text(test)
-
-    default_duckdb_engine.generate_sql(results[0])
-
-
 def test_mock_statement():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     test = """
 import std.metric;
@@ -2436,8 +1151,6 @@ select x, labels, email, favorite_color;
 
 def test_group_syntax():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    from trilogy.hooks.query_debugger import DebuggingHook
-
     DebuggingHook()
     test = """
 key x int;
@@ -2474,8 +1187,6 @@ def test_connection_management():
 
 
 def test_proper_basic_unnest_handling():
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     test = """const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
@@ -2503,8 +1214,6 @@ LIMIT 10;"""
 
 @mark.skip("Date spine not yet supported")
 def test_date_spine():
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     with executor.generator.rendering.temporary(parameters=False):
@@ -2546,8 +1255,6 @@ def test_date_spine():
 
 
 def test_date_spine_merge():
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     with executor.generator.rendering.temporary(parameters=False):
@@ -2589,8 +1296,6 @@ def test_date_spine_merge():
 
 
 def test_const_equivalence_merge():
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     with executor.generator.rendering.temporary(parameters=False):
@@ -2622,8 +1327,6 @@ def test_const_equivalence_merge():
 
 def test_multi_select_derive():
     exec = Dialects.DUCK_DB.default_executor()
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     queries = exec.parse_text("""
 
@@ -2651,8 +1354,6 @@ derive x_next + y_next -> total
 
 def test_multi_select_derive_import():
     exec = Dialects.DUCK_DB.default_executor()
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     queries = exec.parse_text("""
 
@@ -2690,8 +1391,6 @@ derive x_next + y_next -> total
 
 def test_order_by_count():
     exec = Dialects.DUCK_DB.default_executor()
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     exec.parse_text("""
 key state string;
@@ -2719,8 +1418,6 @@ select
 
 def test_existence():
     exec = Dialects.DUCK_DB.default_executor()
-    from trilogy.hooks import DebuggingHook
-
     DebuggingHook()
     results = exec.execute_text("""
 key state string;
@@ -2897,308 +1594,6 @@ def test_datetime_functions():
 
     # format_time and parse_time round-trip
     assert row.order_timestamp_parse is not None
-
-
-def test_complex_map_struct_access():
-    """Test map<string, struct> access."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-key id int;
-property id.data map<string, struct<a:int, b:int, c:int>>;
-
-datasource test_data (
-    id,
-    data
-)
-grain (id)
-query \'\'\'select 1 as id, MAP {'c': {'a': 1, 'b': 2, 'c': 3}, 'd': {'a': 4, 'b': 5, 'c': 6}} as data\'\'\';
-
-select id, data['c'].a as a_value, map_keys(data) as map_keys;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].a_value == 1
-    assert results[0].map_keys == ["c", "d"]
-
-
-def test_array_struct_access():
-    """Test array<struct> access."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-key id int;
-property id.items array<struct<name:string, value:int>>;
-
-datasource test_data (
-    id,
-    items
-)
-grain (id)
-query \'\'\'select 1 as id, [{'name': 'first', 'value': 10}, {'name': 'second', 'value': 20}] as items\'\'\';
-
-select id, items[1].name as first_name, items[2].value as second_value;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].first_name == "first"
-    assert results[0].second_value == 20
-
-
-def test_array_map_access():
-    """Test array<map> access."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-key id int;
-property id.maps array<map<string, int>>;
-
-datasource test_data (
-    id,
-    maps
-)
-grain (id)
-query \'\'\'select 1 as id, [MAP {'a': 1, 'b': 2}, MAP {'x': 10, 'y': 20}] as maps\'\'\';
-
-select id, maps[1]['a'] as first_a, maps[2]['y'] as second_y;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].first_a == 1
-    assert results[0].second_y == 20
-
-
-def test_map_array_access():
-    """Test map<string, array> access."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-key id int;
-property id.data map<string, array<int>>;
-
-datasource test_data (
-    id,
-    data
-)
-grain (id)
-query \'\'\'select 1 as id, MAP {'nums': [1, 2, 3], 'more': [10, 20, 30]} as data\'\'\';
-
-select id, data['nums'][1] as first_num, data['more'][3] as last_more;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].first_num == 1
-    assert results[0].last_more == 30
-
-
-def test_struct_array_access():
-    """Test struct with array field access."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-key id int;
-property id.container struct<name:string, values:array<int>>;
-
-datasource test_data (
-    id,
-    container
-)
-grain (id)
-query \'\'\'select 1 as id, {'name': 'test', 'values': [100, 200, 300]} as container\'\'\';
-
-select id, container.name as container_name, container.values[2] as second_value;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].container_name == "test"
-    assert results[0].second_value == 200
-
-
-def test_map_array_struct_triple_chain():
-    """Test triple chained access: map -> array -> struct."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-key id int;
-property id.data map<string, array<struct<x:int, y:int>>>;
-
-datasource test_data (
-    id,
-    data
-)
-grain (id)
-query \'\'\'select 1 as id, MAP {'points': [{'x': 1, 'y': 2}, {'x': 3, 'y': 4}], 'coords': [{'x': 10, 'y': 20}]} as data\'\'\';
-
-select id, data['points'][1].x as first_x, data['points'][2].y as second_y, data['coords'][1].x as coord_x;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].first_x == 1
-    assert results[0].second_y == 4
-    assert results[0].coord_x == 10
-
-
-def test_struct_map_array_triple_chain():
-    """Test triple chained access: struct -> map -> array."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-key id int;
-property id.container struct<label:string, lookup:map<string, array<int>>>;
-
-datasource test_data (
-    id,
-    container
-)
-grain (id)
-query \'\'\'select 1 as id, {'label': 'mydata', 'lookup': MAP {'a': [1, 2, 3], 'b': [4, 5, 6]}} as container\'\'\';
-
-select id, container.label as label, container.lookup['a'][2] as a_second, container.lookup['b'][1] as b_first;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].label == "mydata"
-    assert results[0].a_second == 2
-    assert results[0].b_first == 4
-
-
-def test_array_struct_map_triple_chain():
-    """Test triple chained access: array -> struct -> map."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-key id int;
-property id.items array<struct<name:string, attrs:map<string, int>>>;
-
-datasource test_data (
-    id,
-    items
-)
-grain (id)
-query \'\'\'select 1 as id, [{'name': 'item1', 'attrs': MAP {'weight': 10, 'height': 5}}, {'name': 'item2', 'attrs': MAP {'weight': 20, 'height': 15}}] as items\'\'\';
-
-select id, items[1].name as first_name, items[1].attrs['weight'] as first_weight, items[2].attrs['height'] as second_height;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].first_name == "item1"
-    assert results[0].first_weight == 10
-    assert results[0].second_height == 15
-
-
-def test_inline_map_struct_access():
-    """Test chained access with inline map/struct literals."""
-    environment = Environment()
-
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
-
-    rows = """
-auto map_struct <- { 'c': struct(1->a,2->b,3->c), 'd': struct(4->a,5->b,6->c) };
-
-select map_struct['c'].a as a_value, map_keys(map_struct) as map_keys;
-"""
-
-    results = executor.execute_text(rows)[-1].fetchall()
-    assert len(results) == 1
-    assert results[0].a_value == 1
-    assert results[0].map_keys == ["c", "d"]
-
-
-def test_gcs_cache_bust_render_source():
-    from trilogy.core.enums import AddressType
-    from trilogy.core.models.datasource import Address
-    from trilogy.dialect.config import DuckDBConfig
-    from trilogy.dialect.duckdb import DuckDBDialect
-
-    config = DuckDBConfig(gcs_cache_bust=True)
-    dialect = DuckDBDialect(config=config)
-    assert dialect._gcs_cache_bust_token is not None
-
-    gcs_address = Address(
-        location="gcs://bucket/data.parquet", type=AddressType.PARQUET
-    )
-    gs_address = Address(location="gs://bucket/data.parquet", type=AddressType.PARQUET)
-    gcs_https_address = Address(
-        location="https://storage.googleapis.com/bucket/data.parquet",
-        type=AddressType.PARQUET,
-    )
-    local_address = Address(location="./local/data.parquet", type=AddressType.PARQUET)
-    other_https_address = Address(
-        location="https://example.com/data.parquet", type=AddressType.PARQUET
-    )
-
-    token = dialect._gcs_cache_bust_token
-    assert f"?cache_bust={token}" in dialect.render_source(gcs_address)
-    assert f"?cache_bust={token}" in dialect.render_source(gs_address)
-    assert f"?cache_bust={token}" in dialect.render_source(gcs_https_address)
-    assert "cache_bust" not in dialect.render_source(local_address)
-    assert "cache_bust" not in dialect.render_source(other_https_address)
-
-
-def test_gcs_cache_bust_disabled_by_default():
-    from trilogy.core.enums import AddressType
-    from trilogy.core.models.datasource import Address
-    from trilogy.dialect.duckdb import DuckDBDialect
-
-    dialect = DuckDBDialect()
-    assert dialect._gcs_cache_bust_token is None
-
-    gcs_address = Address(
-        location="gcs://bucket/data.parquet", type=AddressType.PARQUET
-    )
-    assert "cache_bust" not in dialect.render_source(gcs_address)
-
-
-def test_gcs_cache_bust_token_unique_per_instance():
-    from trilogy.dialect.config import DuckDBConfig
-    from trilogy.dialect.duckdb import DuckDBDialect
-
-    config = DuckDBConfig(gcs_cache_bust=True)
-    d1 = DuckDBDialect(config=config)
-    d2 = DuckDBDialect(config=config)
-    assert d1._gcs_cache_bust_token != d2._gcs_cache_bust_token
 
 
 def test_hex_function():

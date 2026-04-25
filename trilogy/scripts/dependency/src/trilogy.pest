@@ -96,7 +96,9 @@ grain_clause       = { ^"grain" ~ "(" ~ column_list ~ ")" }
 
 address = { ^"address" ~ (F_QUOTED_ADDRESS | QUOTED_ADDRESS | ADDRESS) }
 query   = { ^"query" ~ MULTILINE_STRING }
-file    = { ^"file" ~ ((F_FILE_PATH ~ ":" ~ F_FILE_PATH) | (FILE_PATH ~ ":" ~ FILE_PATH) | F_FILE_PATH | FILE_PATH) }
+file_path_list = { "[" ~ (F_FILE_PATH | FILE_PATH) ~ ("," ~ (F_FILE_PATH | FILE_PATH))* ~ ","? ~ "]" }
+file_const_ref = { IDENTIFIER }
+file    = { ^"file" ~ ((F_FILE_PATH ~ ":" ~ F_FILE_PATH) | (FILE_PATH ~ ":" ~ FILE_PATH) | F_FILE_PATH | FILE_PATH | file_path_list | file_const_ref) }
 
 STATE                    = @{ ^"state" }
 datasource_status_clause = { STATE ~ DATASOURCE_STATUS }
@@ -655,7 +657,7 @@ _date_functions = _{
 
 _static_functions = _{ _string_functions | _math_functions | _array_functions | _map_functions | _geo_functions }
 
-custom_function = { "@" ~ IDENTIFIER ~ "(" ~ ((expr ~ ",")* ~ expr ~ ","?)? ~ ")" }
+custom_function = { "@" ~ IDENTIFIER ~ "(" ~ (expr ~ ("," ~ expr)* ~ ","?)? ~ ")" }
 
 // =============================================================================
 // LITERALS
@@ -676,9 +678,9 @@ BOOL_KW  = @{ ^"true" | ^"false" }
 bool_lit = ${ BOOL_KW ~ !(ASCII_ALPHANUMERIC | "_") }
 null_lit = ${ ^"null" ~ !(ASCII_ALPHANUMERIC | "_") }
 
-array_lit = { "[" ~ ((expr ~ ",")* ~ expr ~ ","?)? ~ "]" }
+array_lit = { "[" ~ (expr ~ ("," ~ expr)* ~ ","?)? ~ "]" }
 tuple_lit = { "(" ~ (literal ~ ",")+ ~ literal? ~ ","? ~ ")" }
-map_lit   = { "{" ~ (literal ~ ":" ~ literal ~ ",")* ~ literal ~ ":" ~ literal ~ ","? ~ "}" }
+map_lit   = { "{" ~ literal ~ ":" ~ literal ~ ("," ~ literal ~ ":" ~ literal)* ~ ","? ~ "}" }
 
 struct_lit = { ^"struct" ~ "(" ~ expr ~ "->" ~ IDENTIFIER ~ ("," ~ expr ~ "->" ~ IDENTIFIER)* ~ ","? ~ ")" }
 
@@ -750,7 +752,7 @@ AUTO     = @{ ^"auto" }
 numeric_type = { ^"numeric" ~ "(" ~ int_lit ~ "," ~ int_lit ~ ")" }
 map_type     = { ^"map" ~ "<" ~ (data_type | IDENTIFIER) ~ "," ~ (data_type | IDENTIFIER) ~ ">" }
 struct_component = { IDENTIFIER ~ ":" ~ data_type ~ concept_nullable_modifier? ~ metadata? }
-struct_type  = { ^"struct" ~ "<" ~ ((struct_component | IDENTIFIER) ~ ",")* ~ (struct_component | IDENTIFIER) ~ ","? ~ ">" }
+struct_type  = { ^"struct" ~ "<" ~ (struct_component | IDENTIFIER) ~ ("," ~ (struct_component | IDENTIFIER))* ~ ","? ~ ">" }
 list_type    = { (^"list" | ^"array") ~ "<" ~ (data_type | IDENTIFIER) ~ ">" }
 enum_type    = { ^"enum" ~ "<" ~ data_type ~ ">" ~ "[" ~ (string_lit | int_lit) ~ ("," ~ (string_lit | int_lit))* ~ ","? ~ "]" }
 
