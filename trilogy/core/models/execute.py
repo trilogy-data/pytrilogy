@@ -639,14 +639,6 @@ class QueryDatasource:
 
     def __post_init__(self) -> None:
         self.datasources = sorted(self.datasources, key=lambda ds: ds.identifier)
-        if (
-            self.base_datasource is not None
-            and self.base_datasource not in self.datasources
-        ):
-            raise SyntaxError(
-                f"base_datasource {self.base_datasource.identifier} is not in datasources "
-                f"{[d.identifier for d in self.datasources]}"
-            )
         unique_pairs: set[str] = set()
         for join in self.joins:
             if not isinstance(join, BaseJoin):
@@ -883,12 +875,6 @@ class QueryDatasource:
             f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier};"
             f" have {existing_str} from {datasources}."
         )
-
-    @property
-    def safe_location(self):
-        if self.base_datasource is not None:
-            return self.base_datasource.safe_location
-        return self.datasources[0].safe_location
 
 
 class RecursiveCTE(CTE):
@@ -1182,36 +1168,28 @@ class Join:
     def get_name(self, cte: CTE | UnionCTE) -> str:
         if cte.identifier in self.inlined_ctes:
             base = cte.source.base_datasource
-            assert (
-                base is not None
-            ), f"Inlined CTE {cte.identifier} has no base_datasource"
+            assert isinstance(base, BuildDatasource)  # only BD CTEs can be inlined
             return base.safe_identifier
         return cte.safe_identifier
 
     @property
     def right_name(self) -> str:
-        if self.right_cte.identifier in self.inlined_ctes:
-            base = self.right_cte.source.base_datasource
-            assert (
-                base is not None
-            ), f"Inlined right_cte {self.right_cte.identifier} has no base_datasource"
-            return base.safe_identifier
-        return self.right_cte.safe_identifier
+        return self.get_name(self.right_cte)
 
     @property
     def right_ref(self) -> str:
-        inlined = self.right_cte.identifier in self.inlined_ctes
-        base = self.right_cte.source.base_datasource if inlined else None
-        if inlined:
-            assert (
-                base is not None
-            ), f"Inlined right_cte {self.right_cte.identifier} has no base_datasource"
+        if self.right_cte.identifier in self.inlined_ctes:
+            base = self.right_cte.source.base_datasource
+            assert isinstance(base, BuildDatasource)  # only BD CTEs can be inlined
+            location = (
+                safe_quote(base.safe_location, self.quote)
+                if self.quote
+                else base.safe_location
+            )
+            quote = self.quote or ""
+            return f"{location} as {quote}{base.safe_identifier}{quote}"
         if self.quote:
-            if inlined and base is not None:
-                return f"{safe_quote(base.safe_location, self.quote)} as {self.quote}{base.safe_identifier}{self.quote}"
             return f"{self.quote}{self.right_cte.safe_identifier}{self.quote}"
-        if inlined and base is not None:
-            return f"{base.safe_location} as {base.safe_identifier}"
         return self.right_cte.safe_identifier
 
     @property
