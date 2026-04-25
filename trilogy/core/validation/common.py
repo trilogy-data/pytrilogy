@@ -102,6 +102,7 @@ def easy_query(
             for concept in first_qds_concepts
         },
         grain=datasource.grain,
+        base_datasource=datasource,
     )
     cte = CTE(
         name=f"datasource_{datasource.name}_base",
@@ -128,6 +129,7 @@ def easy_query(
             joins=[],
             source_map={concept.address: (set([root_qds])) for concept in concepts},
             grain=cte.grain,
+            base_datasource=root_qds,
         ),
         parent_ctes=[cte],
         output_columns=cte.output_columns,

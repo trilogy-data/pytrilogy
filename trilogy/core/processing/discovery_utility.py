@@ -57,6 +57,9 @@ def calculate_effective_parent_grain(
         grain = BuildGrain()
         qds = node
         if not qds.joins:
+            base = qds.base_datasource
+            if base is not None:
+                return base.grain
             return qds.datasources[0].grain
         seen = set()
         for join in qds.joins:

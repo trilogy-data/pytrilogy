@@ -401,6 +401,7 @@ class StrategyNode:
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
+            base_datasource=parent_sources[0] if len(parent_sources) == 1 else None,
         )
 
     def rebuild_cache(self) -> QueryDatasource:
