@@ -190,8 +190,8 @@ class SelectNode(StrategyNode):
                 p.resolve() for p in self.parents
             ]
 
-            resolution.datasources = sorted(
-                resolution.datasources + parent_sources, key=lambda ds: ds.identifier
+            resolution.datasources += sorted(
+                parent_sources, key=lambda ds: ds.identifier
             )
 
             source_map = resolve_concept_map(
