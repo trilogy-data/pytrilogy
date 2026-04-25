@@ -183,6 +183,7 @@ class GroupNode(StrategyNode):
                 condition=self.conditions,
                 hidden_concepts=self.hidden_concepts,
                 ordering=self.ordering,
+                base_datasource=base,
             )
         return base
 

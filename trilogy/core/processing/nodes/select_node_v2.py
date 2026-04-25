@@ -138,6 +138,7 @@ class SelectNode(StrategyNode):
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
+            base_datasource=datasource,
         )
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
@@ -156,6 +157,7 @@ class SelectNode(StrategyNode):
             source_type=SourceType.CONSTANT,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
+            base_datasource=datasource,
         )
 
     def _resolve(self) -> QueryDatasource:

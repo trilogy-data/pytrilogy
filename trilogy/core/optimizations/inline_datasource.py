@@ -49,7 +49,7 @@ class InlineDatasource(OptimizationRule):
             if parent_cte.group_to_grain:
                 self.debug(f"Cannot inline: parent {parent_cte.name} is grouped")
                 continue
-            raw_root = parent_cte.source.datasources[0]
+            raw_root = parent_cte.source.base_datasource
             if not isinstance(raw_root, BuildDatasource):
                 self.debug(f"Cannot inline: Parent {parent_cte.name} is not datasource")
                 continue
@@ -90,7 +90,9 @@ class InlineDatasource(OptimizationRule):
                     f"Skipping inlining raw datasource {replaceable.source.identifier} ({replaceable.name}) due to multiple references"
                 )
                 continue
-            if not replaceable.source.datasources[0].grain.issubset(replaceable.grain):
+            replaceable_base = replaceable.source.base_datasource
+            assert replaceable_base is not None  # checked above
+            if not replaceable_base.grain.issubset(replaceable.grain):
                 self.log(
                     f"Forcing group ({parent_cte.grain} being replaced by inlined source {root.grain})"
                 )

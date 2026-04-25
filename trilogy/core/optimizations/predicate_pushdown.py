@@ -75,16 +75,14 @@ class PredicatePushdown(OptimizationRule):
                 return False
         # if it's a root datasource, we can filter on _any_ of the output concepts
         if parent_cte.is_root_datasource:
-            extra_check = {
-                x.address for x in parent_cte.source.datasources[0].output_concepts
-            }
+            base = parent_cte.source.base_datasource
+            assert base is not None  # is_root_datasource guarantees this
+            extra_check = {x.address for x in base.output_concepts}
             if row_conditions.issubset(extra_check):
                 for x in row_conditions:
                     if x not in materialized:
                         materialized.add(x)
-                        parent_cte.source_map[x] = [
-                            parent_cte.source.datasources[0].name
-                        ]
+                        parent_cte.source_map[x] = [base.name]
         if row_conditions.issubset(materialized):
             children = inverse_map.get(parent_cte.name, [])
             if all([is_child_of(candidate, child.condition) for child in children]):

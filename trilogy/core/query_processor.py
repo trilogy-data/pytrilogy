@@ -111,9 +111,11 @@ def base_join_to_join(
                 return cte
             eligible.add(cte.source.identifier)
         for cte in ctes:
-            if cte.source.datasources[0].identifier == datasource.identifier:
-                return cte
-            eligible.add(cte.source.datasources[0].identifier)
+            base = cte.source.base_datasource
+            if base is not None:
+                if base.identifier == datasource.identifier:
+                    return cte
+                eligible.add(base.identifier)
         raise ValueError(
             f"Could not find CTE for datasource {datasource.identifier}; have {eligible}"
         )
@@ -241,6 +243,7 @@ def datasource_to_query_datasource(datasource: BuildDatasource) -> QueryDatasour
         datasources=[datasource],
         joins=[],
         partial_concepts=[x.concept for x in datasource.columns if not x.is_complete],
+        base_datasource=datasource,
     )
 
 
@@ -271,12 +274,9 @@ def resolve_cte_base_name_and_alias_v2(
 ) -> Tuple[Address | str | None, str | None]:
     if not source.datasources:
         return None, None
-    if (
-        isinstance(source.datasources[0], BuildDatasource)
-        and not source.datasources[0].name == CONSTANT_DATASET
-    ):
-        ds = source.datasources[0]
-        return ds.address, ds.safe_identifier
+    base = source.base_datasource
+    if isinstance(base, BuildDatasource) and base.name != CONSTANT_DATASET:
+        return base.address, base.safe_identifier
 
     joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if joins and len(joins) > 0:
@@ -351,13 +351,10 @@ def datasource_to_cte(
         source_map, existence_map = generate_source_map(query_datasource, all_new_ctes)
 
     else:
-        # source is the first datasource of the query datasource
-        if query_datasource.datasources:
-
-            source = query_datasource.datasources[0]
-            # this is required to ensure that constant datasets
-            # render properly on initial access; since they have
-            # no actual source
+        # single-source QDS — render directly from its base datasource
+        source = query_datasource.base_datasource
+        if source is not None:
+            # constant datasets have no actual source; render without FROM
             if source.name == CONSTANT_DATASET:
                 source_map = {k: [] for k in query_datasource.source_map}
                 existence_map = source_map
