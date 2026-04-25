@@ -1,16 +1,59 @@
 """Core display infrastructure: Rich mode, console, shared constants and print helpers."""
 
+import io
 import os
+import sys
 import threading
 from typing import Any, Callable, Optional
 
 from click import echo, style
 
+
+def _needs_safe_wrapping(encoding: "str | None") -> bool:
+    """UTF-8 encoders never raise on real strings, so wrapping is only
+    useful for narrower codepages (cp1252, ascii, etc.)."""
+    if not encoding:
+        return False
+    norm = encoding.lower().replace("-", "").replace("_", "")
+    return norm not in ("utf8", "utf8sig")
+
+
+def _make_safe_stdout() -> "io.TextIOWrapper | None":
+    """Wrap stdout.buffer with errors='replace' so non-encodable characters
+    (e.g. '→' on cp1252 Windows consoles) degrade to '?' instead of raising
+    UnicodeEncodeError out of the error-display path. Returns None when
+    wrapping isn't useful or isn't safe (utf-8 streams, captured streams
+    without a binary buffer)."""
+    encoding = getattr(sys.stdout, "encoding", None)
+    if not _needs_safe_wrapping(encoding):
+        return None
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is None:
+        return None
+    try:
+        return io.TextIOWrapper(
+            buffer,
+            encoding=encoding or "utf-8",
+            errors="replace",
+            line_buffering=True,
+            write_through=True,
+        )
+    except (AttributeError, ValueError):
+        return None
+
+
+def _make_console() -> "Console | None":
+    from rich.console import Console
+
+    safe_file = _make_safe_stdout()
+    return Console(file=safe_file) if safe_file is not None else Console()
+
+
 try:
     from rich.console import Console
 
     RICH_AVAILABLE = True
-    console: Optional[Console] = Console()
+    console: Optional[Console] = _make_console()
 except ImportError:
     RICH_AVAILABLE = False
     console = None
@@ -62,10 +105,8 @@ class SetRichMode:
 
         if enabled:
             try:
-                from rich.console import Console
-
                 RICH_AVAILABLE = True
-                console = Console()
+                console = _make_console()
             except ImportError:
                 RICH_AVAILABLE = False
                 console = None
@@ -106,10 +147,17 @@ def is_rich_available() -> bool:
 
 
 def _print_styled(message: str, rich_style: str, click_fg: str) -> None:
-    if RICH_AVAILABLE and console is not None:
-        console.print(message, style=rich_style)
-    else:
-        echo(style(message, fg=click_fg, bold=True))
+    try:
+        if RICH_AVAILABLE and console is not None:
+            console.print(message, style=rich_style)
+        else:
+            echo(style(message, fg=click_fg, bold=True))
+    except UnicodeEncodeError:
+        # Belt-and-suspenders: if a stream still can't encode the message,
+        # fall back to ASCII so an unencodable char in an error message
+        # (e.g. '→' on cp1252) never masks the original error.
+        safe = message.encode("ascii", "replace").decode("ascii")
+        echo(safe)
 
 
 def print_success(message: str) -> None:
