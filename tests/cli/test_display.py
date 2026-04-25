@@ -1,4 +1,5 @@
 import importlib
+import io
 import re
 import sys
 from contextlib import contextmanager
@@ -1046,3 +1047,140 @@ class TestExecutionPlanRequiredFiles:
                 display.show_execution_plan(nodes, edges, order, required_files=files)
                 captured = stdout.getvalue() + stderr.getvalue()
             assert "lib.preql" in captured
+
+
+# Characters outside the cp1252 codepage; these are what bug-reported the
+# UnicodeEncodeError out of rich on Windows legacy consoles.
+NON_CP1252_MESSAGE = "Unexpected error: probe → max ✓ smart‑quote returned None"
+
+
+@contextmanager
+def _cp1252_strict_console():
+    """Patch display_core.console with a Console writing to a cp1252-strict
+    stream — i.e. one that *will* raise UnicodeEncodeError on '→'. This
+    simulates the Windows legacy console path on any platform.
+
+    Yields (cp1252_buffer, cp1252_stream); keep the stream reference alive
+    until you've read the buffer, otherwise GC closes the BytesIO."""
+    from rich.console import Console
+
+    cp1252_buffer = io.BytesIO()
+    cp1252_stream = io.TextIOWrapper(
+        cp1252_buffer,
+        encoding="cp1252",
+        errors="strict",
+        write_through=True,
+    )
+    test_console = Console(
+        file=cp1252_stream,
+        force_terminal=False,
+        color_system=None,
+        width=80,
+    )
+
+    original_console = display_core.console
+    original_available = display_core.RICH_AVAILABLE
+    display_core.console = test_console
+    display_core.RICH_AVAILABLE = True
+    try:
+        yield cp1252_buffer, cp1252_stream
+    finally:
+        display_core.console = original_console
+        display_core.RICH_AVAILABLE = original_available
+
+
+class TestNonCp1252Encoding:
+    """Print helpers must never raise UnicodeEncodeError on characters
+    outside the underlying stream's codepage. The error-display path is the
+    most sensitive: a crash there masks the original exception (see the
+    rich/cp1252 bug report)."""
+
+    @pytest.mark.skipif(not RICH_AVAILABLE, reason="Rich library not available")
+    @pytest.mark.parametrize(
+        "fn",
+        [
+            display.print_success,
+            display.print_info,
+            display.print_warning,
+            display.print_error,
+            display.print_header,
+        ],
+    )
+    def test_print_helpers_survive_cp1252_strict_console(self, fn, capsys):
+        with _cp1252_strict_console() as (buffer, stream):
+            fn(NON_CP1252_MESSAGE)
+            stream.flush()
+            decoded = buffer.getvalue().decode("cp1252", errors="replace")
+
+        # Two valid outcomes:
+        #  1. Rich's strict stream raised UnicodeEncodeError → our
+        #     belt-and-suspenders fallback emits ASCII via click.echo to
+        #     the real stdout (captured by capsys).
+        #  2. Rich rendered fine (newer rich versions sanitize internally)
+        #     → '→' must not appear literally in the cp1252 output.
+        captured = capsys.readouterr()
+        combined = decoded + captured.out + captured.err
+        assert "Unexpected error" in combined
+        assert "→" not in combined  # must have been replaced or scrubbed
+
+    @pytest.mark.skipif(not RICH_AVAILABLE, reason="Rich library not available")
+    def test_safe_stdout_wrapper_replaces_unencodable(self):
+        cp1252_buffer = io.BytesIO()
+        cp1252_stream = io.TextIOWrapper(
+            cp1252_buffer,
+            encoding="cp1252",
+            errors="strict",
+            write_through=True,
+        )
+
+        class _FakeStdout:
+            buffer = cp1252_stream.buffer
+            encoding = "cp1252"
+
+            def isatty(self) -> bool:
+                return False
+
+        original_stdout = sys.stdout
+        sys.stdout = _FakeStdout()  # type: ignore[assignment]
+        try:
+            wrapper = display_core._make_safe_stdout()
+        finally:
+            sys.stdout = original_stdout
+
+        assert wrapper is not None
+        assert wrapper.errors == "replace"
+        wrapper.write("probe → max")
+        wrapper.flush()
+        decoded = cp1252_buffer.getvalue().decode("cp1252")
+        assert "probe" in decoded
+        assert "→" not in decoded  # replaced by '?'
+        assert "?" in decoded
+
+    def test_print_error_fallback_mode_handles_non_cp1252(self):
+        """In rich-disabled mode the click echo path still has to survive
+        non-cp1252 characters when sys.stdout is a cp1252-strict stream."""
+        cp1252_buffer = io.BytesIO()
+        cp1252_stream = io.TextIOWrapper(
+            cp1252_buffer,
+            encoding="cp1252",
+            errors="strict",
+            write_through=True,
+        )
+
+        original_stdout = sys.stdout
+        original_available = display_core.RICH_AVAILABLE
+        original_console = display_core.console
+        sys.stdout = cp1252_stream
+        display_core.RICH_AVAILABLE = False
+        display_core.console = None
+        try:
+            display.print_error(NON_CP1252_MESSAGE)
+        finally:
+            sys.stdout = original_stdout
+            display_core.RICH_AVAILABLE = original_available
+            display_core.console = original_console
+
+        cp1252_stream.flush()
+        decoded = cp1252_buffer.getvalue().decode("cp1252", errors="replace")
+        assert "Unexpected error" in decoded
+        assert "→" not in decoded

@@ -156,8 +156,8 @@ def _score_join_candidate(
 def resolve_join_order_v2(
     g: nx.Graph, partials: dict[str, list[str]], nullables: dict[str, list[str]]
 ) -> list[JoinOrderOutput]:
-    datasources = [x for x in g.nodes if x.startswith("ds~")]
-    concepts = [x for x in g.nodes if x.startswith("c~")]
+    datasources = sorted(x for x in g.nodes if x.startswith("ds~"))
+    concepts = sorted(x for x in g.nodes if x.startswith("c~"))
 
     # Pre-compute all possible connections between datasources
     all_connections: dict[tuple[str, str], set[str]] = {}

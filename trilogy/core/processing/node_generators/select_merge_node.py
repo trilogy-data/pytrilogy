@@ -532,7 +532,7 @@ def resolve_subgraphs(
     ones are most 'optimal' to use, a hueristic
     that can evolve in the future but is currently based on datasource
     cardinality."""
-    datasources = [n for n in g.nodes if n.startswith("ds~")]
+    datasources = sorted(n for n in g.nodes if n.startswith("ds~"))
     canonical_relevant = {c.canonical_address for c in relevant}
     canonical_map = {c.canonical_address: c.address for c in relevant}
     concepts: dict[str, BuildConcept] = g.concepts

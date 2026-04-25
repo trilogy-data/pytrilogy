@@ -41,7 +41,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.datasource import Address
 from trilogy.core.utility import safe_quote
-from trilogy.utility import unique
+from trilogy.utility import string_to_hash, unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 
@@ -802,15 +802,15 @@ class QueryDatasource:
 
     @property
     def identifier(self) -> str:
-        filters = abs(hash(str(self.condition))) if self.condition else ""
+        filters = string_to_hash(str(self.condition)) if self.condition else ""
         grain = "_".join(
             [str(c).replace(".", "_") for c in sorted(self.grain.components)]
         )
         group = ""
         if self.group_required:
-            keys = [
+            keys = sorted(
                 x.address for x in self.output_concepts if x.purpose != Purpose.METRIC
-            ]
+            )
             group = "_grouped_by_" + "_".join(keys)
         return (
             "_join_".join([d.identifier for d in self.datasources])

@@ -81,14 +81,18 @@ def extract_ds_components(
     graphs = []
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(g, highlight_nodes=nodelist)
-    for node in g.nodes:
+    for node in sorted(g.nodes):
         if not node.startswith("ds~"):
             continue
         local = g.copy()
         filter_pseudonyms_for_source(local, node, pseudonyms)
         ds_graph: nx.DiGraph = nx.ego_graph(local, node, radius=EGO_RADIUS).copy()
         graphs.append(
-            [extract_address(x) for x in ds_graph.nodes if not str(x).startswith("ds~")]
+            sorted(
+                extract_address(x)
+                for x in ds_graph.nodes
+                if not str(x).startswith("ds~")
+            )
         )
     # if we had no ego graphs, return all concepts
     if not graphs:

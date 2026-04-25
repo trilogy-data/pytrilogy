@@ -395,6 +395,12 @@ def injectable_concepts(
             continue
         if addr not in reduced:
             continue
+        # Aggregate metrics (e.g. `count`) can show up on multiple persisted
+        # datasources at different grains — but they are computed values, not
+        # join keys. Joining datasources on a shared aggregate is meaningless
+        # and would emit a virtual `_virt_agg_*` node into the graph.
+        if concept.is_aggregate:
+            continue
         if addr in existing and not add_joins:
             continue
         if any(p in existing for p in concept.pseudonyms):

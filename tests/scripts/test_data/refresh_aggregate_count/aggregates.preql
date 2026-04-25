@@ -1,0 +1,84 @@
+key code string;
+
+root datasource carrier (
+    code:code,
+)
+grain (code)
+query '''SELECT 'AA' as code''';
+
+key origin_code string;
+
+root datasource origin (
+    origin_code:origin_code,
+)
+grain (origin_code)
+query '''SELECT 'JFK' as origin_code''';
+
+
+property id.flight_num string;
+property id.flight_date date;
+key id int;
+
+auto count <-count(id);
+auto flight_date.year <- year(flight_date);
+
+property <*>.data_through datetime;
+
+root datasource flight_watermark (
+    data_through:data_through,
+)
+grain (data_through)
+query '''SELECT TIMESTAMP '2026-04-24 10:07:49' as data_through''';
+
+root datasource flight (
+    carrier:~code,
+    origin:~origin_code,
+    flight_num:flight_num,
+    flight_date:flight_date,
+    id2:id,
+)
+grain (id)
+query '''SELECT 'AA' as carrier, 'JFK' as origin, '101' as flight_num, DATE '2024-01-01' as flight_date, 1 as id2''';
+
+datasource flight_count_total (
+    flight_count:count,
+    data_through:data_through,
+)
+address flight_count_total_table
+freshness by data_through;
+
+datasource flight_count_by_year (
+    flight_year:flight_date.year,
+    flight_count:count,
+    data_through:data_through,
+)
+grain (flight_date.year)
+address flight_count_by_year_table
+freshness by data_through;
+
+datasource flight_count_by_carrier (
+    carrier_code:~code,
+    flight_count:count,
+    data_through:data_through,
+)
+grain (code)
+address flight_count_by_carrier_table
+freshness by data_through;
+
+datasource flight_count_by_origin (
+    origin_code_dup:~origin_code,
+    flight_count:count,
+    data_through:data_through,
+)
+grain (origin_code)
+address flight_count_by_origin_table
+freshness by data_through;
+
+datasource flight_count_by_date (
+    flight_date:flight_date,
+    flight_count:count,
+    data_through:data_through,
+)
+grain (flight_date)
+address flight_count_by_date_table
+freshness by data_through;
