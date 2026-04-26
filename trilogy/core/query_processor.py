@@ -411,15 +411,21 @@ def datasource_to_cte(
     )
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
-    for x in cte.output_columns:
-        if (
-            x.address not in cte.source_map
-            and not any(y in cte.source_map for y in x.pseudonyms)
-            and CONFIG.validate_missing
-        ):
-            raise ValueError(
-                f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} "
-            )
+    if CONFIG.validate_missing:
+        mapped_canonical = {
+            c.canonical_address
+            for c in cte.output_columns
+            if c.address in cte.source_map
+        }
+        for x in cte.output_columns:
+            if (
+                x.address not in cte.source_map
+                and not any(y in cte.source_map for y in x.pseudonyms)
+                and x.canonical_address not in mapped_canonical
+            ):
+                raise ValueError(
+                    f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} "
+                )
 
     return cte
 
