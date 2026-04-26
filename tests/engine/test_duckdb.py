@@ -1639,3 +1639,64 @@ order by item_id asc;
     assert rows[1] == 1
     assert rows[2] == 1
     assert rows[3] == 2
+
+
+def test_anon_function_canonical_address_matches_named():
+    """`year(x_date)` (named call) and `x_date.year` (anonymous attr access)
+    should resolve to the same canonical_address since they share lineage."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text("""
+key id int;
+property id.x_date date;
+
+auto year_via_func <- year(x_date);
+
+datasource events (
+    id: id,
+    x_date: x_date
+)
+grain (id)
+query '''select 1 as id, '2024-01-01'::date as x_date''';
+
+select x_date.year, year_via_func;
+""")
+    build_env = executor.environment.materialize_for_select()
+    via_func = build_env.concepts["year_via_func"]
+    via_attr = build_env.concepts["x_date.year"]
+    assert (
+        via_func.canonical_address == via_attr.canonical_address
+    ), f"{via_func.canonical_address} != {via_attr.canonical_address}"
+
+
+def test_anon_function_resolves_from_precomputed_source():
+    """If a precomputed datasource binds `year_via_func`, querying via the
+    anonymous `x_date.year` form should resolve from that source rather than
+    re-deriving from the base `x_date`, since they share canonical address."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text("""
+key id int;
+property id.x_date date;
+
+auto year_via_func <- year(x_date);
+auto x_count <- count(id);
+
+datasource events (
+    id: id,
+    x_date: x_date
+)
+grain (id)
+query '''select 1 as id, '2024-01-01'::date as x_date''';
+
+datasource events_by_year (
+    year_via_func: year_via_func,
+    x_count: x_count
+)
+grain (year_via_func)
+query '''select 2024 as year_via_func, 2 as x_count union all select 2025, 1''';
+""")
+
+    sql_named = executor.generate_sql("select year_via_func, x_count;")[-1]
+    assert "events_by_year" in sql_named, sql_named
+
+    sql_attr = executor.generate_sql("select x_date.year, x_count;")[-1]
+    assert "events_by_year" in sql_attr, sql_attr

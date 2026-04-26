@@ -106,31 +106,30 @@ LOGGER_PREFIX = "[MODELS_BUILD]"
 
 
 def _gen_agg_name(parent: "BuildAggregateWrapper") -> str:
-    if parent.is_abstract:
-        return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent.with_abstract_by()))}"
-    return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
+    target = parent.with_abstract_by() if parent.is_abstract else parent
+    return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(_canonical_str_for_hash(target))}"
 
 
 def _gen_window_name(parent: "BuildWindowItem") -> str:
-    return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
 def _gen_filter_name(parent: "BuildFilterItem") -> str:
-    return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
 def _gen_function_name(parent: "BuildFunction") -> str:
     if parent.operator == FunctionType.GROUP:
-        return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
-    return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+        return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(_canonical_str_for_hash(parent))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
 def _gen_paren_name(parent: "BuildParenthetical") -> str:
-    return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
 def _gen_comp_name(parent: "BuildComparison") -> str:
-    return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
 def _gen_msl_name(parent: "BuildMultiSelectLineage") -> str:
@@ -138,7 +137,7 @@ def _gen_msl_name(parent: "BuildMultiSelectLineage") -> str:
 
 
 def _gen_default_name(parent: Any) -> str:
-    return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
 # Initialized after classes are defined
@@ -2812,6 +2811,78 @@ class Factory:
         elif isinstance(base, ConceptRef):
             return self.handle_constant(self.build(base))
         return base
+
+
+def _canonical_str_for_hash(arg: Any) -> str:
+    """Canonical string repr used for canonical_name hashing.
+
+    Substitutes BuildConcept references with `canonical_address_grain` so that
+    two concepts sharing the same canonical lineage (e.g. `year(x_date)` and
+    `x_date.year`) hash to the same name, and any virtual concept derived from
+    them (e.g. `count(id) by x_date.year` vs `count(id) by year_via_func`)
+    inherits that equivalence.
+    """
+    if isinstance(arg, BuildConcept):
+        return arg.canonical_address_grain
+    if isinstance(arg, BuildAggregateWrapper):
+        if arg.by:
+            grain_str = (
+                "["
+                + ", ".join(sorted(_canonical_str_for_hash(c) for c in arg.by))
+                + "]"
+            )
+        else:
+            grain_str = "abstract"
+        return f"{_canonical_str_for_hash(arg.function)}<{grain_str}>"
+    if isinstance(arg, BuildFunction):
+        rendered = ",".join(_canonical_str_for_hash(a) for a in arg.arguments)
+        return f"{arg.operator.value}({rendered})"
+    if isinstance(arg, BuildWindowItem):
+        order_str = ",".join(_canonical_str_for_hash(o) for o in arg.order_by)
+        over_str = ",".join(_canonical_str_for_hash(o) for o in arg.over)
+        return (
+            f"{arg.type}({_canonical_str_for_hash(arg.content)} {arg.index},"
+            f" [{over_str}], [{order_str}])"
+        )
+    if isinstance(arg, BuildOrderItem):
+        return f"{_canonical_str_for_hash(arg.expr)} {arg.order}"
+    if isinstance(arg, BuildFilterItem):
+        return (
+            f"<Filter: {_canonical_str_for_hash(arg.content)} where "
+            f"{_canonical_str_for_hash(arg.where)}>"
+        )
+    if isinstance(arg, BuildWhereClause):
+        return _canonical_str_for_hash(arg.conditional)
+    if isinstance(arg, BuildParenthetical):
+        return f"({_canonical_str_for_hash(arg.content)})"
+    if isinstance(arg, BuildSubselectComparison):
+        return (
+            f"{_canonical_str_for_hash(arg.left)} {arg.operator.value}"
+            f" {_canonical_str_for_hash(arg.right)}"
+        )
+    if isinstance(arg, BuildComparison):
+        return (
+            f"{_canonical_str_for_hash(arg.left)} {arg.operator.value}"
+            f" {_canonical_str_for_hash(arg.right)}"
+        )
+    if isinstance(arg, BuildConditional):
+        return (
+            f"{_canonical_str_for_hash(arg.left)} {arg.operator.value}"
+            f" {_canonical_str_for_hash(arg.right)}"
+        )
+    if isinstance(arg, BuildCaseWhen):
+        return (
+            f"WHEN {_canonical_str_for_hash(arg.comparison)} THEN"
+            f" {_canonical_str_for_hash(arg.expr)}"
+        )
+    if isinstance(arg, BuildCaseSimpleWhen):
+        return (
+            f"WHEN {_canonical_str_for_hash(arg.value_expr)} THEN"
+            f" {_canonical_str_for_hash(arg.expr)}"
+        )
+    if isinstance(arg, BuildCaseElse):
+        return f"ELSE {_canonical_str_for_hash(arg.expr)}"
+    return str(arg)
 
 
 # Initialize the concept name generators after classes are defined

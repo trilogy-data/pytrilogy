@@ -181,13 +181,24 @@ def prune_sources_for_aggregates(
     if not required_grains:
 
         return
-    # if we have distinct grains required, exit
-    if len(required_grains) > 1:
+    # Compare grains by canonical address so canonically-equivalent components
+    # (e.g. `x_date.year` and `year_via_func` sharing the same lineage hash)
+    # don't disqualify a precomputed datasource that binds the named form.
+    addr_to_canonical = {bc.address: bc.canonical_address for bc in g.concepts.values()}
+
+    def grain_key(grain) -> frozenset[str] | None:
+        if grain.abstract:
+            return None
+        return frozenset(addr_to_canonical.get(c, c) for c in grain.components)
+
+    required_keys = {grain_key(rg) for rg in required_grains}
+    if len(required_keys) > 1:
         logger.debug("Multiple required grains found, cannot prune datasources.")
         return
+    target = next(iter(required_keys))
     to_remove = []
     for node, ds in g.datasources.items():
-        if ds.grain != required_grains[0]:
+        if grain_key(ds.grain) != target:
             logger.debug(f"Removing datasource {node} at grain {ds.grain}")
             to_remove.append(node)
     for node in to_remove:
