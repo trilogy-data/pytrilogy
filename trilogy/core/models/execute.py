@@ -649,17 +649,23 @@ class QueryDatasource:
             unique_pairs.add(pairing)
         self.input_concepts = unique(self.input_concepts, "address")
         self.output_concepts = unique(self.output_concepts, "address")
-        for key in ("input_concepts", "output_concepts"):
-            for concept in getattr(self, key):
+        if CONFIG.validate_missing:
+            all_concepts = self.input_concepts + self.output_concepts
+            mapped_canonical = {
+                c.canonical_address
+                for c in all_concepts
+                if c.address in self.source_map
+            }
+            for concept in all_concepts:
+                if concept.canonical_address in mapped_canonical:
+                    continue
                 if concept.address in self.hidden_concepts:
                     continue
-                if (
-                    concept.address not in self.source_map
-                    and not any(x in self.source_map for x in concept.pseudonyms)
-                    and CONFIG.validate_missing
+                if concept.address not in self.source_map and not any(
+                    x in self.source_map for x in concept.pseudonyms
                 ):
                     raise SyntaxError(
-                        f"Missing source map entry for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have map: {self.source_map}"
+                        f"Missing source map entry for {concept.address} with pseudonyms {concept.pseudonyms}, have map: {self.source_map}"
                     )
 
     def __repr__(self):

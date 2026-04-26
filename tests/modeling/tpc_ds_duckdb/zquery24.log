@@ -50,8 +50,8 @@ SELECT
     \"questionable\".\"store_sales_store_name\" as \"store_sales_store_name\",
     \"questionable\".\"peach_sales\" as \"peach_sales\"
 FROM
-    \"questionable\"
-    FULL JOIN \"vacuous\" on 1=1
+    \"vacuous\"
+    FULL JOIN \"questionable\" on 1=1
 WHERE
     \"questionable\".\"peach_sales\" > 0.05 * \"vacuous\".\"avg_store_customer_sales\"
 """

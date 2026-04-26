@@ -200,18 +200,29 @@ class StrategyNode:
         if not self.parents:
             return
         non_hidden = set()
+        non_hidden_canonical = set()
         hidden = set()
         usable_outputs = set()
         for x in self.parents:
             for z in x.usable_outputs:
                 usable_outputs.add(z.address)
                 non_hidden.add(z.address)
+                non_hidden_canonical.add(z.canonical_address)
                 for psd in z.pseudonyms:
                     non_hidden.add(psd)
             for z in x.hidden_concepts:
                 hidden.add(z)
+        # Accept inputs that match a parent's output by canonical_address (same
+        # lineage hash). Two distinct addresses can resolve to the same canonical
+        # concept (e.g. an inline `year(flight_date)` used alongside the
+        # attribute-access form `flight_date.year`); both project from the same
+        # SQL expression at render time, so the parent producing one canonically
+        # satisfies the other.
         missing = [
-            x.address for x in self.input_concepts if x.address not in non_hidden
+            x.address
+            for x in self.input_concepts
+            if x.address not in non_hidden
+            and x.canonical_address not in non_hidden_canonical
         ]
         if missing:
 
