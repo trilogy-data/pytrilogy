@@ -707,6 +707,22 @@ class BaseDialect:
         logger.debug(
             f"{LOGGER_PREFIX} [{c.address}] Starting rendering loop on cte: {cte.name}"
         )
+        if cte.group_to_grain and c.address in {
+            concept.address for concept in cte.rollup_concepts
+        }:
+            rolled = safe_get_cte_value(
+                self.FUNCTION_MAP[FunctionType.COALESCE],
+                cte,
+                c,
+                self.QUOTE_CHARACTER,
+                self.render_expr,
+                self.used_map,
+            )
+            if not rolled:
+                rolled = INVALID_REFERENCE_STRING(
+                    f"Missing rollup source reference to {c.address}"
+                )
+            return self.FUNCTION_MAP[FunctionType.SUM]([rolled], [])
 
         # check if it's not inherited AND no pseudonyms are inherited
         if c.lineage and cte.source_map.get(c.address, []) == []:

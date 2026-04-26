@@ -139,6 +139,7 @@ class StrategyNode:
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         partial_concepts: List[BuildConcept] | None = None,
+        rollup_concepts: List[BuildConcept] | None = None,
         nullable_concepts: List[BuildConcept] | None = None,
         depth: int = 0,
         conditions: (
@@ -193,6 +194,7 @@ class StrategyNode:
         self.partial_concepts: list[BuildConcept] = self.derive_partials(
             partial_concepts
         )
+        self.rollup_concepts = rollup_concepts or []
         self.validate_inputs()
         self.log = True
 
@@ -408,6 +410,7 @@ class StrategyNode:
             grain=grain,
             condition=self.conditions,
             partial_concepts=self.partial_concepts,
+            rollup_concepts=self.rollup_concepts,
             nullable_concepts=self.nullable_concepts,
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
@@ -438,6 +441,7 @@ class StrategyNode:
             whole_grain=self.whole_grain,
             parents=list(self.parents),
             partial_concepts=list(self.partial_concepts),
+            rollup_concepts=list(self.rollup_concepts),
             nullable_concepts=list(self.nullable_concepts),
             depth=self.depth,
             conditions=self.conditions,

@@ -1,6 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
+from trilogy.core.enums import FunctionType
 from trilogy.core.internal import ALL_ROWS_CONCEPT
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -56,6 +57,18 @@ def gen_group_node(
     parent_concepts: List[BuildConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
+    if isinstance(
+        concept.lineage, BuildAggregateWrapper
+    ) and concept.lineage.function.operator not in (
+        FunctionType.COUNT,
+        FunctionType.SUM,
+    ):
+        keyed_parents = [
+            environment.concepts[key]
+            for parent in parent_concepts
+            for key in (parent.keys or set())
+        ]
+        parent_concepts = unique(parent_concepts + keyed_parents, "address")
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} parent concepts for {concept} {concept.lineage} are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
@@ -144,11 +157,48 @@ def gen_group_node(
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; it has mismatched parent grain {comp_grain } vs local parent {get_aggregate_grain(concept, environment)}"
                 )
+    materialized_outputs = unique(
+        output_concepts
+        + [
+            c
+            for c in local_optional
+            if not isinstance(c.lineage, (BuildAggregateWrapper, BuildFunction))
+        ],
+        "address",
+    )
+    if len(materialized_outputs) > len(output_concepts):
+        materialized = history.gen_select_node(
+            materialized_outputs,
+            environment,
+            g,
+            depth + 1,
+            fail_if_not_found=False,
+            conditions=conditions,
+        )
+        if materialized:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} found materialized aggregate source for {concept.address}"
+            )
+            return materialized
     if parent_concepts:
         target_grain = BuildGrain.from_concepts(parent_concepts)
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseBuildConceptList(concepts=parent_concepts)} with expected grain {target_grain}"
         )
+        if grain_components:
+            materialized = history.gen_select_node(
+                unique(output_concepts, "address"),
+                environment,
+                g,
+                depth + 1,
+                fail_if_not_found=False,
+                conditions=conditions,
+            )
+            if materialized:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} found materialized aggregate source for {concept.address}"
+                )
+                return materialized
         parent_concepts = unique(
             [x for x in parent_concepts if not x.name == ALL_ROWS_CONCEPT], "address"
         )

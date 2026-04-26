@@ -243,6 +243,7 @@ def datasource_to_query_datasource(datasource: BuildDatasource) -> QueryDatasour
         datasources=[datasource],
         joins=[],
         partial_concepts=[x.concept for x in datasource.columns if not x.is_complete],
+        rollup_concepts=[],
         base_datasource=datasource,
     )
 
@@ -332,6 +333,7 @@ def datasource_to_cte(
             ],
             grain=direct_parents[0].grain,
             order_by=query_datasource.ordering,
+            rollup_concepts=query_datasource.rollup_concepts,
         )
         return final
 
@@ -402,6 +404,7 @@ def datasource_to_cte(
         parent_ctes=parents,
         condition=query_datasource.condition,
         partial_concepts=query_datasource.partial_concepts,
+        rollup_concepts=query_datasource.rollup_concepts,
         nullable_concepts=query_datasource.nullable_concepts,
         join_derived_concepts=query_datasource.join_derived_concepts,
         hidden_concepts=query_datasource.hidden_concepts,

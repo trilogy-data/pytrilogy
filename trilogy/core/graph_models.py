@@ -10,6 +10,7 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
 )
+from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_implies_with_extras,

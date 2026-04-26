@@ -38,6 +38,7 @@ class GroupNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: Optional[List[BuildConcept]] = None,
+        rollup_concepts: Optional[List[BuildConcept]] = None,
         nullable_concepts: Optional[List[BuildConcept]] = None,
         force_group: bool | None = None,
         conditions: (
@@ -59,6 +60,7 @@ class GroupNode(StrategyNode):
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
+            rollup_concepts=rollup_concepts,
             nullable_concepts=nullable_concepts,
             force_group=force_group,
             conditions=conditions,
@@ -119,6 +121,12 @@ class GroupNode(StrategyNode):
             ),
             inherited_inputs=self.input_concepts + self.existence_concepts,
         )
+        rollup_addresses = {c.address for c in self.rollup_concepts}
+        input_addresses = {c.address for c in self.input_concepts}
+        for concept in self.output_concepts:
+            if concept.is_aggregate and concept.address not in rollup_addresses:
+                if concept.address not in input_addresses:
+                    source_map[concept.address] = set()
         nullable_addresses = find_nullable_concepts(
             source_map=source_map, joins=[], datasources=parent_sources
         )
@@ -139,6 +147,17 @@ class GroupNode(StrategyNode):
             ],
             "address",
         )
+        inherited_rollups = unique(
+            self.rollup_concepts
+            + [
+                c
+                for ps in parent_sources
+                if isinstance(ps, QueryDatasource)
+                for c in ps.rollup_concepts
+                if c.address in output_addresses
+            ],
+            "address",
+        )
         base = QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=self.output_concepts,
@@ -148,6 +167,7 @@ class GroupNode(StrategyNode):
             joins=[],
             grain=target_grain,
             partial_concepts=inherited_partials,
+            rollup_concepts=inherited_rollups,
             nullable_concepts=nullable_concepts,
             hidden_concepts=self.hidden_concepts,
             condition=self.conditions,
@@ -180,6 +200,7 @@ class GroupNode(StrategyNode):
                 grain=target_grain,
                 nullable_concepts=base.nullable_concepts,
                 partial_concepts=self.partial_concepts,
+                rollup_concepts=self.rollup_concepts,
                 condition=self.conditions,
                 hidden_concepts=self.hidden_concepts,
                 ordering=self.ordering,
@@ -196,6 +217,7 @@ class GroupNode(StrategyNode):
             parents=self.parents,
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
+            rollup_concepts=list(self.rollup_concepts),
             nullable_concepts=list(self.nullable_concepts),
             force_group=self.force_group,
             conditions=self.conditions,
