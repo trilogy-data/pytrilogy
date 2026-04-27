@@ -2,7 +2,7 @@ from enum import Enum
 from logging import Logger
 from typing import cast
 
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import Derivation, FunctionType, Granularity
 from trilogy.core.graph import DiGraph
 from trilogy.core.models.build import (
     BuildConcept,
@@ -15,6 +15,46 @@ from trilogy.core.processing.condition_utility import (
     condition_implies_with_extras,
     decompose_condition,
 )
+
+ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
+
+
+def _aggregate_signature(
+    concept: BuildConcept,
+) -> tuple[FunctionType, tuple[str, ...]] | None:
+    from trilogy.core.models.build import BuildAggregateWrapper
+
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return None
+    return (
+        concept.lineage.function.operator,
+        tuple(
+            sorted(
+                arg.canonical_address
+                for arg in concept.lineage.function.concept_arguments
+            )
+        ),
+    )
+
+
+def _datasource_materializes_aggregate(
+    datasource: BuildDatasource, concept: BuildConcept
+) -> bool:
+    signature = _aggregate_signature(concept)
+    if signature is None:
+        return False
+    for output in datasource.output_concepts:
+        output_signature = _aggregate_signature(output)
+        if output_signature == signature:
+            return True
+    return False
+
+
+def _datasource_has_aggregate_output(datasource: BuildDatasource) -> bool:
+    return any(
+        _aggregate_signature(output) is not None
+        for output in datasource.output_concepts
+    )
 
 
 class SearchCriteria(Enum):
@@ -168,6 +208,7 @@ def prune_sources_for_aggregates(
     all_concepts: list[BuildConcept],
     logger: Logger,
 ) -> None:
+    aggregate_concepts: list[BuildConcept] = []
     required_grains = []
     for x in all_concepts:
         logger.debug(
@@ -175,6 +216,7 @@ def prune_sources_for_aggregates(
         )
         if x.is_aggregate:
             logger.debug(f"Aggregate found: {x.address} at grain {x.grain}")
+            aggregate_concepts.append(x)
             required_grains.append(x.grain)
     # if no aggregates, exit
     logger.debug(f"Required grains for aggregates: {required_grains}")
@@ -186,9 +228,9 @@ def prune_sources_for_aggregates(
     # don't disqualify a precomputed datasource that binds the named form.
     addr_to_canonical = {bc.address: bc.canonical_address for bc in g.concepts.values()}
 
-    def grain_key(grain) -> frozenset[str] | None:
+    def grain_key(grain) -> frozenset[str]:
         if grain.abstract:
-            return None
+            return frozenset()
         return frozenset(addr_to_canonical.get(c, c) for c in grain.components)
 
     required_keys = {grain_key(rg) for rg in required_grains}
@@ -196,9 +238,43 @@ def prune_sources_for_aggregates(
         logger.debug("Multiple required grains found, cannot prune datasources.")
         return
     target = next(iter(required_keys))
+
+    exact_matches = [
+        node
+        for node, ds in g.datasources.items()
+        if isinstance(ds, BuildDatasource)
+        and grain_key(ds.grain) == target
+        and all(_datasource_materializes_aggregate(ds, c) for c in aggregate_concepts)
+    ]
+    if exact_matches:
+        keep = set(exact_matches)
+    else:
+        keep = set()
+        additive = [
+            c
+            for c in aggregate_concepts
+            if (signature := _aggregate_signature(c))
+            and signature[0] in ADDITIVE_ROLLUP_FUNCTIONS
+        ]
+        if len(additive) == len(aggregate_concepts):
+            for node, ds in g.datasources.items():
+                if not isinstance(ds, BuildDatasource):
+                    continue
+                ds_grain = grain_key(ds.grain)
+                if not target.issubset(ds_grain) or ds_grain == target:
+                    continue
+                if all(_datasource_materializes_aggregate(ds, c) for c in additive):
+                    keep.add(node)
+
+    keep.update(
+        node
+        for node, ds in g.datasources.items()
+        if isinstance(ds, BuildDatasource) and not _datasource_has_aggregate_output(ds)
+    )
+
     to_remove = []
     for node, ds in g.datasources.items():
-        if grain_key(ds.grain) != target:
+        if node not in keep:
             logger.debug(f"Removing datasource {node} at grain {ds.grain}")
             to_remove.append(node)
     for node in to_remove:

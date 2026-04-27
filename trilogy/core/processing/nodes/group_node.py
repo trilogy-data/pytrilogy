@@ -125,7 +125,10 @@ class GroupNode(StrategyNode):
         input_addresses = {c.address for c in self.input_concepts}
         for concept in self.output_concepts:
             if concept.is_aggregate and concept.address not in rollup_addresses:
-                if concept.address not in input_addresses:
+                if (
+                    source_type == SourceType.GROUP
+                    or concept.address not in input_addresses
+                ):
                     source_map[concept.address] = set()
         nullable_addresses = find_nullable_concepts(
             source_map=source_map, joins=[], datasources=parent_sources

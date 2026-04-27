@@ -23,6 +23,12 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
 
+def _can_use_grouped_materialized_source(concept: BuildConcept) -> bool:
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return True
+    return concept.lineage.function.operator in (FunctionType.COUNT, FunctionType.SUM)
+
+
 def get_aggregate_grain(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> BuildGrain:
@@ -57,11 +63,9 @@ def gen_group_node(
     parent_concepts: List[BuildConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
-    if isinstance(
-        concept.lineage, BuildAggregateWrapper
-    ) and concept.lineage.function.operator not in (
-        FunctionType.COUNT,
-        FunctionType.SUM,
+    if (
+        isinstance(concept.lineage, BuildAggregateWrapper)
+        and concept.lineage.function.operator == FunctionType.COUNT_DISTINCT
     ):
         keyed_parents = [
             environment.concepts[key]
@@ -166,7 +170,10 @@ def gen_group_node(
         ],
         "address",
     )
-    if len(materialized_outputs) > len(output_concepts):
+    can_use_grouped_materialized = _can_use_grouped_materialized_source(concept)
+    if can_use_grouped_materialized and len(materialized_outputs) > len(
+        output_concepts
+    ):
         materialized = history.gen_select_node(
             materialized_outputs,
             environment,
@@ -185,7 +192,7 @@ def gen_group_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseBuildConceptList(concepts=parent_concepts)} with expected grain {target_grain}"
         )
-        if grain_components:
+        if can_use_grouped_materialized and grain_components:
             materialized = history.gen_select_node(
                 unique(output_concepts, "address"),
                 environment,
