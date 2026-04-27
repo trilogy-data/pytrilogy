@@ -237,12 +237,7 @@ def parse_pest(text: str) -> SyntaxDocument:
     try:
         tree = parse_trilogy_syntax_tuple(text)
     except ValueError as e:
-        raw_error = str(e)
-        if "expected FILE_PATH or F_FILE_PATH" in raw_error:
-            from trilogy.parsing.v2.lark_backend import parse_lark
-
-            return parse_lark(text)
-        raise _diagnose_pest_error(text, raw_error) from e
+        raise _diagnose_pest_error(text, str(e)) from e
     line_starts = _compute_line_starts(text)
     syntax = _tuple_to_syntax(tree, text, line_starts)
     if not isinstance(syntax, SyntaxNode):

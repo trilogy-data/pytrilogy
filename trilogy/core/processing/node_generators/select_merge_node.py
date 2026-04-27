@@ -689,17 +689,26 @@ def create_datasource_node(
         if force_group
         else []
     )
+    rollup_addresses = {c.address for c in rollup_concepts}
+    output_concepts = [
+        c
+        for c in all_concepts
+        if not c.is_aggregate
+        or c.address in rollup_addresses
+        or datasource_grain.issubset(c.grain)
+    ]
+    output_addresses = {c.address for c in output_concepts}
     partial_concepts = [
         c.concept
         for c in datasource.columns
-        if not c.is_complete and c.concept.address in all_concepts
+        if not c.is_complete and c.concept.address in output_addresses
     ]
 
     partial_lcl = CanonicalBuildConceptList(concepts=partial_concepts)
     nullable_concepts = [
         c.concept
         for c in datasource.columns
-        if c.is_nullable and c.concept.address in all_concepts
+        if c.is_nullable and c.concept.address in output_addresses
     ]
 
     nullable_lcl = CanonicalBuildConceptList(concepts=nullable_concepts)
@@ -746,6 +755,9 @@ def create_datasource_node(
     for x in all_concepts:
         if x not in all_inputs and x in canonical_all:
             all_inputs.append(x)
+    all_inputs = [
+        c for c in all_inputs if not c.is_aggregate or c.address in output_addresses
+    ]
 
     # additional single row check
     satisfies_conditions = not datasource_has_filter_sensitive_aggregate(
@@ -760,15 +772,15 @@ def create_datasource_node(
     )
     rval = SelectNode(
         input_concepts=all_inputs,
-        output_concepts=sorted(all_concepts, key=lambda x: x.address),
+        output_concepts=sorted(output_concepts, key=lambda x: x.address),
         environment=environment,
         parents=[],
         depth=depth,
         partial_concepts=(
-            [] if partial_is_full else [c for c in all_concepts if c in partial_lcl]
+            [] if partial_is_full else [c for c in output_concepts if c in partial_lcl]
         ),
         rollup_concepts=rollup_concepts,
-        nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
+        nullable_concepts=[c for c in output_concepts if c in nullable_lcl],
         accept_partial=accept_partial,
         datasource=datasource,
         grain=datasource.grain,

@@ -307,7 +307,12 @@ SELECT
 
     assert "flight_count_by_source_dest_date" not in avg_generated, avg_generated
     assert (
-        "flight_count_by_source_dest_date" not in distinct_generated
+        'count(distinct "flight_count_by_source_dest_date"."destination_code")'
+        in distinct_generated
+    ), distinct_generated
+    assert (
+        '"flight_count_by_source_dest_date"."distinct_destinations"'
+        not in distinct_generated
     ), distinct_generated
 
 

@@ -63,16 +63,6 @@ def gen_group_node(
     parent_concepts: List[BuildConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
-    if (
-        isinstance(concept.lineage, BuildAggregateWrapper)
-        and concept.lineage.function.operator == FunctionType.COUNT_DISTINCT
-    ):
-        keyed_parents = [
-            environment.concepts[key]
-            for parent in parent_concepts
-            for key in (parent.keys or set())
-        ]
-        parent_concepts = unique(parent_concepts + keyed_parents, "address")
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} parent concepts for {concept} {concept.lineage} are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
