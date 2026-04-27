@@ -9,8 +9,6 @@ priority selection picks a non-aggregate ROOT first; gen_merge_node's path
 search then references the missing virt_agg node and aborts.
 """
 
-import pytest
-
 from trilogy import Dialects
 
 PRIMARY_ONLY_SETUP = """
@@ -169,21 +167,16 @@ def test_partial_precomputed_uses_aggregate_with_filter_in_select():
     assert "flights" not in generated, generated
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Aggregate rollup combined with a WHERE on a grain component (the "
-        "filter is on flight_date which is a grain key of the materialization, "
-        "but flight_date isn't in the SELECT) currently falls back to the "
-        "primary table rather than rolling up the aggregate. The rollup "
-        "feature handles unfiltered rollup; WHERE+rollup is the open case."
-    ),
-    strict=True,
-)
 def test_partial_precomputed_uses_aggregate_with_grain_filter():
     """A WHERE clause on a grain component of the aggregate (here flight_date)
     should still let discovery pick the precomputed aggregate, applying the
     filter at the source and rolling up to the requested grain — instead of
-    forcing a rescan of the primary table to recompute count(id)."""
+    forcing a rescan of the primary table to recompute count(id).
+
+    Joins to the partials-upgrade dimension tables must be INNER under this
+    path: a LEFT/FULL JOIN would leak rows for airports not in the filtered
+    aggregate (NULL count, NULL filter input — invisible to a WHERE that's
+    been pushed down into the aggregate CTE)."""
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(PRIMARY_ONLY_SETUP + PARTIAL_AGGREGATE_SUFFIX)
     generated = exec.generate_sql(
@@ -192,3 +185,12 @@ def test_partial_precomputed_uses_aggregate_with_grain_filter():
     )[-1]
     assert "flight_count_by_origin_destination_date" in generated, generated
     assert "flights" not in generated, generated
+    rows = exec.execute_text(
+        "WHERE flight_date >= '2024-01-16'::date "
+        "SELECT origin_code, destination_code, count;"
+    )[-1].fetchall()
+    assert sorted(tuple(r) for r in rows) == [
+        ("LAX", "JFK", 1),
+        ("LAX", "ORD", 1),
+        ("ORD", "JFK", 1),
+    ], rows

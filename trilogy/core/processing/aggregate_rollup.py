@@ -105,7 +105,9 @@ def _safe_dropped_grain(
 
 
 def _conditions_supported(
-    datasource: BuildDatasource, conditions: BuildWhereClause | None
+    datasource: BuildDatasource,
+    conditions: BuildWhereClause | None,
+    concepts_by_address: Mapping[str, BuildConcept] | None = None,
 ) -> bool:
     if not conditions:
         return True
@@ -115,7 +117,23 @@ def _conditions_supported(
         if c.granularity != Granularity.SINGLE_ROW
     }
     datasource_addresses = {c.canonical_address for c in datasource.output_concepts}
-    return condition_addresses.issubset(datasource_addresses)
+    if condition_addresses.issubset(datasource_addresses):
+        return True
+    # Property-of-key reachability: a condition concept (e.g. `region`) not in
+    # the datasource is still applicable when its key (e.g. `customer_id`) is
+    # in the datasource's grain — the planner will join the dim that owns the
+    # property and apply the WHERE there. Without this, an agg at customer_id
+    # grain is rejected for any WHERE on a customer-level property.
+    if concepts_by_address is None:
+        return False
+    ds_grain_components = set(datasource.grain.components)
+    for cond_addr in condition_addresses - datasource_addresses:
+        concept = concepts_by_address.get(cond_addr)
+        if concept is None or concept.purpose != Purpose.PROPERTY:
+            return False
+        if not concept.keys or not set(concept.keys).issubset(ds_grain_components):
+            return False
+    return True
 
 
 def get_additive_rollup_concepts(
@@ -125,12 +143,25 @@ def get_additive_rollup_concepts(
     datasources: Iterable[BuildDatasource],
     conditions: BuildWhereClause | None = None,
 ) -> list[BuildConcept]:
-    if not _conditions_supported(datasource, conditions):
+    if not _conditions_supported(datasource, conditions, concepts_by_address):
         return []
 
     target_grain = BuildGrain.from_concepts(requested_concepts)
+    datasource_grain = datasource.grain
+    # Grand total (no group-by components on the target side): any datasource
+    # that materializes an additive aggregate at finer grain can SUM-roll up
+    # to a single row. Skip when the datasource is itself grand-total —
+    # that's an exact match handled outside the rollup branch.
     if not target_grain.components:
-        return []
+        if not datasource_grain.components:
+            return []
+        return [
+            concept
+            for concept in requested_concepts
+            if concept.is_aggregate
+            and _is_additive_aggregate(concept)
+            and _datasource_has_matching_additive_aggregate(datasource, concept)
+        ]
     target_canonicals = [
         concepts_by_address[component].canonical_address
         for component in target_grain.components
@@ -138,7 +169,6 @@ def get_additive_rollup_concepts(
     ]
     if len(target_canonicals) != len(set(target_canonicals)):
         return []
-    datasource_grain = datasource.grain
     if datasource_grain.issubset(target_grain):
         return []
 

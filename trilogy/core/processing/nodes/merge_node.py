@@ -236,6 +236,10 @@ class MergeNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} Final joins is not null {final_joins} but is empty, skipping join generation"
             )
             return []
+        if self.force_join_type is not None:
+            for j in joins:
+                if isinstance(j, BaseJoin):
+                    j.join_type = self.force_join_type
         return joins
 
     def _resolve(self) -> QueryDatasource:

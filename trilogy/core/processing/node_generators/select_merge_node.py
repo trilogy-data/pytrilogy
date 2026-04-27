@@ -7,6 +7,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     Derivation,
     Granularity,
+    JoinType,
     Purpose,
 )
 from trilogy.core.graph_models import (
@@ -31,7 +32,10 @@ from trilogy.core.models.build import (
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
+from trilogy.core.processing.aggregate_rollup import (
+    _is_additive_aggregate,
+    get_additive_rollup_concepts,
+)
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     decompose_condition,
@@ -690,12 +694,20 @@ def create_datasource_node(
         else []
     )
     rollup_addresses = {c.address for c in rollup_concepts}
+    datasource_output_addresses = {c.address for c in datasource.output_concepts}
+
     output_concepts = [
         c
         for c in all_concepts
         if not c.is_aggregate
         or c.address in rollup_addresses
         or datasource_grain.issubset(c.grain)
+        # Cross-grain match: this DS has the aggregate as a directly bound
+        # column (same address). Emit it at the DS's grain; a merge-level
+        # GroupNode below will SUM-roll it up to the outer target grain.
+        # Address-match (not signature-match) so we don't claim differently
+        # named aliases.
+        or (c.is_aggregate and c.address in datasource_output_addresses)
     ]
     output_addresses = {c.address for c in output_concepts}
     partial_concepts = [
@@ -1057,7 +1069,7 @@ def gen_select_merge_node(
             force_group=False,
             conditions=conditions.conditional if conditions else None,
         )
-    parents = []
+    parents: list[StrategyNode] = []
     if normals:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
@@ -1121,12 +1133,69 @@ def gen_select_merge_node(
         )
 
         preexisting_conditions = None
+        force_join_type: JoinType | None = None
         if conditions and all(
             x.preexisting_conditions
             and x.preexisting_conditions == conditions.conditional
             for x in parents
         ):
             preexisting_conditions = conditions.conditional
+        elif conditions:
+            # Filter applied at one parent (e.g. a partial-aggregate rollup)
+            # plus pure-enumerator joins (single-key dimension tables added by
+            # prune_sources_for_aggregates upgrade): the conditioned parent
+            # already carries the merge's full output set, so the merge
+            # inherits its conditions. Force INNER joins so unmatched
+            # enumerator rows (which never went through the WHERE) don't leak
+            # NULL-filter rows into the result.
+            output_addrs = {c.address for c in all_concepts}
+            for parent in parents:
+                if (
+                    parent.preexisting_conditions == conditions.conditional
+                    and output_addrs.issubset(
+                        {c.address for c in parent.usable_outputs}
+                    )
+                ):
+                    preexisting_conditions = conditions.conditional
+                    force_join_type = JoinType.INNER
+                    break
+
+        # When the merge's joined grain (e.g. customer_id from agg + dim) is
+        # finer than the outer target's grain (e.g. region) — and the target
+        # is reachable from the merge grain via property-of-key — the merge
+        # needs to SUM-roll additive aggregates up to the target grain.
+        # Mark force_group + rollup_concepts so the renderer emits SUM and
+        # GROUP BY at the merge level.
+        additive_aggs = [
+            c for c in all_concepts if c.is_aggregate and _is_additive_aggregate(c)
+        ]
+        rollup_at_merge: list[BuildConcept] = []
+        force_merge_group: bool | None = None
+        if additive_aggs and len(additive_aggs) == sum(
+            1 for c in all_concepts if c.is_aggregate
+        ):
+            merge_components: set[str] = set()
+            for parent_node in parents:
+                pg = parent_node.grain
+                if pg and pg.components:
+                    merge_components.update(pg.components)
+            target_components = {c.address for c in all_concepts if not c.is_aggregate}
+            unreached = target_components - merge_components
+            unreached_via_property = bool(unreached) and all(
+                (concept := environment.concepts.get(tc)) is not None
+                and concept.purpose == Purpose.PROPERTY
+                and concept.keys
+                and concept.keys.issubset(merge_components)
+                for tc in unreached
+            )
+            if (
+                merge_components
+                and target_components
+                and target_components != merge_components
+                and unreached_via_property
+            ):
+                rollup_at_merge = additive_aggs
+                force_merge_group = True
 
         candidate = MergeNode(
             output_concepts=all_concepts,
@@ -1135,6 +1204,9 @@ def gen_select_merge_node(
             depth=depth,
             parents=parents,
             preexisting_conditions=preexisting_conditions,
+            force_join_type=force_join_type,
+            force_group=force_merge_group,
+            rollup_concepts=rollup_at_merge or None,
         )
 
     if conditions:
