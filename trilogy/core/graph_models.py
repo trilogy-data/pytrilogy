@@ -2,7 +2,7 @@ from enum import Enum
 from logging import Logger
 from typing import cast
 
-from trilogy.core.enums import Derivation, FunctionType, Granularity
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.graph import DiGraph
 from trilogy.core.models.build import (
     BuildConcept,
@@ -287,6 +287,19 @@ def prune_sources_for_aggregates(
         for node, ds in g.datasources.items()
         if isinstance(ds, BuildDatasource) and not _datasource_has_aggregate_output(ds)
     )
+
+    # Partial concepts on kept aggregate datasources that fall on the target
+    # grain — candidates for an upgrade from a non-matching-grain dimension
+    # source. (Computed before pruning `keep` so the re-inject below can see
+    # what was lost to condition pruning earlier.)
+    partials_to_upgrade: set[str] = set()
+    for kept_node in keep:
+        kept_ds = g.datasources.get(kept_node)
+        if not isinstance(kept_ds, BuildDatasource):
+            continue
+        partials_to_upgrade.update(
+            {c.canonical_address for c in kept_ds.partial_concepts} & target
+        )
 
     to_remove = []
     for node, ds in g.datasources.items():
