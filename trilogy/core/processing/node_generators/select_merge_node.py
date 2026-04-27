@@ -437,7 +437,7 @@ def create_pruned_concept_graph(
         allow_intersection,
         {c.canonical_address for c in all_concepts},
     )
-    prune_sources_for_aggregates(g, all_concepts, logger)
+    prune_sources_for_aggregates(g, all_concepts, logger, orig_g=orig_g)
 
     target_addresses = {c.canonical_address for c in all_concepts}
     concepts: dict[str, BuildConcept] = orig_g.concepts

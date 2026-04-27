@@ -130,6 +130,21 @@ def _datasource_is_exact_match(
             and condition_addresses.issubset(requested_addresses)
         ) and requested_addresses.isdisjoint(partial_addresses):
             return True
+        # Preserve partial-aggregate datasources (e.g. `count` non-partial,
+        # `~origin.code` partial) whose condition columns are themselves
+        # non-partial: the partial join keys get upgraded by a non-matching-grain
+        # source via prune_sources_for_aggregates. Without this branch, condition
+        # pruning strips the aggregate before the partial-upgrade step can run.
+        has_aggregate_output = any(c.is_aggregate for c in ds.output_concepts)
+        if (
+            has_aggregate_output
+            and partial_addresses
+            and allow_filter_application
+            and not conditions.existence_arguments
+            and condition_addresses
+            and condition_addresses.issubset(ds_output_addresses - partial_addresses)
+        ):
+            return True
         if allow_intersection:
             # When conditions are "covered" by another datasource's non_partial_for,
             # a datasource with no overlap is still an exact match (condition handled elsewhere).
@@ -207,6 +222,7 @@ def prune_sources_for_aggregates(
     g: "ReferenceGraph",
     all_concepts: list[BuildConcept],
     logger: Logger,
+    orig_g: "ReferenceGraph | None" = None,
 ) -> None:
     aggregate_concepts: list[BuildConcept] = []
     required_grains = []
@@ -279,6 +295,64 @@ def prune_sources_for_aggregates(
             to_remove.append(node)
     for node in to_remove:
         g.remove_node(node)
+    # Re-inject upgrade-eligible datasources that condition-pruning removed:
+    # a non-partial source for a partial join key in a kept aggregate is still
+    # useful even if it can't apply the WHERE itself (the aggregate applies it).
+    # Only consider datasources whose grain *is* the partial concept being
+    # upgraded — i.e. dimension tables that enumerate that key. A datasource
+    # that merely references the key as a foreign column (e.g. an `orders` table
+    # with `customer_id`) isn't a full enumerating source.
+    if orig_g is not None and partials_to_upgrade:
+        for node, ds in orig_g.datasources.items():
+            if node in g.datasources or isinstance(ds, BuildUnionDatasource):
+                continue
+            ds_partial = {c.canonical_address for c in ds.partial_concepts}
+            ds_grain_components = grain_key(ds.grain) or frozenset()
+            # Only re-inject single-grain dimension tables whose grain key
+            # *enumerates* the partial concept being upgraded — either
+            # directly (the grain key IS the partial concept) or as a 1:1
+            # PROPERTY of the grain key. Foreign-key references (e.g. an
+            # `orders` table that mentions `customer_id` at order_id grain)
+            # are not full enumerators and must not be re-injected.
+            if len(ds_grain_components) != 1:
+                continue
+            sole_key = next(iter(ds_grain_components))
+            relevant = False
+            for upgrade_addr in partials_to_upgrade:
+                if upgrade_addr in ds_partial:
+                    continue
+                if upgrade_addr == sole_key:
+                    relevant = True
+                    break
+                concept = orig_g.concepts.get("c~" + upgrade_addr) or next(
+                    (
+                        c
+                        for c in ds.output_concepts
+                        if c.canonical_address == upgrade_addr
+                    ),
+                    None,
+                )
+                if (
+                    concept is not None
+                    and concept.purpose == Purpose.PROPERTY
+                    and concept.keys
+                    and {k for k in concept.keys} == {sole_key}
+                ):
+                    relevant = True
+                    break
+            if not relevant:
+                continue
+            g.add_node(node)
+            g.datasources[node] = ds
+            for edge in orig_g.edges:
+                if edge[0] != node and edge[1] != node:
+                    continue
+                other = edge[1] if edge[0] == node else edge[0]
+                if other not in g:
+                    g.add_node(other)
+                    if other in orig_g.concepts:
+                        g.concepts[other] = orig_g.concepts[other]
+                g.add_edge(*edge)
     return
 
 

@@ -151,3 +151,32 @@ def test_partial_precomputed_uses_aggregate():
         "SELECT origin_code, destination_code, flight_date, count;"
     )[-1]
     assert "flight_count_by_origin_destination_date" in generated, generated
+
+
+def test_partial_precomputed_uses_aggregate_with_filter_in_select():
+    """When the WHERE concept is also in the SELECT (so the query grain
+    matches the materialization's grain), discovery must still pick the
+    precomputed aggregate rather than rescanning the primary table."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(PRIMARY_ONLY_SETUP + PARTIAL_AGGREGATE_SUFFIX)
+    generated = exec.generate_sql(
+        "WHERE flight_date >= '2024-01-16'::date "
+        "SELECT flight_date, origin_code, destination_code, count;"
+    )[-1]
+    assert "flight_count_by_origin_destination_date" in generated, generated
+    assert "flights" not in generated, generated
+
+
+def test_partial_precomputed_uses_aggregate_with_grain_filter():
+    """A WHERE clause on a grain component of the aggregate (here flight_date)
+    should still let discovery pick the precomputed aggregate, applying the
+    filter at the source and rolling up to the requested grain — instead of
+    forcing a rescan of the primary table to recompute count(id)."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(PRIMARY_ONLY_SETUP + PARTIAL_AGGREGATE_SUFFIX)
+    generated = exec.generate_sql(
+        "WHERE flight_date >= '2024-01-16'::date "
+        "SELECT origin_code, destination_code, count;"
+    )[-1]
+    assert "flight_count_by_origin_destination_date" in generated, generated
+    assert "flights" not in generated, generated
