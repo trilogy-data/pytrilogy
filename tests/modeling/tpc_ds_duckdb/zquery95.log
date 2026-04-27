@@ -1,5 +1,5 @@
 query_id = "95"
-gen_length = 4968
+gen_length = 4992
 generated_sql = """
 
 WITH 
@@ -83,12 +83,12 @@ SELECT
 FROM
     \"juicy\")
 SELECT
-    \"vacuous\".\"order_count\" as \"order_count\",
+    coalesce(\"vacuous\".\"order_count\",0) as \"order_count\",
     \"concerned\".\"total_shipping_cost\" as \"total_shipping_cost\",
     \"concerned\".\"total_net_profit\" as \"total_net_profit\"
 FROM
     \"vacuous\"
     FULL JOIN \"concerned\" on 1=1
 ORDER BY 
-    \"vacuous\".\"order_count\" desc
+    coalesce(\"vacuous\".\"order_count\",0) desc
 LIMIT (100)"""

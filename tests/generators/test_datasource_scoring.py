@@ -17,7 +17,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_injection
     _datasource_score,
     _extract_enum_value_for_key,
 )
-from trilogy.core.processing.node_generators.select_merge_node import (
+from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
     get_materialization_score,
     score_datasource_node,
 )

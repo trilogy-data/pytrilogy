@@ -1,378 +1,75 @@
-from typing import TYPE_CHECKING
-
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
-    AddressType,
-    BooleanOperator,
     Derivation,
     Granularity,
+    JoinType,
     Purpose,
 )
 from trilogy.core.graph_models import (
     ReferenceGraph,
     SearchCriteria,
     concept_to_node,
-    datasource_has_filter_sensitive_aggregate,
-    get_graph_exact_match,
     prune_sources_for_aggregates,
     prune_sources_for_conditions,
 )
 from trilogy.core.models.build import (
-    Address,
-    BuildComparison,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
-    BuildGrain,
-    BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
-    CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
-from trilogy.core.processing.condition_utility import (
-    condition_implies,
-    decompose_condition,
-    is_scalar_condition,
-    merge_conditions,
-    merge_conditions_and_dedup,
+from trilogy.core.processing.aggregate_rollup import (
+    _is_additive_aggregate,
+    get_additive_rollup_concepts,
 )
+from trilogy.core.processing.condition_utility import merge_conditions
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     validate_stack,
 )
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
+from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
+    covered_conditions,
+)
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
+from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
+    create_datasource_node,
+    create_select_node,
+    create_union_datasource,
+)
+from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
+    deduplicate_datasources,
+    get_graph_partial_nodes,
+    get_materialization_score,
+    resolve_subgraphs,
+    score_datasource_node,
+    subgraph_is_complete,
+)
 from trilogy.core.processing.nodes import (
     ConstantNode,
-    GroupNode,
     MergeNode,
-    SelectNode,
     StrategyNode,
 )
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
 
-if TYPE_CHECKING:
-    from trilogy.core.processing.nodes.union_node import UnionNode
-
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
-
-
-def _condition_atom_addresses(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
-) -> set[str]:
-    return {
-        c.canonical_address
-        for c in atom.row_arguments
-        if c.derivation != Derivation.CONSTANT
-    }
-
-
-def extract_address(node: str) -> str:
-    return node.split("~")[1].split("@")[0]
-
-
-def get_graph_partial_nodes(
-    g: ReferenceGraph, conditions: BuildWhereClause | None
-) -> dict[str, list[str]]:
-    partial: dict[str, list[str]] = {}
-    for node, ds in g.datasources.items():
-        if (
-            ds.non_partial_for
-            and conditions
-            and condition_implies(
-                conditions.conditional, ds.non_partial_for.conditional
-            )
-        ):
-            partial[node] = []
-        else:
-            partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
-    return partial
-
-
-def get_graph_partial_canonical(
-    g: ReferenceGraph, conditions: BuildWhereClause | None
-) -> dict[str, set[str]]:
-    partial: dict[str, set[str]] = {}
-    for node, ds in g.datasources.items():
-        if (
-            ds.non_partial_for
-            and conditions
-            and condition_implies(
-                conditions.conditional, ds.non_partial_for.conditional
-            )
-        ):
-            partial[node] = set()
-        else:
-            partial[node] = {c.canonical_address for c in ds.partial_concepts}
-    return partial
-
-
-def get_graph_grains(g: ReferenceGraph) -> dict[str, set[str]]:
-    return {node: ds.grain.components for node, ds in g.datasources.items()}
-
-
-def get_materialization_score(
-    address: Address | AddressType | str, is_filtered: bool = False
-) -> float:
-    """Score datasource by materialization level. Lower is better (more materialized).
-
-    - 0: TABLE - fully materialized in the database
-    - 1: Static files (CSV, TSV, PARQUET) - data files that need to be read
-    - 2: Dynamic sources (QUERY, SQL) - queries that need to be executed
-    - 3: Executable scripts (PYTHON_SCRIPT) - scripts that need to run
-    """
-    base = -0.1 if is_filtered else 0.0
-
-    if isinstance(address, str):
-        return base
-    address_type = address if isinstance(address, AddressType) else address.type
-    if address_type == AddressType.TABLE:
-        return base
-    if address_type in (AddressType.CSV, AddressType.TSV, AddressType.PARQUET):
-        return base + 1.0
-    if address_type in (AddressType.QUERY, AddressType.SQL):
-        return base + 2.0
-    if address_type == AddressType.PYTHON_SCRIPT:
-        return base + 3.0
-    return base + 2.0
-
-
-def _ds_mat_score(
-    ds_name: str,
-    datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],
-    relevant_concepts: list[str],
-    partial_map: dict[str, list[str]],
-) -> tuple[int, float, str]:
-    partial_count = sum(
-        1 for x in partial_map.get(ds_name, []) if x in relevant_concepts
-    )
-    ds = datasources.get(ds_name)
-    if ds is None:
-        return (partial_count, 2, ds_name)
-    if isinstance(ds, BuildDatasource):
-        return (
-            partial_count,
-            get_materialization_score(
-                ds.address, True if ds.non_partial_for else False
-            ),
-            ds_name,
-        )
-    if isinstance(ds, BuildUnionDatasource):
-        return (
-            partial_count,
-            max(
-                get_materialization_score(
-                    child.address, True if ds.non_partial_for else False
-                )
-                + 0.11
-                for child in ds.children
-            ),
-            ds_name,
-        )
-    return (partial_count, 2, ds_name)
-
-
-def create_select_node(
-    ds_name: str,
-    subgraph: list[str],
-    accept_partial: bool,
-    g: ReferenceGraph,
-    environment: BuildEnvironment,
-    depth: int,
-    conditions: BuildWhereClause | None = None,
-) -> StrategyNode:
-    all_concepts = [
-        environment.canonical_concepts[extract_address(c)]
-        for c in subgraph
-        if c.startswith("c~")
-    ]
-
-    if all(c.derivation == Derivation.CONSTANT for c in all_concepts):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
-        )
-        return ConstantNode(
-            output_concepts=all_concepts,
-            input_concepts=[],
-            environment=environment,
-            parents=[],
-            depth=depth,
-            # no partial for constants
-            partial_concepts=[],
-            force_group=False,
-            preexisting_conditions=conditions.conditional if conditions else None,
-        )
-
-    datasource: BuildDatasource | BuildUnionDatasource = g.datasources[ds_name]
-
-    if isinstance(datasource, BuildDatasource):
-        bcandidate, force_group = create_datasource_node(
-            datasource,
-            all_concepts,
-            accept_partial,
-            environment,
-            depth,
-            conditions=conditions,
-        )
-    elif isinstance(datasource, BuildUnionDatasource):
-        bcandidate, force_group = create_union_datasource(
-            datasource,
-            all_concepts,
-            accept_partial,
-            environment,
-            depth,
-            conditions=conditions,
-        )
-    else:
-        raise ValueError(f"Unknown datasource type {datasource}")
-
-    if force_group is True:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
-        )
-        candidate: StrategyNode = GroupNode(
-            output_concepts=all_concepts,
-            input_concepts=all_concepts,
-            environment=environment,
-            parents=[bcandidate],
-            depth=depth + 1,
-            partial_concepts=bcandidate.partial_concepts,
-            nullable_concepts=bcandidate.nullable_concepts,
-            preexisting_conditions=bcandidate.preexisting_conditions,
-            force_group=force_group,
-        )
-    else:
-        candidate = bcandidate
-
-    return candidate
-
-
-def deduplicate_datasources(
-    datasets: list[str],
-    relevant_concepts: list[str],
-    g_edges: set[tuple[str, str]],
-    datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],
-    depth: int = 0,
-    partial_map: dict[str, list[str]] | None = None,
-) -> list[str]:
-    """Prune duplicate datasources that have identical relevant concept bindings.
-
-    When multiple datasources provide the exact same set of relevant concepts,
-    keep only the most materialized one to avoid false join key injection.
-    """
-    if partial_map is None:
-        partial_map = {}
-
-    # Group datasources by their set of relevant concept bindings in one pass
-    concept_to_ds: dict[frozenset[str], list[str]] = {}
-    for ds in datasets:
-        key = frozenset(
-            c for c in relevant_concepts if (ds, c) in g_edges or (c, ds) in g_edges
-        )
-        concept_to_ds.setdefault(key, []).append(ds)
-
-    deduplicated: list[str] = []
-    for ds_list in concept_to_ds.values():
-        if len(ds_list) == 1:
-            deduplicated.append(ds_list[0])
-        else:
-            best_ds = min(
-                ds_list,
-                key=lambda n: _ds_mat_score(
-                    n, datasources, relevant_concepts, partial_map
-                ),
-            )
-            deduplicated.append(best_ds)
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} Pruned down duplicate datasources list {ds_list}, keeping {best_ds}"
-            )
-    return deduplicated
-
-
-def score_datasource_node(
-    node: str,
-    datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],
-    grain_map: dict[str, set[str]],
-    concept_map: dict[str, set[str]],
-    exact_map: set[str],
-    subgraphs: dict[str, list[str]],
-) -> tuple[float, int, float, int, str]:
-    """Score a datasource node for selection priority. Lower score = higher priority.
-
-    Returns tuple of:
-    - materialization_score: 0 (table) to 3 (python script)
-    - grain_score: effective grain size (lower is better)
-    - exact_match_score: 0 if exact condition match, 0.5 otherwise
-    - concept_count: number of concepts (tiebreaker)
-    - node_name: alphabetic tiebreaker
-    """
-    ds = datasources.get(node)
-    if ds is None:
-        mat_score = 2.0
-    elif isinstance(ds, BuildDatasource):
-        mat_score = get_materialization_score(ds.address)
-    elif isinstance(ds, BuildUnionDatasource):
-        mat_score = max(
-            get_materialization_score(child.address) for child in ds.children
-        )
-    else:
-        mat_score = 2.0
-
-    grain = grain_map[node]
-    grain_score = len(grain) - sum(1 for x in concept_map[node] if x in grain)
-    exact_score = 0 if node in exact_map else 0.5
-    concept_count = len(subgraphs[node])
-    return (mat_score, grain_score, exact_score, concept_count, node)
-
-
-def _score_node(
-    node: str,
-    datasources: dict[str, BuildDatasource | BuildUnionDatasource],
-    grain_length: dict[str, set[str]],
-    concept_map: dict[str, set[str]],
-    exact_map: set[str],
-    subgraphs: dict[str, list[str]],
-    depth: int,
-) -> tuple[float, int, float, int, str]:
-    logger.debug(f"{padding(depth)}{LOGGER_PREFIX} scoring node {node}")
-    score = score_datasource_node(
-        node, datasources, grain_length, concept_map, exact_map, subgraphs
-    )
-    logger.debug(f"{padding(depth)}{LOGGER_PREFIX} node {node} has score {score}")
-    return score
-
-
-def subgraph_is_complete(
-    nodes: set[str] | list[str],
-    targets: set[str],
-    mapping: dict[str, str],
-    g: nx.DiGraph,
-) -> bool:
-    mapped = {mapping.get(n, n) for n in nodes}
-    if not targets.issubset(mapped):
-        missing = targets - mapped
-        logger.debug(
-            f"Subgraph {nodes} is not complete, missing targets {missing} - mapped {mapped}"
-        )
-        return False
-
-    has_ds_edge = {target: False for target in targets}
-    for node in nodes:
-        if node.startswith("c~"):
-            mapped_node = mapping.get(node, node)
-            if mapped_node in targets and not has_ds_edge[mapped_node]:
-                if any(
-                    neighbor.startswith("ds~") for neighbor in nx.neighbors(g, node)
-                ):
-                    has_ds_edge[mapped_node] = True
-
-    return all(has_ds_edge.values())
+__all__ = [
+    "SearchCriteria",
+    "create_datasource_node",
+    "create_pruned_concept_graph",
+    "create_select_node",
+    "create_union_datasource",
+    "gen_select_merge_node",
+    "get_graph_partial_nodes",
+    "get_materialization_score",
+    "resolve_subgraphs",
+    "score_datasource_node",
+]
 
 
 def create_pruned_concept_graph(
@@ -437,7 +134,7 @@ def create_pruned_concept_graph(
         allow_intersection,
         {c.canonical_address for c in all_concepts},
     )
-    prune_sources_for_aggregates(g, all_concepts, logger)
+    prune_sources_for_aggregates(g, all_concepts, logger, orig_g=orig_g)
 
     target_addresses = {c.canonical_address for c in all_concepts}
     concepts: dict[str, BuildConcept] = orig_g.concepts
@@ -512,371 +209,6 @@ def create_pruned_concept_graph(
     return g
 
 
-def filter_pseudonym_duplicates(
-    concepts: list[BuildConcept], relevant: list[BuildConcept]
-) -> list[BuildConcept]:
-    """Filter out concepts whose pseudonyms are also in the list, keeping the one in relevant."""
-    relevant_addrs = {c.address for c in relevant}
-    concept_addrs = {c.address for c in concepts}
-    to_remove: set[str] = set()
-    for c in concepts:
-        for p_addr in c.pseudonyms:
-            if p_addr in concept_addrs:
-                c_in_relevant = c.address in relevant_addrs
-                p_in_relevant = p_addr in relevant_addrs
-                if p_in_relevant and not c_in_relevant:
-                    to_remove.add(c.address)
-                    break
-                elif c_in_relevant and not p_in_relevant:
-                    to_remove.add(p_addr)
-    return [c for c in concepts if c.address not in to_remove]
-
-
-def resolve_subgraphs(
-    g: ReferenceGraph,
-    relevant: list[BuildConcept],
-    criteria: SearchCriteria,
-    conditions: BuildWhereClause | None,
-    depth: int = 0,
-) -> dict[str, list[str]]:
-    """When we have multiple distinct subgraphs within our matched
-    nodes that can satisfy a query, resolve which one of those we should
-    ultimately ues.
-    This should generally return one subgraph for each
-    unique set of sub concepts that can be referenced,
-    discarding duplicates.
-    Duplicate subgraphs will be resolved based on which
-    ones are most 'optimal' to use, a hueristic
-    that can evolve in the future but is currently based on datasource
-    cardinality."""
-    datasources = sorted(n for n in g.nodes if n.startswith("ds~"))
-    canonical_relevant = {c.canonical_address for c in relevant}
-    canonical_map = {c.canonical_address: c.address for c in relevant}
-    concepts: dict[str, BuildConcept] = g.concepts
-    subgraphs: dict[str, list[str]] = {
-        ds: sorted(set(nx.all_neighbors(g, ds))) for ds in datasources
-    }
-    # filter pseudonym duplicates from each subgraph, keeping concept in relevant
-    for ds in subgraphs:
-        ds_concepts = [concepts[n] for n in subgraphs[ds] if n in concepts]
-        filtered = filter_pseudonym_duplicates(ds_concepts, relevant)
-        filtered_nodes = {concept_to_node(c) for c in filtered}
-        subgraphs[ds] = [
-            n for n in subgraphs[ds] if n not in concepts or n in filtered_nodes
-        ]
-
-    partial_canonical = get_graph_partial_canonical(g, conditions)
-    exact_map = get_graph_exact_match(
-        g, criteria, conditions, allow_filter_application=False
-    )
-    grain_length = get_graph_grains(g)
-
-    # compute concept_map and non_partial_map in one pass over subgraphs
-    concept_map: dict[str, set[str]] = {}
-    non_partial_map: dict[str, set[str]] = {}
-    for ds in datasources:
-        all_addrs = {concepts[c].canonical_address for c in subgraphs[ds]}
-        concept_map[ds] = all_addrs
-        non_partial_map[ds] = all_addrs - partial_canonical[ds]
-
-    pruned_subgraphs = {}
-
-    def _scorer(n: str) -> tuple[float, int, float, int, str]:
-        return _score_node(
-            n, g.datasources, grain_length, concept_map, exact_map, subgraphs, depth
-        )
-
-    for key, nodes in subgraphs.items():
-        value = non_partial_map[key]
-        all_concepts = concept_map[key]
-        is_subset = False
-        matches = set()
-        for other_key, other_all_concepts in concept_map.items():
-            other_value = non_partial_map[other_key]
-            if (
-                key != other_key
-                and value.issubset(other_value)
-                and all_concepts.issubset(other_all_concepts)
-            ):
-                if len(value) < len(other_value):
-                    is_subset = True
-                    logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} Dropping subgraph {key} with {value} as it is a subset of {other_key} with {other_value}"
-                    )
-                elif len(value) == len(other_value) and len(all_concepts) == len(
-                    other_all_concepts
-                ):
-                    matches.add(other_key)
-                    matches.add(key)
-        if matches and not is_subset:
-            min_node = min(matches, key=_scorer)
-            logger.debug(
-                f"{padding(depth)}{LOGGER_PREFIX} minimum source score is {min_node}"
-            )
-            is_subset = key is not min_node
-        if not is_subset:
-            pruned_subgraphs[key] = nodes
-
-    final_nodes = {n for v in pruned_subgraphs.values() for n in v}
-    relevant_concepts_pre = {
-        n: x.canonical_address
-        for n in g.nodes()
-        # filter out synonyms
-        if (x := concepts.get(n, None)) and x.canonical_address in canonical_relevant
-    }
-    for node in final_nodes:
-        keep = True
-        if node.startswith("c~") and node not in relevant_concepts_pre:
-            keep = (
-                sum(1 for _, sub_nodes in pruned_subgraphs.items() if node in sub_nodes)
-                > 1
-            )
-        if not keep:
-            logger.debug(
-                f"{padding(depth)}{LOGGER_PREFIX} Pruning node {node} as irrelevant after subgraph resolution"
-            )
-            pruned_subgraphs = {
-                canonical_map.get(k, k): [n for n in v if n != node]
-                for k, v in pruned_subgraphs.items()
-            }
-
-    return pruned_subgraphs
-
-
-def create_datasource_node(
-    datasource: BuildDatasource,
-    all_concepts: list[BuildConcept],
-    accept_partial: bool,
-    environment: BuildEnvironment,
-    depth: int,
-    conditions: BuildWhereClause | None = None,
-    injected_conditions: (
-        BuildComparison | BuildConditional | BuildParenthetical | None
-    ) = None,
-) -> tuple[StrategyNode, bool]:
-
-    target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
-    # datasource grain may have changed since reference graph creation
-    datasource_grain = BuildGrain.from_concepts(
-        datasource.grain.components, environment=environment
-    )
-    force_group = False
-    if not datasource_grain.issubset(target_grain):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node must be wrapped in group, {datasource_grain} not subset of target grain {target_grain} from {all_concepts}"
-        )
-        force_group = True
-    else:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node grain {datasource_grain} is subset of target grain {target_grain}, no group required"
-        )
-    if not datasource_grain.components:
-        force_group = any(
-            x.granularity != Granularity.SINGLE_ROW for x in datasource.output_concepts
-        )
-    rollup_concepts = (
-        get_additive_rollup_concepts(
-            datasource=datasource,
-            requested_concepts=all_concepts,
-            concepts_by_address=environment.concepts,
-            datasources=[
-                ds
-                for ds in environment.datasources.values()
-                if isinstance(ds, BuildDatasource)
-            ],
-            conditions=conditions,
-        )
-        if force_group
-        else []
-    )
-    rollup_addresses = {c.address for c in rollup_concepts}
-    output_concepts = [
-        c
-        for c in all_concepts
-        if not c.is_aggregate
-        or c.address in rollup_addresses
-        or datasource_grain.issubset(c.grain)
-    ]
-    output_addresses = {c.address for c in output_concepts}
-    partial_concepts = [
-        c.concept
-        for c in datasource.columns
-        if not c.is_complete and c.concept.address in output_addresses
-    ]
-
-    partial_lcl = CanonicalBuildConceptList(concepts=partial_concepts)
-    nullable_concepts = [
-        c.concept
-        for c in datasource.columns
-        if c.is_nullable and c.concept.address in output_addresses
-    ]
-
-    nullable_lcl = CanonicalBuildConceptList(concepts=nullable_concepts)
-    partial_is_full = (
-        conditions
-        and datasource.non_partial_for
-        and condition_implies(
-            conditions.conditional, datasource.non_partial_for.conditional
-        )
-    )
-
-    datasource_conditions = datasource.where.conditional if datasource.where else None
-    if injected_conditions and datasource_conditions:
-        datasource_conditions = datasource_conditions + injected_conditions
-    elif injected_conditions:
-        datasource_conditions = injected_conditions
-
-    if conditions:
-        ds_outputs = {c.canonical_address for c in datasource.output_concepts}
-        covered_atoms: set[str] = set()
-        if partial_is_full and datasource.non_partial_for:
-            covered_atoms = {
-                str(atom)
-                for atom in decompose_condition(datasource.non_partial_for.conditional)
-            }
-        for atom in decompose_condition(conditions.conditional):
-            if (
-                str(atom) in covered_atoms
-                or atom.existence_arguments
-                or not is_scalar_condition(atom)
-            ):
-                continue
-            if _condition_atom_addresses(atom).issubset(ds_outputs):
-                datasource_conditions = (
-                    merge_conditions_and_dedup(atom, datasource_conditions)
-                    if datasource_conditions
-                    else atom
-                )
-
-    all_inputs = [c.concept for c in datasource.columns]
-    canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
-
-    # if we're binding via a canonical address association, add it here
-    for x in all_concepts:
-        if x not in all_inputs and x in canonical_all:
-            all_inputs.append(x)
-    all_inputs = [
-        c for c in all_inputs if not c.is_aggregate or c.address in output_addresses
-    ]
-
-    # additional single row check
-    satisfies_conditions = not datasource_has_filter_sensitive_aggregate(
-        datasource, conditions
-    ) and all(
-        x.granularity == Granularity.SINGLE_ROW for x in datasource.output_concepts
-    )
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} creating select node for datasource {datasource.name} with conditions {datasource_conditions}, "
-        f"partial_is_full {partial_is_full}, satisfies_conditions {satisfies_conditions}, "
-        f"force_group {force_group}"
-    )
-    rval = SelectNode(
-        input_concepts=all_inputs,
-        output_concepts=sorted(output_concepts, key=lambda x: x.address),
-        environment=environment,
-        parents=[],
-        depth=depth,
-        partial_concepts=(
-            [] if partial_is_full else [c for c in output_concepts if c in partial_lcl]
-        ),
-        rollup_concepts=rollup_concepts,
-        nullable_concepts=[c for c in output_concepts if c in nullable_lcl],
-        accept_partial=accept_partial,
-        datasource=datasource,
-        grain=datasource.grain,
-        conditions=datasource_conditions,
-        preexisting_conditions=(
-            # partial_is_full only means non_partial_for conditions are satisfied;
-            # any extra conditions in the query must still be applied externally.
-            datasource.non_partial_for.conditional
-            if partial_is_full and datasource.non_partial_for and conditions
-            else (
-                conditions.conditional if satisfies_conditions and conditions else None
-            )
-        ),
-    )
-    return (
-        rval,
-        force_group,
-    )
-
-
-def create_union_datasource(
-    datasource: BuildUnionDatasource,
-    all_concepts: list[BuildConcept],
-    accept_partial: bool,
-    environment: BuildEnvironment,
-    depth: int,
-    conditions: BuildWhereClause | None = None,
-) -> tuple["UnionNode", bool]:
-    from trilogy.core.processing.condition_utility import filter_union_children
-    from trilogy.core.processing.nodes.union_node import UnionNode
-
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
-    )
-
-    effective: list[
-        tuple[
-            BuildDatasource,
-            BuildComparison | BuildConditional | BuildParenthetical | None,
-        ]
-    ]
-    if conditions:
-        qcond = conditions.conditional
-        non_partial_map = {
-            child.name: child.non_partial_for for child in datasource.children
-        }
-        kept = filter_union_children(non_partial_map, qcond)
-        for child in datasource.children:
-            if child.name not in kept:
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} dropping {child.name}: "
-                    f"non_partial_for {child.non_partial_for!r} mutually exclusive with {qcond!r}"
-                )
-        effective = [
-            (child, kept[child.name])
-            for child in datasource.children
-            if child.name in kept
-        ]
-        if len(effective) < len(datasource.children):
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} reduced union from {len(datasource.children)} "
-                f"to {len(effective)} branch(es)"
-            )
-    else:
-        effective = [(child, None) for child in datasource.children]
-
-    force_group = False
-    parents = []
-    for child, injected_cond in effective:
-        subnode, fg = create_datasource_node(
-            child,
-            all_concepts,
-            accept_partial,
-            environment,
-            depth + 1,
-            injected_conditions=injected_cond,
-        )
-        parents.append(subnode)
-        force_group = force_group or fg
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} returning union node with {len(parents)} branch(es)"
-    )
-    return (
-        UnionNode(
-            output_concepts=all_concepts,
-            input_concepts=all_concepts,
-            environment=environment,
-            parents=parents,
-            depth=depth,
-            partial_concepts=[],
-            preexisting_conditions=conditions.conditional if conditions else None,
-        ),
-        force_group,
-    )
-
-
 def _source_concepts_via_graph(
     concepts: list[BuildConcept],
     g: ReferenceGraph,
@@ -939,39 +271,6 @@ def _source_concepts_via_graph(
         )
         is not None
     ]
-
-
-def _covered_conditions(
-    conditions: BuildWhereClause, environment: BuildEnvironment
-) -> BuildWhereClause | None:
-    """Return condition atoms covered by some datasource's complete_where (non_partial_for).
-
-    These are "owned" by a partial datasource, so foreign datasources (like tree_enrichment
-    when the condition is city='USSFO') can safely ignore them — they will be applied via
-    the owning datasource's non_partial_for mechanism.
-    """
-    atoms = decompose_condition(conditions.conditional)
-    atom_str_map = {str(a): a for a in atoms}
-    preserved = []
-    seen: set[str] = set()
-    for ds in environment.datasources.values():
-        if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
-            continue
-        if not condition_implies(
-            conditions.conditional, ds.non_partial_for.conditional
-        ):
-            continue
-        for np_atom in decompose_condition(ds.non_partial_for.conditional):
-            key = str(np_atom)
-            if key in atom_str_map and key not in seen:
-                preserved.append(atom_str_map[key])
-                seen.add(key)
-    if not preserved:
-        return None
-    cond = preserved[0]
-    for a in preserved[1:]:
-        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
-    return BuildWhereClause(conditional=cond)
 
 
 def gen_select_merge_node(
@@ -1057,7 +356,7 @@ def gen_select_merge_node(
             force_group=False,
             conditions=conditions.conditional if conditions else None,
         )
-    parents = []
+    parents: list[StrategyNode] = []
     if normals:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
@@ -1072,7 +371,7 @@ def gen_select_merge_node(
             # condition is guaranteed to be applied by the owning partial datasource.
             # The original conditions are still passed as filter_conditions so that
             # per-datasource WHERE clauses (e.g. tree_category='deciduous') are preserved.
-            covered = _covered_conditions(conditions, environment)
+            covered = covered_conditions(conditions, environment)
             if covered:
                 parents = _source_concepts_via_graph(
                     normals,
@@ -1121,12 +420,69 @@ def gen_select_merge_node(
         )
 
         preexisting_conditions = None
+        force_join_type: JoinType | None = None
         if conditions and all(
             x.preexisting_conditions
             and x.preexisting_conditions == conditions.conditional
             for x in parents
         ):
             preexisting_conditions = conditions.conditional
+        elif conditions:
+            # Filter applied at one parent (e.g. a partial-aggregate rollup)
+            # plus pure-enumerator joins (single-key dimension tables added by
+            # prune_sources_for_aggregates upgrade): the conditioned parent
+            # already carries the merge's full output set, so the merge
+            # inherits its conditions. Force INNER joins so unmatched
+            # enumerator rows (which never went through the WHERE) don't leak
+            # NULL-filter rows into the result.
+            output_addrs = {c.address for c in all_concepts}
+            for parent in parents:
+                if (
+                    parent.preexisting_conditions == conditions.conditional
+                    and output_addrs.issubset(
+                        {c.address for c in parent.usable_outputs}
+                    )
+                ):
+                    preexisting_conditions = conditions.conditional
+                    force_join_type = JoinType.INNER
+                    break
+
+        # When the merge's joined grain (e.g. customer_id from agg + dim) is
+        # finer than the outer target's grain (e.g. region) — and the target
+        # is reachable from the merge grain via property-of-key — the merge
+        # needs to SUM-roll additive aggregates up to the target grain.
+        # Mark force_group + rollup_concepts so the renderer emits SUM and
+        # GROUP BY at the merge level.
+        additive_aggs = [
+            c for c in all_concepts if c.is_aggregate and _is_additive_aggregate(c)
+        ]
+        rollup_at_merge: list[BuildConcept] = []
+        force_merge_group: bool | None = None
+        if additive_aggs and len(additive_aggs) == sum(
+            1 for c in all_concepts if c.is_aggregate
+        ):
+            merge_components: set[str] = set()
+            for parent_node in parents:
+                pg = parent_node.grain
+                if pg and pg.components:
+                    merge_components.update(pg.components)
+            target_components = {c.address for c in all_concepts if not c.is_aggregate}
+            unreached = target_components - merge_components
+            unreached_via_property = bool(unreached) and all(
+                (concept := environment.concepts.get(tc)) is not None
+                and concept.purpose == Purpose.PROPERTY
+                and concept.keys
+                and concept.keys.issubset(merge_components)
+                for tc in unreached
+            )
+            if (
+                merge_components
+                and target_components
+                and target_components != merge_components
+                and unreached_via_property
+            ):
+                rollup_at_merge = additive_aggs
+                force_merge_group = True
 
         candidate = MergeNode(
             output_concepts=all_concepts,
@@ -1135,6 +491,9 @@ def gen_select_merge_node(
             depth=depth,
             parents=parents,
             preexisting_conditions=preexisting_conditions,
+            force_join_type=force_join_type,
+            force_group=force_merge_group,
+            rollup_concepts=rollup_at_merge or None,
         )
 
     if conditions:

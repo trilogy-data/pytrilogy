@@ -65,7 +65,11 @@ SELECT
     total_val
             ;
 """)[-1]
-    assert "aggregated_class" not in generated
+    # Grand-total `SELECT total_val;` can roll up from `aggregated_class`
+    # (SUM of the per-id_class totals == grand total). Picking the
+    # pre-aggregated source over a raw scan is safe and cheaper.
+    assert "aggregated_class" in generated, generated
+    assert 'sum("aggregated_class"."total_val")' in generated, generated
 
     generated = exec.generate_sql("""
 SELECT
