@@ -10,6 +10,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     decompose_condition,
+    flatten_conditions,
     is_scalar_condition,
     merge_conditions_and_dedup,
 )
@@ -84,19 +85,18 @@ def covered_conditions(
     conditions: BuildWhereClause, environment: BuildEnvironment
 ) -> BuildWhereClause | None:
     """Return condition atoms covered by a datasource's complete_where."""
-    atoms = decompose_condition(conditions.conditional)
+    query_condition = flatten_conditions(conditions.conditional)
+    atoms = [flatten_conditions(atom) for atom in decompose_condition(query_condition)]
     atom_str_map = {str(a): a for a in atoms}
     preserved = []
     seen: set[str] = set()
     for ds in environment.datasources.values():
         if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
             continue
-        if not condition_implies(
-            conditions.conditional, ds.non_partial_for.conditional
-        ):
+        if not condition_implies(query_condition, ds.non_partial_for.conditional):
             continue
         for np_atom in decompose_condition(ds.non_partial_for.conditional):
-            key = str(np_atom)
+            key = str(flatten_conditions(np_atom))
             if key in atom_str_map and key not in seen:
                 preserved.append(atom_str_map[key])
                 seen.add(key)
