@@ -277,6 +277,11 @@ def test_partial_key_upgrade_via_dimension_table():
     assert '"orders"' not in sql, sql
 
 
+def test_partial_key_upgrade_preserves_zero_count_for_empty_dimension_member():
+    rows = _rows(SALES_MODEL, "SELECT customer_id, order_count;")
+    assert rows == [(101, 2), (102, 2), (103, 1), (104, 0)], rows
+
+
 def test_partial_key_upgrade_with_filter():
     """Same partial-key upgrade, plus a WHERE on a grain column not in the
     SELECT. The dimension upgrade joins must be INNER under this path so

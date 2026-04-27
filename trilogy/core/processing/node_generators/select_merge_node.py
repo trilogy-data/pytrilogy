@@ -65,10 +65,11 @@ if TYPE_CHECKING:
     from trilogy.core.processing.nodes.union_node import UnionNode
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
+ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
 
 
 def _condition_atom_addresses(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
+    atom: ConditionExpression,
 ) -> set[str]:
     return {
         c.canonical_address
@@ -617,7 +618,7 @@ def resolve_subgraphs(
             logger.debug(
                 f"{padding(depth)}{LOGGER_PREFIX} minimum source score is {min_node}"
             )
-            is_subset = key is not min_node
+            is_subset = key != min_node
         if not is_subset:
             pruned_subgraphs[key] = nodes
 
@@ -647,6 +648,61 @@ def resolve_subgraphs(
     return pruned_subgraphs
 
 
+def _datasource_conditions(
+    datasource: BuildDatasource,
+    conditions: BuildWhereClause | None,
+    injected_conditions: ConditionExpression | None,
+    partial_is_full: bool,
+) -> ConditionExpression | None:
+    datasource_conditions = datasource.where.conditional if datasource.where else None
+    if injected_conditions and datasource_conditions:
+        datasource_conditions = datasource_conditions + injected_conditions
+    elif injected_conditions:
+        datasource_conditions = injected_conditions
+
+    if not conditions:
+        return datasource_conditions
+
+    ds_outputs = {c.canonical_address for c in datasource.output_concepts}
+    covered_atoms: set[str] = set()
+    if partial_is_full and datasource.non_partial_for:
+        covered_atoms = {
+            str(atom)
+            for atom in decompose_condition(datasource.non_partial_for.conditional)
+        }
+    for atom in decompose_condition(conditions.conditional):
+        if (
+            str(atom) in covered_atoms
+            or atom.existence_arguments
+            or not is_scalar_condition(atom)
+        ):
+            continue
+        if _condition_atom_addresses(atom).issubset(ds_outputs):
+            datasource_conditions = (
+                merge_conditions_and_dedup(atom, datasource_conditions)
+                if datasource_conditions
+                else atom
+            )
+    return datasource_conditions
+
+
+def _preexisting_conditions(
+    datasource: BuildDatasource,
+    conditions: BuildWhereClause | None,
+    partial_is_full: bool,
+    satisfies_conditions: bool,
+) -> ConditionExpression | None:
+    if not conditions:
+        return None
+    # partial_is_full only means non_partial_for conditions are satisfied;
+    # any extra conditions in the query must still be applied externally.
+    if partial_is_full and datasource.non_partial_for:
+        return datasource.non_partial_for.conditional
+    if satisfies_conditions:
+        return conditions.conditional
+    return None
+
+
 def create_datasource_node(
     datasource: BuildDatasource,
     all_concepts: list[BuildConcept],
@@ -654,9 +710,7 @@ def create_datasource_node(
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
-    injected_conditions: (
-        BuildComparison | BuildConditional | BuildParenthetical | None
-    ) = None,
+    injected_conditions: ConditionExpression | None = None,
 ) -> tuple[StrategyNode, bool]:
 
     target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
@@ -724,7 +778,7 @@ def create_datasource_node(
     ]
 
     nullable_lcl = CanonicalBuildConceptList(concepts=nullable_concepts)
-    partial_is_full = (
+    partial_is_full = bool(
         conditions
         and datasource.non_partial_for
         and condition_implies(
@@ -732,33 +786,9 @@ def create_datasource_node(
         )
     )
 
-    datasource_conditions = datasource.where.conditional if datasource.where else None
-    if injected_conditions and datasource_conditions:
-        datasource_conditions = datasource_conditions + injected_conditions
-    elif injected_conditions:
-        datasource_conditions = injected_conditions
-
-    if conditions:
-        ds_outputs = {c.canonical_address for c in datasource.output_concepts}
-        covered_atoms: set[str] = set()
-        if partial_is_full and datasource.non_partial_for:
-            covered_atoms = {
-                str(atom)
-                for atom in decompose_condition(datasource.non_partial_for.conditional)
-            }
-        for atom in decompose_condition(conditions.conditional):
-            if (
-                str(atom) in covered_atoms
-                or atom.existence_arguments
-                or not is_scalar_condition(atom)
-            ):
-                continue
-            if _condition_atom_addresses(atom).issubset(ds_outputs):
-                datasource_conditions = (
-                    merge_conditions_and_dedup(atom, datasource_conditions)
-                    if datasource_conditions
-                    else atom
-                )
+    datasource_conditions = _datasource_conditions(
+        datasource, conditions, injected_conditions, partial_is_full
+    )
 
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
@@ -797,14 +827,8 @@ def create_datasource_node(
         datasource=datasource,
         grain=datasource.grain,
         conditions=datasource_conditions,
-        preexisting_conditions=(
-            # partial_is_full only means non_partial_for conditions are satisfied;
-            # any extra conditions in the query must still be applied externally.
-            datasource.non_partial_for.conditional
-            if partial_is_full and datasource.non_partial_for and conditions
-            else (
-                conditions.conditional if satisfies_conditions and conditions else None
-            )
+        preexisting_conditions=_preexisting_conditions(
+            datasource, conditions, partial_is_full, satisfies_conditions
         ),
     )
     return (
