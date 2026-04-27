@@ -8,13 +8,28 @@ Each test asserts on the generated SQL — the aggregate's identifier must
 appear and the granular `orders` table must NOT, when an aggregate could
 satisfy the query. A tightened row assertion is added where correctness
 (not just plan choice) needs to be locked in.
+
+A second block of tests runs each query against both `SALES_MODEL` (which
+has the pre-computed aggregates) and `SALES_MODEL_PRIMARY_ONLY` (which
+strips them, forcing the planner onto the granular `orders` path) and
+asserts the rows match. This is the empirical correctness lock — the
+fast path must produce the exact same data as the slow path.
+
+A third block checks that non-additive aggregates (`avg`, `count_distinct`)
+are NOT rolled up through finer-grain aggregates (which would be wrong),
+and verifies the result is correct against the primary path.
 """
+
+import pytest
 
 from trilogy import Dialects
 
-# A small "sales" model with one fact table, two dim tables, and several
-# pre-computed aggregate datasources at different grains.
-SALES_MODEL = """
+# A small "sales" model with one fact table, two dim tables, and (in
+# SALES_MODEL) several pre-computed aggregate datasources at different
+# grains. SALES_MODEL_PRIMARY_ONLY omits the aggregate sources so the
+# planner is forced onto the granular `orders` path — used by the
+# "matches primary path" empirical-correctness checks below.
+SALES_MODEL_PRIMARY_ONLY = """
 key order_id int;
 key customer_id int;
 key product_id int;
@@ -74,7 +89,10 @@ select 202 as product_id, 'B' as category
 union all
 select 203 as product_id, 'A' as category
 ''';
+"""
 
+
+SALES_AGGREGATES = """
 # Pre-computed aggregates at various grains.
 datasource agg_by_customer (
     customer_id: ~customer_id,
@@ -139,10 +157,17 @@ select 103 as customer_id, DATE '2024-01-17' as order_date, 1 as order_count, 50
 """
 
 
-def _exec():
+SALES_MODEL = SALES_MODEL_PRIMARY_ONLY + SALES_AGGREGATES
+
+
+def _exec(model: str = SALES_MODEL):
     e = Dialects.DUCK_DB.default_executor()
-    e.parse_text(SALES_MODEL)
+    e.parse_text(model)
     return e
+
+
+def _rows(model: str, query: str) -> list[tuple]:
+    return sorted(tuple(r) for r in _exec(model).execute_text(query)[-1].fetchall())
 
 
 # ---------- 1. Exact-grain match ----------
@@ -349,3 +374,115 @@ def test_aggregate_with_order_by_and_limit():
     )[-1]
     assert "agg_by_customer" in sql, sql
     assert '"orders"' not in sql, sql
+
+
+# ---------- 10. Aggregate path produces same rows as primary path ----------
+
+
+# Each query must produce identical result rows whether the planner uses
+# the pre-computed aggregate or falls back to scanning the granular
+# `orders` table. The aggregate path is just an optimization — never a
+# semantic change. We exclude order-sensitive queries (LIMIT changes which
+# rows you get when there are ties) since the agg vs primary plans can
+# tie-break differently.
+EQUIVALENT_QUERIES = [
+    # Exact-grain matches.
+    "SELECT customer_id, order_count, total_amount;",
+    "SELECT order_date, order_count;",
+    "SELECT customer_id, order_date, order_count, total_amount;",
+    # Rollup.
+    "SELECT order_count;",
+    "SELECT customer_id, order_count;",
+    "SELECT order_date, total_amount;",
+    "SELECT customer_id, total_amount;",
+    # Filter pushdown.
+    "WHERE order_date >= '2024-01-16'::date " "SELECT order_date, order_count;",
+    "WHERE order_date >= '2024-01-16'::date " "SELECT customer_id, order_count;",
+    # Property-of-key rollup via dim join.
+    "SELECT region, order_count;",
+    "WHERE region = 'east' SELECT region, order_count;",
+]
+
+
+@pytest.mark.parametrize("query", EQUIVALENT_QUERIES)
+def test_aggregate_path_matches_primary_path(query):
+    """The pre-aggregated path must be byte-equivalent to the granular
+    path. Runs each query against SALES_MODEL (planner picks aggregate)
+    and SALES_MODEL_PRIMARY_ONLY (planner falls back to orders) and
+    asserts the rows are identical."""
+    rows_with = _rows(SALES_MODEL, query)
+    rows_without = _rows(SALES_MODEL_PRIMARY_ONLY, query)
+    assert rows_with == rows_without, (rows_with, rows_without)
+
+
+# ---------- 11. Non-additive aggregates must NOT be rolled up ----------
+
+
+# `count_distinct` and `avg` aren't additive: SUM-rolling per-bucket
+# values gives the wrong answer. The planner must either compute fresh
+# from primary or pick a same-grain materialization, never SUM-roll.
+SALES_MODEL_NON_ADDITIVE = SALES_MODEL_PRIMARY_ONLY + SALES_AGGREGATES + """
+auto avg_amount <- avg(amount);
+auto distinct_customers <- count_distinct(customer_id);
+"""
+
+
+def test_avg_not_rolled_up_from_finer_grain():
+    """avg(amount) at region grain cannot be rolled up by SUM from a
+    customer-grain aggregate (would double-count or weight wrongly).
+    Result must match the primary computation."""
+    e = Dialects.DUCK_DB.default_executor()
+    e.parse_text(SALES_MODEL_NON_ADDITIVE)
+    sql = e.generate_sql("SELECT region, avg_amount;")[-1]
+    # The agg-by-customer materialization is on `total_amount`, not avg —
+    # the planner must NOT pretend it can serve avg via rollup.
+    assert (
+        "agg_by_customer" not in sql
+    ), f"avg must not roll up through agg_by_customer: {sql}"
+    rows_agg = _rows(SALES_MODEL_NON_ADDITIVE, "SELECT region, avg_amount;")
+    rows_primary = _rows(
+        SALES_MODEL_PRIMARY_ONLY + "auto avg_amount <- avg(amount);",
+        "SELECT region, avg_amount;",
+    )
+    assert rows_agg == rows_primary, (rows_agg, rows_primary)
+
+
+def test_count_distinct_not_rolled_up_from_finer_grain():
+    """count_distinct(customer_id) at region grain cannot be SUM-rolled
+    through a per-customer aggregate (DISTINCT doesn't compose under SUM).
+    Result must match the primary computation."""
+    e = Dialects.DUCK_DB.default_executor()
+    e.parse_text(SALES_MODEL_NON_ADDITIVE)
+    sql = e.generate_sql("SELECT region, distinct_customers;")[-1]
+    assert (
+        "agg_by_customer" not in sql
+    ), f"count_distinct must not roll up through agg_by_customer: {sql}"
+    rows_agg = _rows(SALES_MODEL_NON_ADDITIVE, "SELECT region, distinct_customers;")
+    rows_primary = _rows(
+        SALES_MODEL_PRIMARY_ONLY
+        + "auto distinct_customers <- count_distinct(customer_id);",
+        "SELECT region, distinct_customers;",
+    )
+    assert rows_agg == rows_primary, (rows_agg, rows_primary)
+
+
+def test_count_distinct_does_not_borrow_signature_from_count():
+    """`count_distinct(customer_id)` and `count(customer_id)` share the
+    same arguments but are different functions — the planner must not
+    treat a `count(...)`-materialized aggregate as a stand-in for
+    `count_distinct(...)`."""
+    e = Dialects.DUCK_DB.default_executor()
+    e.parse_text(SALES_MODEL_NON_ADDITIVE)
+    sql = e.generate_sql("SELECT distinct_customers;")[-1]
+    # Must not silently SUM the per-customer agg's order_count and call it
+    # distinct_customers.
+    assert (
+        'sum("agg_by_customer"."order_count")' not in sql
+    ), f"count_distinct can't be served by SUM-ing count(order_id): {sql}"
+    rows_agg = _rows(SALES_MODEL_NON_ADDITIVE, "SELECT distinct_customers;")
+    rows_primary = _rows(
+        SALES_MODEL_PRIMARY_ONLY
+        + "auto distinct_customers <- count_distinct(customer_id);",
+        "SELECT distinct_customers;",
+    )
+    assert rows_agg == rows_primary, (rows_agg, rows_primary)

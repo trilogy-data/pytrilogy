@@ -873,6 +873,21 @@ class BaseDialect:
                         rval = INVALID_REFERENCE_STRING(
                             f"Missing source reference to {c.address}"
                         )
+        # Pre-aggregated COUNT columns sourced from a sparse materialization
+        # leak NULL through a LEFT/FULL JOIN when a dim row has no matching
+        # fact row. The granular path's `count(...)` returns 0 in that case
+        # (count over an empty group is 0). Coalesce to keep the two paths
+        # result-equivalent. SUM is left alone — `SUM` over an empty group
+        # is NULL in both paths.
+        if (
+            isinstance(c.lineage, BuildAggregateWrapper)
+            and c.lineage.function.operator == FunctionType.COUNT
+            and not cte.group_to_grain
+            and any(
+                n.address == c.address for n in getattr(cte, "nullable_concepts", [])
+            )
+        ):
+            rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])
         return rval
 
     def _render_subselect(

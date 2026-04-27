@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -135,6 +135,20 @@ def find_nullable_concepts(
         is_on_nullable_condition = False
         if not isinstance(join, BaseJoin):
             continue
+        # The JOIN type itself can introduce NULLs. LEFT/RIGHT/FULL outer
+        # joins make the corresponding side's concepts nullable in the
+        # output, regardless of the source's own nullability.
+        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
+            right_ds = datasource_map.get(join.right_datasource.identifier)
+            if right_ds is not None:
+                nullable_datasources.add(right_ds)
+        if (
+            join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL)
+            and join.left_datasource is not None
+        ):
+            left_ds = datasource_map.get(join.left_datasource.identifier)
+            if left_ds is not None:
+                nullable_datasources.add(left_ds)
         if not join.concept_pairs:
             continue
         right_nullables = nullable_addrs.get(join.right_datasource.identifier, set())
