@@ -69,6 +69,7 @@ class CTE:
         Union[BuildComparison, BuildConditional, BuildParenthetical]
     ] = None
     partial_concepts: List[BuildConcept] = field(default_factory=list)
+    rollup_concepts: List[BuildConcept] = field(default_factory=list)
     nullable_concepts: List[BuildConcept] = field(default_factory=list)
     join_derived_concepts: List[BuildConcept] = field(default_factory=list)
     hidden_concepts: set[str] = field(default_factory=set)
@@ -126,6 +127,10 @@ class CTE:
         if self.partial_concepts and CONFIG.comments.partial:
             base += (
                 f"\n-- Partials: {', '.join([str(x) for x in self.partial_concepts])}."
+            )
+        if self.rollup_concepts:
+            base += (
+                f"\n-- Rollups: {', '.join([str(x) for x in self.rollup_concepts])}."
             )
         if CONFIG.comments.source_map:
             base += f"\n-- Source Map: {self.source_map}."
@@ -269,6 +274,9 @@ class CTE:
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
         )
+        self.rollup_concepts = unique(
+            self.rollup_concepts + other.rollup_concepts, "address"
+        )
         self.join_derived_concepts = unique(
             self.join_derived_concepts + other.join_derived_concepts, "address"
         )
@@ -276,6 +284,9 @@ class CTE:
         self.source.source_map = {**self.source.source_map, **other.source.source_map}
         self.source.output_concepts = unique(
             self.source.output_concepts + other.source.output_concepts, "address"
+        )
+        self.source.rollup_concepts = unique(
+            self.source.rollup_concepts + other.source.rollup_concepts, "address"
         )
         self.nullable_concepts = unique(
             self.nullable_concepts + other.nullable_concepts, "address"
@@ -388,7 +399,11 @@ class CTE:
 
     @property
     def group_concepts(self) -> List[BuildConcept]:
+        rollup_addresses = {c.address for c in self.rollup_concepts}
+
         def check_is_not_in_group(c: BuildConcept):
+            if c.address in rollup_addresses:
+                return True
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == Derivation.ROWSET:
@@ -623,6 +638,7 @@ class QueryDatasource:
     ] = None
     source_type: SourceType = field(default=SourceType.SELECT)
     partial_concepts: List[BuildConcept] = field(default_factory=list)
+    rollup_concepts: List[BuildConcept] = field(default_factory=list)
     hidden_concepts: set[str] = field(default_factory=set)
     nullable_concepts: List[BuildConcept] = field(default_factory=list)
     join_derived_concepts: List[BuildConcept] = field(default_factory=list)
@@ -682,6 +698,7 @@ class QueryDatasource:
             grain=datasource.grain,
             joins=[],
             partial_concepts=datasource.partial_concepts,
+            rollup_concepts=[],
             hidden_concepts={c.address for c in datasource.hidden_concepts},
             nullable_concepts=datasource.nullable_concepts,
             base_datasource=datasource,
@@ -817,6 +834,9 @@ class QueryDatasource:
             source_type=self.source_type,
             partial_concepts=unique(
                 self.partial_concepts + other.partial_concepts, "address"
+            ),
+            rollup_concepts=unique(
+                self.rollup_concepts + other.rollup_concepts, "address"
             ),
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
@@ -1018,6 +1038,7 @@ class RecursiveCTE(CTE):
             joins=self.joins,
             condition=self.condition,
             partial_concepts=self.partial_concepts,
+            rollup_concepts=self.rollup_concepts,
             hidden_concepts=self.hidden_concepts,
             nullable_concepts=self.nullable_concepts,
             join_derived_concepts=self.join_derived_concepts,
@@ -1060,6 +1081,7 @@ class RecursiveCTE(CTE):
                 )
             ],
             partial_concepts=self.partial_concepts,
+            rollup_concepts=self.rollup_concepts,
             hidden_concepts=self.hidden_concepts,
             nullable_concepts=self.nullable_concepts,
             join_derived_concepts=self.join_derived_concepts,
@@ -1083,6 +1105,7 @@ class UnionCTE:
     limit: Optional[int] = None
     hidden_concepts: set[str] = field(default_factory=set)
     partial_concepts: list[BuildConcept] = field(default_factory=list)
+    rollup_concepts: list[BuildConcept] = field(default_factory=list)
     existence_source_map: Dict[str, list[str]] = field(default_factory=dict)
     inlined_ctes: Dict[str, InlinedCTE] = field(default_factory=dict)
 

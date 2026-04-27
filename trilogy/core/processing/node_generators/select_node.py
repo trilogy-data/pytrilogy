@@ -3,10 +3,12 @@ from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildDatasource,
     BuildWhereClause,
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
 from trilogy.core.processing.node_generators.select_merge_node import (
     gen_select_merge_node,
 )
@@ -64,6 +66,22 @@ def gen_select_node(
     fail_if_not_found: bool = True,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
+    rollup_materialized = {
+        concept.canonical_address
+        for datasource in environment.datasources.values()
+        if isinstance(datasource, BuildDatasource)
+        for concept in get_additive_rollup_concepts(
+            datasource=datasource,
+            requested_concepts=concepts,
+            concepts_by_address=environment.concepts,
+            datasources=[
+                ds
+                for ds in environment.datasources.values()
+                if isinstance(ds, BuildDatasource)
+            ],
+            conditions=conditions,
+        )
+    }
     all_lcl = CanonicalBuildConceptList(concepts=concepts)
     # search all concepts here, including partial
     materialized_lcl = CanonicalBuildConceptList(
@@ -71,6 +89,7 @@ def gen_select_node(
             x
             for x in concepts
             if x.canonical_address in environment.materialized_canonical_concepts
+            or x.canonical_address in rollup_materialized
             or x.derivation == Derivation.CONSTANT
         ]
     )

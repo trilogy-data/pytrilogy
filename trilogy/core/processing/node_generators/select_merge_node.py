@@ -31,6 +31,7 @@ from trilogy.core.models.build import (
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     decompose_condition,
@@ -386,6 +387,22 @@ def create_pruned_concept_graph(
     orig_g = g
     g = g.copy()
     union_options = get_union_sources(datasources, all_concepts)
+    concepts_by_address = {c.address: c for c in orig_g.concepts.values()}
+    for node_address, datasource in list(g.datasources.items()):
+        if not isinstance(datasource, BuildDatasource):
+            continue
+        for concept in get_additive_rollup_concepts(
+            datasource=datasource,
+            requested_concepts=all_concepts,
+            concepts_by_address=concepts_by_address,
+            datasources=datasources,
+            conditions=conditions,
+        ):
+            cnode = concept_to_node(concept)
+            g.concepts[cnode] = concept
+            g.add_node(cnode)
+            g.add_edge(node_address, cnode)
+            g.add_edge(cnode, node_address)
 
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
@@ -657,17 +674,41 @@ def create_datasource_node(
         force_group = any(
             x.granularity != Granularity.SINGLE_ROW for x in datasource.output_concepts
         )
+    rollup_concepts = (
+        get_additive_rollup_concepts(
+            datasource=datasource,
+            requested_concepts=all_concepts,
+            concepts_by_address=environment.concepts,
+            datasources=[
+                ds
+                for ds in environment.datasources.values()
+                if isinstance(ds, BuildDatasource)
+            ],
+            conditions=conditions,
+        )
+        if force_group
+        else []
+    )
+    rollup_addresses = {c.address for c in rollup_concepts}
+    output_concepts = [
+        c
+        for c in all_concepts
+        if not c.is_aggregate
+        or c.address in rollup_addresses
+        or datasource_grain.issubset(c.grain)
+    ]
+    output_addresses = {c.address for c in output_concepts}
     partial_concepts = [
         c.concept
         for c in datasource.columns
-        if not c.is_complete and c.concept.address in all_concepts
+        if not c.is_complete and c.concept.address in output_addresses
     ]
 
     partial_lcl = CanonicalBuildConceptList(concepts=partial_concepts)
     nullable_concepts = [
         c.concept
         for c in datasource.columns
-        if c.is_nullable and c.concept.address in all_concepts
+        if c.is_nullable and c.concept.address in output_addresses
     ]
 
     nullable_lcl = CanonicalBuildConceptList(concepts=nullable_concepts)
@@ -714,6 +755,9 @@ def create_datasource_node(
     for x in all_concepts:
         if x not in all_inputs and x in canonical_all:
             all_inputs.append(x)
+    all_inputs = [
+        c for c in all_inputs if not c.is_aggregate or c.address in output_addresses
+    ]
 
     # additional single row check
     satisfies_conditions = not datasource_has_filter_sensitive_aggregate(
@@ -728,14 +772,15 @@ def create_datasource_node(
     )
     rval = SelectNode(
         input_concepts=all_inputs,
-        output_concepts=sorted(all_concepts, key=lambda x: x.address),
+        output_concepts=sorted(output_concepts, key=lambda x: x.address),
         environment=environment,
         parents=[],
         depth=depth,
         partial_concepts=(
-            [] if partial_is_full else [c for c in all_concepts if c in partial_lcl]
+            [] if partial_is_full else [c for c in output_concepts if c in partial_lcl]
         ),
-        nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
+        rollup_concepts=rollup_concepts,
+        nullable_concepts=[c for c in output_concepts if c in nullable_lcl],
         accept_partial=accept_partial,
         datasource=datasource,
         grain=datasource.grain,

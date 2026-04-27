@@ -38,6 +38,7 @@ class SelectNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: List[BuildConcept] | None = None,
+        rollup_concepts: List[BuildConcept] | None = None,
         nullable_concepts: List[BuildConcept] | None = None,
         accept_partial: bool = False,
         grain: Optional[BuildGrain] = None,
@@ -64,6 +65,7 @@ class SelectNode(StrategyNode):
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
+            rollup_concepts=rollup_concepts,
             nullable_concepts=nullable_concepts,
             force_group=force_group,
             grain=grain,
@@ -130,6 +132,7 @@ class SelectNode(StrategyNode):
             partial_concepts=[
                 c.concept for c in datasource.columns if not c.is_complete
             ],
+            rollup_concepts=self.rollup_concepts,
             nullable_concepts=[c.concept for c in datasource.columns if c.is_nullable],
             source_type=SourceType.DIRECT_SELECT,
             # we can skip rendering conditions
@@ -154,6 +157,7 @@ class SelectNode(StrategyNode):
             condition=self.conditions,
             joins=[],
             partial_concepts=[],
+            rollup_concepts=[],
             source_type=SourceType.CONSTANT,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
@@ -218,6 +222,7 @@ class SelectNode(StrategyNode):
             parents=self.parents,
             whole_grain=self.whole_grain,
             partial_concepts=list(self.partial_concepts),
+            rollup_concepts=list(self.rollup_concepts),
             nullable_concepts=list(self.nullable_concepts),
             accept_partial=self.accept_partial,
             grain=self.grain,
