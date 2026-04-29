@@ -334,6 +334,141 @@ def test_multi_datasource_partial_binding_is_not_flagged():
     validate_environment(executor.environment, exec=executor)
 
 
+_AGGREGATE_PREAMBLE = """
+    key id int;
+    property id.carrier string;
+    auto count <- count(id);
+
+    datasource flight (
+        id: id,
+        carrier: carrier,
+    )
+    grain (id)
+    query '''
+    SELECT 1 AS id, 'AA' AS carrier UNION ALL
+    SELECT 2, 'AA' UNION ALL
+    SELECT 3, 'BA' UNION ALL
+    SELECT 4, 'BA' UNION ALL
+    SELECT 5, 'CA'
+    ''';
+"""
+
+
+def test_multi_datasource_aggregate_count_totals_match():
+    """A COUNT-derived metric exposed in multiple precomputed aggregate
+    datasources should validate by comparing totals (SUM), not distinct
+    cardinality — different grains have different distinct counts but the
+    summed values must match."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_AGGREGATE_PREAMBLE + """
+        datasource flight_count_total (
+            flight_count: count,
+        )
+        query '''
+        SELECT 5 AS flight_count
+        ''';
+
+        datasource flight_count_by_carrier (
+            carrier: carrier,
+            flight_count: count,
+        )
+        grain (carrier)
+        query '''
+        SELECT 'AA' AS carrier, 2 AS flight_count UNION ALL
+        SELECT 'BA', 2 UNION ALL
+        SELECT 'CA', 1
+        ''';
+        """)
+
+    validate_environment(executor.environment, exec=executor)
+
+
+def test_multi_datasource_aggregate_count_totals_mismatch():
+    """If one aggregate datasource is missing rows, the SUM total diverges
+    and the validator should flag the incomplete binding."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_AGGREGATE_PREAMBLE + """
+        datasource flight_count_total (
+            flight_count: count,
+        )
+        query '''
+        SELECT 5 AS flight_count
+        ''';
+
+        datasource flight_count_by_carrier (
+            carrier: carrier,
+            flight_count: count,
+        )
+        grain (carrier)
+        query '''
+        SELECT 'AA' AS carrier, 2 AS flight_count UNION ALL
+        SELECT 'BA', 2
+        ''';
+        """)
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(executor.environment, exec=executor)
+
+    assert any(
+        isinstance(child, DatasourceColumnBindingError)
+        and "count" in child.message
+        and "flight_count_by_carrier" in child.message
+        and "not marked as partial" in child.message
+        for child in exc_info.value.children or []
+    )
+
+
+def test_multi_datasource_count_distinct_metric_is_skipped():
+    """COUNT_DISTINCT-derived metrics can't be cross-validated by SUM totals
+    (the values aren't additive), so the validator should skip them rather
+    than emit a spurious mismatch error."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.region string;
+        property id.carrier string;
+        metric distinct_carriers <- count_distinct(carrier);
+
+        datasource flight (
+            id: id,
+            region: region,
+            carrier: carrier,
+        )
+        grain (id)
+        query '''
+        SELECT 1 AS id, 'NA' AS region, 'AA' AS carrier UNION ALL
+        SELECT 2, 'NA', 'BA' UNION ALL
+        SELECT 3, 'EU', 'CA' UNION ALL
+        SELECT 4, 'EU', 'AA'
+        ''';
+
+        datasource carriers_by_region_a (
+            region: region,
+            distinct_carriers: distinct_carriers,
+        )
+        grain (region)
+        query '''
+        SELECT 'NA' AS region, 2 AS distinct_carriers UNION ALL
+        SELECT 'EU', 2
+        ''';
+
+        datasource carriers_by_region_b (
+            region: region,
+            distinct_carriers: distinct_carriers,
+        )
+        grain (region)
+        query '''
+        SELECT 'NA' AS region, 2 AS distinct_carriers UNION ALL
+        SELECT 'EU', 1
+        ''';
+        """)
+
+    # Under SUM-based comparison the totals would be 4 vs 3 and trigger an
+    # error; under COUNT_DISTINCT they would be 2 vs 2 and not — but neither
+    # comparison is meaningful for a COUNT_DISTINCT metric, so we simply skip.
+    validate_environment(executor.environment, exec=executor)
+
+
 def test_inferred_type_check():
     from trilogy.core.validation.datasource import inferred_type_check
 
