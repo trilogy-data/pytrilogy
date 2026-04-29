@@ -2,8 +2,10 @@ import glob as glob_module
 import subprocess
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from enum import Enum
 
 from trilogy import Executor
+from trilogy.constants import logger
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import Factory
@@ -29,6 +31,11 @@ class DatasourceWatermark:
     keys: dict[str, UpdateKey]
 
 
+class RefreshKind(Enum):
+    SQL = "sql"
+    SCRIPT = "script"
+
+
 @dataclass
 class StaleAsset:
     """Represents an asset that needs to be refreshed."""
@@ -36,6 +43,7 @@ class StaleAsset:
     datasource_id: str
     reason: str
     filters: UpdateKeys = field(default_factory=UpdateKeys)
+    kind: RefreshKind = RefreshKind.SQL
 
 
 def _compare_watermark_values(
@@ -347,3 +355,26 @@ def run_freshness_probe(probe_path: str) -> bool:
             f"Freshness probe '{probe_path}' failed (exit {result.returncode}): {result.stderr.strip()}"
         )
     return result.stdout.strip().lower() in ("true", "1", "yes")
+
+
+def run_refresh_script(script_path: str, cwd: str | None = None) -> None:
+    """Run a refresh script to make a refreshable-root datasource fresh.
+
+    Exit code 0 = success; any non-zero code raises RuntimeError. stdout/stderr
+    are forwarded to the trilogy logger; the script is opaque to trilogy beyond
+    its exit code.
+    """
+    result = subprocess.run(
+        ["uv", "run", "--no-project", "--quiet", script_path],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+    )
+    if result.stdout:
+        logger.info("refresh_script %s stdout: %s", script_path, result.stdout.strip())
+    if result.stderr:
+        logger.info("refresh_script %s stderr: %s", script_path, result.stderr.strip())
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Refresh script '{script_path}' failed (exit {result.returncode}): {result.stderr.strip()}"
+        )

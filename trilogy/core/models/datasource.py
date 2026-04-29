@@ -242,6 +242,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     partition_by: List[ConceptRef] = Field(default_factory=list)
     freshness_by: List[ConceptRef] = Field(default_factory=list)
     freshness_probe: Optional[str] = None
+    refresh_script: Optional[str] = None
     is_root: bool = False
     is_partial: bool = False
 

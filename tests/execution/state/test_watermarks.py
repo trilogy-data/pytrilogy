@@ -1316,10 +1316,27 @@ def test_get_stale_assets_timezone_mismatch_incremental():
         ),
     }
 
-    mock_env = MagicMock()
-    mock_env.datasources.values.return_value = []
+    src_ds = MagicMock()
+    src_ds.identifier = "tz_source"
+    src_ds.is_root = True
+    src_ds.refresh_script = None
+    src_ds.freshness_probe = None
+    tgt_ds = MagicMock()
+    tgt_ds.identifier = "tz_target"
+    tgt_ds.is_root = False
+    tgt_ds.refresh_script = None
+    tgt_ds.freshness_probe = None
+    tgt_ds.freshness_by = []
+    tgt_ds.incremental_by = [MagicMock()]
 
-    with patch.object(state_store, "watermark_all_assets"):
+    mock_env = MagicMock()
+    mock_env.datasources = {"tz_source": src_ds, "tz_target": tgt_ds}
+
+    with patch.object(state_store, "watermark_all_assets"), patch(
+        "trilogy.execution.state.state_store.has_schema_mismatch", return_value=False
+    ), patch(
+        "trilogy.execution.state.state_store.is_missing_local_file", return_value=False
+    ):
         with pytest.raises(TypeError) as exc_info:
             state_store.get_stale_assets(
                 mock_env,

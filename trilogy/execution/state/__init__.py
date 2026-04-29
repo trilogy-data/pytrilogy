@@ -10,6 +10,7 @@ from trilogy.execution.state.state_store import (
 )
 from trilogy.execution.state.watermarks import (
     DatasourceWatermark,
+    RefreshKind,
     StaleAsset,
     get_concept_max_watermark_abstract,
     get_concept_max_watermarks,
@@ -18,6 +19,7 @@ from trilogy.execution.state.watermarks import (
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
     run_freshness_probe,
+    run_refresh_script,
 )
 
 __all__ = [
@@ -31,6 +33,7 @@ __all__ = [
     "execute_refresh_plan",
     "refresh_stale_assets",
     "DatasourceWatermark",
+    "RefreshKind",
     "StaleAsset",
     "get_concept_max_watermark_abstract",
     "get_concept_max_watermarks",
@@ -39,4 +42,5 @@ __all__ = [
     "get_last_update_time_watermarks",
     "get_unique_key_hash_watermarks",
     "run_freshness_probe",
+    "run_refresh_script",
 ]

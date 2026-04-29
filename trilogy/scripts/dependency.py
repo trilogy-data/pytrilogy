@@ -41,11 +41,22 @@ class ScriptNode:
 
 @dataclass(frozen=True)
 class ManagedRefreshNode:
-    """Represents a managed data address to be refreshed."""
+    """Represents a managed data address to be refreshed.
+
+    `assets`: pre-classified stale assets discovered at preview time. May be
+    empty if the address was added to phys_graph as an "unknown" node (downstream
+    of a refreshable-root script whose effect on this address can't be known
+    until the script runs). The node's executor re-evaluates staleness at
+    execute time.
+
+    `datasource_ids`: every datasource at this physical address. Used to drive
+    per-node deferred staleness evaluation when `assets` is empty.
+    """
 
     address: str
     owner_script: ScriptNode
     assets: list[StaleAsset]
+    datasource_ids: tuple[str, ...] = ()
 
     def __hash__(self):
         return hash(self.address)
