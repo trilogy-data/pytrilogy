@@ -151,18 +151,23 @@ def _validate_probe_coverage(
     plans_by_node: list[tuple[ScriptNode, RefreshPlan]],
     expected_root_names_by_addr: dict[str, set[str]],
     all_root_watermarks: dict[str, DatasourceWatermark],
+    refreshable_root_addrs: set[str] | None = None,
 ) -> None:
     from trilogy.scripts.display import print_error
 
     merged_plan_watermarks = _merge_watermarks(
         [plan.watermarks for _, plan in plans_by_node]
     )
+    # Refreshable roots are managed via probe + script, not watermark — exclude
+    # them from the watermark-coverage requirement.
+    refreshable_root_addrs = refreshable_root_addrs or set()
+    watermark_required = probe_addrs - refreshable_root_addrs
     covered_probe_addrs = {
         address
         for ds_id, address in address_map.items()
-        if address in probe_addrs and ds_id in merged_plan_watermarks
+        if address in watermark_required and ds_id in merged_plan_watermarks
     }
-    missing_probe_addrs = sorted(probe_addrs - covered_probe_addrs)
+    missing_probe_addrs = sorted(watermark_required - covered_probe_addrs)
     if missing_probe_addrs:
         print_error(
             "Refresh probe validation failed: some managed assets were never "
@@ -436,12 +441,18 @@ def _preview_directory_refresh(
                 for _ in owner_to_addrs[owner_node] & probe_addrs:
                     _progress.advance()
 
+    refreshable_root_addrs = {
+        address_map[ds_id]
+        for ds_id, is_refreshable in ds_is_refreshable_root.items()
+        if is_refreshable and ds_id in address_map
+    }
     _validate_probe_coverage(
         probe_addrs,
         address_map,
         plans_by_node,
         expected_root_names_by_addr,
         all_root_watermarks,
+        refreshable_root_addrs=refreshable_root_addrs,
     )
 
     refresh_assets = [
