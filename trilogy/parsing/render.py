@@ -312,6 +312,8 @@ class Renderer:
             base += f"\nfreshness by {','.join(self.to_string(x) for x in arg.freshness_by)}"
         if arg.freshness_probe:
             base += f"\nfreshness by `{arg.freshness_probe}`"
+        if arg.refresh_script:
+            base += f"\nrefresh `{arg.refresh_script}`"
         if arg.status != DatasourceState.PUBLISHED:
             base += f"\nstate {arg.status.value.lower()}"
 

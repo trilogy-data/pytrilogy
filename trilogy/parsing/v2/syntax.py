@@ -259,6 +259,7 @@ class SyntaxNodeKind(str, Enum):
     DATASOURCE_STATUS_CLAUSE = "datasource_status_clause"
     DATASOURCE_PARTITION_CLAUSE = "datasource_partition_clause"
     DATASOURCE_UPDATE_TRIGGER_CLAUSE = "datasource_update_trigger_clause"
+    DATASOURCE_REFRESH_CLAUSE = "datasource_refresh_clause"
 
 
 class SyntaxTokenKind(str, Enum):
@@ -569,6 +570,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "datasource_status_clause": SyntaxNodeKind.DATASOURCE_STATUS_CLAUSE,
     "datasource_partition_clause": SyntaxNodeKind.DATASOURCE_PARTITION_CLAUSE,
     "datasource_update_trigger_clause": SyntaxNodeKind.DATASOURCE_UPDATE_TRIGGER_CLAUSE,
+    "datasource_refresh_clause": SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE,
 }
 
 

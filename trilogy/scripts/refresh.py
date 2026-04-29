@@ -15,7 +15,9 @@ from trilogy import Executor
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
 from trilogy.execution.state import (
+    BaseStateStore,
     DatasourceWatermark,
+    RefreshKind,
     RefreshPlan,
     RefreshResult,
     StaleAsset,
@@ -238,6 +240,7 @@ def _preview_directory_refresh(
     available_datasources: set[str] = set()
     ds_to_scripts: dict[str, list[ScriptNode]] = defaultdict(list)
     ds_is_root: dict[str, bool] = {}
+    ds_is_refreshable_root: dict[str, bool] = {}
     # root physical address -> set of concept addresses (as seen in that executor's namespace)
     # that are needed by at least one non-root datasource in any script
     root_addr_to_needed_concepts: dict[str, set[str]] = defaultdict(set)
@@ -276,6 +279,10 @@ def _preview_directory_refresh(
             address_map.setdefault(ds_id, ds.safe_address)
             ds_to_scripts[ds_id].append(node)
             ds_is_root.setdefault(ds_id, ds.is_root)
+            ds_is_refreshable_root.setdefault(
+                ds_id,
+                bool(ds.is_root and ds.refresh_script and ds.freshness_probe),
+            )
             if not ds.is_root:
                 for ref in ds.freshness_by:
                     needed_in_script.add(env.concepts[ref.address].address)
@@ -333,10 +340,21 @@ def _preview_directory_refresh(
     # Addresses that contain at least one non-root datasource — these are the
     # assets we actually refresh. Root-only addresses (Python scripts, remote
     # files) are probed for watermarks inside their importers' executor calls.
+    # Refreshable roots (is_root + refresh_script + freshness_probe) are also
+    # included: they're black-box managed by trilogy via their refresh script.
+    # NOTE: cross-script cascade is partial — if a refreshable root R in
+    # script S1 has a downstream non-root D in script S2 that probed fresh
+    # against R's pre-refresh watermark in Phase 2b, D will NOT be picked up
+    # after R refreshes. A complete fix requires re-running Phase 2a/2b after
+    # script-kind nodes complete; for now within-script and pre-stale dependents
+    # are handled correctly via phys_graph ordering.
     probe_addrs: set[str] = {
         addr
         for addr, ds_ids in addr_to_ds_ids.items()
-        if any(not ds_is_root.get(ds_id, False) for ds_id in ds_ids)
+        if any(
+            not ds_is_root.get(ds_id, False) or ds_is_refreshable_root.get(ds_id, False)
+            for ds_id in ds_ids
+        )
     }
 
     owner_to_addrs: dict[ScriptNode, set[str]] = defaultdict(set)
@@ -429,40 +447,52 @@ def _preview_directory_refresh(
     refresh_assets = [
         asset for _, plan in plans_by_node for asset in plan.refresh_assets
     ]
+    has_refreshable_root_stale = any(
+        a.kind == RefreshKind.SCRIPT for a in refresh_assets
+    )
+
     if not refresh_assets:
         print_info("All assets are up to date.")
         return True, None
 
-    # Group stale assets by managed address
+    # Group pre-classified stale assets by managed address.
     physical_groups: dict[str, list[tuple[StaleAsset, ScriptNode]]] = defaultdict(list)
     for node, plan in plans_by_node:
         for asset in plan.refresh_assets:
             addr = address_map.get(asset.datasource_id, asset.datasource_id)
             physical_groups[addr].append((asset, node))
 
-    # Build Managed Nodes and assign owners
+    # Build a managed node for EVERY probe_addr (not just stale-at-preview).
+    # Addresses without pre-classified stale assets get an empty `assets` list;
+    # their staleness is re-evaluated at execute time. This is what closes the
+    # cross-script cascade gap — when an upstream refreshable-root script bumps
+    # its data, downstream addresses that probed fresh against the pre-refresh
+    # watermark will be re-checked against the post-refresh state.
     physical_nodes: dict[str, ManagedRefreshNode] = {}
-    for addr, entries in physical_groups.items():
-        # Pick the furthest upstream script (lowest topological index)
-        # In a tie, we could look for PERSIST presence, but topo order handles most cases.
-        owner_entry = min(entries, key=lambda x: script_to_order.get(x[1], 999999))
-        owner_script = owner_entry[1]
+    addr_ds_ids: dict[str, list[str]] = defaultdict(list)
+    for ds_id, addr in address_map.items():
+        if addr in probe_addrs:
+            addr_ds_ids[addr].append(ds_id)
 
-        # Deduplicate assets for this address (same ds_id + reason can be merged)
+    for addr in probe_addrs:
+        owner_script = addr_to_owner.get(addr)
+        if owner_script is None:
+            continue
+
         seen_assets: dict[str, StaleAsset] = {}
-        for asset, _ in entries:
-            # If exact same asset already seen, skip
+        for asset, _ in physical_groups.get(addr, []):
             key = f"{asset.datasource_id}:{asset.reason}"
             if key not in seen_assets:
                 seen_assets[key] = asset
 
         physical_nodes[addr] = ManagedRefreshNode(
-            address=addr, owner_script=owner_script, assets=list(seen_assets.values())
+            address=addr,
+            owner_script=owner_script,
+            assets=list(seen_assets.values()),
+            datasource_ids=tuple(addr_ds_ids[addr]),
         )
 
-    print_info(
-        f"Found {len(physical_nodes)} stale asset(s) of {total_physical} managed"
-    )
+    stale_known = sum(1 for n in physical_nodes.values() if n.assets)
 
     phys_graph = nx.DiGraph()
     for pnode in physical_nodes.values():
@@ -478,6 +508,39 @@ def _preview_directory_refresh(
                 and nx.has_path(script_graph, node1.owner_script, node2.owner_script)
             ):
                 phys_graph.add_edge(node1, node2)
+
+    # "Unknown" nodes: descendants of any refreshable-root-stale node, since the
+    # script's effect on downstream watermarks can't be predicted at preview.
+    unknown_addrs: set[str] = set()
+    if has_refreshable_root_stale:
+        script_stale_nodes = [
+            n
+            for n in physical_nodes.values()
+            if any(a.kind == RefreshKind.SCRIPT for a in n.assets)
+        ]
+        for sn in script_stale_nodes:
+            for desc in nx.descendants(phys_graph, sn):
+                if not desc.assets:  # not already classified stale
+                    unknown_addrs.add(desc.address)
+
+    if unknown_addrs:
+        print_info(
+            f"Found {stale_known} stale, {len(unknown_addrs)} unknown "
+            f"(downstream of refreshable-root scripts; will be evaluated on demand) "
+            f"of {total_physical} managed"
+        )
+    else:
+        print_info(f"Found {stale_known} stale asset(s) of {total_physical} managed")
+
+    # Trim the graph for execution: drop addresses that are neither known-stale
+    # nor in the unknown set. They have no chance of needing a refresh, so we
+    # don't pay the per-node staleness check on them.
+    relevant: set[str] = {
+        addr for addr, n in physical_nodes.items() if n.assets
+    } | unknown_addrs
+    for pnode in list(phys_graph.nodes):
+        if pnode.address not in relevant:
+            phys_graph.remove_node(pnode)
 
     merged_root_watermarks = _merge_watermarks(
         [plan.root_watermarks for _, plan in plans_by_node]
@@ -508,6 +571,7 @@ def _run_refresh_plan(
     stats: ExecutionStats,
     quiet: bool,
     dry_run: bool,
+    cascade: bool = True,
 ) -> RefreshResult:
     from trilogy.scripts.display import print_info
 
@@ -528,6 +592,7 @@ def _run_refresh_plan(
         on_refresh=on_refresh,
         on_refresh_query=on_refresh_query,
         dry_run=dry_run,
+        cascade=cascade,
     )
 
 
@@ -539,20 +604,60 @@ def execute_managed_node_for_refresh(
     interactive: bool,
     dry_run: bool,
 ) -> ExecutionStats:
-    stats = ExecutionStats()
+    """Refresh one managed physical address.
 
-    # Create a minimal refresh plan for this specific physical address
-    # Use empty watermarks since we're already at the execution stage and don't need them
+    Re-evaluates staleness against the live DB at execute time (not from the
+    preview snapshot). When upstream refreshable-root scripts have already run
+    in this same orchestrator pass, their data mutations are visible here, and
+    cascade dependents that probed fresh at preview will now probe stale.
+    """
+    stats = ExecutionStats()
+    store = BaseStateStore()
+
+    # Resolve which datasources at this address to evaluate. Prefer the explicit
+    # list set at preview time; if absent (legacy nodes), fall back to scanning
+    # the executor environment.
+    target_ds_ids: list[str]
+    if node.datasource_ids:
+        target_ds_ids = [
+            ds_id
+            for ds_id in node.datasource_ids
+            if ds_id in executor.environment.datasources
+        ]
+    else:
+        target_ds_ids = [
+            ds.identifier
+            for ds in executor.environment.datasources.values()
+            if ds.safe_address == node.address
+        ]
+
+    # Honor pre-classified forced rebuilds — their `reason` is "forced rebuild"
+    # and is_stale would skip them otherwise.
+    forced_ids = {a.datasource_id for a in node.assets if a.reason == "forced rebuild"}
+
+    assets_to_refresh: list[StaleAsset] = []
+    for ds_id in target_ds_ids:
+        forced = ds_id in forced_ids
+        asset = store.is_stale(executor.environment, executor, ds_id, force=forced)
+        if asset is not None:
+            assets_to_refresh.append(asset)
+
+    if not assets_to_refresh:
+        return stats
+
     plan = RefreshPlan(
-        stale_assets=node.assets,
+        stale_assets=assets_to_refresh,
         forced_assets=[],
-        watermarks={},
-        concept_max_watermarks={},
-        root_assets=len(node.assets),
-        all_assets=len(node.assets),
+        watermarks=dict(store.watermarks),
+        concept_max_watermarks=dict(store.concept_max_watermarks),
+        root_assets=len(assets_to_refresh),
+        all_assets=len(target_ds_ids),
     )
 
-    result = _run_refresh_plan(executor, plan, stats, quiet, dry_run)
+    # cascade=False: the orchestrator handles cross-managed-node cascade via
+    # phys_graph topo order. Per-node cascade would double-refresh dependents
+    # that are already separate managed nodes.
+    result = _run_refresh_plan(executor, plan, stats, quiet, dry_run, cascade=False)
     stats.update_count = result.refreshed_count
     if not quiet and result.refreshed_count > 0:
         from trilogy.scripts.display import print_success

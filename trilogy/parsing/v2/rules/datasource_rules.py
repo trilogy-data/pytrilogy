@@ -70,6 +70,11 @@ class DatasourceFreshnessProbeClause:
     path: str
 
 
+@dataclass
+class DatasourceRefreshScriptClause:
+    path: str
+
+
 class File:
     def __init__(
         self,
@@ -469,6 +474,18 @@ def datasource_update_trigger_clause(
     return DatasourceUpdateTriggerClause(trigger_type=trigger_type, columns=columns)
 
 
+def datasource_refresh_clause(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> DatasourceRefreshScriptClause:
+    args = hydrated_children(node, hydrate)
+    p = Path(str(args[0]))
+    if not p.is_absolute():
+        p = (Path(context.environment.working_path) / p).resolve()
+    return DatasourceRefreshScriptClause(path=str(p))
+
+
 def datasource_node(
     node: SyntaxNode,
     context: RuleContext,
@@ -496,6 +513,7 @@ def datasource_node(
     partition_by: list[ConceptRef] = []
     freshness_by: list[ConceptRef] = []
     freshness_probe: str | None = None
+    refresh_script: str | None = None
     ds_status = DatasourceState.PUBLISHED
 
     for val in filtered[1:]:
@@ -521,6 +539,8 @@ def datasource_node(
             ds_status = val
         elif isinstance(val, DatasourceFreshnessProbeClause):
             freshness_probe = val.path
+        elif isinstance(val, DatasourceRefreshScriptClause):
+            refresh_script = val.path
         elif isinstance(val, DatasourceUpdateTriggerClause):
             if val.trigger_type == DatasourceUpdateTrigger.INCREMENTAL:
                 incremental_by = val.columns
@@ -531,6 +551,23 @@ def datasource_node(
 
     if not addr:
         raise fail(node, "Datasource missing address or query declaration")
+
+    if refresh_script is not None:
+        if not is_root:
+            raise fail(
+                node,
+                "`refresh` is only valid on root datasources; non-roots are refreshed via SQL",
+            )
+        if freshness_probe is None:
+            raise fail(
+                node,
+                "`refresh` requires a `freshness by '<probe>'` clause to gate when the script runs",
+            )
+        if addr.type == AddressType.QUERY:
+            raise fail(
+                node,
+                "`refresh` is not supported for query-backed datasources; the refreshable-root mechanism is for data outside trilogy's reach",
+            )
 
     if addr.is_file and not addr.exists:
         ds_status = DatasourceState.UNPOPULATED
@@ -555,6 +592,7 @@ def datasource_node(
         partition_by=partition_by,
         freshness_by=freshness_by,
         freshness_probe=freshness_probe,
+        refresh_script=refresh_script,
         is_root=is_root,
         is_partial=is_partial,
     )
@@ -605,4 +643,5 @@ DATASOURCE_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.DATASOURCE_STATUS_CLAUSE: datasource_status_clause,
     SyntaxNodeKind.DATASOURCE_PARTITION_CLAUSE: datasource_partition_clause,
     SyntaxNodeKind.DATASOURCE_UPDATE_TRIGGER_CLAUSE: datasource_update_trigger_clause,
+    SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE: datasource_refresh_clause,
 }
