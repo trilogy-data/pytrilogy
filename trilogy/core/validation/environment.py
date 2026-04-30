@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from typing import Callable
 
 from trilogy import Environment, Executor
 from trilogy.authoring import DataType, Function
@@ -38,6 +39,7 @@ def validate_environment(
     targets: list[str] | None = None,
     exec: Executor | None = None,
     generate_only: bool = False,
+    on_target_complete: TargetCompleteCallback | None = None,
 ) -> list[ValidationTest]:
     # avoid mutating the environment for validation
     generate_only = exec is None or generate_only
@@ -79,13 +81,19 @@ def validate_environment(
             for datasource in build_env.datasources.values():
                 if targets and datasource.name not in targets:
                     continue
-                results += validate_datasource(datasource, env, build_env, exec)
+                ds_results = validate_datasource(datasource, env, build_env, exec)
+                results += ds_results
+                if on_target_complete:
+                    on_target_complete("datasource", datasource.name, ds_results)
         if scope == ValidationScope.ALL or scope == ValidationScope.CONCEPTS:
 
             for bconcept in build_env.concepts.values():
                 if targets and bconcept.address not in targets:
                     continue
-                results += validate_concept(bconcept, env, build_env, exec)
+                c_results = validate_concept(bconcept, env, build_env, exec)
+                results += c_results
+                if on_target_complete:
+                    on_target_complete("concept", bconcept.address, c_results)
 
     # raise a nicely formatted union of all exceptions
     exceptions: list[ModelValidationError] = [e.result for e in results if e.result]

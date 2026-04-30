@@ -75,3 +75,11 @@ from trilogy.scripts.display_refresh import (  # noqa: F401
     show_stale_assets,
     show_watermarks,
 )
+from trilogy.scripts.display_validation import (  # noqa: F401
+    ValidationFailure,
+    ValidationProgressContext,
+    show_validation_failures,
+    show_validation_success,
+    show_validation_targets,
+    validation_progress,
+)
