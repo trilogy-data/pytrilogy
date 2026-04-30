@@ -15,6 +15,8 @@ from trilogy.parsing.common import function_to_concept
 
 _SUMMABLE_AGGREGATES = {FunctionType.SUM, FunctionType.COUNT}
 
+TargetCompleteCallback = Callable[[str, str, list[ValidationTest]], None]
+
 
 def _grain_check_operator(concept: Concept) -> FunctionType | None:
     """Pick the operator used to compare a concept's values across datasources.
