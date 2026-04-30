@@ -1,5 +1,5 @@
 query_id = "24"
-gen_length = 3864
+gen_length = 3865
 generated_sql = """
 
 WITH 
@@ -51,7 +51,7 @@ SELECT
     \"questionable\".\"peach_sales\" as \"peach_sales\"
 FROM
     \"vacuous\"
-    FULL JOIN \"questionable\" on 1=1
+    INNER JOIN \"questionable\" on 1=1
 WHERE
     \"questionable\".\"peach_sales\" > 0.05 * \"vacuous\".\"avg_store_customer_sales\"
 """

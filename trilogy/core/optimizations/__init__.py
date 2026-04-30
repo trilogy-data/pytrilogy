@@ -1,5 +1,6 @@
 from .base_optimization import MergedCTEMap, OptimizationRule
 from .collapse_single_parent import CollapseSingleParent
+from .full_join_downgrade import DowngradeFullJoinOnGuards
 from .hide_unused_concept import HideUnusedConcepts
 from .inline_datasource import InlineDatasource
 from .merge_irrelevant_group_by import MergeIrrelevantGroupBy
@@ -13,5 +14,6 @@ __all__ = [
     "InlineDatasource",
     "PredicatePushdown",
     "PredicatePushdownRemove",
+    "DowngradeFullJoinOnGuards",
     "HideUnusedConcepts",
 ]
