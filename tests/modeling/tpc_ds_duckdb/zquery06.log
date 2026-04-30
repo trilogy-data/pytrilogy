@@ -1,5 +1,5 @@
 query_id = "06"
-gen_length = 2505
+gen_length = 2504
 generated_sql = """
 
 WITH 
@@ -36,7 +36,7 @@ SELECT
     sum(1) as \"customer_count\"
 FROM
     \"abundant\"
-    INNER JOIN \"highfalutin\" on \"abundant\".\"item_category\" is not distinct from \"highfalutin\".\"item_category\"
+    FULL JOIN \"highfalutin\" on \"abundant\".\"item_category\" is not distinct from \"highfalutin\".\"item_category\"
 WHERE
     \"abundant\".\"store_sales_date_year\" = 2001 and \"abundant\".\"store_sales_item_category\" is not null and \"abundant\".\"store_sales_date_month_of_year\" = 1 and \"abundant\".\"store_sales_item_current_price\" > 1.2 * \"highfalutin\".\"_virt_agg_avg_5942253052406187\"
 

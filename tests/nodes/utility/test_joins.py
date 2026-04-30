@@ -234,17 +234,16 @@ address baz;
     [
         (False, False, False, False, JoinType.INNER),
         (True, False, False, False, JoinType.RIGHT_OUTER),
-        # asymmetric nullable: switch the OUTER to preserve the nullable side
-        # so its NULL rows don't get dropped against the non-nullable side.
-        (False, True, False, False, JoinType.LEFT_OUTER),
+        (False, True, False, False, JoinType.RIGHT_OUTER),
         (False, False, True, False, JoinType.LEFT_OUTER),
-        (False, False, False, True, JoinType.RIGHT_OUTER),
+        # right is nullable, left is not — LEFT_OUTER would drop right's NULL
+        # rows since the non-nullable left has nothing to match them. Upgrade
+        # to FULL.
+        (False, False, False, True, JoinType.FULL),
         (True, False, True, False, JoinType.FULL),
         (False, True, False, True, JoinType.FULL),
-        # asymmetric nullable + partial on the non-nullable side → escalate to
-        # FULL so neither side's unique rows are lost.
-        (True, True, False, False, JoinType.LEFT_OUTER),
-        (False, False, True, True, JoinType.RIGHT_OUTER),
+        (True, True, False, False, JoinType.RIGHT_OUTER),
+        (False, False, True, True, JoinType.FULL),
         (True, True, True, True, JoinType.FULL),
     ],
 )

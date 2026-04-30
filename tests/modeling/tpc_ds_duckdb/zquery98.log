@@ -1,5 +1,5 @@
 query_id = "98"
-gen_length = 2866
+gen_length = 2963
 generated_sql = """
 
 WITH 
@@ -47,16 +47,16 @@ SELECT
     \"thoughtful\".\"store_sales_item_name\" as \"store_sales_item_name\",
     \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
     \"thoughtful\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    coalesce(\"cooperative\".\"store_sales_item_class\",\"thoughtful\".\"store_sales_item_class\") as \"store_sales_item_class\",
     \"thoughtful\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     \"thoughtful\".\"item_revenue\" as \"item_revenue\",
     ( \"thoughtful\".\"_virt_agg_sum_9873055619986236\" * 100.0 ) / (\"cooperative\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"cooperative\" on \"thoughtful\".\"store_sales_item_class\" is not distinct from \"cooperative\".\"store_sales_item_class\"
+    FULL JOIN \"cooperative\" on \"thoughtful\".\"store_sales_item_class\" is not distinct from \"cooperative\".\"store_sales_item_class\"
 ORDER BY 
     \"thoughtful\".\"store_sales_item_category\" asc nulls first,
-    \"thoughtful\".\"store_sales_item_class\" asc nulls first,
+    coalesce(\"cooperative\".\"store_sales_item_class\",\"thoughtful\".\"store_sales_item_class\") asc nulls first,
     \"thoughtful\".\"store_sales_item_name\" asc nulls first,
     \"thoughtful\".\"store_sales_item_desc\" asc nulls first,
     \"revenueratio\" asc nulls first"""
