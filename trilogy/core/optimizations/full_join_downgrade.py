@@ -190,12 +190,18 @@ def _previous_left(cte: CTE | UnionCTE, idx: int) -> CTE | UnionCTE | None:
     prior join's right CTE."""
     if idx == 0:
         if isinstance(cte, CTE) and cte.joins:
-            right_name = getattr(cte.joins[0].right_cte, "name", None)
+            first = cte.joins[0]
+            if not isinstance(first, Join):
+                return None
+            right_name = first.right_cte.name
             for parent in cte.parent_ctes:
                 if isinstance(parent, (CTE, UnionCTE)) and parent.name != right_name:
                     return parent
         return None
-    return cte.joins[idx - 1].right_cte  # type: ignore[union-attr]
+    prior = cte.joins[idx - 1]  # type: ignore[union-attr]
+    if not isinstance(prior, Join):
+        return None
+    return prior.right_cte
 
 
 class DowngradeFullJoinOnGuards(OptimizationRule):
@@ -204,7 +210,9 @@ class DowngradeFullJoinOnGuards(OptimizationRule):
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE) or not cte.condition or not cte.joins:
             return False, None
-        if not any(j.jointype == JoinType.FULL for j in cte.joins):
+        if not any(
+            isinstance(j, Join) and j.jointype == JoinType.FULL for j in cte.joins
+        ):
             return False, None
 
         proofs = _gather_proofs(cte.condition)
@@ -213,7 +221,7 @@ class DowngradeFullJoinOnGuards(OptimizationRule):
 
         changed = False
         for idx, join in enumerate(cte.joins):
-            if join.jointype != JoinType.FULL:
+            if not isinstance(join, Join) or join.jointype != JoinType.FULL:
                 continue
             # The structural left of the first join is the CTE's FROM clause
             # (a sibling parent CTE); subsequent joins accumulate the prior

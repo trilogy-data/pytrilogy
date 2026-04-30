@@ -109,6 +109,7 @@ def test_full_kept_when_only_coalesced_key_proven():
 def test_proves_non_null_helpers():
     """Direct unit coverage of the proof extractor."""
     from trilogy import Environment
+    from trilogy.constants import MagicConstants
     from trilogy.core.enums import ComparisonOperator, FunctionType
     from trilogy.core.models.build import (
         BuildComparison,
@@ -120,7 +121,6 @@ def test_proves_non_null_helpers():
         _gather_proofs,
         _proves_non_null,
     )
-    from trilogy.constants import MagicConstants
 
     env = Environment()
     env.parse("key x int; key y int;")
