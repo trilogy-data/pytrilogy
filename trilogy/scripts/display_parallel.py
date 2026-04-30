@@ -190,6 +190,7 @@ class ParallelProgressTracker:
     def __init__(self) -> None:
         self._task_ids: dict[int, Any] = {}
         self._in_progress_labels: dict[int, str] = {}
+        self._base_labels: dict[int, str] = {}
         self._lock = threading.Lock()
         self._progress: Any = None
         self._stderr_cap = _FdStderrCapture(
@@ -232,14 +233,31 @@ class ParallelProgressTracker:
                 )
                 self._task_ids[id(node)] = task_id
                 self._in_progress_labels[id(node)] = label
+                self._base_labels[id(node)] = label
         else:
             print(f"  \u2192 {label}")
+
+    def update_node_label(self, node: Any, sub_label: str) -> None:
+        """Append a sub-label to the node's task description (e.g. current
+        validation target). Safe to call with a tracker that has no Rich
+        progress; in that case it's a no-op so workers don't need to branch.
+        """
+        if self._progress is None:
+            return
+        with self._lock:
+            task_id = self._task_ids.get(id(node))
+            base = self._base_labels.get(id(node))
+            if task_id is None or base is None:
+                return
+            description = f"[{_core.COL_CYAN}]{base}[/{_core.COL_CYAN}] [dim]\u2192 {sub_label}[/dim]"
+            self._progress.update(task_id, description=description)
 
     def on_complete(self, result: Any) -> None:
         if self._progress is not None:
             with self._lock:
                 task_id = self._task_ids.pop(id(result.node), None)
                 self._in_progress_labels.pop(id(result.node), None)
+                self._base_labels.pop(id(result.node), None)
                 if task_id is not None:
                     self._progress.remove_task(task_id)
         show_script_result(result)

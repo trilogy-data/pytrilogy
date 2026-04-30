@@ -1,10 +1,11 @@
 """Common helper functions used across all CLI commands."""
 
 import traceback
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path as PathlibPath
-from typing import Any, Iterable, Sequence, Union
+from typing import Any, Callable, Iterable, Sequence, Union
 
 from click.exceptions import Exit
 
@@ -446,6 +447,32 @@ def create_executor_for_script(
     )
 
 
+_PROGRESS_LABEL_CALLBACK: "ContextVar[Callable[[str], None] | None]" = ContextVar(
+    "_PROGRESS_LABEL_CALLBACK", default=None
+)
+
+
+def set_progress_label_callback(cb: "Callable[[str], None] | None") -> Any:
+    """Register a thread-local callback that receives the current validation
+    target label. Used by parallel mode to surface per-script progress in the
+    shared progress tracker. Returns the previous value as a Token for reset.
+    """
+    return _PROGRESS_LABEL_CALLBACK.set(cb)
+
+
+def reset_progress_label_callback(token: Any) -> None:
+    _PROGRESS_LABEL_CALLBACK.reset(token)
+
+
+def _emit_progress_label(label: str) -> None:
+    cb = _PROGRESS_LABEL_CALLBACK.get()
+    if cb is not None:
+        try:
+            cb(label)
+        except Exception:
+            pass
+
+
 def validate_environment(
     executor: Executor, mock: bool = False, quiet: bool = False
 ) -> None:
@@ -459,7 +486,19 @@ def validate_environment(
     Raises:
         Exit: If validation fails
     """
-    datasources = executor.environment.datasources.keys()
+    from trilogy.core.enums import ValidationScope
+    from trilogy.core.validation.environment import (
+        validate_environment as core_validate_environment,
+    )
+    from trilogy.scripts.display import (
+        ValidationFailure,
+        ValidationProgressContext,
+        show_validation_failures,
+        show_validation_success,
+        show_validation_targets,
+    )
+
+    datasources = list(executor.environment.datasources.keys())
     if not datasources:
         if not quiet:
             message = "unit" if mock else "integration"
@@ -469,14 +508,98 @@ def validate_environment(
     if mock:
         executor.execute_text("mock datasources {};".format(", ".join(datasources)))
 
-    try:
-        executor.execute_text("validate all;")
-    except ModelValidationError as e:
-        if not e.children:
-            print_error(f"Environment validation failed: {e.message}")
-        for idx, child in enumerate(e.children or []):
-            print_error(f"Environment validation error {idx + 1}: {child.message}")
-        raise Exit(1) from e
+    failures: list[ValidationFailure] = []
+
+    if quiet:
+        # Parallel path: collect per-target failures via callback so the
+        # ParallelProgressTracker can surface what's currently being validated.
+
+        def on_target_complete_quiet(kind: str, name: str, results: list[Any]) -> None:
+            _emit_progress_label(name)
+            for r in results:
+                if r.result is not None:
+                    failures.append(
+                        ValidationFailure(
+                            kind=kind, target=name, message=r.result.message
+                        )
+                    )
+
+        try:
+            core_validate_environment(
+                executor.environment,
+                ValidationScope.ALL,
+                None,
+                exec=executor,
+                on_target_complete=on_target_complete_quiet,
+            )
+        except ModelValidationError as e:
+            # Surface synthesis errors that aren't tied to a single target.
+            if not failures:
+                failures.append(
+                    ValidationFailure(kind="environment", target="-", message=e.message)
+                )
+
+        if failures:
+            raise ModelValidationError(_format_failure_summary(failures))
+        return
+
+    # Rich/interactive path: discovery → progress → grouped failures.
+    concept_count = len(executor.environment.concepts)
+    show_validation_targets(datasources, concept_count, mock=mock)
+
+    # Only advance the bar for datasources (slow SQL); update the label for
+    # concepts so users still see live progress without an inflated total.
+    progress_ctx = ValidationProgressContext(len(datasources))
+    start_time = datetime_now_seconds()
+    with progress_ctx:
+
+        def on_target_complete(kind: str, name: str, results: list[Any]) -> None:
+            progress_ctx.set_label(f"{kind} {name}")
+            if kind == "datasource":
+                progress_ctx.advance()
+            for r in results:
+                if r.result is not None:
+                    failures.append(
+                        ValidationFailure(
+                            kind=kind, target=name, message=r.result.message
+                        )
+                    )
+
+        try:
+            core_validate_environment(
+                executor.environment,
+                ValidationScope.ALL,
+                None,
+                exec=executor,
+                on_target_complete=on_target_complete,
+            )
+        except ModelValidationError as e:
+            if not failures:
+                failures.append(
+                    ValidationFailure(kind="environment", target="-", message=e.message)
+                )
+
+    if failures:
+        show_validation_failures(failures)
+        raise Exit(1) from ModelValidationError(_format_failure_summary(failures))
+
+    duration = datetime_now_seconds() - start_time
+    show_validation_success(
+        mock=mock,
+        datasource_count=len(datasources),
+        duration_seconds=duration,
+    )
+
+
+def _format_failure_summary(failures: "list[Any]") -> str:
+    return "\n".join(f"[{f.kind}] {f.target}: {f.message}" for f in failures)
+
+
+def datetime_now_seconds() -> float:
+    """Wall-clock seconds; isolated so tests can monkeypatch easily."""
+    from datetime import datetime
+
+    return datetime.now().timestamp()
 
 
 def handle_execution_exception(e: Exception, debug: bool = False) -> None:
