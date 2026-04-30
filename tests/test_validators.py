@@ -418,6 +418,59 @@ def test_multi_datasource_aggregate_count_totals_mismatch():
     )
 
 
+def test_concept_nullable_propagates_to_column_binding():
+    """A concept declared nullable (`property x type?`) should accept NULLs in
+    every datasource binding without requiring an explicit column-level `?`
+    marker."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.dep_time datetime?;
+
+        datasource flight (
+            id: id,
+            dep_time: dep_time,
+        )
+        grain (id)
+        query '''
+        SELECT 1 AS id, TIMESTAMP '2024-01-01 10:00:00' AS dep_time UNION ALL
+        SELECT 2, NULL
+        ''';
+        """)
+
+    validate_environment(executor.environment, exec=executor)
+
+
+def test_non_nullable_concept_still_flags_unexpected_nulls():
+    """If neither the concept nor the column binding is marked nullable, NULL
+    values in the data should still trigger a type-mismatch error."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.tail_num string;
+
+        datasource flight (
+            id: id,
+            tail_num: ~tail_num,
+        )
+        grain (id)
+        query '''
+        SELECT 1 AS id, 'N1' AS tail_num UNION ALL
+        SELECT 2, NULL
+        ''';
+        """)
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(executor.environment, exec=executor)
+
+    assert any(
+        isinstance(child, DatasourceColumnBindingError)
+        and "tail_num" in child.message
+        and "STRING(NULLABLE)" in child.message
+        for child in exc_info.value.children or []
+    )
+
+
 def test_multi_datasource_count_distinct_metric_is_skipped():
     """COUNT_DISTINCT-derived metrics can't be cross-validated by SUM totals
     (the values aren't additive), so the validator should skip them rather

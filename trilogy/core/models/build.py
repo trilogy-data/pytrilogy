@@ -2200,6 +2200,13 @@ class Factory:
             return None
         fetched = self._build_concept(concept).with_grain(self.build_grain)
 
+        # A concept declared nullable (`property x type?`) implicitly makes every
+        # binding to it nullable too — column-level NULLABLE is only needed to
+        # mark a non-nullable concept as having nulls in a specific source.
+        modifiers = set(base.modifiers)
+        if Modifier.NULLABLE in concept.modifiers:
+            modifiers.add(Modifier.NULLABLE)
+
         return BuildColumnAssignment(
             alias=(
                 self._build_function(base.alias)
@@ -2207,7 +2214,7 @@ class Factory:
                 else base.alias
             ),
             concept=fetched,
-            modifiers=set(base.modifiers),
+            modifiers=modifiers,
         )
 
     @build.register

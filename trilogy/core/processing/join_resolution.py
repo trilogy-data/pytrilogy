@@ -64,6 +64,17 @@ def get_join_type(
         key in nullables.get(right, []) for key in all_connecting_keys
     )
 
+    # Asymmetric nullability: with null-aware comparison NULL only matches NULL,
+    # so the non-nullable side has nothing the nullable side's NULLs can join
+    # to. An OUTER preserving the non-nullable side would silently drop those
+    # NULL rows. Switch to the OUTER that preserves the nullable side instead,
+    # escalating to FULL when the other side also carries unique (partial)
+    # values that would otherwise be lost.
+    if right_is_nullable and not left_is_nullable:
+        return JoinType.FULL if left_is_partial else JoinType.RIGHT_OUTER
+    if left_is_nullable and not right_is_nullable:
+        return JoinType.FULL if right_is_partial else JoinType.LEFT_OUTER
+
     left_complete = not left_is_partial and not left_is_nullable
     right_complete = not right_is_partial and not right_is_nullable
 
