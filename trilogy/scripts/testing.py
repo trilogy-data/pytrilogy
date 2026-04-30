@@ -309,6 +309,12 @@ def integration(
 @option(
     "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
+@option(
+    "--env",
+    "-e",
+    multiple=True,
+    help="Set env vars as KEY=VALUE or pass an env file path",
+)
 @pass_context
 def unit(
     ctx,
@@ -316,6 +322,7 @@ def unit(
     param,
     parallelism: int | None,
     config,
+    env,
 ):
     """Run unit tests on Trilogy scripts with mocked datasources."""
     # Build CLI runtime params (unit tests always use DuckDB)
@@ -329,6 +336,7 @@ def unit(
         debug_file=ctx.obj.get("DEBUG_FILE"),
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
+        env=env,
     )
 
     try:
