@@ -1,5 +1,5 @@
 query_id = "20"
-gen_length = 1946
+gen_length = 2025
 generated_sql = """
 
 WITH 
@@ -36,16 +36,16 @@ SELECT
     \"cheerful\".\"cs_item_name\" as \"cs_item_name\",
     \"cheerful\".\"cs_item_desc\" as \"cs_item_desc\",
     \"cheerful\".\"cs_item_category\" as \"cs_item_category\",
-    \"cheerful\".\"cs_item_class\" as \"cs_item_class\",
+    coalesce(\"cheerful\".\"cs_item_class\",\"cooperative\".\"cs_item_class\") as \"cs_item_class\",
     \"cheerful\".\"cs_item_current_price\" as \"cs_item_current_price\",
     \"cheerful\".\"revenue\" as \"revenue\",
     ( \"cheerful\".\"revenue\" * 100.0 ) / (\"cooperative\".\"_virt_agg_sum_9832457364876792\") as \"revenue_ratio\"
 FROM
     \"cooperative\"
-    INNER JOIN \"cheerful\" on \"cooperative\".\"cs_item_class\" is not distinct from \"cheerful\".\"cs_item_class\"
+    FULL JOIN \"cheerful\" on \"cooperative\".\"cs_item_class\" is not distinct from \"cheerful\".\"cs_item_class\"
 ORDER BY 
     \"cheerful\".\"cs_item_category\" asc nulls first,
-    \"cheerful\".\"cs_item_class\" asc nulls first,
+    coalesce(\"cheerful\".\"cs_item_class\",\"cooperative\".\"cs_item_class\") asc nulls first,
     \"cheerful\".\"cs_item_name\" asc nulls first,
     \"cheerful\".\"cs_item_desc\" asc nulls first,
     \"revenue_ratio\" asc nulls first

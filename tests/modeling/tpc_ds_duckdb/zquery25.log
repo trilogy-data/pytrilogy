@@ -1,5 +1,5 @@
 query_id = "25"
-gen_length = 7217
+gen_length = 7594
 generated_sql = """
 
 WITH 
@@ -100,19 +100,19 @@ GROUP BY
     3,
     4)
 SELECT
-    \"juicy\".\"store_sales_item_name\" as \"store_sales_item_name\",
-    \"juicy\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"juicy\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    \"juicy\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    coalesce(\"concerned\".\"store_sales_item_name\",\"juicy\".\"store_sales_item_name\") as \"store_sales_item_name\",
+    coalesce(\"concerned\".\"store_sales_item_desc\",\"juicy\".\"store_sales_item_desc\") as \"store_sales_item_desc\",
+    coalesce(\"concerned\".\"store_sales_store_text_id\",\"juicy\".\"store_sales_store_text_id\") as \"store_sales_store_text_id\",
+    coalesce(\"concerned\".\"store_sales_store_name\",\"juicy\".\"store_sales_store_name\") as \"store_sales_store_name\",
     \"juicy\".\"store_sales_profit\" as \"store_sales_profit\",
     \"juicy\".\"store_returns_loss\" as \"store_returns_loss\",
     \"concerned\".\"catalog_sales_profit\" as \"catalog_sales_profit\"
 FROM
     \"juicy\"
-    INNER JOIN \"concerned\" on \"juicy\".\"store_sales_item_desc\" is not distinct from \"concerned\".\"store_sales_item_desc\" AND \"juicy\".\"store_sales_item_name\" = \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_name\" = \"concerned\".\"store_sales_store_name\" AND \"juicy\".\"store_sales_store_text_id\" = \"concerned\".\"store_sales_store_text_id\"
+    FULL JOIN \"concerned\" on \"juicy\".\"store_sales_item_desc\" is not distinct from \"concerned\".\"store_sales_item_desc\" AND \"juicy\".\"store_sales_item_name\" = \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_name\" = \"concerned\".\"store_sales_store_name\" AND \"juicy\".\"store_sales_store_text_id\" = \"concerned\".\"store_sales_store_text_id\"
 ORDER BY 
-    \"juicy\".\"store_sales_item_name\" asc,
-    \"juicy\".\"store_sales_item_desc\" asc,
-    \"juicy\".\"store_sales_store_text_id\" asc,
-    \"juicy\".\"store_sales_store_name\" asc
+    coalesce(\"concerned\".\"store_sales_item_name\",\"juicy\".\"store_sales_item_name\") asc,
+    coalesce(\"concerned\".\"store_sales_item_desc\",\"juicy\".\"store_sales_item_desc\") asc,
+    coalesce(\"concerned\".\"store_sales_store_text_id\",\"juicy\".\"store_sales_store_text_id\") asc,
+    coalesce(\"concerned\".\"store_sales_store_name\",\"juicy\".\"store_sales_store_name\") asc
 LIMIT (100)"""

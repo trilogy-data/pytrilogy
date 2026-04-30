@@ -236,11 +236,14 @@ address baz;
         (True, False, False, False, JoinType.RIGHT_OUTER),
         (False, True, False, False, JoinType.RIGHT_OUTER),
         (False, False, True, False, JoinType.LEFT_OUTER),
-        (False, False, False, True, JoinType.LEFT_OUTER),
+        # right is nullable, left is not — LEFT_OUTER would drop right's NULL
+        # rows since the non-nullable left has nothing to match them. Upgrade
+        # to FULL.
+        (False, False, False, True, JoinType.FULL),
         (True, False, True, False, JoinType.FULL),
         (False, True, False, True, JoinType.FULL),
         (True, True, False, False, JoinType.RIGHT_OUTER),
-        (False, False, True, True, JoinType.LEFT_OUTER),
+        (False, False, True, True, JoinType.FULL),
         (True, True, True, True, JoinType.FULL),
     ],
 )

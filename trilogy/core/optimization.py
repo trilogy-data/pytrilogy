@@ -6,6 +6,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
     CollapseSingleParent,
+    DowngradeFullJoinOnGuards,
     HideUnusedConcepts,
     InlineDatasource,
     MergeIrrelevantGroupBy,
@@ -242,6 +243,9 @@ def optimize_ctes(
         REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdownRemove())
+    if CONFIG.optimizations.downgrade_full_join:
+        # runs after pushdown so guards moved into the joining CTE are visible
+        REGISTERED_RULES.append(DowngradeFullJoinOnGuards())
     if CONFIG.optimizations.hide_unused_concepts:
         REGISTERED_RULES.append(HideUnusedConcepts())
 

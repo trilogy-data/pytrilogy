@@ -19,10 +19,15 @@ def validate_multi_datasource_concept(
     exec: Executor | None = None,
 ):
     """For any concept bound to multiple datasources with complete bindings,
-    verify the distinct cardinality matches across sources — any datasource
-    with fewer distinct values than the max should have been marked partial."""
+    compare a grain-check value across sources (distinct cardinality for plain
+    columns, SUM total for additive aggregate metrics) — any datasource below
+    the max should have been marked partial."""
     results: list[ValidationTest] = []
     seen: dict[str, int] = {}
+
+    grain_check_address = f"grain_check_{concept.safe_address}"
+    if build_env.concepts.get(grain_check_address) is None:
+        return results
 
     count = 0
     for datasource in build_env.datasources.values():
@@ -40,7 +45,7 @@ def validate_multi_datasource_concept(
                 continue
             type_query = easy_query(
                 concepts=[
-                    build_env.concepts[f"grain_check_{concept.safe_address}"],
+                    build_env.concepts[grain_check_address],
                 ],
                 datasource=datasource,
                 env=env,
@@ -85,7 +90,7 @@ def validate_multi_datasource_concept(
                             actual_modifiers=concept.modifiers,
                         )
                     ],
-                    message=f"Concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial.",
+                    message=f"Concept {concept.address} is missing values in datasource {datasource.name} (max grain check value {max_seen}, datasource value {seen[datasource.name]}) but is not marked as partial.",
                 )
             results.append(
                 ValidationTest(

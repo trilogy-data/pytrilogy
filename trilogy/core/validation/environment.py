@@ -2,14 +2,34 @@ from contextlib import nullcontext
 
 from trilogy import Environment, Executor
 from trilogy.authoring import DataType, Function
-from trilogy.core.enums import FunctionType, Purpose, ValidationScope
+from trilogy.core.enums import FunctionClass, FunctionType, Purpose, ValidationScope
 from trilogy.core.exceptions import (
     ModelValidationError,
 )
+from trilogy.core.models.author import AggregateWrapper, Concept
 from trilogy.core.validation.common import ValidationTest
 from trilogy.core.validation.concept import validate_concept
 from trilogy.core.validation.datasource import validate_datasource
 from trilogy.parsing.common import function_to_concept
+
+_SUMMABLE_AGGREGATES = {FunctionType.SUM, FunctionType.COUNT}
+
+
+def _grain_check_operator(concept: Concept) -> FunctionType | None:
+    """Pick the operator used to compare a concept's values across datasources.
+    Returns None when the concept can't be cross-validated this way (e.g. AVG,
+    MIN, MAX, COUNT_DISTINCT — values aren't additive across grains)."""
+    lineage = concept.lineage
+    op: FunctionType | None = None
+    if isinstance(lineage, Function):
+        op = lineage.operator
+    elif isinstance(lineage, AggregateWrapper):
+        op = lineage.function.operator
+    if op is None or op not in FunctionClass.AGGREGATE_FUNCTIONS.value:
+        return FunctionType.COUNT_DISTINCT
+    if op in _SUMMABLE_AGGREGATES:
+        return FunctionType.SUM
+    return None
 
 
 def validate_environment(
@@ -35,9 +55,12 @@ def validate_environment(
     env.add_concept(grain_check)
     new_concepts = []
     for concept in env.concepts.values():
+        operator = _grain_check_operator(concept)
+        if operator is None:
+            continue
         concept_grain_check = function_to_concept(
             parent=Function(
-                operator=FunctionType.COUNT_DISTINCT,
+                operator=operator,
                 arguments=[concept.reference],
                 output_datatype=DataType.INTEGER,
                 output_purpose=Purpose.METRIC,

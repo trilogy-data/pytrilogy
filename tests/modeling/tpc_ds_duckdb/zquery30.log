@@ -1,5 +1,5 @@
 query_id = "30"
-gen_length = 8059
+gen_length = 8278
 generated_sql = """
 
 WITH 
@@ -86,19 +86,19 @@ SELECT
     \"cooperative\".\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
     \"cooperative\".\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
     \"cooperative\".\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
-    \"cooperative\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
     \"cooperative\".\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
     \"cooperative\".\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
     \"cooperative\".\"web_returns_customer_login\" as \"web_returns_customer_login\",
     \"cooperative\".\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
     \"cooperative\".\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
     \"cooperative\".\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
-    \"cooperative\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
+    coalesce(\"abundant\".\"web_returns_customer_id\",\"cooperative\".\"web_returns_customer_id\") as \"web_returns_customer_id\",
+    coalesce(\"abundant\".\"web_returns_return_address_state\",\"cooperative\".\"web_returns_return_address_state\") as \"web_returns_return_address_state\"
 FROM
     \"cooperative\"
-    INNER JOIN \"abundant\" on \"cooperative\".\"web_returns_customer_id\" = \"abundant\".\"web_returns_customer_id\" AND \"cooperative\".\"web_returns_return_address_state\" is not distinct from \"abundant\".\"web_returns_return_address_state\"
+    LEFT OUTER JOIN \"abundant\" on \"cooperative\".\"web_returns_customer_id\" = \"abundant\".\"web_returns_customer_id\" AND \"cooperative\".\"web_returns_return_address_state\" is not distinct from \"abundant\".\"web_returns_return_address_state\"
 WHERE
-    \"cooperative\".\"web_returns_customer_address_state\" = 'GA' and \"cooperative\".\"web_returns_return_address_state\" is not null
+    \"cooperative\".\"web_returns_customer_address_state\" = 'GA' and coalesce(\"abundant\".\"web_returns_return_address_state\",\"cooperative\".\"web_returns_return_address_state\") is not null
 )
 SELECT
     \"juicy\".\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
@@ -118,7 +118,7 @@ FROM
     \"juicy\"
     INNER JOIN \"vacuous\" on \"juicy\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
 WHERE
-    \"juicy\".\"customer_state_returns_2002\" > 1.2 * \"vacuous\".\"_virt_agg_avg_3885168128306444\" and \"juicy\".\"web_returns_customer_address_state\" = 'GA' and \"juicy\".\"web_returns_return_address_state\" is not null
+    \"juicy\".\"customer_state_returns_2002\" > 1.2 * \"vacuous\".\"_virt_agg_avg_3885168128306444\" and \"juicy\".\"web_returns_customer_address_state\" = 'GA' and coalesce(\"juicy\".\"web_returns_return_address_state\",\"vacuous\".\"web_returns_return_address_state\") is not null
 
 GROUP BY
     1,
