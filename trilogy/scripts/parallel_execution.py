@@ -735,12 +735,25 @@ def run_parallel_execution(
     if execution_fn is None:
         raise ValueError("execution_fn is required for parallel execution")
 
-    # Wrap execution_fn to pass quiet=True for parallel execution and return stats
-    def quiet_execution_fn(exec: Executor, node: Any) -> ExecutionStats | None:
-        return execution_fn(exec, node, True)
-
     # Run parallel execution with live spinner per in-progress node
     tracker = ParallelProgressTracker()
+
+    # Wrap execution_fn to pass quiet=True and route per-target progress
+    # updates back to this node's tracker task description (e.g. validation).
+    def quiet_execution_fn(exec: Executor, node: Any) -> ExecutionStats | None:
+        from trilogy.scripts.common import (
+            reset_progress_label_callback,
+            set_progress_label_callback,
+        )
+
+        token = set_progress_label_callback(
+            lambda lbl: tracker.update_node_label(node, lbl)
+        )
+        try:
+            return execution_fn(exec, node, True)
+        finally:
+            reset_progress_label_callback(token)
+
     with tracker:
         summary = parallel_exec.execute(
             root=pathlib_input,

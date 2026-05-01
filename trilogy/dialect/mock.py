@@ -4,7 +4,13 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, ConceptRef
-from trilogy.core.models.core import CONCRETE_TYPES, ArrayType, DataType, TraitDataType
+from trilogy.core.models.core import (
+    CONCRETE_TYPES,
+    ArrayType,
+    DataType,
+    EnumType,
+    TraitDataType,
+)
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import ProcessedMockStatement
@@ -42,6 +48,15 @@ def mock_hex_code(scale_factor: int, is_key: bool = False) -> list[str]:
 def mock_datatype(
     full_type: Any, datatype: CONCRETE_TYPES, scale_factor: int, is_key: bool = False
 ) -> list[Any]:
+    if isinstance(full_type, EnumType):
+        values = list(full_type.values)
+        if not values:
+            raise ValueError(f"Enum {full_type} has no values to mock")
+        if is_key:
+            # Cycle through the enum so each row gets a deterministic, valid value.
+            # Strict uniqueness isn't possible when scale_factor > len(values).
+            return [values[i % len(values)] for i in range(scale_factor)]
+        return [random.choice(values) for _ in range(scale_factor)]
     if isinstance(full_type, TraitDataType):
         if full_type.type == DataType.STRING:
             # TODO: get stdlib inventory some other way?
@@ -125,16 +140,23 @@ class MockManager:
         self.environment = environment
         self.concept_mocks: dict[str, Any] = {}
         self.scale_factor = scale_factor
+        # Concepts that must be unique-per-row to satisfy any datasource grain.
+        # Without this, an aggregate datasource grained on a non-KEY concept
+        # (e.g. a date) gets duplicate rows and fails grain validation.
+        self.key_addresses: set[str] = {
+            addr for addr, c in environment.concepts.items() if c.purpose == Purpose.KEY
+        }
+        for ds in environment.datasources.values():
+            self.key_addresses.update(ds.grain.components)
 
     def mock_concept(self, concept: Concept | ConceptRef):
         if concept.address in self.concept_mocks:
             return False
-        concrete = self.environment.concepts[concept.address]
         self.concept_mocks[concept.address] = mock_datatype(
             concept.datatype,
             concept.output_datatype,
             self.scale_factor,
-            True if concrete.purpose == Purpose.KEY else False,
+            concept.address in self.key_addresses,
         )
         return True
 
