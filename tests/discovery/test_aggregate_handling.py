@@ -350,3 +350,132 @@ WHERE
 """)[-1]
 
     assert "flight_count_by_source_dest_date" not in generated, generated
+
+
+GRAND_TOTAL_AGG_SETUP = """
+key id int;
+key carrier_code string;
+property carrier_code.carrier_name string;
+
+auto flight_count <- count(id);
+
+datasource flight (
+    id:id,
+    carrier_code:carrier_code,
+)
+grain (id)
+query '''
+select 1 as id, 'AA' as carrier_code
+union all select 2, 'AA'
+union all select 3, 'UA'
+''';
+
+datasource carrier (
+    carrier_code:carrier_code,
+    carrier_name:carrier_name,
+)
+grain (carrier_code)
+query '''
+select 'AA' as carrier_code, 'American' as carrier_name
+union all select 'UA', 'United'
+''';
+
+datasource flight_count_total (
+    flight_count:flight_count,
+)
+query '''
+select 3 as flight_count
+''';
+"""
+
+
+def test_combine_grand_total_with_joined_namespace_count():
+    """Bug 1 regression: a count over the local key (served by a precomputed
+    grand-total datasource) combined in one SELECT with a count over a joined
+    namespace property must resolve. Previously the resolver pruned every
+    aggregate datasource because `with_materialized_source` strips lineage,
+    so signature-based matching failed."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(GRAND_TOTAL_AGG_SETUP)
+
+    generated = exec.generate_sql("""
+SELECT
+    flight_count,
+    count(carrier_name) as named_carriers
+;
+""")[-1]
+
+    # Both aggregates must be present in the same SQL
+    assert "flight_count" in generated, generated
+    assert "named_carriers" in generated, generated
+    # The grand-total source should be picked for flight_count rather than
+    # recomputing count(id) over the raw flight rows.
+    assert "flight_count_total" in generated, generated
+
+    results = exec.execute_text("""
+SELECT
+    flight_count,
+    count(carrier_name) as named_carriers
+;
+""")[-1].fetchall()
+
+    assert len(results) == 1, results
+    assert results[0].flight_count == 3, results[0]
+    assert results[0].named_carriers == 2, results[0]
+
+
+JOINED_PROPERTY_WITH_AGG_SETUP = """
+key launch_tag string;
+key site_key string;
+property site_key.lat float?;
+property site_key.lon float?;
+
+auto launch_count <- count(launch_tag);
+
+datasource launch_info (
+    launch_tag:launch_tag,
+    site_key:~?site_key,
+)
+grain (launch_tag)
+query '''
+select '2024-001' as launch_tag, 'KSC' as site_key
+union all select '2024-002', 'KSC'
+union all select '2024-003', 'BAIK'
+union all select '2024-004', null
+''';
+
+datasource launch_sites (
+    site_key:site_key,
+    lat:?lat,
+    lon:?lon,
+)
+grain (site_key)
+query '''
+select 'KSC' as site_key, 28.5 as lat, -80.6 as lon
+union all select 'BAIK', 45.9, 63.3
+''';
+"""
+
+
+def test_joined_property_combined_with_aggregate_over_key():
+    """Bug 2 regression: when basic_node extends a GroupNode with a derived
+    output (e.g. an alias of a join key's property) and group_if_required_v2
+    wraps it in another GroupNode, the wrapper used to clear the source map
+    of every aggregate output — including ones already provided by the inner
+    node. Rendering then fell back to the lineage and emitted an
+    INVALID_REFERENCE_BUG placeholder for the aggregate's argument."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(JOINED_PROPERTY_WITH_AGG_SETUP)
+
+    # Aliasing the joined-namespace property is what triggers basic_node to
+    # wrap the inner GroupNode and surface the bug.
+    generated = exec.generate_sql("""
+SELECT
+    lat as my_lat,
+    lon as my_lon,
+    launch_count
+;
+""")[-1]
+
+    assert "INVALID_REFERENCE_BUG" not in generated, generated
+    assert "launch_count" in generated, generated

@@ -125,11 +125,15 @@ class GroupNode(StrategyNode):
         input_addresses = {c.address for c in self.input_concepts}
         for concept in self.output_concepts:
             if concept.is_aggregate and concept.address not in rollup_addresses:
-                if (
-                    source_type == SourceType.GROUP
-                    or concept.address not in input_addresses
-                ):
-                    source_map[concept.address] = set()
+                # An aggregate that arrives via input_concepts is being
+                # passed through from an upstream node (e.g. a wrapper
+                # GroupNode added by group_if_required_v2 over a node that
+                # already aggregated). Keep its parent source so we project
+                # the precomputed value instead of re-rendering the lineage
+                # against inputs that may no longer be available.
+                if concept.address in input_addresses:
+                    continue
+                source_map[concept.address] = set()
         nullable_addresses = find_nullable_concepts(
             source_map=source_map, joins=[], datasources=parent_sources
         )
