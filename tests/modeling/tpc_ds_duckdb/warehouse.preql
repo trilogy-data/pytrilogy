@@ -4,6 +4,11 @@ properties id (
     string_id string,
     name string,
     square_feet int,
+    state string?,
+    city string?,
+    county string?,
+    zip string?,
+    country string?,
 );
 
 
@@ -12,7 +17,11 @@ datasource warehouse (
     w_warehouse_id: string_id,
     w_warehouse_name: ?name,
     w_warehouse_sq_ft: square_feet,
-
+    w_state: state,
+    w_city: city,
+    w_county: county,
+    w_zip: zip,
+    w_country: country,
     )
 grain (id)
 address memory.warehouse

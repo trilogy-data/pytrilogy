@@ -1,0 +1,41 @@
+import unified_sales as sales;
+
+const first_year <- 2001;
+const second_year <- 2002;
+
+auto store_first_year <- sum(
+    sales.ext_list_price - sales.ext_discount_amount
+    ? sales.sales_channel = 'STORE' and sales.date.year = first_year
+) by sales.customer.id;
+
+auto store_second_year <- sum(
+    sales.ext_list_price - sales.ext_discount_amount
+    ? sales.sales_channel = 'STORE' and sales.date.year = second_year
+) by sales.customer.id;
+
+auto web_first_year <- sum(
+    sales.ext_list_price - sales.ext_discount_amount
+    ? sales.sales_channel = 'WEB' and sales.date.year = first_year
+) by sales.customer.id;
+
+auto web_second_year <- sum(
+    sales.ext_list_price - sales.ext_discount_amount
+    ? sales.sales_channel = 'WEB' and sales.date.year = second_year
+) by sales.customer.id;
+
+where sales.sales_channel in ('STORE', 'WEB')
+    and store_first_year > 0
+    and web_first_year > 0
+    and (case when web_first_year > 0 then (web_second_year * 1.0000) / web_first_year else 0.0 end)
+        > (case when store_first_year > 0 then (store_second_year * 1.0000) / store_first_year else 0.0 end)
+SELECT
+    sales.customer.text_id,
+    sales.customer.first_name,
+    sales.customer.last_name,
+    sales.customer.preferred_cust_flag
+ORDER BY
+    sales.customer.text_id asc nulls first,
+    sales.customer.first_name asc nulls first,
+    sales.customer.last_name asc nulls first,
+    sales.customer.preferred_cust_flag asc nulls first
+LIMIT 100;

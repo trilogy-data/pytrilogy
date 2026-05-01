@@ -28,9 +28,7 @@ if not environ.get("TCL_LIBRARY"):
         pass
 
 
-def plot_perf(
-    frame: pd.DataFrame, title: str, out_path: Path, show: bool
-) -> None:
+def plot_perf(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> None:
     if frame.empty:
         return
     fig, ax = plt.subplots()

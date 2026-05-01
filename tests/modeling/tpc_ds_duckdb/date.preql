@@ -7,9 +7,12 @@ properties id (
     _year_string string,
     year int,
     day_of_week int,
+    day_of_month int?,
+    day_name string?,
     week_seq int,
     month_of_year int,
     quarter int,
+    quarter_name string?,
     d_week_seq1 int,
     month_seq int,
 );
@@ -21,10 +24,13 @@ datasource date (
     D_DATE: _date_string,
     cast(_date_string as date): date,
     D_DOW: day_of_week,
+    D_DOM: day_of_month,
+    D_DAY_NAME: day_name,
     D_WEEK_SEQ: week_seq,
     D_MOY: month_of_year,
     D_MONTH_SEQ: month_seq,
     D_QOY: quarter,
+    D_QUARTER_NAME: quarter_name,
     D_YEAR: _year_string,
     cast(_year_string as int): year
 )

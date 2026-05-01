@@ -217,14 +217,29 @@ def test_eight(engine):
     assert len(query) < 3800, query
 
 
+def test_nine(engine):
+    query = run_query(engine, 9)
+    assert len(query) < 8000, query
+
+
 def test_ten(engine):
     query = run_query(engine, 10)
     assert len(query) < 6500, query
 
 
+def test_eleven(engine):
+    query = run_query(engine, 11)
+    assert len(query) < 12000, query
+
+
 def test_twelve(engine):
     query = run_query(engine, 12)
     assert len(query) <= 3200, query
+
+
+def test_thirteen(engine):
+    query = run_query(engine, 13)
+    assert len(query) < 5500, query
 
 
 def test_fifteen(engine):
@@ -236,6 +251,21 @@ def test_sixteen(engine):
     query = run_query(engine, 16)
     # size gating
     assert len(query) < 5500, query
+
+
+def test_nineteen(engine):
+    query = run_query(engine, 19, sql_override=True)
+    assert len(query) < 4000, query
+
+
+@pytest.mark.skip(
+    reason="Framework: trilogy lacks a built-in stddev_samp aggregate. "
+    "Q17/29 reference stddev for sales/returns quantity. Add stddev "
+    "function to the standard library to enable."
+)
+def test_seventeen(engine):
+    query = run_query(engine, 17, sql_override=True)
+    assert len(query) < 12000, query
 
 
 def test_twenty(engine):
@@ -266,8 +296,18 @@ def test_twenty_five(engine):
     assert len(query) < 8500, query
 
 
+def test_forty(engine):
+    query = run_query(engine, 40, sql_override=True)
+    assert len(query) < 8000, query
+
+
 def test_forty_two(engine):
     _ = run_query(engine, 42)
+
+
+def test_forty_three(engine):
+    query = run_query(engine, 43)
+    assert len(query) < 5000, query
 
 
 @pytest.mark.skip(reason="Still cooking")
@@ -287,23 +327,43 @@ def test_thirty(engine):
     assert len(query) < 12000, query
 
 
+def test_thirty_four(engine):
+    query = run_query(engine, 34, sql_override=True)
+    assert len(query) < 5500, query
+
+
 def test_thirty_two(engine):
     query = run_query(engine, 32)
     # size gating
     assert len(query) < 12640, query
 
 
+def test_fifty_two(engine):
+    query = run_query(engine, 52)
+    assert len(query) < 2000, query
+
+
 def test_fifty_five(engine):
     _ = run_query(engine, 55)
 
 
-# def test_fifty_six(engine):
-#     _ = run_query(engine, 56)
+def test_fifty_six(engine):
+    _ = run_query(engine, 56, sql_override=True)
+
+
+def test_eighty_two(engine):
+    query = run_query(engine, 82, sql_override=True)
+    assert len(query) < 4000, query
 
 
 def test_ninety_five(engine):
     query = run_query(engine, 95)
     assert len(query) < 6000, query
+
+
+def test_ninety_six(engine):
+    query = run_query(engine, 96)
+    assert len(query) < 3000, query
 
 
 def test_ninety_seven(engine):

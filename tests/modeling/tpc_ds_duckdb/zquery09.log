@@ -1,0 +1,160 @@
+query_id = "09"
+gen_length = 6951
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"store_sales_store_sales\".\"SS_QUANTITY\" as \"store_sales_quantity\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+GROUP BY
+    1,
+    2),
+highfalutin as (
+SELECT
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 1 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 20 THEN \"store_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\" ELSE NULL END) as \"_virt_agg_avg_999085938081144\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 1 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 20 THEN \"store_sales_store_sales\".\"SS_NET_PAID\" ELSE NULL END) as \"_virt_agg_avg_6886112470240420\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 21 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 40 THEN \"store_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\" ELSE NULL END) as \"_virt_agg_avg_7183307366175567\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 21 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 40 THEN \"store_sales_store_sales\".\"SS_NET_PAID\" ELSE NULL END) as \"_virt_agg_avg_2005789400778226\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 41 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 60 THEN \"store_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\" ELSE NULL END) as \"_virt_agg_avg_6319661749502419\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 41 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 60 THEN \"store_sales_store_sales\".\"SS_NET_PAID\" ELSE NULL END) as \"_virt_agg_avg_1418168185145083\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 61 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 80 THEN \"store_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\" ELSE NULL END) as \"_virt_agg_avg_7169933557674364\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 61 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 80 THEN \"store_sales_store_sales\".\"SS_NET_PAID\" ELSE NULL END) as \"_virt_agg_avg_8557396182983031\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 81 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 100 THEN \"store_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\" ELSE NULL END) as \"_virt_agg_avg_1823578819133553\",
+    avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 81 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 100 THEN \"store_sales_store_sales\".\"SS_NET_PAID\" ELSE NULL END) as \"_virt_agg_avg_326576982883139\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"),
+thoughtful as (
+SELECT
+    \"cheerful\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    CASE WHEN \"cheerful\".\"store_sales_quantity\" >= 1 and \"cheerful\".\"store_sales_quantity\" <= 20 THEN \"cheerful\".\"store_sales_ticket_number\" ELSE NULL END as \"_virt_filter_ticket_number_6978698461630364\",
+    CASE WHEN \"cheerful\".\"store_sales_quantity\" >= 21 and \"cheerful\".\"store_sales_quantity\" <= 40 THEN \"cheerful\".\"store_sales_ticket_number\" ELSE NULL END as \"_virt_filter_ticket_number_4059273319135222\",
+    CASE WHEN \"cheerful\".\"store_sales_quantity\" >= 41 and \"cheerful\".\"store_sales_quantity\" <= 60 THEN \"cheerful\".\"store_sales_ticket_number\" ELSE NULL END as \"_virt_filter_ticket_number_970001439925496\",
+    CASE WHEN \"cheerful\".\"store_sales_quantity\" >= 61 and \"cheerful\".\"store_sales_quantity\" <= 80 THEN \"cheerful\".\"store_sales_ticket_number\" ELSE NULL END as \"_virt_filter_ticket_number_1971579111605167\",
+    CASE WHEN \"cheerful\".\"store_sales_quantity\" >= 81 and \"cheerful\".\"store_sales_quantity\" <= 100 THEN \"cheerful\".\"store_sales_ticket_number\" ELSE NULL END as \"_virt_filter_ticket_number_6619561873913068\"
+FROM
+    \"cheerful\"),
+late as (
+SELECT
+    \"thoughtful\".\"_virt_filter_ticket_number_970001439925496\" as \"_virt_filter_ticket_number_970001439925496\"
+FROM
+    \"thoughtful\"
+GROUP BY
+    1,
+    \"thoughtful\".\"store_sales_ticket_number\"),
+sparkling as (
+SELECT
+    \"thoughtful\".\"_virt_filter_ticket_number_6978698461630364\" as \"_virt_filter_ticket_number_6978698461630364\"
+FROM
+    \"thoughtful\"
+GROUP BY
+    1,
+    \"thoughtful\".\"store_sales_ticket_number\"),
+vacuous as (
+SELECT
+    \"thoughtful\".\"_virt_filter_ticket_number_6619561873913068\" as \"_virt_filter_ticket_number_6619561873913068\"
+FROM
+    \"thoughtful\"
+GROUP BY
+    1,
+    \"thoughtful\".\"store_sales_ticket_number\"),
+uneven as (
+SELECT
+    \"thoughtful\".\"_virt_filter_ticket_number_4059273319135222\" as \"_virt_filter_ticket_number_4059273319135222\"
+FROM
+    \"thoughtful\"
+GROUP BY
+    1,
+    \"thoughtful\".\"store_sales_ticket_number\"),
+cooperative as (
+SELECT
+    \"thoughtful\".\"_virt_filter_ticket_number_1971579111605167\" as \"_virt_filter_ticket_number_1971579111605167\"
+FROM
+    \"thoughtful\"
+GROUP BY
+    1,
+    \"thoughtful\".\"store_sales_ticket_number\"),
+macho as (
+SELECT
+    count(\"late\".\"_virt_filter_ticket_number_970001439925496\") as \"count3\"
+FROM
+    \"late\"),
+abhorrent as (
+SELECT
+    count(\"sparkling\".\"_virt_filter_ticket_number_6978698461630364\") as \"count1\"
+FROM
+    \"sparkling\"),
+concerned as (
+SELECT
+    count(\"vacuous\".\"_virt_filter_ticket_number_6619561873913068\") as \"count5\"
+FROM
+    \"vacuous\"),
+yummy as (
+SELECT
+    count(\"uneven\".\"_virt_filter_ticket_number_4059273319135222\") as \"count2\"
+FROM
+    \"uneven\"),
+questionable as (
+SELECT
+    count(\"cooperative\".\"_virt_filter_ticket_number_1971579111605167\") as \"count4\"
+FROM
+    \"cooperative\"),
+scrawny as (
+SELECT
+    CASE
+	WHEN coalesce(\"macho\".\"count3\",0) > 56580 THEN \"highfalutin\".\"_virt_agg_avg_6319661749502419\"
+	ELSE \"highfalutin\".\"_virt_agg_avg_1418168185145083\"
+	END as \"bucket3\"
+FROM
+    \"highfalutin\"
+    FULL JOIN \"macho\" on 1=1),
+sweltering as (
+SELECT
+    CASE
+	WHEN coalesce(\"abhorrent\".\"count1\",0) > 74129 THEN \"highfalutin\".\"_virt_agg_avg_999085938081144\"
+	ELSE \"highfalutin\".\"_virt_agg_avg_6886112470240420\"
+	END as \"bucket1\"
+FROM
+    \"highfalutin\"
+    FULL JOIN \"abhorrent\" on 1=1),
+young as (
+SELECT
+    CASE
+	WHEN coalesce(\"concerned\".\"count5\",0) > 165306 THEN \"highfalutin\".\"_virt_agg_avg_1823578819133553\"
+	ELSE \"highfalutin\".\"_virt_agg_avg_326576982883139\"
+	END as \"bucket5\"
+FROM
+    \"highfalutin\"
+    FULL JOIN \"concerned\" on 1=1),
+juicy as (
+SELECT
+    CASE
+	WHEN coalesce(\"yummy\".\"count2\",0) > 122840 THEN \"highfalutin\".\"_virt_agg_avg_7183307366175567\"
+	ELSE \"highfalutin\".\"_virt_agg_avg_2005789400778226\"
+	END as \"bucket2\"
+FROM
+    \"highfalutin\"
+    FULL JOIN \"yummy\" on 1=1),
+abundant as (
+SELECT
+    CASE
+	WHEN coalesce(\"questionable\".\"count4\",0) > 10097 THEN \"highfalutin\".\"_virt_agg_avg_7169933557674364\"
+	ELSE \"highfalutin\".\"_virt_agg_avg_8557396182983031\"
+	END as \"bucket4\"
+FROM
+    \"highfalutin\"
+    FULL JOIN \"questionable\" on 1=1)
+SELECT
+    \"sweltering\".\"bucket1\" as \"bucket1\",
+    \"juicy\".\"bucket2\" as \"bucket2\",
+    \"scrawny\".\"bucket3\" as \"bucket3\",
+    \"abundant\".\"bucket4\" as \"bucket4\",
+    \"young\".\"bucket5\" as \"bucket5\"
+FROM
+    \"abundant\"
+    FULL JOIN \"juicy\" on 1=1
+    FULL JOIN \"young\" on 1=1
+    FULL JOIN \"sweltering\" on 1=1
+    FULL JOIN \"scrawny\" on 1=1"""
