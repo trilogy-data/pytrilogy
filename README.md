@@ -65,7 +65,7 @@ trilogy run --import flight "chart layer barh ( y_axis <- carrier.name, x_axis <
 trilogy file write reporting.preql --from-url https://raw.githubusercontent.com/trilogy-data/trilogy-public-models/refs/heads/main/examples/duckdb/faa/example.preql
 
 # 4. Refresh — builds the managed asset declared in reporting.preql and tracks watermarks.
-trilogy refresh example.preql
+trilogy refresh reporting.preql
 
 # 5. Launch the Studio UI against the live model (opens your browser) to explore + query
 trilogy serve .
