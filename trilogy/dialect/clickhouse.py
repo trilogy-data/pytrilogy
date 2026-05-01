@@ -1,12 +1,29 @@
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional
 
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode, WindowType
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, MapWrapper
 from trilogy.dialect.base import BaseDialect
 
+if TYPE_CHECKING:
+    from trilogy.core.models.execute import CTE, UnionCTE
+
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
+
+
+def _ch_struct(args, types):
+    # trilogy passes args as alternating [value, 'name', value, 'name', ...]
+    # and types similarly. Build a CH named-tuple via cast so attr-access works.
+    values = args[::2]
+    names = [n.strip("'\"") for n in args[1::2]]
+    value_types = list(types[::2]) if types else [None] * len(values)
+    type_strs = [
+        DATATYPE_MAP.get(t, t.value) if t is not None else "Nullable(Nothing)"
+        for t in value_types
+    ]
+    fields = ", ".join(f"{n} {t}" for n, t in zip(names, type_strs))
+    return f"cast(tuple({', '.join(values)}), 'Tuple({fields})')"
 
 
 def _ch_log(args):
@@ -97,8 +114,9 @@ FUNCTION_MAP = {
     # maps
     FunctionType.MAP_KEYS: lambda x, types: f"mapKeys({x[0]})",
     FunctionType.MAP_VALUES: lambda x, types: f"mapValues({x[0]})",
-    # struct: CH tuples use parentheses, accessed via .N or named-tuple syntax
-    FunctionType.STRUCT: lambda x, types: f"tuple({', '.join(x[::2])})",
+    # struct: CH named tuples require an explicit Tuple(name type, ...) cast for
+    # attribute access by name. Types come from trilogy via the types arg.
+    FunctionType.STRUCT: _ch_struct,
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -202,3 +220,26 @@ class ClickhouseDialect(BaseDialect):
     UNNEST_MODE = UnnestMode.DIRECT
     TABLE_NOT_FOUND_PATTERN = "Table .* doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "Unknown identifier"
+
+    def render_map_literal(
+        self,
+        e: "MapWrapper[Any, Any]",
+        cte: "Optional[CTE | UnionCTE]" = None,
+        cte_map: "Optional[Dict[str, CTE | UnionCTE]]" = None,
+        raise_invalid: bool = False,
+    ) -> str:
+        # CH uses map(k1, v1, k2, v2, ...). Avoids the `key:value` syntax that
+        # SQLAlchemy's text() reads as bound parameters.
+        parts: list[str] = []
+        for k, v in e.items():
+            parts.append(
+                self.render_expr(
+                    k, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                )
+            )
+            parts.append(
+                self.render_expr(
+                    v, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                )
+            )
+        return f"map({', '.join(parts)})"

@@ -529,6 +529,21 @@ class BaseDialect:
     HTTP_NOT_FOUND_PATTERN: str | None = None  # Pattern for HTTP 404 errors (e.g., GCS)
     COLUMN_NOT_FOUND_PATTERN: str | None = None  # Pattern for column-not-found errors
 
+    def render_map_literal(
+        self,
+        e: "MapWrapper[Any, Any]",
+        cte: Optional["CTE | UnionCTE"] = None,
+        cte_map: Optional[Dict[str, "CTE | UnionCTE"]] = None,
+        raise_invalid: bool = False,
+    ) -> str:
+        # Default DuckDB-style; CH and others override.
+        items = ",".join(
+            f"{self.render_expr(k, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            f":{self.render_expr(v, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            for k, v in e.items()
+        )
+        return f"MAP {{{items}}}"
+
     def __init__(
         self,
         rendering: Rendering | None = None,
@@ -1165,7 +1180,9 @@ class BaseDialect:
         elif isinstance(e, TupleWrapper):
             return f"({','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])})"
         elif isinstance(e, MapWrapper):
-            return f"MAP {{{','.join([f'{self.render_expr(k, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}:{self.render_expr(v, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}' for k, v in e.items()])}}}"
+            return self.render_map_literal(
+                e, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+            )
         elif isinstance(e, ListWrapper):
             return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e], [])}"
         elif isinstance(e, DataType):

@@ -336,7 +336,6 @@ class ClickhouseConfig(DialectConfig):
             host = raw_host
 
         secure = self.secure or url_secure
-        scheme = "clickhouse+http" if use_http else "clickhouse+native"
         if self.port is not None:
             port = self.port
         elif url_port is not None:
@@ -345,6 +344,14 @@ class ClickhouseConfig(DialectConfig):
             port = 8443 if secure else 8123
         else:
             port = 9440 if secure else 9000
+
+        # Port wins over URL scheme: 9440/9000 are native protocol ports and
+        # don't speak HTTP, even if the user pasted an https:// URL.
+        if port in (9440, 9000):
+            use_http = False
+        elif port in (8443, 8123):
+            use_http = True
+        scheme = "clickhouse+http" if use_http else "clickhouse+native"
 
         user = self.username or "default"
         auth = f"{user}:{quote(self.password, safe='')}" if self.password else user

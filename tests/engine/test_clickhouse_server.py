@@ -133,8 +133,7 @@ SMOKE_CASES: list[tuple[str, str, Any]] = [
     ("rtrim", "rtrim('hello  ')", "hello"),
     ("replace", "replace('hello', 'l', 'L')", "heLLo"),
     ("concat", "concat('hello', ' ', 'world')", "hello world"),
-    # CH HTTP driver returns Array(String) as a literal Python-list string
-    ("split", "split('a,b,c', ',')", "['a','b','c']"),
+    ("split", "split('a,b,c', ',')", ["a", "b", "c"]),
     ("hex", "hex('AB')", "4142"),
     ("hash_md5", "hash('abc', md5)", "900150983cd24fb0d6963f7d28e17f72"),
     ("hash_sha256", "len(hash('abc', sha256))", 64),
@@ -269,19 +268,19 @@ AGG_CASES: list[tuple[str, str, str, Any]] = [
         "array_agg",
         "auto __VALS__ <- unnest([1,2,3]); auto __AGG__ <- array_agg(__VALS__);",
         "agg",
-        "[1,2,3]",
+        [1, 2, 3],
     ),
     (
         "array_sort",
         "auto __VALS__ <- unnest([3,1,2]); auto __AGG__ <- array_sort([3,1,2]);",
         "agg",
-        "[1,2,3]",
+        [1, 2, 3],
     ),
     (
         "array_distinct",
         "auto __VALS__ <- unnest([1,2,2,3]); auto __AGG__ <- array_distinct([1,2,2,3]);",
         "agg",
-        "[1,2,3]",
+        [1, 2, 3],
     ),
     (
         "array_sum",
@@ -295,7 +294,94 @@ AGG_CASES: list[tuple[str, str, str, Any]] = [
         "agg",
         "a,b,c",
     ),
+    (
+        "array_transform",
+        (
+            "const xs_<CASE> <- [1,2,3,4]; "
+            "def double_<CASE>(x) -> x * 2; "
+            "auto __AGG__ <- array_sum(array_transform(xs_<CASE>, @double_<CASE>));"
+        ),
+        "agg",
+        20,
+    ),
+    (
+        "array_filter",
+        (
+            "const xs_<CASE> <- [1,2,3,4,5]; "
+            "def gt2_<CASE>(x) -> x > 2; "
+            "auto __AGG__ <- array_filter(xs_<CASE>, @gt2_<CASE>);"
+        ),
+        "agg",
+        [3, 4, 5],
+    ),
+    (
+        "generate_array",
+        "auto __VALS__ <- unnest([0]); auto __AGG__ <- array_sum(generate_array(1, 5, 1));",
+        "agg",
+        15,
+    ),
+    (
+        "index_access",
+        "auto __VALS__ <- unnest([0]); auto __AGG__ <- [10, 20, 30][2];",
+        "agg",
+        20,
+    ),
+    (
+        "map_keys",
+        ("const m_<CASE> <- {'a': 1, 'b': 2}; " "auto __AGG__ <- map_keys(m_<CASE>);"),
+        "agg",
+        ["a", "b"],
+    ),
+    (
+        "map_values",
+        (
+            "const m_<CASE> <- {'a': 1, 'b': 2}; "
+            "auto __AGG__ <- map_values(m_<CASE>);"
+        ),
+        "agg",
+        [1, 2],
+    ),
+    (
+        "map_access",
+        "const m_<CASE> <- {'a': 1, 'b': 2}; auto __AGG__ <- m_<CASE>['a'];",
+        "agg",
+        1,
+    ),
+    (
+        "struct_attr_int",
+        "const s_<CASE> <- struct(1->a, 2.5->b); auto __AGG__ <- s_<CASE>.a;",
+        "agg",
+        1,
+    ),
+    (
+        "struct_attr_float",
+        "const s_<CASE> <- struct(1->a, 2.5->b); auto __AGG__ <- s_<CASE>.b;",
+        "agg",
+        2.5,
+    ),
+    (
+        "struct_attr_str",
+        (
+            "const s_<CASE> <- struct('hi'->name, 42->n); "
+            "auto __AGG__ <- s_<CASE>.name;"
+        ),
+        "agg",
+        "hi",
+    ),
 ]
+
+
+@pytest.mark.xfail(
+    reason="date_spine has no native CH equivalent; needs range + addDays glue"
+)
+def test_date_spine_xfail(clickhouse_server_executor: Executor):
+    parse(
+        "auto spine <- date_spine(cast('2024-01-01' as date), cast('2024-01-03' as date)); "
+        "select spine;",
+        environment=clickhouse_server_executor.environment,
+    )
+    rows = clickhouse_server_executor.execute_text("select spine;")[0].fetchall()
+    assert len(rows) == 3
 
 
 @pytest.mark.parametrize(
@@ -315,7 +401,11 @@ def test_aggregate_smoke(
     suffix = f"_{case_id}"
     vals_name = f"vals{suffix}"
     agg_name = f"agg{suffix}"
-    text = body.replace("__VALS__", vals_name).replace("__AGG__", agg_name)
+    text = (
+        body.replace("__VALS__", vals_name)
+        .replace("__AGG__", agg_name)
+        .replace("<CASE>", case_id)
+    )
     full_name = agg_name if select_name == "agg" else f"{select_name}{suffix}"
     parse(text, environment=clickhouse_server_executor.environment)
     rows = clickhouse_server_executor.execute_text(f"select {full_name};")[0].fetchall()
