@@ -51,6 +51,10 @@ def _eq(concept: BuildConcept, value: str) -> BuildComparison:
     return BuildComparison(left=concept, right=value, operator=ComparisonOperator.EQ)
 
 
+def _in(concept: BuildConcept, values: tuple[str, ...]) -> BuildComparison:
+    return BuildComparison(left=concept, right=values, operator=ComparisonOperator.IN)
+
+
 def _where(comp: BuildComparison) -> BuildWhereClause:
     return BuildWhereClause(conditional=comp)
 
@@ -146,6 +150,15 @@ class TestConditionsMutuallyExclusive:
         )
         assert conditions_mutually_exclusive(home_true, home_false)
         assert not conditions_mutually_exclusive(home_true, home_true)
+
+    def test_in_list_exclusive_with_eq_outside_list(self):
+        channel = _concept("channel")
+        web_or_catalog = _in(channel, ("WEB", "CATALOG"))
+        store = _eq(channel, "STORE")
+        web = _eq(channel, "WEB")
+
+        assert conditions_mutually_exclusive(web_or_catalog, store)
+        assert not conditions_mutually_exclusive(web_or_catalog, web)
 
 
 class TestStripConditionAtoms:

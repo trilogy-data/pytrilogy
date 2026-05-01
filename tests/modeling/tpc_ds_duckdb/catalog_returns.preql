@@ -7,6 +7,8 @@ key order_number int;
 
 properties <order_number,item.id> (
     net_loss float,
+    refunded_cash float?,
+    return_amount float?,
     had_return bool,
 );
 
@@ -17,7 +19,8 @@ datasource catalog_returns (
     CR_ORDER_NUMBER: sales.order_number,
     CR_ORDER_NUMBER: order_number,
     CR_NET_LOSS: net_loss,
-
+    CR_REFUNDED_CASH: refunded_cash,
+    CR_RETURN_AMOUNT: return_amount,
 )
 grain (order_number, item.id)
 address memory.catalog_returns

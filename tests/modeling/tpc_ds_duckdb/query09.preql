@@ -1,0 +1,25 @@
+import store_sales as store_sales;
+
+auto count1 <- count(store_sales.ticket_number ? store_sales.quantity between 1 and 20);
+auto count2 <- count(store_sales.ticket_number ? store_sales.quantity between 21 and 40);
+auto count3 <- count(store_sales.ticket_number ? store_sales.quantity between 41 and 60);
+auto count4 <- count(store_sales.ticket_number ? store_sales.quantity between 61 and 80);
+auto count5 <- count(store_sales.ticket_number ? store_sales.quantity between 81 and 100);
+
+SELECT
+    case when count1 > 74129
+         then avg(store_sales.ext_discount_amount ? store_sales.quantity between 1 and 20)
+         else avg(store_sales.net_paid ? store_sales.quantity between 1 and 20) end as bucket1,
+    case when count2 > 122840
+         then avg(store_sales.ext_discount_amount ? store_sales.quantity between 21 and 40)
+         else avg(store_sales.net_paid ? store_sales.quantity between 21 and 40) end as bucket2,
+    case when count3 > 56580
+         then avg(store_sales.ext_discount_amount ? store_sales.quantity between 41 and 60)
+         else avg(store_sales.net_paid ? store_sales.quantity between 41 and 60) end as bucket3,
+    case when count4 > 10097
+         then avg(store_sales.ext_discount_amount ? store_sales.quantity between 61 and 80)
+         else avg(store_sales.net_paid ? store_sales.quantity between 61 and 80) end as bucket4,
+    case when count5 > 165306
+         then avg(store_sales.ext_discount_amount ? store_sales.quantity between 81 and 100)
+         else avg(store_sales.net_paid ? store_sales.quantity between 81 and 100) end as bucket5
+;

@@ -1,0 +1,98 @@
+import item as item;
+import date as date;
+import time as time;
+import customer as customer;
+import promotion as promotion;
+import address as bill_address;
+
+key sales_channel enum<string>['WEB', 'CATALOG', 'STORE'];
+key order_id int;
+
+properties <sales_channel, order_id, item.id> (
+    quantity int,
+    sales_price float,
+    list_price float,
+    wholesale_cost float,
+    ext_sales_price float,
+    ext_wholesale_cost float,
+    ext_list_price float,
+    ext_discount_amount float,
+    coupon_amt float,
+    net_profit float,
+    net_paid float,
+);
+
+partial datasource web_sales_unified (
+    raw(''' 'WEB' '''): sales_channel,
+    WS_ORDER_NUMBER: order_id,
+    WS_ITEM_SK: item.id,
+    WS_SOLD_DATE_SK: date.id,
+    WS_SOLD_TIME_SK: time.id,
+    WS_BILL_CUSTOMER_SK: customer.id,
+    WS_BILL_ADDR_SK: bill_address.id,
+    WS_PROMO_SK: promotion.id,
+    WS_QUANTITY: quantity,
+    WS_SALES_PRICE: sales_price,
+    WS_LIST_PRICE: list_price,
+    WS_WHOLESALE_COST: wholesale_cost,
+    WS_EXT_SALES_PRICE: ext_sales_price,
+    WS_EXT_WHOLESALE_COST: ext_wholesale_cost,
+    WS_EXT_LIST_PRICE: ext_list_price,
+    WS_EXT_DISCOUNT_AMT: ext_discount_amount,
+    WS_COUPON_AMT: coupon_amt,
+    WS_NET_PROFIT: net_profit,
+    WS_NET_PAID: net_paid,
+)
+grain (sales_channel, order_id, item.id)
+complete where sales_channel = 'WEB'
+address memory.web_sales;
+
+partial datasource catalog_sales_unified (
+    raw(''' 'CATALOG' '''): sales_channel,
+    CS_ORDER_NUMBER: order_id,
+    CS_ITEM_SK: item.id,
+    CS_SOLD_DATE_SK: date.id,
+    CS_SOLD_TIME_SK: time.id,
+    CS_BILL_CUSTOMER_SK: customer.id,
+    CS_BILL_ADDR_SK: bill_address.id,
+    CS_PROMO_SK: promotion.id,
+    CS_QUANTITY: quantity,
+    CS_SALES_PRICE: sales_price,
+    CS_LIST_PRICE: list_price,
+    CS_WHOLESALE_COST: wholesale_cost,
+    CS_EXT_SALES_PRICE: ext_sales_price,
+    CS_EXT_WHOLESALE_COST: ext_wholesale_cost,
+    CS_EXT_LIST_PRICE: ext_list_price,
+    CS_EXT_DISCOUNT_AMT: ext_discount_amount,
+    CS_COUPON_AMT: coupon_amt,
+    CS_NET_PROFIT: net_profit,
+    CS_NET_PAID: net_paid,
+)
+grain (sales_channel, order_id, item.id)
+complete where sales_channel = 'CATALOG'
+address memory.catalog_sales;
+
+partial datasource store_sales_unified (
+    raw(''' 'STORE' '''): sales_channel,
+    SS_TICKET_NUMBER: order_id,
+    SS_ITEM_SK: item.id,
+    SS_SOLD_DATE_SK: date.id,
+    SS_SOLD_TIME_SK: time.id,
+    SS_CUSTOMER_SK: customer.id,
+    SS_ADDR_SK: bill_address.id,
+    SS_PROMO_SK: promotion.id,
+    SS_QUANTITY: quantity,
+    SS_SALES_PRICE: sales_price,
+    SS_LIST_PRICE: list_price,
+    SS_WHOLESALE_COST: wholesale_cost,
+    SS_EXT_SALES_PRICE: ext_sales_price,
+    SS_EXT_WHOLESALE_COST: ext_wholesale_cost,
+    SS_EXT_LIST_PRICE: ext_list_price,
+    SS_EXT_DISCOUNT_AMT: ext_discount_amount,
+    SS_COUPON_AMT: coupon_amt,
+    SS_NET_PROFIT: net_profit,
+    SS_NET_PAID: net_paid,
+)
+grain (sales_channel, order_id, item.id)
+complete where sales_channel = 'STORE'
+address memory.store_sales;

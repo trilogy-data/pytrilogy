@@ -1,0 +1,34 @@
+query_id = "43"
+gen_length = 1932
+generated_sql = """
+SELECT
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
+    sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Sunday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"sun_sales\",
+    sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Monday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"mon_sales\",
+    sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Tuesday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"tue_sales\",
+    sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Wednesday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"wed_sales\",
+    sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Thursday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"thu_sales\",
+    sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Friday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"fri_sales\",
+    sum(CASE WHEN \"store_sales_date_date\".\"D_DAY_NAME\" = 'Saturday' THEN \"store_sales_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"sat_sales\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+WHERE
+    \"store_sales_store_store\".\"S_GMT_OFFSET\" = -5 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2000
+
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"store_sales_store_store\".\"S_STORE_NAME\" asc,
+    \"store_sales_store_store\".\"S_STORE_ID\" asc,
+    \"sun_sales\" asc,
+    \"mon_sales\" asc,
+    \"tue_sales\" asc,
+    \"wed_sales\" asc,
+    \"thu_sales\" asc,
+    \"fri_sales\" asc,
+    \"sat_sales\" asc
+LIMIT (100)"""

@@ -7,6 +7,7 @@ import customer as customer;
 import customer as return_customer;
 import promotion as promotion;
 import customer_demographic as customer_demographic;
+import household_demographic as household_demographic;
 import store as store;
 import store as return_store;
 import address as customer_address;
@@ -26,6 +27,7 @@ properties <ticket_number,item.id> (
     is_returned bool,
     net_paid float,
     return_amount float?,
+    return_quantity int?,
     return_net_loss float?,
 );
 
@@ -36,6 +38,7 @@ datasource store_sales (
     SS_SOLD_TIME_SK: time.id,
     SS_CUSTOMER_SK: customer.id,
     SS_CDEMO_SK: customer_demographic.id,
+    SS_HDEMO_SK: household_demographic.id,
     SS_TICKET_NUMBER: ticket_number,
     SS_ITEM_SK: item.id,
     SS_SALES_PRICE: sales_price,
@@ -43,7 +46,7 @@ datasource store_sales (
     SS_EXT_SALES_PRICE: ext_sales_price,
     SS_EXT_LIST_PRICE: ext_list_price,
     SS_EXT_WHOLESALE_COST: ext_wholesale_cost,
-    SS_EXT_DISCOUNT_AMOUNT: ext_discount_amount,
+    SS_EXT_DISCOUNT_AMT: ext_discount_amount,
     SS_NET_PROFIT: net_profit,
     SS_PROMO_SK: promotion.id,
     SS_QUANTITY: quantity,
@@ -64,6 +67,7 @@ datasource store_returns(
     SR_ITEM_SK: ~item.id,
     SR_CUSTOMER_SK: return_customer.id,
     SR_RETURN_AMT: return_amount,
+    SR_RETURN_QUANTITY: return_quantity,
     SR_TICKET_NUMBER: ~ticket_number,
     SR_STORE_SK: return_store.id,
     SR_NET_LOSS: return_net_loss,

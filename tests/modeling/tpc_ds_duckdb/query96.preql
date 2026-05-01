@@ -1,0 +1,12 @@
+import store_sales as store_sales;
+
+WHERE
+    store_sales.time.hour = 20
+    and store_sales.time.minute >= 30
+    and store_sales.household_demographic.dependent_count = 7
+    and store_sales.store.name = 'ese'
+SELECT
+    count(concat(cast(store_sales.ticket_number as string), '-', cast(store_sales.item.id as string))) as ct
+ORDER BY
+    ct asc
+LIMIT 100;

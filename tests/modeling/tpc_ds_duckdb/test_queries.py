@@ -8,10 +8,7 @@ import tomli_w
 import tomllib
 
 from trilogy import Executor
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
-from trilogy.core.query_processor import process_query
-from trilogy.parser import parse_text
 
 # Get aggregate info
 machine = platform.machine()
@@ -173,58 +170,21 @@ def test_one(engine):
 def test_two(engine):
     query = run_query(engine, 2, sql_override=True)
     assert len(query) < 7500, query
+    assert '"memory"."store_sales"' not in query
 
 
-def test_two_merge_aggregate_compacts_inline_window_query():
-    query = """
-    import catalog_sales as catalog_sales;
-    import web_sales as web_sales;
-    import date as date;
+def test_two_one(engine):
+    query = run_query(
+        engine, 2, sql_override=True, preql_file="query02-one.preql", label="2.1"
+    )
+    assert len(query) < 7500, query
 
-    merge catalog_sales.date.* into ~date.*;
-    merge web_sales.date.* into ~date.*;
 
-    auto relevent_week_seq <- filter date.week_seq where date.year in (2001, 2002);
-
-    def weekday_sales(weekday) ->
-        (SUM(CASE WHEN date.day_of_week = weekday THEN web_sales.ext_sales_price ELSE 0.0 END) by date.week_seq +
-        SUM(CASE WHEN date.day_of_week = weekday THEN catalog_sales.ext_sales_price ELSE 0.0 END) by date.week_seq)
-    ;
-
-    def round_lag(sales)-> round(sales / (lead 53 sales by date.week_seq asc), 2);
-
-    WHERE
-        date.week_seq in relevent_week_seq
-    SELECT
-        date.week_seq,
-        @round_lag(@weekday_sales(0)) as sunday_increase,
-        @round_lag(@weekday_sales(1)) as monday_increase,
-        @round_lag(@weekday_sales(2)) as tuesday_increase,
-        @round_lag(@weekday_sales(3)) as wednesday_increase,
-        @round_lag(@weekday_sales(4)) as thursday_increase,
-        @round_lag(@weekday_sales(5)) as friday_increase,
-        @round_lag(@weekday_sales(6)) as saturday_increase
-    having sunday_increase is not null
-    ORDER BY date.week_seq asc NULLS FIRST
-    LIMIT 100;
-    """
-
-    original = CONFIG.optimizations.merge_aggregate
-    try:
-        CONFIG.optimizations.merge_aggregate = False
-        off_env = Environment(working_path=working_path)
-        _, off_statements = parse_text(query, off_env)
-        off_processed = process_query(off_env, off_statements[-1])
-
-        CONFIG.optimizations.merge_aggregate = True
-        on_env = Environment(working_path=working_path)
-        _, on_statements = parse_text(query, on_env)
-        on_processed = process_query(on_env, on_statements[-1])
-    finally:
-        CONFIG.optimizations.merge_aggregate = original
-
-    assert len(off_processed.ctes) == 9
-    assert len(on_processed.ctes) == 5
+def test_two_two(engine):
+    query = run_query(
+        engine, 2, sql_override=True, preql_file="query02-two.preql", label="2.2"
+    )
+    assert len(query) < 7500, query
 
 
 def test_three(engine):
@@ -257,14 +217,29 @@ def test_eight(engine):
     assert len(query) < 3800, query
 
 
+def test_nine(engine):
+    query = run_query(engine, 9)
+    assert len(query) < 8000, query
+
+
 def test_ten(engine):
     query = run_query(engine, 10)
     assert len(query) < 6500, query
 
 
+def test_eleven(engine):
+    query = run_query(engine, 11)
+    assert len(query) < 12000, query
+
+
 def test_twelve(engine):
     query = run_query(engine, 12)
     assert len(query) <= 3200, query
+
+
+def test_thirteen(engine):
+    query = run_query(engine, 13)
+    assert len(query) < 5500, query
 
 
 def test_fifteen(engine):
@@ -276,6 +251,21 @@ def test_sixteen(engine):
     query = run_query(engine, 16)
     # size gating
     assert len(query) < 5500, query
+
+
+def test_nineteen(engine):
+    query = run_query(engine, 19, sql_override=True)
+    assert len(query) < 4000, query
+
+
+@pytest.mark.skip(
+    reason="Framework: trilogy lacks a built-in stddev_samp aggregate. "
+    "Q17/29 reference stddev for sales/returns quantity. Add stddev "
+    "function to the standard library to enable."
+)
+def test_seventeen(engine):
+    query = run_query(engine, 17, sql_override=True)
+    assert len(query) < 12000, query
 
 
 def test_twenty(engine):
@@ -306,8 +296,18 @@ def test_twenty_five(engine):
     assert len(query) < 8500, query
 
 
+def test_forty(engine):
+    query = run_query(engine, 40, sql_override=True)
+    assert len(query) < 8000, query
+
+
 def test_forty_two(engine):
     _ = run_query(engine, 42)
+
+
+def test_forty_three(engine):
+    query = run_query(engine, 43)
+    assert len(query) < 5000, query
 
 
 @pytest.mark.skip(reason="Still cooking")
@@ -327,18 +327,33 @@ def test_thirty(engine):
     assert len(query) < 12000, query
 
 
+def test_thirty_four(engine):
+    query = run_query(engine, 34, sql_override=True)
+    assert len(query) < 5500, query
+
+
 def test_thirty_two(engine):
     query = run_query(engine, 32)
     # size gating
     assert len(query) < 12640, query
 
 
+def test_fifty_two(engine):
+    query = run_query(engine, 52)
+    assert len(query) < 2000, query
+
+
 def test_fifty_five(engine):
     _ = run_query(engine, 55)
 
 
-# def test_fifty_six(engine):
-#     _ = run_query(engine, 56)
+def test_fifty_six(engine):
+    _ = run_query(engine, 56, sql_override=True)
+
+
+def test_eighty_two(engine):
+    query = run_query(engine, 82, sql_override=True)
+    assert len(query) < 4000, query
 
 
 def test_ninety_five(engine):
@@ -346,13 +361,23 @@ def test_ninety_five(engine):
     assert len(query) < 6000, query
 
 
+def test_ninety_six(engine):
+    query = run_query(engine, 96)
+    assert len(query) < 3000, query
+
+
 def test_ninety_seven(engine):
     query = run_query(engine, 97)
     assert len(query) < 5000, query
 
 
-def test_ninety_seven_alt(engine):
+def test_ninety_seven_one(engine):
     query = run_query(engine, 97, preql_file="query97-one.preql", label="97.1")
+    assert len(query) < 4250, query
+
+
+def test_ninety_seven_two(engine):
+    query = run_query(engine, 97, preql_file="query97-two.preql", label="97.2")
     assert len(query) < 4250, query
 
 

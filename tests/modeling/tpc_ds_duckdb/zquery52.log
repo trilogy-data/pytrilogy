@@ -1,0 +1,24 @@
+query_id = "52"
+gen_length = 977
+generated_sql = """
+SELECT
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
+    \"store_sales_item_items\".\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
+    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"ext_price\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"store_sales_item_items\".\"I_MANAGER_ID\" = 1 and \"store_sales_date_date\".\"D_MOY\" = 11 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2000
+
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int) asc,
+    \"ext_price\" desc,
+    \"store_sales_item_items\".\"I_BRAND_ID\" asc
+LIMIT (100)"""
