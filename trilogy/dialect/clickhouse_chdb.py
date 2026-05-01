@@ -1,0 +1,153 @@
+"""In-process chdb adapter exposing the trilogy EngineConnection / ExecutionEngine
+protocols. Used for unit-testing the ClickHouse dialect without a server.
+
+Server-mode ClickHouse goes through SQLAlchemy via clickhouse-sqlalchemy instead.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Generator, List, Optional
+
+from trilogy.core.models.environment import Environment
+from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
+
+
+class _Row(tuple):
+    """Tuple with attribute access matching SQLAlchemy Row ergonomics."""
+
+    __slots__ = ()
+    _fields: tuple[str, ...] = ()
+
+    def __new__(cls, fields: tuple[str, ...], values: tuple[Any, ...]):
+        obj = super().__new__(cls, values)
+        return obj
+
+    def __init__(self, fields: tuple[str, ...], values: tuple[Any, ...]):
+        # store on the class instance via object.__setattr__ since tuple is immutable
+        object.__setattr__(self, "_fields", fields)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            idx = self._fields.index(name)
+        except ValueError as exc:
+            raise AttributeError(name) from exc
+        return self[idx]
+
+
+class ChdbResult(ResultProtocol):
+    def __init__(self, columns: List[str], rows: List[tuple]):
+        self._columns = columns
+        self._rows = [_Row(tuple(columns), tuple(r)) for r in rows]
+        self._cursor = 0
+
+    def fetchall(self) -> List[Any]:
+        remaining = self._rows[self._cursor :]
+        self._cursor = len(self._rows)
+        return remaining
+
+    def fetchone(self) -> Optional[Any]:
+        if self._cursor >= len(self._rows):
+            return None
+        row = self._rows[self._cursor]
+        self._cursor += 1
+        return row
+
+    def fetchmany(self, size: int) -> List[Any]:
+        end = min(self._cursor + size, len(self._rows))
+        chunk = self._rows[self._cursor : end]
+        self._cursor = end
+        return chunk
+
+    def keys(self) -> List[str]:
+        return list(self._columns)
+
+    def __iter__(self) -> Generator[Any, None, None]:
+        while True:
+            row = self.fetchone()
+            if row is None:
+                return
+            yield row
+
+
+def _statement_to_sql(statement: Any, parameters: Any | None) -> str:
+    """Resolve a SQLAlchemy TextClause or raw string to a final SQL string.
+
+    Parameters are inlined via SQLAlchemy's literal_binds compiler since chdb
+    does not support bound parameters in its Python API.
+    """
+    text_value = getattr(statement, "text", None)
+    if text_value is None:
+        return str(statement)
+    if not parameters:
+        return str(text_value)
+    from sqlalchemy import bindparam
+    from sqlalchemy import text as sa_text
+
+    bound = sa_text(text_value)
+    bound = bound.bindparams(*[bindparam(k, v) for k, v in parameters.items()])
+    compiled = bound.compile(compile_kwargs={"literal_binds": True})
+    return str(compiled)
+
+
+class ChdbConnection(EngineConnection):
+    def __init__(self, path: str | None):
+        self._path = path
+        self._session: Any | None = None
+
+    def _get_session(self) -> Any:
+        if self._session is None:
+            try:
+                from chdb.session import Session
+            except ImportError as exc:
+                raise ImportError(
+                    "chdb is not installed. Install with: python -m pip install chdb"
+                ) from exc
+            self._session = Session(self._path) if self._path else Session()
+        return self._session
+
+    def execute(self, statement: Any, parameters: Any | None = None) -> ResultProtocol:
+        sql = _statement_to_sql(statement, parameters)
+        # Use JSON format so we get both column metadata and row data.
+        raw = self._get_session().query(sql, "JSON")
+        text_out = str(raw).strip()
+        if not text_out:
+            return ChdbResult([], [])
+        payload = json.loads(text_out)
+        meta = payload.get("meta") or []
+        columns = [m["name"] for m in meta]
+        data = payload.get("data") or []
+        rows = [tuple(row.get(c) for c in columns) for row in data]
+        return ChdbResult(columns, rows)
+
+    def commit(self) -> None:
+        # chdb is a single in-process session; no transactional semantics.
+        return None
+
+    def begin(self) -> None:
+        return None
+
+    def rollback(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class ChdbEngine(ExecutionEngine):
+    def __init__(self, path: str | None = None):
+        self._path = path
+        self._connection: ChdbConnection | None = None
+
+    def connect(self) -> EngineConnection:
+        if self._connection is None:
+            self._connection = ChdbConnection(self._path)
+        return self._connection
+
+    def setup(self, env: Environment, connection: Any) -> None:
+        return None
+
+    def dispose(self, close: bool = True) -> None:
+        if close and self._connection is not None:
+            self._connection.close()
+            self._connection = None
