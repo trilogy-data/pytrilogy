@@ -2,7 +2,8 @@ from datetime import datetime
 from pathlib import Path
 
 from trilogy import Dialects, Executor
-from trilogy.core.models.build import BuildGrain
+from trilogy.constants import CONFIG
+from trilogy.core.models.build import BuildAggregateWrapper, BuildGrain
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import (
     History,
@@ -13,6 +14,8 @@ from trilogy.core.processing.discovery_utility import (
     calculate_effective_parent_grain,
     check_if_group_required,
 )
+from trilogy.core.query_processor import process_query
+from trilogy.parser import parse_text
 
 working_path = Path(__file__).parent
 
@@ -305,3 +308,84 @@ def test_merge_grain_discovery(engine: Executor):
         parents=[node.resolve()],
         environment=build_environment,
     ).required
+
+
+def test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate():
+    query = """
+    import unified_sales as sales;
+
+    def weekday_sum(weekday) -> sum(
+        sales.ext_sales_price ? sales.date.day_of_week = weekday
+    ) by sales.date.week_seq;
+
+    SELECT
+        sales.date.week_seq,
+        @weekday_sum(0) / @weekday_sum(1) as sun_over_mon
+    ORDER BY sales.date.week_seq asc
+    LIMIT 5;
+    """
+
+    env = Environment(working_path=working_path)
+    _, statements = parse_text(query, env)
+    processed = process_query(env, statements[-1])
+    grouped_cte = processed.ctes[-1]
+
+    aggregate_outputs = [
+        c
+        for c in grouped_cte.output_columns
+        if isinstance(c.lineage, BuildAggregateWrapper)
+    ]
+    assert len(aggregate_outputs) == 2
+    assert [c.address for c in grouped_cte.group_concepts] == ["sales.date.week_seq"]
+
+
+def test_two_merge_aggregate_compacts_inline_window_query():
+    query = """
+    import catalog_sales as catalog_sales;
+    import web_sales as web_sales;
+    import date as date;
+
+    merge catalog_sales.date.* into ~date.*;
+    merge web_sales.date.* into ~date.*;
+
+    auto relevent_week_seq <- filter date.week_seq where date.year in (2001, 2002);
+
+    def weekday_sales(weekday) ->
+        (SUM(CASE WHEN date.day_of_week = weekday THEN web_sales.ext_sales_price ELSE 0.0 END) by date.week_seq +
+        SUM(CASE WHEN date.day_of_week = weekday THEN catalog_sales.ext_sales_price ELSE 0.0 END) by date.week_seq)
+    ;
+
+    def round_lag(sales)-> round(sales / (lead 53 sales by date.week_seq asc), 2);
+
+    WHERE
+        date.week_seq in relevent_week_seq
+    SELECT
+        date.week_seq,
+        @round_lag(@weekday_sales(0)) as sunday_increase,
+        @round_lag(@weekday_sales(1)) as monday_increase,
+        @round_lag(@weekday_sales(2)) as tuesday_increase,
+        @round_lag(@weekday_sales(3)) as wednesday_increase,
+        @round_lag(@weekday_sales(4)) as thursday_increase,
+        @round_lag(@weekday_sales(5)) as friday_increase,
+        @round_lag(@weekday_sales(6)) as saturday_increase
+    having sunday_increase is not null
+    ORDER BY date.week_seq asc NULLS FIRST
+    LIMIT 100;
+    """
+
+    original = CONFIG.optimizations.merge_aggregate
+    try:
+        CONFIG.optimizations.merge_aggregate = False
+        off_env = Environment(working_path=working_path)
+        _, off_statements = parse_text(query, off_env)
+        off_processed = process_query(off_env, off_statements[-1])
+
+        CONFIG.optimizations.merge_aggregate = True
+        on_env = Environment(working_path=working_path)
+        _, on_statements = parse_text(query, on_env)
+        on_processed = process_query(on_env, on_statements[-1])
+    finally:
+        CONFIG.optimizations.merge_aggregate = original
+
+    assert len(off_processed.ctes) == 9
+    assert len(on_processed.ctes) == 5

@@ -12,7 +12,10 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.processing.condition_utility import is_scalar_condition
+from trilogy.core.processing.condition_utility import (
+    conditions_mutually_exclusive,
+    is_scalar_condition,
+)
 from trilogy.utility import unique
 
 
@@ -32,6 +35,54 @@ class PredicatePushdown(OptimizationRule):
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
 
+    def _prune_union_parent(
+        self,
+        parent_cte: UnionCTE,
+        candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
+    ) -> bool:
+        if not isinstance(candidate, BuildConceptArgs):
+            return False
+        row_conditions = {x.address for x in candidate.row_arguments}
+        if not row_conditions:
+            return False
+        union_outputs = {x.address for x in parent_cte.output_columns}
+        if not row_conditions.issubset(union_outputs):
+            return False
+
+        kept = []
+        dropped = []
+        for internal in parent_cte.internal_ctes:
+            base = internal.source.base_datasource
+            if (
+                isinstance(base, BuildDatasource)
+                and base.non_partial_for
+                and conditions_mutually_exclusive(
+                    candidate, base.non_partial_for.conditional
+                )
+            ):
+                dropped.append(internal)
+            else:
+                kept.append(internal)
+        if not dropped or not kept:
+            return False
+
+        self.log(
+            f"Pruning union {parent_cte.name} from {len(parent_cte.internal_ctes)} "
+            f"to {len(kept)} branch(es) using {candidate}"
+        )
+        parent_cte.internal_ctes = kept
+        kept_identifiers = {cte.source.identifier for cte in kept}
+        parent_cte.source.datasources = [
+            source
+            for source in parent_cte.source.datasources
+            if source.identifier in kept_identifiers
+        ]
+        parent_cte.parent_ctes = unique(
+            [parent for cte in kept for parent in cte.parent_ctes],
+            "name",
+        )
+        return True
+
     def _check_parent(
         self,
         cte: CTE | UnionCTE,
@@ -41,6 +92,8 @@ class PredicatePushdown(OptimizationRule):
     ):
         if not isinstance(candidate, BuildConceptArgs):
             return False
+        if isinstance(parent_cte, UnionCTE):
+            return self._prune_union_parent(parent_cte, candidate)
         if not isinstance(parent_cte, CTE):
             return False
         row_conditions = {x.address for x in candidate.row_arguments}

@@ -28,6 +28,26 @@ if not environ.get("TCL_LIBRARY"):
         pass
 
 
+def plot_perf(
+    frame: pd.DataFrame, title: str, out_path: Path, show: bool
+) -> None:
+    if frame.empty:
+        return
+    fig, ax = plt.subplots()
+    ax.set_title(title)
+    ax.set_xlabel("Generation")
+    ax.set_ylabel("Execution time (s)")
+    ax.boxplot(
+        [frame["exec_time"], frame["comp_time"]],
+        tick_labels=["Trilogy", "DuckDBDefault"],
+    )
+    if show:
+        plt.show()
+    else:
+        plt.savefig(out_path)
+    plt.close(fig)
+
+
 def analyze(show: bool = False):
     results = []
     root = Path(__file__).parent
@@ -70,24 +90,23 @@ def analyze(show: bool = False):
 
     print(df)
 
-    # Plot the results
-    fig, ax = plt.subplots()
-    ax.set_title("Query Timing")
-    ax.set_xlabel("Generation")
-    ax.set_ylabel("Execution time (s)")
+    df["query_id"] = df["query_id"].astype(str)
+    is_alt = df["query_id"].str.contains(".", regex=False)
+    main_df = df[~is_alt].sort_values("query_id")
+    alt_df = df[is_alt].sort_values("query_id")
 
-    df["query_id"] = df["query_id"].astype("category")
-    df["query_id"] = df["query_id"].cat.set_categories(df["query_id"].unique())
-
-    df = df.sort_values("query_id")
-
-    ax.boxplot(
-        [df["exec_time"], df["comp_time"]], tick_labels=["Trilogy", "DuckDBDefault"]
+    plot_perf(
+        main_df,
+        "Query Timing (suggested)",
+        root / f"{fingerprint}-tcp-ds-perf.png",
+        show,
     )
-    if show:
-        plt.show()
-    else:
-        plt.savefig(root / f"{fingerprint}-tcp-ds-perf.png")
+    plot_perf(
+        alt_df,
+        "Query Timing (alternatives)",
+        root / f"{fingerprint}-tcp-ds-perf-alt.png",
+        show,
+    )
 
     fig, ax = plt.subplots()
     ax.set_title("Flow Time")

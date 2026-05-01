@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 5805
+gen_length = 5398
 generated_sql = """
 
 WITH 
@@ -12,15 +12,6 @@ SELECT
      'CATALOG'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-     'STORE'  as \"sales_sales_channel\"
-FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",

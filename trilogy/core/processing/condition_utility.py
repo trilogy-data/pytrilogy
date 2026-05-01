@@ -406,23 +406,39 @@ def drop_covered_conditions(
     return result
 
 
-def _build_eq_map(
+def _literal_values(value: object) -> set[object] | None:
+    if isinstance(value, BuildConcept):
+        return None
+    if isinstance(value, (TupleWrapper, ListWrapper, tuple, list, set)):
+        return set(value)
+    return {value}
+
+
+def _build_allowed_map(
     atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
-) -> dict[str, object]:
-    result: dict[str, object] = {}
+) -> dict[str, set[object]]:
+    result: dict[str, set[object]] = {}
     for atom in atoms:
         if not isinstance(atom, BuildComparison):
             continue
-        if atom.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
+        if atom.operator not in (
+            ComparisonOperator.EQ,
+            ComparisonOperator.IS,
+            ComparisonOperator.IN,
+        ):
             continue
         if isinstance(atom.left, BuildConcept) and not isinstance(
             atom.right, BuildConcept
         ):
-            result[atom.left.address] = atom.right
+            values = _literal_values(atom.right)
+            if values is not None:
+                result[atom.left.address] = values
         elif isinstance(atom.right, BuildConcept) and not isinstance(
             atom.left, BuildConcept
         ):
-            result[atom.right.address] = atom.left
+            values = _literal_values(atom.left)
+            if values is not None:
+                result[atom.right.address] = values
     return result
 
 
@@ -430,10 +446,13 @@ def conditions_mutually_exclusive(
     a: BuildComparison | BuildConditional | BuildParenthetical,
     b: BuildComparison | BuildConditional | BuildParenthetical,
 ) -> bool:
-    """True if a and b cannot both be satisfied: same concept has conflicting EQ values in each."""
-    a_eq = _build_eq_map(decompose_condition(a))
-    b_eq = _build_eq_map(decompose_condition(b))
-    return any(addr in b_eq and b_eq[addr] != val for addr, val in a_eq.items())
+    """True if a and b cannot both be satisfied by allowed values for the same concept."""
+    a_allowed = _build_allowed_map(decompose_condition(a))
+    b_allowed = _build_allowed_map(decompose_condition(b))
+    return any(
+        addr in b_allowed and values.isdisjoint(b_allowed[addr])
+        for addr, values in a_allowed.items()
+    )
 
 
 def _build_from_atoms(
