@@ -9,6 +9,7 @@ import tomllib
 
 from trilogy import Executor
 from trilogy.constants import CONFIG
+from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.environment import Environment
 from trilogy.core.query_processor import process_query
 from trilogy.parser import parse_text
@@ -173,6 +174,35 @@ def test_one(engine):
 def test_two(engine):
     query = run_query(engine, 2, sql_override=True)
     assert len(query) < 7500, query
+
+
+def test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate():
+    query = """
+    import unified_sales as sales;
+
+    def weekday_sum(weekday) -> sum(
+        sales.ext_sales_price ? sales.date.day_of_week = weekday
+    ) by sales.date.week_seq;
+
+    SELECT
+        sales.date.week_seq,
+        @weekday_sum(0) / @weekday_sum(1) as sun_over_mon
+    ORDER BY sales.date.week_seq asc
+    LIMIT 5;
+    """
+
+    env = Environment(working_path=working_path)
+    _, statements = parse_text(query, env)
+    processed = process_query(env, statements[-1])
+    grouped_cte = processed.ctes[-1]
+
+    aggregate_outputs = [
+        c
+        for c in grouped_cte.output_columns
+        if isinstance(c.lineage, BuildAggregateWrapper)
+    ]
+    assert len(aggregate_outputs) == 2
+    assert [c.address for c in grouped_cte.group_concepts] == ["sales.date.week_seq"]
 
 
 def test_two_merge_aggregate_compacts_inline_window_query():

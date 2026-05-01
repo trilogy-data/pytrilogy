@@ -2231,6 +2231,10 @@ class Factory:
     def _build_function_call_wrapper(self, base: FunctionCallWrapper) -> BuildExpr:
         # function calls are kept around purely for the parse tree
         # so discard at the build point
+        validation = requires_concept_nesting(base.content)
+        if validation:
+            _, built = self.instantiate_concept(validation)
+            return built
         return self.build(base.content)
 
     @build.register
