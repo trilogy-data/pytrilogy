@@ -84,9 +84,24 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             if _is_child_ineligible(concept, cte, parent):
                 return False, None
 
+        parent_has_aggregate = False
         for concept in parent.output_columns:
             if concept.derivation in PARENT_INELIGIBLE_DERIVATIONS:
                 return False, None
+            if concept.derivation == Derivation.AGGREGATE:
+                parent_has_aggregate = True
+
+        # When the parent computes aggregates, its GROUP BY grain matters; only
+        # safe to merge when the child preserves (or refines) that grain.
+        # Compare via equivalent_addresses so aliased keys are recognized as equal.
+        if parent_has_aggregate:
+            child_grain_addresses: set[str] = set()
+            for column in cte.output_columns:
+                if column.address in cte.grain.components:
+                    child_grain_addresses.update(column.equivalent_addresses)
+            for component in parent.grain.components:
+                if component not in child_grain_addresses:
+                    return False, None
 
         self.log(f"Merging  group-by {cte.name} into irrelevant parent {parent.name}")
         # Ensure any new derived columns from child exist in parent's source_map

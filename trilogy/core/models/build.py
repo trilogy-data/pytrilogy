@@ -229,7 +229,7 @@ def concept_collection_equivalent_addresses(
     return addresses
 
 
-def concept_by_equivalent_address(
+def _concept_by_equivalent_address(
     address: str,
     concepts: Iterable[BuildConcept],
 ) -> BuildConcept | None:
@@ -246,7 +246,7 @@ def resolve_concepts_with_equivalents(
 ) -> list[BuildConcept]:
     candidates = list(equivalents or [])
     return [
-        concept_by_equivalent_address(address, candidates)
+        _concept_by_equivalent_address(address, candidates)
         or environment.concepts[address]
         for address in addresses
     ]

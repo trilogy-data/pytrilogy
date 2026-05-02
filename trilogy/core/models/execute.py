@@ -202,29 +202,23 @@ class CTE:
             if join.right_cte.safe_identifier == parent.safe_identifier:
                 join.inline_cte(parent, inline_datasource)
         for k, v in self.source_map.items():
-            if isinstance(v, list):
-                self.source_map[k] = [
-                    (
-                        inline_datasource.safe_identifier
-                        if x == parent.safe_identifier
-                        else x
-                    )
-                    for x in v
-                ]
-            elif v == parent.safe_identifier:
-                self.source_map[k] = [inline_datasource.safe_identifier]
+            self.source_map[k] = [
+                (
+                    inline_datasource.safe_identifier
+                    if x == parent.safe_identifier
+                    else x
+                )
+                for x in v
+            ]
         for k, v in self.existence_source_map.items():
-            if isinstance(v, list):
-                self.existence_source_map[k] = [
-                    (
-                        inline_datasource.safe_identifier
-                        if x == parent.safe_identifier
-                        else x
-                    )
-                    for x in v
-                ]
-            elif v == parent.safe_identifier:
-                self.existence_source_map[k] = [inline_datasource.safe_identifier]
+            self.existence_source_map[k] = [
+                (
+                    inline_datasource.safe_identifier
+                    if x == parent.safe_identifier
+                    else x
+                )
+                for x in v
+            ]
         # zip in any required values for lookups
         for k in inline_datasource.output_lcl.addresses:
             if k in self.source_map and self.source_map[k]:
@@ -674,17 +668,24 @@ class QueryDatasource:
                 for c in all_concepts
                 if c.address in self.source_map
             }
+            mapped_pseudonyms: set[str] = set()
+            for c in all_concepts:
+                if c.address in self.source_map:
+                    mapped_pseudonyms.update(c.pseudonyms)
             for concept in all_concepts:
                 if concept.canonical_address in mapped_canonical:
                     continue
                 if concept.address in self.hidden_concepts:
                     continue
-                if concept.address not in self.source_map and not any(
-                    x in self.source_map for x in concept.pseudonyms
-                ):
-                    raise SyntaxError(
-                        f"Missing source map entry for {concept.address} with pseudonyms {concept.pseudonyms}, have map: {self.source_map}"
-                    )
+                if concept.address in self.source_map:
+                    continue
+                if any(x in self.source_map for x in concept.pseudonyms):
+                    continue
+                if concept.address in mapped_pseudonyms:
+                    continue
+                raise SyntaxError(
+                    f"Missing source map entry for {concept.address} with pseudonyms {concept.pseudonyms}, have map: {self.source_map}"
+                )
 
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -712,6 +713,7 @@ class QueryDatasource:
             concept.address
             for concept in self.output_concepts
             if concept.purpose == Purpose.KEY
+            and concept.name != RECURSIVE_GATING_CONCEPT
         }
         return self.grain + BuildGrain(components=key_outputs)
 

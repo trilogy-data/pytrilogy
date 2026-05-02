@@ -34,7 +34,7 @@ NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
 )
 
 
-def source_concept_for_address(
+def _source_concept_for_address(
     source: GrainSource,
     address: str,
 ) -> BuildConcept | None:
@@ -48,7 +48,7 @@ def source_concept_for_address(
     )
 
 
-def concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
+def _concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
     if grain.components & concept.equivalent_addresses:
         return True
     if (
@@ -60,7 +60,7 @@ def concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
     return False
 
 
-def concept_coverage_addresses(concept: BuildConcept) -> set[str]:
+def _concept_coverage_addresses(concept: BuildConcept) -> set[str]:
     addresses = set(concept.equivalent_addresses)
     if concept.derivation == Derivation.MULTISELECT and concept.keys:
         addresses.update(concept.keys)
@@ -92,7 +92,7 @@ def rowset_source_grain(
     return BuildGrain.from_concepts(concepts, environment=environment)
 
 
-def grain_coverage_addresses(
+def _grain_coverage_addresses(
     grain: BuildGrain,
     environment: BuildEnvironment,
 ) -> set[str]:
@@ -100,22 +100,22 @@ def grain_coverage_addresses(
     for candidate in (grain, rowset_source_grain(grain, environment)):
         for address in candidate.components:
             concept = environment.concepts[address]
-            addresses.update(concept_coverage_addresses(concept))
+            addresses.update(_concept_coverage_addresses(concept))
     return addresses
 
 
-def concept_covered_by_grain(
+def _concept_covered_by_grain(
     concept: BuildConcept,
     grain: BuildGrain,
     environment: BuildEnvironment,
 ) -> bool:
     return bool(
-        concept_coverage_addresses(concept)
-        & grain_coverage_addresses(grain, environment)
+        _concept_coverage_addresses(concept)
+        & _grain_coverage_addresses(grain, environment)
     )
 
 
-def join_right_preserves_cardinality(join: BaseJoin | UnnestJoin) -> bool:
+def _join_right_preserves_cardinality(join: BaseJoin | UnnestJoin) -> bool:
     if not isinstance(join, BaseJoin):
         return False
     if join.join_type in (JoinType.FULL, JoinType.RIGHT_OUTER, JoinType.CROSS):
@@ -134,15 +134,15 @@ def join_right_preserves_cardinality(join: BaseJoin | UnnestJoin) -> bool:
     )
     for join_key in right_keys:
         materialized = (
-            source_concept_for_address(join.right_datasource, join_key.address)
+            _source_concept_for_address(join.right_datasource, join_key.address)
             or join_key
         )
         coverage.update(materialized.equivalent_addresses)
         if materialized.derivation == Derivation.MULTISELECT:
             coverage.update(materialized.keys or set())
     return right_grain.components.issubset(coverage) or any(
-        concept_covers_grain(
-            source_concept_for_address(join.right_datasource, join_key.address)
+        _concept_covers_grain(
+            _source_concept_for_address(join.right_datasource, join_key.address)
             or join_key,
             right_grain,
         )
@@ -150,7 +150,7 @@ def join_right_preserves_cardinality(join: BaseJoin | UnnestJoin) -> bool:
     )
 
 
-def join_left_keys_covered_by_grain(
+def _join_left_keys_covered_by_grain(
     join: BaseJoin | UnnestJoin,
     grain: BuildGrain,
     environment: BuildEnvironment,
@@ -159,14 +159,14 @@ def join_left_keys_covered_by_grain(
         return False
     if join.concept_pairs:
         left_keys = [
-            source_concept_for_address(pair.existing_datasource, pair.left.address)
+            _source_concept_for_address(pair.existing_datasource, pair.left.address)
             or pair.left
             for pair in join.concept_pairs
         ]
     elif join.concepts:
         left_keys = [
             (
-                source_concept_for_address(join.left_datasource, concept.address)
+                _source_concept_for_address(join.left_datasource, concept.address)
                 if join.left_datasource
                 else None
             )
@@ -176,18 +176,18 @@ def join_left_keys_covered_by_grain(
     else:
         return False
     return all(
-        concept_covered_by_grain(concept, grain, environment) for concept in left_keys
+        _concept_covered_by_grain(concept, grain, environment) for concept in left_keys
     )
 
 
-def join_right_grain_can_be_omitted(
+def _join_right_grain_can_be_omitted(
     join: BaseJoin | UnnestJoin,
     grain: BuildGrain,
     environment: BuildEnvironment,
 ) -> bool:
-    return join_right_preserves_cardinality(join) and join_left_keys_covered_by_grain(
-        join, grain, environment
-    )
+    return _join_right_preserves_cardinality(
+        join
+    ) and _join_left_keys_covered_by_grain(join, grain, environment)
 
 
 def _concepts_in_expression(value: object) -> set[str]:
@@ -225,27 +225,27 @@ def non_null_proofs(
     return proofs
 
 
-def datasource_addresses(source: GrainSource) -> set[str]:
+def _datasource_addresses(source: GrainSource) -> set[str]:
     return {concept.address for concept in source.output_concepts}
 
 
-def left_join_addresses(
+def _left_join_addresses(
     join: BaseJoin,
     final_datasets: list[GrainSource],
 ) -> set[str]:
     if join.left_datasource is not None:
-        return datasource_addresses(join.left_datasource)
+        return _datasource_addresses(join.left_datasource)
     if not join.concept_pairs:
         return {
             address
             for source in final_datasets
             if source.identifier != join.right_datasource.identifier
-            for address in datasource_addresses(source)
+            for address in _datasource_addresses(source)
         }
     return {
         address
         for pair in join.concept_pairs or []
-        for address in datasource_addresses(pair.existing_datasource)
+        for address in _datasource_addresses(pair.existing_datasource)
     }
 
 
@@ -267,8 +267,8 @@ def downgrade_join_for_condition(
     else:
         left_keys = {concept.address for concept in join.concepts or []}
         right_keys = set(left_keys)
-    left_all = left_join_addresses(join, final_datasets)
-    right_all = datasource_addresses(join.right_datasource)
+    left_all = _left_join_addresses(join, final_datasets)
+    right_all = _datasource_addresses(join.right_datasource)
     left_forced = bool(proofs & (left_all - right_all)) or (
         bool(left_keys) and left_keys.issubset(proofs)
     )
@@ -293,7 +293,7 @@ def calculate_joined_pregrain(
         join.right_datasource.identifier
         for join in joins
         if isinstance(join, BaseJoin)
-        and join_right_grain_can_be_omitted(join, grain, environment)
+        and _join_right_grain_can_be_omitted(join, grain, environment)
     }
     output = BuildGrain()
     for source in final_datasets:

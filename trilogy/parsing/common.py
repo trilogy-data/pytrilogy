@@ -418,25 +418,41 @@ def concepts_to_grain_concepts(
     environment: Environment | None,
     local_concepts: Mapping[str, Concept] | None = None,
 ) -> set[str]:
-    preconcepts: list[Concept] = []
+    raw: list[Concept] = []
     for c in concepts:
         if isinstance(c, Concept):
-            preconcepts.append(c)
+            raw.append(c)
 
         elif isinstance(c, ConceptRef) and environment:
             if local_concepts and c.address in local_concepts:
-                preconcepts.append(local_concepts[c.address])
+                raw.append(local_concepts[c.address])
             else:
-                preconcepts.append(environment.concepts[c.address])
+                raw.append(environment.concepts[c.address])
         elif isinstance(c, str) and environment:
             if local_concepts and c in local_concepts:
-                preconcepts.append(local_concepts[c])
+                raw.append(local_concepts[c])
             else:
-                preconcepts.append(environment.concepts[c])
+                raw.append(environment.concepts[c])
         else:
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
+    preconcepts: list[Concept] = []
+    for x in raw:
+        if (
+            x.lineage
+            and isinstance(x.lineage, Function)
+            and x.lineage.operator == FunctionType.ALIAS
+            and environment
+        ):
+            # alias is a renamed view of the source — use the source for grain
+            source_addr = x.lineage.arguments[0].address  # type: ignore
+            if local_concepts and source_addr in local_concepts:
+                preconcepts.append(local_concepts[source_addr])
+            else:
+                preconcepts.append(environment.concepts[source_addr])
+        else:
+            preconcepts.append(x)
     seen: set[str] = set()
     for sub in preconcepts:
         if seen & sub.equivalent_addresses:
