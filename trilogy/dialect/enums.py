@@ -47,6 +47,7 @@ class Dialects(Enum):
     POSTGRES = "postgres"
     SNOWFLAKE = "snowflake"
     DATAFRAME = "dataframe"
+    CLICKHOUSE = "clickhouse"
 
     @classmethod
     def _missing_(cls, value):
@@ -54,6 +55,8 @@ class Dialects(Enum):
             return cls.DUCK_DB
         if value == "sqlite3" or value == "sqllite":
             return cls.SQLITE
+        if value == "chdb":
+            return cls.CLICKHOUSE
         return super()._missing_(value)
 
     def default_renderer(self, conf=None, _engine_factory: Callable = default_factory):
@@ -133,6 +136,20 @@ class Dialects(Enum):
             base = _engine_factory(conf, DataFrameConfig)
 
             return DataframeConnectionWrapper(base, dataframes=conf.dataframes)
+        elif self == Dialects.CLICKHOUSE:
+            from trilogy.dialect.config import ClickhouseConfig
+
+            if not conf:
+                conf = ClickhouseConfig()
+            if not isinstance(conf, ClickhouseConfig):
+                raise TypeError(
+                    f"Invalid dialect configuration; expected ClickhouseConfig, got {type(conf).__name__}"
+                )
+            if conf.mode == "chdb":
+                from trilogy.dialect.clickhouse_chdb import ChdbEngine
+
+                return ChdbEngine(path=conf.chdb_path)
+            return _engine_factory(conf, ClickhouseConfig)
         else:
             raise ValueError(
                 f"Unsupported dialect {self} for default engine creation; create one explicitly."

@@ -53,5 +53,9 @@ def get_dialect_generator(
         from trilogy.dialect.dataframe import DataframeDialect
 
         return DataframeDialect(rendering=rendering, config=config)
+    elif dialect == Dialects.CLICKHOUSE:
+        from trilogy.dialect.clickhouse import ClickhouseDialect
+
+        return ClickhouseDialect(rendering=rendering, config=config)
     else:
         raise ValueError(f"Unsupported dialect {dialect}")

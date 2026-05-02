@@ -277,3 +277,89 @@ class DataFrameConfig(DuckDBConfig):
     def __init__(self, dataframes: dict[str, "DataFrame"]):
         super().__init__()
         self.dataframes = dataframes
+
+
+class ClickhouseConfig(DialectConfig):
+    """Config for ClickHouse.
+
+    mode="chdb": embedded in-process via chdb (good for unit tests / local dev).
+    mode="server": remote/local ClickHouse server via clickhouse-sqlalchemy.
+    """
+
+    def __init__(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        database: str | None = None,
+        secure: bool = False,
+        mode: str = "chdb",
+        chdb_path: str | None = None,
+        retry_config: RetryConfig | None = None,
+    ):
+        super().__init__(retry_config=retry_config)
+        if mode not in ("chdb", "server"):
+            raise ValueError(
+                f"ClickhouseConfig mode must be 'chdb' or 'server', got {mode!r}"
+            )
+        self.mode = mode
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.database = database
+        self.secure = secure
+        self.chdb_path = chdb_path
+
+    def connection_string(self) -> str:
+        if self.mode == "chdb":
+            return f"chdb:///{self.chdb_path or ':memory:'}"
+        from urllib.parse import quote, urlsplit
+
+        # Accept host as bare hostname or full URL like
+        # "https://foo.clickhouse.cloud:8443". URL form selects the HTTP driver
+        # and contributes secure/port; explicit constructor args still win.
+        raw_host = self.host or "localhost"
+        url_port: int | None = None
+        url_secure = False
+        use_http = False
+        if "://" in raw_host:
+            parsed = urlsplit(raw_host)
+            host = parsed.hostname or "localhost"
+            url_port = parsed.port
+            url_scheme = parsed.scheme.lower()
+            if url_scheme in ("http", "https"):
+                use_http = True
+                url_secure = url_scheme == "https"
+        else:
+            host = raw_host
+
+        secure = self.secure or url_secure
+        if self.port is not None:
+            port = self.port
+        elif url_port is not None:
+            port = url_port
+        elif use_http:
+            port = 8443 if secure else 8123
+        else:
+            port = 9440 if secure else 9000
+
+        # Port wins over URL scheme: 9440/9000 are native protocol ports and
+        # don't speak HTTP, even if the user pasted an https:// URL.
+        if port in (9440, 9000):
+            use_http = False
+        elif port in (8443, 8123):
+            use_http = True
+        scheme = "clickhouse+http" if use_http else "clickhouse+native"
+
+        user = self.username or "default"
+        auth = f"{user}:{quote(self.password, safe='')}" if self.password else user
+        suffix = f"/{self.database or 'default'}"
+        if use_http and secure:
+            query = "?protocol=https"
+        elif not use_http and secure:
+            query = "?secure=true"
+        else:
+            query = ""
+        return f"{scheme}://{auth}@{host}:{port}{suffix}{query}"

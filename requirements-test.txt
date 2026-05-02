@@ -22,3 +22,6 @@ uvicorn
 altair
 vl-convert-python
 plotext
+# chdb has no Windows wheels (macOS + Linux only); skip on win32
+chdb; sys_platform != "win32"
+clickhouse-sqlalchemy
