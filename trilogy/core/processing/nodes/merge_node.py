@@ -313,26 +313,25 @@ class MergeNode(StrategyNode):
                 dataset.ordering = self.ordering
                 return dataset
 
-        pregrain = BuildGrain()
-
+        # Accumulate grain components from non-existence sources directly; we
+        # rebuild via from_concepts below, which drops where_clauses anyway,
+        # so a per-source BuildGrain accumulator would be wasted work.
+        raw_pregrain_components: set[str] = set()
         for source in final_datasets:
             if all(
                 [x.address in self.existence_concepts for x in source.output_concepts]
             ):
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} skipping existence only source with {source.output_concepts} from grain accumulation"
+                logger.debug(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} skipping existence-only source {source.identifier}"
                 )
                 continue
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} adding source grain {source.grain} from source {source.identifier} to pregrain"
-            )
-            pregrain += source.grain
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} pregrain is now {pregrain}"
+            raw_pregrain_components.update(source.grain.components)
+            logger.debug(
+                f"{self.logging_prefix}{LOGGER_PREFIX} added grain {source.grain} from {source.identifier}; pregrain components now {raw_pregrain_components}"
             )
 
         raw_pregrain = BuildGrain.from_concepts(
-            pregrain.components, environment=self.environment
+            raw_pregrain_components, environment=self.environment
         )
 
         grain = self.grain if self.grain else raw_pregrain
@@ -363,7 +362,7 @@ class MergeNode(StrategyNode):
             environment=self.environment,
         )
         pregrain += condition_key_grain(self.conditions, self.environment)
-        logger.info(
+        logger.debug(
             f"{self.logging_prefix}{LOGGER_PREFIX} effective joined pregrain is {pregrain}"
         )
         condition_key_requires_group = has_condition_key_outside_grain(

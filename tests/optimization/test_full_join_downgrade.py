@@ -117,10 +117,10 @@ def test_proves_non_null_helpers():
     )
     from trilogy.core.models.core import DataType
     from trilogy.core.optimizations.full_join_downgrade import (
-        _concepts_in_expression,
         _gather_proofs,
         _proves_non_null,
     )
+    from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
     env = Environment()
     env.parse("key x int; key y int;")
@@ -188,9 +188,9 @@ def test_proves_non_null_helpers():
         == set()
     )
 
-    # _concepts_in_expression also stops at coalesce
-    assert _concepts_in_expression(coalesce) == set()
-    assert _concepts_in_expression(multiply) == {y.address}
+    # concepts_implied_non_null also stops at coalesce
+    assert concepts_implied_non_null(coalesce) == set()
+    assert concepts_implied_non_null(multiply) == {y.address}
 
     # _gather_proofs walks AND-decomposed atoms
     from trilogy.core.enums import BooleanOperator

@@ -21,76 +21,20 @@ into them.
 
 from __future__ import annotations
 
-from trilogy.constants import MagicConstants
-from trilogy.core.enums import ComparisonOperator, FunctionType, JoinType
+from trilogy.core.enums import ComparisonOperator, JoinType
 from trilogy.core.models.build import (
-    BuildAggregateWrapper,
     BuildComparison,
-    BuildConcept,
     BuildConditional,
-    BuildFunction,
     BuildParenthetical,
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.processing.condition_utility import decompose_condition
-
-# Operators whose result is NULL (and therefore not TRUE) when either operand is
-# NULL — when one of these atoms is required by an AND chain, both sides'
-# concept references must be non-null in surviving rows. (Tuple, not set, since
-# ComparisonOperator overrides __eq__ without __hash__.)
-_NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
-    ComparisonOperator.EQ,
-    ComparisonOperator.NE,
-    ComparisonOperator.LT,
-    ComparisonOperator.GT,
-    ComparisonOperator.LTE,
-    ComparisonOperator.GTE,
-    ComparisonOperator.LIKE,
-    ComparisonOperator.ILIKE,
-    ComparisonOperator.IN,
-    ComparisonOperator.NOT_IN,
-    ComparisonOperator.CONTAINS,
+from trilogy.core.processing.condition_utility import (
+    NULL_PROPAGATING_OPS,
+    concepts_implied_non_null,
+    decompose_condition,
+    is_null_literal,
 )
-
-# Functions whose result can be non-null even when an argument is NULL — we
-# can't recurse through them to claim the args are non-null.
-_NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
-    FunctionType.COALESCE,
-    FunctionType.NULLIF,
-    FunctionType.CASE,
-    FunctionType.COUNT,  # COUNT(NULL) = 0, not NULL
-    FunctionType.COUNT_DISTINCT,
-)
-
-
-def _is_null_literal(value: object) -> bool:
-    return value is None or value is MagicConstants.NULL
-
-
-def _concepts_in_expression(value: object) -> set[str]:
-    """Recursively gather concept addresses inside a null-propagating expression.
-
-    The caller has already established that the expression's result must be
-    non-null; this returns every concept whose individual non-nullness is
-    therefore implied. Stops at null-opaque functions (coalesce et al.) — those
-    can swallow NULL args without their result being NULL, so descending past
-    them would over-claim.
-    """
-    if isinstance(value, BuildConcept):
-        return {value.address}
-    if isinstance(value, BuildParenthetical):
-        return _concepts_in_expression(value.content)  # type: ignore[arg-type]
-    if isinstance(value, BuildAggregateWrapper):
-        return _concepts_in_expression(value.function)
-    if isinstance(value, BuildFunction):
-        if value.operator in _NULL_OPAQUE_FUNCTIONS:
-            return set()
-        addrs: set[str] = set()
-        for arg in value.arguments:
-            addrs |= _concepts_in_expression(arg)
-        return addrs
-    return set()
 
 
 def _proves_non_null(
@@ -107,20 +51,18 @@ def _proves_non_null(
     if op == ComparisonOperator.IS_NOT:
         # `<expr> IS NOT NULL` — every concept inside the expression must be
         # non-null, modulo null-opaque functions.
-        if _is_null_literal(right):
-            return _concepts_in_expression(left)
-        if _is_null_literal(left):
-            return _concepts_in_expression(right)
+        if is_null_literal(right):
+            return concepts_implied_non_null(left)
+        if is_null_literal(left):
+            return concepts_implied_non_null(right)
         return set()
 
     # `concept IS NULL` specifically wants NULLs — never proves non-null.
     if op == ComparisonOperator.IS:
         return set()
 
-    if op in _NULL_PROPAGATING_OPS:
-        # Null-propagating comparison: both sides must evaluate to non-null for
-        # the comparison to be TRUE.
-        return _concepts_in_expression(left) | _concepts_in_expression(right)
+    if op in NULL_PROPAGATING_OPS:
+        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
 
     return set()
 

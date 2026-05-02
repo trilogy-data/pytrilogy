@@ -1,37 +1,55 @@
 from __future__ import annotations
 
-from trilogy.core.enums import ComparisonOperator, Derivation, JoinType, Purpose
+from trilogy.core.enums import Derivation, JoinType, Purpose
 from trilogy.core.models.build import (
-    BuildAggregateWrapper,
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
     BuildFilterItem,
-    BuildFunction,
     BuildGrain,
     BuildParenthetical,
     BuildRowsetItem,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
-from trilogy.core.processing.condition_utility import decompose_condition
+from trilogy.core.processing.condition_utility import (
+    NULL_PROPAGATING_OPS,
+    concepts_implied_non_null,
+    decompose_condition,
+)
 
 GrainSource = QueryDatasource | BuildDatasource
 
-NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
-    ComparisonOperator.EQ,
-    ComparisonOperator.NE,
-    ComparisonOperator.LT,
-    ComparisonOperator.GT,
-    ComparisonOperator.LTE,
-    ComparisonOperator.GTE,
-    ComparisonOperator.LIKE,
-    ComparisonOperator.ILIKE,
-    ComparisonOperator.IN,
-    ComparisonOperator.NOT_IN,
-    ComparisonOperator.CONTAINS,
-)
+
+def non_null_proofs(
+    condition: BuildComparison | BuildConditional | BuildParenthetical,
+) -> set[str]:
+    """Concept addresses that this condition forces non-null in surviving rows.
+
+    Logical-stage analysis: only descends through null-propagating operators,
+    not ``IS NOT NULL``. The merge-stage caller can't see how merged join keys
+    will materialize as ``COALESCE(left.k, right.k)`` at SQL time, so it must
+    avoid claiming a shared key non-null on either side individually — which
+    would happen if ``IS NOT NULL`` were honored here. The post-CTE
+    ``DowngradeFullJoinOnGuards`` pass operates on materialized SQL and can
+    safely honor the fuller form.
+    """
+    proofs: set[str] = set()
+    for atom in decompose_condition(condition):
+        if isinstance(atom, BuildParenthetical):
+            if isinstance(
+                atom.content,
+                (BuildComparison, BuildConditional, BuildParenthetical),
+            ):
+                proofs |= non_null_proofs(atom.content)
+            continue
+        if not isinstance(atom, BuildComparison):
+            continue
+        if atom.operator in NULL_PROPAGATING_OPS:
+            proofs |= concepts_implied_non_null(atom.left)
+            proofs |= concepts_implied_non_null(atom.right)
+    return proofs
 
 
 def _source_concept_for_address(
@@ -126,27 +144,20 @@ def _join_right_preserves_cardinality(join: BaseJoin | UnnestJoin) -> bool:
     right_grain = join.right_datasource.effective_grain
     if not right_grain.components:
         return True
-    coverage: set[str] = set()
     right_keys = (
         [pair.right for pair in join.concept_pairs]
         if join.concept_pairs
         else join.concepts or []
     )
-    for join_key in right_keys:
-        materialized = (
-            _source_concept_for_address(join.right_datasource, join_key.address)
-            or join_key
-        )
-        coverage.update(materialized.equivalent_addresses)
-        if materialized.derivation == Derivation.MULTISELECT:
-            coverage.update(materialized.keys or set())
+    materialized_keys = [
+        _source_concept_for_address(join.right_datasource, key.address) or key
+        for key in right_keys
+    ]
+    coverage: set[str] = set()
+    for key in materialized_keys:
+        coverage.update(_concept_coverage_addresses(key))
     return right_grain.components.issubset(coverage) or any(
-        _concept_covers_grain(
-            _source_concept_for_address(join.right_datasource, join_key.address)
-            or join_key,
-            right_grain,
-        )
-        for join_key in right_keys
+        _concept_covers_grain(key, right_grain) for key in materialized_keys
     )
 
 
@@ -185,44 +196,9 @@ def _join_right_grain_can_be_omitted(
     grain: BuildGrain,
     environment: BuildEnvironment,
 ) -> bool:
-    return _join_right_preserves_cardinality(
-        join
-    ) and _join_left_keys_covered_by_grain(join, grain, environment)
-
-
-def _concepts_in_expression(value: object) -> set[str]:
-    if isinstance(value, BuildConcept):
-        return {value.address}
-    if isinstance(value, BuildParenthetical):
-        return _concepts_in_expression(value.content)
-    if isinstance(value, BuildAggregateWrapper):
-        return _concepts_in_expression(value.function)
-    if isinstance(value, BuildFunction):
-        addresses: set[str] = set()
-        for arg in value.arguments:
-            addresses |= _concepts_in_expression(arg)
-        return addresses
-    return set()
-
-
-def non_null_proofs(
-    condition: BuildComparison | BuildConditional | BuildParenthetical,
-) -> set[str]:
-    proofs: set[str] = set()
-    for atom in decompose_condition(condition):
-        if isinstance(atom, BuildParenthetical):
-            if isinstance(
-                atom.content,
-                (BuildComparison, BuildConditional, BuildParenthetical),
-            ):
-                proofs |= non_null_proofs(atom.content)
-            continue
-        if not isinstance(atom, BuildComparison):
-            continue
-        if atom.operator in NULL_PROPAGATING_OPS:
-            proofs |= _concepts_in_expression(atom.left)
-            proofs |= _concepts_in_expression(atom.right)
-    return proofs
+    return _join_right_preserves_cardinality(join) and _join_left_keys_covered_by_grain(
+        join, grain, environment
+    )
 
 
 def _datasource_addresses(source: GrainSource) -> set[str]:
