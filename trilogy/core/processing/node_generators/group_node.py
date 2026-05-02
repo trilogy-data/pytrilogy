@@ -23,6 +23,28 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
 
+def _alias_argument_address(concept: BuildConcept) -> str | None:
+    if not (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+        and concept.lineage.concept_arguments
+    ):
+        return None
+    return concept.lineage.concept_arguments[0].address
+
+
+def _replace_grain_components_with_aliases(
+    grain_components: list[BuildConcept],
+    candidates: list[BuildConcept],
+) -> list[BuildConcept]:
+    aliases = {
+        parent_address: concept
+        for concept in candidates
+        if (parent_address := _alias_argument_address(concept)) is not None
+    }
+    return [aliases.get(component.address, component) for component in grain_components]
+
+
 def _can_use_grouped_materialized_source(concept: BuildConcept) -> bool:
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return True
@@ -70,6 +92,9 @@ def gen_group_node(
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
     grain_components = [environment.concepts[c] for c in concept.grain.components]
+    grain_components = _replace_grain_components_with_aliases(
+        grain_components, local_optional
+    )
     if (
         concept.grain
         and len(concept.grain.components) > 0

@@ -1,5 +1,5 @@
 query_id = "97.2"
-gen_length = 3349
+gen_length = 2901
 generated_sql = """
 
 WITH 
@@ -58,33 +58,20 @@ GROUP BY
     1,
     2,
     3,
-    4),
-uneven as (
-SELECT
-    \"abundant\".\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
-    \"abundant\".\"store_sales_item_id\" as \"merged_store_sales_item_id\",
-    \"cheerful\".\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
-    \"cheerful\".\"catalog_sales_item_id\" as \"merged_catalog_sales_item_id\"
-FROM
-    \"abundant\"
-    FULL JOIN \"cheerful\" on \"abundant\".\"customer_id\" is not distinct from \"cheerful\".\"customer_id\" AND \"abundant\".\"item_id\" is not distinct from \"cheerful\".\"item_id\"
-GROUP BY
-    1,
-    2,
-    3,
     4)
 SELECT
     sum(CASE
-	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_store_sales_item_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is null and \"uneven\".\"merged_catalog_sales_item_id\" is null THEN 1
+	WHEN \"abundant\".\"store_sales_customer_id\" is not null and \"abundant\".\"store_sales_item_id\" is not null and \"cheerful\".\"catalog_sales_bill_customer_id\" is null and \"cheerful\".\"catalog_sales_item_id\" is null THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"uneven\".\"merged_store_sales_customer_id\" is null and \"uneven\".\"merged_store_sales_item_id\" is null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is not null and \"uneven\".\"merged_catalog_sales_item_id\" is not null THEN 1
+	WHEN \"abundant\".\"store_sales_customer_id\" is null and \"abundant\".\"store_sales_item_id\" is null and \"cheerful\".\"catalog_sales_bill_customer_id\" is not null and \"cheerful\".\"catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_store_sales_item_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is not null and \"uneven\".\"merged_catalog_sales_item_id\" is not null THEN 1
+	WHEN \"abundant\".\"store_sales_customer_id\" is not null and \"abundant\".\"store_sales_item_id\" is not null and \"cheerful\".\"catalog_sales_bill_customer_id\" is not null and \"cheerful\".\"catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"uneven\""""
+    \"abundant\"
+    FULL JOIN \"cheerful\" on \"abundant\".\"customer_id\" is not distinct from \"cheerful\".\"customer_id\" AND \"abundant\".\"item_id\" is not distinct from \"cheerful\".\"item_id\""""

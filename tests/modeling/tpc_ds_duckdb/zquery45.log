@@ -1,5 +1,5 @@
 query_id = "45"
-gen_length = 1759
+gen_length = 2118
 generated_sql = """
 
 WITH 
@@ -9,11 +9,12 @@ SELECT
 FROM
     \"memory\".\"item\" as \"item2_items\"
 GROUP BY
-    1)
+    1),
+uneven as (
 SELECT
-    \"web_sales_customer_address_customer_address\".\"CA_ZIP\" as \"web_sales_customer_address_zip\",
     \"web_sales_customer_address_customer_address\".\"CA_CITY\" as \"web_sales_customer_address_city\",
-    sum(\"web_sales_web_sales\".\"WS_SALES_PRICE\") as \"total_sales\"
+    \"web_sales_customer_address_customer_address\".\"CA_ZIP\" as \"web_sales_customer_address_zip\",
+    \"web_sales_web_sales\".\"WS_SALES_PRICE\" as \"web_sales_sales_price\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
@@ -25,8 +26,20 @@ WHERE
 
 GROUP BY
     1,
+    2,
+    3,
+    \"web_sales_item_items\".\"I_ITEM_SK\",
+    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\")
+SELECT
+    \"uneven\".\"web_sales_customer_address_zip\" as \"web_sales_customer_address_zip\",
+    \"uneven\".\"web_sales_customer_address_city\" as \"web_sales_customer_address_city\",
+    sum(\"uneven\".\"web_sales_sales_price\") as \"total_sales\"
+FROM
+    \"uneven\"
+GROUP BY
+    1,
     2
 ORDER BY 
-    \"web_sales_customer_address_customer_address\".\"CA_ZIP\" asc,
-    \"web_sales_customer_address_customer_address\".\"CA_CITY\" asc
+    \"uneven\".\"web_sales_customer_address_zip\" asc,
+    \"uneven\".\"web_sales_customer_address_city\" asc
 LIMIT (100)"""

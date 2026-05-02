@@ -1,9 +1,10 @@
-import store_sales as store_sales;import customer as customer;
+import store_sales as store_sales;
+import customer as customer;
 
-rowset dn <- SELECT
+SELECT
     store_sales.ticket_number,
     store_sales.customer.id,
-    store_sales.sale_address.city,
+    store_sales.sale_address.city -> bought_city,
     sum(store_sales.ext_sales_price) -> extended_price,
     sum(store_sales.ext_tax) -> extended_tax,
     sum(store_sales.ext_list_price) -> list_price
@@ -20,18 +21,9 @@ SELECT
     customer.address.city
 ALIGN customer_id: store_sales.customer.id, customer.id
 WHERE
-    customer.address.city != store_sales.sale_address.city
-;
-SELECT
-    dn.customer.last_name,
-    dn.customer.first_name,
-    dn.customer.address.city,
-    dn.store_sales.sale_address.city,
-    dn.store_sales.ticket_number,
-    dn.extended_price,
-    dn.extended_tax,
-    dn.list_price
+    customer.address.city != bought_city
 ORDER BY
-    dn.customer.last_name asc nulls first,
-    dn.store_sales.ticket_number asc nulls first
+    customer.last_name asc nulls first,
+    store_sales.ticket_number asc nulls first
 LIMIT 100;
+

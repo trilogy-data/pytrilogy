@@ -192,7 +192,8 @@ def check_if_group_required(
     for con in target_grain.components:
         full = environment.concepts[con]
         if full.derivation == Derivation.ROWSET:
-            ngrain.append(full.address.split(".", 1)[1])
+            assert isinstance(full.lineage, BuildRowsetItem)
+            ngrain.append(full.lineage.content.address)
         elif full.derivation == Derivation.FILTER:
             assert isinstance(full.lineage, BuildFilterItem)
             if isinstance(full.lineage.content, BuildConcept):

@@ -15,11 +15,12 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING
 
-from trilogy.core.enums import ConceptSource, Derivation
+from trilogy.core.enums import ConceptSource, Derivation, FunctionType
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     FilterItem,
+    Function,
     Grain,
     Metadata,
     RowsetItem,
@@ -119,6 +120,13 @@ def _rowset_concept(
             )
         )
     orig[orig_concept.address] = new_concept
+    if (
+        orig_concept.derivation == Derivation.BASIC
+        and isinstance(orig_concept.lineage, Function)
+        and orig_concept.lineage.operator == FunctionType.ALIAS
+    ):
+        for arg in orig_concept.lineage.concept_arguments:
+            orig[arg.address] = new_concept
     orig_map[new_concept.address] = orig_concept
     pre_output.append(new_concept)
 

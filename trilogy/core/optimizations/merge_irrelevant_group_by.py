@@ -1,4 +1,5 @@
 from trilogy.core.enums import Derivation, SourceType
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.execute import (
     CTE,
     RecursiveCTE,
@@ -7,7 +8,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import is_sole_consumer, repoint_consumers
 
-# Child must have no aggregates or other unsafe derivations — it must be
+# Child must have no aggregates or other unsafe derivations - it must be
 # pure scalar transforms so its GROUP BY is truly vacuous relative to parent.
 CHILD_INELIGIBLE_DERIVATIONS = {
     Derivation.WINDOW,
@@ -15,10 +16,21 @@ CHILD_INELIGIBLE_DERIVATIONS = {
     Derivation.RECURSIVE,
     Derivation.AGGREGATE,
 }
+PARENT_INELIGIBLE_DERIVATIONS = {
+    Derivation.WINDOW,
+    Derivation.UNNEST,
+    Derivation.RECURSIVE,
+}
 
 
 def _is_group_by_cte(cte: CTE) -> bool:
     return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
+
+
+def _is_child_ineligible(concept: BuildConcept, cte: CTE, parent: CTE) -> bool:
+    if concept.derivation not in CHILD_INELIGIBLE_DERIVATIONS:
+        return False
+    return cte.source_map.get(concept.address) != [parent.name]
 
 
 class MergeIrrelevantGroupBy(OptimizationRule):
@@ -67,18 +79,18 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             self.debug(f"Parent {parent.name} has multiple children, skipping")
             return False, None
 
-        # Child must be pure scalar transforms — no aggregates, windows, etc.
+        # Child must be pure scalar transforms - no aggregates, windows, etc.
         for concept in cte.output_columns:
-            if concept.derivation in CHILD_INELIGIBLE_DERIVATIONS:
+            if _is_child_ineligible(concept, cte, parent):
                 return False, None
 
         for concept in parent.output_columns:
-            if concept.derivation in CHILD_INELIGIBLE_DERIVATIONS:
+            if concept.derivation in PARENT_INELIGIBLE_DERIVATIONS:
                 return False, None
 
         self.log(f"Merging  group-by {cte.name} into irrelevant parent {parent.name}")
         # Ensure any new derived columns from child exist in parent's source_map
-        # (empty list → renderer uses concept lineage to compute the expression).
+        # (empty list means renderer uses concept lineage to compute the expression).
         parent_output_addresses = {x.address for x in parent.output_columns}
         for x in cte.output_columns:
             if x.address not in parent_output_addresses:

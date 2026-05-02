@@ -173,29 +173,36 @@ def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],
 ) -> bool:
+    other_addresses = grain_relevance_addresses(others)
 
     if concept.is_aggregate and not (
         isinstance(concept.lineage, BuildAggregateWrapper) and concept.lineage.by
     ):
 
         return False
+    if (
+        concept.derivation == Derivation.MULTISELECT
+        and concept.keys
+        and any(c in other_addresses for c in concept.keys)
+    ):
+        return False
     if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
-        if all([c in others for c in concept.keys]):
+        if all([c in other_addresses for c in concept.keys]):
             return False
     if (
         concept.purpose == Purpose.KEY
         and concept.keys
-        and all([c in others and c != concept.address for c in concept.keys])
+        and all([c in other_addresses and c != concept.address for c in concept.keys])
     ):
         return False
     if concept.purpose in (Purpose.METRIC,):
-        if all([c in others for c in concept.grain.components]):
+        if all([c in other_addresses for c in concept.grain.components]):
             return False
         if (
             isinstance(concept.lineage, BuildAggregateWrapper)
             and concept.lineage.by
             and all(
-                c in others or not concept_is_relevant(c, others)
+                c.address in other_addresses or not concept_is_relevant(c, others)
                 for c in concept.lineage.by
             )
         ):
@@ -205,12 +212,26 @@ def concept_is_relevant(
     if concept.derivation in (Derivation.BASIC,):
         return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
     if concept.derivation == Derivation.WINDOW:
-        if all([c in others for c in concept.grain.components]):
+        if all([c in other_addresses for c in concept.grain.components]):
             return False
         return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
     return True
+
+
+def grain_relevance_addresses(concepts: Iterable[BuildConcept]) -> set[str]:
+    addresses: set[str] = set()
+    for concept in concepts:
+        addresses.add(concept.address)
+        addresses.update(concept.pseudonyms)
+        if (
+            concept.derivation == Derivation.BASIC
+            and isinstance(concept.lineage, BuildFunction)
+            and concept.lineage.operator == FunctionType.ALIAS
+        ):
+            addresses.update(arg.address for arg in concept.lineage.concept_arguments)
+    return addresses
 
 
 def concepts_to_build_grain_concepts(
@@ -2637,6 +2658,7 @@ class Factory:
                 derivation=Derivation.MULTISELECT,
                 lineage=None,
                 grain=final_grain,
+                keys=base_concept.keys,
                 namespace=base_concept.namespace,
             )
             local_build_cache[k] = x

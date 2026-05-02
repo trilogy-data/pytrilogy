@@ -424,23 +424,11 @@ def concepts_to_grain_concepts(
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
-    pconcepts: list[Concept] = []
-    for x in preconcepts:
-        if (
-            x.lineage
-            and isinstance(x.lineage, Function)
-            and x.lineage.operator == FunctionType.ALIAS
-        ):
-            # if the function is an alias, use the unaliased concept to calculate grain
-            pconcepts.append(environment.concepts[x.lineage.arguments[0].address])  # type: ignore
-        else:
-            pconcepts.append(x)
-
     seen = set()
-    for sub in pconcepts:
+    for sub in preconcepts:
         if sub.address in seen:
             continue
-        if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
+        if not concept_is_relevant(sub, preconcepts, environment):  # type: ignore
 
             continue
         seen.add(sub.address)
@@ -929,6 +917,13 @@ def rowset_concept(
             origa, namespace=f"{rowset.name}.{origa.namespace}"
         )
     orig[orig_concept.address] = new_concept
+    if (
+        orig_concept.derivation == Derivation.BASIC
+        and isinstance(orig_concept.lineage, Function)
+        and orig_concept.lineage.operator == FunctionType.ALIAS
+    ):
+        for arg in orig_concept.lineage.concept_arguments:
+            orig[arg.address] = new_concept
     orig_map[new_concept.address] = orig_concept
     pre_output.append(new_concept)
 

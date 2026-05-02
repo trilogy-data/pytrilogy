@@ -1,5 +1,5 @@
 query_id = "22"
-gen_length = 7022
+gen_length = 6979
 generated_sql = """
 
 WITH 
@@ -151,12 +151,6 @@ FROM
     \"abhorrent\"
     FULL JOIN \"questionable\" on 1=1
     FULL JOIN \"sweltering\" on 1=1
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5
 ORDER BY 
     \"level0_qoh_all\" asc nulls first,
     \"level0_i_product_name\" asc nulls first,

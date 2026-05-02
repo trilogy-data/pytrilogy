@@ -1,12 +1,21 @@
 query_id = "46"
-gen_length = 3267
+gen_length = 2886
 generated_sql = """
 
 WITH 
+wakeful as (
+SELECT
+    \"customer_address_customer_address\".\"CA_CITY\" as \"customer_address_city\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
+    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
+    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
+FROM
+    \"memory\".\"customer_address\" as \"customer_address_customer_address\"
+    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"),
 uneven as (
 SELECT
     \"store_sales_sale_address_customer_address\".\"CA_CITY\" as \"bought_city\",
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     sum(\"store_sales_store_sales\".\"SS_COUPON_AMT\") as \"amt\",
     sum(\"store_sales_store_sales\".\"SS_NET_PROFIT\") as \"profit\"
@@ -22,53 +31,21 @@ WHERE
 GROUP BY
     1,
     2,
-    3),
-wakeful as (
-SELECT
-    \"customer_address_customer_address\".\"CA_CITY\" as \"customer_address_city\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
-    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
-    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
-FROM
-    \"memory\".\"customer_address\" as \"customer_address_customer_address\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"),
-juicy as (
-SELECT
-    \"uneven\".\"amt\" as \"amt\",
-    \"uneven\".\"bought_city\" as \"bought_city\",
-    \"uneven\".\"profit\" as \"profit\",
-    \"uneven\".\"store_sales_customer_id\" as \"customer_id\",
-    \"uneven\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
-FROM
-    \"uneven\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5)
+    3)
 SELECT
     \"wakeful\".\"customer_last_name\" as \"dn_customer_last_name\",
     \"wakeful\".\"customer_first_name\" as \"dn_customer_first_name\",
     \"wakeful\".\"customer_address_city\" as \"dn_customer_address_city\",
-    \"juicy\".\"bought_city\" as \"dn_bought_city\",
-    \"juicy\".\"store_sales_ticket_number\" as \"dn_store_sales_ticket_number\",
-    \"juicy\".\"amt\" as \"dn_amt\",
-    \"juicy\".\"profit\" as \"dn_profit\"
+    \"uneven\".\"bought_city\" as \"dn_bought_city\",
+    \"uneven\".\"store_sales_ticket_number\" as \"dn_store_sales_ticket_number\",
+    \"uneven\".\"amt\" as \"dn_amt\",
+    \"uneven\".\"profit\" as \"dn_profit\"
 FROM
-    \"juicy\"
-    INNER JOIN \"wakeful\" on \"juicy\".\"customer_id\" is not distinct from \"wakeful\".\"customer_id\"
+    \"uneven\"
+    INNER JOIN \"wakeful\" on \"uneven\".\"customer_id\" is not distinct from \"wakeful\".\"customer_id\"
 WHERE
-    \"wakeful\".\"customer_address_city\" != \"juicy\".\"bought_city\"
+    \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_city\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
 ORDER BY 
     \"dn_customer_last_name\" asc nulls first,
     \"dn_customer_first_name\" asc nulls first,
