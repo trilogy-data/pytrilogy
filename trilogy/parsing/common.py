@@ -358,6 +358,19 @@ def concept_is_relevant(
             raise SyntaxError(
                 "Require environment to determine relevance of ConceptRef"
             )
+    other_addresses = {
+        address
+        for other in others
+        for address in (
+            environment.concepts[other.address].equivalent_addresses
+            if isinstance(other, ConceptRef) and environment
+            else (
+                other.equivalent_addresses
+                if isinstance(other, Concept)
+                else {other.address}
+            )
+        )
+    }
     if concept.derivation == Derivation.CONSTANT:
         return False
     if concept.is_aggregate and not (
@@ -366,16 +379,16 @@ def concept_is_relevant(
 
         return False
     if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
-        if all([c in others for c in concept.keys]):
+        if all([c in other_addresses for c in concept.keys]):
             return False
     if (
         concept.purpose == Purpose.KEY
         and concept.keys
-        and all([c in others for c in concept.keys])
+        and all([c in other_addresses for c in concept.keys])
     ):
         return False
     if concept.purpose in (Purpose.METRIC,):
-        if all([c in others for c in concept.grain.components]):
+        if all([c in other_addresses for c in concept.grain.components]):
             return False
     if (
         concept.derivation in (Derivation.BASIC,)
@@ -424,9 +437,9 @@ def concepts_to_grain_concepts(
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
-    seen = set()
+    seen: set[str] = set()
     for sub in preconcepts:
-        if sub.address in seen:
+        if seen & sub.equivalent_addresses:
             continue
         if not concept_is_relevant(sub, preconcepts, environment):  # type: ignore
 
@@ -906,24 +919,22 @@ def rowset_concept(
         derivation=Derivation.ROWSET,
         granularity=orig_concept.granularity,
         pseudonyms={
-            address_with_namespace(x, rowset.name) for x in orig_concept.pseudonyms
+            address_with_namespace(x, rowset.name)
+            for x in orig_concept.pseudonyms
+            if x in environment.alias_origin_lookup
         },
     )
     for x in orig_concept.pseudonyms:
+        if x not in environment.alias_origin_lookup:
+            continue
         new_address = address_with_namespace(x, rowset.name)
         origa = environment.alias_origin_lookup[x]
         environment.concepts[new_address] = new_concept
         environment.alias_origin_lookup[new_address] = dc_replace(
             origa, namespace=f"{rowset.name}.{origa.namespace}"
         )
-    orig[orig_concept.address] = new_concept
-    if (
-        orig_concept.derivation == Derivation.BASIC
-        and isinstance(orig_concept.lineage, Function)
-        and orig_concept.lineage.operator == FunctionType.ALIAS
-    ):
-        for arg in orig_concept.lineage.concept_arguments:
-            orig[arg.address] = new_concept
+    for equivalent_address in orig_concept.equivalent_addresses:
+        orig[equivalent_address] = new_concept
     orig_map[new_concept.address] = orig_concept
     pre_output.append(new_concept)
 

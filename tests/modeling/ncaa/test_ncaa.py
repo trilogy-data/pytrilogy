@@ -122,12 +122,12 @@ def test_adhoc05():
 
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     env, queries = env.parse(text)
-    assert env.concepts["team_id"].grain.components == {"game_tall.team.id"}
+    assert env.concepts["team_id"].grain.components == {"local.team.id"}
     assert env.concepts["win_rate_difference"].grain.components == {
-        "game_tall.team.id"
+        "local.team.id"
     }, env.concepts["win_rate_difference"]
     assert queries[-1].grain.components == {
-        "game_tall.team.id",
+        "local.team.id",
     }, queries[-1].grain.components
     engine.generate_sql(text)[0]
 

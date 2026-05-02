@@ -707,6 +707,15 @@ class QueryDatasource:
         )
 
     @property
+    def effective_grain(self) -> BuildGrain:
+        key_outputs = {
+            concept.address
+            for concept in self.output_concepts
+            if concept.purpose == Purpose.KEY
+        }
+        return self.grain + BuildGrain(components=key_outputs)
+
+    @property
     def safe_identifier(self):
         return self.identifier.replace(".", "_")
 

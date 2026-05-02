@@ -173,7 +173,7 @@ def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],
 ) -> bool:
-    other_addresses = grain_relevance_addresses(others)
+    other_addresses = concept_collection_equivalent_addresses(others)
 
     if concept.is_aggregate and not (
         isinstance(concept.lineage, BuildAggregateWrapper) and concept.lineage.by
@@ -220,18 +220,36 @@ def concept_is_relevant(
     return True
 
 
-def grain_relevance_addresses(concepts: Iterable[BuildConcept]) -> set[str]:
+def concept_collection_equivalent_addresses(
+    concepts: Iterable[BuildConcept],
+) -> set[str]:
     addresses: set[str] = set()
     for concept in concepts:
-        addresses.add(concept.address)
-        addresses.update(concept.pseudonyms)
-        if (
-            concept.derivation == Derivation.BASIC
-            and isinstance(concept.lineage, BuildFunction)
-            and concept.lineage.operator == FunctionType.ALIAS
-        ):
-            addresses.update(arg.address for arg in concept.lineage.concept_arguments)
+        addresses.update(concept.equivalent_addresses)
     return addresses
+
+
+def concept_by_equivalent_address(
+    address: str,
+    concepts: Iterable[BuildConcept],
+) -> BuildConcept | None:
+    return next(
+        (concept for concept in concepts if address in concept.equivalent_addresses),
+        None,
+    )
+
+
+def resolve_concepts_with_equivalents(
+    addresses: Iterable[str],
+    environment: "BuildEnvironment",
+    equivalents: Iterable[BuildConcept] | None = None,
+) -> list[BuildConcept]:
+    candidates = list(equivalents or [])
+    return [
+        concept_by_equivalent_address(address, candidates)
+        or environment.concepts[address]
+        for address in addresses
+    ]
 
 
 def concepts_to_build_grain_concepts(
@@ -252,6 +270,8 @@ def concepts_to_build_grain_concepts(
     final: set[str] = set()
     for sub in pconcepts:
         if not concept_is_relevant(sub, pconcepts):
+            continue
+        if final & sub.equivalent_addresses:
             continue
         final.add(sub.address)
 
@@ -943,6 +963,13 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     def __post_init__(self):
         self.address = f"{self.namespace}.{self.name}"
         self.canonical_address = f"{self.namespace}.{self.canonical_name}"
+        if (
+            isinstance(self.lineage, BuildFunction)
+            and self.lineage.operator == FunctionType.ALIAS
+        ):
+            self.pseudonyms.update(
+                arg.address for arg in self.lineage.concept_arguments
+            )
 
     @property
     def is_aggregate(self) -> bool:
@@ -996,6 +1023,10 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         elif self.namespace:
             return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
         return self.name.replace(".", "_")
+
+    @property
+    def equivalent_addresses(self) -> set[str]:
+        return {self.address, *self.pseudonyms}
 
     def with_materialized_source(self) -> Self:
 
@@ -1685,6 +1716,15 @@ class BuildDatasource:
     @property
     def output_concepts(self) -> List[BuildConcept]:
         return self.concepts
+
+    @property
+    def effective_grain(self) -> BuildGrain:
+        key_outputs = {
+            concept.address
+            for concept in self.output_concepts
+            if concept.purpose == Purpose.KEY
+        }
+        return self.grain + BuildGrain(components=key_outputs)
 
     @property
     def full_concepts(self) -> List[BuildConcept]:
