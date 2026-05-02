@@ -187,18 +187,18 @@ WITH {% if recursive %}RECURSIVE {% endif %}{% for cte in ctes %}
 {% else -%}
 SELECT
 {%- for select in select_columns %}
-\t{{ select }}{% if not loop.last %},{% endif %}{% endfor %}
+    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 {% if base %}FROM
-\t{{ base }}{% endif %}{% if joins %}{% for join in joins %}
-\t{{ join }}{% endfor %}{% endif %}{% if where %}
+    {{ base }}{% endif %}{% if joins %}{% for join in joins %}
+    {{ join }}{% endfor %}{% endif %}{% if where %}
 WHERE
-\t{{ where }}{% endif %}{%- if group_by %}
+    {{ where }}{% endif %}{%- if group_by %}
 GROUP BY {% for group in group_by %}
-\t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
+    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
-\t{{ having }}{% endif %}{%- if order_by %}
+    {{ having }}{% endif %}{%- if order_by %}
 ORDER BY {% for order in order_by %}
-\t{{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
+    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}{% endif %}
 """)

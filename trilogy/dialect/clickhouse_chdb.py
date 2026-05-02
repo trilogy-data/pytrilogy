@@ -7,38 +7,27 @@ Server-mode ClickHouse goes through SQLAlchemy via clickhouse-sqlalchemy instead
 from __future__ import annotations
 
 import json
+from collections import namedtuple
 from typing import Any, Generator, List, Optional
 
 from trilogy.core.models.environment import Environment
 from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 
 
-class _Row(tuple):
-    """Tuple with attribute access matching SQLAlchemy Row ergonomics."""
-
-    __slots__ = ()
-    _fields: tuple[str, ...] = ()
-
-    def __new__(cls, fields: tuple[str, ...], values: tuple[Any, ...]):
-        obj = super().__new__(cls, values)
-        return obj
-
-    def __init__(self, fields: tuple[str, ...], values: tuple[Any, ...]):
-        # store on the class instance via object.__setattr__ since tuple is immutable
-        object.__setattr__(self, "_fields", fields)
-
-    def __getattr__(self, name: str) -> Any:
-        try:
-            idx = self._fields.index(name)
-        except ValueError as exc:
-            raise AttributeError(name) from exc
-        return self[idx]
+def _row_class_for(columns: tuple[str, ...]) -> type:
+    # rename=True replaces invalid identifiers with _0, _1, ... so column names
+    # like "local.x" don't blow up. Index access still works regardless.
+    return namedtuple("ChdbRow", columns, rename=True)
 
 
 class ChdbResult(ResultProtocol):
     def __init__(self, columns: List[str], rows: List[tuple]):
         self._columns = columns
-        self._rows = [_Row(tuple(columns), tuple(r)) for r in rows]
+        if columns:
+            row_cls = _row_class_for(tuple(columns))
+            self._rows = [row_cls(*r) for r in rows]
+        else:
+            self._rows = list(rows)
         self._cursor = 0
 
     def fetchall(self) -> List[Any]:
