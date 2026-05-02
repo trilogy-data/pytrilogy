@@ -76,11 +76,13 @@ exercising different planner paths — they share an SQL reference.)
 - **WHERE pushdown into derived aggregates is too aggressive (q41).**
   `auto manufact_matches <- count(item.id ? …) by item.manufact;` plus an
   outer `where item.manufacturer_id between 738 and 778` planned the
-  manufact_id filter into the *inner* count, producing 0 outer rows. Moving
-  the manufact_id check to HAVING did not help — the inner aggregate is
-  scoped to the same `item` source and still receives the WHERE. Workaround:
-  `import item as item2;` plus a separate aggregate over `item2`, then
-  `merge item.manufact into item2.manufact;`.
+  manufact_id filter into the *inner* count, producing 0 outer rows.
+  Workaround: attach the row-level filter to the projection itself
+  (`item.product_name ? item.manufacturer_id between 738 and 778 ->
+  filtered_product_name`) so it renders as a `CASE WHEN … THEN
+  product_name ELSE NULL END` local to the projection CTE, then
+  `HAVING filtered_product_name is not null and manufact_matches > 0`.
+  This keeps the inner aggregate's source unfiltered.
 
 - **`sum/avg by …` is required for fact-row counts (q88).** Trilogy's
   default planner deduplicates by (time_id, store_id, hdemo_id) before

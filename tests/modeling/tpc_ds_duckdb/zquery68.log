@@ -1,62 +1,33 @@
 query_id = "68"
-gen_length = 3383
+gen_length = 2392
 generated_sql = """
-
-WITH 
-wakeful as (
 SELECT
-    \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\" as \"store_sales_customer_address_id\",
-    \"store_sales_customer_address_customer_address\".\"CA_CITY\" as \"store_sales_customer_address_city\"
-FROM
-    \"memory\".\"customer_address\" as \"store_sales_customer_address_customer_address\"),
-abundant as (
-SELECT
-    \"store_sales_customer_address_customer_address\".\"CA_CITY\" as \"store_sales_customer_address_city\",
-    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
+    \"store_sales_customer_address_customer_address\".\"CA_CITY\" as \"store_sales_customer_address_city\",
+    \"wakeful\".\"CA_CITY\" as \"bought_city\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    \"wakeful\".\"store_sales_customer_address_city\" as \"bought_city\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"list_price\",
     sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"extended_price\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_TAX\") as \"extended_tax\"
+    sum(\"store_sales_store_sales\".\"SS_EXT_TAX\") as \"extended_tax\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"list_price\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    INNER JOIN \"wakeful\" on \"store_sales_store_sales\".\"SS_ADDR_SK\" = \"wakeful\".\"store_sales_customer_address_id\"
+    INNER JOIN \"memory\".\"customer_address\" as \"wakeful\" on \"store_sales_store_sales\".\"SS_ADDR_SK\" = \"wakeful\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_DOM\" >= 1 and \"store_sales_date_date\".\"D_DOM\" <= 2 and ( \"store_sales_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 4 or \"store_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" = 3 ) and cast(\"store_sales_date_date\".\"D_YEAR\" as int) in (1999,2000,2001) and \"store_sales_store_store\".\"S_CITY\" in ('Fairview','Midway') and \"store_sales_customer_address_customer_address\".\"CA_CITY\" != \"wakeful\".\"store_sales_customer_address_city\"
+    \"store_sales_date_date\".\"D_DOM\" >= 1 and \"store_sales_date_date\".\"D_DOM\" <= 2 and ( \"store_sales_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 4 or \"store_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" = 3 ) and cast(\"store_sales_date_date\".\"D_YEAR\" as int) in (1999,2000,2001) and \"store_sales_store_store\".\"S_CITY\" in ('Fairview','Midway') and \"store_sales_customer_address_customer_address\".\"CA_CITY\" != \"wakeful\".\"CA_CITY\"
 
 GROUP BY
     1,
     2,
     3,
     4,
-    5)
-SELECT
-    \"abundant\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"abundant\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    \"abundant\".\"store_sales_customer_address_city\" as \"store_sales_customer_address_city\",
-    \"abundant\".\"bought_city\" as \"bought_city\",
-    \"abundant\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    \"abundant\".\"extended_price\" as \"extended_price\",
-    \"abundant\".\"extended_tax\" as \"extended_tax\",
-    \"abundant\".\"list_price\" as \"list_price\"
-FROM
-    \"abundant\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8
+    5
 ORDER BY 
-    \"abundant\".\"store_sales_customer_last_name\" asc nulls first,
-    \"abundant\".\"store_sales_ticket_number\" asc nulls first
+    \"store_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" asc nulls first
 LIMIT (100)"""

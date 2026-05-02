@@ -393,6 +393,9 @@ def test_sixty_three(engine):
 def test_sixty_eight(engine):
     query = run_query(engine, 68)
     assert len(query) < 8000, query
+    assert query.count('"memory"."customer_address" as ') == 2, query
+    assert query.count("GROUP BY") == 1, query
+    assert "WITH" not in query, query
 
 
 def test_seventy_nine(engine):

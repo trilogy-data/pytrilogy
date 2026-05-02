@@ -1,40 +1,36 @@
 query_id = "41"
-gen_length = 2512
+gen_length = 2448
 generated_sql = """
 
 WITH 
-quizzical as (
+highfalutin as (
 SELECT
-    \"item_items\".\"I_MANUFACT\" as \"item2_manufact\",
-    \"item_items\".\"I_MANUFACT_ID\" as \"item_manufacturer_id\",
-    \"item_items\".\"I_PRODUCT_NAME\" as \"item_product_name\"
+    \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
+    count(CASE WHEN ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('powder','khaki') and \"item_items\".\"I_UNITS\" in ('Ounce','Oz') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('brown','honeydew') and \"item_items\".\"I_UNITS\" in ('Bunch','Ton') and \"item_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('floral','deep') and \"item_items\".\"I_UNITS\" in ('N/A','Dozen') and \"item_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('light','cornflower') and \"item_items\".\"I_UNITS\" in ('Box','Pound') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('midnight','snow') and \"item_items\".\"I_UNITS\" in ('Pallet','Gross') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('cyan','papaya') and \"item_items\".\"I_UNITS\" in ('Cup','Dram') and \"item_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('orange','frosted') and \"item_items\".\"I_UNITS\" in ('Each','Tbl') and \"item_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('forest','ghost') and \"item_items\".\"I_UNITS\" in ('Lb','Bundle') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) THEN \"item_items\".\"I_ITEM_SK\" ELSE NULL END) as \"manufact_matches\"
 FROM
     \"memory\".\"item\" as \"item_items\"
+GROUP BY
+    1),
+cheerful as (
+SELECT
+    \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
+    CASE WHEN \"item_items\".\"I_MANUFACT_ID\" >= 738 and \"item_items\".\"I_MANUFACT_ID\" <= 778 THEN \"item_items\".\"I_PRODUCT_NAME\" ELSE NULL END as \"filtered_product_name\"
+FROM
+    \"memory\".\"item\" as \"item_items\"
+GROUP BY
+    1,
+    2)
+SELECT
+    \"cheerful\".\"filtered_product_name\" as \"filtered_product_name\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"highfalutin\" on \"cheerful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
 WHERE
-    \"item_items\".\"I_MANUFACT_ID\" >= 738 and \"item_items\".\"I_MANUFACT_ID\" <= 778
+    \"cheerful\".\"filtered_product_name\" is not null and \"highfalutin\".\"manufact_matches\" > 0
 
 GROUP BY
     1,
-    2,
-    3),
-wakeful as (
-SELECT
-    \"item2_items\".\"I_MANUFACT\" as \"item2_manufact\",
-    count(CASE WHEN ( \"item2_items\".\"I_CATEGORY\" = 'Women' and \"item2_items\".\"I_COLOR\" in ('powder','khaki') and \"item2_items\".\"I_UNITS\" in ('Ounce','Oz') and \"item2_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item2_items\".\"I_CATEGORY\" = 'Women' and \"item2_items\".\"I_COLOR\" in ('brown','honeydew') and \"item2_items\".\"I_UNITS\" in ('Bunch','Ton') and \"item2_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item2_items\".\"I_CATEGORY\" = 'Men' and \"item2_items\".\"I_COLOR\" in ('floral','deep') and \"item2_items\".\"I_UNITS\" in ('N/A','Dozen') and \"item2_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item2_items\".\"I_CATEGORY\" = 'Men' and \"item2_items\".\"I_COLOR\" in ('light','cornflower') and \"item2_items\".\"I_UNITS\" in ('Box','Pound') and \"item2_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item2_items\".\"I_CATEGORY\" = 'Women' and \"item2_items\".\"I_COLOR\" in ('midnight','snow') and \"item2_items\".\"I_UNITS\" in ('Pallet','Gross') and \"item2_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item2_items\".\"I_CATEGORY\" = 'Women' and \"item2_items\".\"I_COLOR\" in ('cyan','papaya') and \"item2_items\".\"I_UNITS\" in ('Cup','Dram') and \"item2_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item2_items\".\"I_CATEGORY\" = 'Men' and \"item2_items\".\"I_COLOR\" in ('orange','frosted') and \"item2_items\".\"I_UNITS\" in ('Each','Tbl') and \"item2_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item2_items\".\"I_CATEGORY\" = 'Men' and \"item2_items\".\"I_COLOR\" in ('forest','ghost') and \"item2_items\".\"I_UNITS\" in ('Lb','Bundle') and \"item2_items\".\"I_SIZE\" in ('medium','extra large') ) THEN \"item2_items\".\"I_ITEM_SK\" ELSE NULL END) as \"manufact_matches\"
-FROM
-    \"memory\".\"item\" as \"item2_items\"
-GROUP BY
-    1)
-SELECT
-    \"quizzical\".\"item_product_name\" as \"item_product_name\"
-FROM
-    \"quizzical\"
-    INNER JOIN \"wakeful\" on \"quizzical\".\"item2_manufact\" is not distinct from \"wakeful\".\"item2_manufact\"
-WHERE
-    \"quizzical\".\"item_manufacturer_id\" >= 738 and \"quizzical\".\"item_manufacturer_id\" <= 778 and \"wakeful\".\"manufact_matches\" > 0
-
-GROUP BY
-    1
+    \"highfalutin\".\"manufact_matches\"
 ORDER BY 
-    \"quizzical\".\"item_product_name\" asc
+    \"cheerful\".\"filtered_product_name\" asc
 LIMIT (100)"""
