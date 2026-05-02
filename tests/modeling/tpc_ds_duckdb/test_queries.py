@@ -320,6 +320,7 @@ def test_forty_five(engine):
 def test_forty_six(engine):
     query = run_query(engine, 46)
     assert len(query) < 8000, query
+    assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
 
 
 @pytest.mark.skip(reason="Still cooking")
