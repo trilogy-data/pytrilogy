@@ -1,5 +1,5 @@
 query_id = "79"
-gen_length = 4259
+gen_length = 4251
 generated_sql = """
 
 WITH 
@@ -18,7 +18,7 @@ GROUP BY
     4),
 abundant as (
 SELECT
-    \"store_sales_store_sales\".\"SS_ADDR_SK\" as \"store_sales_customer_address_id\",
+    \"store_sales_store_sales\".\"SS_ADDR_SK\" as \"store_sales_sale_address_id\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_CITY\" as \"store_sales_store_city\",
@@ -72,7 +72,7 @@ GROUP BY
     4,
     5,
     6,
-    \"abundant\".\"store_sales_customer_address_id\"
+    \"abundant\".\"store_sales_sale_address_id\"
 ORDER BY 
     \"questionable\".\"store_sales_customer_last_name\" asc nulls first,
     \"questionable\".\"store_sales_customer_first_name\" asc nulls first,

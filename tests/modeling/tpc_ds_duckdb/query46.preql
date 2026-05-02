@@ -5,12 +5,12 @@ WHERE
     and store_sales.date.day_of_week in (6, 0)
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.city in ('Fairview', 'Midway')
-    and store_sales.customer.address.city != store_sales.customer_address.city
+    and store_sales.customer.address.city != store_sales.sale_address.city
 SELECT
     store_sales.customer.last_name,
     store_sales.customer.first_name,
     store_sales.customer.address.city,
-    store_sales.customer_address.city -> bought_city,
+    store_sales.sale_address.city -> bought_city,
     store_sales.ticket_number,
     sum(store_sales.coupon_amt) -> amt,
     sum(store_sales.net_profit) -> profit

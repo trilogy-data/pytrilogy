@@ -6,13 +6,13 @@ WHERE
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.employees between 200 and 295
 SELECT
-    --store_sales.customer_address.id,
+    --store_sales.sale_address.id,
     store_sales.customer.last_name,
     store_sales.customer.first_name,
     substring(store_sales.store.city, 1, 30) -> city_short,
     store_sales.ticket_number,
-    sum(store_sales.coupon_amt) by store_sales.ticket_number, store_sales.customer.id, store_sales.customer_address.id, store_sales.store.city -> amt,
-    sum(store_sales.net_profit)  by store_sales.ticket_number, store_sales.customer.id, store_sales.customer_address.id, store_sales.store.city -> profit
+    sum(store_sales.coupon_amt) by store_sales.ticket_number, store_sales.customer.id, store_sales.sale_address.id, store_sales.store.city -> amt,
+    sum(store_sales.net_profit)  by store_sales.ticket_number, store_sales.customer.id, store_sales.sale_address.id, store_sales.store.city -> profit
 ORDER BY
     store_sales.customer.last_name asc nulls first,
     store_sales.customer.first_name asc nulls first,

@@ -10,7 +10,7 @@ import customer_demographic as customer_demographic;
 import household_demographic as household_demographic;
 import store as store;
 import store as return_store;
-import address as customer_address;
+import address as sale_address;
 
 
 key ticket_number int;
@@ -55,7 +55,7 @@ datasource store_sales (
     SS_STORE_SK: store.id,
     SS_NET_PAID: net_paid,
     SS_EXT_TAX: ext_tax,
-    SS_ADDR_SK: customer_address.id,
+    SS_ADDR_SK: sale_address.id,
 )
 grain (ticket_number, item.id)
 address memory.store_sales

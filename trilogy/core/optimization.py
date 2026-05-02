@@ -139,21 +139,6 @@ SENSITIVE_DERIVATIONS = [
 ]
 
 
-def is_redundant_group_projection(cte: CTE, direct_parent: CTE) -> bool:
-    if not cte.group_to_grain:
-        return False
-    if cte.condition or cte.joins:
-        return False
-    if not direct_parent.group_to_grain:
-        return False
-    if any(
-        cte.source_map.get(c.address) != [direct_parent.name]
-        for c in cte.output_columns
-    ):
-        return False
-    return True
-
-
 def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     # if isinstance(select, (PersistStatement, MultiSelectStatement)):
     #     return False
@@ -163,19 +148,18 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     if isinstance(direct_parent, (UnionCTE, RecursiveCTE)):
         return None
 
+    if cte.group_to_grain:
+        return None
+
     output_addresses = set([x.address for x in cte.output_columns])
     parent_output_addresses = set([x.address for x in direct_parent.output_columns])
     if not output_addresses.issubset(parent_output_addresses):
         return None
-    assert isinstance(cte, CTE)
-    assert isinstance(direct_parent, CTE)
-    redundant_group_projection = is_redundant_group_projection(cte, direct_parent)
-    if cte.group_to_grain and not redundant_group_projection:
-        return None
-    if not redundant_group_projection and not direct_parent.grain == cte.grain:
+    if not direct_parent.grain == cte.grain:
         logger.info("[Direct Return] grain mismatch, cannot early exit")
         return None
 
+    assert isinstance(cte, CTE)
     derived_concepts = [
         c for c in cte.source.output_concepts if c not in cte.source.input_concepts
     ]

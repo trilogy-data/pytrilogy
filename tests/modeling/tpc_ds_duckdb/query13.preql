@@ -17,14 +17,14 @@ WHERE
             and store_sales.household_demographic.dependent_count = 1)
     )
     and (
-        (store_sales.customer_address.country = 'United States'
-         and store_sales.customer_address.state in ('TX', 'OH', 'TX')
+        (store_sales.sale_address.country = 'United States'
+         and store_sales.sale_address.state in ('TX', 'OH', 'TX')
          and store_sales.net_profit between 100 and 200)
-        or (store_sales.customer_address.country = 'United States'
-            and store_sales.customer_address.state in ('OR', 'NM', 'KY')
+        or (store_sales.sale_address.country = 'United States'
+            and store_sales.sale_address.state in ('OR', 'NM', 'KY')
             and store_sales.net_profit between 150 and 300)
-        or (store_sales.customer_address.country = 'United States'
-            and store_sales.customer_address.state in ('VA', 'TX', 'MS')
+        or (store_sales.sale_address.country = 'United States'
+            and store_sales.sale_address.state in ('VA', 'TX', 'MS')
             and store_sales.net_profit between 50 and 250)
     )
 SELECT

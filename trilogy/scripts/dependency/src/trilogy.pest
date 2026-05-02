@@ -508,7 +508,12 @@ window_item_legacy = {
 window_item_sql    = { WINDOW_TYPE_SQL ~ expr ~ ("," ~ int_lit)? ~ ")" ~ window_sql_over? }
 window_item        = { window_item_sql | window_item_legacy }
 
-OVER_COMPONENT_REF = @{ "," ~ (" " | "\t")* ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
+// Allow newlines/CR between the comma and the identifier so multi-line
+// `over a, b,\n   c` and `by a, b,\n   c` lists parse the same as the lark
+// grammar (which uses `\s*`). This rule is atomic (`@`) so we have to
+// enumerate every whitespace char ourselves — non-atomic implicit
+// WHITESPACE doesn't apply.
+OVER_COMPONENT_REF = @{ "," ~ (" " | "\t" | "\r" | "\n")* ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
 over_component = { OVER_COMPONENT_REF ~ (^"end")? }
 over_list = { concept_lit ~ over_component* }
 

@@ -67,12 +67,6 @@ exercising different planner paths — they share an SQL reference.)
 
 ## Framework Notes Worth Recording
 
-- **`OVER_COMPONENT_REF` / `aggregate_by` cannot span newlines.** Pest
-  grammar definition `OVER_COMPONENT_REF = @{ "," ~ (" " | "\t")* ~ ... }` is
-  atomic, so a `by`/`over` clause that wraps after a comma is rejected.
-  Workaround: keep the entire `by …, …` or `over …, …` list on one line.
-  Hit while authoring q89.
-
 - **WHERE pushdown into derived aggregates is too aggressive (q41).**
   `auto manufact_matches <- count(item.id ? …) by item.manufact;` plus an
   outer `where item.manufacturer_id between 738 and 778` planned the
@@ -98,7 +92,7 @@ exercising different planner paths — they share an SQL reference.)
   ticket with multiple addr_sks across line items collapses to one row,
   changing both row count and sums. Pin per-aggregate grain with
   `sum(...) by store_sales.ticket_number, store_sales.customer.id,
-  store_sales.customer_address.id, store_sales.store.city`.
+  store_sales.sale_address.id, store_sales.store.city`.
 
 - **Inner-join enforcement against a dimension requires an explicit
   predicate (q53).** The reference SQL has `AND ss_store_sk = s_store_sk`
