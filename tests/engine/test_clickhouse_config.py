@@ -201,6 +201,40 @@ def test_ch_struct_without_types():
     assert "Nullable(Nothing)" in out
 
 
+def test_chdb_coerce_dates():
+    """ChdbConnection coerces Date/DateTime JSON strings back to Python objects.
+
+    The HTTP-style JSON output of chdb returns dates as ISO strings; the native
+    server driver returns date/datetime objects. We bridge the two so callers
+    don't see backend-specific shapes.
+    """
+    from datetime import date, datetime
+
+    from trilogy.dialect.clickhouse_chdb import (
+        _coerce_value,
+        _parse_datetime,
+        _strip_modifiers,
+    )
+
+    assert _strip_modifiers("Date") == "Date"
+    assert _strip_modifiers("Nullable(Date)") == "Date"
+    assert _strip_modifiers("Nullable(DateTime64(3))") == "DateTime64"
+    assert _strip_modifiers("LowCardinality(Nullable(String))") == "String"
+    assert _strip_modifiers("Array(Int64)") == "Array"
+
+    assert _coerce_value("Date", "2024-03-15") == date(2024, 3, 15)
+    assert _coerce_value("Nullable(Date)", "2024-03-15") == date(2024, 3, 15)
+    assert _coerce_value("Date", None) is None
+    assert _coerce_value("DateTime64(3)", "2024-03-15 10:20:30.000") == datetime(
+        2024, 3, 15, 10, 20, 30
+    )
+    assert _coerce_value("String", "hello") == "hello"
+    assert _coerce_value("Int64", 42) == 42
+
+    # _parse_datetime handles the space separator chdb uses
+    assert _parse_datetime("2024-03-15 10:20:30") == datetime(2024, 3, 15, 10, 20, 30)
+
+
 def test_render_map_literal_emits_map_call():
     """CH render_map_literal uses map(k, v, ...) instead of MAP {k:v}.
 

@@ -8,10 +8,45 @@ from __future__ import annotations
 
 import json
 from collections import namedtuple
-from typing import Any, Generator, List, Optional
+from datetime import date, datetime
+from typing import Any, Callable, Generator, List, Optional
 
 from trilogy.core.models.environment import Environment
 from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
+
+
+def _strip_modifiers(ch_type: str) -> str:
+    """Peel Nullable(...) / LowCardinality(...) wrappers and parametric args."""
+    t = ch_type.strip()
+    while True:
+        for wrapper in ("Nullable(", "LowCardinality("):
+            if t.startswith(wrapper):
+                t = t[len(wrapper) : -1].strip()
+                break
+        else:
+            break
+    paren = t.find("(")
+    return t[:paren] if paren != -1 else t
+
+
+def _parse_datetime(s: str) -> datetime:
+    # CH DateTime64 emits "YYYY-MM-DD HH:MM:SS[.fff]"; fromisoformat needs a 'T'.
+    return datetime.fromisoformat(s.replace(" ", "T"))
+
+
+_COERCERS: dict[str, Callable[[Any], Any]] = {
+    "Date": lambda v: date.fromisoformat(v) if isinstance(v, str) else v,
+    "Date32": lambda v: date.fromisoformat(v) if isinstance(v, str) else v,
+    "DateTime": lambda v: _parse_datetime(v) if isinstance(v, str) else v,
+    "DateTime64": lambda v: _parse_datetime(v) if isinstance(v, str) else v,
+}
+
+
+def _coerce_value(ch_type: str, value: Any) -> Any:
+    if value is None:
+        return None
+    coercer = _COERCERS.get(_strip_modifiers(ch_type))
+    return coercer(value) if coercer else value
 
 
 def _row_class_for(columns: tuple[str, ...]) -> type:
@@ -105,8 +140,12 @@ class ChdbConnection(EngineConnection):
         payload = json.loads(text_out)
         meta = payload.get("meta") or []
         columns = [m["name"] for m in meta]
+        types = [m.get("type", "") for m in meta]
         data = payload.get("data") or []
-        rows = [tuple(row.get(c) for c in columns) for row in data]
+        rows = [
+            tuple(_coerce_value(t, row.get(c)) for c, t in zip(columns, types))
+            for row in data
+        ]
         return ChdbResult(columns, rows)
 
     def commit(self) -> None:
