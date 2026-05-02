@@ -445,6 +445,8 @@ count          = { ^"count" ~ "(" ~ expr ~ ")" }
 count_distinct = { ^"count_distinct" ~ "(" ~ expr ~ ")" }
 sum            = { ^"sum" ~ "(" ~ expr ~ ")" }
 avg            = { ^"avg" ~ "(" ~ expr ~ ")" }
+stddev         = { ^"stddev" ~ "(" ~ expr ~ ")" }
+variance       = { ^"variance" ~ "(" ~ expr ~ ")" }
 max            = { ^"max" ~ "(" ~ expr ~ ")" }
 min            = { ^"min" ~ "(" ~ expr ~ ")" }
 array_agg      = { ^"array_agg" ~ "(" ~ expr ~ ")" }
@@ -453,7 +455,7 @@ bool_or        = { ^"bool_or" ~ "(" ~ expr ~ ")" }
 any            = { ^"any" ~ "(" ~ expr ~ ")" }
 
 aggregate_functions = {
-    (count_distinct | count | sum | avg | max | min | array_agg | bool_and | bool_or | any) ~ aggregate_over?
+    (count_distinct | count | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) ~ aggregate_over?
 }
 
 fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }

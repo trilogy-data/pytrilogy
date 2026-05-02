@@ -249,6 +249,8 @@ class FunctionType(Enum):
     MAX = "max"
     MIN = "min"
     AVG = "avg"
+    STDDEV = "stddev"
+    VARIANCE = "variance"
     ARRAY_AGG = "array_agg"
     BOOL_OR = "bool_or"
     BOOL_AND = "bool_and"
@@ -325,6 +327,8 @@ class FunctionClass(Enum):
         FunctionType.MIN,
         FunctionType.SUM,
         FunctionType.AVG,
+        FunctionType.STDDEV,
+        FunctionType.VARIANCE,
         FunctionType.ARRAY_AGG,
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,

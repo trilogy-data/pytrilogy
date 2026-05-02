@@ -1,0 +1,28 @@
+import store_sales as store_sales;
+import catalog_sales as catalog_sales;
+
+merge catalog_sales.bill_customer.id into store_sales.return_customer.id;
+merge catalog_sales.item.id into store_sales.item.id;
+
+WHERE
+    store_sales.date.month_of_year = 9
+    and store_sales.date.year = 1999
+    and store_sales.return_date.month_of_year between 9 and 12
+    and store_sales.return_date.year = 1999
+    and catalog_sales.date.year in (1999, 2000, 2001)
+    and catalog_sales.quantity is not null
+    and store_sales.is_returned
+SELECT
+    store_sales.item.name,
+    store_sales.item.desc,
+    store_sales.store.text_id,
+    store_sales.store.name as store_name,
+    sum(store_sales.quantity) as store_sales_quantity,
+    sum(store_sales.return_quantity) as store_returns_quantity,
+    sum(catalog_sales.quantity) as catalog_sales_quantity
+ORDER BY
+    store_sales.item.name asc,
+    store_sales.item.desc asc,
+    store_sales.store.text_id asc,
+    store_name asc
+LIMIT 100;

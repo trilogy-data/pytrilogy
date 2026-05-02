@@ -1,0 +1,32 @@
+query_id = "45"
+gen_length = 1759
+generated_sql = """
+
+WITH 
+quizzical as (
+SELECT
+    CASE WHEN \"item2_items\".\"I_ITEM_SK\" in (2,3,5,7,11,13,17,19,23,29) THEN \"item2_items\".\"I_ITEM_ID\" ELSE NULL END as \"special_item_ids\"
+FROM
+    \"memory\".\"item\" as \"item2_items\"
+GROUP BY
+    1)
+SELECT
+    \"web_sales_customer_address_customer_address\".\"CA_ZIP\" as \"web_sales_customer_address_zip\",
+    \"web_sales_customer_address_customer_address\".\"CA_CITY\" as \"web_sales_customer_address_city\",
+    sum(\"web_sales_web_sales\".\"WS_SALES_PRICE\") as \"total_sales\"
+FROM
+    \"memory\".\"web_sales\" as \"web_sales_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"web_sales_customer_customers\" on \"web_sales_web_sales\".\"WS_BILL_CUSTOMER_SK\" = \"web_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"web_sales_customer_address_customer_address\" on \"web_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"web_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+WHERE
+    \"web_sales_date_date\".\"D_QOY\" = 2 and cast(\"web_sales_date_date\".\"D_YEAR\" as int) = 2001 and ( SUBSTRING(\"web_sales_customer_address_customer_address\".\"CA_ZIP\",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or \"web_sales_item_items\".\"I_ITEM_ID\" in (select quizzical.\"special_item_ids\" from quizzical where quizzical.\"special_item_ids\" is not null) )
+
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"web_sales_customer_address_customer_address\".\"CA_ZIP\" asc,
+    \"web_sales_customer_address_customer_address\".\"CA_CITY\" asc
+LIMIT (100)"""

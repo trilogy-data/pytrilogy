@@ -1067,6 +1067,28 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),
+    FunctionType.STDDEV: FunctionConfig(
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
+        output_purpose=Purpose.METRIC,
+        output_type=DataType.FLOAT,
+        arg_count=1,
+    ),
+    FunctionType.VARIANCE: FunctionConfig(
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
+        output_purpose=Purpose.METRIC,
+        output_type=DataType.FLOAT,
+        arg_count=1,
+    ),
     FunctionType.UNIX_TO_TIMESTAMP: FunctionConfig(
         valid_inputs={DataType.INTEGER},
         output_purpose=Purpose.PROPERTY,

@@ -1,0 +1,24 @@
+import item as item;
+import item as item2;
+
+auto manufact_matches <- count(item2.id ?
+    (item2.category = 'Women'  and item2.color in ('powder',    'khaki')      and item2.units in ('Ounce',  'Oz')     and item2.size in ('medium', 'extra large'))
+    or (item2.category = 'Women'  and item2.color in ('brown',     'honeydew')   and item2.units in ('Bunch',  'Ton')    and item2.size in ('N/A', 'small'))
+    or (item2.category = 'Men'    and item2.color in ('floral',    'deep')       and item2.units in ('N/A',    'Dozen')  and item2.size in ('petite', 'large'))
+    or (item2.category = 'Men'    and item2.color in ('light',     'cornflower') and item2.units in ('Box',    'Pound')  and item2.size in ('medium', 'extra large'))
+    or (item2.category = 'Women'  and item2.color in ('midnight',  'snow')       and item2.units in ('Pallet', 'Gross')  and item2.size in ('medium', 'extra large'))
+    or (item2.category = 'Women'  and item2.color in ('cyan',      'papaya')     and item2.units in ('Cup',    'Dram')   and item2.size in ('N/A', 'small'))
+    or (item2.category = 'Men'    and item2.color in ('orange',    'frosted')    and item2.units in ('Each',   'Tbl')    and item2.size in ('petite', 'large'))
+    or (item2.category = 'Men'    and item2.color in ('forest',    'ghost')      and item2.units in ('Lb',     'Bundle') and item2.size in ('medium', 'extra large'))
+) by item2.manufact;
+
+merge item.manufact into item2.manufact;
+
+WHERE
+    item.manufacturer_id between 738 and 778
+    and manufact_matches > 0
+SELECT
+    item.product_name
+order by
+    item.product_name asc
+LIMIT 100;

@@ -1,0 +1,43 @@
+import store_sales as store_sales;
+
+auto sum_sales <- sum(store_sales.sales_price) by store_sales.item.category, store_sales.item.class, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.date.month_of_year;
+auto avg_monthly_sales <- avg sum_sales over store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name;
+
+WHERE
+    store_sales.date.year = 1999
+    and store_sales.store.id is not null
+    and (
+        (
+            store_sales.item.category in ('Books', 'Electronics', 'Sports')
+            and store_sales.item.class in ('computers', 'stereo', 'football')
+        )
+        or (
+            store_sales.item.category in ('Men', 'Jewelry', 'Women')
+            and store_sales.item.class in ('shirts', 'birdal', 'dresses')
+        )
+    )
+SELECT
+    store_sales.item.category,
+    store_sales.item.class,
+    store_sales.item.brand_name,
+    store_sales.store.name,
+    store_sales.store.company_name,
+    store_sales.date.month_of_year,
+    sum_sales,
+    avg_monthly_sales
+HAVING
+    CASE WHEN avg_monthly_sales != 0
+         THEN abs(sum_sales - avg_monthly_sales) / avg_monthly_sales
+         ELSE NULL
+    END > 0.1
+ORDER BY
+    sum_sales - avg_monthly_sales asc,
+    store_sales.store.name asc,
+    store_sales.item.category asc,
+    store_sales.item.class asc,
+    store_sales.item.brand_name asc,
+    store_sales.store.company_name asc,
+    store_sales.date.month_of_year asc,
+    sum_sales asc,
+    avg_monthly_sales asc
+LIMIT 100;
