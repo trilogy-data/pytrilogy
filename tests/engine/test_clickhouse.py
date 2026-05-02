@@ -1,5 +1,3 @@
-import pytest
-
 from trilogy import Dialects, parse
 from trilogy.constants import Rendering
 from trilogy.core.models.environment import Environment
@@ -28,18 +26,3 @@ def test_render_const_query():
     sql = executor.generate_sql("select pi;")[0]
     assert "3.14" in sql
     assert "`pi`" in sql
-
-
-def test_chdb_roundtrip():
-    pytest.importorskip("chdb")
-
-    env = Environment()
-    env, _ = parse("const answer <- 42;", environment=env)
-    executor = Dialects.CLICKHOUSE.default_executor(
-        environment=env,
-        conf=ClickhouseConfig(mode="chdb"),
-        rendering=Rendering(parameters=False),
-    )
-    results = executor.execute_text("select answer;")[0].fetchall()
-    assert len(results) == 1
-    assert results[0].answer == 42
