@@ -129,6 +129,8 @@ AGGREGATE_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
     SyntaxNodeKind.COUNT_DISTINCT: FunctionType.COUNT_DISTINCT,
     SyntaxNodeKind.SUM: FunctionType.SUM,
     SyntaxNodeKind.AVG: FunctionType.AVG,
+    SyntaxNodeKind.STDDEV: FunctionType.STDDEV,
+    SyntaxNodeKind.VARIANCE: FunctionType.VARIANCE,
     SyntaxNodeKind.MAX: FunctionType.MAX,
     SyntaxNodeKind.MIN: FunctionType.MIN,
     SyntaxNodeKind.ARRAY_AGG: FunctionType.ARRAY_AGG,

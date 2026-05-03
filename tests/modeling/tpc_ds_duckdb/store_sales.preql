@@ -10,7 +10,7 @@ import customer_demographic as customer_demographic;
 import household_demographic as household_demographic;
 import store as store;
 import store as return_store;
-import address as customer_address;
+import address as sale_address;
 
 
 key ticket_number int;
@@ -26,6 +26,7 @@ properties <ticket_number,item.id> (
     net_profit float,
     is_returned bool,
     net_paid float,
+    ext_tax float,
     return_amount float?,
     return_quantity int?,
     return_net_loss float?,
@@ -53,7 +54,8 @@ datasource store_sales (
     SS_COUPON_AMT: coupon_amt,
     SS_STORE_SK: store.id,
     SS_NET_PAID: net_paid,
-    SS_ADDR_SK: customer_address.id,
+    SS_EXT_TAX: ext_tax,
+    SS_ADDR_SK: sale_address.id,
 )
 grain (ticket_number, item.id)
 address memory.store_sales

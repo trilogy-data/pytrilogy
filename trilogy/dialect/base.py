@@ -359,6 +359,8 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_AGG: lambda x, types: f"array_agg({x[0]})",
     FunctionType.LENGTH: lambda x, types: f"length({x[0]})",
     FunctionType.AVG: lambda x, types: f"avg({x[0]})",
+    FunctionType.STDDEV: lambda x, types: f"stddev_samp({x[0]})",
+    FunctionType.VARIANCE: lambda x, types: f"var_samp({x[0]})",
     FunctionType.MAX: lambda x, types: f"max({x[0]})",
     FunctionType.MIN: lambda x, types: f"min({x[0]})",
     FunctionType.ANY: lambda x, types: f"any_value({x[0]})",

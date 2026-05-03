@@ -1,0 +1,49 @@
+query_id = "63"
+gen_length = 2353
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"store_sales_item_items\".\"I_MANAGER_ID\" as \"store_sales_item_manager_id\",
+    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"sum_sales\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" in (1200,1201,1202,1203,1204,1205,1206,1207,1208,1209,1210,1211) and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null and ( ( \"store_sales_item_items\".\"I_CATEGORY\" in ('Books','Children','Electronics') and \"store_sales_item_items\".\"I_CLASS\" in ('personal','portable','reference','self-help') and \"store_sales_item_items\".\"I_BRAND\" in ('scholaramalgamalg #14','scholaramalgamalg #7','exportiunivamalg #9','scholaramalgamalg #9') ) or ( \"store_sales_item_items\".\"I_CATEGORY\" in ('Women','Music','Men') and \"store_sales_item_items\".\"I_CLASS\" in ('accessories','classical','fragrances','pants') and \"store_sales_item_items\".\"I_BRAND\" in ('amalgimporto #1','edu packscholar #1','exportiimporto #1','importoamalg #1') ) )
+
+GROUP BY
+    1,
+    \"store_sales_date_date\".\"D_MOY\"),
+cooperative as (
+SELECT
+    \"cheerful\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
+    avg(\"cheerful\".\"sum_sales\") as \"avg_monthly_sales\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1)
+SELECT
+    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\",
+    \"cheerful\".\"sum_sales\" as \"sum_sales\",
+    \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
+FROM
+    \"cooperative\"
+    FULL JOIN \"cheerful\" on \"cooperative\".\"store_sales_item_manager_id\" is not distinct from \"cheerful\".\"store_sales_item_manager_id\"
+WHERE
+    CASE
+	WHEN \"cooperative\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_monthly_sales\") / \"cooperative\".\"avg_monthly_sales\"
+	ELSE null
+	END > 0.1
+
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") asc,
+    \"cooperative\".\"avg_monthly_sales\" asc,
+    \"cheerful\".\"sum_sales\" asc
+LIMIT (100)"""

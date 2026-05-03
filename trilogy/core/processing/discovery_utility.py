@@ -14,7 +14,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildDatasource,
-    BuildFilterItem,
     BuildFunction,
     BuildGrain,
     BuildRowsetItem,
@@ -27,6 +26,7 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
 )
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
+from trilogy.core.processing.grain_utility import concept_source_address
 from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
@@ -191,14 +191,7 @@ def check_if_group_required(
     ngrain = []
     for con in target_grain.components:
         full = environment.concepts[con]
-        if full.derivation == Derivation.ROWSET:
-            ngrain.append(full.address.split(".", 1)[1])
-        elif full.derivation == Derivation.FILTER:
-            assert isinstance(full.lineage, BuildFilterItem)
-            if isinstance(full.lineage.content, BuildConcept):
-                ngrain.append(full.lineage.content.address)
-        else:
-            ngrain.append(full.address)
+        ngrain.append(concept_source_address(full))
     target_grain2 = BuildGrain.from_concepts(
         ngrain,
         environment=environment,

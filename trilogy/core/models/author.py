@@ -888,6 +888,13 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             self.grain = Grain(components={self.grain.address})
         else:
             raise SyntaxError(f"Invalid grain {self.grain} for concept {self.name}")
+        if (
+            isinstance(self.lineage, Function)
+            and self.lineage.operator == FunctionType.ALIAS
+        ):
+            self.pseudonyms.update(
+                arg.address for arg in self.lineage.concept_arguments
+            )
 
     def duplicate(self) -> Concept:
         return copy.deepcopy(self)
@@ -990,6 +997,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     @property
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
+
+    @property
+    def equivalent_addresses(self) -> set[str]:
+        return {self.address, *self.pseudonyms}
 
     @property
     def output(self) -> "Concept":

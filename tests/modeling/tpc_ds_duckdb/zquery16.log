@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 4284
+gen_length = 4523
 generated_sql = """
 
 WITH 
@@ -50,8 +50,8 @@ GROUP BY
     4),
 concerned as (
 SELECT
-    sum(\"cs_catalog_sales\".\"CS_EXT_SHIP_COST\") as \"total_shipping_cost\",
-    sum(\"cs_catalog_sales\".\"CS_NET_PROFIT\") as \"total_net_profit\"
+    \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_ext_ship_cost\",
+    \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
@@ -59,7 +59,12 @@ FROM
     RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
-),
+
+GROUP BY
+    1,
+    2,
+    \"cs_catalog_sales\".\"CS_ITEM_SK\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\"),
 juicy as (
 SELECT
     \"thoughtful\".\"cs_order_number\" as \"cs_order_number\"
@@ -73,6 +78,12 @@ WHERE
 
 GROUP BY
     1),
+young as (
+SELECT
+    sum(\"concerned\".\"cs_ext_ship_cost\") as \"total_shipping_cost\",
+    sum(\"concerned\".\"cs_net_profit\") as \"total_net_profit\"
+FROM
+    \"concerned\"),
 vacuous as (
 SELECT
     count(distinct \"juicy\".\"cs_order_number\") as \"order_count\"
@@ -80,11 +91,11 @@ FROM
     \"juicy\")
 SELECT
     \"vacuous\".\"order_count\" as \"order_count\",
-    \"concerned\".\"total_shipping_cost\" as \"total_shipping_cost\",
-    \"concerned\".\"total_net_profit\" as \"total_net_profit\"
+    \"young\".\"total_shipping_cost\" as \"total_shipping_cost\",
+    \"young\".\"total_net_profit\" as \"total_net_profit\"
 FROM
     \"vacuous\"
-    FULL JOIN \"concerned\" on 1=1
+    FULL JOIN \"young\" on 1=1
 ORDER BY 
     \"vacuous\".\"order_count\" desc
 LIMIT (100)"""

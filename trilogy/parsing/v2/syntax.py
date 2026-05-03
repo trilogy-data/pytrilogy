@@ -79,6 +79,8 @@ class SyntaxNodeKind(str, Enum):
     COUNT_DISTINCT = "count_distinct"
     SUM = "sum"
     AVG = "avg"
+    STDDEV = "stddev"
+    VARIANCE = "variance"
     MAX = "max"
     MIN = "min"
     ARRAY_AGG = "array_agg"
@@ -390,6 +392,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "count_distinct": SyntaxNodeKind.COUNT_DISTINCT,
     "sum": SyntaxNodeKind.SUM,
     "avg": SyntaxNodeKind.AVG,
+    "stddev": SyntaxNodeKind.STDDEV,
+    "variance": SyntaxNodeKind.VARIANCE,
     "max": SyntaxNodeKind.MAX,
     "min": SyntaxNodeKind.MIN,
     "array_agg": SyntaxNodeKind.ARRAY_AGG,

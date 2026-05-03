@@ -60,8 +60,7 @@ def render_join_concept(
     use_map: dict[str, set[str]],
 ):
     if cte.name in inlined_ctes:
-        base = render_expr(concept, cte)
-        return base
+        return render_expr(concept, cte)
     use_map[name].add(concept.address)
     return f"{quote_character}{name}{quote_character}.{quote_character}{concept.safe_address}{quote_character}"
 

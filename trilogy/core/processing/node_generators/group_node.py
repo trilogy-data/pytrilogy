@@ -10,6 +10,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildWhereClause,
     LooseBuildConceptList,
+    resolve_concepts_with_equivalents,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
@@ -69,7 +70,11 @@ def gen_group_node(
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
-    grain_components = [environment.concepts[c] for c in concept.grain.components]
+    grain_components = resolve_concepts_with_equivalents(
+        concept.grain.components,
+        environment,
+        local_optional,
+    )
     if (
         concept.grain
         and len(concept.grain.components) > 0

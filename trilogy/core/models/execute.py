@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Set, Union
 
 from trilogy.constants import (
@@ -153,21 +153,23 @@ class CTE:
         ds_being_inlined = qds_being_inlined.base_datasource
         if not isinstance(ds_being_inlined, BuildDatasource):
             return False
-        if any(
-            [
-                x.safe_identifier == ds_being_inlined.safe_identifier
-                for x in self.source.datasources
-            ]
-        ):
-            return False
+        existing_aliases = {x.safe_identifier for x in self.source.datasources}
+        inline_datasource = ds_being_inlined
+        if ds_being_inlined.safe_identifier in existing_aliases:
+            inline_datasource = replace(
+                ds_being_inlined,
+                name=parent.name,
+                namespace=DEFAULT_NAMESPACE,
+            )
         # Replace the parent QDS with the BuildDatasource it represented.
         self.source.datasources = sorted(
             [
-                ds_being_inlined,
+                inline_datasource,
                 *[
                     x
                     for x in self.source.datasources
                     if x.safe_identifier != qds_being_inlined.safe_identifier
+                    and x.safe_identifier != inline_datasource.safe_identifier
                 ],
             ],
             key=lambda ds: ds.identifier,
@@ -178,11 +180,11 @@ class CTE:
             and self.source.base_datasource.safe_identifier
             == qds_being_inlined.safe_identifier
         ):
-            self.source.base_datasource = ds_being_inlined
+            self.source.base_datasource = inline_datasource
         # need to identify this before updating joins
         if self.base_name == parent.name:
-            self.base_name_override = ds_being_inlined.safe_location
-            self.base_alias_override = ds_being_inlined.safe_identifier
+            self.base_name_override = inline_datasource.safe_location
+            self.base_alias_override = inline_datasource.safe_identifier
 
         # if we have a join to the parent, we need to remove it
         for join in self.joins:
@@ -192,51 +194,45 @@ class CTE:
                 join.left_cte
                 and join.left_cte.safe_identifier == parent.safe_identifier
             ):
-                join.inline_cte(parent)
+                join.inline_cte(parent, inline_datasource)
             if join.joinkey_pairs:
                 for pair in join.joinkey_pairs:
                     if pair.cte and pair.cte.safe_identifier == parent.safe_identifier:
-                        join.inline_cte(parent)
+                        join.inline_cte(parent, inline_datasource)
             if join.right_cte.safe_identifier == parent.safe_identifier:
-                join.inline_cte(parent)
+                join.inline_cte(parent, inline_datasource)
         for k, v in self.source_map.items():
-            if isinstance(v, list):
-                self.source_map[k] = [
-                    (
-                        ds_being_inlined.safe_identifier
-                        if x == parent.safe_identifier
-                        else x
-                    )
-                    for x in v
-                ]
-            elif v == parent.safe_identifier:
-                self.source_map[k] = [ds_being_inlined.safe_identifier]
+            self.source_map[k] = [
+                (
+                    inline_datasource.safe_identifier
+                    if x == parent.safe_identifier
+                    else x
+                )
+                for x in v
+            ]
         for k, v in self.existence_source_map.items():
-            if isinstance(v, list):
-                self.existence_source_map[k] = [
-                    (
-                        ds_being_inlined.safe_identifier
-                        if x == parent.safe_identifier
-                        else x
-                    )
-                    for x in v
-                ]
-            elif v == parent.safe_identifier:
-                self.existence_source_map[k] = [ds_being_inlined.safe_identifier]
+            self.existence_source_map[k] = [
+                (
+                    inline_datasource.safe_identifier
+                    if x == parent.safe_identifier
+                    else x
+                )
+                for x in v
+            ]
         # zip in any required values for lookups
-        for k in ds_being_inlined.output_lcl.addresses:
+        for k in inline_datasource.output_lcl.addresses:
             if k in self.source_map and self.source_map[k]:
                 continue
-            self.source_map[k] = [ds_being_inlined.safe_identifier]
+            self.source_map[k] = [inline_datasource.safe_identifier]
         self.parent_ctes = [
             x for x in self.parent_ctes if x.safe_identifier != parent.safe_identifier
         ]
         if force_group:
             self.group_to_grain = True
-        self.inlined_ctes[ds_being_inlined.safe_identifier] = InlinedCTE(
+        self.inlined_ctes[inline_datasource.safe_identifier] = InlinedCTE(
             original_alias=parent.name,
-            new_alias=ds_being_inlined.safe_identifier,
-            new_base=ds_being_inlined.safe_location,
+            new_alias=inline_datasource.safe_identifier,
+            new_base=inline_datasource.safe_location,
         )
         return True
 
@@ -672,17 +668,24 @@ class QueryDatasource:
                 for c in all_concepts
                 if c.address in self.source_map
             }
+            mapped_pseudonyms: set[str] = set()
+            for c in all_concepts:
+                if c.address in self.source_map:
+                    mapped_pseudonyms.update(c.pseudonyms)
             for concept in all_concepts:
                 if concept.canonical_address in mapped_canonical:
                     continue
                 if concept.address in self.hidden_concepts:
                     continue
-                if concept.address not in self.source_map and not any(
-                    x in self.source_map for x in concept.pseudonyms
-                ):
-                    raise SyntaxError(
-                        f"Missing source map entry for {concept.address} with pseudonyms {concept.pseudonyms}, have map: {self.source_map}"
-                    )
+                if concept.address in self.source_map:
+                    continue
+                if any(x in self.source_map for x in concept.pseudonyms):
+                    continue
+                if concept.address in mapped_pseudonyms:
+                    continue
+                raise SyntaxError(
+                    f"Missing source map entry for {concept.address} with pseudonyms {concept.pseudonyms}, have map: {self.source_map}"
+                )
 
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -703,6 +706,16 @@ class QueryDatasource:
             nullable_concepts=datasource.nullable_concepts,
             base_datasource=datasource,
         )
+
+    @property
+    def effective_grain(self) -> BuildGrain:
+        key_outputs = {
+            concept.address
+            for concept in self.output_concepts
+            if concept.purpose == Purpose.KEY
+            and concept.name != RECURSIVE_GATING_CONCEPT
+        }
+        return self.grain + BuildGrain(components=key_outputs)
 
     @property
     def safe_identifier(self):
@@ -1190,13 +1203,22 @@ class Join:
     quote: str | None = None
     condition: BuildConditional | BuildComparison | BuildParenthetical | None = None
     modifiers: List[Modifier] = field(default_factory=list)
+    inlined_datasources: dict[str, BuildDatasource] = field(default_factory=dict)
 
-    def inline_cte(self, cte: CTE):
+    def inline_cte(self, cte: CTE, datasource: BuildDatasource | None = None):
         self.inlined_ctes.add(cte.name)
+        if datasource is not None:
+            self.inlined_datasources[cte.name] = datasource
 
     def get_name(self, cte: CTE | UnionCTE) -> str:
         if cte.identifier in self.inlined_ctes:
-            base = cte.source.base_datasource
+            base = self.inlined_datasources.get(cte.identifier)
+            if base is None:
+                raw_base = cte.source.base_datasource
+                assert isinstance(
+                    raw_base, BuildDatasource
+                )  # only BD CTEs can be inlined
+                base = raw_base
             assert isinstance(base, BuildDatasource)  # only BD CTEs can be inlined
             return base.safe_identifier
         return cte.safe_identifier
@@ -1208,7 +1230,13 @@ class Join:
     @property
     def right_ref(self) -> str:
         if self.right_cte.identifier in self.inlined_ctes:
-            base = self.right_cte.source.base_datasource
+            base = self.inlined_datasources.get(self.right_cte.identifier)
+            if base is None:
+                raw_base = self.right_cte.source.base_datasource
+                assert isinstance(
+                    raw_base, BuildDatasource
+                )  # only BD CTEs can be inlined
+                base = raw_base
             assert isinstance(base, BuildDatasource)  # only BD CTEs can be inlined
             location = (
                 safe_quote(base.safe_location, self.quote)

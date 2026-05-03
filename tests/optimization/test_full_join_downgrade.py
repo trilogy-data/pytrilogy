@@ -117,10 +117,10 @@ def test_proves_non_null_helpers():
     )
     from trilogy.core.models.core import DataType
     from trilogy.core.optimizations.full_join_downgrade import (
-        _concepts_in_expression,
         _gather_proofs,
         _proves_non_null,
     )
+    from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
     env = Environment()
     env.parse("key x int; key y int;")
@@ -188,9 +188,9 @@ def test_proves_non_null_helpers():
         == set()
     )
 
-    # _concepts_in_expression also stops at coalesce
-    assert _concepts_in_expression(coalesce) == set()
-    assert _concepts_in_expression(multiply) == {y.address}
+    # concepts_implied_non_null also stops at coalesce
+    assert concepts_implied_non_null(coalesce) == set()
+    assert concepts_implied_non_null(multiply) == {y.address}
 
     # _gather_proofs walks AND-decomposed atoms
     from trilogy.core.enums import BooleanOperator
@@ -204,3 +204,92 @@ def test_proves_non_null_helpers():
         operator=BooleanOperator.AND,
     )
     assert _gather_proofs(cond) == {x.address, y.address}
+
+    # NULL IS NOT x → mirror form, same result as x IS NOT NULL
+    assert _proves_non_null(
+        BuildComparison(
+            left=MagicConstants.NULL, right=x, operator=ComparisonOperator.IS_NOT
+        )
+    ) == {x.address}
+
+    # x IS NOT y (neither side a NULL literal) → empty
+    assert (
+        _proves_non_null(
+            BuildComparison(left=x, right=y, operator=ComparisonOperator.IS_NOT)
+        )
+        == set()
+    )
+
+    # Aggregate wrapper around a non-opaque function → recurses through to args.
+    from trilogy.core.models.build import BuildAggregateWrapper
+
+    sum_y = BuildAggregateWrapper(
+        function=BuildFunction(
+            operator=FunctionType.SUM,
+            arguments=[y],
+            output_data_type=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=1,
+        )
+    )
+    assert concepts_implied_non_null(sum_y) == {y.address}
+
+    # Operators outside IS/IS_NOT/NULL_PROPAGATING_OPS (e.g. ELSE) fall through
+    # to the empty-set guard.
+    assert (
+        _proves_non_null(
+            BuildComparison(left=x, right=y, operator=ComparisonOperator.ELSE)
+        )
+        == set()
+    )
+
+
+def test_cte_addresses_none_returns_empty():
+    """Defensive guard: a None CTE has no addresses."""
+    from trilogy.core.optimizations.full_join_downgrade import _cte_addresses
+
+    assert _cte_addresses(None) == set()
+
+
+def test_previous_left_skips_non_join_first_and_prior():
+    """``_previous_left`` must short-circuit when the relevant join slot is an
+    UnnestJoin (or other non-Join entry) rather than a Join."""
+    from trilogy.core.enums import Purpose
+    from trilogy.core.models.build import (
+        BuildColumnAssignment,
+        BuildConcept,
+        BuildDatasource,
+        BuildGrain,
+    )
+    from trilogy.core.models.core import DataType
+    from trilogy.core.models.execute import CTE, InstantiatedUnnestJoin
+    from trilogy.core.optimizations.full_join_downgrade import _previous_left
+
+    concept = BuildConcept(
+        name="c",
+        canonical_name="c",
+        datatype=DataType.STRING,
+        purpose=Purpose.PROPERTY,
+        build_is_aggregate=False,
+        namespace="test",
+        grain=BuildGrain(),
+        pseudonyms=set(),
+    )
+    ds = BuildDatasource(
+        name="ds",
+        columns=[BuildColumnAssignment(alias="c", concept=concept)],
+        address="ds",
+        namespace="test",
+        grain=BuildGrain(),
+    )
+    cte = CTE.from_datasource(ds)
+
+    unnest = InstantiatedUnnestJoin(object_to_unnest=concept, alias="u")
+
+    # idx == 0 with an InstantiatedUnnestJoin as the first join → returns None
+    cte.joins = [unnest]
+    assert _previous_left(cte, 0) is None
+
+    # idx > 0 where the prior join is not a Join → returns None
+    cte.joins = [unnest, unnest]
+    assert _previous_left(cte, 1) is None

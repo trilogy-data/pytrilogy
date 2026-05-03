@@ -54,6 +54,34 @@ CONDITION_TYPES = (
     BuildParenthetical,
 )
 
+# Operators whose result is NULL (and therefore not TRUE) when either operand is
+# NULL — when one of these atoms appears in an AND chain, both sides' concept
+# references must be non-null in surviving rows. (Tuple, not set, since
+# ComparisonOperator overrides __eq__ without __hash__.)
+NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
+    ComparisonOperator.EQ,
+    ComparisonOperator.NE,
+    ComparisonOperator.LT,
+    ComparisonOperator.GT,
+    ComparisonOperator.LTE,
+    ComparisonOperator.GTE,
+    ComparisonOperator.LIKE,
+    ComparisonOperator.ILIKE,
+    ComparisonOperator.IN,
+    ComparisonOperator.NOT_IN,
+    ComparisonOperator.CONTAINS,
+)
+
+# Functions whose result can be non-null even when an argument is NULL — we
+# can't recurse through them to claim the args are non-null.
+NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
+    FunctionType.COALESCE,
+    FunctionType.NULLIF,
+    FunctionType.CASE,
+    FunctionType.COUNT,  # COUNT(NULL) = 0, not NULL
+    FunctionType.COUNT_DISTINCT,
+)
+
 _T = TypeVar("_T", int, float, date, datetime)
 
 TARGET_TYPES = (int, date, float, datetime, bool, str)
@@ -554,3 +582,30 @@ def filter_union_children(
     if not kept:
         return {child_id: query_condition for child_id in non_partial_map}
     return kept
+
+
+def is_null_literal(value: object) -> bool:
+    return value is None or value is MagicConstants.NULL
+
+
+def concepts_implied_non_null(value: object) -> set[str]:
+    """Concepts whose individual non-nullness is implied when ``value`` evaluates non-null.
+
+    Stops at null-opaque functions (``COALESCE`` et al.) — those can produce a
+    non-null result even when an argument is NULL, so descending past them
+    would over-claim.
+    """
+    if isinstance(value, BuildConcept):
+        return {value.address}
+    if isinstance(value, BuildParenthetical):
+        return concepts_implied_non_null(value.content)
+    if isinstance(value, BuildAggregateWrapper):
+        return concepts_implied_non_null(value.function)
+    if isinstance(value, BuildFunction):
+        if value.operator in NULL_OPAQUE_FUNCTIONS:
+            return set()
+        addresses: set[str] = set()
+        for arg in value.arguments:
+            addresses |= concepts_implied_non_null(arg)
+        return addresses
+    return set()

@@ -1,0 +1,29 @@
+import store_sales as store_sales;
+import customer as customer;
+
+SELECT
+    store_sales.ticket_number,
+    store_sales.customer.id,
+    store_sales.sale_address.city -> bought_city,
+    sum(store_sales.ext_sales_price) -> extended_price,
+    sum(store_sales.ext_tax) -> extended_tax,
+    sum(store_sales.ext_list_price) -> list_price
+WHERE
+    store_sales.date.day_of_month between 1 and 2
+    and (store_sales.household_demographic.dependent_count = 4 or store_sales.household_demographic.vehicle_count = 3)
+    and store_sales.date.year in (1999, 2000, 2001)
+    and store_sales.store.city in ('Fairview', 'Midway')
+MERGE
+SELECT
+    customer.id,
+    customer.last_name,
+    customer.first_name,
+    customer.address.city
+ALIGN customer_id: store_sales.customer.id, customer.id
+WHERE
+    customer.address.city != bought_city
+ORDER BY
+    customer.last_name asc nulls first,
+    store_sales.ticket_number asc nulls first
+LIMIT 100;
+

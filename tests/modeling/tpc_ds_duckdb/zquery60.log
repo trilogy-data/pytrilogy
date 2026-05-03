@@ -1,0 +1,62 @@
+query_id = "60"
+gen_length = 2623
+generated_sql = """
+
+WITH 
+thoughtful as (
+SELECT
+    \"sales_catalog_sales_unified\".\"CS_BILL_ADDR_SK\" as \"sales_bill_address_id\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
+     'CATALOG'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_store_sales_unified\".\"SS_ADDR_SK\" as \"sales_bill_address_id\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" as \"sales_bill_address_id\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+abundant as (
+SELECT
+    \"sales_item_items\".\"I_ITEM_ID\" as \"music_item_ids\"
+FROM
+    \"memory\".\"item\" as \"sales_item_items\"
+WHERE
+    \"sales_item_items\".\"I_CATEGORY\" = 'Music'
+
+GROUP BY
+    1)
+SELECT
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\") as \"total_sales\"
+FROM
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"thoughtful\" on \"sales_date_date\".\"D_DATE_SK\" = \"thoughtful\".\"sales_date_id\"
+    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"thoughtful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+    RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"thoughtful\".\"sales_bill_address_id\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+WHERE
+    \"sales_item_items\".\"I_ITEM_ID\" in (select abundant.\"music_item_ids\" from abundant where abundant.\"music_item_ids\" is not null) and cast(\"sales_date_date\".\"D_YEAR\" as int) = 1998 and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+
+GROUP BY
+    1
+ORDER BY 
+    \"sales_item_items\".\"I_ITEM_ID\" asc,
+    \"total_sales\" asc
+LIMIT (100)"""

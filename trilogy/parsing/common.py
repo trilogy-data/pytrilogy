@@ -1,11 +1,9 @@
-from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from typing import Iterable, List, Mapping, Sequence, Tuple
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
-    ConceptSource,
     Derivation,
     FunctionClass,
     FunctionType,
@@ -37,8 +35,6 @@ from trilogy.core.models.author import (
     Metadata,
     MultiSelectLineage,
     Parenthetical,
-    RowsetItem,
-    RowsetLineage,
     SubselectComparison,
     SubselectItem,
     TraitDataType,
@@ -46,11 +42,10 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
-    address_with_namespace,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment
-from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
+from trilogy.core.statements.author import SelectStatement
 from trilogy.parsing.helpers import Meta
 from trilogy.utility import string_to_hash, unique
 
@@ -358,6 +353,19 @@ def concept_is_relevant(
             raise SyntaxError(
                 "Require environment to determine relevance of ConceptRef"
             )
+    other_addresses = {
+        address
+        for other in others
+        for address in (
+            environment.concepts[other.address].equivalent_addresses
+            if isinstance(other, ConceptRef) and environment
+            else (
+                other.equivalent_addresses
+                if isinstance(other, Concept)
+                else {other.address}
+            )
+        )
+    }
     if concept.derivation == Derivation.CONSTANT:
         return False
     if concept.is_aggregate and not (
@@ -366,16 +374,16 @@ def concept_is_relevant(
 
         return False
     if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
-        if all([c in others for c in concept.keys]):
+        if all([c in other_addresses for c in concept.keys]):
             return False
     if (
         concept.purpose == Purpose.KEY
         and concept.keys
-        and all([c in others for c in concept.keys])
+        and all([c in other_addresses for c in concept.keys])
     ):
         return False
     if concept.purpose in (Purpose.METRIC,):
-        if all([c in others for c in concept.grain.components]):
+        if all([c in other_addresses for c in concept.grain.components]):
             return False
     if (
         concept.derivation in (Derivation.BASIC,)
@@ -405,42 +413,46 @@ def concepts_to_grain_concepts(
     environment: Environment | None,
     local_concepts: Mapping[str, Concept] | None = None,
 ) -> set[str]:
-    preconcepts: list[Concept] = []
+    raw: list[Concept] = []
     for c in concepts:
         if isinstance(c, Concept):
-            preconcepts.append(c)
+            raw.append(c)
 
         elif isinstance(c, ConceptRef) and environment:
             if local_concepts and c.address in local_concepts:
-                preconcepts.append(local_concepts[c.address])
+                raw.append(local_concepts[c.address])
             else:
-                preconcepts.append(environment.concepts[c.address])
+                raw.append(environment.concepts[c.address])
         elif isinstance(c, str) and environment:
             if local_concepts and c in local_concepts:
-                preconcepts.append(local_concepts[c])
+                raw.append(local_concepts[c])
             else:
-                preconcepts.append(environment.concepts[c])
+                raw.append(environment.concepts[c])
         else:
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
-    pconcepts: list[Concept] = []
-    for x in preconcepts:
+    preconcepts: list[Concept] = []
+    for x in raw:
         if (
             x.lineage
             and isinstance(x.lineage, Function)
             and x.lineage.operator == FunctionType.ALIAS
+            and environment
         ):
-            # if the function is an alias, use the unaliased concept to calculate grain
-            pconcepts.append(environment.concepts[x.lineage.arguments[0].address])  # type: ignore
+            # alias is a renamed view of the source — use the source for grain
+            source_addr = x.lineage.arguments[0].address  # type: ignore
+            if local_concepts and source_addr in local_concepts:
+                preconcepts.append(local_concepts[source_addr])
+            else:
+                preconcepts.append(environment.concepts[source_addr])
         else:
-            pconcepts.append(x)
-
-    seen = set()
-    for sub in pconcepts:
-        if sub.address in seen:
+            preconcepts.append(x)
+    seen: set[str] = set()
+    for sub in preconcepts:
+        if seen & sub.equivalent_addresses:
             continue
-        if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
+        if not concept_is_relevant(sub, preconcepts, environment):  # type: ignore
 
             continue
         seen.add(sub.address)
@@ -883,86 +895,6 @@ def derive_item_to_concept(
         derivation=Derivation.MULTISELECT,
     )
     return new
-
-
-def rowset_concept(
-    orig_address: ConceptRef,
-    environment: Environment,
-    rowset: RowsetDerivationStatement,
-    pre_output: list[Concept],
-    orig: dict[str, Concept],
-    orig_map: dict[str, Concept],
-):
-    orig_concept = environment.concepts[orig_address.address]
-    name = orig_concept.name
-    if isinstance(orig_concept.lineage, FilterItem):
-        if orig_concept.lineage.where == rowset.select.where_clause and isinstance(
-            orig_concept.lineage.content, (ConceptRef, Concept)
-        ):
-            name = environment.concepts[orig_concept.lineage.content.address].name
-    base_namespace = (
-        f"{rowset.name}.{orig_concept.namespace}"
-        if orig_concept.namespace != rowset.namespace
-        else rowset.name
-    )
-
-    new_concept = Concept(
-        name=name,
-        datatype=orig_concept.datatype,
-        purpose=orig_concept.purpose,
-        lineage=None,
-        grain=orig_concept.grain,
-        metadata=Metadata(concept_source=ConceptSource.CTE),
-        namespace=base_namespace,
-        keys=orig_concept.keys,
-        derivation=Derivation.ROWSET,
-        granularity=orig_concept.granularity,
-        pseudonyms={
-            address_with_namespace(x, rowset.name) for x in orig_concept.pseudonyms
-        },
-    )
-    for x in orig_concept.pseudonyms:
-        new_address = address_with_namespace(x, rowset.name)
-        origa = environment.alias_origin_lookup[x]
-        environment.concepts[new_address] = new_concept
-        environment.alias_origin_lookup[new_address] = dc_replace(
-            origa, namespace=f"{rowset.name}.{origa.namespace}"
-        )
-    orig[orig_concept.address] = new_concept
-    orig_map[new_concept.address] = orig_concept
-    pre_output.append(new_concept)
-
-
-def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environment):
-    pre_output: list[Concept] = []
-    orig: dict[str, Concept] = {}
-    orig_map: dict[str, Concept] = {}
-    for orig_address in rowset.select.output_components:
-        rowset_concept(orig_address, environment, rowset, pre_output, orig, orig_map)
-    select_lineage = rowset.select.as_lineage(environment)
-    for x in pre_output:
-        x.lineage = RowsetItem(
-            content=orig_map[x.address].reference,
-            rowset=RowsetLineage(
-                name=rowset.name,
-                derived_concepts=[x.reference for x in pre_output],
-                select=select_lineage,
-            ),
-        )
-    default_grain = Grain.from_concepts([*pre_output])
-    # remap everything to the properties of the rowset
-    for x in pre_output:
-        if x.keys:
-            if all([k in orig for k in x.keys]):
-                x.keys = set([orig[k].address if k in orig else k for k in x.keys])
-            else:
-                # TODO: fix this up
-                x.keys = set()
-        if all([c in orig for c in x.grain.components]):
-            x.grain = Grain(components={orig[c].address for c in x.grain.components})
-        else:
-            x.grain = default_grain
-    return pre_output
 
 
 def generate_concept_name(

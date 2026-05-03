@@ -105,10 +105,14 @@ def _rowset_concept(
         derivation=Derivation.ROWSET,
         granularity=orig_concept.granularity,
         pseudonyms={
-            address_with_namespace(x, rowset.name) for x in orig_concept.pseudonyms
+            address_with_namespace(x, rowset.name)
+            for x in orig_concept.pseudonyms
+            if x in context.environment.alias_origin_lookup
         },
     )
     for pseudonym_address in orig_concept.pseudonyms:
+        if pseudonym_address not in context.environment.alias_origin_lookup:
+            continue
         new_address = address_with_namespace(pseudonym_address, rowset.name)
         alias_updates.append(
             AliasUpdate(
@@ -118,7 +122,8 @@ def _rowset_concept(
                 concept=new_concept,
             )
         )
-    orig[orig_concept.address] = new_concept
+    for equivalent_address in orig_concept.equivalent_addresses:
+        orig[equivalent_address] = new_concept
     orig_map[new_concept.address] = orig_concept
     pre_output.append(new_concept)
 

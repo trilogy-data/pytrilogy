@@ -493,6 +493,10 @@
     sum: _SUM expr ")"
     _AVG.1: "avg("i
     avg: _AVG expr ")"
+    _STDDEV.1: "stddev("i
+    stddev: _STDDEV expr ")"
+    _VARIANCE.1: "variance("i
+    variance: _VARIANCE expr ")"
     _MAX.1: "max("i
     max: _MAX expr ")"
     _MIN.1: "min("i
@@ -505,11 +509,11 @@
     bool_and: _BOOL_AND expr ")"
     _ANY.1: "any("i
     any: _ANY expr ")"
-    
+
     //aggregates can force a grain
     aggregate_all: "*"
     aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg | bool_and | bool_or | any) aggregate_over?
+    aggregate_functions: (count | count_distinct | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) aggregate_over?
 
     // date functions
     _DATE.1: "date("i

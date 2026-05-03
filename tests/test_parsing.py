@@ -930,3 +930,24 @@ select 1 as id, 'POINT(1 1)'::geography as geo
 )''';
 """)
     assert env.concepts["geo"].datatype == DataType.GEOGRAPHY
+
+
+def test_concepts_to_grain_concepts_str_local_concepts():
+    """``concepts_to_grain_concepts`` accepts bare string addresses, and resolves
+    them via ``local_concepts`` first when supplied — exercising the str+local
+    branch that's distinct from the ConceptRef and Concept paths."""
+    from trilogy.parsing.common import concepts_to_grain_concepts
+
+    env, _ = parse_text("""
+key x int;
+property x.val int;
+""")
+    x = env.concepts["x"]
+    val = env.concepts["val"]
+    local = {"local.val": val}
+    # Pass the address as a bare string with local_concepts that contains it →
+    # hits the local_concepts lookup branch rather than environment.concepts.
+    result = concepts_to_grain_concepts(["local.x", "local.val"], env, local)
+    assert "local.x" in result
+    # val resolves to its grain key x, so result reduces to the single key.
+    assert result == {x.address}

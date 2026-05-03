@@ -95,6 +95,7 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             if column.address in cte.output_lcl
         ]
         parent.group_to_grain = True
+        parent.grain = cte.grain
     elif merge_mode == MergeMode.WINDOW:
         # Window merge: the parent's intermediate columns may still be referenced
         # by window expressions (e.g. inlined CASE branches or unmaterialized

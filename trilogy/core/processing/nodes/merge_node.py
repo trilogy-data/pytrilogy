@@ -1,10 +1,7 @@
 from typing import List, Optional, Tuple
 
 from trilogy.constants import logger
-from trilogy.core.enums import (
-    JoinType,
-    SourceType,
-)
+from trilogy.core.enums import Derivation, JoinType, SourceType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -16,6 +13,13 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
+from trilogy.core.processing.grain_utility import (
+    calculate_joined_pregrain,
+    condition_key_grain,
+    downgrade_join_for_condition,
+    grain_satisfied_by_pregrain,
+    has_condition_key_outside_grain,
+)
 from trilogy.core.processing.join_resolution import get_node_joins
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
@@ -309,36 +313,35 @@ class MergeNode(StrategyNode):
                 dataset.ordering = self.ordering
                 return dataset
 
-        pregrain = BuildGrain()
-
+        # Accumulate grain components from non-existence sources directly; we
+        # rebuild via from_concepts below, which drops where_clauses anyway,
+        # so a per-source BuildGrain accumulator would be wasted work.
+        raw_pregrain_components: set[str] = set()
         for source in final_datasets:
             if all(
                 [x.address in self.existence_concepts for x in source.output_concepts]
             ):
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} skipping existence only source with {source.output_concepts} from grain accumulation"
+                logger.debug(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} skipping existence-only source {source.identifier}"
                 )
                 continue
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} adding source grain {source.grain} from source {source.identifier} to pregrain"
-            )
-            pregrain += source.grain
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} pregrain is now {pregrain}"
+            raw_pregrain_components.update(source.grain.components)
+            logger.debug(
+                f"{self.logging_prefix}{LOGGER_PREFIX} added grain {source.grain} from {source.identifier}; pregrain components now {raw_pregrain_components}"
             )
 
-        pregrain = BuildGrain.from_concepts(
-            pregrain.components, environment=self.environment
+        raw_pregrain = BuildGrain.from_concepts(
+            raw_pregrain_components, environment=self.environment
         )
 
-        grain = self.grain if self.grain else pregrain
+        grain = self.grain if self.grain else raw_pregrain
         logger.info(
-            f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {pregrain} and final merge node grain {grain}"
+            f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {raw_pregrain} and final merge node grain {grain}"
         )
         join_candidates = [x for x in final_datasets if x not in existence_final]
         if len(join_candidates) > 1:
             joins: List[BaseJoin | UnnestJoin] = self.generate_joins(
-                join_candidates, final_joins, pregrain, grain, self.environment
+                join_candidates, final_joins, raw_pregrain, grain, self.environment
             )
         else:
             joins = []
@@ -346,21 +349,44 @@ class MergeNode(StrategyNode):
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} Final join count for CTE parent count {len(join_candidates)} is {len(joins)}"
         )
+        for join in joins:
+            downgrade_join_for_condition(join, self.conditions, final_datasets)
         full_join_concepts = []
         for join in joins:
             if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
                 full_join_concepts += join.input_concepts
+        pregrain = BuildGrain.from_concepts(
+            calculate_joined_pregrain(
+                final_datasets, joins, grain, self.environment
+            ).components,
+            environment=self.environment,
+        )
+        pregrain += condition_key_grain(self.conditions, self.environment)
+        logger.debug(
+            f"{self.logging_prefix}{LOGGER_PREFIX} effective joined pregrain is {pregrain}"
+        )
+        condition_key_requires_group = has_condition_key_outside_grain(
+            self.conditions, grain, self.environment
+        )
 
         if self.force_group is True:
-
-            force_group = True
+            rowset_output = any(
+                concept.derivation == Derivation.ROWSET
+                for concept in self.output_concepts
+            )
+            force_group = condition_key_requires_group or not (
+                rowset_output
+                and grain_satisfied_by_pregrain(pregrain, grain, self.environment)
+            )
         elif self.whole_grain:
             force_group = False
+        elif condition_key_requires_group:
+            force_group = True
         elif self.force_group is False:
-            force_group = False
-        elif not any(
-            [d.grain.issubset(grain) for d in final_datasets]
-        ) and not pregrain.issubset(grain):
+            force_group = not grain_satisfied_by_pregrain(
+                pregrain, grain, self.environment
+            )
+        elif not grain_satisfied_by_pregrain(pregrain, grain, self.environment):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} no parents include full grain {grain} and pregrain {pregrain} does not match, assume must group to grain. Have {[str(d.grain) for d in final_datasets]}"
             )
