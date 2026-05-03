@@ -1633,6 +1633,7 @@ class BuildAlignItem:
     alias: str
     concepts: List[BuildConcept]
     namespace: str = field(default=DEFAULT_NAMESPACE)
+    hidden: bool = False
     concepts_lcl: LooseBuildConceptList = field(init=False)
 
     def __post_init__(self):
@@ -2448,6 +2449,7 @@ class Factory:
             alias=base.alias,
             concepts=[self._build_concept_ref(x) for x in base.concepts],
             namespace=base.namespace,
+            hidden=base.hidden,
         )
 
     @build.register
@@ -2707,8 +2709,15 @@ class Factory:
         for parent in parents:
             all_input += parent.output_components
         all_output: list[BuildConcept] = derived_base + all_input
+        # Inner-select hidden_components prune the output here. The align
+        # identity stays in for the join resolver and is dropped at render
+        # time via `hidden_components`.
+        align_hidden: set[str] = {
+            item.aligned_concept for item in base.align.items if item.hidden
+        }
+        select_hidden = base.hidden_components - align_hidden
         final: list[BuildConcept] = [
-            x for x in all_output if x.address not in base.hidden_components
+            x for x in all_output if x.address not in select_hidden
         ]
         factory = Factory(
             grain=base.grain,

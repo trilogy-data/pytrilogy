@@ -1,5 +1,5 @@
 query_id = "46"
-gen_length = 2886
+gen_length = 2898
 generated_sql = """
 
 WITH 
@@ -33,23 +33,23 @@ GROUP BY
     2,
     3)
 SELECT
-    \"wakeful\".\"customer_last_name\" as \"dn_customer_last_name\",
-    \"wakeful\".\"customer_first_name\" as \"dn_customer_first_name\",
-    \"wakeful\".\"customer_address_city\" as \"dn_customer_address_city\",
-    \"uneven\".\"bought_city\" as \"dn_bought_city\",
-    \"uneven\".\"store_sales_ticket_number\" as \"dn_store_sales_ticket_number\",
-    \"uneven\".\"amt\" as \"dn_amt\",
-    \"uneven\".\"profit\" as \"dn_profit\"
+    \"wakeful\".\"customer_last_name\" as \"customer_last_name\",
+    \"wakeful\".\"customer_first_name\" as \"customer_first_name\",
+    \"wakeful\".\"customer_address_city\" as \"customer_address_city\",
+    \"uneven\".\"bought_city\" as \"bought_city\",
+    \"uneven\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    \"uneven\".\"amt\" as \"amt\",
+    \"uneven\".\"profit\" as \"profit\"
 FROM
-    \"uneven\"
-    INNER JOIN \"wakeful\" on \"uneven\".\"customer_id\" is not distinct from \"wakeful\".\"customer_id\"
+    \"wakeful\"
+    INNER JOIN \"uneven\" on \"wakeful\".\"customer_id\" is not distinct from \"uneven\".\"customer_id\"
 WHERE
     \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_city\"
 
 ORDER BY 
-    \"dn_customer_last_name\" asc nulls first,
-    \"dn_customer_first_name\" asc nulls first,
-    \"dn_customer_address_city\" asc nulls first,
-    \"dn_bought_city\" asc nulls first,
-    \"dn_store_sales_ticket_number\" asc nulls first
+    \"wakeful\".\"customer_last_name\" asc nulls first,
+    \"wakeful\".\"customer_first_name\" asc nulls first,
+    \"wakeful\".\"customer_address_city\" asc nulls first,
+    \"uneven\".\"bought_city\" asc nulls first,
+    \"uneven\".\"store_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

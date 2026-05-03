@@ -125,7 +125,7 @@
     // multiple_selects
     multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  where? order_by?  limit? 
 
-    align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
+    align_item: select_hide_modifier? IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 
     align_clause: align_item ("AND"i align_item)*  "AND"i?
 

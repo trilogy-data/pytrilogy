@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from trilogy.core.enums import Modifier
 from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
@@ -37,12 +38,18 @@ def align_item(
     hydrate: HydrateFunction,
 ) -> AlignItem:
     args = hydrated_children(node, hydrate)
-    alias = str(args[0])
-    concepts = [context.concepts.reference(str(a)) for a in args[1:]]
+    hidden = False
+    rest = list(args)
+    if rest and rest[0] is Modifier.HIDDEN:
+        hidden = True
+        rest = rest[1:]
+    alias = str(rest[0])
+    concepts = [context.concepts.reference(str(a)) for a in rest[1:]]
     return AlignItem(
         alias=alias,
         namespace=context.environment.namespace,
         concepts=concepts,
+        hidden=hidden,
     )
 
 
@@ -142,6 +149,10 @@ def multi_select_statement(
     order_by_val: OrderBy | None = hydrate(order_by_node) if order_by_node else None
 
     new_selects = [x.as_lineage(context.environment) for x in selects]
+    multi_hidden: set[str] = set(y for x in new_selects for y in x.hidden_components)
+    for item in align_c.items:
+        if item.hidden:
+            multi_hidden.add(item.aligned_concept)
     lineage = MultiSelectLineage(
         selects=new_selects,
         align=align_c,
@@ -150,7 +161,7 @@ def multi_select_statement(
         where_clause=where,
         having_clause=having,
         limit=limit_val,
-        hidden_components=set(y for x in new_selects for y in x.hidden_components),
+        hidden_components=multi_hidden,
     )
     if derive:
         for derived in derive.items:

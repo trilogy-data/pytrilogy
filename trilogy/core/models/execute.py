@@ -435,7 +435,15 @@ class CTE:
 
         return (
             unique(
-                [c for c in self.output_columns if not check_is_not_in_group(c)],
+                [
+                    c
+                    for c in self.output_columns
+                    if not check_is_not_in_group(c)
+                    and not (
+                        c.address in self.hidden_concepts
+                        and c.derivation == Derivation.MULTISELECT
+                    )
+                ],
                 "address",
             )
             if self.group_to_grain

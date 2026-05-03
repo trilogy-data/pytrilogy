@@ -431,6 +431,9 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
         output: set[str] = set()
         for select in self.selects:
             output = output.union(select.hidden_components)
+        for item in self.align.items:
+            if item.hidden:
+                output.add(item.aligned_concept)
         return output
 
     @property

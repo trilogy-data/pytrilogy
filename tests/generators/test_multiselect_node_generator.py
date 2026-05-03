@@ -67,14 +67,14 @@ def test_multi_select_constant():
         """
 const one <- 1;
 const other_one <- 1;
-          
+
 
 SELECT
     one
 MERGE
-SELECT 
+SELECT
     other_one
-ALIGN 
+ALIGN
     true_one:one,other_one
 ;
           """,
@@ -93,3 +93,61 @@ ALIGN
     )
     assert len(gnode.parents) == 2
     assert len(gnode.node_joins) == 0
+
+
+def test_multi_select_align_hide():
+    """`--alias:` on align hides the join identity from the projection but keeps
+    it available as the inner-CTE join key."""
+    from trilogy import Dialects
+
+    env = Environment()
+    _, statements = parse(
+        """
+key one int;
+key other_one int;
+property one.label_a string;
+property other_one.label_b string;
+
+datasource num1 (
+    one:one,
+    label_a:label_a
+)
+grain (one)
+address num1;
+
+datasource num_other (
+    other_one:other_one,
+    label_b:label_b
+)
+grain (other_one)
+address num_other;
+
+SELECT
+    label_a,
+    --one
+MERGE
+SELECT
+    label_b,
+    --other_one
+ALIGN
+    --one_key:one,other_one
+;
+          """,
+        env,
+    )
+    multi = statements[-1]
+    assert any(item.hidden for item in multi.align.items)
+    assert "local.one_key" in multi.hidden_components
+
+    e = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = e.generate_sql(statements[-1])[0]
+    # final SELECT projects only the two labels, never the join identity
+    select_start = sql.rfind("SELECT")
+    from_start = sql.find("FROM", select_start)
+    projection = sql[select_start:from_start]
+    assert "label_a" in projection
+    assert "label_b" in projection
+    assert "one_key" not in projection
+    # but the join is still wired up in an earlier clause
+    assert "JOIN" in sql
+    assert "one_key" in sql
