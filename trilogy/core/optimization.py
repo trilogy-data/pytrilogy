@@ -9,6 +9,7 @@ from trilogy.core.optimizations import (
     DowngradeFullJoinOnGuards,
     HideUnusedConcepts,
     InlineDatasource,
+    JoinHoist,
     MergeIrrelevantGroupBy,
     OptimizationRule,
     PredicatePushdown,
@@ -237,6 +238,11 @@ def optimize_ctes(
         REGISTERED_RULES.append(CollapseSingleParent())
     if CONFIG.optimizations.merge_irrelevant_group_by:
         REGISTERED_RULES.append(MergeIrrelevantGroupBy())
+    # JoinHoist runs before InlineDatasource so the moved join is still in
+    # non-inlined form; the subsequent inlining pass folds the parent's
+    # extended FROM into a flat table reference like any other dim join.
+    if CONFIG.optimizations.join_hoist:
+        REGISTERED_RULES.append(JoinHoist())
     if CONFIG.optimizations.datasource_inlining:
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
