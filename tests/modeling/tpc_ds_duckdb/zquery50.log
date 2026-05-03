@@ -1,0 +1,98 @@
+query_id = "50"
+gen_length = 4163
+generated_sql = """
+
+WITH 
+thoughtful as (
+SELECT
+    \"store_sales_return_date_date\".\"D_DATE_SK\" - \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"days_to_return\",
+    \"store_sales_store_store\".\"S_CITY\" as \"store_sales_store_city\",
+    \"store_sales_store_store\".\"S_COMPANY_ID\" as \"store_sales_store_company_id\",
+    \"store_sales_store_store\".\"S_COUNTY\" as \"store_sales_store_county\",
+    \"store_sales_store_store\".\"S_STATE\" as \"store_sales_store_state\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    \"store_sales_store_store\".\"S_STREET_NAME\" as \"store_sales_store_street_name\",
+    \"store_sales_store_store\".\"S_STREET_NUMBER\" as \"store_sales_store_street_number\",
+    \"store_sales_store_store\".\"S_STREET_TYPE\" as \"store_sales_store_street_type\",
+    \"store_sales_store_store\".\"S_SUITE_NUMBER\" as \"store_sales_store_suite_number\",
+    \"store_sales_store_store\".\"S_ZIP\" as \"store_sales_store_zip\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"store_sales_return_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_return_date_date\".\"D_MOY\" = 8 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_store_returns\".\"SR_CUSTOMER_SK\"
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    \"store_sales_return_date_date\".\"D_DATE_SK\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\")
+SELECT
+    \"thoughtful\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"thoughtful\".\"store_sales_store_company_id\" as \"store_sales_store_company_id\",
+    \"thoughtful\".\"store_sales_store_street_number\" as \"store_sales_store_street_number\",
+    \"thoughtful\".\"store_sales_store_street_name\" as \"store_sales_store_street_name\",
+    \"thoughtful\".\"store_sales_store_street_type\" as \"store_sales_store_street_type\",
+    \"thoughtful\".\"store_sales_store_suite_number\" as \"store_sales_store_suite_number\",
+    \"thoughtful\".\"store_sales_store_city\" as \"store_sales_store_city\",
+    \"thoughtful\".\"store_sales_store_county\" as \"store_sales_store_county\",
+    \"thoughtful\".\"store_sales_store_state\" as \"store_sales_store_state\",
+    \"thoughtful\".\"store_sales_store_zip\" as \"store_sales_store_zip\",
+    sum(CASE
+	WHEN \"thoughtful\".\"days_to_return\" <= 30 THEN 1
+	ELSE 0
+	END) as \"days_30\",
+    sum(CASE
+	WHEN \"thoughtful\".\"days_to_return\" > 30 and \"thoughtful\".\"days_to_return\" <= 60 THEN 1
+	ELSE 0
+	END) as \"days_31_60\",
+    sum(CASE
+	WHEN \"thoughtful\".\"days_to_return\" > 60 and \"thoughtful\".\"days_to_return\" <= 90 THEN 1
+	ELSE 0
+	END) as \"days_61_90\",
+    sum(CASE
+	WHEN \"thoughtful\".\"days_to_return\" > 90 and \"thoughtful\".\"days_to_return\" <= 120 THEN 1
+	ELSE 0
+	END) as \"days_91_120\",
+    sum(CASE
+	WHEN \"thoughtful\".\"days_to_return\" > 120 THEN 1
+	ELSE 0
+	END) as \"days_120_plus\"
+FROM
+    \"thoughtful\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+ORDER BY 
+    \"thoughtful\".\"store_sales_store_name\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_company_id\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_number\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_name\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_type\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_suite_number\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_city\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_county\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_state\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_zip\" asc nulls first
+LIMIT (100)"""

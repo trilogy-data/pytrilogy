@@ -293,6 +293,11 @@ def test_twenty_five(engine):
     assert len(query) < 8500, query
 
 
+def test_thirty_seven(engine):
+    query = run_query(engine, 37)
+    assert len(query) < 2200, query
+
+
 def test_forty(engine):
     query = run_query(engine, 40, sql_override=True)
     assert len(query) < 8000, query
@@ -353,6 +358,11 @@ def test_thirty(engine):
     assert len(query) < 12000, query
 
 
+def test_thirty_three(engine):
+    query = run_query(engine, 33)
+    assert len(query) < 3500, query
+
+
 def test_thirty_four(engine):
     query = run_query(engine, 34, sql_override=True)
     assert len(query) < 5500, query
@@ -362,6 +372,16 @@ def test_thirty_two(engine):
     query = run_query(engine, 32)
     # size gating
     assert len(query) < 12640, query
+
+
+def test_forty_eight(engine):
+    query = run_query(engine, 48)
+    assert len(query) < 3000, query
+
+
+def test_fifty(engine):
+    query = run_query(engine, 50)
+    assert len(query) < 5000, query
 
 
 def test_fifty_two(engine):
@@ -387,6 +407,11 @@ def test_sixty(engine):
     assert len(query) < 5000, query
 
 
+def test_sixty_two(engine):
+    query = run_query(engine, 62)
+    assert len(query) < 2500, query
+
+
 def test_sixty_three(engine):
     query = run_query(engine, 63)
     assert len(query) < 6000, query
@@ -396,6 +421,11 @@ def test_sixty_eight(engine):
     query = run_query(engine, 68)
     assert len(query) < 8000, query
     assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
+
+
+def test_seventy_three(engine):
+    query = run_query(engine, 73)
+    assert len(query) < 7500, query
 
 
 def test_seventy_nine(engine):
@@ -416,6 +446,11 @@ def test_eighty_eight(engine):
 def test_eighty_nine(engine):
     query = run_query(engine, 89)
     assert len(query) < 8000, query
+
+
+def test_ninety_two(engine):
+    query = run_query(engine, 92)
+    assert len(query) < 2000, query
 
 
 def test_ninety_five(engine):

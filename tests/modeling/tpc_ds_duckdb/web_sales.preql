@@ -9,6 +9,7 @@ import customer as return_customer;
 import customer as return_refund_customer;
 import web_site as web_site;
 import warehouse as warehouse;
+import ship_mode as ship_mode;
 import address as ship_address;
 import address as bill_address;
 
@@ -20,6 +21,7 @@ properties <order_number,item.id> (
     net_profit float,
     ext_sales_price float,
     ext_ship_cost float,
+    ext_discount_amount float?,
     return_amount float,
     is_returned bool,
 );
@@ -40,6 +42,8 @@ datasource web_sales (
     WS_WAREHOUSE_SK: warehouse.id,
     WS_SHIP_ADDR_SK: ship_address.id,
     WS_BILL_ADDR_SK: bill_address.id,
+    WS_SHIP_MODE_SK: ship_mode.id,
+    WS_EXT_DISCOUNT_AMT: ext_discount_amount,
 )
 grain (order_number, item.id)
 address memory.web_sales

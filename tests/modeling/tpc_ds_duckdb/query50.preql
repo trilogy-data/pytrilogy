@@ -1,0 +1,36 @@
+import store_sales as store_sales;
+
+auto days_to_return <- store_sales.return_date.id - store_sales.date.id;
+
+WHERE
+    store_sales.return_date.year = 2001
+    and store_sales.return_date.month_of_year = 8
+    and store_sales.customer.id = store_sales.return_customer.id
+SELECT
+    store_sales.store.name,
+    store_sales.store.company_id,
+    store_sales.store.street_number,
+    store_sales.store.street_name,
+    store_sales.store.street_type,
+    store_sales.store.suite_number,
+    store_sales.store.city,
+    store_sales.store.county,
+    store_sales.store.state,
+    store_sales.store.zip,
+    sum(CASE WHEN days_to_return <= 30 THEN 1 ELSE 0 END) as days_30,
+    sum(CASE WHEN days_to_return > 30 and days_to_return <= 60 THEN 1 ELSE 0 END) as days_31_60,
+    sum(CASE WHEN days_to_return > 60 and days_to_return <= 90 THEN 1 ELSE 0 END) as days_61_90,
+    sum(CASE WHEN days_to_return > 90 and days_to_return <= 120 THEN 1 ELSE 0 END) as days_91_120,
+    sum(CASE WHEN days_to_return > 120 THEN 1 ELSE 0 END) as days_120_plus
+ORDER BY
+    store_sales.store.name asc nulls first,
+    store_sales.store.company_id asc nulls first,
+    store_sales.store.street_number asc nulls first,
+    store_sales.store.street_name asc nulls first,
+    store_sales.store.street_type asc nulls first,
+    store_sales.store.suite_number asc nulls first,
+    store_sales.store.city asc nulls first,
+    store_sales.store.county asc nulls first,
+    store_sales.store.state asc nulls first,
+    store_sales.store.zip asc nulls first
+LIMIT 100;
