@@ -2,18 +2,6 @@
 # Rollup results by sales channel and channel specific sales method (store for store sales, catalog page for catalog
 #sales and web site for web sales
 
-import store;
-import store_sales;
-import store_returns;
+import unified_sales;
 
-merge store.id, store_sales.store.id, store_returns.store.id;
-import web_sales;
-import catalog_sales;
-
-
-SELECT
-store.id,
-sum(store_sales.ext_sales_price) ->sales,
-sum(store_returns.ext_return_amt) -> returns,
-sum(store_sales.net_profit) -> profit
-
+#TODO

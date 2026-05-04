@@ -364,7 +364,11 @@ class TestBestEnumUnion:
         )
 
         assert result is not None
-        result_types = {ds.address.type for ds in result}
+        # Sources with identical concept signatures (parquet vs script both expose
+        # {city, species}) collapse into a single signature group; the higher-
+        # scoring (parquet) member wins.
+        assert len(result) == 1
+        result_types = {ds.address.type for ds in result[0]}
         assert result_types == {
             AddressType.PARQUET
         }, f"Expected parquet sources, got {result_types}"
@@ -393,8 +397,10 @@ class TestBestEnumUnion:
 
         result = _best_enum_union([north, south, east], region_enum, region)
         assert result is not None
-        assert len(result) == 3
-        assert {ds.name for ds in result} == {
+        assert len(result) == 1
+        combo = result[0]
+        assert len(combo) == 3
+        assert {ds.name for ds in combo} == {
             "NORTH_table",
             "SOUTH_table",
             "EAST_table",
@@ -422,8 +428,10 @@ class TestBestEnumUnion:
 
         source_result = _best_enum_union([city_raw, arb_raw], source_enum, source)
         assert source_result is not None
-        assert len(source_result) == 2
-        assert {ds.name for ds in source_result} == {city_raw.name, arb_raw.name}
+        assert len(source_result) == 1
+        combo = source_result[0]
+        assert len(combo) == 2
+        assert {ds.name for ds in combo} == {city_raw.name, arb_raw.name}
 
     def test_or_condition_not_used_as_slot(self):
         """A source whose non_partial_for uses OR must not occupy a single enum slot.

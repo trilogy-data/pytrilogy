@@ -1,0 +1,21 @@
+key id int;
+properties id (
+    text_id string,
+    department string?,
+    catalog_number int?,
+    catalog_page_number int?,
+    description string?,
+    type string?,
+);
+
+datasource catalog_page (
+    CP_CATALOG_PAGE_SK: id,
+    CP_CATALOG_PAGE_ID: text_id,
+    CP_DEPARTMENT: department,
+    CP_CATALOG_NUMBER: catalog_number,
+    CP_CATALOG_PAGE_NUMBER: catalog_page_number,
+    CP_DESCRIPTION: description,
+    CP_TYPE: type,
+)
+grain (id)
+address memory.catalog_page;

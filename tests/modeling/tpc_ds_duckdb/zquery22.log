@@ -1,5 +1,5 @@
 query_id = "22"
-gen_length = 6979
+gen_length = 7431
 generated_sql = """
 
 WITH 
@@ -138,9 +138,9 @@ SELECT
 FROM
     \"thoughtful\"
     FULL JOIN \"abundant\" on \"thoughtful\".\"i_brand\" is not distinct from \"abundant\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"abundant\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"abundant\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"abundant\".\"i_product_name\"
-    FULL JOIN \"yummy\" on \"thoughtful\".\"i_brand\" is not distinct from \"yummy\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"yummy\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"yummy\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"yummy\".\"i_product_name\"
-    FULL JOIN \"vacuous\" on \"thoughtful\".\"i_brand\" is not distinct from \"vacuous\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"vacuous\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"vacuous\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"vacuous\".\"i_product_name\"
-    FULL JOIN \"sparkling\" on \"thoughtful\".\"i_brand\" is not distinct from \"sparkling\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"sparkling\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"sparkling\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"sparkling\".\"i_product_name\")
+    FULL JOIN \"yummy\" on coalesce(\"thoughtful\".\"i_brand\", \"abundant\".\"i_brand\") = \"yummy\".\"i_brand\" AND coalesce(\"thoughtful\".\"i_category\", \"abundant\".\"i_category\") = \"yummy\".\"i_category\" AND coalesce(\"thoughtful\".\"i_class\", \"abundant\".\"i_class\") = \"yummy\".\"i_class\" AND coalesce(\"thoughtful\".\"i_product_name\", \"abundant\".\"i_product_name\") = \"yummy\".\"i_product_name\"
+    FULL JOIN \"vacuous\" on coalesce(\"thoughtful\".\"i_brand\", \"abundant\".\"i_brand\", \"yummy\".\"i_brand\") = \"vacuous\".\"i_brand\" AND coalesce(\"thoughtful\".\"i_category\", \"abundant\".\"i_category\", \"yummy\".\"i_category\") = \"vacuous\".\"i_category\" AND coalesce(\"thoughtful\".\"i_class\", \"abundant\".\"i_class\", \"yummy\".\"i_class\") = \"vacuous\".\"i_class\" AND coalesce(\"thoughtful\".\"i_product_name\", \"abundant\".\"i_product_name\", \"yummy\".\"i_product_name\") = \"vacuous\".\"i_product_name\"
+    FULL JOIN \"sparkling\" on coalesce(\"thoughtful\".\"i_brand\", \"abundant\".\"i_brand\", \"yummy\".\"i_brand\", \"vacuous\".\"i_brand\") = \"sparkling\".\"i_brand\" AND coalesce(\"thoughtful\".\"i_category\", \"abundant\".\"i_category\", \"yummy\".\"i_category\", \"vacuous\".\"i_category\") = \"sparkling\".\"i_category\" AND coalesce(\"thoughtful\".\"i_class\", \"abundant\".\"i_class\", \"yummy\".\"i_class\", \"vacuous\".\"i_class\") = \"sparkling\".\"i_class\" AND coalesce(\"thoughtful\".\"i_product_name\", \"abundant\".\"i_product_name\", \"yummy\".\"i_product_name\", \"vacuous\".\"i_product_name\") = \"sparkling\".\"i_product_name\")
 SELECT
     \"abhorrent\".\"i_product_name\" as \"level0_i_product_name\",
     \"abhorrent\".\"i_brand\" as \"level0_i_brand\",

@@ -6,6 +6,7 @@ import time as time;
 import customer as customer;
 import customer as bill_customer;
 import call_center as call_center;
+import catalog_page as catalog_page;
 import warehouse as warehouse;
 import customer_demographic as bill_customer_demographic;
 import household_demographic as bill_household_demographic;
@@ -56,6 +57,7 @@ datasource catalog_sales (
     CS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     CS_EXT_DISCOUNT_AMT: discount_amount,
     CS_CALL_CENTER_SK: ?call_center.id,
+    CS_CATALOG_PAGE_SK: catalog_page.id,
     CS_EXT_SHIP_COST: ext_ship_cost,
     CS_EXT_SALES_PRICE: ext_sales_price,
     CS_NET_PROFIT: net_profit,

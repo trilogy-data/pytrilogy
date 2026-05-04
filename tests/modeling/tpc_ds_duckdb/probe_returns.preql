@@ -1,0 +1,13 @@
+import unified_sales as sales;
+
+WHERE
+    sales.date.date >= cast('2000-08-23' as date)
+    AND sales.date.date <= cast('2000-09-22' as date)
+    AND sales.item.current_price > 50
+    AND sales.promotion.channel_tv = 'N'
+SELECT
+    sales.sales_channel,
+    sum(sales.ext_sales_price) as sales_,
+    sum(coalesce(sales.return_amount, 0)) as returns_,
+ORDER BY
+    sales.sales_channel asc;

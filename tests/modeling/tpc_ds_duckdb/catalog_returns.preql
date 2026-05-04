@@ -2,6 +2,12 @@ import catalog_sales as sales;
 import item as item;
 import date as date;
 import time as time;
+import customer as customer;
+import customer as refunded_customer;
+import address as return_address;
+import address as refunded_address;
+import call_center as call_center;
+import reason as reason;
 
 key order_number int;
 
@@ -9,6 +15,7 @@ properties <order_number,item.id> (
     net_loss float,
     refunded_cash float?,
     return_amount float?,
+    return_amt_inc_tax float?,
     return_quantity int?,
     had_return bool,
 );
@@ -19,9 +26,16 @@ datasource catalog_returns (
     CR_ITEM_SK: item.id,
     CR_ORDER_NUMBER: sales.order_number,
     CR_ORDER_NUMBER: order_number,
+    CR_RETURNING_CUSTOMER_SK: customer.id,
+    CR_REFUNDED_CUSTOMER_SK: refunded_customer.id,
+    CR_RETURNING_ADDR_SK: return_address.id,
+    CR_REFUNDED_ADDR_SK: refunded_address.id,
+    CR_CALL_CENTER_SK: call_center.id,
+    CR_REASON_SK: reason.id,
     CR_NET_LOSS: net_loss,
     CR_REFUNDED_CASH: refunded_cash,
     CR_RETURN_AMOUNT: return_amount,
+    CR_RETURN_AMT_INC_TAX: return_amt_inc_tax,
     CR_RETURN_QUANTITY: return_quantity,
 )
 grain (order_number, item.id)

@@ -2,9 +2,13 @@ import re
 
 
 def test_render_query(presto_engine):
-    results = presto_engine.generate_sql("""select pi;""")[0]
+    results = presto_engine.generate_sql("""select pi, greeting, answer;""")[0]
 
+    # float / string parameterised; int inlined
     assert ":pi" in results
+    assert ":greeting" in results
+    assert "42 as" in results
+    assert ":answer" not in results
 
 
 def test_numeric_query(presto_engine):
