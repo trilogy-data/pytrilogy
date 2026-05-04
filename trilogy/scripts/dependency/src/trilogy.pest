@@ -171,7 +171,7 @@ multi_select_statement = {
     ~ where? ~ order_by? ~ limit?
 }
 
-align_item   = { IDENTIFIER ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
+align_item   = { select_hide_modifier? ~ IDENTIFIER ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 align_clause = { align_item ~ (^"and" ~ align_item)* ~ (^"and")? }
 
 derive_item   = { expr ~ "->" ~ IDENTIFIER }

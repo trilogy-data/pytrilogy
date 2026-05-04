@@ -1,9 +1,13 @@
 key id int;
 properties id (
     string_id string,
-    channel_email string,
-    channel_catalog string,
-    channel_event string,
+    channel_email enum<string>['Y','N']?,
+    channel_catalog enum<string>['Y','N']?,
+    channel_event enum<string>['Y','N']?,
+    channel_dmail enum<string>['Y','N']?,
+    channel_tv enum<string>['Y','N']?,
+    channel_radio enum<string>['Y','N']?,
+    channel_press enum<string>['Y','N']?,
     cost float,
 );
 
@@ -14,6 +18,10 @@ datasource promotion (
     P_CHANNEL_EMAIL: channel_email,
     P_CHANNEL_EVENT: channel_event,
     P_CHANNEL_CATALOG: channel_catalog,
+    P_CHANNEL_DMAIL: channel_dmail,
+    P_CHANNEL_TV: channel_tv,
+    P_CHANNEL_RADIO: channel_radio,
+    P_CHANNEL_PRESS: channel_press,
 )
 grain (id)
 address memory.promotion;

@@ -2510,13 +2510,18 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
 
     @property
     def output_components(self) -> list[ConceptRef]:
+        align_hidden: set[str] = set()
+        for item in self.align.items:
+            if item.hidden:
+                align_hidden.add(item.aligned_concept)
+        select_hidden = self.hidden_components - align_hidden
         output = [
             ConceptRef(address=x, datatype=DataType.UNKNOWN)
             for x in self.derived_concepts
         ]
         for select in self.selects:
             output += select.output_components
-        return [x for x in output if x.address not in self.hidden_components]
+        return [x for x in output if x.address not in select_hidden]
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -2644,6 +2649,7 @@ class AlignItem(Namespaced):
     alias: str
     concepts: List[ConceptRef]
     namespace: str = DEFAULT_NAMESPACE
+    hidden: bool = False
 
     def __post_init__(self):
         output = []
@@ -2667,6 +2673,7 @@ class AlignItem(Namespaced):
             alias=self.alias,
             concepts=[c.with_namespace(namespace) for c in self.concepts],
             namespace=namespace,
+            hidden=self.hidden,
         )
 
 

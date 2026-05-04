@@ -1,5 +1,5 @@
 query_id = "01"
-gen_length = 2823
+gen_length = 2893
 generated_sql = """
 
 WITH 
@@ -21,14 +21,18 @@ GROUP BY
 thoughtful as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" as \"returns_return_date_id\",
-    \"returns_store_returns\".\"SR_STORE_SK\" as \"returns_store_id\"
+    coalesce(\"returns_store_returns\".\"SR_STORE_SK\",\"returns_store_store\".\"S_STORE_SK\") as \"returns_store_id\"
 FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
+    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
+WHERE
+    \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
+
 GROUP BY
     1,
     2,
-    3),
+    coalesce(\"returns_return_date_date\".\"D_DATE_SK\",\"returns_store_returns\".\"SR_RETURNED_DATE_SK\")),
 yummy as (
 SELECT
     \"questionable\".\"returns_store_id\" as \"returns_store_id\",
@@ -41,15 +45,10 @@ cooperative as (
 SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
     \"returns_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
+    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"thoughtful\".\"returns_store_id\" = \"returns_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"thoughtful\".\"returns_customer_id\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"thoughtful\".\"returns_return_date_id\" = \"returns_return_date_date\".\"D_DATE_SK\"
-WHERE
-    \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
-
 GROUP BY
     1,
     2,

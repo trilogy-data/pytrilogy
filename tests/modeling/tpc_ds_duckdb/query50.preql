@@ -1,0 +1,42 @@
+import store_sales as store_sales;
+
+auto days_to_return <- store_sales.return_date.id - store_sales.date.id;
+
+def bucket_count(low, high) -> sum(
+    count(store_sales.item.id ? days_to_return > low and days_to_return <= high)
+        by store_sales.ticket_number, store_sales.store.id
+) by store_sales.store.id;
+
+WHERE
+    store_sales.return_date.year = 2001
+    and store_sales.return_date.month_of_year = 8
+    and store_sales.customer.id = store_sales.return_customer.id
+SELECT
+    --store_sales.store.id,
+    store_sales.store.name,
+    store_sales.store.company_id,
+    store_sales.store.street_number,
+    store_sales.store.street_name,
+    store_sales.store.street_type,
+    store_sales.store.suite_number,
+    store_sales.store.city,
+    store_sales.store.county,
+    store_sales.store.state,
+    store_sales.store.zip,
+    @bucket_count(-1, 30) as days_30,
+    @bucket_count(30, 60) as days_31_60,
+    @bucket_count(60, 90) as days_61_90,
+    @bucket_count(90, 120) as days_91_120,
+    @bucket_count(120, 99999) as days_120_plus
+ORDER BY
+    store_sales.store.name asc nulls first,
+    store_sales.store.company_id asc nulls first,
+    store_sales.store.street_number asc nulls first,
+    store_sales.store.street_name asc nulls first,
+    store_sales.store.street_type asc nulls first,
+    store_sales.store.suite_number asc nulls first,
+    store_sales.store.city asc nulls first,
+    store_sales.store.county asc nulls first,
+    store_sales.store.state asc nulls first,
+    store_sales.store.zip asc nulls first
+LIMIT 100;

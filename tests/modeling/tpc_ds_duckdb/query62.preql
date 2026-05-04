@@ -1,0 +1,20 @@
+import web_sales as ws;
+
+auto days_to_ship <- ws.ship_date.id - ws.date.id;
+
+WHERE
+    ws.ship_date.month_seq between 1200 and 1211
+SELECT
+    substring(ws.warehouse.name, 1, 20) -> w_substr,
+    ws.ship_mode.type,
+    ws.web_site.name,
+    sum(CASE WHEN days_to_ship <= 30 THEN 1 ELSE 0 END) -> days_30,
+    sum(CASE WHEN days_to_ship > 30 and days_to_ship <= 60 THEN 1 ELSE 0 END) -> days_31_60,
+    sum(CASE WHEN days_to_ship > 60 and days_to_ship <= 90 THEN 1 ELSE 0 END) -> days_61_90,
+    sum(CASE WHEN days_to_ship > 90 and days_to_ship <= 120 THEN 1 ELSE 0 END) -> days_91_120,
+    sum(CASE WHEN days_to_ship > 120 THEN 1 ELSE 0 END) -> days_120_plus,
+ORDER BY
+    w_substr asc nulls first,
+    ws.ship_mode.type asc nulls first,
+    ws.web_site.name asc nulls first
+LIMIT 100;

@@ -626,7 +626,10 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: AlignItem):
-        return f"{arg.alias}:{','.join([self.to_string(c) for c in arg.concepts])}"
+        prefix = "--" if arg.hidden else ""
+        return (
+            f"{prefix}{arg.alias}:{','.join([self.to_string(c) for c in arg.concepts])}"
+        )
 
     @to_string.register
     def _(self, arg: OrderBy):

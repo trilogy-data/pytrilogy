@@ -150,8 +150,6 @@ def gen_basic_node(
     ] + targets
     hidden = [x for x in parent_node.output_concepts if x.address not in targets]
     parent_node.hide_output_concepts(hidden)
-    if parent_node.source_type != SourceType.UNION:
-        parent_node.source_type = SourceType.BASIC
 
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: input: {[x.address for x in parent_node.input_concepts]} output {[x.address for x in parent_node.output_concepts]} hidden {[x for x in parent_node.hidden_concepts]}"

@@ -1,0 +1,17 @@
+import unified_sales as sales;
+import item as items;
+
+auto electronics_manuf_ids <- items.manufacturer_id ? items.category = 'Electronics';
+
+WHERE
+    sales.item.manufacturer_id in electronics_manuf_ids
+    and sales.date.year = 1998
+    and sales.date.month_of_year = 5
+    and sales.bill_address.gmt_offset = -5
+SELECT
+    sales.item.manufacturer_id,
+    sum(sales.ext_sales_price) -> total_sales
+ORDER BY
+    total_sales asc nulls first,
+    sales.item.manufacturer_id asc nulls first
+LIMIT 100;

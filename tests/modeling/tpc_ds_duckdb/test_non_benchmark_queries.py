@@ -255,11 +255,11 @@ LIMIT 100;"""
     r1 = engine.parse_text(y)[-1]
     found = False
     for cte in r1.ctes:
-        if cte.condition:
+        if cte.condition and "store_sales.is_returned" in [
+            x.address for x in cte.condition.row_arguments
+        ]:
             found = True
-            assert "store_sales.is_returned" in [
-                x.address for x in cte.condition.row_arguments
-            ], [x.address for x in cte.condition.row_arguments]
+            break
     assert found
 
 

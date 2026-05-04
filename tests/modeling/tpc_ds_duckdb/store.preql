@@ -20,6 +20,10 @@ properties id (
     gmt_offset float?,
     company_name string?,
     company_id int?,
+    street_number string?,
+    street_name string?,
+    street_type string?,
+    suite_number string?,
 );
 
 datasource store (
@@ -30,7 +34,7 @@ datasource store (
     S_NUMBER_EMPLOYEES: employees,
     S_FLOOR_SPACE: floor_space,
     S_HOURS: hours,
-    S_STORE_MANAGER: store_manager,
+    S_MANAGER: store_manager,
     S_MARKET_ID: market_id,
     S_GEOGRAPHY_CLASS: geography_class,
     S_MARKET_MANAGER: market_manager,
@@ -43,6 +47,10 @@ datasource store (
     S_GMT_OFFSET: gmt_offset,
     S_COMPANY_NAME: company_name,
     S_COMPANY_ID: company_id,
+    S_STREET_NUMBER: street_number,
+    S_STREET_NAME: street_name,
+    S_STREET_TYPE: street_type,
+    S_SUITE_NUMBER: suite_number,
 )
 grain (id)
 address memory.store;

@@ -33,9 +33,19 @@ def _can_use_grouped_materialized_source(concept: BuildConcept) -> bool:
 def get_aggregate_grain(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> BuildGrain:
-    parent_concepts: List[BuildConcept] = unique(
-        resolve_function_parent_concepts(concept, environment=environment), "address"
+    raw_parents: List[BuildConcept] = resolve_function_parent_concepts(
+        concept, environment=environment
     )
+    # Aggregate parents are values, not grain keys. Expand to their `by`
+    # so two outer aggregates whose inner aggregates share a structural
+    # grain (but differ only by filter/operator) compare equal.
+    expanded: List[BuildConcept] = []
+    for p in raw_parents:
+        if isinstance(p.lineage, BuildAggregateWrapper):
+            expanded.extend(p.lineage.by)
+        else:
+            expanded.append(p)
+    parent_concepts = unique(expanded, "address")
 
     if (
         concept.grain
@@ -44,9 +54,7 @@ def get_aggregate_grain(
     ):
         grain_components = [environment.concepts[c] for c in concept.grain.components]
         parent_concepts += grain_components
-        return BuildGrain.from_concepts(parent_concepts)
-    else:
-        return BuildGrain.from_concepts(parent_concepts)
+    return BuildGrain.from_concepts(parent_concepts)
 
 
 def gen_group_node(

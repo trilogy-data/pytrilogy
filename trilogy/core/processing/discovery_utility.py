@@ -7,7 +7,6 @@ from trilogy.core.enums import (
     FunctionType,
     Granularity,
     Purpose,
-    SourceType,
 )
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -26,7 +25,10 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
 )
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
-from trilogy.core.processing.grain_utility import concept_source_address
+from trilogy.core.processing.grain_utility import (
+    _grain_coverage_addresses,
+    concept_source_address,
+)
 from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
@@ -134,6 +136,16 @@ def check_if_group_required(
             f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain}, target: {target_grain}, grain is subset of target, no group node required"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
+    # Expand target via concept-coverage so a MULTISELECT align identity
+    # covers its source keys (e.g. local.customer_id covers customer.id and
+    # store_sales.customer.id), and a comp_grain that arrives carrying the
+    # source keys does not look like extra grain.
+    target_coverage = _grain_coverage_addresses(target_grain, environment)
+    if comp_grain.components.issubset(target_coverage):
+        logger.info(
+            f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain} covered by target coverage {target_coverage}, no group node required"
+        )
+        return GroupRequiredResponse(target_grain, comp_grain, False)
     # find out what extra is in the comp grain vs target grain
     difference = [
         environment.concepts[c] for c in (comp_grain - target_grain).components
@@ -233,7 +245,9 @@ def group_if_required_v2(
             root.set_output_concepts(targets, rebuild=False, change_visibility=False)
             root.rebuild_cache()
             return root
-        elif isinstance(root, GroupNode) and root.source_type == SourceType.BASIC:
+        elif isinstance(root, GroupNode) and any(
+            x.derivation == Derivation.BASIC for x in root.output_concepts
+        ):
             # we need to group this one more time
             pass
         elif isinstance(root, GroupNode):
@@ -266,7 +280,7 @@ def group_if_required_v2(
 
         return root
     else:
-        root.set_output_concepts(targets, rebuild=False, change_visibility=False)
+        root.set_output_concepts(targets, change_visibility=False)
     return root
 
 

@@ -286,7 +286,14 @@ def grain_satisfied_by_pregrain(
 ) -> bool:
     if pregrain.issubset(grain):
         return True
-    return pregrain.issubset(rowset_source_grain(grain, environment))
+    if pregrain.issubset(rowset_source_grain(grain, environment)):
+        return True
+    # Expand grain via _concept_coverage_addresses so a MULTISELECT align
+    # identity covers its source keys (the JOIN keys it was derived from).
+    # Without this, a pregrain carrying the source keys looks like extra
+    # grain to a merge node whose grain only references the align alias.
+    coverage = _grain_coverage_addresses(grain, environment)
+    return pregrain.components.issubset(coverage)
 
 
 def condition_key_grain(
