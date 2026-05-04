@@ -1,0 +1,18 @@
+import unified_sales as sales;
+
+property <sales.sales_channel, sales.order_id, sales.item.id>.return_amount_safe <- coalesce(sales.return_amount, 0);
+property <sales.sales_channel, sales.order_id, sales.item.id>.profit_minus_loss <- sales.net_profit - coalesce(sales.return_net_loss, 0);
+
+WHERE
+    sales.date.date >= cast('2000-08-23' as date)
+    AND sales.date.date <= cast('2000-09-22' as date)
+    AND sales.item.current_price > 50
+    AND sales.promotion.channel_tv = 'N'
+SELECT
+    sales.sales_channel,
+    sales.channel_dim_text_id,
+    sum(sales.ext_sales_price) as sales_,
+    sum(return_amount_safe) as returns_,
+    sum(profit_minus_loss) as profit_,
+ORDER BY
+    sales.sales_channel asc;

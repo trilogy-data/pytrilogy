@@ -1,5 +1,4 @@
 from collections import defaultdict
-from itertools import combinations
 from typing import List
 
 from trilogy.constants import logger
@@ -11,7 +10,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.node_generators.common import resolve_join_order
+from trilogy.core.models.execute import ConceptPair
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -24,8 +23,18 @@ def extra_align_joins(
     environment: BuildEnvironment,
     parents: List[StrategyNode],
 ) -> List[NodeJoin]:
-    node_merge_concept_map = defaultdict(list)
-    output = []
+    """Build the FULL-JOIN chain that aligns multiselect rowset CTEs.
+
+    For N parent CTEs, emit N-1 joins anchored on the first parent. The Nth
+    parent's join binds its aligned concepts against EVERY prior parent (not
+    just the anchor). This matters for ROLLUP-style cascades where coarser
+    levels emit NULLs for some aligned columns: with only the anchor in the
+    ON clause, the grand-total CTE's (NULL, NULL) row would `IS NOT DISTINCT
+    FROM` the anchor's NULLs and get absorbed into per-channel rows. Binding
+    against every prior parent (rendered as `coalesce(prior1, prior2, ...) =
+    rightN` by `_build_joinkeys`) keeps the level-N row distinct.
+    """
+    node_merge_concept_map: dict[StrategyNode, list[BuildConcept]] = defaultdict(list)
     for align in base.align.items:
         jc = environment.concepts[align.aligned_concept]
         if jc.purpose == Purpose.CONSTANT:
@@ -35,22 +44,44 @@ def extra_align_joins(
                 if item in node.output_lcl:
                     node_merge_concept_map[node].append(jc)
 
-    for left, right in combinations(node_merge_concept_map.keys(), 2):
-        matched_concepts = [
-            x
-            for x in node_merge_concept_map[left]
-            if x in node_merge_concept_map[right]
+    relevant = list(node_merge_concept_map.keys())
+    if len(relevant) < 2:
+        return []
+
+    anchor = relevant[0]
+    output: list[NodeJoin] = []
+    for i in range(1, len(relevant)):
+        right = relevant[i]
+        priors = relevant[:i]
+        right_concepts = [
+            c
+            for c in node_merge_concept_map[right]
+            if any(c in node_merge_concept_map[p] for p in priors)
         ]
+        concept_pairs: list[ConceptPair] = []
+        for c in right_concepts:
+            for prior in priors:
+                if c not in node_merge_concept_map[prior]:
+                    continue
+                concept_pairs.append(
+                    ConceptPair(
+                        left=c,
+                        right=c,
+                        existing_datasource=prior.resolve(),
+                        modifiers=[Modifier.NULLABLE],
+                    )
+                )
         output.append(
             NodeJoin(
-                left_node=left,
+                left_node=anchor,
                 right_node=right,
-                concepts=matched_concepts,
+                concepts=right_concepts,
+                concept_pairs=concept_pairs or None,
                 join_type=JoinType.FULL,
                 modifiers=[Modifier.NULLABLE],
             )
         )
-    return resolve_join_order(output)
+    return output
 
 
 def gen_multiselect_node(

@@ -29,20 +29,25 @@ exercising different planner paths — they share an SQL reference.)
 - **q44** — `pytest.mark.skip(reason="Still cooking")` — pre-existing, not
   investigated.
 - **q85** - DuckDB Comparison (PRAGMA tpcds(85)) hangs on dev machine; skip.
-- **q80** — multi-fact UNION ALL + ROLLUP combination hits multiple trilogy
-  planner bugs (see Framework Notes). Three approaches all blocked:
-  (a) per-fact 7-block MERGE cascade → `RecursionError`;
-  (b) `unified_sales` extended with channel-specific dimension joins +
-  `raw(''' NULL ''')` cross-channel fillers + 3-level ROLLUP cascade →
-  works for sales detail, but adding partial `web_returns_unified` /
-  `catalog_returns_unified` / `store_returns_unified` datasources triggers
-  `'Can only merge two datasources if force_group flag is the same'`;
-  (c) Hybrid (unified_sales for sales, per-fact for returns) → trilogy
-  cannot push WHERE through the merge node connecting the two name spaces
-  (`SyntaxError: Have ... and need sales.date.date >= ...`).
-  Model extensions ARE in place and viable for future attempts —
-  see `unified_sales.preql` (channel dim joins + raw NULL fillers) and
-  `catalog_page.preql`. `query80.preql` left as scaffold.
+- **q80** — `unified_sales` was reshaped to expose a single channel
+  dimension (`channel_dim_id` + `channel_dim_text_id`) backed by three
+  partial datasources (one each for `store`, `catalog_page`, `web_site`)
+  keyed by `(sales_channel, channel_dim_id)`, plus three partial
+  `*_returns_unified` datasources contributing `return_amount` /
+  `return_net_loss` at the same grain as sales. Three framework fixes
+  enable this shape (see Framework Notes): RawColumnExpr handling in
+  `safe_get_cte_value`, multiple parallel unions per merge_key, and a
+  relaxed `force_group` merge in `QueryDatasource.__add__`.
+  Single-SELECT and 2-level cascade variants now plan and execute
+  correctly. The 3-level `MERGE+align` cascade plans (~0.7s, ~14KB SQL)
+  but produces wrong channel-/grand-total rows: level-2 (`kaput`) and
+  level-3 (`macho`) SELECTs read from a `late` CTE whose join shape
+  differs from level-1's `puzzled` CTE, so the rolled-up `returns`/
+  `profit` sums diverge from the reference (sales totals match). Detail
+  rows themselves match. Skipped pending planner investigation.
+  Note: using `q80_results.sales_total as sales` aliases in the final
+  `SELECT` causes planning to hang indefinitely — use bare references
+  to keep planning fast.
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
@@ -107,10 +112,11 @@ exercising different planner paths — they share an SQL reference.)
   not `HAVING item_revenue <= …`.
 - **DuckDB rejects parameter refs in ORDER BY (q39) — fixed.** Trilogy used
   to parameterise every CONSTANT concept (e.g. `1 as dmoy1` → `:dmoy1`),
-  which DuckDB rejects in ORDER BY. INTEGER / FLOAT / BOOL constants are now
+  which DuckDB rejects in ORDER BY. INTEGER and BOOL constants are now
   rendered inline as SQL literals (see `INLINE_SAFE_PARAM_DATATYPES` in
-  `trilogy/dialect/base.py`); strings stay parameterised against SQL
-  injection.
+  `trilogy/dialect/base.py`); FLOAT stays parameterised because DuckDB
+  parses inline `3.14` as DECIMAL (changing result type from float to
+  Decimal); strings stay parameterised against SQL injection.
 - **3-channel customer cycles (q69).** When using `merge` to unify
   `customer.id` across store/web/catalog sales AND filtering with both
   `IN store_buyers` and `NOT IN web_buyers`/`NOT IN catalog_buyers`, the
@@ -147,29 +153,30 @@ exercising different planner paths — they share an SQL reference.)
 - **`raw('NULL')` requires multi-line string syntax.** `raw('NULL')` is a parse
   error (single-quote string not accepted in raw column expression).
   Use `raw(''' NULL ''')` (triple-single-quote MULTILINE_STRING).
-- **Trilogy planner bugs encountered while attempting q80**
-  (multi-fact UNION ALL + ROLLUP via `unified_sales`):
-  - `'RawColumnExpr' object has no attribute 'startswith'` —
-    triggered in `dialect/base.py:render_concept_sql` during CTE rendering
-    when a partial datasource uses `raw(''' NULL ''')` mappings together
-    with cross-fact aggregates and certain WHERE shapes. Reproduce with
-    `unified_sales` extended with NULL fillers + partial returns datasources
-    + `sum(coalesce(sales.return_amount, 0))` in a SELECT.
+- **Trilogy planner fixes landed for q80** (multi-fact UNION ALL + ROLLUP):
+  - `'RawColumnExpr' object has no attribute 'startswith'` — fixed in
+    `dialect/base.py:safe_get_cte_value`. The single- and multi-source
+    paths now branch on `RawColumnExpr` / `FUNCTION_ITEMS` and emit
+    the raw text directly instead of routing through `safe_quote`.
   - `'Can only merge two datasources if force_group flag is the same'` —
-    triggered in `core/models/execute.py:788` when partial returns datasources
-    and partial sales datasources share a grain and are unioned together.
-    Removing the partial returns datasources side-steps it but loses the
-    unified returns aggregate.
-  - `RecursionError: maximum recursion depth exceeded` — the per-fact
-    7-block MERGE+align cascade (3 channels × 2 levels + 1 grand total)
-    sends the discovery loop spinning between `cs.net_profit` and
-    `cr.net_loss` (see `concept_strategies_v3.py:411`). Bisects to the
-    catalog channel block — store+web alone (3 blocks total) parses and
-    runs in ~5500 chars of SQL.
-  - `SyntaxError: Have {MergeNode<...>: None} and need sales.date.date >= ...` —
-    when bridging `unified_sales` with per-fact tables via
-    `merge sales.store.id into ~store.id` and using cross-namespace
-    aggregates, the planner cannot push WHERE through the resulting merge.
+    relaxed in `core/models/execute.py:QueryDatasource.__add__`. The
+    merged datasource takes `force_group=True` if either side asserts it,
+    `False` if either side asserts that, otherwise `None`.
+  - **Multiple parallel unions per merge_key** — `_best_enum_union` in
+    `core/processing/node_generators/select_helpers/datasource_injection.py`
+    now clusters partial datasources by their non-merge-key concept
+    signature and emits one union per maximal signature. Lets parallel
+    sales / returns / dim partitionings (each keyed by the same
+    `sales_channel` enum) coexist as separate union datasources rather
+    than collapsing into a single best combo.
+- **Open trilogy issues exposed by q80**:
+  - 3-level `MERGE+align` over a multi-source partitioning generates
+    distinct CTE shapes per level (level-1 reads from one join, level-2/3
+    read from a sibling `late` CTE without the dim join). Aggregations
+    diverge.
+  - Final `SELECT alias` of rowset-derived concepts (e.g.
+    `q80_results.sales_total as sales`) causes the planner to hang
+    indefinitely. Bare references plan in <1s.
 
 ## Suggested Next Batch (by complexity)
 

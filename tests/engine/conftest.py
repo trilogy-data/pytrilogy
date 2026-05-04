@@ -127,6 +127,7 @@ def presto_model(environment):
     text = """
 const pi <-3.14;
 const greeting <- 'hello';
+const answer <- 42;
 """
     environment, statements = parse(text, environment=environment)
     yield environment

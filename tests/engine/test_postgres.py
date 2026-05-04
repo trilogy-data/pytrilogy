@@ -1,9 +1,11 @@
 def test_render_query(postgres_engine):
-    results = postgres_engine.generate_sql("""select pi, greeting;""")[0]
+    results = postgres_engine.generate_sql("""select pi, greeting, answer;""")[0]
 
-    assert "3.14" in results
-    assert ":pi" not in results
+    # float / string parameterised; int inlined
+    assert ":pi" in results
     assert ":greeting" in results
+    assert "42 as" in results
+    assert ":answer" not in results
 
     results2 = postgres_engine.generate_sql("""
         const today <- date_trunc(current_datetime() , day);

@@ -183,11 +183,10 @@ FUNCTION_ITEMS = (BuildFunction,)
 PARENTHETICAL_ITEMS = (BuildParenthetical,)
 
 # Datatypes whose CONSTANT values can be inlined into SQL without
-# parameterisation. Numbers and bools cannot carry SQL injection, and
-# DuckDB rejects parameter refs in some clauses (e.g. ORDER BY).
-INLINE_SAFE_PARAM_DATATYPES = frozenset(
-    {DataType.INTEGER, DataType.FLOAT, DataType.BOOL}
-)
+# parameterisation. INTEGER / BOOL round-trip cleanly through engine
+# parsing; FLOAT is excluded because DuckDB parses dotted literals as
+# DECIMAL, which would change result types from float to Decimal.
+INLINE_SAFE_PARAM_DATATYPES = frozenset({DataType.INTEGER, DataType.BOOL})
 CASE_WHEN_ITEMS = (BuildCaseWhen,)
 CASE_ELSE_ITEMS = (BuildCaseElse,)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
@@ -495,26 +494,26 @@ def safe_get_cte_value(
 
     if not raw:
         return None
+
+    def _format(source: str, rendered) -> str:
+        if isinstance(rendered, RawColumnExpr):
+            return rendered.text
+        if isinstance(rendered, FUNCTION_ITEMS):
+            return f"{render_expr(rendered, cte=cte, raise_invalid=True)}"
+        return f"{quote_char}{source}{quote_char}.{safe_quote(rendered, quote_char)}"
+
     if isinstance(raw, str):
         rendered = cte.get_alias(c, raw)
         use_map[raw].add(c.address)
-        return f"{quote_char}{raw}{quote_char}.{safe_quote(rendered, quote_char)}"
+        return _format(raw, rendered)
     if isinstance(raw, list) and len(raw) == 1:
         rendered = cte.get_alias(c, raw[0])
-        if isinstance(rendered, FUNCTION_ITEMS):
-            # if it's a function, we need to render it as a function
-            return f"{render_expr(rendered, cte=cte, raise_invalid=True)}"
         use_map[raw[0]].add(c.address)
-        return f"{quote_char}{raw[0]}{quote_char}.{safe_quote(rendered, quote_char)}"
+        return _format(raw[0], rendered)
     for x in raw:
         use_map[x].add(c.address)
     return coalesce(
-        sorted(
-            [
-                f"{quote_char}{x}{quote_char}.{safe_quote(cte.get_alias(c, x), quote_char)}"
-                for x in raw
-            ]
-        ),
+        sorted([_format(x, cte.get_alias(c, x)) for x in raw]),
         [],
     )
 

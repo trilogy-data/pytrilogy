@@ -120,8 +120,10 @@ def test_compile_statement_with_params_imported_namespace():
 
 
 def test_numeric_constants_inlined_not_parameterised():
-    """int / float / bool constants render as SQL literals so DuckDB ORDER BY
-    accepts them. Strings stay parameterised against SQL injection."""
+    """int / bool constants render as SQL literals so DuckDB ORDER BY
+    accepts them. Floats and strings stay parameterised — floats because
+    inlined `3.14` is parsed as DECIMAL by DuckDB (changing result type
+    from float to Decimal), strings against SQL injection."""
     test_query = """
     const i <- 1;
     const f <- 3.14;
@@ -137,13 +139,12 @@ def test_numeric_constants_inlined_not_parameterised():
     )
     sql, params = executor.generator.compile_statement_with_params(processed[0])
     assert "1 as" in sql
-    assert "3.14 as" in sql
     assert "True as" in sql
     assert ":i" not in sql
-    assert ":f" not in sql
     assert ":b" not in sql
+    assert ":f" in sql
     assert ":s" in sql
-    assert params == {"s": "hello"}
+    assert params == {"f": 3.14, "s": "hello"}
 
 
 def test_compile_statement_with_params_no_params_when_rendering_disabled():

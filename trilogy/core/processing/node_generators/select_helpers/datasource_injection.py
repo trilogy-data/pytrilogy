@@ -76,11 +76,15 @@ def _best_enum_union(
     dses: list[BuildDatasource],
     enum_type: EnumType,
     merge_key: BuildConcept,
-) -> list[BuildDatasource] | None:
-    """Find the best minimal covering combination for an enum-partitioned key.
+) -> list[list[BuildDatasource]] | None:
+    """Find the best minimal covering combinations for an enum-partitioned key.
 
-    Groups by covered enum value, then picks the highest-scoring combination
-    (one source per value) that has field overlap beyond the merge key itself.
+    Groups by covered enum value, enumerates one-source-per-value combos,
+    computes the combo's actual concept overlap (minus the merge key), and
+    keeps the highest-scoring combo per distinct overlap signature. Returning
+    one combo per overlap lets parallel partitionings (e.g., sales vs.
+    returns vs. dim, all keyed by the same channel enum) each contribute
+    their own union datasource instead of collapsing into the single best.
     Materialized table sources score higher than script/query sources.
     """
     by_value: dict[object, list[BuildDatasource]] = defaultdict(list)
@@ -101,8 +105,7 @@ def _best_enum_union(
     values = list(by_value.keys())
     merge_key_addr = {merge_key.address}
 
-    best: list[BuildDatasource] | None = None
-    best_score = -1
+    best_per_overlap: dict[frozenset[str], tuple[list[BuildDatasource], int]] = {}
 
     for combo in product(*[by_value[v] for v in values]):
         combo_list = list(combo)
@@ -115,15 +118,25 @@ def _best_enum_union(
         overlap = {col.concept.address for col in combo_list[0].columns}
         for ds in combo_list[1:]:
             overlap &= {col.concept.address for col in ds.columns}
-        if not (overlap - merge_key_addr):
+        signature = frozenset(overlap - merge_key_addr)
+        if not signature:
             continue
 
         score = sum(_datasource_score(ds) for ds in combo_list)
-        if score > best_score:
-            best_score = score
-            best = combo_list
+        existing = best_per_overlap.get(signature)
+        if existing is None or score > existing[1]:
+            best_per_overlap[signature] = (combo_list, score)
 
-    return best
+    if not best_per_overlap:
+        return None
+    # Keep only maximal overlap signatures: drop a signature whose concept set
+    # is a strict subset of another's. This filters out "mixed" combos (e.g.,
+    # 2 sales + 1 dim) whose overlap is a strict subset of a pure-grouping
+    # combo (e.g., 3 sales). Pure parallel partitionings (sales/returns/dim)
+    # remain incomparable and all survive.
+    sigs = list(best_per_overlap.keys())
+    maximal = [s for s in sigs if not any(s < other for other in sigs)]
+    return [best_per_overlap[s][0] for s in maximal]
 
 
 def get_union_sources(
@@ -171,7 +184,7 @@ def get_union_sources(
         if isinstance(merge_key.datatype, EnumType):
             result = _best_enum_union(dses, merge_key.datatype, merge_key)
             if result:
-                final.append(result)
+                final.extend(result)
         else:
             conditions = [
                 c.non_partial_for.conditional for c in dses if c.non_partial_for

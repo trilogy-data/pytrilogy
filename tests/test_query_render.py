@@ -5,7 +5,7 @@ from trilogy.render import get_dialect_generator
 
 def test_sql_generators():
     env = Environment()
-    _, statements = env.parse("""const a <- 1; select a;""")
+    _, statements = env.parse("""const a <- 'hi'; select a;""")
     processed = process_query(env, statements[-1])
     for dialect in Dialects:
         generator = get_dialect_generator(dialect)

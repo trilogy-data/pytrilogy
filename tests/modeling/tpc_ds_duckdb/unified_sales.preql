@@ -4,11 +4,14 @@ import time as time;
 import customer as customer;
 import promotion as promotion;
 import address as bill_address;
-import store as store;
-import catalog_page as catalog_page;
-import web_site as web_site;
 
 key sales_channel enum<string>['WEB', 'CATALOG', 'STORE'];
+key channel_dim_id int;
+
+properties <sales_channel, channel_dim_id> (
+    channel_dim_text_id string,
+);
+
 key order_id int;
 
 properties <sales_channel, order_id, item.id> (
@@ -23,6 +26,8 @@ properties <sales_channel, order_id, item.id> (
     coupon_amt float,
     net_profit float,
     net_paid float,
+    return_amount float?,
+    return_net_loss float?,
 );
 
 partial datasource web_sales_unified (
@@ -34,9 +39,7 @@ partial datasource web_sales_unified (
     WS_BILL_CUSTOMER_SK: customer.id,
     WS_BILL_ADDR_SK: bill_address.id,
     WS_PROMO_SK: promotion.id,
-    WS_WEB_SITE_SK: web_site.id,
-    raw(''' NULL '''): store.id,
-    raw(''' NULL '''): catalog_page.id,
+    WS_WEB_SITE_SK: channel_dim_id,
     WS_QUANTITY: quantity,
     WS_SALES_PRICE: sales_price,
     WS_LIST_PRICE: list_price,
@@ -62,9 +65,7 @@ partial datasource catalog_sales_unified (
     CS_BILL_CUSTOMER_SK: customer.id,
     CS_BILL_ADDR_SK: bill_address.id,
     CS_PROMO_SK: promotion.id,
-    CS_CATALOG_PAGE_SK: catalog_page.id,
-    raw(''' NULL '''): store.id,
-    raw(''' NULL '''): web_site.id,
+    CS_CATALOG_PAGE_SK: channel_dim_id,
     CS_QUANTITY: quantity,
     CS_SALES_PRICE: sales_price,
     CS_LIST_PRICE: list_price,
@@ -90,9 +91,7 @@ partial datasource store_sales_unified (
     SS_CUSTOMER_SK: customer.id,
     SS_ADDR_SK: bill_address.id,
     SS_PROMO_SK: promotion.id,
-    SS_STORE_SK: store.id,
-    raw(''' NULL '''): catalog_page.id,
-    raw(''' NULL '''): web_site.id,
+    SS_STORE_SK: channel_dim_id,
     SS_QUANTITY: quantity,
     SS_SALES_PRICE: sales_price,
     SS_LIST_PRICE: list_price,
@@ -109,3 +108,62 @@ grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'STORE'
 address memory.store_sales;
 
+partial datasource store_dim_unified (
+    raw(''' 'STORE' '''): sales_channel,
+    S_STORE_SK: channel_dim_id,
+    S_STORE_ID: channel_dim_text_id,
+)
+grain (sales_channel, channel_dim_id)
+complete where sales_channel = 'STORE'
+address memory.store;
+
+partial datasource catalog_dim_unified (
+    raw(''' 'CATALOG' '''): sales_channel,
+    CP_CATALOG_PAGE_SK: channel_dim_id,
+    CP_CATALOG_PAGE_ID: channel_dim_text_id,
+)
+grain (sales_channel, channel_dim_id)
+complete where sales_channel = 'CATALOG'
+address memory.catalog_page;
+
+partial datasource web_dim_unified (
+    raw(''' 'WEB' '''): sales_channel,
+    web_site_sk: channel_dim_id,
+    web_site_id: channel_dim_text_id,
+)
+grain (sales_channel, channel_dim_id)
+complete where sales_channel = 'WEB'
+address memory.web_site;
+
+partial datasource web_returns_unified (
+    raw(''' 'WEB' '''): sales_channel,
+    WR_ORDER_NUMBER: ~order_id,
+    WR_ITEM_SK: ~item.id,
+    WR_RETURN_AMT: return_amount,
+    WR_NET_LOSS: return_net_loss,
+)
+grain (sales_channel, order_id, item.id)
+complete where sales_channel = 'WEB'
+address memory.web_returns;
+
+partial datasource catalog_returns_unified (
+    raw(''' 'CATALOG' '''): sales_channel,
+    CR_ORDER_NUMBER: ~order_id,
+    CR_ITEM_SK: ~item.id,
+    CR_RETURN_AMOUNT: return_amount,
+    CR_NET_LOSS: return_net_loss,
+)
+grain (sales_channel, order_id, item.id)
+complete where sales_channel = 'CATALOG'
+address memory.catalog_returns;
+
+partial datasource store_returns_unified (
+    raw(''' 'STORE' '''): sales_channel,
+    SR_TICKET_NUMBER: ~order_id,
+    SR_ITEM_SK: ~item.id,
+    SR_RETURN_AMT: return_amount,
+    SR_NET_LOSS: return_net_loss,
+)
+grain (sales_channel, order_id, item.id)
+complete where sales_channel = 'STORE'
+address memory.store_returns;
