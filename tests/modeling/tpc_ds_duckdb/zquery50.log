@@ -1,5 +1,5 @@
 query_id = "50"
-gen_length = 10563
+gen_length = 6332
 generated_sql = """
 
 WITH 
@@ -78,109 +78,35 @@ SELECT
 FROM
     \"questionable\"
 GROUP BY
-    1),
-yummy as (
+    1)
 SELECT
-    \"thoughtful\".\"store_sales_store_city\" as \"store_sales_store_city\",
-    \"thoughtful\".\"store_sales_store_company_id\" as \"store_sales_store_company_id\",
-    \"thoughtful\".\"store_sales_store_county\" as \"store_sales_store_county\",
-    \"thoughtful\".\"store_sales_store_id\" as \"store_sales_store_id\",
     \"thoughtful\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"thoughtful\".\"store_sales_store_state\" as \"store_sales_store_state\",
-    \"thoughtful\".\"store_sales_store_street_name\" as \"store_sales_store_street_name\",
+    \"thoughtful\".\"store_sales_store_company_id\" as \"store_sales_store_company_id\",
     \"thoughtful\".\"store_sales_store_street_number\" as \"store_sales_store_street_number\",
+    \"thoughtful\".\"store_sales_store_street_name\" as \"store_sales_store_street_name\",
     \"thoughtful\".\"store_sales_store_street_type\" as \"store_sales_store_street_type\",
     \"thoughtful\".\"store_sales_store_suite_number\" as \"store_sales_store_suite_number\",
+    \"thoughtful\".\"store_sales_store_city\" as \"store_sales_store_city\",
+    \"thoughtful\".\"store_sales_store_county\" as \"store_sales_store_county\",
+    \"thoughtful\".\"store_sales_store_state\" as \"store_sales_store_state\",
     \"thoughtful\".\"store_sales_store_zip\" as \"store_sales_store_zip\",
-    \"uneven\".\"days_91_120\" as \"days_91_120\"
-FROM
-    \"thoughtful\"
-    INNER JOIN \"uneven\" on \"thoughtful\".\"store_sales_store_id\" = \"uneven\".\"store_sales_store_id\"),
-juicy as (
-SELECT
-    \"uneven\".\"days_61_90\" as \"days_61_90\",
-    \"yummy\".\"days_91_120\" as \"days_91_120\",
-    \"yummy\".\"store_sales_store_city\" as \"store_sales_store_city\",
-    \"yummy\".\"store_sales_store_company_id\" as \"store_sales_store_company_id\",
-    \"yummy\".\"store_sales_store_county\" as \"store_sales_store_county\",
-    \"yummy\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    \"yummy\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"yummy\".\"store_sales_store_state\" as \"store_sales_store_state\",
-    \"yummy\".\"store_sales_store_street_name\" as \"store_sales_store_street_name\",
-    \"yummy\".\"store_sales_store_street_number\" as \"store_sales_store_street_number\",
-    \"yummy\".\"store_sales_store_street_type\" as \"store_sales_store_street_type\",
-    \"yummy\".\"store_sales_store_suite_number\" as \"store_sales_store_suite_number\",
-    \"yummy\".\"store_sales_store_zip\" as \"store_sales_store_zip\"
-FROM
-    \"yummy\"
-    INNER JOIN \"uneven\" on \"yummy\".\"store_sales_store_id\" = \"uneven\".\"store_sales_store_id\"),
-vacuous as (
-SELECT
-    \"juicy\".\"days_61_90\" as \"days_61_90\",
-    \"juicy\".\"days_91_120\" as \"days_91_120\",
-    \"juicy\".\"store_sales_store_city\" as \"store_sales_store_city\",
-    \"juicy\".\"store_sales_store_company_id\" as \"store_sales_store_company_id\",
-    \"juicy\".\"store_sales_store_county\" as \"store_sales_store_county\",
-    \"juicy\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    \"juicy\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"juicy\".\"store_sales_store_state\" as \"store_sales_store_state\",
-    \"juicy\".\"store_sales_store_street_name\" as \"store_sales_store_street_name\",
-    \"juicy\".\"store_sales_store_street_number\" as \"store_sales_store_street_number\",
-    \"juicy\".\"store_sales_store_street_type\" as \"store_sales_store_street_type\",
-    \"juicy\".\"store_sales_store_suite_number\" as \"store_sales_store_suite_number\",
-    \"juicy\".\"store_sales_store_zip\" as \"store_sales_store_zip\",
-    \"uneven\".\"days_31_60\" as \"days_31_60\"
-FROM
-    \"juicy\"
-    INNER JOIN \"uneven\" on \"juicy\".\"store_sales_store_id\" = \"uneven\".\"store_sales_store_id\"),
-concerned as (
-SELECT
     \"uneven\".\"days_30\" as \"days_30\",
-    \"vacuous\".\"days_31_60\" as \"days_31_60\",
-    \"vacuous\".\"days_61_90\" as \"days_61_90\",
-    \"vacuous\".\"days_91_120\" as \"days_91_120\",
-    \"vacuous\".\"store_sales_store_city\" as \"store_sales_store_city\",
-    \"vacuous\".\"store_sales_store_company_id\" as \"store_sales_store_company_id\",
-    \"vacuous\".\"store_sales_store_county\" as \"store_sales_store_county\",
-    \"vacuous\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    \"vacuous\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"vacuous\".\"store_sales_store_state\" as \"store_sales_store_state\",
-    \"vacuous\".\"store_sales_store_street_name\" as \"store_sales_store_street_name\",
-    \"vacuous\".\"store_sales_store_street_number\" as \"store_sales_store_street_number\",
-    \"vacuous\".\"store_sales_store_street_type\" as \"store_sales_store_street_type\",
-    \"vacuous\".\"store_sales_store_suite_number\" as \"store_sales_store_suite_number\",
-    \"vacuous\".\"store_sales_store_zip\" as \"store_sales_store_zip\"
-FROM
-    \"vacuous\"
-    INNER JOIN \"uneven\" on \"vacuous\".\"store_sales_store_id\" = \"uneven\".\"store_sales_store_id\")
-SELECT
-    \"concerned\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"concerned\".\"store_sales_store_company_id\" as \"store_sales_store_company_id\",
-    \"concerned\".\"store_sales_store_street_number\" as \"store_sales_store_street_number\",
-    \"concerned\".\"store_sales_store_street_name\" as \"store_sales_store_street_name\",
-    \"concerned\".\"store_sales_store_street_type\" as \"store_sales_store_street_type\",
-    \"concerned\".\"store_sales_store_suite_number\" as \"store_sales_store_suite_number\",
-    \"concerned\".\"store_sales_store_city\" as \"store_sales_store_city\",
-    \"concerned\".\"store_sales_store_county\" as \"store_sales_store_county\",
-    \"concerned\".\"store_sales_store_state\" as \"store_sales_store_state\",
-    \"concerned\".\"store_sales_store_zip\" as \"store_sales_store_zip\",
-    \"concerned\".\"days_30\" as \"days_30\",
-    \"concerned\".\"days_31_60\" as \"days_31_60\",
-    \"concerned\".\"days_61_90\" as \"days_61_90\",
-    \"concerned\".\"days_91_120\" as \"days_91_120\",
+    \"uneven\".\"days_31_60\" as \"days_31_60\",
+    \"uneven\".\"days_61_90\" as \"days_61_90\",
+    \"uneven\".\"days_91_120\" as \"days_91_120\",
     \"uneven\".\"days_120_plus\" as \"days_120_plus\"
 FROM
-    \"concerned\"
-    INNER JOIN \"uneven\" on \"concerned\".\"store_sales_store_id\" = \"uneven\".\"store_sales_store_id\"
+    \"thoughtful\"
+    INNER JOIN \"uneven\" on \"thoughtful\".\"store_sales_store_id\" = \"uneven\".\"store_sales_store_id\"
 ORDER BY 
-    \"concerned\".\"store_sales_store_name\" asc nulls first,
-    \"concerned\".\"store_sales_store_company_id\" asc nulls first,
-    \"concerned\".\"store_sales_store_street_number\" asc nulls first,
-    \"concerned\".\"store_sales_store_street_name\" asc nulls first,
-    \"concerned\".\"store_sales_store_street_type\" asc nulls first,
-    \"concerned\".\"store_sales_store_suite_number\" asc nulls first,
-    \"concerned\".\"store_sales_store_city\" asc nulls first,
-    \"concerned\".\"store_sales_store_county\" asc nulls first,
-    \"concerned\".\"store_sales_store_state\" asc nulls first,
-    \"concerned\".\"store_sales_store_zip\" asc nulls first
+    \"thoughtful\".\"store_sales_store_name\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_company_id\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_number\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_name\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_type\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_suite_number\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_city\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_county\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_state\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_zip\" asc nulls first
 LIMIT (100)"""
