@@ -12,9 +12,9 @@ def test_constant_optimization():
 
     DebuggingHook()
     test_query = """
-    const x <- 1;
+    const x <- 'A319';
 
-    auto array <- unnest([1,2,3,4,5,6,7,8,9,10]);
+    auto array <- unnest(['A319','B737','C172']);
 
     SELECT
         x,
@@ -100,7 +100,7 @@ def test_compile_statement_with_params_imported_namespace():
     env = Environment(
         config=EnvironmentConfig(
             import_resolver=DictImportResolver(
-                content={"filters": "const threshold <- 42;"}
+                content={"filters": "const threshold <- 'A319';"}
             )
         )
     )
@@ -112,11 +112,38 @@ def test_compile_statement_with_params_imported_namespace():
     assert isinstance(pq, ProcessedQuery)
     # safe_address for namespace 'filters', name 'threshold' → 'filters_threshold'
     assert "filters_threshold" in pq.parameters
-    assert pq.parameters["filters_threshold"] == 42
+    assert pq.parameters["filters_threshold"] == "A319"
 
     sql, params = executor.generator.compile_statement_with_params(pq)
     assert ":filters_threshold" in sql
-    assert params == {"filters_threshold": 42}
+    assert params == {"filters_threshold": "A319"}
+
+
+def test_numeric_constants_inlined_not_parameterised():
+    """int / float / bool constants render as SQL literals so DuckDB ORDER BY
+    accepts them. Strings stay parameterised against SQL injection."""
+    test_query = """
+    const i <- 1;
+    const f <- 3.14;
+    const b <- True;
+    const s <- 'hello';
+
+    SELECT i, f, b, s;
+    """
+    executor = Dialects.DUCK_DB.default_executor()
+    _, statements = executor.environment.parse(test_query)
+    processed = executor.generator.generate_queries(
+        executor.environment, [statements[-1]]
+    )
+    sql, params = executor.generator.compile_statement_with_params(processed[0])
+    assert "1 as" in sql
+    assert "3.14 as" in sql
+    assert "True as" in sql
+    assert ":i" not in sql
+    assert ":f" not in sql
+    assert ":b" not in sql
+    assert ":s" in sql
+    assert params == {"s": "hello"}
 
 
 def test_compile_statement_with_params_no_params_when_rendering_disabled():

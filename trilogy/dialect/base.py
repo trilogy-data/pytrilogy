@@ -181,6 +181,13 @@ def _needs_arithmetic_parentheses(
 AGGREGATE_ITEMS = (BuildAggregateWrapper,)
 FUNCTION_ITEMS = (BuildFunction,)
 PARENTHETICAL_ITEMS = (BuildParenthetical,)
+
+# Datatypes whose CONSTANT values can be inlined into SQL without
+# parameterisation. Numbers and bools cannot carry SQL injection, and
+# DuckDB rejects parameter refs in some clauses (e.g. ORDER BY).
+INLINE_SAFE_PARAM_DATATYPES = frozenset(
+    {DataType.INTEGER, DataType.FLOAT, DataType.BOOL}
+)
 CASE_WHEN_ITEMS = (BuildCaseWhen,)
 CASE_ELSE_ITEMS = (BuildCaseElse,)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
@@ -828,6 +835,7 @@ class BaseDialect:
                 and c.lineage.operator == FunctionType.CONSTANT
                 and self.rendering.parameters is True
                 and c.datatype.data_type != DataType.MAP
+                and c.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
             ):
                 rval = f":{c.safe_address}"
             else:
@@ -1160,6 +1168,7 @@ class BaseDialect:
                 and e.lineage.operator == FunctionType.CONSTANT
                 and self.rendering.parameters is True
                 and e.datatype.data_type != DataType.MAP
+                and e.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
             ):
                 return f":{e.safe_address}"
             if cte:
@@ -1214,7 +1223,8 @@ class BaseDialect:
         elif isinstance(e, list):
             return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e], [])}"
         elif isinstance(e, BuildParamaterizedConceptReference):
-            if self.rendering.parameters:
+            inline_safe = e.concept.datatype.data_type in INLINE_SAFE_PARAM_DATATYPES
+            if self.rendering.parameters and not inline_safe:
                 if e.concept.namespace == DEFAULT_NAMESPACE:
                     return f":{e.concept.name}"
                 return f":{e.concept.address.replace('.', '_')}"

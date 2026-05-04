@@ -1,25 +1,35 @@
 
 key id int;
 properties id (
-    street string,
+    text_id string,
+    street_number string?,
+    street_name string?,
+    street_type string?,
+    suite_number string?,
     city string,
     state string?,
     zip string,
     county string,
     country string,
     gmt_offset float,
+    location_type string?,
 );
 
 
 datasource customer_address(
     CA_ADDRESS_SK: id,
-    CA_STREET: street,
+    CA_ADDRESS_ID: text_id,
+    CA_STREET_NUMBER: street_number,
+    CA_STREET_NAME: street_name,
+    CA_STREET_TYPE: street_type,
+    CA_SUITE_NUMBER: suite_number,
     CA_CITY: city,
     CA_STATE: state,
     CA_ZIP: zip,
     CA_COUNTY: county,
     CA_COUNTRY:country,
-    CA_GMT_OFFSET: gmt_offset
+    CA_GMT_OFFSET: gmt_offset,
+    CA_LOCATION_TYPE: location_type,
 )
 grain (id)
 address memory.customer_address;

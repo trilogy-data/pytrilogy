@@ -7,9 +7,11 @@ from trilogy.core.models.environment import Environment
 
 
 def test_render_query(snowflake_engine_parameterized):
-    results = snowflake_engine_parameterized.generate_sql("""select pi;""")[0]
+    results = snowflake_engine_parameterized.generate_sql("""select pi, greeting;""")[0]
 
-    assert ":pi" in results
+    assert "3.14" in results
+    assert ":pi" not in results
+    assert ":greeting" in results
 
     results2 = snowflake_engine_parameterized.generate_sql("""
         const today <- date_trunc(current_datetime() , day);

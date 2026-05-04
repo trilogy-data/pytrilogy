@@ -1,14 +1,18 @@
 
 key id int;
 properties id (
+    text_id string,
     county string,
     name string,
+    manager string?,
 );
 
 datasource call_center(
     CC_CALL_CENTER_SK: id,
+    CC_CALL_CENTER_ID: text_id,
     CC_COUNTY: county,
     CC_NAME: name,
+    CC_MANAGER: manager,
 )
 
 grain (id)

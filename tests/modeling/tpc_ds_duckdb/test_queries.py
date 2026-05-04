@@ -478,6 +478,21 @@ def test_seventy_nine(engine):
     assert len(query) < 8000, query
 
 
+@pytest.mark.skip(
+    reason="Multi-fact UNION ALL + ROLLUP hits trilogy planner bugs (RawColumnExpr "
+    "AttributeError with NULL fillers, force_group conflict with partial returns, "
+    "RecursionError on 7-block per-fact cascade). See STATUS.md for details."
+)
+def test_eighty(engine):
+    query = run_query(engine, 80)
+    assert len(query) < 25000, query
+
+
+def test_eighty_one(engine):
+    query = run_query(engine, 81)
+    assert len(query) < 12000, query
+
+
 def test_eighty_two(engine):
     query = run_query(engine, 82, sql_override=True)
     assert len(query) < 4000, query
@@ -509,6 +524,11 @@ def test_eighty_nine(engine):
 def test_ninety(engine):
     query = run_query(engine, 90)
     assert len(query) < 2500, query
+
+
+def test_ninety_one(engine):
+    query = run_query(engine, 91)
+    assert len(query) < 8000, query
 
 
 def test_ninety_two(engine):

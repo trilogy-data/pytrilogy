@@ -1,0 +1,74 @@
+import unified_sales as sales;
+
+auto channel_label <- CASE
+    WHEN sales.sales_channel = 'STORE' THEN 'store channel'
+    WHEN sales.sales_channel = 'CATALOG' THEN 'catalog channel'
+    WHEN sales.sales_channel = 'WEB' THEN 'web channel'
+    ELSE null
+END;
+
+# id is the channel-specific dimension id; only one of the three is non-null per row
+auto id_label <- coalesce(
+    concat('store', sales.store.text_id),
+    concat('catalog_page', sales.catalog_page.text_id),
+    concat('web_site', sales.web_site.string_id)
+);
+
+with q80_results as
+# Level 1: per (channel, id) detail
+WHERE
+    sales.date.date >= cast('2000-08-23' as date)
+    AND sales.date.date <= cast('2000-09-22' as date)
+    AND sales.item.current_price > 50
+    AND sales.promotion.channel_tv = 'N'
+SELECT
+    channel_label as channel_a,
+    id_label as id_a,
+    sum(sales.ext_sales_price) as sales_a,
+    sum(coalesce(sales.return_amount, 0)) as returns_a,
+    sum(sales.net_profit - coalesce(sales.return_net_loss, 0)) as profit_a,
+MERGE
+# Level 2: per channel total (id = NULL)
+WHERE
+    sales.date.date >= cast('2000-08-23' as date)
+    AND sales.date.date <= cast('2000-09-22' as date)
+    AND sales.item.current_price > 50
+    AND sales.promotion.channel_tv = 'N'
+SELECT
+    channel_label as channel_b,
+    cast(null as string) as null_id_b,
+    sum(sales.ext_sales_price) as sales_b,
+    sum(coalesce(sales.return_amount, 0)) as returns_b,
+    sum(sales.net_profit - coalesce(sales.return_net_loss, 0)) as profit_b,
+MERGE
+# Level 3: grand total (channel = NULL, id = NULL)
+WHERE
+    sales.date.date >= cast('2000-08-23' as date)
+    AND sales.date.date <= cast('2000-09-22' as date)
+    AND sales.item.current_price > 50
+    AND sales.promotion.channel_tv = 'N'
+SELECT
+    cast(null as string) as null_channel_c,
+    cast(null as string) as null_id_c,
+    sum(sales.ext_sales_price) as sales_c,
+    sum(coalesce(sales.return_amount, 0)) as returns_c,
+    sum(sales.net_profit - coalesce(sales.return_net_loss, 0)) as profit_c,
+align
+    channel: channel_a, channel_b, null_channel_c
+    AND id: id_a, null_id_b, null_id_c
+derive
+    coalesce(q80_results.sales_a, q80_results.sales_b, q80_results.sales_c) -> sales_total,
+    coalesce(q80_results.returns_a, q80_results.returns_b, q80_results.returns_c) -> returns_total,
+    coalesce(q80_results.profit_a, q80_results.profit_b, q80_results.profit_c) -> profit_total
+;
+
+SELECT
+    q80_results.channel,
+    q80_results.id,
+    q80_results.sales_total as sales,
+    q80_results.returns_total as returns_,
+    q80_results.profit_total as profit,
+ORDER BY
+    q80_results.channel asc nulls first,
+    q80_results.id asc nulls first
+LIMIT 100;

@@ -9,9 +9,9 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 65 | 1, 2 (+02-one, 02-two), 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 24, 25, 26, 30, 31, 32, 33, 34, 35, 37, 39, 40, 41, 42, 43, 45, 46, 47, 48, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 68, 69, 71, 73, 79, 82, 83, 88, 89, 90, 92, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
-| Skipped (preql exists) | 4 | 4, 5, 29, 44 |
-| Missing (no preql / no test) | 30 | 14, 18, 23, 27, 28, 36, 38, 49, 51, 54, 59, 61, 64, 66, 67, 70, 72, 74, 75, 76, 77, 78, 80, 81, 84, 85, 86, 87, 91, 93 |
+| Passing | 68 | 1, 2 (+02-one, 02-two), 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 24, 25, 26, 30, 31, 32, 33, 34, 35, 37, 39, 40, 41, 42, 43, 45, 46, 47, 48, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 68, 69, 71, 73, 79, 81, 82, 83, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Skipped (preql exists) | 5 | 4, 5, 29, 44, 80 |
+| Missing (no preql / no test) | 26 | 14, 18, 23, 27, 28, 36, 38, 49, 51, 54, 59, 61, 64, 66, 67, 70, 72, 74, 75, 76, 77, 78, 84, 85, 86, 87 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -29,6 +29,20 @@ exercising different planner paths — they share an SQL reference.)
 - **q44** — `pytest.mark.skip(reason="Still cooking")` — pre-existing, not
   investigated.
 - **q85** - DuckDB Comparison (PRAGMA tpcds(85)) hangs on dev machine; skip.
+- **q80** — multi-fact UNION ALL + ROLLUP combination hits multiple trilogy
+  planner bugs (see Framework Notes). Three approaches all blocked:
+  (a) per-fact 7-block MERGE cascade → `RecursionError`;
+  (b) `unified_sales` extended with channel-specific dimension joins +
+  `raw(''' NULL ''')` cross-channel fillers + 3-level ROLLUP cascade →
+  works for sales detail, but adding partial `web_returns_unified` /
+  `catalog_returns_unified` / `store_returns_unified` datasources triggers
+  `'Can only merge two datasources if force_group flag is the same'`;
+  (c) Hybrid (unified_sales for sales, per-fact for returns) → trilogy
+  cannot push WHERE through the merge node connecting the two name spaces
+  (`SyntaxError: Have ... and need sales.date.date >= ...`).
+  Model extensions ARE in place and viable for future attempts —
+  see `unified_sales.preql` (channel dim joins + raw NULL fillers) and
+  `catalog_page.preql`. `query80.preql` left as scaffold.
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
@@ -38,11 +52,28 @@ exercising different planner paths — they share an SQL reference.)
   date)`. With sf=1, some customers have `birth_year=NULL` or month/day
   combinations that produce invalid dates (e.g. Feb 30) — DuckDB will throw on
   cast. Currently safe because no test actually selects `birth_date`.
-- `address.preql` is missing `street_number`, `street_name`, `street_type`,
-  `suite_number`, `location_type` — needed for q81 (and q30 if it ever switches
-  to the address-based ORDER BY shape).
-- `catalog_returns.preql` doesn't expose `customer`, `return_address`,
-  `call_center`, or `return_amt_inc_tax` — blocks q81, q91.
+
+## Recent Model Extensions (q80/q81/q91 batch)
+
+- `address.preql` — added `text_id`, `street_number`, `street_name`,
+  `street_type`, `suite_number`, `location_type` (`CA_*` columns).
+  Removed dead `street` field that was never sourced from a parquet column.
+- `catalog_returns.preql` — added `customer`, `refunded_customer`,
+  `return_address`, `refunded_address`, `call_center`, `reason` joins
+  and `return_amt_inc_tax` property. Sources `CR_RETURNING_*`, `CR_REFUNDED_*`
+  and `CR_CALL_CENTER_SK` columns.
+- `customer.preql` — added `household_demographic` import + `C_CURRENT_HDEMO_SK`
+  mapping (needed for q91's hd_buy_potential filter via customer).
+- `call_center.preql` — added `text_id` (`CC_CALL_CENTER_ID`) and
+  `manager` (`CC_MANAGER`) properties.
+- `web_returns.preql` — added `net_loss` property (`WR_NET_LOSS`).
+- `web_sales.preql` — added `promotion` import (`WS_PROMO_SK`).
+- `catalog_sales.preql` — added `catalog_page` import (`CS_CATALOG_PAGE_SK`).
+- `catalog_page.preql` — new model.
+- `unified_sales.preql` — added `store`, `catalog_page`, `web_site`
+  dimension imports; each partial datasource maps its own SK to its dim and
+  emits `raw(''' NULL ''')` for the other two channels' SKs (so cross-channel
+  joins resolve cleanly when querying multiple dim text_ids in one SELECT).
 
 ## Framework Notes Worth Recording
 
@@ -74,10 +105,12 @@ exercising different planner paths — they share an SQL reference.)
   from the output. For aliased aggregates, the alias is what's available
   in HAVING — `SELECT item_revenue as revenue` → `HAVING revenue <= …`,
   not `HAVING item_revenue <= …`.
-- **DuckDB rejects parameter refs in ORDER BY (q39).** Trilogy parameterises
-  literal SELECT constants like `1 as dmoy1` as `$1`, then if used in ORDER
-  BY, DuckDB errors `Parameter not supported in ORDER BY clause`. Drop the
-  constant from ORDER BY or use a non-constant expression.
+- **DuckDB rejects parameter refs in ORDER BY (q39) — fixed.** Trilogy used
+  to parameterise every CONSTANT concept (e.g. `1 as dmoy1` → `:dmoy1`),
+  which DuckDB rejects in ORDER BY. INTEGER / FLOAT / BOOL constants are now
+  rendered inline as SQL literals (see `INLINE_SAFE_PARAM_DATATYPES` in
+  `trilogy/dialect/base.py`); strings stay parameterised against SQL
+  injection.
 - **3-channel customer cycles (q69).** When using `merge` to unify
   `customer.id` across store/web/catalog sales AND filtering with both
   `IN store_buyers` and `NOT IN web_buyers`/`NOT IN catalog_buyers`, the
@@ -102,6 +135,41 @@ exercising different planner paths — they share an SQL reference.)
   ("expected DATE_PART" — needs the unit token uppercased). Use
   `date_diff(d1, d2, DAY)` (uppercase DAY) for date deltas, as in
   `catalog_sales.preql:days_to_ship`.
+- **`derive` clause uses comma separators, not `AND` (q80).** Multiple derive
+  expressions in one MERGE cascade go in a single `derive` block separated by
+  commas: `derive expr1 -> name1, expr2 -> name2`. `AND` is rejected by the
+  parser. Only one `derive` block per multi-select.
+- **Inline `?` filter requires a concept, not an arbitrary expression (q80).**
+  `sum(coalesce(x.return_amount, 0) ? cond)` fails the parser. Workaround:
+  define a property auto for the expression first
+  (`property <fact_grain>.x_return_safe <- coalesce(x.return_amount, 0)`),
+  then `sum(x_return_safe ? cond)`.
+- **`raw('NULL')` requires multi-line string syntax.** `raw('NULL')` is a parse
+  error (single-quote string not accepted in raw column expression).
+  Use `raw(''' NULL ''')` (triple-single-quote MULTILINE_STRING).
+- **Trilogy planner bugs encountered while attempting q80**
+  (multi-fact UNION ALL + ROLLUP via `unified_sales`):
+  - `'RawColumnExpr' object has no attribute 'startswith'` —
+    triggered in `dialect/base.py:render_concept_sql` during CTE rendering
+    when a partial datasource uses `raw(''' NULL ''')` mappings together
+    with cross-fact aggregates and certain WHERE shapes. Reproduce with
+    `unified_sales` extended with NULL fillers + partial returns datasources
+    + `sum(coalesce(sales.return_amount, 0))` in a SELECT.
+  - `'Can only merge two datasources if force_group flag is the same'` —
+    triggered in `core/models/execute.py:788` when partial returns datasources
+    and partial sales datasources share a grain and are unioned together.
+    Removing the partial returns datasources side-steps it but loses the
+    unified returns aggregate.
+  - `RecursionError: maximum recursion depth exceeded` — the per-fact
+    7-block MERGE+align cascade (3 channels × 2 levels + 1 grand total)
+    sends the discovery loop spinning between `cs.net_profit` and
+    `cr.net_loss` (see `concept_strategies_v3.py:411`). Bisects to the
+    catalog channel block — store+web alone (3 blocks total) parses and
+    runs in ~5500 chars of SQL.
+  - `SyntaxError: Have {MergeNode<...>: None} and need sales.date.date >= ...` —
+    when bridging `unified_sales` with per-fact tables via
+    `merge sales.store.id into ~store.id` and using cross-namespace
+    aggregates, the planner cannot push WHERE through the resulting merge.
 
 ## Suggested Next Batch (by complexity)
 
@@ -120,14 +188,8 @@ These look tractable without further framework work:
 - **q76** — UNION ALL of three null-column filters; needs unified-sales-style
   join surface that exposes `ws_ship_customer_sk` and `cs_ship_addr_sk`
   separately from the bill-side keys (currently unified_sales hides them).
-- **q80** — needs `catalog_page` model (parquet exists in `memory/`,
-  just no preql).
-- **q81** — needs catalog_returns model extension (customer, return_address,
-  call_center, return_amt_inc_tax) plus address.preql street/location_type
-  fields. Otherwise q30-twin.
-- **q91** — same catalog_returns extensions as q81.
-- **q93** — needs `reason` model.
-- **q85** — needs `reason` and `web_page` models (web_page is now defined).
+- **q85** — needs `reason` and `web_page` models (both now defined; query is
+  blocked because PRAGMA tpcds(85) hangs as the comparison reference).
 
 These need framework work first:
 

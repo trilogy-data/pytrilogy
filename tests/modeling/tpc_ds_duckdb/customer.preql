@@ -1,4 +1,5 @@
 import customer_demographic as demographics;
+import household_demographic as household_demographic;
 import address as address;
 
 key id int;
@@ -35,6 +36,7 @@ datasource customers (
     C_FIRST_NAME: first_name,
     C_CURRENT_ADDR_SK: address.id,
     C_CURRENT_CDEMO_SK: demographics.id,
+    C_CURRENT_HDEMO_SK: household_demographic.id,
     C_PREFERRED_CUST_FLAG: preferred_cust_flag,
     C_BIRTH_COUNTRY: birth_country,
     C_SALUTATION: salutation,

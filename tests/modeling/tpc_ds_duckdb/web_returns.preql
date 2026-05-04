@@ -15,6 +15,7 @@ property <web_sales.order_number, web_sales.item.id>.return_amount float;
 property <web_sales.order_number, web_sales.item.id>.return_quantity int?;
 property <web_sales.order_number, web_sales.item.id>.refunded_cash float?;
 property <web_sales.order_number, web_sales.item.id>.fee float?;
+property <web_sales.order_number, web_sales.item.id>.net_loss float?;
 
 datasource web_returns(
     WR_RETURNED_DATE_SK: return_date.id,
@@ -32,6 +33,7 @@ datasource web_returns(
     WR_RETURN_QUANTITY: return_quantity,
     WR_REFUNDED_CASH: refunded_cash,
     WR_FEE: fee,
+    WR_NET_LOSS: net_loss,
     WR_ORDER_NUMBER: web_sales.order_number,
     WR_STORE_SK: store.id,
 )

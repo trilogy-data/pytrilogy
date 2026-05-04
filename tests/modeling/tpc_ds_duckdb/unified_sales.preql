@@ -4,6 +4,9 @@ import time as time;
 import customer as customer;
 import promotion as promotion;
 import address as bill_address;
+import store as store;
+import catalog_page as catalog_page;
+import web_site as web_site;
 
 key sales_channel enum<string>['WEB', 'CATALOG', 'STORE'];
 key order_id int;
@@ -31,6 +34,9 @@ partial datasource web_sales_unified (
     WS_BILL_CUSTOMER_SK: customer.id,
     WS_BILL_ADDR_SK: bill_address.id,
     WS_PROMO_SK: promotion.id,
+    WS_WEB_SITE_SK: web_site.id,
+    raw(''' NULL '''): store.id,
+    raw(''' NULL '''): catalog_page.id,
     WS_QUANTITY: quantity,
     WS_SALES_PRICE: sales_price,
     WS_LIST_PRICE: list_price,
@@ -56,6 +62,9 @@ partial datasource catalog_sales_unified (
     CS_BILL_CUSTOMER_SK: customer.id,
     CS_BILL_ADDR_SK: bill_address.id,
     CS_PROMO_SK: promotion.id,
+    CS_CATALOG_PAGE_SK: catalog_page.id,
+    raw(''' NULL '''): store.id,
+    raw(''' NULL '''): web_site.id,
     CS_QUANTITY: quantity,
     CS_SALES_PRICE: sales_price,
     CS_LIST_PRICE: list_price,
@@ -81,6 +90,9 @@ partial datasource store_sales_unified (
     SS_CUSTOMER_SK: customer.id,
     SS_ADDR_SK: bill_address.id,
     SS_PROMO_SK: promotion.id,
+    SS_STORE_SK: store.id,
+    raw(''' NULL '''): catalog_page.id,
+    raw(''' NULL '''): web_site.id,
     SS_QUANTITY: quantity,
     SS_SALES_PRICE: sales_price,
     SS_LIST_PRICE: list_price,
@@ -96,3 +108,4 @@ partial datasource store_sales_unified (
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'STORE'
 address memory.store_sales;
+
