@@ -18,7 +18,7 @@ exercising different planner paths — they share an SQL reference.)
 
 ## Skipped Tests and Why
 
-- **q4, q5** — `pytest.mark.skip(reason="Is duckdb correct??")` — pre-existing, not investigated.
+- **q4, q5** — `pytest.mark.skip(reason="Is duckdb correct??")` — look at these in next run
 - **q29** — same `merge bill_customer + item` shape as q17. With the merge planner
   producing a FULL JOIN of (store_sales+store_returns) with
   (store_sales+store_returns+catalog_sales), rows without a matching catalog
@@ -29,40 +29,8 @@ exercising different planner paths — they share an SQL reference.)
 - **q44** — `pytest.mark.skip(reason="Still cooking")` — pre-existing, not
   investigated.
 
-## New Coverage This Round
 
-- **q33** — UNION ALL of three channels filtered by Electronics-manufacturer set.
-  Trivial via `unified_sales` (which already supports the merge in q60).
-- **q37** — item ∩ inventory ∩ catalog_sales (existence on item.id). Expressed
-  as filtered concepts (`auto cs_item_ids <- cs.item.id ? True;`) and `in`
-  predicates against item.id.
-- **q48** — single SUM with nested AND/OR predicates over store_sales joined to
-  customer_demographics + customer_address. Same shape as q13/q26. `store.id is
-  not null` forces the dimensional join (mirrors q53).
-- **q50** — store-returns aging buckets per store. Required adding the customer
-  constraint `store_sales.customer.id = store_sales.return_customer.id` —
-  without it trilogy under-joins (matches loosely on ticket+item only) and
-  returns inflated bucket counts vs the duckdb reference.
-- **q62** — web ship aging buckets, mirror of q50 on web_sales. Required adding
-  `ship_mode` import + `WS_SHIP_MODE_SK` mapping to web_sales, plus `web_name`
-  on web_site.
-- **q73** — q34 twin (different params: dom 1-2, multi-county, cnt 1-5,
-  ratio>1). Same `count(...) by customer.id, ticket_number` pattern.
-- **q92** — q32 shape on web_sales. Required adding `ext_discount_amount` to
-  web_sales (was missing from the model).
 
-## Pre-existing Model Bugs Fixed This Round
-
-- `store.preql`: `S_STORE_MANAGER` → `S_MANAGER` (correct duckdb column name).
-  Latent — `store_manager` had no callers, but referencing it would have thrown.
-- `store.preql`: added `street_number`, `street_name`, `street_type`,
-  `suite_number` (q50, q81 etc.).
-- `web_site.preql`: added `name` (W_NAME) — q62 and many other web queries.
-- `web_sales.preql`: added `ship_mode` import + `WS_SHIP_MODE_SK` (q62).
-- `web_sales.preql`: added `ext_discount_amount` mapped to `WS_EXT_DISCOUNT_AMT`
-  (q92).
-- `promotion.preql`: added `channel_dmail`, `channel_tv`, `channel_radio`,
-  `channel_press` (q61 and others).
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
@@ -80,10 +48,6 @@ exercising different planner paths — they share an SQL reference.)
 
 ## Framework Notes Worth Recording
 
-- **`stddev` and `variance` aggregates** — added previous round to
-  `FunctionType` / `FunctionClass.AGGREGATE_FUNCTIONS`, lark + pest grammars,
-  parser v2 dispatch, and dialect SQL maps. Both render to `stddev_samp(...)` /
-  `var_samp(...)`.
 - **`run_query` zero-row tolerance** — `assert len(comp_results) > 0` is now
   conditional on the reference also returning rows (q17 returns 0/0 on sf=1).
 - **`sum/avg by …` is required for fact-row counts (q88).** Trilogy's
@@ -105,9 +69,7 @@ exercising different planner paths — they share an SQL reference.)
   add `store_sales.customer.id = store_sales.return_customer.id` to WHERE.
 - **ORDER BY only allows columns in the SELECT projection (q73).** Trilogy
   rejects `ORDER BY x` when `x` is not in the SELECT. The reference's
-  `ORDER BY ... ss_customer_sk` couldn't be replicated without selecting
-  customer.id, so we drop the trailing tie-break and rely on the higher-order
-  keys for determinism.
+  `ORDER BY ... ss_customer_sk` requires us to use '--' to hide the customer id from the output projection.
 
 ## Suggested Next Batch (by complexity)
 
