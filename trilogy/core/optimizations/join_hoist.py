@@ -2,8 +2,8 @@
 
 Motivation:
 
-When several siblings (e.g. yummy, questionable) all read from a shared parent
-CTE (cooperative) AND all apply the same dim joins purely to filter rows via a
+When several siblings all read from a shared parent
+CTE AND all apply the same dim joins purely to filter rows via a
 shared WHERE predicate, the dim joins + predicate are redundantly evaluated
 N times — once per sibling. The classic example is q73, where three siblings
 each re-join (date_dim, store, household_demographics) only to evaluate
@@ -103,31 +103,6 @@ class JoinHoist(OptimizationRule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
-
-    def _collect_referenced_addresses(
-        self, cte: CTE, exclude: BuildConceptArgs
-    ) -> set[str]:
-        excluded = {x.address for x in exclude.row_arguments}
-        referenced: set[str] = set()
-        referenced.update(c.address for c in cte.output_columns)
-        if cte.condition:
-            referenced.update(
-                arg.address
-                for arg in cte.condition.row_arguments
-                if arg.address not in excluded
-            )
-        for j in cte.joins:
-            if not isinstance(j, Join):
-                continue
-            for pair in j.joinkey_pairs or []:
-                referenced.add(pair.left.address)
-                referenced.add(pair.right.address)
-        if cte.order_by:
-            for item in cte.order_by.items:
-                expr = item.expr
-                if isinstance(expr, BuildConceptArgs):
-                    referenced.update(c.address for c in expr.concept_arguments)
-        return referenced
 
     def _find_left_base_cte(
         self, parent_cte: CTE, fk_addresses: set[str]

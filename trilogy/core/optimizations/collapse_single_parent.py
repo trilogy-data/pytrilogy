@@ -35,12 +35,16 @@ def has_unsafe_derivations(cte: CTE) -> bool:
     return False
 
 
+def has_basic_derivation(cte: CTE) -> bool:
+    return any(concept.derivation == Derivation.BASIC for concept in cte.output_columns)
+
+
 def get_merge_mode(cte: CTE) -> MergeMode | None:
     if cte.group_to_grain or cte.source.source_type == SourceType.GROUP:
         return MergeMode.AGGREGATE
     if cte.source.source_type == SourceType.WINDOW:
         return MergeMode.WINDOW
-    if cte.source.source_type == SourceType.BASIC:
+    if has_basic_derivation(cte):
         return MergeMode.BASIC
     return None
 

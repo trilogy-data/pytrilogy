@@ -7,7 +7,6 @@ from trilogy.core.enums import (
     FunctionType,
     Granularity,
     Purpose,
-    SourceType,
 )
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -246,7 +245,9 @@ def group_if_required_v2(
             root.set_output_concepts(targets, rebuild=False, change_visibility=False)
             root.rebuild_cache()
             return root
-        elif isinstance(root, GroupNode) and root.source_type == SourceType.BASIC:
+        elif isinstance(root, GroupNode) and any(
+            x.derivation == Derivation.BASIC for x in root.output_concepts
+        ):
             # we need to group this one more time
             pass
         elif isinstance(root, GroupNode):
@@ -279,7 +280,7 @@ def group_if_required_v2(
 
         return root
     else:
-        root.set_output_concepts(targets, rebuild=False, change_visibility=False)
+        root.set_output_concepts(targets, change_visibility=False)
     return root
 
 
