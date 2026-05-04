@@ -1,5 +1,5 @@
 query_id = "10"
-gen_length = 4858
+gen_length = 4819
 generated_sql = """
 
 WITH 
@@ -43,7 +43,7 @@ FROM
     RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"questionable\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"store_sales_date_date\".\"D_MOY\" in (1,2,3,4) and \"customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( cast(\"web_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"web_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) or ( cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"catalog_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) )
+    \"store_sales_date_date\".\"D_YEAR\" = 2002 and \"store_sales_date_date\".\"D_MOY\" in (1,2,3,4) and \"customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( \"web_sales_date_date\".\"D_YEAR\" = 2002 and \"web_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) or ( \"catalog_sales_date_date\".\"D_YEAR\" = 2002 and \"catalog_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) )
 
 GROUP BY
     1)

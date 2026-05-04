@@ -1,22 +1,39 @@
 import store as store;
 import web_sales as web_sales;
-import item as item;
 import date as return_date;
 import time as time;
 import customer as customer;
+import customer as refunded_customer;
+import customer_demographic as refunded_demographic;
+import customer_demographic as returning_demographic;
 import address as return_address;
+import address as refunded_address;
+import reason as reason;
+import web_page as web_page;
 
-property <web_sales.order_number, item.id>.return_amount float;
+property <web_sales.order_number, web_sales.item.id>.return_amount float;
+property <web_sales.order_number, web_sales.item.id>.return_quantity int?;
+property <web_sales.order_number, web_sales.item.id>.refunded_cash float?;
+property <web_sales.order_number, web_sales.item.id>.fee float?;
 
 datasource web_returns(
     WR_RETURNED_DATE_SK: return_date.id,
     WR_RETURN_TIME_SK: time.id,
-    WR_ITEM_SK: item.id,
+    WR_ITEM_SK: web_sales.item.id,
     WR_RETURNING_CUSTOMER_SK: customer.id,
+    WR_REFUNDED_CUSTOMER_SK: refunded_customer.id,
+    WR_RETURNING_CDEMO_SK: returning_demographic.id,
+    WR_REFUNDED_CDEMO_SK: refunded_demographic.id,
     WR_RETURNING_ADDR_SK: return_address.id,
+    WR_REFUNDED_ADDR_SK: refunded_address.id,
+    WR_REASON_SK: reason.id,
+    WR_WEB_PAGE_SK: web_page.id,
     WR_RETURN_AMT: return_amount,
+    WR_RETURN_QUANTITY: return_quantity,
+    WR_REFUNDED_CASH: refunded_cash,
+    WR_FEE: fee,
     WR_ORDER_NUMBER: web_sales.order_number,
     WR_STORE_SK: store.id,
 )
-grain (web_sales.order_number, item.id)
+grain (web_sales.order_number, web_sales.item.id)
 address memory.web_returns;

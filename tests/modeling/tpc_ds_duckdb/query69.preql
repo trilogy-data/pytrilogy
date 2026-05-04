@@ -1,0 +1,38 @@
+import customer as customer;
+import store_sales as store_sales;
+import web_sales as web_sales;
+import catalog_sales as catalog_sales;
+
+auto store_buyers <- store_sales.customer.id ?
+    store_sales.date.year = 2001
+    and store_sales.date.month_of_year between 4 and 6;
+
+auto web_buyers <- web_sales.customer.id ?
+    web_sales.date.year = 2001
+    and web_sales.date.month_of_year between 4 and 6;
+
+auto catalog_buyers <- catalog_sales.customer.id ?
+    catalog_sales.date.year = 2001
+    and catalog_sales.date.month_of_year between 4 and 6;
+
+WHERE
+    customer.address.state in ('KY', 'GA', 'NM')
+    and customer.id in store_buyers
+    and customer.id not in web_buyers
+    and customer.id not in catalog_buyers
+SELECT
+    customer.demographics.gender,
+    customer.demographics.marital_status,
+    customer.demographics.education_status,
+    count(customer.id) as cnt1,
+    customer.demographics.purchase_estimate,
+    count(customer.id) as cnt2,
+    customer.demographics.credit_rating,
+    count(customer.id) as cnt3,
+ORDER BY
+    customer.demographics.gender asc,
+    customer.demographics.marital_status asc,
+    customer.demographics.education_status asc,
+    customer.demographics.purchase_estimate asc,
+    customer.demographics.credit_rating asc
+LIMIT 100;

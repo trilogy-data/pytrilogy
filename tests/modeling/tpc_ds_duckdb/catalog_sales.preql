@@ -8,6 +8,7 @@ import customer as bill_customer;
 import call_center as call_center;
 import warehouse as warehouse;
 import customer_demographic as bill_customer_demographic;
+import household_demographic as bill_household_demographic;
 import promotion as promotion;
 import ship_mode as ship_mode;
 import address as customer_address;
@@ -44,6 +45,7 @@ datasource catalog_sales (
     CS_SHIP_ADDR_SK: customer_address.id,
     CS_BILL_CUSTOMER_SK: bill_customer.id,
     CS_BILL_CDEMO_SK: bill_customer_demographic.id,
+    CS_BILL_HDEMO_SK: bill_household_demographic.id,
     CS_BILL_ADDR_SK: bill_address.id,
     CS_ITEM_SK: item.id,
     CS_QUANTITY: quantity,

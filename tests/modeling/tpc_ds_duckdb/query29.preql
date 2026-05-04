@@ -20,6 +20,8 @@ SELECT
     sum(store_sales.quantity) as store_sales_quantity,
     sum(store_sales.return_quantity) as store_returns_quantity,
     sum(catalog_sales.quantity) as catalog_sales_quantity
+HAVING
+    catalog_sales_quantity > 0
 ORDER BY
     store_sales.item.name asc,
     store_sales.item.desc asc,

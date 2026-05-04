@@ -1,5 +1,5 @@
 query_id = "01"
-gen_length = 2893
+gen_length = 2867
 generated_sql = """
 
 WITH 
@@ -13,7 +13,7 @@ FROM
     INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
 WHERE
-    \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
+    \"returns_store_store\".\"S_STATE\" = 'TN' and \"returns_return_date_date\".\"D_YEAR\" = 2000
 
 GROUP BY
     1,
@@ -27,7 +27,7 @@ FROM
     INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
 WHERE
-    \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
+    \"returns_store_store\".\"S_STATE\" = 'TN' and \"returns_return_date_date\".\"D_YEAR\" = 2000
 
 GROUP BY
     1,

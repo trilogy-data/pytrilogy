@@ -1,5 +1,5 @@
 query_id = "19"
-gen_length = 1807
+gen_length = 1794
 generated_sql = """
 SELECT
     \"store_sales_item_items\".\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
@@ -15,7 +15,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"store_sales_item_items\".\"I_MANAGER_ID\" = 8 and \"store_sales_date_date\".\"D_MOY\" = 11 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1998 and SUBSTRING(\"store_sales_customer_address_customer_address\".\"CA_ZIP\",1,5) != SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,5)
+    \"store_sales_item_items\".\"I_MANAGER_ID\" = 8 and \"store_sales_date_date\".\"D_MOY\" = 11 and \"store_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"store_sales_customer_address_customer_address\".\"CA_ZIP\",1,5) != SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,5)
 
 GROUP BY
     1,

@@ -1,0 +1,22 @@
+import unified_sales as sales;
+import time as time;
+
+merge sales.time.id into ~time.id;
+
+WHERE
+    sales.date.year = 1999
+    and sales.date.month_of_year = 11
+    and sales.item.manager_id = 1
+    and (time.meal_time = 'breakfast' or time.meal_time = 'dinner')
+SELECT
+    sales.item.brand_id as brand_id,
+    sales.item.brand_name as brand,
+    time.hour as t_hour,
+    time.minute as t_minute,
+    sum(sales.ext_sales_price) as ext_price,
+ORDER BY
+    ext_price desc nulls first,
+    brand_id asc nulls first,
+    t_hour asc nulls first,
+    t_minute asc nulls first
+;

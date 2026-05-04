@@ -1,0 +1,117 @@
+query_id = "39"
+gen_length = 3887
+generated_sql = """
+
+WITH 
+cooperative as (
+SELECT
+    \"inventory_warehouse_inventory\".\"inv_date_sk\" as \"inventory_date_id\",
+    \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" as \"inventory_warehouse_id\"
+FROM
+    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
+WHERE
+    \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" is not null
+
+GROUP BY
+    1,
+    2),
+abundant as (
+SELECT
+    :dmoy1 as \"dmoy1\",
+    :dmoy2 as \"dmoy2\"
+),
+wakeful as (
+SELECT
+    \"inventory_warehouse_inventory\".\"inv_item_sk\" as \"isk1\",
+    \"inventory_warehouse_inventory\".\"inv_item_sk\" as \"isk2\",
+    \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" as \"wsk1\",
+    \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" as \"wsk2\",
+    CASE
+	WHEN avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 1 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) = 0 THEN null
+	ELSE stddev_samp(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 1 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) / avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 1 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END)
+	END as \"cov1\",
+    CASE
+	WHEN avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 2 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) = 0 THEN null
+	ELSE stddev_samp(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 2 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) / avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 2 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END)
+	END as \"cov2\",
+    avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 1 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) as \"mean1\",
+    avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 2 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) as \"mean2\"
+FROM
+    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"inventory_warehouse_inventory\".\"inv_date_sk\" = \"inventory_date_date\".\"D_DATE_SK\"
+WHERE
+    \"inventory_date_date\".\"D_YEAR\" = 2001 and \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" is not null
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+questionable as (
+SELECT
+    \"cooperative\".\"inventory_warehouse_id\" as \"inventory_warehouse_id\",
+    \"inventory_date_date\".\"D_YEAR\" as \"inventory_date_year\"
+FROM
+    \"cooperative\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"cooperative\".\"inventory_date_id\" = \"inventory_date_date\".\"D_DATE_SK\"
+WHERE
+    \"inventory_date_date\".\"D_YEAR\" = 2001 and \"cooperative\".\"inventory_warehouse_id\" is not null
+),
+yummy as (
+SELECT
+    \"abundant\".\"dmoy2\" as \"dmoy2\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"inventory_date_year\" = 2001 and \"questionable\".\"inventory_warehouse_id\" is not null
+
+GROUP BY
+    1),
+uneven as (
+SELECT
+    \"abundant\".\"dmoy1\" as \"dmoy1\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"inventory_date_year\" = 2001 and \"questionable\".\"inventory_warehouse_id\" is not null
+
+GROUP BY
+    1)
+SELECT
+    \"wakeful\".\"wsk1\" as \"wsk1\",
+    \"wakeful\".\"isk1\" as \"isk1\",
+    \"uneven\".\"dmoy1\" as \"dmoy1\",
+    \"wakeful\".\"mean1\" as \"mean1\",
+    \"wakeful\".\"cov1\" as \"cov1\",
+    \"wakeful\".\"wsk2\" as \"wsk2\",
+    \"wakeful\".\"isk2\" as \"isk2\",
+    \"yummy\".\"dmoy2\" as \"dmoy2\",
+    \"wakeful\".\"mean2\" as \"mean2\",
+    \"wakeful\".\"cov2\" as \"cov2\"
+FROM
+    \"wakeful\"
+    LEFT OUTER JOIN \"uneven\" on 1=1
+    FULL JOIN \"yummy\" on 1=1
+WHERE
+    \"wakeful\".\"cov1\" > 1 and \"wakeful\".\"cov2\" > 1
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+ORDER BY 
+    \"wakeful\".\"wsk1\" asc nulls first,
+    \"wakeful\".\"isk1\" asc nulls first,
+    \"wakeful\".\"mean1\" asc nulls first,
+    \"wakeful\".\"cov1\" asc nulls first,
+    \"wakeful\".\"mean2\" asc nulls first,
+    \"wakeful\".\"cov2\" asc nulls first"""

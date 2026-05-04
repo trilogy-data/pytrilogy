@@ -4,7 +4,7 @@ properties id (
     date_string string,
     _date_string string,
     date date,
-    _year_string string,
+    # _year_string string,
     year int,
     day_of_week int,
     day_of_month int?,
@@ -31,8 +31,7 @@ datasource date (
     D_MONTH_SEQ: month_seq,
     D_QOY: quarter,
     D_QUARTER_NAME: quarter_name,
-    D_YEAR: _year_string,
-    cast(_year_string as int): year
+    D_YEAR: year
 )
 grain (id)
 address memory.date_dim;

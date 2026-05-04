@@ -1,0 +1,45 @@
+import unified_sales as sales;
+
+auto ss_q1 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 1)
+    by sales.bill_address.county, sales.date.year;
+auto ss_q2 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 2)
+    by sales.bill_address.county, sales.date.year;
+auto ss_q3 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 3)
+    by sales.bill_address.county, sales.date.year;
+auto ws_q1 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 1)
+    by sales.bill_address.county, sales.date.year;
+auto ws_q2 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 2)
+    by sales.bill_address.county, sales.date.year;
+auto ws_q3 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 3)
+    by sales.bill_address.county, sales.date.year;
+
+auto web_q1_q2_increase <- ws_q2 / ws_q1;
+auto store_q1_q2_increase <- ss_q2 / ss_q1;
+auto web_q2_q3_increase <- ws_q3 / ws_q2;
+auto store_q2_q3_increase <- ss_q3 / ss_q2;
+
+WHERE
+    sales.date.year = 2000
+SELECT
+    sales.bill_address.county,
+    sales.date.year,
+    web_q1_q2_increase,
+    store_q1_q2_increase,
+    web_q2_q3_increase,
+    store_q2_q3_increase,
+    --ss_q1,
+    --ss_q2,
+    --ss_q3,
+    --ws_q1,
+    --ws_q2,
+    --ws_q3,
+HAVING
+    ss_q1 > 0
+    and ss_q2 > 0
+    and (CASE WHEN ws_q1 > 0 THEN ws_q2 / ws_q1 ELSE NULL END
+         > CASE WHEN ss_q1 > 0 THEN ss_q2 / ss_q1 ELSE NULL END)
+    and (CASE WHEN ws_q2 > 0 THEN ws_q3 / ws_q2 ELSE NULL END
+         > CASE WHEN ss_q2 > 0 THEN ss_q3 / ss_q2 ELSE NULL END)
+ORDER BY
+    sales.bill_address.county asc nulls first
+;

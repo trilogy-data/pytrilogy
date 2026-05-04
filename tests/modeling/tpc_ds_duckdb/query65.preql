@@ -1,0 +1,21 @@
+import store_sales as store_sales;
+
+auto item_revenue <- sum(store_sales.sales_price) by store_sales.store.id, store_sales.item.id;
+auto store_avg_revenue <- avg item_revenue over store_sales.store.id;
+
+WHERE
+    store_sales.date.month_seq between 1176 and 1187
+SELECT
+    store_sales.store.name,
+    store_sales.item.desc,
+    item_revenue as revenue,
+    store_sales.item.current_price,
+    store_sales.item.wholesale_cost,
+    store_sales.item.brand_name,
+    --store_avg_revenue,
+HAVING
+    revenue <= 0.1 * store_avg_revenue
+ORDER BY
+    store_sales.store.name asc nulls first,
+    store_sales.item.desc asc nulls first
+LIMIT 100;

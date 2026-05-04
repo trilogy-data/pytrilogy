@@ -1,0 +1,16 @@
+import store_sales as ss;
+
+auto act_sales <- CASE
+    WHEN ss.return_quantity is not null THEN (ss.quantity - ss.return_quantity) * ss.sales_price
+    ELSE ss.quantity * ss.sales_price
+END;
+
+WHERE
+    ss.return_reason.desc = 'reason 28'
+SELECT
+    ss.customer.id as customer_sk,
+    sum(act_sales) by ss.customer.id -> sumsales,
+ORDER BY
+    sumsales asc nulls first,
+    customer_sk asc nulls first
+LIMIT 100;

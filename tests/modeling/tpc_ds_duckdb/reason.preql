@@ -1,0 +1,13 @@
+key id int;
+properties id (
+    string_id string,
+    desc string?,
+);
+
+datasource reason (
+    R_REASON_SK: id,
+    R_REASON_ID: string_id,
+    R_REASON_DESC: desc,
+)
+grain (id)
+address memory.reason;

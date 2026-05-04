@@ -293,9 +293,19 @@ def test_twenty_five(engine):
     assert len(query) < 8500, query
 
 
+def test_thirty_five(engine):
+    query = run_query(engine, 35)
+    assert len(query) < 10000, query
+
+
 def test_thirty_seven(engine):
     query = run_query(engine, 37)
     assert len(query) < 2200, query
+
+
+def test_thirty_nine(engine):
+    query = run_query(engine, 39)
+    assert len(query) < 4500, query
 
 
 def test_forty(engine):
@@ -358,6 +368,11 @@ def test_thirty(engine):
     assert len(query) < 12000, query
 
 
+def test_thirty_one(engine):
+    query = run_query(engine, 31)
+    assert len(query) < 6500, query
+
+
 def test_thirty_three(engine):
     query = run_query(engine, 33)
     assert len(query) < 3500, query
@@ -372,6 +387,11 @@ def test_thirty_two(engine):
     query = run_query(engine, 32)
     # size gating
     assert len(query) < 12640, query
+
+
+def test_forty_seven(engine):
+    query = run_query(engine, 47)
+    assert len(query) < 6500, query
 
 
 def test_forty_eight(engine):
@@ -402,6 +422,16 @@ def test_fifty_six(engine):
     _ = run_query(engine, 56, sql_override=True)
 
 
+def test_fifty_seven(engine):
+    query = run_query(engine, 57)
+    assert len(query) < 6000, query
+
+
+def test_fifty_eight(engine):
+    query = run_query(engine, 58)
+    assert len(query) < 6500, query
+
+
 def test_sixty(engine):
     query = run_query(engine, 60)
     assert len(query) < 5000, query
@@ -417,10 +447,25 @@ def test_sixty_three(engine):
     assert len(query) < 6000, query
 
 
+def test_sixty_five(engine):
+    query = run_query(engine, 65)
+    assert len(query) < 5000, query
+
+
 def test_sixty_eight(engine):
     query = run_query(engine, 68)
     assert len(query) < 8000, query
     assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
+
+
+def test_sixty_nine(engine):
+    query = run_query(engine, 69)
+    assert len(query) < 5000, query
+
+
+def test_seventy_one(engine):
+    query = run_query(engine, 71)
+    assert len(query) < 3500, query
 
 
 def test_seventy_three(engine):
@@ -438,6 +483,19 @@ def test_eighty_two(engine):
     assert len(query) < 4000, query
 
 
+def test_eighty_three(engine):
+    query = run_query(engine, 83)
+    assert len(query) < 13000, query
+
+
+@pytest.mark.skip(
+    reason="DuckDB OOMs/hangs running the PRAGMA tpcds(85) comparison query"
+)
+def test_eighty_five(engine):
+    query = run_query(engine, 85)
+    assert len(query) < 12000, query
+
+
 def test_eighty_eight(engine):
     query = run_query(engine, 88)
     assert len(query) < 5000, query
@@ -448,9 +506,24 @@ def test_eighty_nine(engine):
     assert len(query) < 8000, query
 
 
+def test_ninety(engine):
+    query = run_query(engine, 90)
+    assert len(query) < 2500, query
+
+
 def test_ninety_two(engine):
     query = run_query(engine, 92)
     assert len(query) < 2000, query
+
+
+def test_ninety_three(engine):
+    query = run_query(engine, 93)
+    assert len(query) < 6000, query
+
+
+def test_ninety_four(engine):
+    query = run_query(engine, 94)
+    assert len(query) < 5000, query
 
 
 def test_ninety_five(engine):

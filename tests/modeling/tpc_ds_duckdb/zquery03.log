@@ -1,8 +1,8 @@
 query_id = "03"
-gen_length = 919
+gen_length = 893
 generated_sql = """
 SELECT
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
+    \"store_sales_date_date\".\"D_YEAR\" as \"store_sales_date_year\",
     \"store_sales_item_items\".\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
     \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
     sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"sum_agg\"
@@ -18,7 +18,7 @@ GROUP BY
     2,
     3
 ORDER BY 
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int) asc,
+    \"store_sales_date_date\".\"D_YEAR\" asc,
     \"sum_agg\" desc,
     \"store_sales_item_items\".\"I_BRAND_ID\" asc
 LIMIT (100)"""
