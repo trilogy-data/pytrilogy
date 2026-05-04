@@ -1,5 +1,5 @@
 query_id = "71"
-gen_length = 2906
+gen_length = 2893
 generated_sql = """
 
 WITH 
@@ -46,7 +46,7 @@ FROM
     RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    cast(\"sales_date_date\".\"D_YEAR\" as int) = 1999 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_item_items\".\"I_MANAGER_ID\" = 1 and ( \"time_time\".\"T_MEAL_TIME\" = 'breakfast' or \"time_time\".\"T_MEAL_TIME\" = 'dinner' )
+    \"sales_date_date\".\"D_YEAR\" = 1999 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_item_items\".\"I_MANAGER_ID\" = 1 and ( \"time_time\".\"T_MEAL_TIME\" = 'breakfast' or \"time_time\".\"T_MEAL_TIME\" = 'dinner' )
 
 GROUP BY
     1,

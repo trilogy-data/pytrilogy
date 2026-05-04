@@ -1,5 +1,5 @@
 query_id = "30"
-gen_length = 8228
+gen_length = 8215
 generated_sql = """
 
 WITH 
@@ -7,7 +7,7 @@ abundant as (
 SELECT
     \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\",
     \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\",
-    sum(CASE WHEN cast(\"web_returns_return_date_date\".\"D_YEAR\" as int) = 2002 THEN \"web_returns_web_returns\".\"WR_RETURN_AMT\" ELSE NULL END) as \"customer_state_returns_2002\"
+    sum(CASE WHEN \"web_returns_return_date_date\".\"D_YEAR\" = 2002 THEN \"web_returns_web_returns\".\"WR_RETURN_AMT\" ELSE NULL END) as \"customer_state_returns_2002\"
 FROM
     \"memory\".\"web_returns\" as \"web_returns_web_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_returns_return_date_date\" on \"web_returns_web_returns\".\"WR_RETURNED_DATE_SK\" = \"web_returns_return_date_date\".\"D_DATE_SK\"

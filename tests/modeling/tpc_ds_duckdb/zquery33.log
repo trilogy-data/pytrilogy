@@ -1,5 +1,5 @@
 query_id = "33"
-gen_length = 2997
+gen_length = 2984
 generated_sql = """
 
 WITH 
@@ -50,7 +50,7 @@ FROM
     RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
     RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"abundant\".\"sales_bill_address_id\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null) and cast(\"sales_date_date\".\"D_YEAR\" as int) = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null) and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
 
 GROUP BY
     1,

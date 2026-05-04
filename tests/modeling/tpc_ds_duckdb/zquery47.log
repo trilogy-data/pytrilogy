@@ -1,16 +1,16 @@
 query_id = "47"
-gen_length = 5798
+gen_length = 5746
 generated_sql = """
 
 WITH 
 thoughtful as (
 SELECT
     \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
+    \"store_sales_date_date\".\"D_YEAR\" as \"store_sales_date_year\",
     \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
     \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_store_store\".\"S_COMPANY_NAME\" as \"store_sales_store_company_name\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
     sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"sum_sales\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
@@ -18,7 +18,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"store_sales_store_store\".\"S_STORE_SK\" is not null and ( cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1999 or ( cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1998 and \"store_sales_date_date\".\"D_MOY\" = 12 ) or ( cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2000 and \"store_sales_date_date\".\"D_MOY\" = 1 ) )
+    \"store_sales_store_store\".\"S_STORE_SK\" is not null and ( \"store_sales_date_date\".\"D_YEAR\" = 1999 or ( \"store_sales_date_date\".\"D_YEAR\" = 1998 and \"store_sales_date_date\".\"D_MOY\" = 12 ) or ( \"store_sales_date_date\".\"D_YEAR\" = 2000 and \"store_sales_date_date\".\"D_MOY\" = 1 ) )
 
 GROUP BY
     1,

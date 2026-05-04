@@ -6,7 +6,7 @@ import date as date;
 
 merge ss.item.id into ~item.id;
 merge cr.item.id into ~item.id;
-merge wr.item.id into ~item.id;
+merge wr.web_sales.item.id into ~item.id;
 
 auto target_week_seqs <- date.week_seq ? date.date in (cast('2000-06-30' as date), cast('2000-09-27' as date), cast('2000-11-17' as date));
 
