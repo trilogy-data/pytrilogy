@@ -281,6 +281,11 @@ def test_twenty_two(engine):
     _ = run_query(engine, 22)
 
 
+def test_twenty_three(engine):
+    query = run_query(engine, 23)
+    assert len(query) < 9000, query
+
+
 def test_twenty_four(engine):
     _ = run_query(engine, 24)
     # size gating
@@ -399,6 +404,11 @@ def test_forty_eight(engine):
     assert len(query) < 3000, query
 
 
+def test_forty_nine(engine):
+    query = run_query(engine, 49)
+    assert len(query) < 13000, query
+
+
 def test_fifty(engine):
     query = run_query(engine, 50)
     assert len(query) < 7000, query
@@ -452,6 +462,11 @@ def test_sixty_five(engine):
     assert len(query) < 5000, query
 
 
+def test_sixty_six(engine):
+    query = run_query(engine, 66)
+    assert len(query) < 38000, query
+
+
 def test_sixty_eight(engine):
     query = run_query(engine, 68)
     assert len(query) < 8000, query
@@ -495,7 +510,7 @@ def test_eighty_two(engine):
 
 def test_eighty_three(engine):
     query = run_query(engine, 83)
-    assert len(query) < 13000, query
+    assert len(query) < 8500, query
 
 
 @pytest.mark.skip(

@@ -1,11 +1,14 @@
 import inventory as inventory;
 
-auto mean1 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 1) by inventory.warehouse.id, inventory.item.id;
-auto stdev1 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 1) by inventory.warehouse.id, inventory.item.id;
+def month_mean(month) -> avg(inventory.quantity_on_hand ? inventory.date.month_of_year = month) by inventory.warehouse.id, inventory.item.id;
+def month_stdev(month) -> stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = month) by inventory.warehouse.id, inventory.item.id;
+
+auto mean1 <- @month_mean(1);
+auto stdev1 <- @month_stdev(1);
 auto cov1 <- CASE WHEN mean1 = 0 THEN NULL ELSE stdev1 / mean1 END;
 
-auto mean2 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 2) by inventory.warehouse.id, inventory.item.id;
-auto stdev2 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 2) by inventory.warehouse.id, inventory.item.id;
+auto mean2 <- @month_mean(2);
+auto stdev2 <- @month_stdev(2);
 auto cov2 <- CASE WHEN mean2 = 0 THEN NULL ELSE stdev2 / mean2 END;
 
 WHERE

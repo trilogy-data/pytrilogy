@@ -1,5 +1,5 @@
 query_id = "39"
-gen_length = 3877
+gen_length = 4120
 generated_sql = """
 
 WITH 
@@ -78,40 +78,43 @@ WHERE
     \"questionable\".\"inventory_date_year\" = 2001 and \"questionable\".\"inventory_warehouse_id\" is not null
 
 GROUP BY
-    1)
+    1),
+juicy as (
 SELECT
-    \"wakeful\".\"wsk1\" as \"wsk1\",
-    \"wakeful\".\"isk1\" as \"isk1\",
     \"uneven\".\"dmoy1\" as \"dmoy1\",
-    \"wakeful\".\"mean1\" as \"mean1\",
     \"wakeful\".\"cov1\" as \"cov1\",
-    \"wakeful\".\"wsk2\" as \"wsk2\",
+    \"wakeful\".\"cov2\" as \"cov2\",
+    \"wakeful\".\"isk1\" as \"isk1\",
     \"wakeful\".\"isk2\" as \"isk2\",
-    \"yummy\".\"dmoy2\" as \"dmoy2\",
+    \"wakeful\".\"mean1\" as \"mean1\",
     \"wakeful\".\"mean2\" as \"mean2\",
-    \"wakeful\".\"cov2\" as \"cov2\"
+    \"wakeful\".\"wsk1\" as \"wsk1\",
+    \"wakeful\".\"wsk2\" as \"wsk2\",
+    \"yummy\".\"dmoy2\" as \"dmoy2\"
 FROM
     \"wakeful\"
-    LEFT OUTER JOIN \"uneven\" on 1=1
-    FULL JOIN \"yummy\" on 1=1
+    FULL JOIN \"uneven\" on 1=1
+    FULL JOIN \"yummy\" on 1=1)
+SELECT
+    \"juicy\".\"wsk1\" as \"wsk1\",
+    \"juicy\".\"isk1\" as \"isk1\",
+    \"juicy\".\"dmoy1\" as \"dmoy1\",
+    \"juicy\".\"mean1\" as \"mean1\",
+    \"juicy\".\"cov1\" as \"cov1\",
+    \"juicy\".\"wsk2\" as \"wsk2\",
+    \"juicy\".\"isk2\" as \"isk2\",
+    \"juicy\".\"dmoy2\" as \"dmoy2\",
+    \"juicy\".\"mean2\" as \"mean2\",
+    \"juicy\".\"cov2\" as \"cov2\"
+FROM
+    \"juicy\"
 WHERE
-    \"wakeful\".\"cov1\" > 1 and \"wakeful\".\"cov2\" > 1
+    \"juicy\".\"cov1\" > 1 and \"juicy\".\"cov2\" > 1
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10
 ORDER BY 
-    \"wakeful\".\"wsk1\" asc nulls first,
-    \"wakeful\".\"isk1\" asc nulls first,
-    \"wakeful\".\"mean1\" asc nulls first,
-    \"wakeful\".\"cov1\" asc nulls first,
-    \"wakeful\".\"mean2\" asc nulls first,
-    \"wakeful\".\"cov2\" asc nulls first"""
+    \"juicy\".\"wsk1\" asc nulls first,
+    \"juicy\".\"isk1\" asc nulls first,
+    \"juicy\".\"mean1\" asc nulls first,
+    \"juicy\".\"cov1\" asc nulls first,
+    \"juicy\".\"mean2\" asc nulls first,
+    \"juicy\".\"cov2\" asc nulls first"""

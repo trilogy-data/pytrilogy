@@ -3,25 +3,15 @@ import unified_sales as sales;
 const first_year <- 2001;
 const second_year <- 2002;
 
-auto store_first_year <- sum(
+def channel_year_total(channel, year) -> sum(
     sales.ext_list_price - sales.ext_discount_amount
-    ? sales.sales_channel = 'STORE' and sales.date.year = first_year
+    ? sales.sales_channel = channel and sales.date.year = year
 ) by sales.customer.id;
 
-auto store_second_year <- sum(
-    sales.ext_list_price - sales.ext_discount_amount
-    ? sales.sales_channel = 'STORE' and sales.date.year = second_year
-) by sales.customer.id;
-
-auto web_first_year <- sum(
-    sales.ext_list_price - sales.ext_discount_amount
-    ? sales.sales_channel = 'WEB' and sales.date.year = first_year
-) by sales.customer.id;
-
-auto web_second_year <- sum(
-    sales.ext_list_price - sales.ext_discount_amount
-    ? sales.sales_channel = 'WEB' and sales.date.year = second_year
-) by sales.customer.id;
+auto store_first_year <- @channel_year_total('STORE', first_year);
+auto store_second_year <- @channel_year_total('STORE', second_year);
+auto web_first_year <- @channel_year_total('WEB', first_year);
+auto web_second_year <- @channel_year_total('WEB', second_year);
 
 where sales.sales_channel in ('STORE', 'WEB')
     and store_first_year > 0

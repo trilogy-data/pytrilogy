@@ -28,7 +28,11 @@ properties <order_number,item.id> (
     ext_ship_cost float,
     ext_wholesale_cost float,
     net_profit float,
+    net_paid float,
+    net_paid_inc_tax float,
     coupon_amt float,
+    return_amount float?,
+    return_quantity int?,
 );
 
 
@@ -65,8 +69,19 @@ datasource catalog_sales (
     CS_WAREHOUSE_SK: warehouse.id,
     CS_PROMO_SK: promotion.id,
     CS_SHIP_MODE_SK: ship_mode.id,
-
+    CS_NET_PAID: net_paid,
+    CS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
 grain (order_number, item.id)
 address memory.catalog_sales
+;
+
+datasource catalog_returns_inline (
+    CR_ORDER_NUMBER: ~order_number,
+    CR_ITEM_SK: ~item.id,
+    CR_RETURN_AMOUNT: return_amount,
+    CR_RETURN_QUANTITY: return_quantity,
+)
+grain (order_number, item.id)
+address memory.catalog_returns
 ;
