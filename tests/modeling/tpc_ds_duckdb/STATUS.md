@@ -170,10 +170,6 @@ exercising different planner paths — they share an SQL reference.)
     `sales_channel` enum) coexist as separate union datasources rather
     than collapsing into a single best combo.
 - **Open trilogy issues exposed by q80**:
-  - 3-level `MERGE+align` over a multi-source partitioning generates
-    distinct CTE shapes per level (level-1 reads from one join, level-2/3
-    read from a sibling `late` CTE without the dim join). Aggregations
-    diverge.
   - Final `SELECT alias` of rowset-derived concepts (e.g.
     `q80_results.sales_total as sales`) causes the planner to hang
     indefinitely. Bare references plan in <1s.

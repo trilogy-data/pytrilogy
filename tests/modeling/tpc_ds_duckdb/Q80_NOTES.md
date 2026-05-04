@@ -2,6 +2,10 @@
 
 Reference: `https://github.com/duckdb/duckdb/blob/main/extension/tpcds/dsdgen/queries/80.sql`
 
+## Status
+
+`test_eighty` passes. Output matches the reference exactly (100/100 rows).
+
 ## Reference query shape
 
 ```
@@ -18,11 +22,11 @@ LIMIT 100;
 Key points:
 1. Each per-channel CTE **inner-joins** all dims (`s_store_id`, `cp_catalog_page_id`,
    `web_site_id`). A sale whose channel-dim FK is NULL or doesn't match a dim row is
-   *excluded* — this is load-bearing for correctness against TPC-DS data.
+   *excluded* — load-bearing for correctness against TPC-DS data.
 2. The three CTEs are `UNION ALL`ed.
 3. `ROLLUP(channel, id)` produces detail / per-channel total / grand total rows.
 
-## Model shape
+## Model
 
 `tests/modeling/tpc_ds_duckdb/unified_sales.preql` exposes:
 - `key sales_channel enum<string>['WEB','CATALOG','STORE']`
@@ -35,133 +39,75 @@ Nine partial datasources, each `complete where sales_channel = 'X'`:
 - 3× returns: `web/catalog/store_returns_unified` (use `~order_id, ~item.id` loose) → same grain
 - 3× channel dim: `web/catalog/store_dim_unified` → grain `(sales_channel, channel_dim_id)`
 
-## Current status
+## Diagnostic findings
 
-`query80.preql` runs end-to-end. All per-row data values match the reference, including
-detail rows and per-channel totals. **One** structural row is missing from the output: the
-`(NULL, NULL)` grand-total row. This is a real planner bug in trilogy's MERGE+align
-cascade rendering — see "Outstanding bug" below.
+The early hypothesis that the cascade levels diverged was wrong; per-CTE probing showed
+all three rolled up to identical per-channel totals. Two real bugs were found:
 
-## Framework changes that landed (uncommitted)
+### Bug 1 — model-side: orphan FKs survived dim LEFT OUTER JOIN
 
-These were added during the q80 push. Their actual necessity is being re-audited.
-
-1. **`safe_get_cte_value` (`trilogy/dialect/base.py`)** — both single-source and multi-source
-   paths now route through a `_format` helper that recognizes `RawColumnExpr` and
-   `FUNCTION_ITEMS` from `cte.get_alias`, returning the raw text directly. Previously a
-   `RawColumnExpr` reaching `safe_quote` raised `'RawColumnExpr' object has no attribute
-   'startswith'`. **Likely load-bearing**: the `raw(''' 'CATALOG' ''')` literal column in
-   the partial datasources surfaces as a `RawColumnExpr` that travels through CTE column
-   resolution.
-
-2. **`QueryDatasource.__add__` (`trilogy/core/models/execute.py`)** — relaxed the strict
-   `force_group` equality check. Previously merging a returns-grouped QDS with a
-   sales-grouped QDS at the same grain raised `'can only merge two datasources if the
-   force_group flag is the same'`. **Suspicious**: two QDSes with the same name should not
-   have different `force_group` semantics. Needs revert + repro to find the real cause.
-
-3. **`_best_enum_union` (`trilogy/core/processing/node_generators/select_helpers/
-   datasource_injection.py`)** — now returns `list[list[BuildDatasource]]` (one per
-   distinct concept-overlap signature) instead of a single combo. **Likely load-bearing**:
-   the parallel sales / returns / dim partitionings are all keyed by the same
-   `sales_channel` enum, and need to coexist as separate union datasources. The
-   maximal-overlap filter prevents "mixed" combos like `(2 sales, 1 dim)` from drowning
-   out pure partitionings.
-
-The 26 unit tests in `tests/generators/test_datasource_scoring.py` were updated for the
-new `_best_enum_union` shape. All other unit tests still pass.
-
-## Diagnostic findings (2026-05-04)
-
-The earlier version of this doc claimed cascade levels diverged and that joining to the
-dim mysteriously changed sums. **Both claims were wrong.** Per-CTE probing of the actual
-generated SQL showed:
-
-### Claim 1 (REFUTED): "Levels diverge — level 1 joins dim, levels 2/3 don't"
-
-All three trilogy cascade CTEs agree perfectly when probed:
-
-| | catalog | store | web |
-|---|---|---|---|
-| level 1 (`puzzled`) | 218899.93 | 363697.50 | 115697.04 |
-| level 2 (`kaput`) | 218899.93 | 363697.50 | 115697.04 |
-| row-level (`late`) | 218899.93 | 363697.50 | 115697.04 |
-
-The earlier "kaput.returns_b for catalog channel = 575.60" was a misread of the diff
-between trilogy and the reference; the actual `kaput` value is 218899.93. There is **no
-divergence between levels** to fix.
-
-### Claim 2 (REFUTED): "Joining to the dim changes the result"
-
-A LEFT OUTER JOIN to a per-key-unique dim doesn't change `sum()` — it just adds nullable
-columns. Both `puzzled` (with the dim joined) and `late` (without) produce the same row
-sums, confirming this.
-
-### Actual root cause of the 575.60 delta
-
-Trilogy's plan emits `LEFT OUTER JOIN premium` for the dim. The reference query's `WHERE
-cs_catalog_page_sk = cp_catalog_page_sk` is effectively an INNER JOIN that drops sales
-whose dim FK doesn't match. TPC-DS catalog_sales contains 7185 rows with NULL
-`cs_catalog_page_sk`; **2 of those rows survive all the q80 filters** (date / item /
-promotion). Their contribution is exactly:
+Trilogy's plan emits `LEFT OUTER JOIN premium` for the dim, while the reference's
+`WHERE cs_catalog_page_sk = cp_catalog_page_sk` is effectively an INNER JOIN. TPC-DS
+catalog_sales has 7185 rows with NULL `cs_catalog_page_sk`; **2 of those survive all
+the q80 filters** (date / item / promotion) and contributed exactly:
 
 - catalog returns delta: 575.60
 - catalog profit delta: -4597.82
-- catalog sales delta: 0 (these rows have NULL `ext_sales_price`)
+- catalog sales delta: 0 (NULL `ext_sales_price` on the orphan rows)
 
-Same situation in store: 53047.78 of returns drops out when the dim is enforced.
+**Fix (preql):** added `AND sales.channel_dim_text_id is not null` to each level's
+WHERE clause. This promotes the dim join to `INNER JOIN` in the planner output.
 
-### Fix (applied to `query80.preql`)
+### Bug 2 — planner: cascade FULL JOIN row-collapse
 
-Adding `AND sales.channel_dim_text_id is not null` to the WHERE clauses promotes trilogy's
-plan to `INNER JOIN thoughtful` for the dim. After the fix:
+After the dim-filter fix, all data values matched but the `(NULL, NULL)` grand-total
+row was missing. The cascade align rendering produced:
 
-| | reference | trilogy |
+```sql
+FROM puzzled                                     -- L1 (channel, id, sums)
+    FULL JOIN premium ON puzzled.channel ⩻ premium.channel AND puzzled.id ⩻ premium.id
+    FULL JOIN busy    ON puzzled.channel ⩻ busy.channel    AND puzzled.id ⩻ busy.id
+```
+
+After the first FULL JOIN, premium-only rows have `puzzled.channel = NULL` and
+`puzzled.id = NULL`. The second JOIN's condition `busy.x IS NOT DISTINCT FROM puzzled.x`
+where both are NULL evaluates TRUE, so `busy` is **absorbed into the per-channel rows**
+instead of surfacing as its own grand-total row.
+
+**Fix (planner):** in `extra_align_joins`
+(`trilogy/core/processing/node_generators/multiselect_node.py`), build the chain
+explicitly with `concept_pairs` that bind the joining-in CTE to **every prior** parent.
+The existing `_build_joinkeys` grouping then renders this as
+`coalesce(prior1, prior2, ...) = leveln`, which correctly excludes the busy row from
+matching premium-only rows (because `'catalog' = NULL → NULL`, not TRUE).
+
+Resulting JOIN:
+```sql
+FULL JOIN premium ON puzzled.channel ⩻ premium.channel AND puzzled.id ⩻ premium.id
+FULL JOIN busy ON coalesce(puzzled.channel, premium.channel) = busy.channel
+              AND coalesce(puzzled.id,      premium.id)      = busy.id
+```
+
+## Audit of uncommitted framework changes
+
+| Change | Verdict | Reason |
 |---|---|---|
-| catalog total | (4655990.73, 218324.33, -510980.92) | (4655990.73, 218324.33, -510980.92) ✓ |
-| store total | (6738789.72, 358581.74, -2862388.33) | (6738789.72, 358581.74, -2862388.33) ✓ |
-| web total | (2165333.43, 115697.04, -224178.15) | (2165333.43, 115697.04, -224178.15) ✓ |
+| `safe_get_cte_value` (`trilogy/dialect/base.py`) — RawColumnExpr / FUNCTION_ITEMS handling | **Kept** | Without it, `_best_enum_union`'s parallel partitionings reach `safe_quote` with a `RawColumnExpr` and crash with `'RawColumnExpr' object has no attribute 'startswith'`. Real fix for the `raw(''' 'CATALOG' ''')` literal-column path. |
+| `QueryDatasource.__add__` — force_group widening | **Reverted** | Was masking the cascade FULL JOIN row-collapse bug. With the planner fix in place, the original strict equality check works fine; all 394 modeling/generators/optimization tests pass. |
+| `_best_enum_union` — multi-result return shape | **Kept** | Without it, q80's planner hangs (the parallel sales/returns/dim partitionings, all keyed by the same channel enum, can't be expressed as separate union datasources). The maximal-overlap filter prevents "mixed" combos like `(2 sales, 1 dim)` from drowning out the pure partitionings. |
 
-All detail rows and all per-channel totals now match exactly.
+## Things that do not (yet) work
 
-## Outstanding bug — cascade FULL JOIN row-collapse
+### Direct merge without rowset wrapping
 
-After the dim-filter fix, the data values are correct but the `(NULL, NULL)` grand-total
-row never appears in the final output. The cascade align rendering produces:
+Replacing `with q80_results as ... ; SELECT q80_results.x ...` with a direct multiselect
+that has `ORDER BY` / `LIMIT` on the merge itself surfaces all per-level columns
+(`channel_a`, `sales_b`, etc.) on top of the aligned/derived ones — 20 output columns
+instead of 5. The rowset wrapping is acting as a projection layer.
 
-```sql
-FROM puzzled                                              -- L1: (channel, id, sums)
-    FULL JOIN premium ON puzzled.channel  IS NOT DISTINCT FROM premium.channel
-                     AND puzzled.id       IS NOT DISTINCT FROM premium.id
-    FULL JOIN busy    ON puzzled.channel  IS NOT DISTINCT FROM busy.channel
-                     AND puzzled.id       IS NOT DISTINCT FROM busy.id
-```
+Marking the per-level columns hidden with `--` produces invalid SQL: the planner emits
+`INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price>` placeholders
+because the parent CTEs (`puzzled`, `premium`, `busy`) drop the hidden columns, and the
+outer SELECT's aggregations have no source CTE to read from.
 
-where `premium` rows have `(channel='catalog channel', id=NULL)` and `busy` is the single
-`(NULL, NULL)` grand-total row.
-
-After the first `FULL JOIN`, premium-only rows have `puzzled.channel = NULL` and
-`puzzled.id = NULL` (no left-side match). The second `FULL JOIN` to `busy` then finds that
-`busy.channel = NULL IS NOT DISTINCT FROM puzzled.channel = NULL` is TRUE, so `busy` is
-**absorbed into each per-channel row** instead of surfacing as its own row. Reproduced
-minimally:
-
-```sql
--- with the trilogy-emitted condition: 3 rows, no grand total
--- with `coalesce(puzzled.col, premium.col) IS NOT DISTINCT FROM busy.col`: 4 rows incl. grand total
-```
-
-### Fix shape
-
-The level-N join in a cascade align needs its `ON` condition to match against
-`coalesce(level1.col, level2.col, ..., level(N-1).col)`, not just `level1.col`. Code
-locations:
-
-- `trilogy/core/processing/node_generators/multiselect_node.py::extra_align_joins` —
-  emits the pairwise `NodeJoin`s; today they're rendered as a chain that always uses the
-  first node's column reference.
-- `trilogy/core/models/execute.py::BaseJoin` (or its renderer in `trilogy/dialect/`) —
-  this is where the `ON` condition gets serialized; would need a "coalesce against prior
-  joined nodes" mode.
-
-Whether to fix the planner or skip the test is the next decision.
+This is a separate planner gap. Not blocking q80; the rowset-wrapped form works.

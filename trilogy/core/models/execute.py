@@ -784,14 +784,10 @@ class QueryDatasource:
             raise SyntaxError(
                 "can only merge two datasources if the join derived concepts are the same"
             )
-        # If either side asserts force_group=True, the merged result must group too;
-        # mixing True+False/None is safe as long as we propagate the True up.
-        if self.force_group is True or other.force_group is True:
-            merged_force_group: bool | None = True
-        elif self.force_group is False or other.force_group is False:
-            merged_force_group = False
-        else:
-            merged_force_group = None
+        if not self.force_group == other.force_group:
+            raise SyntaxError(
+                "can only merge two datasources if the force_group flag is the same"
+            )
         logger.debug(
             f"[Query Datasource] merging {self.name} with"
             f" {[c.address for c in self.output_concepts]} concepts and"
@@ -864,7 +860,7 @@ class QueryDatasource:
                 self.rollup_concepts + other.rollup_concepts, "address"
             ),
             join_derived_concepts=self.join_derived_concepts,
-            force_group=merged_force_group,
+            force_group=self.force_group,
             hidden_concepts=hidden,
             ordering=self.ordering,
             base_datasource=merged_base,

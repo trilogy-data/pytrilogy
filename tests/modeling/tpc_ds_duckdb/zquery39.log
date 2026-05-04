@@ -1,5 +1,5 @@
 query_id = "39"
-gen_length = 3883
+gen_length = 3877
 generated_sql = """
 
 WITH 
@@ -93,7 +93,7 @@ SELECT
 FROM
     \"wakeful\"
     LEFT OUTER JOIN \"uneven\" on 1=1
-    LEFT OUTER JOIN \"yummy\" on 1=1
+    FULL JOIN \"yummy\" on 1=1
 WHERE
     \"wakeful\".\"cov1\" > 1 and \"wakeful\".\"cov2\" > 1
 
