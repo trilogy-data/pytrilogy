@@ -6,6 +6,7 @@ properties id (
     hour int,
     minute int,
     second int,
+    meal_time string?,
 );
 
 
@@ -16,6 +17,7 @@ datasource time (
     T_HOUR: hour,
     T_MINUTE: minute,
     T_SECOND: second,
+    T_MEAL_TIME: meal_time,
 )
 grain (id)
 address memory.time_dim;

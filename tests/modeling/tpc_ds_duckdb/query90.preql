@@ -1,0 +1,19 @@
+import web_sales as ws;
+
+auto row_id <- concat(cast(ws.order_number as string), '-', cast(ws.item.id as string));
+
+auto amc <- count(row_id ?
+    ws.time.hour between 8 and 9
+    and ws.ship_household_demographic.dependent_count = 6
+    and ws.web_page.char_count between 5000 and 5200);
+
+auto pmc <- count(row_id ?
+    ws.time.hour between 19 and 20
+    and ws.ship_household_demographic.dependent_count = 6
+    and ws.web_page.char_count between 5000 and 5200);
+
+SELECT
+    case when pmc = 0 then null else cast(amc as numeric(15, 4)) / cast(pmc as numeric(15, 4)) end -> am_pm_ratio,
+ORDER BY
+    am_pm_ratio asc nulls first
+LIMIT 100;

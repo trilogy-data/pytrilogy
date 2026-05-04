@@ -1,0 +1,322 @@
+query_id = "83"
+gen_length = 12662
+generated_sql = """
+
+WITH 
+yummy as (
+SELECT
+    \"item_items\".\"I_ITEM_ID\" as \"item_name\",
+    \"wr_return_date_date\".\"D_WEEK_SEQ\" as \"wr_return_date_week_seq\",
+    \"wr_web_returns\".\"WR_ORDER_NUMBER\" as \"wr_web_sales_order_number\"
+FROM
+    \"memory\".\"item\" as \"item_items\"
+    LEFT OUTER JOIN \"memory\".\"web_returns\" as \"wr_web_returns\" on \"item_items\".\"I_ITEM_SK\" = \"wr_web_returns\".\"WR_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"wr_return_date_date\" on \"wr_web_returns\".\"WR_RETURNED_DATE_SK\" = \"wr_return_date_date\".\"D_DATE_SK\"
+GROUP BY
+    1,
+    2,
+    3),
+thoughtful as (
+SELECT
+    CASE WHEN cast(\"date_date\".\"D_DATE\" as date) in (date '2000-06-30',date '2000-09-27',date '2000-11-17') THEN \"date_date\".\"D_WEEK_SEQ\" ELSE NULL END as \"target_week_seqs\"
+FROM
+    \"memory\".\"date_dim\" as \"date_date\"
+GROUP BY
+    1),
+late as (
+SELECT
+    \"item_items\".\"I_ITEM_ID\" as \"item_name\",
+    \"ss_return_date_date\".\"D_WEEK_SEQ\" as \"ss_return_date_week_seq\",
+    coalesce(\"ss_store_returns\".\"SR_TICKET_NUMBER\",\"ss_store_sales\".\"SS_TICKET_NUMBER\") as \"ss_ticket_number\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    FULL JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"memory\".\"item\" as \"item_items\" on coalesce(\"ss_store_returns\".\"SR_ITEM_SK\", \"ss_store_sales\".\"SS_ITEM_SK\") = \"item_items\".\"I_ITEM_SK\"
+GROUP BY
+    1,
+    2,
+    3),
+divergent as (
+SELECT
+    \"cr_catalog_returns\".\"CR_ORDER_NUMBER\" as \"cr_order_number\",
+    \"cr_date_date\".\"D_WEEK_SEQ\" as \"cr_date_week_seq\",
+    \"item_items\".\"I_ITEM_ID\" as \"item_name\"
+FROM
+    \"memory\".\"item\" as \"item_items\"
+    LEFT OUTER JOIN \"memory\".\"catalog_returns\" as \"cr_catalog_returns\" on \"item_items\".\"I_ITEM_SK\" = \"cr_catalog_returns\".\"CR_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
+GROUP BY
+    1,
+    2,
+    3),
+courageous as (
+SELECT
+    \"item_items\".\"I_ITEM_ID\" as \"item_name\",
+    \"item_items\".\"I_ITEM_SK\" as \"item_id\",
+    \"wr_return_date_date\".\"D_WEEK_SEQ\" as \"wr_return_date_week_seq\",
+    \"wr_web_returns\".\"WR_ORDER_NUMBER\" as \"wr_web_sales_order_number\",
+    \"wr_web_returns\".\"WR_RETURN_QUANTITY\" as \"wr_return_quantity\"
+FROM
+    \"memory\".\"item\" as \"item_items\"
+    LEFT OUTER JOIN \"memory\".\"web_returns\" as \"wr_web_returns\" on \"item_items\".\"I_ITEM_SK\" = \"wr_web_returns\".\"WR_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"wr_return_date_date\" on \"wr_web_returns\".\"WR_RETURNED_DATE_SK\" = \"wr_return_date_date\".\"D_DATE_SK\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5),
+puffy as (
+SELECT
+    \"item_items\".\"I_ITEM_ID\" as \"item_name\",
+    \"ss_return_date_date\".\"D_WEEK_SEQ\" as \"ss_return_date_week_seq\",
+    \"ss_store_returns\".\"SR_RETURN_QUANTITY\" as \"ss_return_quantity\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    FULL JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"memory\".\"item\" as \"item_items\" on coalesce(\"ss_store_returns\".\"SR_ITEM_SK\", \"ss_store_sales\".\"SS_ITEM_SK\") = \"item_items\".\"I_ITEM_SK\"),
+cheerful as (
+SELECT
+    \"cr_catalog_returns\".\"CR_ORDER_NUMBER\" as \"cr_order_number\",
+    \"cr_catalog_returns\".\"CR_RETURN_QUANTITY\" as \"cr_return_quantity\",
+    \"cr_date_date\".\"D_WEEK_SEQ\" as \"cr_date_week_seq\",
+    \"item_items\".\"I_ITEM_ID\" as \"item_name\",
+    \"item_items\".\"I_ITEM_SK\" as \"item_id\"
+FROM
+    \"memory\".\"item\" as \"item_items\"
+    LEFT OUTER JOIN \"memory\".\"catalog_returns\" as \"cr_catalog_returns\" on \"item_items\".\"I_ITEM_SK\" = \"cr_catalog_returns\".\"CR_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5),
+juicy as (
+SELECT
+    \"yummy\".\"item_name\" as \"item_name\",
+    CASE WHEN \"yummy\".\"wr_return_date_week_seq\" in (select thoughtful.\"target_week_seqs\" from thoughtful where thoughtful.\"target_week_seqs\" is not null) THEN \"yummy\".\"wr_web_sales_order_number\" ELSE NULL END as \"_virt_filter_order_number_2669589795814830\"
+FROM
+    \"yummy\"
+GROUP BY
+    1,
+    2,
+    \"yummy\".\"wr_web_sales_order_number\"),
+macho as (
+SELECT
+    \"late\".\"item_name\" as \"item_name\",
+    CASE WHEN \"late\".\"ss_return_date_week_seq\" in (select thoughtful.\"target_week_seqs\" from thoughtful where thoughtful.\"target_week_seqs\" is not null) THEN \"late\".\"ss_ticket_number\" ELSE NULL END as \"_virt_filter_ticket_number_2619894611511928\"
+FROM
+    \"late\"
+GROUP BY
+    1,
+    2,
+    \"late\".\"ss_ticket_number\"),
+busy as (
+SELECT
+    \"divergent\".\"item_name\" as \"item_name\",
+    CASE WHEN \"divergent\".\"cr_date_week_seq\" in (select thoughtful.\"target_week_seqs\" from thoughtful where thoughtful.\"target_week_seqs\" is not null) THEN \"divergent\".\"cr_order_number\" ELSE NULL END as \"_virt_filter_order_number_2043879723958800\"
+FROM
+    \"divergent\"
+GROUP BY
+    1,
+    2,
+    \"divergent\".\"cr_order_number\"),
+concerned as (
+SELECT
+    \"juicy\".\"item_name\" as \"item_name\",
+    count(\"juicy\".\"_virt_filter_order_number_2669589795814830\") as \"wr_item_present\"
+FROM
+    \"juicy\"
+GROUP BY
+    1),
+friendly as (
+SELECT
+    \"macho\".\"item_name\" as \"item_name\",
+    count(\"macho\".\"_virt_filter_ticket_number_2619894611511928\") as \"sr_item_present\"
+FROM
+    \"macho\"
+GROUP BY
+    1),
+protective as (
+SELECT
+    \"busy\".\"item_name\" as \"item_name\",
+    count(\"busy\".\"_virt_filter_order_number_2043879723958800\") as \"cr_item_present\"
+FROM
+    \"busy\"
+GROUP BY
+    1),
+vast as (
+SELECT
+    \"concerned\".\"item_name\" as \"item_name\",
+    \"concerned\".\"wr_item_present\" as \"wr_item_present\",
+    \"courageous\".\"item_id\" as \"item_id\",
+    \"courageous\".\"wr_return_date_week_seq\" as \"wr_return_date_week_seq\",
+    \"courageous\".\"wr_return_quantity\" as \"wr_return_quantity\",
+    \"courageous\".\"wr_web_sales_order_number\" as \"wr_web_sales_order_number\"
+FROM
+    \"concerned\"
+    INNER JOIN \"courageous\" on \"concerned\".\"item_name\" = \"courageous\".\"item_name\"),
+hard as (
+SELECT
+    \"concerned\".\"wr_item_present\" as \"wr_item_present\",
+    \"puffy\".\"ss_return_date_week_seq\" as \"ss_return_date_week_seq\",
+    \"puffy\".\"ss_return_quantity\" as \"ss_return_quantity\",
+    coalesce(\"concerned\".\"item_name\",\"puffy\".\"item_name\") as \"item_name\"
+FROM
+    \"concerned\"
+    FULL JOIN \"puffy\" on \"concerned\".\"item_name\" is not distinct from \"puffy\".\"item_name\"),
+young as (
+SELECT
+    \"cheerful\".\"cr_date_week_seq\" as \"cr_date_week_seq\",
+    \"cheerful\".\"cr_order_number\" as \"cr_order_number\",
+    \"cheerful\".\"cr_return_quantity\" as \"cr_return_quantity\",
+    \"cheerful\".\"item_id\" as \"item_id\",
+    \"cheerful\".\"item_name\" as \"item_name\",
+    \"concerned\".\"wr_item_present\" as \"wr_item_present\"
+FROM
+    \"concerned\"
+    INNER JOIN \"cheerful\" on \"concerned\".\"item_name\" = \"cheerful\".\"item_name\"),
+cool as (
+SELECT
+    \"friendly\".\"item_name\" as \"item_name\",
+    \"friendly\".\"sr_item_present\" as \"sr_item_present\",
+    \"vast\".\"item_id\" as \"item_id\",
+    \"vast\".\"wr_item_present\" as \"wr_item_present\",
+    \"vast\".\"wr_return_date_week_seq\" as \"wr_return_date_week_seq\",
+    \"vast\".\"wr_return_quantity\" as \"wr_return_quantity\",
+    \"vast\".\"wr_web_sales_order_number\" as \"wr_web_sales_order_number\"
+FROM
+    \"vast\"
+    INNER JOIN \"friendly\" on \"vast\".\"item_name\" = \"friendly\".\"item_name\"),
+sedate as (
+SELECT
+    \"friendly\".\"item_name\" as \"item_name\",
+    \"friendly\".\"sr_item_present\" as \"sr_item_present\",
+    \"hard\".\"ss_return_date_week_seq\" as \"ss_return_date_week_seq\",
+    \"hard\".\"ss_return_quantity\" as \"ss_return_quantity\",
+    \"hard\".\"wr_item_present\" as \"wr_item_present\"
+FROM
+    \"hard\"
+    INNER JOIN \"friendly\" on \"hard\".\"item_name\" = \"friendly\".\"item_name\"),
+kaput as (
+SELECT
+    \"friendly\".\"sr_item_present\" as \"sr_item_present\",
+    \"young\".\"cr_date_week_seq\" as \"cr_date_week_seq\",
+    \"young\".\"cr_order_number\" as \"cr_order_number\",
+    \"young\".\"cr_return_quantity\" as \"cr_return_quantity\",
+    \"young\".\"item_id\" as \"item_id\",
+    \"young\".\"item_name\" as \"item_name\",
+    \"young\".\"wr_item_present\" as \"wr_item_present\"
+FROM
+    \"young\"
+    INNER JOIN \"friendly\" on \"young\".\"item_name\" = \"friendly\".\"item_name\"),
+elated as (
+SELECT
+    \"cool\".\"item_id\" as \"item_id\",
+    \"cool\".\"wr_return_date_week_seq\" as \"wr_return_date_week_seq\",
+    \"cool\".\"wr_return_quantity\" as \"wr_return_quantity\",
+    \"cool\".\"wr_web_sales_order_number\" as \"wr_web_sales_order_number\",
+    \"protective\".\"item_name\" as \"item_name\"
+FROM
+    \"cool\"
+    INNER JOIN \"protective\" on \"cool\".\"item_name\" = \"protective\".\"item_name\"
+WHERE
+    \"cool\".\"sr_item_present\" > 0 and \"protective\".\"cr_item_present\" > 0 and \"cool\".\"wr_item_present\" > 0
+),
+yellow as (
+SELECT
+    \"protective\".\"item_name\" as \"item_name\",
+    \"sedate\".\"ss_return_date_week_seq\" as \"ss_return_date_week_seq\",
+    \"sedate\".\"ss_return_quantity\" as \"ss_return_quantity\"
+FROM
+    \"sedate\"
+    INNER JOIN \"protective\" on \"sedate\".\"item_name\" = \"protective\".\"item_name\"
+WHERE
+    \"sedate\".\"sr_item_present\" > 0 and \"protective\".\"cr_item_present\" > 0 and \"sedate\".\"wr_item_present\" > 0
+),
+premium as (
+SELECT
+    \"kaput\".\"cr_date_week_seq\" as \"cr_date_week_seq\",
+    \"kaput\".\"cr_order_number\" as \"cr_order_number\",
+    \"kaput\".\"cr_return_quantity\" as \"cr_return_quantity\",
+    \"kaput\".\"item_id\" as \"item_id\",
+    \"kaput\".\"item_name\" as \"item_name\"
+FROM
+    \"kaput\"
+    INNER JOIN \"protective\" on \"kaput\".\"item_name\" = \"protective\".\"item_name\"
+WHERE
+    \"kaput\".\"sr_item_present\" > 0 and \"protective\".\"cr_item_present\" > 0 and \"kaput\".\"wr_item_present\" > 0
+),
+wary as (
+SELECT
+    \"elated\".\"item_name\" as \"item_name\",
+    CASE WHEN \"elated\".\"wr_return_date_week_seq\" in (select thoughtful.\"target_week_seqs\" from thoughtful where thoughtful.\"target_week_seqs\" is not null) THEN \"elated\".\"wr_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_1454046128903499\"
+FROM
+    \"elated\"
+GROUP BY
+    1,
+    2,
+    \"elated\".\"item_id\",
+    \"elated\".\"wr_web_sales_order_number\"),
+resonant as (
+SELECT
+    \"yellow\".\"item_name\" as \"item_name\",
+    sum(CASE WHEN \"yellow\".\"ss_return_date_week_seq\" in (select thoughtful.\"target_week_seqs\" from thoughtful where thoughtful.\"target_week_seqs\" is not null) THEN \"yellow\".\"ss_return_quantity\" ELSE NULL END) as \"sr_item_qty\"
+FROM
+    \"yellow\"
+GROUP BY
+    1),
+puzzled as (
+SELECT
+    \"premium\".\"item_name\" as \"item_name\",
+    CASE WHEN \"premium\".\"cr_date_week_seq\" in (select thoughtful.\"target_week_seqs\" from thoughtful where thoughtful.\"target_week_seqs\" is not null) THEN \"premium\".\"cr_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_5939257317019279\"
+FROM
+    \"premium\"
+GROUP BY
+    1,
+    2,
+    \"premium\".\"cr_order_number\",
+    \"premium\".\"item_id\"),
+level as (
+SELECT
+    \"wary\".\"item_name\" as \"item_name\",
+    sum(\"wary\".\"_virt_filter_return_quantity_1454046128903499\") as \"wr_item_qty\"
+FROM
+    \"wary\"
+GROUP BY
+    1),
+rambunctious as (
+SELECT
+    \"puzzled\".\"item_name\" as \"item_name\",
+    sum(\"puzzled\".\"_virt_filter_return_quantity_5939257317019279\") as \"cr_item_qty\"
+FROM
+    \"puzzled\"
+GROUP BY
+    1),
+wooden as (
+SELECT
+    \"level\".\"wr_item_qty\" as \"wr_item_qty\",
+    \"resonant\".\"item_name\" as \"item_name\",
+    \"resonant\".\"sr_item_qty\" as \"sr_item_qty\"
+FROM
+    \"level\"
+    INNER JOIN \"resonant\" on \"level\".\"item_name\" = \"resonant\".\"item_name\")
+SELECT
+    \"rambunctious\".\"item_name\" as \"item_id\",
+    \"wooden\".\"sr_item_qty\" as \"sr_item_qty\",
+    ( ( (\"wooden\".\"sr_item_qty\" * 1.0) / ( ( \"wooden\".\"sr_item_qty\" + \"rambunctious\".\"cr_item_qty\" ) + \"wooden\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"sr_dev\",
+    \"rambunctious\".\"cr_item_qty\" as \"cr_item_qty\",
+    ( ( (\"rambunctious\".\"cr_item_qty\" * 1.0) / ( ( \"wooden\".\"sr_item_qty\" + \"rambunctious\".\"cr_item_qty\" ) + \"wooden\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"cr_dev\",
+    \"wooden\".\"wr_item_qty\" as \"wr_item_qty\",
+    ( ( (\"wooden\".\"wr_item_qty\" * 1.0) / ( ( \"wooden\".\"sr_item_qty\" + \"rambunctious\".\"cr_item_qty\" ) + \"wooden\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"wr_dev\",
+    ( ( \"wooden\".\"sr_item_qty\" + \"rambunctious\".\"cr_item_qty\" ) + \"wooden\".\"wr_item_qty\" ) / 3.0 as \"average\"
+FROM
+    \"wooden\"
+    INNER JOIN \"rambunctious\" on \"wooden\".\"item_name\" = \"rambunctious\".\"item_name\"
+ORDER BY 
+    \"item_id\" asc nulls first,
+    \"wooden\".\"sr_item_qty\" asc nulls first
+LIMIT (100)"""

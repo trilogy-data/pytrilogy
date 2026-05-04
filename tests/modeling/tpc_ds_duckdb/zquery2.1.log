@@ -1,5 +1,5 @@
 query_id = "2.1"
-gen_length = 6680
+gen_length = 6667
 generated_sql = """
 
 WITH 
@@ -9,7 +9,7 @@ SELECT
 FROM
     \"memory\".\"date_dim\" as \"date_date\"
 WHERE
-    cast(\"date_date\".\"D_YEAR\" as int) in (2001,2002)
+    \"date_date\".\"D_YEAR\" in (2001,2002)
 
 GROUP BY
     1),

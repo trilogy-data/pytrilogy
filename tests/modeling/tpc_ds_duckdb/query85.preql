@@ -1,0 +1,39 @@
+import web_returns as wr;
+
+WHERE
+    wr.web_sales.date.year = 2000
+    and ((wr.refunded_demographic.marital_status = 'M'
+          and wr.refunded_demographic.marital_status = wr.returning_demographic.marital_status
+          and wr.refunded_demographic.education_status = 'Advanced Degree'
+          and wr.refunded_demographic.education_status = wr.returning_demographic.education_status
+          and wr.web_sales.sales_price between 100.00 and 150.00)
+       or (wr.refunded_demographic.marital_status = 'S'
+          and wr.refunded_demographic.marital_status = wr.returning_demographic.marital_status
+          and wr.refunded_demographic.education_status = 'College'
+          and wr.refunded_demographic.education_status = wr.returning_demographic.education_status
+          and wr.web_sales.sales_price between 50.00 and 100.00)
+       or (wr.refunded_demographic.marital_status = 'W'
+          and wr.refunded_demographic.marital_status = wr.returning_demographic.marital_status
+          and wr.refunded_demographic.education_status = '2 yr Degree'
+          and wr.refunded_demographic.education_status = wr.returning_demographic.education_status
+          and wr.web_sales.sales_price between 150.00 and 200.00))
+    and ((wr.refunded_address.country = 'United States'
+          and wr.refunded_address.state in ('IN', 'OH', 'NJ')
+          and wr.web_sales.net_profit between 100 and 200)
+       or (wr.refunded_address.country = 'United States'
+          and wr.refunded_address.state in ('WI', 'CT', 'KY')
+          and wr.web_sales.net_profit between 150 and 300)
+       or (wr.refunded_address.country = 'United States'
+          and wr.refunded_address.state in ('LA', 'IA', 'AR')
+          and wr.web_sales.net_profit between 50 and 250))
+SELECT
+    substring(wr.reason.desc, 1, 20) as reason_desc,
+    avg(wr.web_sales.quantity) as avg1,
+    avg(wr.refunded_cash) as avg2,
+    avg(wr.fee) as avg3,
+ORDER BY
+    reason_desc asc,
+    avg1 asc,
+    avg2 asc,
+    avg3 asc
+LIMIT 100;

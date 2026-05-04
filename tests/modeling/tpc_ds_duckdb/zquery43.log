@@ -1,5 +1,5 @@
 query_id = "43"
-gen_length = 1932
+gen_length = 1919
 generated_sql = """
 SELECT
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
@@ -16,7 +16,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"store_sales_store_store\".\"S_GMT_OFFSET\" = -5 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2000
+    \"store_sales_store_store\".\"S_GMT_OFFSET\" = -5 and \"store_sales_date_date\".\"D_YEAR\" = 2000
 
 GROUP BY
     1,

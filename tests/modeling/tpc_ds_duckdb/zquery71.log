@@ -1,0 +1,77 @@
+query_id = "71"
+gen_length = 2893
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
+     'CATALOG'  as \"sales_sales_channel\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" as \"time_id\"
+FROM
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\",
+    \"sales_store_sales_unified\".\"SS_SOLD_TIME_SK\" as \"time_id\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\",
+    \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" as \"time_id\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+abundant as (
+SELECT
+    \"cheerful\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"sales_item_items\".\"I_BRAND\" as \"sales_item_brand_name\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
+    \"time_time\".\"T_HOUR\" as \"time_hour\",
+    \"time_time\".\"T_MINUTE\" as \"time_minute\"
+FROM
+    \"memory\".\"time_dim\" as \"time_time\"
+    LEFT OUTER JOIN \"cheerful\" on \"time_time\".\"T_TIME_SK\" = \"cheerful\".\"time_id\"
+    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"sales_date_date\".\"D_YEAR\" = 1999 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_item_items\".\"I_MANAGER_ID\" = 1 and ( \"time_time\".\"T_MEAL_TIME\" = 'breakfast' or \"time_time\".\"T_MEAL_TIME\" = 'dinner' )
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    \"cheerful\".\"sales_item_id\",
+    \"cheerful\".\"sales_order_id\",
+    \"cheerful\".\"sales_sales_channel\")
+SELECT
+    \"abundant\".\"sales_item_brand_id\" as \"brand_id\",
+    \"abundant\".\"sales_item_brand_name\" as \"brand\",
+    \"abundant\".\"time_hour\" as \"t_hour\",
+    \"abundant\".\"time_minute\" as \"t_minute\",
+    sum(\"abundant\".\"sales_ext_sales_price\") as \"ext_price\"
+FROM
+    \"abundant\"
+GROUP BY
+    1,
+    2,
+    3,
+    4
+ORDER BY 
+    \"ext_price\" desc nulls first,
+    \"brand_id\" asc nulls first,
+    \"t_hour\" asc nulls first,
+    \"t_minute\" asc nulls first"""

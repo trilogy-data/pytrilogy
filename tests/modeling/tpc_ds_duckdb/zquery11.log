@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 4903
+gen_length = 4851
 generated_sql = """
 
 WITH 
@@ -40,10 +40,10 @@ FROM
 yummy as (
 SELECT
     \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and cast(\"sales_date_date\".\"D_YEAR\" as int) = :first_year THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_first_year\",
-    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and cast(\"sales_date_date\".\"D_YEAR\" as int) = :second_year THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_second_year\",
-    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and cast(\"sales_date_date\".\"D_YEAR\" as int) = :first_year THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_first_year\",
-    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and cast(\"sales_date_date\".\"D_YEAR\" as int) = :second_year THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_second_year\"
+    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = :first_year THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_first_year\",
+    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = :second_year THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_second_year\",
+    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = :first_year THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_first_year\",
+    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = :second_year THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_second_year\"
 FROM
     \"memory\".\"date_dim\" as \"sales_date_date\"
     LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"

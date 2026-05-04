@@ -1,0 +1,43 @@
+import store_sales as ss;
+import catalog_returns as cr;
+import web_returns as wr;
+import item as item;
+import date as date;
+
+merge ss.item.id into ~item.id;
+merge cr.item.id into ~item.id;
+merge wr.web_sales.item.id into ~item.id;
+
+auto target_week_seqs <- date.week_seq ? date.date in (cast('2000-06-30' as date), cast('2000-09-27' as date), cast('2000-11-17' as date));
+
+auto sr_item_qty <- sum(ss.return_quantity ? ss.return_date.week_seq in target_week_seqs) by item.name;
+auto cr_item_qty <- sum(cr.return_quantity ? cr.date.week_seq in target_week_seqs) by item.name;
+auto wr_item_qty <- sum(wr.return_quantity ? wr.return_date.week_seq in target_week_seqs) by item.name;
+
+auto sr_item_present <- count(ss.ticket_number ? ss.return_date.week_seq in target_week_seqs) by item.name;
+auto cr_item_present <- count(cr.order_number ? cr.date.week_seq in target_week_seqs) by item.name;
+auto wr_item_present <- count(wr.web_sales.order_number ? wr.return_date.week_seq in target_week_seqs) by item.name;
+
+auto total_qty <- sr_item_qty + cr_item_qty + wr_item_qty;
+auto avg_qty <- total_qty / 3.0;
+auto sr_dev <- (sr_item_qty * 1.0000) / total_qty / 3.0000 * 100;
+auto cr_dev <- (cr_item_qty * 1.0000) / total_qty / 3.0000 * 100;
+auto wr_dev <- (wr_item_qty * 1.0000) / total_qty / 3.0000 * 100;
+
+WHERE
+    sr_item_present > 0
+    and cr_item_present > 0
+    and wr_item_present > 0
+SELECT
+    item.name as item_id,
+    sr_item_qty,
+    sr_dev,
+    cr_item_qty,
+    cr_dev,
+    wr_item_qty,
+    wr_dev,
+    avg_qty as average,
+ORDER BY
+    item_id asc nulls first,
+    sr_item_qty asc nulls first
+LIMIT 100;
