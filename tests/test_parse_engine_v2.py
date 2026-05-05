@@ -7,7 +7,11 @@ import pytest
 from trilogy.constants import CONFIG, ParserBackend
 from trilogy.core.enums import DatasourceState
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import (
+    DictImportResolver,
+    Environment,
+    EnvironmentConfig,
+)
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
 
@@ -144,6 +148,48 @@ file `{remote_path}`;
     )
     ds = env.datasources["local.remote"]
     assert ds.address.location == remote_path
+
+
+def test_parse_text_v2_datasource_data_file_in_dict_resolver() -> None:
+    env = Environment(
+        config=EnvironmentConfig(
+            import_resolver=DictImportResolver(
+                data_files={"./virtual.csv": b"id\n1\n2\n"},
+            )
+        )
+    )
+    parse_text(
+        """
+key id int;
+datasource virtual_ds (
+    id: id,
+)
+grain (id)
+file `./virtual.csv`;
+""",
+        env,
+    )
+    ds = env.datasources["local.virtual_ds"]
+    assert ds.status == DatasourceState.PUBLISHED
+    build_env = env.materialize_for_select()
+    assert "virtual_ds" in build_env.datasources
+
+
+def test_parse_text_v2_datasource_data_file_missing_marks_unpopulated() -> None:
+    env = Environment(config=EnvironmentConfig(import_resolver=DictImportResolver()))
+    parse_text(
+        """
+key id int;
+datasource virtual_ds (
+    id: id,
+)
+grain (id)
+file `./not_in_resolver.csv`;
+""",
+        env,
+    )
+    ds = env.datasources["local.virtual_ds"]
+    assert ds.status == DatasourceState.UNPOPULATED
 
 
 def test_parse_text_v2_datasource_status_unpublished() -> None:

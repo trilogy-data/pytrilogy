@@ -86,6 +86,14 @@ class FileSystemImportResolver(BaseImportResolver):
 @dataclass
 class DictImportResolver(BaseImportResolver):
     content: Dict[str, str] = field(default_factory=dict)
+    # Virtual data files (csv, parquet, ...) keyed by the path as written in
+    # trilogy source or the resolved absolute form. A datasource that points at
+    # a key in this map is treated as published even when there is no real file
+    # on disk — useful for server / sandboxed environments.
+    data_files: Dict[str, bytes] = field(default_factory=dict)
+
+    def has_data_file(self, *paths: str) -> bool:
+        return any(p in self.data_files for p in paths)
 
 
 @dataclass
@@ -103,7 +111,8 @@ class EnvironmentConfig:
                     k[len(root) + 1 :]: v
                     for k, v in new.import_resolver.content.items()
                     if k.startswith(f"{root}.")
-                }
+                },
+                data_files=new.import_resolver.data_files,
             )
         return new
 
