@@ -344,6 +344,8 @@ def _resolve_const_paths(
 
 
 def _process_file_path(context: RuleContext, ipath: str) -> tuple[str, str, bool]:
+    from trilogy.core.models.environment import DictImportResolver
+
     is_cloud = ipath.startswith(REMOTE_PREFIXES)
     is_glob = any(c in ipath for c in "*?[")
     if is_cloud:
@@ -355,8 +357,12 @@ def _process_file_path(context: RuleContext, ipath: str) -> tuple[str, str, bool
             path = Path(context.environment.working_path) / path
         base = str(path.resolve().absolute())
         suffix = path.suffix
+    resolver = context.environment.config.import_resolver
+    in_resolver = isinstance(resolver, DictImportResolver) and resolver.has_data_file(
+        ipath, base
+    )
     # Globs cannot be stat'd as a single file; trust the caller.
-    exists = is_cloud or is_glob or Path(base).exists()
+    exists = is_cloud or is_glob or in_resolver or Path(base).exists()
     return base, suffix, exists
 
 
