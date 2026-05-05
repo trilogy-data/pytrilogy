@@ -1,9 +1,9 @@
 query_id = "66"
-gen_length = 35864
+gen_length = 35606
 generated_sql = """
 
 WITH 
-vacuous as (
+thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
@@ -51,91 +51,10 @@ SELECT
     \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-thoughtful as (
-SELECT
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
-FROM
-    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
-     NULL  as \"sales_warehouse_id\"
-FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
-FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
 quizzical as (
 SELECT
     :ship_carriers as \"ship_carriers\"
 ),
-sparkling as (
-SELECT
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    \"vacuous\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 1 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_jan_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 10 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_oct_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_nov_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_dec_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_feb_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 3 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_mar_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 4 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_apr_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_may_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 6 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_jun_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 7 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_jul_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_aug_sales\",
-    sum(\"vacuous\".\"sales_ext_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_sep_sales\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 1 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_jan_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 10 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_oct_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_nov_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_dec_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_feb_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 3 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_mar_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 4 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_apr_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_may_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 6 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_jun_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 7 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_jul_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_aug_net\",
-    sum(\"vacuous\".\"sales_net_paid\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"ws_sep_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 1 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_jan_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 10 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_oct_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_nov_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_dec_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_feb_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 3 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_mar_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 4 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_apr_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_may_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 6 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_jun_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 7 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_jul_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_aug_net\",
-    sum(\"vacuous\".\"sales_net_paid_inc_tax\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_sep_net\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 1 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_jan_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 10 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_oct_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_nov_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_dec_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_feb_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 3 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_mar_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 4 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_apr_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_may_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 6 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_jun_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 7 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_jul_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_aug_sales\",
-    sum(\"vacuous\".\"sales_sales_price\" * CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"vacuous\".\"sales_warehouse_id\" is not null THEN \"vacuous\".\"sales_quantity\" ELSE NULL END) as \"cs_sep_sales\"
-FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"vacuous\" on \"sales_date_date\".\"D_DATE_SK\" = \"vacuous\".\"sales_date_id\"
-    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"vacuous\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
-    FULL JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"vacuous\".\"sales_ship_mode_id\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"vacuous\".\"sales_warehouse_id\" is not null
-
-GROUP BY
-    1,
-    2),
 cooperative as (
 SELECT
     \"thoughtful\".\"sales_date_id\" as \"sales_date_id\",
@@ -144,6 +63,69 @@ FROM
     \"thoughtful\"
 WHERE
     \"thoughtful\".\"sales_warehouse_id\" is not null
+
+GROUP BY
+    1,
+    2),
+young as (
+SELECT
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
+    \"thoughtful\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 1 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_jan_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 10 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_oct_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_nov_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_dec_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_feb_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 3 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_mar_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 4 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_apr_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_may_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 6 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_jun_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 7 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_jul_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_aug_sales\",
+    sum(\"thoughtful\".\"sales_ext_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_sep_sales\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 1 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_jan_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 10 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_oct_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_nov_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_dec_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_feb_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 3 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_mar_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 4 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_apr_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_may_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 6 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_jun_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 7 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_jul_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_aug_net\",
+    sum(\"thoughtful\".\"sales_net_paid\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"ws_sep_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 1 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_jan_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 10 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_oct_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_nov_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_dec_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_feb_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 3 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_mar_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 4 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_apr_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_may_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 6 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_jun_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 7 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_jul_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_aug_net\",
+    sum(\"thoughtful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_sep_net\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 1 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_jan_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 10 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_oct_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_nov_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_dec_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_feb_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 3 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_mar_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 4 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_apr_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_may_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 6 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_jun_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 7 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_jul_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_aug_sales\",
+    sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_sep_sales\"
+FROM
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"thoughtful\" on \"sales_date_date\".\"D_DATE_SK\" = \"thoughtful\".\"sales_date_id\"
+    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"thoughtful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
+    FULL JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"thoughtful\".\"sales_ship_mode_id\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
+WHERE
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"thoughtful\".\"sales_warehouse_id\" is not null
 
 GROUP BY
     1,
@@ -182,7 +164,7 @@ FROM
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 2001 and \"cooperative\".\"sales_warehouse_id\" is not null
 ),
-late as (
+sweltering as (
 SELECT
     \"juicy\".\"sales_warehouse_city\" as \"w_city\",
     \"juicy\".\"sales_warehouse_country\" as \"w_country\",
@@ -190,46 +172,46 @@ SELECT
     \"juicy\".\"sales_warehouse_name\" as \"w_warehouse_name\",
     \"juicy\".\"sales_warehouse_square_feet\" as \"w_warehouse_sq_ft\",
     \"juicy\".\"sales_warehouse_state\" as \"w_state\",
-    \"sparkling\".\"sales_date_year\" as \"year_\",
-    ( coalesce(\"sparkling\".\"ws_apr_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_apr_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"apr_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_aug_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_aug_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"aug_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_dec_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_dec_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"dec_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_feb_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_feb_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"feb_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_jan_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_jan_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"jan_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_jul_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_jul_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"jul_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_jun_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_jun_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"jun_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_mar_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_mar_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"mar_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_may_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_may_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"may_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_nov_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_nov_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"nov_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_oct_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_oct_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"oct_sales_per_sq_foot\",
-    ( coalesce(\"sparkling\".\"ws_sep_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"sparkling\".\"cs_sep_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"sep_sales_per_sq_foot\",
-    coalesce(\"sparkling\".\"ws_apr_net\",0) + coalesce(\"sparkling\".\"cs_apr_net\",0) as \"apr_net\",
-    coalesce(\"sparkling\".\"ws_apr_sales\",0) + coalesce(\"sparkling\".\"cs_apr_sales\",0) as \"apr_sales\",
-    coalesce(\"sparkling\".\"ws_aug_net\",0) + coalesce(\"sparkling\".\"cs_aug_net\",0) as \"aug_net\",
-    coalesce(\"sparkling\".\"ws_aug_sales\",0) + coalesce(\"sparkling\".\"cs_aug_sales\",0) as \"aug_sales\",
-    coalesce(\"sparkling\".\"ws_dec_net\",0) + coalesce(\"sparkling\".\"cs_dec_net\",0) as \"dec_net\",
-    coalesce(\"sparkling\".\"ws_dec_sales\",0) + coalesce(\"sparkling\".\"cs_dec_sales\",0) as \"dec_sales\",
-    coalesce(\"sparkling\".\"ws_feb_net\",0) + coalesce(\"sparkling\".\"cs_feb_net\",0) as \"feb_net\",
-    coalesce(\"sparkling\".\"ws_feb_sales\",0) + coalesce(\"sparkling\".\"cs_feb_sales\",0) as \"feb_sales\",
-    coalesce(\"sparkling\".\"ws_jan_net\",0) + coalesce(\"sparkling\".\"cs_jan_net\",0) as \"jan_net\",
-    coalesce(\"sparkling\".\"ws_jan_sales\",0) + coalesce(\"sparkling\".\"cs_jan_sales\",0) as \"jan_sales\",
-    coalesce(\"sparkling\".\"ws_jul_net\",0) + coalesce(\"sparkling\".\"cs_jul_net\",0) as \"jul_net\",
-    coalesce(\"sparkling\".\"ws_jul_sales\",0) + coalesce(\"sparkling\".\"cs_jul_sales\",0) as \"jul_sales\",
-    coalesce(\"sparkling\".\"ws_jun_net\",0) + coalesce(\"sparkling\".\"cs_jun_net\",0) as \"jun_net\",
-    coalesce(\"sparkling\".\"ws_jun_sales\",0) + coalesce(\"sparkling\".\"cs_jun_sales\",0) as \"jun_sales\",
-    coalesce(\"sparkling\".\"ws_mar_net\",0) + coalesce(\"sparkling\".\"cs_mar_net\",0) as \"mar_net\",
-    coalesce(\"sparkling\".\"ws_mar_sales\",0) + coalesce(\"sparkling\".\"cs_mar_sales\",0) as \"mar_sales\",
-    coalesce(\"sparkling\".\"ws_may_net\",0) + coalesce(\"sparkling\".\"cs_may_net\",0) as \"may_net\",
-    coalesce(\"sparkling\".\"ws_may_sales\",0) + coalesce(\"sparkling\".\"cs_may_sales\",0) as \"may_sales\",
-    coalesce(\"sparkling\".\"ws_nov_net\",0) + coalesce(\"sparkling\".\"cs_nov_net\",0) as \"nov_net\",
-    coalesce(\"sparkling\".\"ws_nov_sales\",0) + coalesce(\"sparkling\".\"cs_nov_sales\",0) as \"nov_sales\",
-    coalesce(\"sparkling\".\"ws_oct_net\",0) + coalesce(\"sparkling\".\"cs_oct_net\",0) as \"oct_net\",
-    coalesce(\"sparkling\".\"ws_oct_sales\",0) + coalesce(\"sparkling\".\"cs_oct_sales\",0) as \"oct_sales\",
-    coalesce(\"sparkling\".\"ws_sep_net\",0) + coalesce(\"sparkling\".\"cs_sep_net\",0) as \"sep_net\",
-    coalesce(\"sparkling\".\"ws_sep_sales\",0) + coalesce(\"sparkling\".\"cs_sep_sales\",0) as \"sep_sales\"
+    \"young\".\"sales_date_year\" as \"year_\",
+    ( coalesce(\"young\".\"ws_apr_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_apr_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"apr_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_aug_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_aug_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"aug_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_dec_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_dec_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"dec_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_feb_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_feb_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"feb_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_jan_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_jan_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"jan_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_jul_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_jul_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"jul_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_jun_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_jun_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"jun_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_mar_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_mar_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"mar_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_may_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_may_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"may_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_nov_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_nov_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"nov_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_oct_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_oct_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"oct_sales_per_sq_foot\",
+    ( coalesce(\"young\".\"ws_sep_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) + ( coalesce(\"young\".\"cs_sep_sales\",0) / \"juicy\".\"sales_warehouse_square_feet\" ) as \"sep_sales_per_sq_foot\",
+    coalesce(\"young\".\"ws_apr_net\",0) + coalesce(\"young\".\"cs_apr_net\",0) as \"apr_net\",
+    coalesce(\"young\".\"ws_apr_sales\",0) + coalesce(\"young\".\"cs_apr_sales\",0) as \"apr_sales\",
+    coalesce(\"young\".\"ws_aug_net\",0) + coalesce(\"young\".\"cs_aug_net\",0) as \"aug_net\",
+    coalesce(\"young\".\"ws_aug_sales\",0) + coalesce(\"young\".\"cs_aug_sales\",0) as \"aug_sales\",
+    coalesce(\"young\".\"ws_dec_net\",0) + coalesce(\"young\".\"cs_dec_net\",0) as \"dec_net\",
+    coalesce(\"young\".\"ws_dec_sales\",0) + coalesce(\"young\".\"cs_dec_sales\",0) as \"dec_sales\",
+    coalesce(\"young\".\"ws_feb_net\",0) + coalesce(\"young\".\"cs_feb_net\",0) as \"feb_net\",
+    coalesce(\"young\".\"ws_feb_sales\",0) + coalesce(\"young\".\"cs_feb_sales\",0) as \"feb_sales\",
+    coalesce(\"young\".\"ws_jan_net\",0) + coalesce(\"young\".\"cs_jan_net\",0) as \"jan_net\",
+    coalesce(\"young\".\"ws_jan_sales\",0) + coalesce(\"young\".\"cs_jan_sales\",0) as \"jan_sales\",
+    coalesce(\"young\".\"ws_jul_net\",0) + coalesce(\"young\".\"cs_jul_net\",0) as \"jul_net\",
+    coalesce(\"young\".\"ws_jul_sales\",0) + coalesce(\"young\".\"cs_jul_sales\",0) as \"jul_sales\",
+    coalesce(\"young\".\"ws_jun_net\",0) + coalesce(\"young\".\"cs_jun_net\",0) as \"jun_net\",
+    coalesce(\"young\".\"ws_jun_sales\",0) + coalesce(\"young\".\"cs_jun_sales\",0) as \"jun_sales\",
+    coalesce(\"young\".\"ws_mar_net\",0) + coalesce(\"young\".\"cs_mar_net\",0) as \"mar_net\",
+    coalesce(\"young\".\"ws_mar_sales\",0) + coalesce(\"young\".\"cs_mar_sales\",0) as \"mar_sales\",
+    coalesce(\"young\".\"ws_may_net\",0) + coalesce(\"young\".\"cs_may_net\",0) as \"may_net\",
+    coalesce(\"young\".\"ws_may_sales\",0) + coalesce(\"young\".\"cs_may_sales\",0) as \"may_sales\",
+    coalesce(\"young\".\"ws_nov_net\",0) + coalesce(\"young\".\"cs_nov_net\",0) as \"nov_net\",
+    coalesce(\"young\".\"ws_nov_sales\",0) + coalesce(\"young\".\"cs_nov_sales\",0) as \"nov_sales\",
+    coalesce(\"young\".\"ws_oct_net\",0) + coalesce(\"young\".\"cs_oct_net\",0) as \"oct_net\",
+    coalesce(\"young\".\"ws_oct_sales\",0) + coalesce(\"young\".\"cs_oct_sales\",0) as \"oct_sales\",
+    coalesce(\"young\".\"ws_sep_net\",0) + coalesce(\"young\".\"cs_sep_net\",0) as \"sep_net\",
+    coalesce(\"young\".\"ws_sep_sales\",0) + coalesce(\"young\".\"cs_sep_sales\",0) as \"sep_sales\"
 FROM
-    \"sparkling\"
-    FULL JOIN \"juicy\" on \"sparkling\".\"sales_warehouse_id\" is not distinct from \"juicy\".\"sales_warehouse_id\"
+    \"young\"
+    FULL JOIN \"juicy\" on \"young\".\"sales_warehouse_id\" is not distinct from \"juicy\".\"sales_warehouse_id\"
 GROUP BY
     1,
     2,
@@ -274,54 +256,54 @@ GROUP BY
     41,
     42,
     43,
-    \"sparkling\".\"cs_apr_net\",
-    \"sparkling\".\"cs_apr_sales\",
-    \"sparkling\".\"cs_aug_net\",
-    \"sparkling\".\"cs_aug_sales\",
-    \"sparkling\".\"cs_dec_net\",
-    \"sparkling\".\"cs_dec_sales\",
-    \"sparkling\".\"cs_feb_net\",
-    \"sparkling\".\"cs_feb_sales\",
-    \"sparkling\".\"cs_jan_net\",
-    \"sparkling\".\"cs_jan_sales\",
-    \"sparkling\".\"cs_jul_net\",
-    \"sparkling\".\"cs_jul_sales\",
-    \"sparkling\".\"cs_jun_net\",
-    \"sparkling\".\"cs_jun_sales\",
-    \"sparkling\".\"cs_mar_net\",
-    \"sparkling\".\"cs_mar_sales\",
-    \"sparkling\".\"cs_may_net\",
-    \"sparkling\".\"cs_may_sales\",
-    \"sparkling\".\"cs_nov_net\",
-    \"sparkling\".\"cs_nov_sales\",
-    \"sparkling\".\"cs_oct_net\",
-    \"sparkling\".\"cs_oct_sales\",
-    \"sparkling\".\"cs_sep_net\",
-    \"sparkling\".\"cs_sep_sales\",
-    \"sparkling\".\"ws_apr_net\",
-    \"sparkling\".\"ws_apr_sales\",
-    \"sparkling\".\"ws_aug_net\",
-    \"sparkling\".\"ws_aug_sales\",
-    \"sparkling\".\"ws_dec_net\",
-    \"sparkling\".\"ws_dec_sales\",
-    \"sparkling\".\"ws_feb_net\",
-    \"sparkling\".\"ws_feb_sales\",
-    \"sparkling\".\"ws_jan_net\",
-    \"sparkling\".\"ws_jan_sales\",
-    \"sparkling\".\"ws_jul_net\",
-    \"sparkling\".\"ws_jul_sales\",
-    \"sparkling\".\"ws_jun_net\",
-    \"sparkling\".\"ws_jun_sales\",
-    \"sparkling\".\"ws_mar_net\",
-    \"sparkling\".\"ws_mar_sales\",
-    \"sparkling\".\"ws_may_net\",
-    \"sparkling\".\"ws_may_sales\",
-    \"sparkling\".\"ws_nov_net\",
-    \"sparkling\".\"ws_nov_sales\",
-    \"sparkling\".\"ws_oct_net\",
-    \"sparkling\".\"ws_oct_sales\",
-    \"sparkling\".\"ws_sep_net\",
-    \"sparkling\".\"ws_sep_sales\"),
+    \"young\".\"cs_apr_net\",
+    \"young\".\"cs_apr_sales\",
+    \"young\".\"cs_aug_net\",
+    \"young\".\"cs_aug_sales\",
+    \"young\".\"cs_dec_net\",
+    \"young\".\"cs_dec_sales\",
+    \"young\".\"cs_feb_net\",
+    \"young\".\"cs_feb_sales\",
+    \"young\".\"cs_jan_net\",
+    \"young\".\"cs_jan_sales\",
+    \"young\".\"cs_jul_net\",
+    \"young\".\"cs_jul_sales\",
+    \"young\".\"cs_jun_net\",
+    \"young\".\"cs_jun_sales\",
+    \"young\".\"cs_mar_net\",
+    \"young\".\"cs_mar_sales\",
+    \"young\".\"cs_may_net\",
+    \"young\".\"cs_may_sales\",
+    \"young\".\"cs_nov_net\",
+    \"young\".\"cs_nov_sales\",
+    \"young\".\"cs_oct_net\",
+    \"young\".\"cs_oct_sales\",
+    \"young\".\"cs_sep_net\",
+    \"young\".\"cs_sep_sales\",
+    \"young\".\"ws_apr_net\",
+    \"young\".\"ws_apr_sales\",
+    \"young\".\"ws_aug_net\",
+    \"young\".\"ws_aug_sales\",
+    \"young\".\"ws_dec_net\",
+    \"young\".\"ws_dec_sales\",
+    \"young\".\"ws_feb_net\",
+    \"young\".\"ws_feb_sales\",
+    \"young\".\"ws_jan_net\",
+    \"young\".\"ws_jan_sales\",
+    \"young\".\"ws_jul_net\",
+    \"young\".\"ws_jul_sales\",
+    \"young\".\"ws_jun_net\",
+    \"young\".\"ws_jun_sales\",
+    \"young\".\"ws_mar_net\",
+    \"young\".\"ws_mar_sales\",
+    \"young\".\"ws_may_net\",
+    \"young\".\"ws_may_sales\",
+    \"young\".\"ws_nov_net\",
+    \"young\".\"ws_nov_sales\",
+    \"young\".\"ws_oct_net\",
+    \"young\".\"ws_oct_sales\",
+    \"young\".\"ws_sep_net\",
+    \"young\".\"ws_sep_sales\"),
 uneven as (
 SELECT
     \"quizzical\".\"ship_carriers\" as \"ship_carriers\"
@@ -334,52 +316,52 @@ WHERE
 GROUP BY
     1)
 SELECT
-    \"late\".\"w_warehouse_name\" as \"w_warehouse_name\",
-    \"late\".\"w_warehouse_sq_ft\" as \"w_warehouse_sq_ft\",
-    \"late\".\"w_city\" as \"w_city\",
-    \"late\".\"w_county\" as \"w_county\",
-    \"late\".\"w_state\" as \"w_state\",
-    \"late\".\"w_country\" as \"w_country\",
+    \"sweltering\".\"w_warehouse_name\" as \"w_warehouse_name\",
+    \"sweltering\".\"w_warehouse_sq_ft\" as \"w_warehouse_sq_ft\",
+    \"sweltering\".\"w_city\" as \"w_city\",
+    \"sweltering\".\"w_county\" as \"w_county\",
+    \"sweltering\".\"w_state\" as \"w_state\",
+    \"sweltering\".\"w_country\" as \"w_country\",
     \"uneven\".\"ship_carriers\" as \"ship_carriers\",
-    \"late\".\"year_\" as \"year_\",
-    \"late\".\"jan_sales\" as \"jan_sales\",
-    \"late\".\"feb_sales\" as \"feb_sales\",
-    \"late\".\"mar_sales\" as \"mar_sales\",
-    \"late\".\"apr_sales\" as \"apr_sales\",
-    \"late\".\"may_sales\" as \"may_sales\",
-    \"late\".\"jun_sales\" as \"jun_sales\",
-    \"late\".\"jul_sales\" as \"jul_sales\",
-    \"late\".\"aug_sales\" as \"aug_sales\",
-    \"late\".\"sep_sales\" as \"sep_sales\",
-    \"late\".\"oct_sales\" as \"oct_sales\",
-    \"late\".\"nov_sales\" as \"nov_sales\",
-    \"late\".\"dec_sales\" as \"dec_sales\",
-    \"late\".\"jan_sales_per_sq_foot\" as \"jan_sales_per_sq_foot\",
-    \"late\".\"feb_sales_per_sq_foot\" as \"feb_sales_per_sq_foot\",
-    \"late\".\"mar_sales_per_sq_foot\" as \"mar_sales_per_sq_foot\",
-    \"late\".\"apr_sales_per_sq_foot\" as \"apr_sales_per_sq_foot\",
-    \"late\".\"may_sales_per_sq_foot\" as \"may_sales_per_sq_foot\",
-    \"late\".\"jun_sales_per_sq_foot\" as \"jun_sales_per_sq_foot\",
-    \"late\".\"jul_sales_per_sq_foot\" as \"jul_sales_per_sq_foot\",
-    \"late\".\"aug_sales_per_sq_foot\" as \"aug_sales_per_sq_foot\",
-    \"late\".\"sep_sales_per_sq_foot\" as \"sep_sales_per_sq_foot\",
-    \"late\".\"oct_sales_per_sq_foot\" as \"oct_sales_per_sq_foot\",
-    \"late\".\"nov_sales_per_sq_foot\" as \"nov_sales_per_sq_foot\",
-    \"late\".\"dec_sales_per_sq_foot\" as \"dec_sales_per_sq_foot\",
-    \"late\".\"jan_net\" as \"jan_net\",
-    \"late\".\"feb_net\" as \"feb_net\",
-    \"late\".\"mar_net\" as \"mar_net\",
-    \"late\".\"apr_net\" as \"apr_net\",
-    \"late\".\"may_net\" as \"may_net\",
-    \"late\".\"jun_net\" as \"jun_net\",
-    \"late\".\"jul_net\" as \"jul_net\",
-    \"late\".\"aug_net\" as \"aug_net\",
-    \"late\".\"sep_net\" as \"sep_net\",
-    \"late\".\"oct_net\" as \"oct_net\",
-    \"late\".\"nov_net\" as \"nov_net\",
-    \"late\".\"dec_net\" as \"dec_net\"
+    \"sweltering\".\"year_\" as \"year_\",
+    \"sweltering\".\"jan_sales\" as \"jan_sales\",
+    \"sweltering\".\"feb_sales\" as \"feb_sales\",
+    \"sweltering\".\"mar_sales\" as \"mar_sales\",
+    \"sweltering\".\"apr_sales\" as \"apr_sales\",
+    \"sweltering\".\"may_sales\" as \"may_sales\",
+    \"sweltering\".\"jun_sales\" as \"jun_sales\",
+    \"sweltering\".\"jul_sales\" as \"jul_sales\",
+    \"sweltering\".\"aug_sales\" as \"aug_sales\",
+    \"sweltering\".\"sep_sales\" as \"sep_sales\",
+    \"sweltering\".\"oct_sales\" as \"oct_sales\",
+    \"sweltering\".\"nov_sales\" as \"nov_sales\",
+    \"sweltering\".\"dec_sales\" as \"dec_sales\",
+    \"sweltering\".\"jan_sales_per_sq_foot\" as \"jan_sales_per_sq_foot\",
+    \"sweltering\".\"feb_sales_per_sq_foot\" as \"feb_sales_per_sq_foot\",
+    \"sweltering\".\"mar_sales_per_sq_foot\" as \"mar_sales_per_sq_foot\",
+    \"sweltering\".\"apr_sales_per_sq_foot\" as \"apr_sales_per_sq_foot\",
+    \"sweltering\".\"may_sales_per_sq_foot\" as \"may_sales_per_sq_foot\",
+    \"sweltering\".\"jun_sales_per_sq_foot\" as \"jun_sales_per_sq_foot\",
+    \"sweltering\".\"jul_sales_per_sq_foot\" as \"jul_sales_per_sq_foot\",
+    \"sweltering\".\"aug_sales_per_sq_foot\" as \"aug_sales_per_sq_foot\",
+    \"sweltering\".\"sep_sales_per_sq_foot\" as \"sep_sales_per_sq_foot\",
+    \"sweltering\".\"oct_sales_per_sq_foot\" as \"oct_sales_per_sq_foot\",
+    \"sweltering\".\"nov_sales_per_sq_foot\" as \"nov_sales_per_sq_foot\",
+    \"sweltering\".\"dec_sales_per_sq_foot\" as \"dec_sales_per_sq_foot\",
+    \"sweltering\".\"jan_net\" as \"jan_net\",
+    \"sweltering\".\"feb_net\" as \"feb_net\",
+    \"sweltering\".\"mar_net\" as \"mar_net\",
+    \"sweltering\".\"apr_net\" as \"apr_net\",
+    \"sweltering\".\"may_net\" as \"may_net\",
+    \"sweltering\".\"jun_net\" as \"jun_net\",
+    \"sweltering\".\"jul_net\" as \"jul_net\",
+    \"sweltering\".\"aug_net\" as \"aug_net\",
+    \"sweltering\".\"sep_net\" as \"sep_net\",
+    \"sweltering\".\"oct_net\" as \"oct_net\",
+    \"sweltering\".\"nov_net\" as \"nov_net\",
+    \"sweltering\".\"dec_net\" as \"dec_net\"
 FROM
-    \"late\"
+    \"sweltering\"
     FULL JOIN \"uneven\" on 1=1
 GROUP BY
     1,
@@ -427,6 +409,6 @@ GROUP BY
     43,
     44
 ORDER BY 
-    \"late\".\"w_warehouse_name\" asc nulls first,
-    \"late\".\"year_\" asc nulls first
+    \"sweltering\".\"w_warehouse_name\" asc nulls first,
+    \"sweltering\".\"year_\" asc nulls first
 LIMIT (100)"""

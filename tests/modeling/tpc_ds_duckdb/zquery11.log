@@ -1,9 +1,9 @@
 query_id = "11"
-gen_length = 4821
+gen_length = 4445
 generated_sql = """
 
 WITH 
-abundant as (
+cheerful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
@@ -25,33 +25,6 @@ SELECT
      'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-cheerful as (
-SELECT
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
-     'STORE'  as \"sales_sales_channel\"
-FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
-     'WEB'  as \"sales_sales_channel\"
-FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-yummy as (
-SELECT
-    \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_first_year\",
-    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_second_year\",
-    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_first_year\",
-    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_second_year\"
-FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
-WHERE
-    \"abundant\".\"sales_sales_channel\" in ('STORE','WEB')
-
-GROUP BY
-    1),
 thoughtful as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
@@ -64,6 +37,21 @@ WHERE
 GROUP BY
     1,
     2),
+uneven as (
+SELECT
+    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_first_year\",
+    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_second_year\",
+    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_first_year\",
+    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_second_year\"
+FROM
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"cheerful\" on \"sales_date_date\".\"D_DATE_SK\" = \"cheerful\".\"sales_date_id\"
+WHERE
+    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB')
+
+GROUP BY
+    1),
 questionable as (
 SELECT
     \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
@@ -84,14 +72,14 @@ SELECT
     \"questionable\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"questionable\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\"
 FROM
-    \"yummy\"
-    INNER JOIN \"questionable\" on \"yummy\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
+    \"uneven\"
+    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
 WHERE
-    \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"yummy\".\"store_first_year\" > 0 and \"yummy\".\"web_first_year\" > 0 and ( CASE
-	WHEN \"yummy\".\"web_first_year\" > 0 THEN (\"yummy\".\"web_second_year\" * 1.0) / \"yummy\".\"web_first_year\"
+    \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
+	WHEN \"uneven\".\"web_first_year\" > 0 THEN (\"uneven\".\"web_second_year\" * 1.0) / \"uneven\".\"web_first_year\"
 	ELSE 0.0
 	END ) > ( CASE
-	WHEN \"yummy\".\"store_first_year\" > 0 THEN (\"yummy\".\"store_second_year\" * 1.0) / \"yummy\".\"store_first_year\"
+	WHEN \"uneven\".\"store_first_year\" > 0 THEN (\"uneven\".\"store_second_year\" * 1.0) / \"uneven\".\"store_first_year\"
 	ELSE 0.0
 	END )
 

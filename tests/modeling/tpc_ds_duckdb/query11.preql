@@ -14,6 +14,8 @@ auto web_first_year <- @channel_year_total('WEB', first_year);
 auto web_second_year <- @channel_year_total('WEB', second_year);
 
 where sales.sales_channel in ('STORE', 'WEB')
+    and sales.date.year in (first_year, second_year)
+    and sales.customer.id is not null
     and store_first_year > 0
     and web_first_year > 0
     and (case when web_first_year > 0 then (web_second_year * 1.0000) / web_first_year else 0.0 end)

@@ -883,6 +883,15 @@ class QueryDatasource:
 
     @property
     def identifier(self) -> str:
+        if self.source_type == SourceType.UNION:
+            # The arms — each addressable by their underlying base table — are
+            # what make a union unique. Two unions over the same arms can be
+            # merged by combining their projected columns, so don't fold the
+            # outer grain (which reflects the projected column subset) into the
+            # identifier. UnionCTE.condition is always None at render time
+            # (consumers wrap row-level filters as CASE), so the QDS-level
+            # condition is also irrelevant to identity.
+            return "_union_".join([d.identifier for d in self.datasources]) + "_unioned"
         filters = string_to_hash(str(self.condition)) if self.condition else ""
         grain = "_".join(
             [str(c).replace(".", "_") for c in sorted(self.grain.components)]
