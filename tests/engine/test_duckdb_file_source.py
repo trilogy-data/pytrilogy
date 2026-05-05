@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 from pytest import raises
@@ -286,65 +287,37 @@ def test_file_defensive_guards():
     that the grammar already prevents; call the helpers directly so the error
     branches aren't dead code on the coverage report."""
     fake_node = SyntaxNode(name="file", children=[], kind=SyntaxNodeKind.FILE)
+    env = Environment()
+    ctx = SimpleNamespace(environment=env)
 
-    class _Ctx:
-        class environment:
-            working_path = "."
-            concepts: dict = {}
-
-    # Empty path list → "must share the same extension" (no suffixes in set).
     with raises(HydrationError, match="must share the same extension"):
-        _build_file_from_paths(fake_node, _Ctx(), [])
+        _build_file_from_paths(fake_node, ctx, [])
 
-    # Unsupported extension → "Unsupported file type"
     with raises(HydrationError, match="Unsupported file type"):
-        _build_file_from_paths(fake_node, _Ctx(), ["https://host/data.xyz"])
-
-    # _resolve_const_paths with unknown name → "Unknown reference"
-    class _Ctx2:
-        class environment:
-            working_path = "."
-
-            class concepts:
-                @staticmethod
-                def get(_):
-                    return None
+        _build_file_from_paths(fake_node, ctx, ["https://host/data.xyz"])
 
     with raises(HydrationError, match="Unknown reference 'NOPE'"):
-        _resolve_const_paths(fake_node, _Ctx2(), "NOPE")
+        _resolve_const_paths(fake_node, ctx, "NOPE")
 
-    # _resolve_const_paths with empty list const → "is empty"
-    empty_fn = Function(
+    # Replace a real const's lineage with empty-tuple args — bypasses the
+    # parse-time empty-list rejection so the "is empty" branch is reachable.
+    env.parse("const EMPTY <- 'placeholder';")
+    env.concepts["local.EMPTY"].lineage = Function(
         operator=FunctionType.CONSTANT,
-        arguments=[()],  # empty tuple bypasses parse-time empty-list rejection
+        arguments=[()],
         output_datatype=DataType.STRING,
         output_purpose=Purpose.CONSTANT,
     )
-
-    class _EmptyConstCtx:
-        class environment:
-            working_path = "."
-
-            class concepts:
-                @staticmethod
-                def get(_):
-                    class _Concept:
-                        lineage = empty_fn
-                        purpose = "CONSTANT"
-
-                    return _Concept()
-
     with raises(HydrationError, match="is empty"):
-        _resolve_const_paths(fake_node, _EmptyConstCtx(), "EMPTY")
+        _resolve_const_paths(fake_node, ctx, "EMPTY")
 
-    # file_node with a synthesized empty FilePathList → "requires at least one path"
     node_with_empty_list = SyntaxNode(
         name="file",
-        children=[object()],  # placeholder; hydrate returns our FilePathList
+        children=[object()],
         kind=SyntaxNodeKind.FILE,
     )
     with raises(HydrationError, match="requires at least one path"):
-        file_node(node_with_empty_list, _Ctx(), lambda _child: FilePathList(paths=[]))
+        file_node(node_with_empty_list, ctx, lambda _child: FilePathList(paths=[]))
 
 
 def test_file_relative_path(tmp_path, monkeypatch):
