@@ -604,6 +604,16 @@ class BaseJoin:
 
     @property
     def unique_id(self) -> str:
+        # Order-independent: SQL renderer AND-joins keys after sorting, so two
+        # BaseJoins with the same pairs in different order produce identical
+        # SQL. Dedupe on the sorted form so set-iteration nondeterminism in
+        # upstream pair construction can't slip a duplicate past `unique()`.
+        if self.concept_pairs:
+            pair_keys = sorted(
+                f"{p.existing_datasource.name}.{p.left}={p.right}"
+                for p in self.concept_pairs
+            )
+            return f"{self.join_type.value} {self.right_datasource.name} on {','.join(pair_keys)}"
         return str(self)
 
     @property
@@ -663,7 +673,7 @@ class QueryDatasource:
         for join in self.joins:
             if not isinstance(join, BaseJoin):
                 continue
-            pairing = str(join)
+            pairing = join.unique_id
             if pairing in unique_pairs:
                 raise SyntaxError(f"Duplicate join {str(join)}")
             unique_pairs.add(pairing)
@@ -1259,6 +1269,15 @@ class Join:
 
     @property
     def unique_id(self) -> str:
+        # Order-independent — see BaseJoin.unique_id for rationale.
+        if self.joinkey_pairs:
+            pair_keys = sorted(
+                f"{k.cte.name}.{k.left.address}={k.right.address}"
+                for k in self.joinkey_pairs
+            )
+            return (
+                f"{self.jointype.value} join {self.right_name} on {','.join(pair_keys)}"
+            )
         return str(self)
 
     def __str__(self):

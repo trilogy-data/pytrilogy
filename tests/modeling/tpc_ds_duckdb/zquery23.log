@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 7742
+gen_length = 7771
 generated_sql = """
 
 WITH 
@@ -127,7 +127,11 @@ SELECT
     \"vacuous\".\"max_total_cmax\" as \"max_total_cmax\"
 FROM
     \"cooperative\"
-    FULL JOIN \"vacuous\" on 1=1),
+    FULL JOIN \"vacuous\" on 1=1
+GROUP BY
+    1,
+    2,
+    3),
 scrawny as (
 SELECT
     \"macho\".\"sales_item_id\" as \"frequent_item_id\",
