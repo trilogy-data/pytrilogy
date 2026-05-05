@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 13506
+gen_length = 12326
 generated_sql = """
 
 WITH 
@@ -30,7 +30,7 @@ SELECT
      'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
-friendly as (
+uneven as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
@@ -87,72 +87,18 @@ SELECT
      'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_site\" as \"sales_web_dim_unified\"),
-uneven as (
-SELECT
-    \"sales_catalog_sales_unified\".\"CS_CATALOG_PAGE_SK\" as \"sales_channel_dim_id\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_catalog_sales_unified\".\"CS_PROMO_SK\" as \"sales_promotion_id\",
-     'CATALOG'  as \"sales_sales_channel\"
-FROM
-    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_store_sales_unified\".\"SS_STORE_SK\" as \"sales_channel_dim_id\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_PROMO_SK\" as \"sales_promotion_id\",
-     'STORE'  as \"sales_sales_channel\"
-FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_web_sales_unified\".\"WS_WEB_SITE_SK\" as \"sales_channel_dim_id\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_web_sales_unified\".\"WS_PROMO_SK\" as \"sales_promotion_id\",
-     'WEB'  as \"sales_sales_channel\"
-FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
 quizzical as (
 SELECT
     cast(null as string) as \"null_channel_c\",
     cast(null as string) as \"null_id_b\",
     cast(null as string) as \"null_id_c\"
 ),
-rambunctious as (
+waggish as (
 SELECT
     sum(coalesce(\"scrawny\".\"sales_return_amount\",0)) as \"returns_c\"
 FROM
     \"scrawny\"
-    FULL JOIN \"friendly\" on \"scrawny\".\"sales_item_id\" = \"friendly\".\"sales_item_id\" AND \"scrawny\".\"sales_order_id\" = \"friendly\".\"sales_order_id\" AND \"scrawny\".\"sales_sales_channel\" = \"friendly\".\"sales_sales_channel\"),
-kaput as (
-SELECT
-    \"friendly\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
-    \"friendly\".\"sales_net_profit\" - coalesce(\"scrawny\".\"sales_return_net_loss\",0) as \"profit_minus_loss\",
-    \"scrawny\".\"sales_return_amount\" as \"sales_return_amount\",
-    CASE
-	WHEN coalesce(\"friendly\".\"sales_sales_channel\",\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\") = 'STORE' THEN 'store channel'
-	WHEN coalesce(\"friendly\".\"sales_sales_channel\",\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\") = 'CATALOG' THEN 'catalog channel'
-	WHEN coalesce(\"friendly\".\"sales_sales_channel\",\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\") = 'WEB' THEN 'web channel'
-	ELSE null
-	END as \"channel_label\",
-    CASE
-	WHEN coalesce(\"friendly\".\"sales_sales_channel\",\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\") = 'STORE' THEN ('store' || \"thoughtful\".\"sales_channel_dim_text_id\")
-	WHEN coalesce(\"friendly\".\"sales_sales_channel\",\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"thoughtful\".\"sales_channel_dim_text_id\")
-	WHEN coalesce(\"friendly\".\"sales_sales_channel\",\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\") = 'WEB' THEN ('web_site' || \"thoughtful\".\"sales_channel_dim_text_id\")
-	ELSE null
-	END as \"id_label\"
-FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"friendly\" on \"sales_date_date\".\"D_DATE_SK\" = \"friendly\".\"sales_date_id\"
-    FULL JOIN \"scrawny\" on \"friendly\".\"sales_item_id\" = \"scrawny\".\"sales_item_id\" AND \"friendly\".\"sales_order_id\" = \"scrawny\".\"sales_order_id\" AND \"friendly\".\"sales_sales_channel\" = \"scrawny\".\"sales_sales_channel\"
-    RIGHT OUTER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"friendly\".\"sales_promotion_id\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
-    INNER JOIN \"thoughtful\" on \"friendly\".\"sales_channel_dim_id\" = \"thoughtful\".\"sales_channel_dim_id\" AND coalesce(\"scrawny\".\"sales_sales_channel\", \"friendly\".\"sales_sales_channel\") = \"thoughtful\".\"sales_sales_channel\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on coalesce(\"scrawny\".\"sales_item_id\", \"friendly\".\"sales_item_id\") = \"sales_item_items\".\"I_ITEM_SK\"
-WHERE
-    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N' and \"thoughtful\".\"sales_channel_dim_text_id\" is not null
-),
+    FULL JOIN \"uneven\" on \"scrawny\".\"sales_item_id\" = \"uneven\".\"sales_item_id\" AND \"scrawny\".\"sales_order_id\" = \"uneven\".\"sales_order_id\" AND \"scrawny\".\"sales_sales_channel\" = \"uneven\".\"sales_sales_channel\"),
 yummy as (
 SELECT
     \"uneven\".\"sales_channel_dim_id\" as \"sales_channel_dim_id\",
@@ -168,35 +114,33 @@ GROUP BY
     3,
     4,
     5),
-puzzled as (
+friendly as (
 SELECT
-    \"kaput\".\"channel_label\" as \"channel\",
-    \"kaput\".\"id_label\" as \"id\",
-    sum(\"kaput\".\"profit_minus_loss\") as \"profit_a\",
-    sum(\"kaput\".\"sales_ext_sales_price\") as \"sales_a\",
-    sum(coalesce(\"kaput\".\"sales_return_amount\",0)) as \"returns_a\"
+    \"scrawny\".\"sales_return_amount\" as \"sales_return_amount\",
+    \"uneven\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"uneven\".\"sales_net_profit\" - coalesce(\"scrawny\".\"sales_return_net_loss\",0) as \"profit_minus_loss\",
+    CASE
+	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'STORE' THEN 'store channel'
+	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'CATALOG' THEN 'catalog channel'
+	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'WEB' THEN 'web channel'
+	ELSE null
+	END as \"channel_label\",
+    CASE
+	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'STORE' THEN ('store' || \"thoughtful\".\"sales_channel_dim_text_id\")
+	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"thoughtful\".\"sales_channel_dim_text_id\")
+	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'WEB' THEN ('web_site' || \"thoughtful\".\"sales_channel_dim_text_id\")
+	ELSE null
+	END as \"id_label\"
 FROM
-    \"kaput\"
-GROUP BY
-    1,
-    2),
-protective as (
-SELECT
-    \"kaput\".\"channel_label\" as \"channel_b\",
-    sum(\"kaput\".\"profit_minus_loss\") as \"profit_b\",
-    sum(\"kaput\".\"sales_ext_sales_price\") as \"sales_b\",
-    sum(coalesce(\"kaput\".\"sales_return_amount\",0)) as \"returns_b\"
-FROM
-    \"kaput\"
-GROUP BY
-    1),
-divergent as (
-SELECT
-    sum(\"kaput\".\"profit_minus_loss\") as \"profit_c\",
-    sum(\"kaput\".\"sales_ext_sales_price\") as \"sales_c\",
-    sum(coalesce(\"kaput\".\"sales_return_amount\",0)) as \"returns_c\"
-FROM
-    \"kaput\"),
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"uneven\" on \"sales_date_date\".\"D_DATE_SK\" = \"uneven\".\"sales_date_id\"
+    FULL JOIN \"scrawny\" on \"uneven\".\"sales_item_id\" = \"scrawny\".\"sales_item_id\" AND \"uneven\".\"sales_order_id\" = \"scrawny\".\"sales_order_id\" AND \"uneven\".\"sales_sales_channel\" = \"scrawny\".\"sales_sales_channel\"
+    RIGHT OUTER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"uneven\".\"sales_promotion_id\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
+    INNER JOIN \"thoughtful\" on \"uneven\".\"sales_channel_dim_id\" = \"thoughtful\".\"sales_channel_dim_id\" AND coalesce(\"scrawny\".\"sales_sales_channel\", \"uneven\".\"sales_sales_channel\") = \"thoughtful\".\"sales_sales_channel\"
+    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on coalesce(\"scrawny\".\"sales_item_id\", \"uneven\".\"sales_item_id\") = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N' and \"thoughtful\".\"sales_channel_dim_text_id\" is not null
+),
 young as (
 SELECT
     \"sales_item_items\".\"I_CURRENT_PRICE\" as \"sales_item_current_price\",
@@ -212,7 +156,36 @@ FROM
 WHERE
     cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N' and \"thoughtful\".\"sales_channel_dim_text_id\" is not null
 ),
+premium as (
+SELECT
+    \"friendly\".\"channel_label\" as \"channel\",
+    \"friendly\".\"id_label\" as \"id\",
+    sum(\"friendly\".\"profit_minus_loss\") as \"profit_a\",
+    sum(\"friendly\".\"sales_ext_sales_price\") as \"sales_a\",
+    sum(coalesce(\"friendly\".\"sales_return_amount\",0)) as \"returns_a\"
+FROM
+    \"friendly\"
+GROUP BY
+    1,
+    2),
 charming as (
+SELECT
+    \"friendly\".\"channel_label\" as \"channel_b\",
+    sum(\"friendly\".\"profit_minus_loss\") as \"profit_b\",
+    sum(\"friendly\".\"sales_ext_sales_price\") as \"sales_b\",
+    sum(coalesce(\"friendly\".\"sales_return_amount\",0)) as \"returns_b\"
+FROM
+    \"friendly\"
+GROUP BY
+    1),
+kaput as (
+SELECT
+    sum(\"friendly\".\"profit_minus_loss\") as \"profit_c\",
+    sum(\"friendly\".\"sales_ext_sales_price\") as \"sales_c\",
+    sum(coalesce(\"friendly\".\"sales_return_amount\",0)) as \"returns_c\"
+FROM
+    \"friendly\"),
+busy as (
 SELECT
     \"quizzical\".\"null_id_b\" as \"null_id_b\"
 FROM
@@ -245,48 +218,48 @@ WHERE
 
 GROUP BY
     1),
-premium as (
+protective as (
 SELECT
-    \"charming\".\"null_id_b\" as \"id\",
-    \"protective\".\"channel_b\" as \"channel\",
-    \"protective\".\"profit_b\" as \"profit_b\",
-    \"protective\".\"returns_b\" as \"returns_b\",
-    \"protective\".\"sales_b\" as \"sales_b\"
+    \"busy\".\"null_id_b\" as \"id\",
+    \"charming\".\"channel_b\" as \"channel\",
+    \"charming\".\"profit_b\" as \"profit_b\",
+    \"charming\".\"returns_b\" as \"returns_b\",
+    \"charming\".\"sales_b\" as \"sales_b\"
 FROM
-    \"protective\"
-    FULL JOIN \"charming\" on 1=1),
-busy as (
+    \"charming\"
+    FULL JOIN \"busy\" on 1=1),
+divergent as (
 SELECT
     \"abhorrent\".\"null_id_c\" as \"id\",
-    \"divergent\".\"profit_c\" as \"profit_c\",
-    \"divergent\".\"returns_c\" as \"returns_c\",
-    \"divergent\".\"sales_c\" as \"sales_c\",
+    \"kaput\".\"profit_c\" as \"profit_c\",
+    \"kaput\".\"returns_c\" as \"returns_c\",
+    \"kaput\".\"sales_c\" as \"sales_c\",
     \"sparkling\".\"null_channel_c\" as \"channel\"
 FROM
     \"sparkling\"
     FULL JOIN \"abhorrent\" on 1=1
-    FULL JOIN \"divergent\" on 1=1),
-waggish as (
+    FULL JOIN \"kaput\" on 1=1),
+puzzled as (
 SELECT
-    coalesce(\"busy\".\"channel\",\"premium\".\"channel\",\"puzzled\".\"channel\") as \"channel\",
-    coalesce(\"busy\".\"id\",\"premium\".\"id\",\"puzzled\".\"id\") as \"id\",
-    coalesce(\"puzzled\".\"profit_a\",\"premium\".\"profit_b\",\"busy\".\"profit_c\") as \"profit_total\",
-    coalesce(\"puzzled\".\"returns_a\",\"premium\".\"returns_b\",\"busy\".\"returns_c\") as \"returns_total\",
-    coalesce(\"puzzled\".\"sales_a\",\"premium\".\"sales_b\",\"busy\".\"sales_c\") as \"sales_total\"
+    coalesce(\"divergent\".\"channel\",\"premium\".\"channel\",\"protective\".\"channel\") as \"channel\",
+    coalesce(\"divergent\".\"id\",\"premium\".\"id\",\"protective\".\"id\") as \"id\",
+    coalesce(\"premium\".\"profit_a\",\"protective\".\"profit_b\",\"divergent\".\"profit_c\") as \"profit_total\",
+    coalesce(\"premium\".\"returns_a\",\"protective\".\"returns_b\",\"divergent\".\"returns_c\") as \"returns_total\",
+    coalesce(\"premium\".\"sales_a\",\"protective\".\"sales_b\",\"divergent\".\"sales_c\") as \"sales_total\"
+FROM
+    \"premium\"
+    FULL JOIN \"protective\" on \"premium\".\"channel\" is not distinct from \"protective\".\"channel\" AND \"premium\".\"id\" is not distinct from \"protective\".\"id\"
+    FULL JOIN \"divergent\" on coalesce(\"premium\".\"channel\", \"protective\".\"channel\") = \"divergent\".\"channel\" AND coalesce(\"premium\".\"id\", \"protective\".\"id\") = \"divergent\".\"id\")
+SELECT
+    \"puzzled\".\"channel\" as \"q80_results_channel\",
+    \"puzzled\".\"id\" as \"q80_results_id\",
+    \"puzzled\".\"sales_total\" as \"q80_results_sales_total\",
+    \"puzzled\".\"returns_total\" as \"q80_results_returns_total\",
+    \"puzzled\".\"profit_total\" as \"q80_results_profit_total\"
 FROM
     \"puzzled\"
-    FULL JOIN \"premium\" on \"puzzled\".\"channel\" is not distinct from \"premium\".\"channel\" AND \"puzzled\".\"id\" is not distinct from \"premium\".\"id\"
-    FULL JOIN \"busy\" on coalesce(\"puzzled\".\"channel\", \"premium\".\"channel\") = \"busy\".\"channel\" AND coalesce(\"puzzled\".\"id\", \"premium\".\"id\") = \"busy\".\"id\")
-SELECT
-    \"waggish\".\"channel\" as \"q80_results_channel\",
-    \"waggish\".\"id\" as \"q80_results_id\",
-    \"waggish\".\"sales_total\" as \"q80_results_sales_total\",
-    \"waggish\".\"returns_total\" as \"q80_results_returns_total\",
-    \"waggish\".\"profit_total\" as \"q80_results_profit_total\"
-FROM
-    \"waggish\"
     FULL JOIN \"quizzical\" on 1=1
-    FULL JOIN \"rambunctious\" on 1=1
+    FULL JOIN \"waggish\" on 1=1
 ORDER BY 
     \"q80_results_channel\" asc nulls first,
     \"q80_results_id\" asc nulls first

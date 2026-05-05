@@ -1,0 +1,227 @@
+query_id = "49"
+gen_length = 11514
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
+    \"sales_catalog_returns_unified\".\"CR_RETURN_AMOUNT\" as \"sales_return_amount\",
+     'CATALOG'  as \"sales_sales_channel\",
+    \"sales_catalog_returns_unified\".\"CR_RETURN_QUANTITY\" as \"sales_return_quantity\"
+FROM
+    \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
+UNION ALL
+SELECT
+    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
+    \"sales_store_returns_unified\".\"SR_RETURN_AMT\" as \"sales_return_amount\",
+     'STORE'  as \"sales_sales_channel\",
+    \"sales_store_returns_unified\".\"SR_RETURN_QUANTITY\" as \"sales_return_quantity\"
+FROM
+    \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
+UNION ALL
+SELECT
+    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\",
+    \"sales_web_returns_unified\".\"WR_RETURN_AMT\" as \"sales_return_amount\",
+     'WEB'  as \"sales_sales_channel\",
+    \"sales_web_returns_unified\".\"WR_RETURN_QUANTITY\" as \"sales_return_quantity\"
+FROM
+    \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
+abundant as (
+SELECT
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_NET_PAID\" as \"sales_net_paid\",
+    \"sales_catalog_sales_unified\".\"CS_NET_PROFIT\" as \"sales_net_profit\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
+    \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
+     'CATALOG'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
+    \"sales_store_sales_unified\".\"SS_NET_PROFIT\" as \"sales_net_profit\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+    \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
+    \"sales_web_sales_unified\".\"WS_NET_PROFIT\" as \"sales_net_profit\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+    \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+sweltering as (
+SELECT
+    \"abundant\".\"sales_net_paid\" as \"sales_net_paid\",
+    \"abundant\".\"sales_net_profit\" as \"sales_net_profit\",
+    \"abundant\".\"sales_quantity\" as \"sales_quantity\",
+    \"cheerful\".\"sales_return_amount\" as \"sales_return_amount\",
+    \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
+    coalesce(\"abundant\".\"sales_item_id\",\"cheerful\".\"sales_item_id\") as \"sales_item_id\",
+    coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") as \"sales_sales_channel\"
+FROM
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
+    INNER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+WHERE
+    \"cheerful\".\"sales_return_amount\" > 10000 and \"abundant\".\"sales_net_profit\" > 1 and \"abundant\".\"sales_net_paid\" > 0 and \"abundant\".\"sales_quantity\" > 0 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 12
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8),
+yummy as (
+SELECT
+    \"abundant\".\"sales_net_paid\" as \"sales_net_paid\",
+    \"abundant\".\"sales_net_profit\" as \"sales_net_profit\",
+    \"abundant\".\"sales_quantity\" as \"sales_quantity\",
+    \"cheerful\".\"sales_return_amount\" as \"sales_return_amount\",
+    \"cheerful\".\"sales_return_quantity\" as \"sales_return_quantity\",
+    \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
+    coalesce(\"abundant\".\"sales_item_id\",\"cheerful\".\"sales_item_id\") as \"sales_item_id\",
+    coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") as \"sales_sales_channel\"
+FROM
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
+    FULL JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"),
+juicy as (
+SELECT
+    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
+    \"yummy\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    CASE WHEN \"yummy\".\"sales_return_amount\" > 10000 and \"yummy\".\"sales_net_profit\" > 1 and \"yummy\".\"sales_net_paid\" > 0 and \"yummy\".\"sales_quantity\" > 0 and \"yummy\".\"sales_date_year\" = 2001 and \"yummy\".\"sales_date_month_of_year\" = 12 THEN \"yummy\".\"sales_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_1461147161863015\",
+    CASE WHEN \"yummy\".\"sales_return_amount\" > 10000 and \"yummy\".\"sales_net_profit\" > 1 and \"yummy\".\"sales_net_paid\" > 0 and \"yummy\".\"sales_quantity\" > 0 and \"yummy\".\"sales_date_year\" = 2001 and \"yummy\".\"sales_date_month_of_year\" = 12 THEN \"yummy\".\"sales_quantity\" ELSE NULL END as \"_virt_filter_quantity_4872867360241782\",
+    CASE WHEN \"yummy\".\"sales_return_amount\" > 10000 and \"yummy\".\"sales_net_profit\" > 1 and \"yummy\".\"sales_net_paid\" > 0 and \"yummy\".\"sales_quantity\" > 0 and \"yummy\".\"sales_date_year\" = 2001 and \"yummy\".\"sales_date_month_of_year\" = 12 THEN \"yummy\".\"sales_return_amount\" ELSE NULL END as \"_virt_filter_return_amount_6075293252176684\",
+    CASE WHEN \"yummy\".\"sales_return_amount\" > 10000 and \"yummy\".\"sales_net_profit\" > 1 and \"yummy\".\"sales_net_paid\" > 0 and \"yummy\".\"sales_quantity\" > 0 and \"yummy\".\"sales_date_year\" = 2001 and \"yummy\".\"sales_date_month_of_year\" = 12 THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_5096195335299834\"
+FROM
+    \"yummy\"),
+abhorrent as (
+SELECT
+    \"juicy\".\"sales_item_id\" as \"sales_item_id\",
+    \"juicy\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    sum(\"juicy\".\"_virt_filter_quantity_4872867360241782\") as \"sale_qty\",
+    sum(\"juicy\".\"_virt_filter_return_quantity_5096195335299834\") as \"return_qty\"
+FROM
+    \"juicy\"
+GROUP BY
+    1,
+    2),
+young as (
+SELECT
+    \"juicy\".\"sales_item_id\" as \"sales_item_id\",
+    \"juicy\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    cast(sum(\"juicy\".\"_virt_filter_return_quantity_5096195335299834\") as numeric(15,4)) / cast(sum(\"juicy\".\"_virt_filter_quantity_4872867360241782\") as numeric(15,4)) as \"return_ratio\"
+FROM
+    \"juicy\"
+GROUP BY
+    1,
+    2),
+vacuous as (
+SELECT
+    \"juicy\".\"sales_item_id\" as \"sales_item_id\",
+    \"juicy\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    cast(sum(\"juicy\".\"_virt_filter_return_amount_6075293252176684\") as numeric(15,4)) / cast(sum(\"juicy\".\"_virt_filter_net_paid_1461147161863015\") as numeric(15,4)) as \"currency_ratio\"
+FROM
+    \"juicy\"
+GROUP BY
+    1,
+    2),
+late as (
+SELECT
+    \"abhorrent\".\"return_qty\" as \"return_qty\",
+    \"abhorrent\".\"sale_qty\" as \"sale_qty\",
+    \"sweltering\".\"sales_date_month_of_year\" as \"sales_date_month_of_year\",
+    \"sweltering\".\"sales_date_year\" as \"sales_date_year\",
+    \"sweltering\".\"sales_net_paid\" as \"sales_net_paid\",
+    \"sweltering\".\"sales_net_profit\" as \"sales_net_profit\",
+    \"sweltering\".\"sales_quantity\" as \"sales_quantity\",
+    \"sweltering\".\"sales_return_amount\" as \"sales_return_amount\",
+    coalesce(\"abhorrent\".\"sales_item_id\",\"sweltering\".\"sales_item_id\") as \"sales_item_id\",
+    coalesce(\"abhorrent\".\"sales_sales_channel\",\"sweltering\".\"sales_sales_channel\") as \"sales_sales_channel\"
+FROM
+    \"abhorrent\"
+    RIGHT OUTER JOIN \"sweltering\" on \"abhorrent\".\"sales_item_id\" is not distinct from \"sweltering\".\"sales_item_id\" AND \"abhorrent\".\"sales_sales_channel\" is not distinct from \"sweltering\".\"sales_sales_channel\"
+WHERE
+    \"sweltering\".\"sales_return_amount\" > 10000 and \"sweltering\".\"sales_net_profit\" > 1 and \"sweltering\".\"sales_net_paid\" > 0 and \"sweltering\".\"sales_quantity\" > 0 and \"sweltering\".\"sales_date_year\" = 2001 and \"sweltering\".\"sales_date_month_of_year\" = 12
+),
+sparkling as (
+SELECT
+    \"young\".\"sales_item_id\" as \"sales_item_id\",
+    \"young\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    rank() over (partition by \"young\".\"sales_sales_channel\" order by \"young\".\"return_ratio\" asc ) as \"return_rank\"
+FROM
+    \"young\"),
+concerned as (
+SELECT
+    \"vacuous\".\"sales_item_id\" as \"sales_item_id\",
+    \"vacuous\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    rank() over (partition by \"vacuous\".\"sales_sales_channel\" order by \"vacuous\".\"currency_ratio\" asc ) as \"currency_rank\"
+FROM
+    \"vacuous\"),
+macho as (
+SELECT
+    \"late\".\"return_qty\" as \"return_qty\",
+    \"late\".\"sale_qty\" as \"sale_qty\",
+    \"late\".\"sales_date_month_of_year\" as \"sales_date_month_of_year\",
+    \"late\".\"sales_date_year\" as \"sales_date_year\",
+    \"late\".\"sales_net_paid\" as \"sales_net_paid\",
+    \"late\".\"sales_net_profit\" as \"sales_net_profit\",
+    \"late\".\"sales_quantity\" as \"sales_quantity\",
+    \"late\".\"sales_return_amount\" as \"sales_return_amount\",
+    \"sparkling\".\"return_rank\" as \"return_rank\",
+    coalesce(\"late\".\"sales_item_id\",\"sparkling\".\"sales_item_id\") as \"sales_item_id\",
+    coalesce(\"late\".\"sales_sales_channel\",\"sparkling\".\"sales_sales_channel\") as \"sales_sales_channel\"
+FROM
+    \"late\"
+    LEFT OUTER JOIN \"sparkling\" on \"late\".\"sales_item_id\" = \"sparkling\".\"sales_item_id\" AND \"late\".\"sales_sales_channel\" = \"sparkling\".\"sales_sales_channel\"
+WHERE
+    \"late\".\"sales_return_amount\" > 10000 and \"late\".\"sales_net_profit\" > 1 and \"late\".\"sales_net_paid\" > 0 and \"late\".\"sales_quantity\" > 0 and \"late\".\"sales_date_year\" = 2001 and \"late\".\"sales_date_month_of_year\" = 12
+)
+SELECT
+    CASE
+	WHEN \"concerned\".\"sales_sales_channel\" = 'WEB' THEN 'web'
+	WHEN \"concerned\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
+	WHEN \"concerned\".\"sales_sales_channel\" = 'STORE' THEN 'store'
+	ELSE null
+	END as \"channel\",
+    \"concerned\".\"sales_item_id\" as \"item\",
+    cast(\"macho\".\"return_qty\" as numeric(15,4)) / cast(\"macho\".\"sale_qty\" as numeric(15,4)) as \"return_ratio\",
+    \"macho\".\"return_rank\" as \"return_rank\",
+    \"concerned\".\"currency_rank\" as \"currency_rank\"
+FROM
+    \"macho\"
+    LEFT OUTER JOIN \"concerned\" on \"macho\".\"sales_item_id\" = \"concerned\".\"sales_item_id\" AND \"macho\".\"sales_sales_channel\" = \"concerned\".\"sales_sales_channel\"
+WHERE
+    \"macho\".\"sales_return_amount\" > 10000 and \"macho\".\"sales_net_profit\" > 1 and \"macho\".\"sales_net_paid\" > 0 and \"macho\".\"sales_quantity\" > 0 and \"macho\".\"sales_date_year\" = 2001 and \"macho\".\"sales_date_month_of_year\" = 12 and ( \"macho\".\"return_rank\" <= 10 or \"concerned\".\"currency_rank\" <= 10 )
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
+ORDER BY 
+    \"channel\" asc nulls first,
+    \"macho\".\"return_rank\" asc nulls first,
+    \"concerned\".\"currency_rank\" asc nulls first,
+    \"item\" asc nulls first
+LIMIT (100)"""

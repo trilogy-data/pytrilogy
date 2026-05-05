@@ -1,5 +1,5 @@
-query_id = "11"
-gen_length = 4445
+query_id = "74"
+gen_length = 3600
 generated_sql = """
 
 WITH 
@@ -7,9 +7,8 @@ cheerful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_store_sales_unified\".\"SS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
-    \"sales_store_sales_unified\".\"SS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
      'STORE'  as \"sales_sales_channel\"
 FROM
@@ -18,9 +17,8 @@ UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_web_sales_unified\".\"WS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
-    \"sales_web_sales_unified\".\"WS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
      'WEB'  as \"sales_sales_channel\"
 FROM
@@ -40,10 +38,10 @@ GROUP BY
 uneven as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_first_year\",
-    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_second_year\",
-    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_first_year\",
-    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_second_year\"
+    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"store_first_year\",
+    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"store_second_year\",
+    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"web_first_year\",
+    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"web_second_year\"
 FROM
     \"memory\".\"date_dim\" as \"sales_date_date\"
     LEFT OUTER JOIN \"cheerful\" on \"sales_date_date\".\"D_DATE_SK\" = \"cheerful\".\"sales_date_id\"
@@ -57,7 +55,6 @@ SELECT
     \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
     \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
-    \"sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_customer_preferred_cust_flag\",
     \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
     \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
 FROM
@@ -67,30 +64,25 @@ WHERE
     \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB')
 )
 SELECT
-    \"questionable\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
-    \"questionable\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"questionable\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
-    \"questionable\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\"
+    \"questionable\".\"sales_customer_text_id\" as \"customer_id\",
+    \"questionable\".\"sales_customer_first_name\" as \"customer_first_name\",
+    \"questionable\".\"sales_customer_last_name\" as \"customer_last_name\"
 FROM
     \"uneven\"
     INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
 WHERE
     \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
-	WHEN \"uneven\".\"web_first_year\" > 0 THEN (\"uneven\".\"web_second_year\" * 1.0) / \"uneven\".\"web_first_year\"
-	ELSE 0.0
+	WHEN \"uneven\".\"web_first_year\" > 0 THEN \"uneven\".\"web_second_year\" / \"uneven\".\"web_first_year\"
+	ELSE null
 	END ) > ( CASE
-	WHEN \"uneven\".\"store_first_year\" > 0 THEN (\"uneven\".\"store_second_year\" * 1.0) / \"uneven\".\"store_first_year\"
-	ELSE 0.0
+	WHEN \"uneven\".\"store_first_year\" > 0 THEN \"uneven\".\"store_second_year\" / \"uneven\".\"store_first_year\"
+	ELSE null
 	END )
 
 GROUP BY
     1,
     2,
-    3,
-    4
+    3
 ORDER BY 
-    \"questionable\".\"sales_customer_text_id\" asc nulls first,
-    \"questionable\".\"sales_customer_first_name\" asc nulls first,
-    \"questionable\".\"sales_customer_last_name\" asc nulls first,
-    \"questionable\".\"sales_customer_preferred_cust_flag\" asc nulls first
+    \"customer_id\" asc nulls first
 LIMIT (100)"""

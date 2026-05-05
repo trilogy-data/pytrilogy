@@ -9,9 +9,9 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 68 | 1, 2 (+02-one, 02-two), 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 24, 25, 26, 30, 31, 32, 33, 34, 35, 37, 39, 40, 41, 42, 43, 45, 46, 47, 48, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 68, 69, 71, 73, 79, 81, 82, 83, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 74 | 1, 2 (+02-one, 02-two), 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 23, 24, 25, 26, 28, 30, 31, 32, 33, 34, 35, 37, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 66, 68, 69, 71, 73, 74, 78, 79, 81, 82, 83, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | Skipped (preql exists) | 5 | 4, 5, 29, 44, 80 |
-| Missing (no preql / no test) | 26 | 14, 18, 23, 27, 28, 36, 38, 49, 51, 54, 59, 61, 64, 66, 67, 70, 72, 74, 75, 76, 77, 78, 84, 85, 86, 87 |
+| Missing (no preql / no test) | 20 | 14, 18, 27, 36, 38, 51, 54, 59, 61, 64, 67, 70, 72, 75, 76, 77, 84, 85, 86, 87 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -57,6 +57,44 @@ exercising different planner paths — they share an SQL reference.)
   date)`. With sf=1, some customers have `birth_year=NULL` or month/day
   combinations that produce invalid dates (e.g. Feb 30) — DuckDB will throw on
   cast. Currently safe because no test actually selects `birth_date`.
+
+## Recent Model Extensions (q28/q74/q78 batch)
+
+- `store_sales.preql` — added `wholesale_cost` (`SS_WHOLESALE_COST`).
+  Per-unit cost (distinct from `ext_wholesale_cost`); needed for q28.
+- `item.preql` — added `class_id` (`I_CLASS_ID`). Needed for q75 (and
+  any future query grouping by class_id).
+- `unified_sales.preql` — added `is_returned bool?` property. Each
+  returns partial datasource emits `raw(''' true ''')` for it; sales
+  rows without a matching return have `is_returned IS NULL`. Use this
+  rather than `return_quantity is null` for "no return" filters: the
+  returns tables contain ~4% rows with `*_return_quantity = NULL`,
+  so `return_quantity is null` falsely passes returned sales.
+
+## Recent Model Extensions (unified_sales backport batch)
+
+- `unified_sales.preql`:
+  - Added `return_quantity int?`, `net_paid_inc_tax float?` properties.
+  - Added `warehouse` and `ship_mode` dim imports + mappings on web/catalog
+    sales partials. Store partial emits `raw(''' NULL ''')` for both so the
+    `_best_enum_union` planner can include all 3 channels for queries that
+    don't reference warehouse/ship_mode.
+  - Added `import date as return_date` + `WR_RETURNED_DATE_SK` /
+    `CR_RETURNED_DATE_SK` / `SR_RETURNED_DATE_SK` mappings on the partial
+    returns datasources, so q83 can filter by `sales.return_date.week_seq`.
+  - Added `WS_NET_PAID_INC_TAX` / `CS_NET_PAID_INC_TAX` / `SS_NET_PAID_INC_TAX`
+    mappings; q66's catalog metric is `cs_net_paid_inc_tax * cs_quantity`.
+
+## Recent Model Extensions (q23/q49/q66 batch)
+
+- `web_sales.preql` — added `net_paid` (`WS_NET_PAID`), `list_price`
+  (`WS_LIST_PRICE`), and `return_quantity` (`WR_RETURN_QUANTITY`) to
+  the inline web_returns datasource.
+- `catalog_sales.preql` — added `net_paid` (`CS_NET_PAID`),
+  `net_paid_inc_tax` (`CS_NET_PAID_INC_TAX`), `return_amount`
+  (`CR_RETURN_AMOUNT`), and `return_quantity` (`CR_RETURN_QUANTITY`)
+  via a new inline `catalog_returns_inline` datasource.
+- `ship_mode.preql` — added `carrier` (`SM_CARRIER`).
 
 ## Recent Model Extensions (q80/q81/q91 batch)
 
@@ -173,17 +211,27 @@ exercising different planner paths — they share an SQL reference.)
   - Final `SELECT alias` of rowset-derived concepts (e.g.
     `q80_results.sales_total as sales`) causes the planner to hang
     indefinitely. Bare references plan in <1s.
+- **`unified_sales` channel pruning trap (q23).** With outer
+  `WHERE sales.sales_channel in ('CATALOG', 'WEB')`, the trilogy planner
+  drops the STORE partial datasource entirely from the shared `cheerful`
+  CTE — even when other autos in the same query (e.g. for
+  `frequent_ss_items` or `best_ss_customer`) reference `sales.sales_channel
+  = 'STORE'` and need STORE rows. Workaround: push locally scoped conditions 
+  into the fields that need filtering with them via ? 
+
+- **NULL customer/key trap on aggregates over unified_sales (q23).**
+  `sum(... ? sales.sales_channel = 'STORE') by sales.customer.id` groups
+  rows with NULL `customer.id` into a single phantom group whose total can
+  dwarf any real customer's total (in q23, ~18M vs the true max of
+  236K), poisoning downstream `max(...)`. Reference SQL filters NULL via
+  the INNER JOIN to `customer`. In trilogy, add `sales.customer.id is not
+  null` to the inline `?` filter AND the rowset's `WHERE` so the phantom
+  group is excluded from the grain.
 
 ## Suggested Next Batch (by complexity)
 
 These look tractable without further framework work:
 
-- **q23** (UNION ALL of catalog/web sales joined to best_ss_customer +
-  frequent_ss_items; needs HAVING > 50% of MAX subquery and item filter).
-- **q49** (3-channel rank + UNION) — like q83 but with `rank()` per channel.
-  Doable via merge of channels through item.
-- **q66** — 50+ conditional aggregates across web/catalog sales by month.
-  Plumbing-heavy but mechanical.
 - **q72** — model extensions are now done (catalog_sales has
   `bill_household_demographic`), but the inventory + sales + returns
   triple-join blows up to OOM during planning. Needs filter pushdown
@@ -193,6 +241,19 @@ These look tractable without further framework work:
   separately from the bill-side keys (currently unified_sales hides them).
 - **q85** — needs `reason` and `web_page` models (both now defined; query is
   blocked because PRAGMA tpcds(85) hangs as the comparison reference).
+
+## Backport Candidates (use unified_sales)
+
+Blocked by missing `unified_sales` features:
+
+- **q10, q35** — reference SQL is asymmetric: `ws_bill_customer_sk` for web but
+  `cs_ship_customer_sk` for catalog. unified_sales currently maps both web and
+  catalog to bill-side customer. Would need a `ship_customer` concept added to
+  unified_sales (mapped from WS_SHIP_CUSTOMER_SK / CS_SHIP_CUSTOMER_SK; falls back
+  to SS_CUSTOMER_SK for store).
+- **q97-one** — intentional alternative phrasing exercising the merge planner;
+  keep as-is.
+
 
 These need framework work first:
 
@@ -207,13 +268,37 @@ These need framework work first:
   function exposure.
 - **q18, q27** — `GROUP BY ROLLUP (...)` patterns. Doable via the q22-style
   `MERGE … align …` cascade but verbose.
+- **q36** — 3-level rollup (q22-style cascade) + `rank() OVER (PARTITION BY
+  lochierarchy, CASE WHEN t_class=0 THEN i_category END ORDER BY gross_margin)`
+  window. Doable but verbose; needs window over rollup output.
 - **q51** — FULL OUTER JOIN + cumulative window over union of two
   per-channel CTEs. Needs both full-outer-join semantics and the cumulative
   `sum(sum(...)) OVER (... ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`
   pattern.
+- **q54** — DISTINCT customer set built from `(catalog_sales UNION ALL
+  web_sales)`-derived "is buyer" lookup, then revenue aggregation against
+  store_sales over a `d_month_seq BETWEEN scalar_subq AND scalar_subq` window,
+  then bucket binning + count(*). Needs scalar subqueries / nested set
+  derivation that don't fit `unified_sales`.
+- **q59** — week-over-52-weeks self-join with day-of-week pivots. Doable in
+  trilogy with filtered aggregates per day, but the cross-year self-join on
+  `week_seq = week_seq2 - 52` plus `s_store_id1 = s_store_id2` is verbose.
 - **q64** — 20+ table join with `income_band` (model not present); even
   with the model, the plan likely OOMs.
 - **q72** — listed above; OOM on planning.
+- **q75** — UNION DISTINCT of three per-channel `(year, brand, class, cat,
+  manufact, qty_per_row, amt_per_row)` row sets. The DISTINCT collapses
+  ~1500 cross-channel duplicate tuples on sf=1 (480396 vs 478874 rows).
+  Trilogy's `unified_sales` aggregates after summing per-channel; expressing
+  "dedup by exact value tuple before sum" needs a primitive we don't have.
+  Without dedup, summed counts diverge by ~16 per affected (brand, class,
+  cat, manufact) group.
+- **q84** — reference SQL `SELECT customer_id, customername FROM customer,
+  ..., store_returns WHERE sr_cdemo_sk = cd_demo_sk AND ...` produces
+  duplicate customer rows (one per matching `store_returns`) with no
+  `DISTINCT`. Trilogy's GROUP BY semantics dedup by default. Also requires
+  an `income_band` model (parquet present, no preql) and a merge between
+  `customer.demographics.id` and `store_returns.customer_demographic.id`.
 
 ## Test Infra Notes
 

@@ -266,3 +266,103 @@ def test_no_shared_data_fields_not_combined():
     assert (
         len(unions) == 0
     ), f"Sources with no shared data fields should not be combined, got {unions}"
+
+
+# Two derived aggregates pull different *subsets* of columns from the same enum
+# partitioned arms (ds_a, ds_b, ds_c). Without union-CTE merging the planner
+# emits two near-identical UNION CTEs; with it, both consumers share one.
+PREQL_SHARED_UNION_ARMS = """
+key category enum<string>['A', 'B', 'C'];
+key item_id int;
+key date_id int;
+property <category, item_id>.x int;
+property <category, item_id>.y int;
+property <category, item_id>.flag int;
+property date_id.year int;
+
+datasource date_dim (
+    date_id,
+    year,
+)
+grain (date_id)
+query '''
+select 1 as date_id, 2024 as year
+union all
+select 2 as date_id, 2025 as year
+''';
+
+datasource ds_a (
+    ~category,
+    item_id,
+    date_id,
+    x,
+    y,
+    flag,
+)
+grain (category, item_id, date_id)
+complete where category = 'A'
+query '''
+select 'A' as category, 1 as item_id, 1 as date_id, 1 as x, 10 as y, 1 as flag
+''';
+
+datasource ds_b (
+    ~category,
+    item_id,
+    date_id,
+    x,
+    y,
+    flag,
+)
+grain (category, item_id, date_id)
+complete where category = 'B'
+query '''
+select 'B' as category, 1 as item_id, 1 as date_id, 2 as x, 20 as y, 1 as flag
+''';
+
+datasource ds_c (
+    ~category,
+    item_id,
+    date_id,
+    x,
+    y,
+    flag,
+)
+grain (category, item_id, date_id)
+complete where category = 'C'
+query '''
+select 'C' as category, 1 as item_id, 2 as date_id, 3 as x, 30 as y, 0 as flag
+''';
+"""
+
+
+SHARED_UNION_ARMS_QUERY = """
+auto x_in_year <- sum(x ? year = 2024 and flag = 1) by item_id;
+auto y_overall <- sum(y ? flag = 1) by item_id;
+
+with x_summary as
+SELECT
+    max(x_in_year) as max_x,
+;
+
+with y_summary as
+SELECT
+    max(y_overall) as max_y,
+;
+
+SELECT
+    x_summary.max_x,
+    y_summary.max_y,
+;
+"""
+
+
+def test_shared_union_arms_collapse_to_single_union():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL_SHARED_UNION_ARMS)
+    sql = executor.generate_sql(SHARED_UNION_ARMS_QUERY)[-1]
+    # 3 arms => 2 UNION ALL operators per union; one merged union => 2 total
+    assert sql.count("UNION ALL") == 2, sql
+    # each arm's underlying source select runs exactly once
+    assert sql.count('as "ds_a"') == 1, sql
+    assert sql.count('as "ds_b"') == 1, sql
+    assert sql.count('as "ds_c"') == 1, sql

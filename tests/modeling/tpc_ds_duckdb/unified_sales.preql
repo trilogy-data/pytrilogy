@@ -1,9 +1,12 @@
 import item as item;
 import date as date;
+import date as return_date;
 import time as time;
 import customer as customer;
 import promotion as promotion;
 import address as bill_address;
+import warehouse as warehouse;
+import ship_mode as ship_mode;
 
 key sales_channel enum<string>['WEB', 'CATALOG', 'STORE'];
 key channel_dim_id int;
@@ -26,8 +29,11 @@ properties <sales_channel, order_id, item.id> (
     coupon_amt float,
     net_profit float,
     net_paid float,
+    net_paid_inc_tax float?,
     return_amount float?,
+    return_quantity int?,
     return_net_loss float?,
+    is_returned bool?,
 );
 
 partial datasource web_sales_unified (
@@ -40,6 +46,8 @@ partial datasource web_sales_unified (
     WS_BILL_ADDR_SK: bill_address.id,
     WS_PROMO_SK: promotion.id,
     WS_WEB_SITE_SK: channel_dim_id,
+    WS_WAREHOUSE_SK: warehouse.id,
+    WS_SHIP_MODE_SK: ship_mode.id,
     WS_QUANTITY: quantity,
     WS_SALES_PRICE: sales_price,
     WS_LIST_PRICE: list_price,
@@ -51,6 +59,7 @@ partial datasource web_sales_unified (
     WS_COUPON_AMT: coupon_amt,
     WS_NET_PROFIT: net_profit,
     WS_NET_PAID: net_paid,
+    WS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'WEB'
@@ -66,6 +75,8 @@ partial datasource catalog_sales_unified (
     CS_BILL_ADDR_SK: bill_address.id,
     CS_PROMO_SK: promotion.id,
     CS_CATALOG_PAGE_SK: channel_dim_id,
+    CS_WAREHOUSE_SK: warehouse.id,
+    CS_SHIP_MODE_SK: ship_mode.id,
     CS_QUANTITY: quantity,
     CS_SALES_PRICE: sales_price,
     CS_LIST_PRICE: list_price,
@@ -77,6 +88,7 @@ partial datasource catalog_sales_unified (
     CS_COUPON_AMT: coupon_amt,
     CS_NET_PROFIT: net_profit,
     CS_NET_PAID: net_paid,
+    CS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'CATALOG'
@@ -92,6 +104,8 @@ partial datasource store_sales_unified (
     SS_ADDR_SK: bill_address.id,
     SS_PROMO_SK: promotion.id,
     SS_STORE_SK: channel_dim_id,
+    raw(''' NULL '''): warehouse.id,
+    raw(''' NULL '''): ship_mode.id,
     SS_QUANTITY: quantity,
     SS_SALES_PRICE: sales_price,
     SS_LIST_PRICE: list_price,
@@ -103,6 +117,7 @@ partial datasource store_sales_unified (
     SS_COUPON_AMT: coupon_amt,
     SS_NET_PROFIT: net_profit,
     SS_NET_PAID: net_paid,
+    SS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'STORE'
@@ -139,8 +154,11 @@ partial datasource web_returns_unified (
     raw(''' 'WEB' '''): sales_channel,
     WR_ORDER_NUMBER: ~order_id,
     WR_ITEM_SK: ~item.id,
+    WR_RETURNED_DATE_SK: return_date.id,
     WR_RETURN_AMT: return_amount,
+    WR_RETURN_QUANTITY: return_quantity,
     WR_NET_LOSS: return_net_loss,
+    raw(''' true '''): is_returned,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'WEB'
@@ -150,8 +168,11 @@ partial datasource catalog_returns_unified (
     raw(''' 'CATALOG' '''): sales_channel,
     CR_ORDER_NUMBER: ~order_id,
     CR_ITEM_SK: ~item.id,
+    CR_RETURNED_DATE_SK: return_date.id,
     CR_RETURN_AMOUNT: return_amount,
+    CR_RETURN_QUANTITY: return_quantity,
     CR_NET_LOSS: return_net_loss,
+    raw(''' true '''): is_returned,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'CATALOG'
@@ -161,8 +182,11 @@ partial datasource store_returns_unified (
     raw(''' 'STORE' '''): sales_channel,
     SR_TICKET_NUMBER: ~order_id,
     SR_ITEM_SK: ~item.id,
+    SR_RETURNED_DATE_SK: return_date.id,
     SR_RETURN_AMT: return_amount,
+    SR_RETURN_QUANTITY: return_quantity,
     SR_NET_LOSS: return_net_loss,
+    raw(''' true '''): is_returned,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'STORE'

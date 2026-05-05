@@ -604,6 +604,16 @@ class BaseJoin:
 
     @property
     def unique_id(self) -> str:
+        # Order-independent: SQL renderer AND-joins keys after sorting, so two
+        # BaseJoins with the same pairs in different order produce identical
+        # SQL. Dedupe on the sorted form so set-iteration nondeterminism in
+        # upstream pair construction can't slip a duplicate past `unique()`.
+        if self.concept_pairs:
+            pair_keys = sorted(
+                f"{p.existing_datasource.name}.{p.left}={p.right}"
+                for p in self.concept_pairs
+            )
+            return f"{self.join_type.value} {self.right_datasource.name} on {','.join(pair_keys)}"
         return str(self)
 
     @property
@@ -663,7 +673,7 @@ class QueryDatasource:
         for join in self.joins:
             if not isinstance(join, BaseJoin):
                 continue
-            pairing = str(join)
+            pairing = join.unique_id
             if pairing in unique_pairs:
                 raise SyntaxError(f"Duplicate join {str(join)}")
             unique_pairs.add(pairing)
@@ -873,6 +883,15 @@ class QueryDatasource:
 
     @property
     def identifier(self) -> str:
+        if self.source_type == SourceType.UNION:
+            # The arms — each addressable by their underlying base table — are
+            # what make a union unique. Two unions over the same arms can be
+            # merged by combining their projected columns, so don't fold the
+            # outer grain (which reflects the projected column subset) into the
+            # identifier. UnionCTE.condition is always None at render time
+            # (consumers wrap row-level filters as CASE), so the QDS-level
+            # condition is also irrelevant to identity.
+            return "_union_".join([d.identifier for d in self.datasources]) + "_unioned"
         filters = string_to_hash(str(self.condition)) if self.condition else ""
         grain = "_".join(
             [str(c).replace(".", "_") for c in sorted(self.grain.components)]
@@ -1259,6 +1278,15 @@ class Join:
 
     @property
     def unique_id(self) -> str:
+        # Order-independent — see BaseJoin.unique_id for rationale.
+        if self.joinkey_pairs:
+            pair_keys = sorted(
+                f"{k.cte.name}.{k.left.address}={k.right.address}"
+                for k in self.joinkey_pairs
+            )
+            return (
+                f"{self.jointype.value} join {self.right_name} on {','.join(pair_keys)}"
+            )
         return str(self)
 
     def __str__(self):

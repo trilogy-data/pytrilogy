@@ -1,0 +1,44 @@
+import unified_sales as sales;
+
+# Per-(channel, item) ratios. Filter requires a returns row with return_amount > 10000
+# (acts as INNER on LEFT JOIN to returns), and Dec 2001.
+def in_window(metric) -> sum(metric ?
+    sales.return_amount > 10000
+    and sales.net_profit > 1
+    and sales.net_paid > 0
+    and sales.quantity > 0
+    and sales.date.year = 2001
+    and sales.date.month_of_year = 12
+) by sales.sales_channel, sales.item.id;
+
+auto return_qty <- @in_window(sales.return_quantity);
+auto sale_qty <- @in_window(sales.quantity);
+auto return_amt <- @in_window(sales.return_amount);
+auto sale_paid <- @in_window(sales.net_paid);
+auto return_ratio <- cast(return_qty as numeric(15,4)) / cast(sale_qty as numeric(15,4));
+auto currency_ratio <- cast(return_amt as numeric(15,4)) / cast(sale_paid as numeric(15,4));
+auto return_rank <- rank sales.item.id over sales.sales_channel by return_ratio asc;
+auto currency_rank <- rank sales.item.id over sales.sales_channel by currency_ratio asc;
+
+auto channel_label <- CASE
+    WHEN sales.sales_channel = 'WEB' THEN 'web'
+    WHEN sales.sales_channel = 'CATALOG' THEN 'catalog'
+    WHEN sales.sales_channel = 'STORE' THEN 'store'
+    ELSE null
+END;
+
+WHERE
+    sales.return_amount > 10000 and sales.net_profit > 1 and sales.net_paid > 0 and sales.quantity > 0 and sales.date.year = 2001 and sales.date.month_of_year = 12
+    and (return_rank <= 10 or currency_rank <= 10)
+SELECT
+    channel_label as channel,
+    sales.item.id as item,
+    return_ratio,
+    return_rank,
+    currency_rank,
+ORDER BY
+    channel asc nulls first,
+    return_rank asc nulls first,
+    currency_rank asc nulls first,
+    item asc nulls first
+LIMIT 100;

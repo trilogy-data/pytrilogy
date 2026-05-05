@@ -267,8 +267,22 @@ def concepts_to_build_grain_concepts(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
 
+    # The sort key is load-bearing, not cosmetic. Pseudonym links are
+    # one-way: an alias's equivalent_addresses contains the canonical, but
+    # the canonical's does not contain its aliases. The dedup below only
+    # rejects a concept if `final` already shares an equivalent address
+    # with it, so if an alias is processed before its canonical, the
+    # canonical's equivalent_addresses (just itself) won't intersect
+    # `final` and both end up retained. Callers feed components from a
+    # `set`, so without a deterministic order this silently produces
+    # different grains run-to-run and breaks downstream
+    # `grain_satisfied_by_pregrain` checks (a stray alias makes pregrain
+    # look like a superset of the target and force_group=True flips on).
+    # Sorting by `len(equivalent_addresses)` puts canonicals first.
     final: set[str] = set()
-    for sub in pconcepts:
+    for sub in sorted(
+        pconcepts, key=lambda c: (len(c.equivalent_addresses), c.address)
+    ):
         if not concept_is_relevant(sub, pconcepts):
             continue
         if final & sub.equivalent_addresses:
