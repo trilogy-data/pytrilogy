@@ -1,0 +1,59 @@
+import web_sales as web_sales;
+
+# Per-(category, class) total used for rank inside each category at level 1
+auto class_total <- sum(web_sales.net_paid ? web_sales.date.month_seq BETWEEN 1200 AND 1211)
+    by web_sales.item.category, web_sales.item.class;
+# Per-category total used for rank at level 2 (single global ranking)
+auto category_total <- sum(web_sales.net_paid ? web_sales.date.month_seq BETWEEN 1200 AND 1211)
+    by web_sales.item.category;
+
+with q86_results as
+# Level 1: Detail (category, class), lochierarchy=0
+WHERE
+    web_sales.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    web_sales.item.category as category_a,
+    web_sales.item.class as class_a,
+    0 as lochierarchy_a,
+    class_total as total_a,
+    rank web_sales.item.class over web_sales.item.category by class_total desc as rank_a,
+MERGE
+# Level 2: Roll up class, keep category, lochierarchy=1
+WHERE
+    web_sales.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    web_sales.item.category as category_b,
+    cast(null as string) as null_class_b,
+    1 as lochierarchy_b,
+    category_total as total_b,
+    rank web_sales.item.category by category_total desc as rank_b,
+MERGE
+# Level 3: Grand total, lochierarchy=2
+WHERE
+    web_sales.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    cast(null as string) as null_category_c,
+    cast(null as string) as null_class_c,
+    2 as lochierarchy_c,
+    sum(web_sales.net_paid) as total_c,
+    1 as rank_c,
+align
+    i_category: category_a, category_b, null_category_c
+    AND i_class: class_a, null_class_b, null_class_c
+    AND lochierarchy: lochierarchy_a, lochierarchy_b, lochierarchy_c
+derive
+    coalesce(q86_results.total_a, q86_results.total_b, q86_results.total_c) -> total_sum,
+    coalesce(q86_results.rank_a, q86_results.rank_b, q86_results.rank_c) -> rank_within_parent
+;
+
+SELECT
+    q86_results.total_sum,
+    q86_results.i_category,
+    q86_results.i_class,
+    q86_results.lochierarchy,
+    q86_results.rank_within_parent,
+ORDER BY
+    q86_results.lochierarchy desc nulls first,
+    CASE WHEN q86_results.lochierarchy = 0 THEN q86_results.i_category ELSE null END asc nulls first,
+    q86_results.rank_within_parent asc nulls first
+LIMIT 100;
