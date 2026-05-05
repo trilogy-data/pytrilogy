@@ -1,0 +1,118 @@
+query_id = "78"
+gen_length = 7136
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+     true  as \"sales_is_returned\",
+    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
+     'CATALOG'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
+UNION ALL
+SELECT
+     true  as \"sales_is_returned\",
+    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
+UNION ALL
+SELECT
+     true  as \"sales_is_returned\",
+    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
+abundant as (
+SELECT
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
+    \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
+     'CATALOG'  as \"sales_sales_channel\",
+    \"sales_catalog_sales_unified\".\"CS_SALES_PRICE\" as \"sales_sales_price\",
+    \"sales_catalog_sales_unified\".\"CS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+FROM
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+    \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
+     'STORE'  as \"sales_sales_channel\",
+    \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\",
+    \"sales_store_sales_unified\".\"SS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+    \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
+     'WEB'  as \"sales_sales_channel\",
+    \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\",
+    \"sales_web_sales_unified\".\"WS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+yummy as (
+SELECT
+    \"abundant\".\"sales_customer_id\" as \"ss_customer_sk\",
+    \"sales_date_date\".\"D_YEAR\" as \"ss_sold_year\",
+    coalesce(\"abundant\".\"sales_item_id\",\"cheerful\".\"sales_item_id\") as \"ss_item_sk\",
+    coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as \"other_chan_qty\",
+    coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'WEB' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END),0) as \"other_chan_sales_price\",
+    coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'WEB' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END),0) as \"other_chan_wholesale_cost\",
+    round(cast(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as numeric(7,2)) / cast(coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as numeric(7,2)),2) as \"ratio\",
+    sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"cs_qty\",
+    sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"store_qty\",
+    sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'STORE' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END) as \"store_sales_price\",
+    sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'STORE' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END) as \"store_wholesale_cost\",
+    sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"ws_qty\"
+FROM
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+WHERE
+    \"cheerful\".\"sales_is_returned\" is null and \"sales_date_date\".\"D_YEAR\" = 2000 and \"abundant\".\"sales_customer_id\" is not null
+
+GROUP BY
+    1,
+    2,
+    3)
+SELECT
+    \"yummy\".\"ss_sold_year\" as \"ss_sold_year\",
+    \"yummy\".\"ss_item_sk\" as \"ss_item_sk\",
+    \"yummy\".\"ss_customer_sk\" as \"ss_customer_sk\",
+    \"yummy\".\"ratio\" as \"ratio\",
+    \"yummy\".\"store_qty\" as \"store_qty\",
+    \"yummy\".\"store_wholesale_cost\" as \"store_wholesale_cost\",
+    \"yummy\".\"store_sales_price\" as \"store_sales_price\",
+    \"yummy\".\"other_chan_qty\" as \"other_chan_qty\",
+    \"yummy\".\"other_chan_wholesale_cost\" as \"other_chan_wholesale_cost\",
+    \"yummy\".\"other_chan_sales_price\" as \"other_chan_sales_price\"
+FROM
+    \"yummy\"
+WHERE
+    \"yummy\".\"store_qty\" > 0 and ( coalesce(\"yummy\".\"ws_qty\",0) > 0 or coalesce(\"yummy\".\"cs_qty\",0) > 0 )
+
+ORDER BY 
+    \"yummy\".\"ss_sold_year\" asc nulls first,
+    \"yummy\".\"ss_item_sk\" asc nulls first,
+    \"yummy\".\"ss_customer_sk\" asc nulls first,
+    \"yummy\".\"store_qty\" desc nulls last,
+    \"yummy\".\"store_wholesale_cost\" desc nulls last,
+    \"yummy\".\"store_sales_price\" desc nulls last,
+    \"yummy\".\"other_chan_qty\" asc nulls first,
+    \"yummy\".\"other_chan_wholesale_cost\" asc nulls first,
+    \"yummy\".\"other_chan_sales_price\" asc nulls first,
+    \"yummy\".\"ratio\" asc nulls first
+LIMIT (100)"""

@@ -33,6 +33,7 @@ properties <sales_channel, order_id, item.id> (
     return_amount float?,
     return_quantity int?,
     return_net_loss float?,
+    is_returned bool?,
 );
 
 partial datasource web_sales_unified (
@@ -157,6 +158,7 @@ partial datasource web_returns_unified (
     WR_RETURN_AMT: return_amount,
     WR_RETURN_QUANTITY: return_quantity,
     WR_NET_LOSS: return_net_loss,
+    raw(''' true '''): is_returned,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'WEB'
@@ -170,6 +172,7 @@ partial datasource catalog_returns_unified (
     CR_RETURN_AMOUNT: return_amount,
     CR_RETURN_QUANTITY: return_quantity,
     CR_NET_LOSS: return_net_loss,
+    raw(''' true '''): is_returned,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'CATALOG'
@@ -183,6 +186,7 @@ partial datasource store_returns_unified (
     SR_RETURN_AMT: return_amount,
     SR_RETURN_QUANTITY: return_quantity,
     SR_NET_LOSS: return_net_loss,
+    raw(''' true '''): is_returned,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'STORE'

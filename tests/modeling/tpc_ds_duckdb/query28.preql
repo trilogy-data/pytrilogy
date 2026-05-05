@@ -1,0 +1,52 @@
+import store_sales as store_sales;
+
+def b_avg(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> avg(
+    store_sales.list_price ?
+        store_sales.quantity between qmin and qmax
+        and (
+            store_sales.list_price between lpmin and lpmax
+            or store_sales.coupon_amt between camin and camax
+            or store_sales.wholesale_cost between wcmin and wcmax
+        )
+);
+
+def b_cnt(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> count(
+    store_sales.list_price ?
+        store_sales.quantity between qmin and qmax
+        and (
+            store_sales.list_price between lpmin and lpmax
+            or store_sales.coupon_amt between camin and camax
+            or store_sales.wholesale_cost between wcmin and wcmax
+        )
+);
+
+def b_cntd(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> count_distinct(
+    store_sales.list_price ?
+        store_sales.quantity between qmin and qmax
+        and (
+            store_sales.list_price between lpmin and lpmax
+            or store_sales.coupon_amt between camin and camax
+            or store_sales.wholesale_cost between wcmin and wcmax
+        )
+);
+
+SELECT
+    @b_avg(0, 5, 8, 18, 459, 1459, 57, 77) as B1_LP,
+    @b_cnt(0, 5, 8, 18, 459, 1459, 57, 77) as B1_CNT,
+    @b_cntd(0, 5, 8, 18, 459, 1459, 57, 77) as B1_CNTD,
+    @b_avg(6, 10, 90, 100, 2323, 3323, 31, 51) as B2_LP,
+    @b_cnt(6, 10, 90, 100, 2323, 3323, 31, 51) as B2_CNT,
+    @b_cntd(6, 10, 90, 100, 2323, 3323, 31, 51) as B2_CNTD,
+    @b_avg(11, 15, 142, 152, 12214, 13214, 79, 99) as B3_LP,
+    @b_cnt(11, 15, 142, 152, 12214, 13214, 79, 99) as B3_CNT,
+    @b_cntd(11, 15, 142, 152, 12214, 13214, 79, 99) as B3_CNTD,
+    @b_avg(16, 20, 135, 145, 6071, 7071, 38, 58) as B4_LP,
+    @b_cnt(16, 20, 135, 145, 6071, 7071, 38, 58) as B4_CNT,
+    @b_cntd(16, 20, 135, 145, 6071, 7071, 38, 58) as B4_CNTD,
+    @b_avg(21, 25, 122, 132, 836, 1836, 17, 37) as B5_LP,
+    @b_cnt(21, 25, 122, 132, 836, 1836, 17, 37) as B5_CNT,
+    @b_cntd(21, 25, 122, 132, 836, 1836, 17, 37) as B5_CNTD,
+    @b_avg(26, 30, 154, 164, 7326, 8326, 7, 27) as B6_LP,
+    @b_cnt(26, 30, 154, 164, 7326, 8326, 7, 27) as B6_CNT,
+    @b_cntd(26, 30, 154, 164, 7326, 8326, 7, 27) as B6_CNTD
+LIMIT 100;

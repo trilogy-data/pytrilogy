@@ -28,6 +28,7 @@ properties <ticket_number,item.id> (
     is_returned bool,
     net_paid float,
     ext_tax float,
+    wholesale_cost float,
     return_amount float?,
     return_quantity int?,
     return_net_loss float?,
@@ -56,6 +57,7 @@ datasource store_sales (
     SS_STORE_SK: store.id,
     SS_NET_PAID: net_paid,
     SS_EXT_TAX: ext_tax,
+    SS_WHOLESALE_COST: wholesale_cost,
     SS_ADDR_SK: sale_address.id,
 )
 grain (ticket_number, item.id)

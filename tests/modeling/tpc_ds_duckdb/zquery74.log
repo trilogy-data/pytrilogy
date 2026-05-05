@@ -1,0 +1,100 @@
+query_id = "74"
+gen_length = 3976
+generated_sql = """
+
+WITH 
+abundant as (
+SELECT
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+cheerful as (
+SELECT
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+yummy as (
+SELECT
+    \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"abundant\".\"sales_net_paid\" ELSE NULL END) as \"store_first_year\",
+    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"abundant\".\"sales_net_paid\" ELSE NULL END) as \"store_second_year\",
+    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"abundant\".\"sales_net_paid\" ELSE NULL END) as \"web_first_year\",
+    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"abundant\".\"sales_net_paid\" ELSE NULL END) as \"web_second_year\"
+FROM
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
+WHERE
+    \"abundant\".\"sales_sales_channel\" in ('STORE','WEB')
+
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
+    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+FROM
+    \"cheerful\"
+WHERE
+    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB')
+
+GROUP BY
+    1,
+    2),
+questionable as (
+SELECT
+    \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
+    \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
+    \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
+    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
+    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+FROM
+    \"memory\".\"customer\" as \"sales_customer_customers\"
+    LEFT OUTER JOIN \"thoughtful\" on \"sales_customer_customers\".\"C_CUSTOMER_SK\" = \"thoughtful\".\"sales_customer_id\"
+WHERE
+    \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB')
+)
+SELECT
+    \"questionable\".\"sales_customer_text_id\" as \"customer_id\",
+    \"questionable\".\"sales_customer_first_name\" as \"customer_first_name\",
+    \"questionable\".\"sales_customer_last_name\" as \"customer_last_name\"
+FROM
+    \"yummy\"
+    INNER JOIN \"questionable\" on \"yummy\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
+WHERE
+    \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"yummy\".\"store_first_year\" > 0 and \"yummy\".\"web_first_year\" > 0 and ( CASE
+	WHEN \"yummy\".\"web_first_year\" > 0 THEN \"yummy\".\"web_second_year\" / \"yummy\".\"web_first_year\"
+	ELSE null
+	END ) > ( CASE
+	WHEN \"yummy\".\"store_first_year\" > 0 THEN \"yummy\".\"store_second_year\" / \"yummy\".\"store_first_year\"
+	ELSE null
+	END )
+
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    \"customer_id\" asc nulls first
+LIMIT (100)"""

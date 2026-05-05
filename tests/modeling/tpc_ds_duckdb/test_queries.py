@@ -355,6 +355,18 @@ def test_twenty_six(engine):
     # assert len(query) < 6000, query
 
 
+def test_twenty_eight(engine):
+    _ = run_query(engine, 28)
+
+
+def test_seventy_four(engine):
+    _ = run_query(engine, 74)
+
+
+def test_seventy_eight(engine):
+    _ = run_query(engine, 78)
+
+
 @pytest.mark.skip(
     reason="Framework: store_sales+store_returns+catalog_sales merge planner "
     "produces a FULL JOIN of (sales+returns) with (sales+returns+catalog), "

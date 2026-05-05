@@ -1,0 +1,28 @@
+import unified_sales as sales;
+
+const first_year <- 2001;
+const second_year <- 2002;
+
+def channel_year_total(channel, year) -> sum(
+    sales.net_paid
+    ? sales.sales_channel = channel and sales.date.year = year
+) by sales.customer.id;
+
+auto store_first_year <- @channel_year_total('STORE', first_year);
+auto store_second_year <- @channel_year_total('STORE', second_year);
+auto web_first_year <- @channel_year_total('WEB', first_year);
+auto web_second_year <- @channel_year_total('WEB', second_year);
+
+WHERE
+    sales.sales_channel in ('STORE', 'WEB')
+    and store_first_year > 0
+    and web_first_year > 0
+    and (case when web_first_year > 0 then web_second_year / web_first_year else null end)
+        > (case when store_first_year > 0 then store_second_year / store_first_year else null end)
+SELECT
+    sales.customer.text_id as customer_id,
+    sales.customer.first_name as customer_first_name,
+    sales.customer.last_name as customer_last_name,
+ORDER BY
+    customer_id asc nulls first
+LIMIT 100;
