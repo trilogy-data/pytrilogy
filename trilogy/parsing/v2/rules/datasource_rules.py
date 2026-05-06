@@ -580,24 +580,22 @@ def datasource_node(
 
     if addr.is_file and partition_by:
         addr.partition_columns = [c.address.split(".")[-1] for c in partition_by]
-    # Two flavors of partial coexist on ``partial datasource``:
-    #   - implicit (table-level): the keyword stamps PARTIAL onto every column
-    #     not already explicitly marked. A covering UNION repairs these — the
-    #     siblings together cover the universe.
-    #   - intrinsic (column-level ``~col``): the column is partial *within*
-    #     every branch's complete-for slice. A covering UNION does NOT repair
-    #     these — e.g. ``~order_id`` on a returns table: not every order has
-    #     a return, and unioning all-channel returns doesn't change that.
-    # Capture intrinsic partials before the table-level stamp so the two
-    # cases stay separable. Outside ``partial datasource``, ``~col`` is the
-    # syntactic union-eligibility marker (a regular ``datasource`` becomes
-    # union-eligible by tagging the discriminator column) and behaves like a
-    # table-level stamp — drops on a covering UNION.
-    column_level_partial_addresses: set[str] = (
-        {pc.concept.address for pc in columns if Modifier.PARTIAL in pc.modifiers}
-        if is_partial
-        else set()
-    )
+    # ``~col`` always means the column is partial — independent of the
+    # ``partial datasource`` keyword and of any union concerns. Capture these
+    # intrinsic markers BEFORE the table-level stamp below so downstream code
+    # can distinguish them from columns that became partial only by virtue of
+    # the keyword. The two flavors differ in how a covering UNION treats them:
+    #   - implicit (table-level): every column gets PARTIAL stamped because
+    #     the datasource keyword says the table itself is partial. A union
+    #     whose siblings together cover the universe of the table's
+    #     discriminator can drop these — the union is no longer partial.
+    #   - intrinsic (``~col``): the column itself is partial. Whether a union
+    #     repairs it depends on whether the union's coverage extends to the
+    #     column's universe; that decision lives in the union builder, not
+    #     here. We just record the addresses.
+    column_level_partial_addresses: set[str] = {
+        pc.concept.address for pc in columns if Modifier.PARTIAL in pc.modifiers
+    }
     if is_partial:
         for pc in columns:
             if Modifier.PARTIAL not in pc.modifiers:
