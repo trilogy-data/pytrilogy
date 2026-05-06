@@ -1,5 +1,5 @@
 query_id = "78"
-gen_length = 7136
+gen_length = 7131
 generated_sql = """
 
 WITH 
@@ -78,8 +78,8 @@ SELECT
     sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'STORE' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END) as \"store_wholesale_cost\",
     sum(CASE WHEN coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"ws_qty\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
 WHERE
     \"cheerful\".\"sales_is_returned\" is null and \"sales_date_date\".\"D_YEAR\" = 2000 and \"abundant\".\"sales_customer_id\" is not null

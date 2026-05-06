@@ -1,5 +1,5 @@
 query_id = "25"
-gen_length = 7547
+gen_length = 7858
 generated_sql = """
 
 WITH 
@@ -42,8 +42,8 @@ GROUP BY
     3,
     4,
     5,
-    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",
-    \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\"),
+    \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\",
+    coalesce(\"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",\"store_sales_item_items\".\"I_ITEM_SK\",\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\")),
 yummy as (
 SELECT
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
@@ -70,8 +70,8 @@ GROUP BY
     4,
     5,
     6,
-    \"highfalutin\".\"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\"),
+    coalesce(\"highfalutin\".\"store_sales_item_id\",\"store_sales_item_items\".\"I_ITEM_SK\",\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\"),
+    coalesce(\"store_sales_store_returns\".\"SR_TICKET_NUMBER\",\"store_sales_store_sales\".\"SS_TICKET_NUMBER\")),
 concerned as (
 SELECT
     \"vacuous\".\"store_sales_item_desc\" as \"store_sales_item_desc\",

@@ -580,6 +580,22 @@ def datasource_node(
 
     if addr.is_file and partition_by:
         addr.partition_columns = [c.address.split(".")[-1] for c in partition_by]
+    # Capture intrinsic (column-level) partials — ``~col`` markers carry
+    # different semantics depending on context:
+    #   - inside ``partial datasource``: the column is intrinsically partial
+    #     (e.g. ``~order_id`` on a returns table — not every order has a
+    #     return); these survive a covering UNION.
+    #   - outside ``partial datasource``: ``~col`` is the syntactic
+    #     union-eligibility marker (a regular ``datasource`` with ``complete
+    #     where`` becomes union-eligible by tagging the discriminator column);
+    #     these are equivalent to table-level partials and drop on a covering
+    #     UNION.
+    # Capture before the table-level stamp so the two cases stay separable.
+    column_level_partial_addresses: set[str] = (
+        {pc.concept.address for pc in columns if Modifier.PARTIAL in pc.modifiers}
+        if is_partial
+        else set()
+    )
     if is_partial:
         for pc in columns:
             if Modifier.PARTIAL not in pc.modifiers:
@@ -601,6 +617,7 @@ def datasource_node(
         refresh_script=refresh_script,
         is_root=is_root,
         is_partial=is_partial,
+        column_level_partial_addresses=column_level_partial_addresses,
     )
     # Propagate keys from datasource grain to foreign key concepts.
     # A KEY concept on a datasource that isn't part of the grain

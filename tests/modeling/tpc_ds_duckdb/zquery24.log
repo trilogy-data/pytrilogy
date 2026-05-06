@@ -1,5 +1,5 @@
 query_id = "24"
-gen_length = 3865
+gen_length = 3916
 generated_sql = """
 
 WITH 
@@ -17,8 +17,8 @@ WHERE
 
 GROUP BY
     \"store_sales_customer_customers\".\"C_CUSTOMER_SK\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\",
-    \"store_sales_store_store\".\"S_STORE_SK\"),
+    \"store_sales_store_store\".\"S_STORE_SK\",
+    coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\")),
 questionable as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",

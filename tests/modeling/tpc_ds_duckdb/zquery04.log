@@ -1,5 +1,5 @@
 query_id = "04"
-gen_length = 11484
+gen_length = 11210
 generated_sql = """
 
 WITH 
@@ -61,8 +61,8 @@ SELECT
     \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"cheerful\" on \"sales_date_date\".\"D_DATE_SK\" = \"cheerful\".\"sales_date_id\"
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 ),
@@ -73,11 +73,11 @@ SELECT
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
     \"sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_customer_preferred_cust_flag\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    coalesce(\"sales_customer_customers\".\"C_CUSTOMER_SK\",\"thoughtful\".\"sales_customer_id\") as \"sales_customer_id\"
+    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"thoughtful\" on \"sales_date_date\".\"D_DATE_SK\" = \"thoughtful\".\"sales_date_id\"
-    FULL JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 
@@ -139,45 +139,46 @@ GROUP BY
 vacuous as (
 SELECT
     \"abundant\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
     \"abundant\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"abundant\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"abundant\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
     \"abundant\".\"sales_date_year\" as \"sales_date_year\",
-    \"yummy\".\"web_second_year\" as \"web_second_year\",
-    coalesce(\"abundant\".\"sales_customer_id\",\"yummy\".\"sales_customer_id\") as \"sales_customer_id\"
+    \"yummy\".\"web_second_year\" as \"web_second_year\"
 FROM
-    \"yummy\"
-    FULL JOIN \"abundant\" on \"yummy\".\"sales_customer_id\" is not distinct from \"abundant\".\"sales_customer_id\"),
+    \"abundant\"
+    INNER JOIN \"yummy\" on \"abundant\".\"sales_customer_id\" = \"yummy\".\"sales_customer_id\"),
 sparkling as (
 SELECT
     \"concerned\".\"web_first_year\" as \"web_first_year\",
     \"vacuous\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"vacuous\".\"sales_customer_id\" as \"sales_customer_id\",
     \"vacuous\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"vacuous\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"vacuous\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
     \"vacuous\".\"sales_date_year\" as \"sales_date_year\",
-    \"vacuous\".\"web_second_year\" as \"web_second_year\",
-    coalesce(\"concerned\".\"sales_customer_id\",\"vacuous\".\"sales_customer_id\") as \"sales_customer_id\"
+    \"vacuous\".\"web_second_year\" as \"web_second_year\"
 FROM
     \"vacuous\"
-    FULL JOIN \"concerned\" on \"vacuous\".\"sales_customer_id\" = \"concerned\".\"sales_customer_id\"),
+    INNER JOIN \"concerned\" on \"vacuous\".\"sales_customer_id\" = \"concerned\".\"sales_customer_id\"),
 late as (
 SELECT
     \"abhorrent\".\"store_second_year\" as \"store_second_year\",
     \"sparkling\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"sparkling\".\"sales_customer_id\" as \"sales_customer_id\",
     \"sparkling\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"sparkling\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"sparkling\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
     \"sparkling\".\"sales_date_year\" as \"sales_date_year\",
     \"sparkling\".\"web_first_year\" as \"web_first_year\",
-    \"sparkling\".\"web_second_year\" as \"web_second_year\",
-    coalesce(\"abhorrent\".\"sales_customer_id\",\"sparkling\".\"sales_customer_id\") as \"sales_customer_id\"
+    \"sparkling\".\"web_second_year\" as \"web_second_year\"
 FROM
     \"sparkling\"
-    FULL JOIN \"abhorrent\" on \"sparkling\".\"sales_customer_id\" = \"abhorrent\".\"sales_customer_id\"),
+    INNER JOIN \"abhorrent\" on \"sparkling\".\"sales_customer_id\" = \"abhorrent\".\"sales_customer_id\"),
 friendly as (
 SELECT
     \"late\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"late\".\"sales_customer_id\" as \"sales_customer_id\",
     \"late\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"late\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"late\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
@@ -185,14 +186,14 @@ SELECT
     \"late\".\"store_second_year\" as \"store_second_year\",
     \"late\".\"web_first_year\" as \"web_first_year\",
     \"late\".\"web_second_year\" as \"web_second_year\",
-    \"macho\".\"store_first_year\" as \"store_first_year\",
-    coalesce(\"late\".\"sales_customer_id\",\"macho\".\"sales_customer_id\") as \"sales_customer_id\"
+    \"macho\".\"store_first_year\" as \"store_first_year\"
 FROM
     \"late\"
-    FULL JOIN \"macho\" on \"late\".\"sales_customer_id\" = \"macho\".\"sales_customer_id\"),
+    INNER JOIN \"macho\" on \"late\".\"sales_customer_id\" = \"macho\".\"sales_customer_id\"),
 busy as (
 SELECT
     \"friendly\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"friendly\".\"sales_customer_id\" as \"sales_customer_id\",
     \"friendly\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"friendly\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"friendly\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
@@ -201,11 +202,10 @@ SELECT
     \"friendly\".\"store_second_year\" as \"store_second_year\",
     \"friendly\".\"web_first_year\" as \"web_first_year\",
     \"friendly\".\"web_second_year\" as \"web_second_year\",
-    \"kaput\".\"catalog_second_year\" as \"catalog_second_year\",
-    coalesce(\"friendly\".\"sales_customer_id\",\"kaput\".\"sales_customer_id\") as \"sales_customer_id\"
+    \"kaput\".\"catalog_second_year\" as \"catalog_second_year\"
 FROM
     \"friendly\"
-    FULL JOIN \"kaput\" on \"friendly\".\"sales_customer_id\" = \"kaput\".\"sales_customer_id\")
+    INNER JOIN \"kaput\" on \"friendly\".\"sales_customer_id\" = \"kaput\".\"sales_customer_id\")
 SELECT
     \"busy\".\"sales_customer_text_id\" as \"customer_id\",
     \"busy\".\"sales_customer_first_name\" as \"customer_first_name\",

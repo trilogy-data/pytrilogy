@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 8766
+gen_length = 8823
 generated_sql = """
 
 WITH 
@@ -64,8 +64,8 @@ GROUP BY
     3,
     4,
     5,
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\",
-    coalesce(\"highfalutin\".\"store_sales_item_id\",\"store_sales_item_items\".\"I_ITEM_SK\",\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\")),
+    coalesce(\"highfalutin\".\"store_sales_item_id\",\"store_sales_item_items\".\"I_ITEM_SK\",\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\"),
+    coalesce(\"store_sales_store_returns\".\"SR_TICKET_NUMBER\",\"store_sales_store_sales\".\"SS_TICKET_NUMBER\")),
 concerned as (
 SELECT
     \"vacuous\".\"store_sales_item_desc\" as \"store_sales_item_desc\",

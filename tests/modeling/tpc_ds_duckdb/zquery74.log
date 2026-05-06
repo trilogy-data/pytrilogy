@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3600
+gen_length = 3571
 generated_sql = """
 
 WITH 
@@ -43,8 +43,8 @@ SELECT
     sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"web_first_year\",
     sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"web_second_year\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"cheerful\" on \"sales_date_date\".\"D_DATE_SK\" = \"cheerful\".\"sales_date_id\"
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB')
 
@@ -58,8 +58,8 @@ SELECT
     \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
     \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
 FROM
-    \"memory\".\"customer\" as \"sales_customer_customers\"
-    LEFT OUTER JOIN \"thoughtful\" on \"sales_customer_customers\".\"C_CUSTOMER_SK\" = \"thoughtful\".\"sales_customer_id\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
     \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB')
 )
@@ -69,7 +69,7 @@ SELECT
     \"questionable\".\"sales_customer_last_name\" as \"customer_last_name\"
 FROM
     \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
+    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" = \"questionable\".\"sales_customer_id\"
 WHERE
     \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
 	WHEN \"uneven\".\"web_first_year\" > 0 THEN \"uneven\".\"web_second_year\" / \"uneven\".\"web_first_year\"

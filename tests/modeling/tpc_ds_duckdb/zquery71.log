@@ -1,5 +1,5 @@
 query_id = "71"
-gen_length = 2477
+gen_length = 2461
 generated_sql = """
 
 WITH 
@@ -40,10 +40,10 @@ SELECT
     \"sales_time_time\".\"T_MINUTE\" as \"t_minute\",
     sum(\"cheerful\".\"sales_ext_sales_price\") as \"ext_price\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"cheerful\" on \"sales_date_date\".\"D_DATE_SK\" = \"cheerful\".\"sales_date_id\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"cheerful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"cheerful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 1999 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_item_items\".\"I_MANAGER_ID\" = 1 and ( \"sales_time_time\".\"T_MEAL_TIME\" = 'breakfast' or \"sales_time_time\".\"T_MEAL_TIME\" = 'dinner' )
 

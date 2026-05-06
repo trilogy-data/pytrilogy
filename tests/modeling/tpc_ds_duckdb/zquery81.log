@@ -1,5 +1,5 @@
 query_id = "81"
-gen_length = 10137
+gen_length = 10196
 generated_sql = """
 
 WITH 
@@ -144,7 +144,7 @@ FROM
     \"juicy\"
     LEFT OUTER JOIN \"vacuous\" on \"juicy\".\"catalog_returns_return_address_state\" is not distinct from \"vacuous\".\"catalog_returns_return_address_state\"
 WHERE
-    \"juicy\".\"customer_state_returns_2000\" > 1.2 * \"vacuous\".\"_virt_agg_avg_8563408282113983\" and \"juicy\".\"catalog_returns_customer_address_state\" = 'GA' and \"juicy\".\"catalog_returns_return_address_state\" is not null
+    \"juicy\".\"customer_state_returns_2000\" > 1.2 * \"vacuous\".\"_virt_agg_avg_8563408282113983\" and \"juicy\".\"catalog_returns_customer_address_state\" = 'GA' and coalesce(\"juicy\".\"catalog_returns_return_address_state\",\"vacuous\".\"catalog_returns_return_address_state\") is not null
 
 GROUP BY
     1,

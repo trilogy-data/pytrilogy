@@ -1,5 +1,5 @@
 query_id = "49"
-gen_length = 11514
+gen_length = 11630
 generated_sql = """
 
 WITH 
@@ -74,9 +74,9 @@ SELECT
     coalesce(\"abundant\".\"sales_item_id\",\"cheerful\".\"sales_item_id\") as \"sales_item_id\",
     coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") as \"sales_sales_channel\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
-    INNER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
 WHERE
     \"cheerful\".\"sales_return_amount\" > 10000 and \"abundant\".\"sales_net_profit\" > 1 and \"abundant\".\"sales_net_paid\" > 0 and \"abundant\".\"sales_quantity\" > 0 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 12
 
@@ -101,9 +101,9 @@ SELECT
     coalesce(\"abundant\".\"sales_item_id\",\"cheerful\".\"sales_item_id\") as \"sales_item_id\",
     coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") as \"sales_sales_channel\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
-    FULL JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"),
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"),
 juicy as (
 SELECT
     \"yummy\".\"sales_item_id\" as \"sales_item_id\",
@@ -158,8 +158,8 @@ SELECT
     coalesce(\"abhorrent\".\"sales_item_id\",\"sweltering\".\"sales_item_id\") as \"sales_item_id\",
     coalesce(\"abhorrent\".\"sales_sales_channel\",\"sweltering\".\"sales_sales_channel\") as \"sales_sales_channel\"
 FROM
-    \"abhorrent\"
-    RIGHT OUTER JOIN \"sweltering\" on \"abhorrent\".\"sales_item_id\" is not distinct from \"sweltering\".\"sales_item_id\" AND \"abhorrent\".\"sales_sales_channel\" is not distinct from \"sweltering\".\"sales_sales_channel\"
+    \"sweltering\"
+    LEFT OUTER JOIN \"abhorrent\" on \"sweltering\".\"sales_item_id\" = \"abhorrent\".\"sales_item_id\" AND \"sweltering\".\"sales_sales_channel\" = \"abhorrent\".\"sales_sales_channel\"
 WHERE
     \"sweltering\".\"sales_return_amount\" > 10000 and \"sweltering\".\"sales_net_profit\" > 1 and \"sweltering\".\"sales_net_paid\" > 0 and \"sweltering\".\"sales_quantity\" > 0 and \"sweltering\".\"sales_date_year\" = 2001 and \"sweltering\".\"sales_date_month_of_year\" = 12
 ),
@@ -198,12 +198,12 @@ WHERE
 )
 SELECT
     CASE
-	WHEN \"concerned\".\"sales_sales_channel\" = 'WEB' THEN 'web'
-	WHEN \"concerned\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
-	WHEN \"concerned\".\"sales_sales_channel\" = 'STORE' THEN 'store'
+	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"macho\".\"sales_sales_channel\") = 'WEB' THEN 'web'
+	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"macho\".\"sales_sales_channel\") = 'CATALOG' THEN 'catalog'
+	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"macho\".\"sales_sales_channel\") = 'STORE' THEN 'store'
 	ELSE null
 	END as \"channel\",
-    \"concerned\".\"sales_item_id\" as \"item\",
+    coalesce(\"concerned\".\"sales_item_id\",\"macho\".\"sales_item_id\") as \"item\",
     cast(\"macho\".\"return_qty\" as numeric(15,4)) / cast(\"macho\".\"sale_qty\" as numeric(15,4)) as \"return_ratio\",
     \"macho\".\"return_rank\" as \"return_rank\",
     \"concerned\".\"currency_rank\" as \"currency_rank\"

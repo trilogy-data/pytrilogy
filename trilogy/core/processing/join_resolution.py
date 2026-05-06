@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
-from trilogy.core.enums import JoinType, Modifier
+from trilogy.core.enums import JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -352,12 +352,53 @@ def get_modifiers(
 def _collect_deep_partial_addresses(
     ds: QueryDatasource | BuildDatasource,
 ) -> set[str]:
-    """Collect partial concept addresses from a datasource and all its sub-datasources."""
+    """Collect partial concept addresses from a datasource and all its sub-datasources.
+
+    UNION nodes are special: their child branches carry table-level PARTIAL
+    stamps (each `partial datasource` covers only its slice of the universe),
+    but the UNION itself combines those slices into a covering view. Table-
+    level stamps subside; only intrinsic column-level partials (``~col``)
+    survive — those represent columns that are missing values *within* every
+    branch's complete-for slice (e.g. ``~order_id`` on a returns table: not
+    every order has a return), so the union remains partial for them too.
+
+    Note: this only affects join-resolution (the join graph reads from
+    ``_collect_deep_partial_addresses``). The UnionNode's ``partial_concepts``
+    is unchanged at the QueryDatasource level — propagating intrinsic
+    partials there breaks output validation for unions whose ``~col`` is a
+    syntactic union-eligibility marker rather than a true partial column.
+    """
     result: set[str] = {c.address for c in ds.partial_concepts}
     if isinstance(ds, QueryDatasource):
+        if ds.source_type == SourceType.UNION:
+            for sub in ds.datasources:
+                result |= _collect_intrinsic_partial_addresses(sub)
+            return result
         for sub in ds.datasources:
             result |= _collect_deep_partial_addresses(sub)
     return result
+
+
+def _collect_intrinsic_partial_addresses(
+    ds: QueryDatasource | BuildDatasource,
+) -> set[str]:
+    """Like ``_collect_deep_partial_addresses`` but only counts column-level
+    (intrinsic) partials, never table-level stamps. Used when descending into
+    a UNION's branches for join-resolution.
+
+    A QueryDatasource's own ``partial_concepts`` is skipped because it may
+    contain inherited table-level stamps (a SELECT wrapping a ``partial
+    datasource`` reports every column as partial). Recurse to leaf
+    BuildDatasources where intrinsic partials are tracked explicitly.
+    """
+    if isinstance(ds, BuildDatasource):
+        return set(ds.column_level_partial_addresses)
+    if isinstance(ds, QueryDatasource):
+        result: set[str] = set()
+        for sub in ds.datasources:
+            result |= _collect_intrinsic_partial_addresses(sub)
+        return result
+    return set()
 
 
 def resolve_instantiated_concept(
@@ -391,6 +432,10 @@ def reduce_concept_pairs(
             right_keys.add(pair.right.address)
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
+    # Track (right_addr, left_addr) combinations from different datasources.
+    # Same left concept from multiple datasources: keep only when partial
+    # (FULL JOIN → COALESCE needed). Different left concepts for the same
+    # right: always keep (they are distinct join conditions).
     # Track (right_addr, left_addr) combinations from different datasources.
     # Same left concept from multiple datasources: keep only when partial
     # (FULL JOIN → COALESCE needed). Different left concepts for the same

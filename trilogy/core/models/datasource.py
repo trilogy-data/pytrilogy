@@ -245,6 +245,12 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     refresh_script: Optional[str] = None
     is_root: bool = False
     is_partial: bool = False
+    # Addresses of columns that carried Modifier.PARTIAL *before* the
+    # `partial datasource` keyword stamped PARTIAL onto every column. These
+    # represent intrinsic column-level partials (e.g. ``~order_id``) — the
+    # column is missing values even within the table's complete-for slice —
+    # and survive a covering UNION. Table-level stamps do not.
+    column_level_partial_addresses: set[str] = Field(default_factory=set)
 
     @property
     def safe_address(self) -> str:
@@ -369,6 +375,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return self.identifier.__hash__()
 
     def with_namespace(self, namespace: str):
+        from trilogy.core.models.author import address_with_namespace
+
         new_namespace = (
             namespace + "." + self.namespace
             if self.namespace and self.namespace != DEFAULT_NAMESPACE
@@ -392,6 +400,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             freshness_by=[c.with_namespace(namespace) for c in self.freshness_by],
             is_root=self.is_root,
             is_partial=self.is_partial,
+            column_level_partial_addresses={
+                address_with_namespace(addr, namespace)
+                for addr in self.column_level_partial_addresses
+            },
         )
         return new
 
@@ -443,6 +455,17 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     @property
     def partial_concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
+
+    @property
+    def column_level_partial_concepts(self) -> List[ConceptRef]:
+        """Columns with intrinsic (pre-stamp) PARTIAL — survive a covering UNION."""
+        if not self.column_level_partial_addresses:
+            return []
+        return [
+            c.concept
+            for c in self.columns
+            if c.concept.address in self.column_level_partial_addresses
+        ]
 
 
 class EnvironmentDatasourceDict(dict):

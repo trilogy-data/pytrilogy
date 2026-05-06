@@ -1,5 +1,5 @@
 query_id = "33"
-gen_length = 2984
+gen_length = 2967
 generated_sql = """
 
 WITH 
@@ -45,10 +45,10 @@ SELECT
     \"abundant\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"abundant\" on \"sales_date_date\".\"D_DATE_SK\" = \"abundant\".\"sales_date_id\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
-    RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"abundant\".\"sales_bill_address_id\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"abundant\".\"sales_bill_address_id\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null) and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
 

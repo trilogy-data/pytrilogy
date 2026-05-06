@@ -1,5 +1,5 @@
 query_id = "83"
-gen_length = 7659
+gen_length = 7712
 generated_sql = """
 
 WITH 
@@ -39,16 +39,16 @@ GROUP BY
     1),
 young as (
 SELECT
-    \"questionable\".\"sales_item_id\" as \"sales_item_id\",
     \"questionable\".\"sales_order_id\" as \"sales_order_id\",
     \"questionable\".\"sales_return_quantity\" as \"sales_return_quantity\",
     \"questionable\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\",
-    \"sales_return_date_date\".\"D_WEEK_SEQ\" as \"sales_return_date_week_seq\"
+    \"sales_return_date_date\".\"D_WEEK_SEQ\" as \"sales_return_date_week_seq\",
+    coalesce(\"questionable\".\"sales_item_id\",\"sales_item_items\".\"I_ITEM_SK\") as \"sales_item_id\"
 FROM
     \"memory\".\"item\" as \"sales_item_items\"
     LEFT OUTER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
-    FULL JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
 GROUP BY
     1,
     2,
@@ -65,7 +65,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"sales_item_items\"
     LEFT OUTER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
-    FULL JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
 GROUP BY
     1,
     2,

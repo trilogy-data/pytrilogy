@@ -1,5 +1,5 @@
 query_id = "87"
-gen_length = 2703
+gen_length = 2540
 generated_sql = """
 
 WITH 
@@ -38,21 +38,21 @@ GROUP BY
 abundant as (
 SELECT
     sum(CASE
-	WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and coalesce(\"sales_customer_customers\".\"C_CUSTOMER_SK\",\"thoughtful\".\"sales_customer_id\") is not null THEN 1
+	WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and \"thoughtful\".\"sales_customer_id\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_in_window\",
     sum(CASE
-	WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and coalesce(\"sales_customer_customers\".\"C_CUSTOMER_SK\",\"thoughtful\".\"sales_customer_id\") is not null THEN 1
+	WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and \"thoughtful\".\"sales_customer_id\" is not null THEN 1
 	ELSE 0
 	END) as \"store_in_window\",
     sum(CASE
-	WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and coalesce(\"sales_customer_customers\".\"C_CUSTOMER_SK\",\"thoughtful\".\"sales_customer_id\") is not null THEN 1
+	WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and \"thoughtful\".\"sales_customer_id\" is not null THEN 1
 	ELSE 0
 	END) as \"web_in_window\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"thoughtful\" on \"sales_date_date\".\"D_DATE_SK\" = \"thoughtful\".\"sales_date_id\"
-    FULL JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
     \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
