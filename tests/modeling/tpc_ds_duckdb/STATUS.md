@@ -9,16 +9,24 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 77 | 1, 2 (+02-one, 02-two), 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 37, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 66, 68, 69, 71, 73, 74, 78, 79, 80, 81, 82, 83, 86, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
-| Skipped (preql exists) | 5 | 4, 5, 29, 44, 85 |
-| Missing (no preql / no test) | 17 | 14, 18, 36, 38, 51, 54, 59, 61, 64, 67, 70, 72, 75, 76, 77, 84, 87 |
+| Passing | 83 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 66, 68, 69, 70, 71, 73, 74, 78, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Skipped (preql exists) | 3 | 5, 29, 85 |
+| Missing (no preql / no test) | 13 | 14, 36, 51, 54, 59, 61, 64, 67, 72, 75, 76, 77, 84 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
 
 ## Skipped Tests and Why
 
-- **q4, q5** — `pytest.mark.skip(reason="Is duckdb correct??")` — look at these in next run
+- **q5** — Sales side filtered on `date`, returns side on `return_date`;
+  unified_sales joins them at row grain, but for STORE/CATALOG returns whose
+  ticket_number/order_id has no matching sale, the partial yields a row with
+  NULL `channel_dim_id` (the dim only flows from the sales partial, not the
+  returns partial). Filtering `channel_dim_text_id is not null` then drops
+  those return-only rows, undercounting returns by ~2.7% on sf=1. The
+  reference SQL uses `sr_store_sk` / `cr_catalog_page_sk` as their own dim
+  keys for return-only rows. Fixing requires mapping the return-side SKs to
+  `channel_dim_id` in the returns partials. (Sales totals already match.)
 - **q29** — same `merge bill_customer + item` shape as q17. With the merge planner
   producing a FULL JOIN of (store_sales+store_returns) with
   (store_sales+store_returns+catalog_sales), rows without a matching catalog
@@ -26,8 +34,6 @@ exercising different planner paths — they share an SQL reference.)
   sf=1; q29's reference returns 1 row vs trilogy's 3. Needs INNER-merge
   semantics or an "exists in catalog_sales" filter that is correctly pushed
   to all branches.
-- **q44** — `pytest.mark.skip(reason="Still cooking")` — pre-existing, not
-  investigated.
 - **q85** — DuckDB Comparison (PRAGMA tpcds(85)) hangs on dev machine; skip.
   Preql exists and parses; this is solely a comparison-reference issue.
 
@@ -199,6 +205,28 @@ exercising different planner paths — they share an SQL reference.)
   = 'STORE'` and need STORE rows. Workaround: push locally scoped conditions 
   into the fields that need filtering with them via ? 
 
+- **`group <prop> by <keys>` re-grains a dim property (q18).** When you need
+  `avg(dim.prop) row-weighted by fact rows`, the naive `avg(catalog_sales.bill_customer.birth_year)`
+  computes at customer.id grain (each distinct customer counted once). Use
+  `auto row_birth_year <- group catalog_sales.bill_customer.birth_year by
+  catalog_sales.order_number, catalog_sales.item.id;` to broadcast the
+  property to the row grain, then `avg(row_birth_year)` weights correctly.
+  Prefer this over declaring `property <key1, key2>.x <- prop` which can
+  hit "Missing source reference" inside multi-fact MERGE selects.
+- **`align` is UNION semantics, not JOIN (q44 lesson).** The merged rowset's
+  rows are the rows from each branch concatenated, with the aligned columns
+  joined column-wise via `IS NOT DISTINCT FROM`. Branches with non-overlapping
+  alignment patterns (typical rollup levels) produce disjoint rows. To force
+  a true cross-branch join (e.g. asc-rank rows paired with desc-rank rows at
+  the same `rnk`), use two separate rowsets and `merge a.rnk into b.rnk;`
+  outside the rowset bodies — that ties the rank concept across them so the
+  final SELECT can co-reference both.
+- **Rollup level direction is column-order, not reversed (q18 lesson).**
+  `GROUP BY ROLLUP(a, b, c, d)` strips dims off the right, producing levels
+  (a,b,c,d), (a,b,c), (a,b), (a), (). When laying out MERGE branches in
+  trilogy, mirror that — L0 has all dims, L1 keeps the leftmost N-1 dims and
+  NULLs the rightmost, etc. Reversing this layout silently produces
+  syntactically valid but semantically wrong rollup output.
 - **NULL customer/key trap on aggregates over unified_sales (q23).**
   `sum(... ? sales.sales_channel = 'STORE') by sales.customer.id` groups
   rows with NULL `customer.id` into a single phantom group whose total can
@@ -219,6 +247,45 @@ exercising different planner paths — they share an SQL reference.)
   existing catalog_sales side: catalog_sales already exposes `customer.id`
   for `CS_SHIP_CUSTOMER_SK`. Unblocks q76 modelling, even if q76 itself
   remains unsolved.
+
+## Recent Query Additions (q4/q18/q38/q44/q70/q87 batch)
+
+- **q4** — extends q11/q74 to all three channels (store/web/catalog) using
+  the unified_sales `def channel_year_total(channel, year)` macro. Three pairs
+  of first/second-year totals and a `case when first > 0 then second/first`
+  ratio compare per-channel growth — tractable because all per-channel
+  metrics are pinned `by sales.customer.id` inside the macro.
+- **q18** — 5-level rollup over (i_item_id, country, state, county) following
+  q22/q27. Adds `avg(c_birth_year)` and `avg(cd_dep_count)` aggregates that
+  need to be re-grained to the row level via `auto x <- group <prop> by
+  cs.order_number, cs.item.id;` so dim-property values aren't dedup'd by
+  their source key before averaging. **Trilogy `group … by` lets you re-grain
+  a property to keys outside its native grain — much cleaner than declaring
+  a `property <key1, key2>.x <- prop` shim, which can fail with
+  "Missing source reference" when the new property is then used in an
+  aggregate inside a multi-fact MERGE.**
+- **q38** — `INTERSECT` of (last_name, first_name, date.date) tuples across
+  store/catalog/web sales. Same pattern as q97: per-channel CASE-WHEN sum
+  flagged at the tuple grain, then `count(case when all three > 0 then 1)`.
+  Filtering on `customer.id is not null` mirrors the reference's INNER JOIN
+  to `customer`.
+- **q44** — best/worst items by avg net_profit at store 4. Two parallel
+  rowsets (asc-rank vs desc-rank) of the SAME item set, joined by `merge
+  ascending.rnk_a into descending.rnk_d;` so a single `rnk` row carries
+  different `best_performing` / `worst_performing` items. Threshold filter
+  pushed into the rowset's `where`. **Note: `align` does NOT join across
+  branches — each branch's rows independently appear in the merged rowset.
+  For true cross-branch joins (different items at the same rnk position),
+  use `merge X into Y` between rowsets.**
+- **q70** — 3-level rank-over-rollup. Top-5 states by total profit are
+  picked in a small rowset (`with top_states as ... HAVING state_rnk <= 5`),
+  then per-level rowsets compute (state, county) detail / state subtotal /
+  grand total with the q86 trick — `rank county over state by county_total
+  desc` at L0, `rank state by state_total desc` at L1, constant `1` at L2.
+- **q87** — `EXCEPT` of store sales tuples vs catalog/web. Same shape as
+  q38 but with `store > 0 AND catalog = 0 AND web = 0`. NULL-name customers
+  are filtered via `customer.id is not null` to mirror the reference's
+  inner join semantics.
 
 ## Recent Query Additions (q27/q86 batch)
 
@@ -251,6 +318,10 @@ exercising different planner paths — they share an SQL reference.)
 
 These look tractable without further framework work:
 
+- **q67** — same shape as q70/q86 but 9 rollup levels and `rank() OVER
+  (PARTITION BY i_category ORDER BY sumsales DESC)`. The q86 per-level
+  rank trick should extend, but it'll be ~9 MERGE branches. Verbose but
+  mechanical.
 - **q72** — model extensions are now done (catalog_sales has
   `bill_household_demographic`), but the inventory + sales + returns
   triple-join blows up to OOM during planning. Needs filter pushdown
@@ -276,18 +347,17 @@ Blocked by missing `unified_sales` features:
 
 These need framework work first:
 
-- **q14, q38, q87** — INTERSECT / EXCEPT of 2–3 sets (no clean trilogy
-  primitive).
+- **q14** — `INTERSECT` of 3 (brand_id, class_id, category_id) sets to find
+  items present in all 3 channels, plus a 4-level rollup over (channel,
+  brand, class, category) and an `avg_sales` HAVING threshold. The intersect
+  pattern from q38 should work for the cross_items prefilter; the rollup is
+  a q22-style cascade. Untried but likely tractable.
 - **q61** — needs LEFT JOIN to promotion, OR a way to compute total without
   pulling promotion into the join (currently inner-joins drop NULL promo rows).
-- **q67, q70, q77** — `rank() OVER (PARTITION BY rollup(...))` — depends on
-  rollup + window combo. The q86 trick (per-level rank windows folded
-  through align) likely extends to q70/q67 as well; haven't tried yet.
-- **q18** — 5-level `GROUP BY ROLLUP (i_item_id, country, state, county)`
-  cascade. Same shape as q22/q27 but bigger. Adds `avg(c_birth_year)`
-  and `avg(cd_dep_count)` aggregates that need explicit
-  `by catalog_sales.order_number, catalog_sales.item.id` to keep grain
-  correct (dim properties otherwise dedup before averaging).
+- **q77** — same store/catalog/web rollup as q5. Has the same sale-vs-return
+  date filter mismatch (sale-date filter vs return-date filter). Catalog uses
+  `cs_call_center_sk` as id (not catalog_page) and store/web use LEFT JOINs
+  for returns. Blocked on the same return-side dim mapping as q5.
 - **q36** — 3-level rollup (q22-style cascade) + `rank() OVER (PARTITION BY
   lochierarchy, CASE WHEN t_class=0 THEN i_category END ORDER BY gross_margin)`
   window. Doable but verbose; needs window over rollup output.

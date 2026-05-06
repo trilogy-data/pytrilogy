@@ -1,0 +1,139 @@
+query_id = "86"
+gen_length = 5041
+generated_sql = """
+
+WITH 
+quizzical as (
+SELECT
+    0 as \"lochierarchy_a\",
+    1 as \"lochierarchy_b\",
+    1 as \"rank_c\",
+    2 as \"lochierarchy_c\",
+    cast(null as string) as \"null_category_c\",
+    cast(null as string) as \"null_class_b\",
+    cast(null as string) as \"null_class_c\"
+),
+vacuous as (
+SELECT
+    sum(\"web_sales_web_sales\".\"WS_NET_PAID\") as \"total_c\"
+FROM
+    \"memory\".\"web_sales\" as \"web_sales_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"web_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"web_sales_date_date\".\"D_MONTH_SEQ\" <= 1211
+),
+thoughtful as (
+SELECT
+    \"web_sales_item_items\".\"I_CATEGORY\" as \"web_sales_item_category\",
+    \"web_sales_item_items\".\"I_CLASS\" as \"web_sales_item_class\",
+    \"web_sales_web_sales\".\"WS_NET_PAID\" as \"_virt_filter_net_paid_1727315324891705\"
+FROM
+    \"memory\".\"web_sales\" as \"web_sales_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"web_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"web_sales_date_date\".\"D_MONTH_SEQ\" <= 1211
+),
+abhorrent as (
+SELECT
+    sum(\"web_sales_web_sales\".\"WS_NET_PAID\") as \"total_c\"
+FROM
+    \"memory\".\"web_sales\" as \"web_sales_web_sales\"),
+young as (
+SELECT
+    \"quizzical\".\"lochierarchy_c\" as \"lochierarchy\",
+    \"quizzical\".\"null_category_c\" as \"i_category\",
+    \"quizzical\".\"null_class_c\" as \"i_class\",
+    \"quizzical\".\"rank_c\" as \"rank_c\",
+    \"vacuous\".\"total_c\" as \"total_c\"
+FROM
+    \"quizzical\"
+    FULL JOIN \"vacuous\" on 1=1),
+uneven as (
+SELECT
+    \"thoughtful\".\"web_sales_item_category\" as \"web_sales_item_category\",
+    \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
+    sum(\"thoughtful\".\"_virt_filter_net_paid_1727315324891705\") as \"class_total\"
+FROM
+    \"thoughtful\"
+GROUP BY
+    1,
+    2),
+cooperative as (
+SELECT
+    \"thoughtful\".\"web_sales_item_category\" as \"web_sales_item_category\",
+    sum(\"thoughtful\".\"_virt_filter_net_paid_1727315324891705\") as \"category_total\"
+FROM
+    \"thoughtful\"
+GROUP BY
+    1),
+yummy as (
+SELECT
+    \"uneven\".\"class_total\" as \"total_a\",
+    \"uneven\".\"web_sales_item_category\" as \"category_a\",
+    \"uneven\".\"web_sales_item_class\" as \"class_a\",
+    rank() over (partition by \"uneven\".\"web_sales_item_category\" order by \"uneven\".\"class_total\" desc ) as \"rank_a\"
+FROM
+    \"uneven\"),
+questionable as (
+SELECT
+    \"cooperative\".\"category_total\" as \"total_b\",
+    \"cooperative\".\"web_sales_item_category\" as \"category_b\",
+    rank() over (order by \"cooperative\".\"category_total\" desc ) as \"rank_b\"
+FROM
+    \"cooperative\"),
+juicy as (
+SELECT
+    \"quizzical\".\"lochierarchy_a\" as \"lochierarchy\",
+    \"yummy\".\"category_a\" as \"i_category\",
+    \"yummy\".\"class_a\" as \"i_class\",
+    \"yummy\".\"rank_a\" as \"rank_a\",
+    \"yummy\".\"total_a\" as \"total_a\"
+FROM
+    \"yummy\"
+    FULL JOIN \"quizzical\" on 1=1),
+abundant as (
+SELECT
+    \"questionable\".\"category_b\" as \"i_category\",
+    \"questionable\".\"rank_b\" as \"rank_b\",
+    \"questionable\".\"total_b\" as \"total_b\",
+    \"quizzical\".\"lochierarchy_b\" as \"lochierarchy\",
+    \"quizzical\".\"null_class_b\" as \"i_class\"
+FROM
+    \"questionable\"
+    FULL JOIN \"quizzical\" on 1=1),
+sparkling as (
+SELECT
+    coalesce(\"abundant\".\"i_category\",\"juicy\".\"i_category\",\"young\".\"i_category\") as \"i_category\",
+    coalesce(\"abundant\".\"i_class\",\"juicy\".\"i_class\",\"young\".\"i_class\") as \"i_class\",
+    coalesce(\"abundant\".\"lochierarchy\",\"juicy\".\"lochierarchy\",\"young\".\"lochierarchy\") as \"lochierarchy\",
+    coalesce(\"juicy\".\"rank_a\",\"abundant\".\"rank_b\",\"young\".\"rank_c\") as \"rank_within_parent\",
+    coalesce(\"juicy\".\"total_a\",\"abundant\".\"total_b\",\"young\".\"total_c\") as \"total_sum\"
+FROM
+    \"juicy\"
+    FULL JOIN \"abundant\" on \"juicy\".\"i_category\" is not distinct from \"abundant\".\"i_category\" AND \"juicy\".\"i_class\" is not distinct from \"abundant\".\"i_class\" AND \"juicy\".\"lochierarchy\" is not distinct from \"abundant\".\"lochierarchy\"
+    FULL JOIN \"young\" on coalesce(\"juicy\".\"i_category\", \"abundant\".\"i_category\") = \"young\".\"i_category\" AND coalesce(\"juicy\".\"i_class\", \"abundant\".\"i_class\") = \"young\".\"i_class\" AND coalesce(\"juicy\".\"lochierarchy\", \"abundant\".\"lochierarchy\") = \"young\".\"lochierarchy\")
+SELECT
+    \"sparkling\".\"total_sum\" as \"q86_results_total_sum\",
+    \"sparkling\".\"i_category\" as \"q86_results_i_category\",
+    \"sparkling\".\"i_class\" as \"q86_results_i_class\",
+    \"sparkling\".\"lochierarchy\" as \"q86_results_lochierarchy\",
+    \"sparkling\".\"rank_within_parent\" as \"q86_results_rank_within_parent\"
+FROM
+    \"sparkling\"
+    FULL JOIN \"quizzical\" on 1=1
+    FULL JOIN \"abhorrent\" on 1=1
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
+ORDER BY 
+    \"q86_results_lochierarchy\" desc nulls first,
+    CASE
+	WHEN \"sparkling\".\"lochierarchy\" = 0 THEN \"sparkling\".\"i_category\"
+	ELSE null
+	END asc nulls first,
+    \"q86_results_rank_within_parent\" asc nulls first
+LIMIT (100)"""

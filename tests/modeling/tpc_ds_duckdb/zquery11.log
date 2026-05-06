@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 4445
+gen_length = 5121
 generated_sql = """
 
 WITH 
@@ -28,15 +28,17 @@ FROM
 thoughtful as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
+    \"cheerful\".\"sales_date_id\" as \"sales_date_id\",
     \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
 FROM
     \"cheerful\"
 WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB')
+    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB') and \"cheerful\".\"sales_customer_id\" is not null
 
 GROUP BY
     1,
-    2),
+    2,
+    3),
 uneven as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
@@ -48,34 +50,44 @@ FROM
     \"memory\".\"date_dim\" as \"sales_date_date\"
     LEFT OUTER JOIN \"cheerful\" on \"sales_date_date\".\"D_DATE_SK\" = \"cheerful\".\"sales_date_id\"
 WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB')
+    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"cheerful\".\"sales_customer_id\" is not null
 
 GROUP BY
     1),
-questionable as (
+abundant as (
 SELECT
     \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
     \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
     \"sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_customer_preferred_cust_flag\",
-    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
+    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    coalesce(\"sales_customer_customers\".\"C_CUSTOMER_SK\",\"thoughtful\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
-    \"memory\".\"customer\" as \"sales_customer_customers\"
-    LEFT OUTER JOIN \"thoughtful\" on \"sales_customer_customers\".\"C_CUSTOMER_SK\" = \"thoughtful\".\"sales_customer_id\"
+    \"memory\".\"date_dim\" as \"sales_date_date\"
+    LEFT OUTER JOIN \"thoughtful\" on \"sales_date_date\".\"D_DATE_SK\" = \"thoughtful\".\"sales_date_id\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB')
-)
+    \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" in (2001,2002) and coalesce(\"sales_customer_customers\".\"C_CUSTOMER_SK\",\"thoughtful\".\"sales_customer_id\") is not null
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7)
 SELECT
-    \"questionable\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
-    \"questionable\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"questionable\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
-    \"questionable\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\"
+    \"abundant\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
+    \"abundant\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"abundant\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
+    \"abundant\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\"
 FROM
     \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
+    INNER JOIN \"abundant\" on \"uneven\".\"sales_customer_id\" is not distinct from \"abundant\".\"sales_customer_id\"
 WHERE
-    \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
+    \"abundant\".\"sales_sales_channel\" in ('STORE','WEB') and \"abundant\".\"sales_date_year\" in (2001,2002) and \"abundant\".\"sales_customer_id\" is not null and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
 	WHEN \"uneven\".\"web_first_year\" > 0 THEN (\"uneven\".\"web_second_year\" * 1.0) / \"uneven\".\"web_first_year\"
 	ELSE 0.0
 	END ) > ( CASE
@@ -89,8 +101,8 @@ GROUP BY
     3,
     4
 ORDER BY 
-    \"questionable\".\"sales_customer_text_id\" asc nulls first,
-    \"questionable\".\"sales_customer_first_name\" asc nulls first,
-    \"questionable\".\"sales_customer_last_name\" asc nulls first,
-    \"questionable\".\"sales_customer_preferred_cust_flag\" asc nulls first
+    \"abundant\".\"sales_customer_text_id\" asc nulls first,
+    \"abundant\".\"sales_customer_first_name\" asc nulls first,
+    \"abundant\".\"sales_customer_last_name\" asc nulls first,
+    \"abundant\".\"sales_customer_preferred_cust_flag\" asc nulls first
 LIMIT (100)"""

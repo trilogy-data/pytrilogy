@@ -1,0 +1,76 @@
+import store_sales as ss;
+
+# Per-state total profit (window scoped)
+auto state_total <- sum(ss.net_profit ? ss.date.month_seq BETWEEN 1200 AND 1211)
+    by ss.store.state;
+
+# Per-(state, county) total used inside L1 rank
+auto county_total <- sum(ss.net_profit ? ss.date.month_seq BETWEEN 1200 AND 1211)
+    by ss.store.state, ss.store.county;
+
+# Top-5 states by state_total (the IN-subquery in the reference)
+auto state_rnk <- rank ss.store.state by state_total desc;
+
+with top_states as
+WHERE
+    ss.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    ss.store.state as ts_state,
+    --state_rnk,
+HAVING
+    state_rnk <= 5
+;
+
+with q70_results as
+# L1: detail (state, county), lochierarchy=0
+WHERE
+    ss.date.month_seq BETWEEN 1200 AND 1211
+    and ss.store.state in top_states.ts_state
+SELECT
+    ss.store.state as state_a,
+    ss.store.county as county_a,
+    0 as lochierarchy_a,
+    county_total as total_a,
+    rank ss.store.county over ss.store.state by county_total desc as rank_a,
+MERGE
+# L2: state subtotal, lochierarchy=1
+WHERE
+    ss.date.month_seq BETWEEN 1200 AND 1211
+    and ss.store.state in top_states.ts_state
+SELECT
+    ss.store.state as state_b,
+    cast(null as string) as null_county_b,
+    1 as lochierarchy_b,
+    state_total as total_b,
+    rank ss.store.state by state_total desc as rank_b,
+MERGE
+# L3: grand total, lochierarchy=2
+WHERE
+    ss.date.month_seq BETWEEN 1200 AND 1211
+    and ss.store.state in top_states.ts_state
+SELECT
+    cast(null as string) as null_state_c,
+    cast(null as string) as null_county_c,
+    2 as lochierarchy_c,
+    sum(ss.net_profit) as total_c,
+    1 as rank_c,
+align
+    s_state: state_a, state_b, null_state_c
+    AND s_county: county_a, null_county_b, null_county_c
+    AND lochierarchy: lochierarchy_a, lochierarchy_b, lochierarchy_c
+derive
+    coalesce(q70_results.total_a, q70_results.total_b, q70_results.total_c) -> total_sum,
+    coalesce(q70_results.rank_a, q70_results.rank_b, q70_results.rank_c) -> rank_within_parent
+;
+
+SELECT
+    q70_results.total_sum,
+    q70_results.s_state,
+    q70_results.s_county,
+    q70_results.lochierarchy,
+    q70_results.rank_within_parent,
+ORDER BY
+    q70_results.lochierarchy desc nulls first,
+    CASE WHEN q70_results.lochierarchy = 0 THEN q70_results.s_state ELSE null END asc nulls first,
+    q70_results.rank_within_parent asc nulls first
+LIMIT 100;
