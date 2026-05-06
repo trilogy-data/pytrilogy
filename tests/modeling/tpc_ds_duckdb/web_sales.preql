@@ -5,6 +5,7 @@ import date as return_date;
 import time as time;
 import time as return_time;
 import customer as customer;
+import customer as ship_customer;
 import customer as return_customer;
 import customer as return_refund_customer;
 import web_site as web_site;
@@ -39,6 +40,7 @@ datasource web_sales (
     WS_SOLD_TIME_SK: time.id,
     WS_SHIP_DATE_SK: ship_date.id,
     WS_BILL_CUSTOMER_SK: customer.id,
+    WS_SHIP_CUSTOMER_SK: ?ship_customer.id,
     WS_ORDER_NUMBER: order_number,
     WS_ITEM_SK:item.id,
     WS_QUANTITY: quantity,

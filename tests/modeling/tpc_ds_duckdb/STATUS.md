@@ -9,9 +9,9 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 74 | 1, 2 (+02-one, 02-two), 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 23, 24, 25, 26, 28, 30, 31, 32, 33, 34, 35, 37, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 66, 68, 69, 71, 73, 74, 78, 79, 81, 82, 83, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
-| Skipped (preql exists) | 5 | 4, 5, 29, 44, 80 |
-| Missing (no preql / no test) | 20 | 14, 18, 27, 36, 38, 51, 54, 59, 61, 64, 67, 70, 72, 75, 76, 77, 84, 85, 86, 87 |
+| Passing | 77 | 1, 2 (+02-one, 02-two), 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 37, 39, 40, 41, 42, 43, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 66, 68, 69, 71, 73, 74, 78, 79, 80, 81, 82, 83, 86, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Skipped (preql exists) | 5 | 4, 5, 29, 44, 85 |
+| Missing (no preql / no test) | 17 | 14, 18, 36, 38, 51, 54, 59, 61, 64, 67, 70, 72, 75, 76, 77, 84, 87 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -28,31 +28,11 @@ exercising different planner paths — they share an SQL reference.)
   to all branches.
 - **q44** — `pytest.mark.skip(reason="Still cooking")` — pre-existing, not
   investigated.
-- **q85** - DuckDB Comparison (PRAGMA tpcds(85)) hangs on dev machine; skip.
-- **q80** — `unified_sales` was reshaped to expose a single channel
-  dimension (`channel_dim_id` + `channel_dim_text_id`) backed by three
-  partial datasources (one each for `store`, `catalog_page`, `web_site`)
-  keyed by `(sales_channel, channel_dim_id)`, plus three partial
-  `*_returns_unified` datasources contributing `return_amount` /
-  `return_net_loss` at the same grain as sales. Three framework fixes
-  enable this shape (see Framework Notes): RawColumnExpr handling in
-  `safe_get_cte_value`, multiple parallel unions per merge_key, and a
-  relaxed `force_group` merge in `QueryDatasource.__add__`.
-  Single-SELECT and 2-level cascade variants now plan and execute
-  correctly. The 3-level `MERGE+align` cascade plans (~0.7s, ~14KB SQL)
-  but produces wrong channel-/grand-total rows: level-2 (`kaput`) and
-  level-3 (`macho`) SELECTs read from a `late` CTE whose join shape
-  differs from level-1's `puzzled` CTE, so the rolled-up `returns`/
-  `profit` sums diverge from the reference (sales totals match). Detail
-  rows themselves match. Skipped pending planner investigation.
-  Note: using `q80_results.sales_total as sales` aliases in the final
-  `SELECT` causes planning to hang indefinitely — use bare references
-  to keep planning fast.
+- **q85** — DuckDB Comparison (PRAGMA tpcds(85)) hangs on dev machine; skip.
+  Preql exists and parses; this is solely a comparison-reference issue.
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
-- `store.preql` maps `S_MARKET_ID` twice (to both `market_id` and `market`).
-  Likely a leftover; only one is needed.
 - `customer.preql` adds `birth_date` via `cast(concat(year/'/'/month/'/'/day) as
   date)`. With sf=1, some customers have `birth_year=NULL` or month/day
   combinations that produce invalid dates (e.g. Feb 30) — DuckDB will throw on
@@ -228,6 +208,45 @@ exercising different planner paths — they share an SQL reference.)
   null` to the inline `?` filter AND the rowset's `WHERE` so the phantom
   group is excluded from the grain.
 
+## Recent Model Extensions (q27/q86 batch)
+
+- `store.preql` — removed the redundant `S_MARKET_ID: market_id` mapping.
+  `S_MARKET_ID` is still mapped to `market`, the field referenced by q24;
+  `market_id` was unused. Cleaned the leftover documented in this file.
+- `web_sales.preql` — added `import customer as ship_customer;` plus
+  `WS_SHIP_CUSTOMER_SK: ?ship_customer.id` mapping. `?` flags the FK as
+  nullable (parquet has rows with NULL ship customer). Symmetric with the
+  existing catalog_sales side: catalog_sales already exposes `customer.id`
+  for `CS_SHIP_CUSTOMER_SK`. Unblocks q76 modelling, even if q76 itself
+  remains unsolved.
+
+## Recent Query Additions (q27/q86 batch)
+
+- **q27** — 3-level `MERGE … align … derive` cascade modelled on q22/q80.
+  Detail (item, state) → roll up state → grand total. `g_state` literal
+  per level (0/1/1) is carried through `align`. Filter (gender='M',
+  marital='S', education='College', year=2002, state='TN') is repeated in
+  every WHERE branch — required since each branch is a separate aggregate
+  scope. avg() aggregates use `cast(... as numeric(12, 2))` to match
+  reference `cast(... AS decimal(12, 2))` precision.
+- **q86** — 3-level rollup over (i_category, i_class) with rank windows
+  per level, replacing `rank() OVER (PARTITION BY grouping(...)+grouping(...),
+  CASE WHEN grouping(class)=0 THEN i_category END)`. The trick: rather than
+  expressing one cross-level rank, compute per-level ranks where the
+  partition is implicit:
+  - L1: `rank class over category by class_total desc` (class_total is
+    `sum(net_paid) by category, class`).
+  - L2: `rank category by category_total desc` (no partition; one rank
+    sequence across all categories).
+  - L3: `1` (only one row).
+  Class- and category-level aggregates are pre-defined as autos with
+  inline `?` filter so trilogy uses the right grain in the rank's `by`
+  clause (the naive `rank … by sum(...)` makes trilogy compute the sum
+  at the rank target's grain, which dropped the needed partition dim).
+  ORDER BY uses an inline `CASE WHEN lochierarchy=0 THEN i_category END`
+  (trilogy now accepts CASE expressions in ORDER BY without needing a
+  hidden `--alias`).
+
 ## Suggested Next Batch (by complexity)
 
 These look tractable without further framework work:
@@ -236,11 +255,11 @@ These look tractable without further framework work:
   `bill_household_demographic`), but the inventory + sales + returns
   triple-join blows up to OOM during planning. Needs filter pushdown
   improvements or a smaller, more targeted query shape.
-- **q76** — UNION ALL of three null-column filters; needs unified-sales-style
-  join surface that exposes `ws_ship_customer_sk` and `cs_ship_addr_sk`
-  separately from the bill-side keys (currently unified_sales hides them).
-- **q85** — needs `reason` and `web_page` models (both now defined; query is
-  blocked because PRAGMA tpcds(85) hangs as the comparison reference).
+- **q76** — UNION ALL of three null-column filters. `ship_customer` is
+  now exposed on web_sales, but `store.id is null` filters require the
+  store-side join to be LEFT, which trilogy currently inners. Same on
+  catalog's `customer_address.id is null`. Needs nullable-join semantics
+  (or a raw escape hatch) for the FK NULL probe.
 
 ## Backport Candidates (use unified_sales)
 
@@ -262,12 +281,13 @@ These need framework work first:
 - **q61** — needs LEFT JOIN to promotion, OR a way to compute total without
   pulling promotion into the join (currently inner-joins drop NULL promo rows).
 - **q67, q70, q77** — `rank() OVER (PARTITION BY rollup(...))` — depends on
-  rollup + window combo. Trilogy doesn't currently support rollup as a
-  partition argument.
-- **q86** — `grouping(i_category)+grouping(i_class)` — needs `grouping()`
-  function exposure.
-- **q18, q27** — `GROUP BY ROLLUP (...)` patterns. Doable via the q22-style
-  `MERGE … align …` cascade but verbose.
+  rollup + window combo. The q86 trick (per-level rank windows folded
+  through align) likely extends to q70/q67 as well; haven't tried yet.
+- **q18** — 5-level `GROUP BY ROLLUP (i_item_id, country, state, county)`
+  cascade. Same shape as q22/q27 but bigger. Adds `avg(c_birth_year)`
+  and `avg(cd_dep_count)` aggregates that need explicit
+  `by catalog_sales.order_number, catalog_sales.item.id` to keep grain
+  correct (dim properties otherwise dedup before averaging).
 - **q36** — 3-level rollup (q22-style cascade) + `rank() OVER (PARTITION BY
   lochierarchy, CASE WHEN t_class=0 THEN i_category END ORDER BY gross_margin)`
   window. Doable but verbose; needs window over rollup output.
