@@ -33,6 +33,92 @@ class JoinOrderOutput:
         return set(self.keys.keys())
 
 
+def compute_outer_null_status(
+    joins: list,
+) -> dict[str, int]:
+    """Map each datasource identifier to a null-ability score.
+
+    A score of 0 means the datasource is preserved by every upstream join —
+    its concepts are guaranteed non-NULL in the final result. Higher scores
+    mean the datasource sits on the NULL-able side of one or more outer
+    joins; projecting from it could silently produce NULLs.
+
+    Used by ``MergeNode._resolve`` to (a) order ``final_datasets`` so
+    ``resolve_concept_map``'s first-wins picks the preserved side for shared
+    concepts and (b) drop NULL-able-side ``ConceptPair`` entries from JOIN ON
+    when a preserved-side pair exists for the same key.
+
+    Conventions:
+        - ``LEFT OUTER A↔B``: B is NULL-able.
+        - ``RIGHT OUTER A↔B``: A is NULL-able.
+        - ``FULL A↔B``: both are NULL-able.
+        - ``INNER``: neither — no contribution.
+
+    For multi-left joins (``join.left_datasource is None``), the LEFT side is
+    a previously-merged set whose individual datasources keep whatever score
+    they accumulated from earlier joins; only the right side is touched here.
+    """
+    score: dict[str, int] = {}
+    for join in joins:
+        if not isinstance(join, BaseJoin):
+            continue
+        left_id = (
+            join.left_datasource.identifier if join.left_datasource else None
+        )
+        right_id = join.right_datasource.identifier
+        if join.join_type == JoinType.LEFT_OUTER:
+            score[right_id] = score.get(right_id, 0) + 1
+        elif join.join_type == JoinType.RIGHT_OUTER:
+            if left_id is not None:
+                score[left_id] = score.get(left_id, 0) + 1
+        elif join.join_type == JoinType.FULL:
+            if left_id is not None:
+                score[left_id] = score.get(left_id, 0) + 1
+            score[right_id] = score.get(right_id, 0) + 1
+    return score
+
+
+def prune_outer_join_pairs(
+    joins: list,
+    null_status: dict[str, int],
+) -> None:
+    """In-place prune of ``ConceptPair`` entries on ``LEFT/RIGHT OUTER`` joins.
+
+    When the JOIN ON has multiple pairs sharing the same ``(right_addr,
+    left_addr)`` (multi-left case — e.g. q80 ``thoughtful``: both sales and
+    returns supply ``sales_channel`` as a join key), keep only the pair whose
+    ``existing_datasource`` is most preserved per ``null_status``. The other
+    pair would render ``coalesce(preserved.k, nullable.k) = right.k`` — which
+    always evaluates to ``preserved.k`` and is pure SQL bloat.
+
+    Skipped for ``FULL`` joins: both sides may be NULL there, so coalesce
+    actually contributes — we want every left in JOIN ON.
+    """
+    for join in joins:
+        if not isinstance(join, BaseJoin) or not join.concept_pairs:
+            continue
+        if join.join_type not in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER):
+            continue
+        groups: dict[tuple[str, str], list[ConceptPair]] = {}
+        for pair in join.concept_pairs:
+            key = (pair.right.address, pair.left.address)
+            groups.setdefault(key, []).append(pair)
+        new_pairs: list[ConceptPair] = []
+        for pairs in groups.values():
+            if len(pairs) == 1:
+                new_pairs.extend(pairs)
+                continue
+            best = min(
+                pairs,
+                key=lambda p: (
+                    null_status.get(p.existing_datasource.identifier, 0),
+                    p.existing_datasource.identifier,
+                ),
+            )
+            new_pairs.append(best)
+        join.concept_pairs = new_pairs
+
+
 def find_all_connecting_concepts(g: nx.Graph, ds1: str, ds2: str) -> set[str]:
     """Find all concepts that connect two datasources"""
     return set(g.neighbors(ds1)) & set(g.neighbors(ds2))
@@ -419,7 +505,9 @@ def resolve_instantiated_concept(
 
 
 def reduce_concept_pairs(
-    input: list[ConceptPair], right_source: QueryDatasource | BuildDatasource
+    input: list[ConceptPair],
+    right_source: QueryDatasource | BuildDatasource,
+    join_type: JoinType = JoinType.INNER,
 ) -> list[ConceptPair]:
     from trilogy.core.enums import Purpose
 
@@ -433,21 +521,26 @@ def reduce_concept_pairs(
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
     # Track (right_addr, left_addr) combinations from different datasources.
-    # Same left concept from multiple datasources: keep only when partial
-    # (FULL JOIN → COALESCE needed). Different left concepts for the same
-    # right: always keep (they are distinct join conditions).
-    # Track (right_addr, left_addr) combinations from different datasources.
-    # Same left concept from multiple datasources: keep only when partial
-    # (FULL JOIN → COALESCE needed). Different left concepts for the same
-    # right: always keep (they are distinct join conditions).
+    # Same left concept from multiple datasources: kept when either pair is
+    # partial (FULL JOIN → COALESCE needed) OR the join itself is an outer
+    # join (one of the lefts may be NULL on the outer-joined branch — without
+    # both pairs, the renderer can't COALESCE around that NULL). Different
+    # left concepts for the same right: always kept (distinct conditions).
+    is_outer = join_type in (
+        JoinType.FULL,
+        JoinType.LEFT_OUTER,
+        JoinType.RIGHT_OUTER,
+    )
     right_left_seen: dict[tuple[str, str], bool] = {}
     for pair in input:
         dedup_key = (pair.right.address, pair.existing_datasource.identifier)
         if dedup_key in seen:
             continue
         rl_key = (pair.right.address, pair.left.address)
-        if rl_key in right_left_seen and not (
-            right_left_seen[rl_key] or pair.is_partial
+        if (
+            rl_key in right_left_seen
+            and not is_outer
+            and not (right_left_seen[rl_key] or pair.is_partial)
         ):
             continue
         if (
@@ -587,6 +680,7 @@ def get_node_joins(
                     for concept in v
                 ],
                 ds_node_map[j.right],
+                j.type,
             ),
         )
         for j in joins

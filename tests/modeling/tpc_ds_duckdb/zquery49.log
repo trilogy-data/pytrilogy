@@ -1,5 +1,5 @@
 query_id = "49"
-gen_length = 11630
+gen_length = 11300
 generated_sql = """
 
 WITH 
@@ -65,14 +65,14 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
 sweltering as (
 SELECT
+    \"abundant\".\"sales_item_id\" as \"sales_item_id\",
     \"abundant\".\"sales_net_paid\" as \"sales_net_paid\",
     \"abundant\".\"sales_net_profit\" as \"sales_net_profit\",
     \"abundant\".\"sales_quantity\" as \"sales_quantity\",
+    \"abundant\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"cheerful\".\"sales_return_amount\" as \"sales_return_amount\",
     \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    coalesce(\"abundant\".\"sales_item_id\",\"cheerful\".\"sales_item_id\") as \"sales_item_id\",
-    coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") as \"sales_sales_channel\"
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"abundant\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -91,15 +91,15 @@ GROUP BY
     8),
 yummy as (
 SELECT
+    \"abundant\".\"sales_item_id\" as \"sales_item_id\",
     \"abundant\".\"sales_net_paid\" as \"sales_net_paid\",
     \"abundant\".\"sales_net_profit\" as \"sales_net_profit\",
     \"abundant\".\"sales_quantity\" as \"sales_quantity\",
+    \"abundant\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"cheerful\".\"sales_return_amount\" as \"sales_return_amount\",
     \"cheerful\".\"sales_return_quantity\" as \"sales_return_quantity\",
     \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    coalesce(\"abundant\".\"sales_item_id\",\"cheerful\".\"sales_item_id\") as \"sales_item_id\",
-    coalesce(\"abundant\".\"sales_sales_channel\",\"cheerful\".\"sales_sales_channel\") as \"sales_sales_channel\"
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"abundant\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -198,12 +198,12 @@ WHERE
 )
 SELECT
     CASE
-	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"macho\".\"sales_sales_channel\") = 'WEB' THEN 'web'
-	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"macho\".\"sales_sales_channel\") = 'CATALOG' THEN 'catalog'
-	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"macho\".\"sales_sales_channel\") = 'STORE' THEN 'store'
+	WHEN \"macho\".\"sales_sales_channel\" = 'WEB' THEN 'web'
+	WHEN \"macho\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
+	WHEN \"macho\".\"sales_sales_channel\" = 'STORE' THEN 'store'
 	ELSE null
 	END as \"channel\",
-    coalesce(\"concerned\".\"sales_item_id\",\"macho\".\"sales_item_id\") as \"item\",
+    \"macho\".\"sales_item_id\" as \"item\",
     cast(\"macho\".\"return_qty\" as numeric(15,4)) / cast(\"macho\".\"sale_qty\" as numeric(15,4)) as \"return_ratio\",
     \"macho\".\"return_rank\" as \"return_rank\",
     \"concerned\".\"currency_rank\" as \"currency_rank\"

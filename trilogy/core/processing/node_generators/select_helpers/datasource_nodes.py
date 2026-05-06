@@ -292,6 +292,19 @@ def create_union_datasource(
         )
         parents.append(subnode)
         force_group = force_group or fg
+    # Intrinsic column-level partials (``~col`` inside a ``partial datasource``)
+    # survive a covering UNION — those columns are missing values *within*
+    # every branch's complete-for slice (e.g. ``~order_id`` on returns: not
+    # every order has a return). The parser tags only those at parse time, so
+    # this is a straightforward union across the kept branches.
+    intrinsic_addrs: set[str] = set()
+    for child, _ in effective:
+        intrinsic_addrs |= child.column_level_partial_addresses
+    union_partials: list[BuildConcept] = (
+        [c for c in all_concepts if c.address in intrinsic_addrs]
+        if intrinsic_addrs
+        else []
+    )
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} returning union node with {len(parents)} branch(es)"
     )
@@ -302,7 +315,7 @@ def create_union_datasource(
             environment=environment,
             parents=parents,
             depth=depth,
-            partial_concepts=[],
+            partial_concepts=union_partials,
             preexisting_conditions=conditions.conditional if conditions else None,
         ),
         force_group,

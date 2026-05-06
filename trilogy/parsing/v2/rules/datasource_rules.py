@@ -580,17 +580,19 @@ def datasource_node(
 
     if addr.is_file and partition_by:
         addr.partition_columns = [c.address.split(".")[-1] for c in partition_by]
-    # Capture intrinsic (column-level) partials — ``~col`` markers carry
-    # different semantics depending on context:
-    #   - inside ``partial datasource``: the column is intrinsically partial
-    #     (e.g. ``~order_id`` on a returns table — not every order has a
-    #     return); these survive a covering UNION.
-    #   - outside ``partial datasource``: ``~col`` is the syntactic
-    #     union-eligibility marker (a regular ``datasource`` with ``complete
-    #     where`` becomes union-eligible by tagging the discriminator column);
-    #     these are equivalent to table-level partials and drop on a covering
-    #     UNION.
-    # Capture before the table-level stamp so the two cases stay separable.
+    # Two flavors of partial coexist on ``partial datasource``:
+    #   - implicit (table-level): the keyword stamps PARTIAL onto every column
+    #     not already explicitly marked. A covering UNION repairs these — the
+    #     siblings together cover the universe.
+    #   - intrinsic (column-level ``~col``): the column is partial *within*
+    #     every branch's complete-for slice. A covering UNION does NOT repair
+    #     these — e.g. ``~order_id`` on a returns table: not every order has
+    #     a return, and unioning all-channel returns doesn't change that.
+    # Capture intrinsic partials before the table-level stamp so the two
+    # cases stay separable. Outside ``partial datasource``, ``~col`` is the
+    # syntactic union-eligibility marker (a regular ``datasource`` becomes
+    # union-eligible by tagging the discriminator column) and behaves like a
+    # table-level stamp — drops on a covering UNION.
     column_level_partial_addresses: set[str] = (
         {pc.concept.address for pc in columns if Modifier.PARTIAL in pc.modifiers}
         if is_partial

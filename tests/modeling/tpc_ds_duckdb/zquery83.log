@@ -1,5 +1,5 @@
 query_id = "83"
-gen_length = 7712
+gen_length = 8700
 generated_sql = """
 
 WITH 
@@ -30,6 +30,27 @@ SELECT
      'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
+juicy as (
+SELECT
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
+     'CATALOG'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
 quizzical as (
 SELECT
     CASE WHEN cast(\"date_date\".\"D_DATE\" as date) in (date '2000-06-30',date '2000-09-27',date '2000-11-17') THEN \"date_date\".\"D_WEEK_SEQ\" ELSE NULL END as \"target_week_seqs\"
@@ -37,105 +58,100 @@ FROM
     \"memory\".\"date_dim\" as \"date_date\"
 GROUP BY
     1),
-young as (
+late as (
 SELECT
-    \"questionable\".\"sales_order_id\" as \"sales_order_id\",
+    \"juicy\".\"sales_item_id\" as \"sales_item_id\",
+    \"juicy\".\"sales_order_id\" as \"sales_order_id\",
+    \"juicy\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"questionable\".\"sales_return_quantity\" as \"sales_return_quantity\",
-    \"questionable\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\",
-    \"sales_return_date_date\".\"D_WEEK_SEQ\" as \"sales_return_date_week_seq\",
-    coalesce(\"questionable\".\"sales_item_id\",\"sales_item_items\".\"I_ITEM_SK\") as \"sales_item_id\"
-FROM
-    \"memory\".\"item\" as \"sales_item_items\"
-    LEFT OUTER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6),
-yummy as (
-SELECT
-    \"questionable\".\"sales_order_id\" as \"sales_order_id\",
-    \"questionable\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\",
     \"sales_return_date_date\".\"D_WEEK_SEQ\" as \"sales_return_date_week_seq\"
 FROM
-    \"memory\".\"item\" as \"sales_item_items\"
-    LEFT OUTER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
+    \"juicy\"
+    LEFT OUTER JOIN \"questionable\" on \"juicy\".\"sales_item_id\" = \"questionable\".\"sales_item_id\" AND \"juicy\".\"sales_order_id\" = \"questionable\".\"sales_order_id\" AND \"juicy\".\"sales_sales_channel\" = \"questionable\".\"sales_sales_channel\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"juicy\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"),
+young as (
+SELECT
+    \"juicy\".\"sales_order_id\" as \"sales_order_id\",
+    \"juicy\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\",
+    \"sales_return_date_date\".\"D_WEEK_SEQ\" as \"sales_return_date_week_seq\"
+FROM
+    \"juicy\"
+    LEFT OUTER JOIN \"questionable\" on \"juicy\".\"sales_item_id\" = \"questionable\".\"sales_item_id\" AND \"juicy\".\"sales_order_id\" = \"questionable\".\"sales_order_id\" AND \"juicy\".\"sales_sales_channel\" = \"questionable\".\"sales_sales_channel\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"juicy\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,
     3,
     4),
-juicy as (
+sparkling as (
 SELECT
-    \"yummy\".\"sales_item_name\" as \"sales_item_name\",
-    CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' and \"yummy\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"yummy\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_2825725129242211\",
-    CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' and \"yummy\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"yummy\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_9409693590474513\",
-    CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' and \"yummy\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"yummy\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_5375532776570296\"
+    \"young\".\"sales_item_name\" as \"sales_item_name\",
+    CASE WHEN \"young\".\"sales_sales_channel\" = 'CATALOG' and \"young\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"young\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_2825725129242211\",
+    CASE WHEN \"young\".\"sales_sales_channel\" = 'STORE' and \"young\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"young\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_9409693590474513\",
+    CASE WHEN \"young\".\"sales_sales_channel\" = 'WEB' and \"young\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"young\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_5375532776570296\"
 FROM
-    \"yummy\"
+    \"young\"
 GROUP BY
     1,
     2,
     3,
     4,
-    \"yummy\".\"sales_order_id\"),
-concerned as (
-SELECT
-    \"juicy\".\"sales_item_name\" as \"sales_item_name\",
-    count(\"juicy\".\"_virt_filter_order_id_2825725129242211\") as \"cr_item_present\",
-    count(\"juicy\".\"_virt_filter_order_id_5375532776570296\") as \"wr_item_present\",
-    count(\"juicy\".\"_virt_filter_order_id_9409693590474513\") as \"sr_item_present\"
-FROM
-    \"juicy\"
-GROUP BY
-    1),
-sparkling as (
-SELECT
-    \"concerned\".\"sales_item_name\" as \"sales_item_name\",
-    \"young\".\"sales_item_id\" as \"sales_item_id\",
-    \"young\".\"sales_order_id\" as \"sales_order_id\",
-    \"young\".\"sales_return_date_week_seq\" as \"sales_return_date_week_seq\",
-    \"young\".\"sales_return_quantity\" as \"sales_return_quantity\",
-    \"young\".\"sales_sales_channel\" as \"sales_sales_channel\"
-FROM
-    \"concerned\"
-    INNER JOIN \"young\" on \"concerned\".\"sales_item_name\" = \"young\".\"sales_item_name\"
-WHERE
-    \"concerned\".\"sr_item_present\" > 0 and \"concerned\".\"cr_item_present\" > 0 and \"concerned\".\"wr_item_present\" > 0
-),
-abhorrent as (
+    \"young\".\"sales_order_id\"),
+sweltering as (
 SELECT
     \"sparkling\".\"sales_item_name\" as \"sales_item_name\",
-    CASE WHEN \"sparkling\".\"sales_sales_channel\" = 'CATALOG' and \"sparkling\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"sparkling\".\"sales_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_5321290301704\",
-    CASE WHEN \"sparkling\".\"sales_sales_channel\" = 'STORE' and \"sparkling\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"sparkling\".\"sales_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_7171881525981617\",
-    CASE WHEN \"sparkling\".\"sales_sales_channel\" = 'WEB' and \"sparkling\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"sparkling\".\"sales_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_5964225225660708\"
+    count(\"sparkling\".\"_virt_filter_order_id_2825725129242211\") as \"cr_item_present\",
+    count(\"sparkling\".\"_virt_filter_order_id_5375532776570296\") as \"wr_item_present\",
+    count(\"sparkling\".\"_virt_filter_order_id_9409693590474513\") as \"sr_item_present\"
 FROM
     \"sparkling\"
 GROUP BY
+    1),
+macho as (
+SELECT
+    \"late\".\"sales_item_id\" as \"sales_item_id\",
+    \"late\".\"sales_order_id\" as \"sales_order_id\",
+    \"late\".\"sales_return_date_week_seq\" as \"sales_return_date_week_seq\",
+    \"late\".\"sales_return_quantity\" as \"sales_return_quantity\",
+    \"late\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    \"sweltering\".\"sales_item_name\" as \"sales_item_name\"
+FROM
+    \"sweltering\"
+    INNER JOIN \"late\" on \"sweltering\".\"sales_item_name\" = \"late\".\"sales_item_name\"
+WHERE
+    \"sweltering\".\"sr_item_present\" > 0 and \"sweltering\".\"cr_item_present\" > 0 and \"sweltering\".\"wr_item_present\" > 0
+),
+scrawny as (
+SELECT
+    \"macho\".\"sales_item_name\" as \"sales_item_name\",
+    CASE WHEN \"macho\".\"sales_sales_channel\" = 'CATALOG' and \"macho\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"macho\".\"sales_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_5321290301704\",
+    CASE WHEN \"macho\".\"sales_sales_channel\" = 'STORE' and \"macho\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"macho\".\"sales_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_7171881525981617\",
+    CASE WHEN \"macho\".\"sales_sales_channel\" = 'WEB' and \"macho\".\"sales_return_date_week_seq\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null) THEN \"macho\".\"sales_return_quantity\" ELSE NULL END as \"_virt_filter_return_quantity_5964225225660708\"
+FROM
+    \"macho\"
+GROUP BY
     1,
     2,
     3,
     4,
-    \"sparkling\".\"sales_item_id\",
-    \"sparkling\".\"sales_order_id\",
-    \"sparkling\".\"sales_sales_channel\")
+    \"macho\".\"sales_item_id\",
+    \"macho\".\"sales_order_id\",
+    \"macho\".\"sales_sales_channel\")
 SELECT
-    \"abhorrent\".\"sales_item_name\" as \"item_id\",
-    sum(\"abhorrent\".\"_virt_filter_return_quantity_7171881525981617\") as \"sr_item_qty\",
-    ( ( (sum(\"abhorrent\".\"_virt_filter_return_quantity_7171881525981617\") * 1.0) / ( ( sum(\"abhorrent\".\"_virt_filter_return_quantity_7171881525981617\") + sum(\"abhorrent\".\"_virt_filter_return_quantity_5321290301704\") ) + sum(\"abhorrent\".\"_virt_filter_return_quantity_5964225225660708\") ) ) / 3.0 ) * 100 as \"sr_dev\",
-    sum(\"abhorrent\".\"_virt_filter_return_quantity_5321290301704\") as \"cr_item_qty\",
-    ( ( (sum(\"abhorrent\".\"_virt_filter_return_quantity_5321290301704\") * 1.0) / ( ( sum(\"abhorrent\".\"_virt_filter_return_quantity_7171881525981617\") + sum(\"abhorrent\".\"_virt_filter_return_quantity_5321290301704\") ) + sum(\"abhorrent\".\"_virt_filter_return_quantity_5964225225660708\") ) ) / 3.0 ) * 100 as \"cr_dev\",
-    sum(\"abhorrent\".\"_virt_filter_return_quantity_5964225225660708\") as \"wr_item_qty\",
-    ( ( (sum(\"abhorrent\".\"_virt_filter_return_quantity_5964225225660708\") * 1.0) / ( ( sum(\"abhorrent\".\"_virt_filter_return_quantity_7171881525981617\") + sum(\"abhorrent\".\"_virt_filter_return_quantity_5321290301704\") ) + sum(\"abhorrent\".\"_virt_filter_return_quantity_5964225225660708\") ) ) / 3.0 ) * 100 as \"wr_dev\",
-    ( ( sum(\"abhorrent\".\"_virt_filter_return_quantity_7171881525981617\") + sum(\"abhorrent\".\"_virt_filter_return_quantity_5321290301704\") ) + sum(\"abhorrent\".\"_virt_filter_return_quantity_5964225225660708\") ) / 3.0 as \"average\"
+    \"scrawny\".\"sales_item_name\" as \"item_id\",
+    sum(\"scrawny\".\"_virt_filter_return_quantity_7171881525981617\") as \"sr_item_qty\",
+    ( ( (sum(\"scrawny\".\"_virt_filter_return_quantity_7171881525981617\") * 1.0) / ( ( sum(\"scrawny\".\"_virt_filter_return_quantity_7171881525981617\") + sum(\"scrawny\".\"_virt_filter_return_quantity_5321290301704\") ) + sum(\"scrawny\".\"_virt_filter_return_quantity_5964225225660708\") ) ) / 3.0 ) * 100 as \"sr_dev\",
+    sum(\"scrawny\".\"_virt_filter_return_quantity_5321290301704\") as \"cr_item_qty\",
+    ( ( (sum(\"scrawny\".\"_virt_filter_return_quantity_5321290301704\") * 1.0) / ( ( sum(\"scrawny\".\"_virt_filter_return_quantity_7171881525981617\") + sum(\"scrawny\".\"_virt_filter_return_quantity_5321290301704\") ) + sum(\"scrawny\".\"_virt_filter_return_quantity_5964225225660708\") ) ) / 3.0 ) * 100 as \"cr_dev\",
+    sum(\"scrawny\".\"_virt_filter_return_quantity_5964225225660708\") as \"wr_item_qty\",
+    ( ( (sum(\"scrawny\".\"_virt_filter_return_quantity_5964225225660708\") * 1.0) / ( ( sum(\"scrawny\".\"_virt_filter_return_quantity_7171881525981617\") + sum(\"scrawny\".\"_virt_filter_return_quantity_5321290301704\") ) + sum(\"scrawny\".\"_virt_filter_return_quantity_5964225225660708\") ) ) / 3.0 ) * 100 as \"wr_dev\",
+    ( ( sum(\"scrawny\".\"_virt_filter_return_quantity_7171881525981617\") + sum(\"scrawny\".\"_virt_filter_return_quantity_5321290301704\") ) + sum(\"scrawny\".\"_virt_filter_return_quantity_5964225225660708\") ) / 3.0 as \"average\"
 FROM
-    \"abhorrent\"
+    \"scrawny\"
 GROUP BY
     1
 ORDER BY 

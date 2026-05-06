@@ -1,5 +1,5 @@
 query_id = "57"
-gen_length = 5432
+gen_length = 5372
 generated_sql = """
 
 WITH 
@@ -17,7 +17,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"catalog_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"catalog_sales_item_items\".\"I_ITEM_SK\"
     RIGHT OUTER JOIN \"memory\".\"call_center\" as \"catalog_sales_call_center_call_center\" on \"catalog_sales_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"catalog_sales_call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
-    coalesce(\"catalog_sales_call_center_call_center\".\"CC_CALL_CENTER_SK\",\"catalog_sales_catalog_sales\".\"CS_CALL_CENTER_SK\") is not null and ( \"catalog_sales_date_date\".\"D_YEAR\" = 1999 or ( \"catalog_sales_date_date\".\"D_YEAR\" = 1998 and \"catalog_sales_date_date\".\"D_MOY\" = 12 ) or ( \"catalog_sales_date_date\".\"D_YEAR\" = 2000 and \"catalog_sales_date_date\".\"D_MOY\" = 1 ) )
+    \"catalog_sales_call_center_call_center\".\"CC_CALL_CENTER_SK\" is not null and ( \"catalog_sales_date_date\".\"D_YEAR\" = 1999 or ( \"catalog_sales_date_date\".\"D_YEAR\" = 1998 and \"catalog_sales_date_date\".\"D_MOY\" = 12 ) or ( \"catalog_sales_date_date\".\"D_YEAR\" = 2000 and \"catalog_sales_date_date\".\"D_MOY\" = 1 ) )
 
 GROUP BY
     1,

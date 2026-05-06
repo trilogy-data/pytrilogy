@@ -1,14 +1,14 @@
 query_id = "50"
-gen_length = 6474
+gen_length = 6306
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
+    \"store_sales_return_date_date\".\"D_DATE_SK\" - \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"days_to_return\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
-    coalesce(\"store_sales_return_date_date\".\"D_DATE_SK\",\"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\") - \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"days_to_return\",
-    coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") as \"store_sales_item_id\",
-    coalesce(\"store_sales_store_returns\".\"SR_TICKET_NUMBER\",\"store_sales_store_sales\".\"SS_TICKET_NUMBER\") as \"store_sales_ticket_number\"
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"

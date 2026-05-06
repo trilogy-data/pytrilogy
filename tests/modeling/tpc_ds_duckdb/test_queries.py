@@ -537,7 +537,7 @@ def test_eighty_two(engine):
 
 def test_eighty_three(engine):
     query = run_query(engine, 83)
-    assert len(query) < 8500, query
+    assert len(query) < 8800, query
 
 
 @pytest.mark.skip(
