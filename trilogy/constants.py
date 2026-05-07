@@ -47,6 +47,7 @@ class Optimizations:
     merge_irrelevant_group_by: bool = True
     downgrade_full_join: bool = True
     join_hoist: bool = True
+    union_dim_pushdown: bool = True
 
 
 @dataclass

@@ -14,6 +14,7 @@ from trilogy.core.optimizations import (
     OptimizationRule,
     PredicatePushdown,
     PredicatePushdownRemove,
+    UnionDimPushdown,
 )
 from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
@@ -247,6 +248,10 @@ def optimize_ctes(
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
+    # UnionDimPushdown after PredicatePushdown so consumer WHEREs have
+    # settled before we match identical atoms across consumers.
+    if CONFIG.optimizations.union_dim_pushdown:
+        REGISTERED_RULES.append(UnionDimPushdown())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdownRemove())
     if CONFIG.optimizations.downgrade_full_join:

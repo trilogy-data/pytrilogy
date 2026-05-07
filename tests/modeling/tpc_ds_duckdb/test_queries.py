@@ -398,12 +398,14 @@ def test_thirty(engine):
 
 def test_thirty_one(engine):
     query = run_query(engine, 31)
-    assert len(query) < 6500, query
+    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
+    assert len(query) < 7500, query
 
 
 def test_thirty_three(engine):
     query = run_query(engine, 33)
-    assert len(query) < 3500, query
+    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
+    assert len(query) < 5500, query
 
 
 def test_thirty_four(engine):
@@ -507,7 +509,8 @@ def test_seventy(engine):
 
 def test_seventy_one(engine):
     query = run_query(engine, 71)
-    assert len(query) < 3500, query
+    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
+    assert len(query) < 5500, query
 
 
 def test_seventy_three(engine):
@@ -537,7 +540,8 @@ def test_eighty_two(engine):
 
 def test_eighty_three(engine):
     query = run_query(engine, 83)
-    assert len(query) < 8800, query
+    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
+    assert len(query) < 9500, query
 
 
 @pytest.mark.skip(
