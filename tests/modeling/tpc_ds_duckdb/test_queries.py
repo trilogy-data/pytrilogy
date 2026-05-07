@@ -198,7 +198,9 @@ def test_four(engine):
     run_query(engine, 4)
 
 
-@pytest.mark.skip(reason="Returns w/o matching sale rows lack channel_dim_id in unified_sales — total returns ~2.7% low. See STATUS.md.")
+@pytest.mark.skip(
+    reason="Returns w/o matching sale rows lack channel_dim_id in unified_sales — total returns ~2.7% low. See STATUS.md."
+)
 def test_five(engine):
     run_query(engine, 5)
 

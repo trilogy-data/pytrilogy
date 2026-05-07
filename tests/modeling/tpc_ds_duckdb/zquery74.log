@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3571
+gen_length = 3586
 generated_sql = """
 
 WITH 
@@ -13,6 +13,9 @@ SELECT
      'STORE'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+WHERE
+     'STORE'  in ('STORE','WEB')
+
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
@@ -22,16 +25,16 @@ SELECT
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
      'WEB'  as \"sales_sales_channel\"
 FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+WHERE
+     'WEB'  in ('STORE','WEB')
+),
 thoughtful as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
     \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
 FROM
     \"cheerful\"
-WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB')
-
 GROUP BY
     1,
     2),

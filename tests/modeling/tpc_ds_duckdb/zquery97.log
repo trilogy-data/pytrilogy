@@ -1,5 +1,5 @@
 query_id = "97"
-gen_length = 2422
+gen_length = 2445
 generated_sql = """
 
 WITH 
@@ -11,6 +11,9 @@ SELECT
      'CATALOG'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+WHERE
+     'CATALOG'  in ('STORE','CATALOG')
+
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
@@ -18,7 +21,10 @@ SELECT
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
      'STORE'  as \"sales_sales_channel\"
 FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"),
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+WHERE
+     'STORE'  in ('STORE','CATALOG')
+),
 thoughtful as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
@@ -27,9 +33,6 @@ SELECT
     \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
 FROM
     \"cheerful\"
-WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('STORE','CATALOG')
-
 GROUP BY
     1,
     2,

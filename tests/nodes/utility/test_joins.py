@@ -654,9 +654,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
         concept_pairs=[
             ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
             ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
-            ConceptPair(
-                left=other_concept, right=shared, existing_datasource=ds_f1
-            ),
+            ConceptPair(left=other_concept, right=shared, existing_datasource=ds_f1),
             ConceptPair(
                 left=other_concept_f2_alias,
                 right=shared,

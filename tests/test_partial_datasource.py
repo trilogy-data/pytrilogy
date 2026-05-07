@@ -173,9 +173,9 @@ query '''select 'B' as category, 20 as sales''';
 """
     engine = Dialects.DUCK_DB.default_executor(conf=DuckDBConfig())
     engine.execute_text(src)
-    rows = engine.execute_text(
-        "select category, sales order by category asc;"
-    )[-1].fetchall()
+    rows = engine.execute_text("select category, sales order by category asc;")[
+        -1
+    ].fetchall()
     assert len(rows) == 2
     assert rows[0].category == "A" and rows[0].sales == 10
     assert rows[1].category == "B" and rows[1].sales == 20
