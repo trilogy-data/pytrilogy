@@ -252,6 +252,12 @@ def optimize_ctes(
     # settled before we match identical atoms across consumers.
     if CONFIG.optimizations.union_dim_pushdown:
         REGISTERED_RULES.append(UnionDimPushdown())
+    # Second PredicatePushdown pass: UnionDimPushdown may have added dim
+    # concepts to branch source_maps that PredicatePushdown couldn't see
+    # the first time around (e.g. q2's D_WEEK_SEQ filter only becomes
+    # branch-pushable after the date dim moves into each branch).
+    if CONFIG.optimizations.predicate_pushdown:
+        REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdownRemove())
     if CONFIG.optimizations.downgrade_full_join:

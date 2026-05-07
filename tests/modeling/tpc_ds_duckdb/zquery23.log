@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 6273
+gen_length = 6471
 generated_sql = """
 
 WITH 
@@ -127,8 +127,7 @@ GROUP BY
     1),
 divergent as (
 SELECT
-    \"cheerful\".\"sales_list_price\" as \"sales_list_price\",
-    \"cheerful\".\"sales_quantity\" as \"sales_quantity\",
+    \"cheerful\".\"sales_quantity\" * \"cheerful\".\"sales_list_price\" as \"_virt_func_multiply_8507033399516423\",
     \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\"
@@ -137,28 +136,36 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"cheerful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"cheerful\".\"sales_sales_channel\" != 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2 and \"cheerful\".\"sales_item_id\" in (select scrawny.\"frequent_items_frequent_item_id\" from scrawny where scrawny.\"frequent_items_frequent_item_id\" is not null) and \"cheerful\".\"sales_customer_id\" in (select concerned.\"best_customers_best_customer_id\" from concerned where concerned.\"best_customers_best_customer_id\" is not null)
+    \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2 and \"cheerful\".\"sales_item_id\" in (select scrawny.\"frequent_items_frequent_item_id\" from scrawny where scrawny.\"frequent_items_frequent_item_id\" is not null) and \"cheerful\".\"sales_customer_id\" in (select concerned.\"best_customers_best_customer_id\" from concerned where concerned.\"best_customers_best_customer_id\" is not null)
 
 GROUP BY
     1,
     2,
     3,
     4,
-    5,
     \"cheerful\".\"sales_item_id\",
-    \"cheerful\".\"sales_order_id\")
+    \"cheerful\".\"sales_order_id\"),
+busy as (
 SELECT
-    \"divergent\".\"sales_customer_last_name\" as \"c_last_name\",
     \"divergent\".\"sales_customer_first_name\" as \"c_first_name\",
-    sum(\"divergent\".\"sales_quantity\" * \"divergent\".\"sales_list_price\") as \"sales_total\"
+    \"divergent\".\"sales_customer_last_name\" as \"c_last_name\",
+    sum(CASE WHEN \"divergent\".\"sales_sales_channel\" in ('WEB','CATALOG') THEN \"divergent\".\"_virt_func_multiply_8507033399516423\" ELSE NULL END) as \"sales_total\"
 FROM
     \"divergent\"
 GROUP BY
     1,
-    2,
-    \"divergent\".\"sales_sales_channel\"
+    2)
+SELECT
+    \"busy\".\"c_last_name\" as \"c_last_name\",
+    \"busy\".\"c_first_name\" as \"c_first_name\",
+    \"busy\".\"sales_total\" as \"sales_total\"
+FROM
+    \"busy\"
+WHERE
+    \"busy\".\"sales_total\" > 0
+
 ORDER BY 
-    \"c_last_name\" asc nulls first,
-    \"c_first_name\" asc nulls first,
-    \"sales_total\" asc nulls first
+    \"busy\".\"c_last_name\" asc nulls first,
+    \"busy\".\"c_first_name\" asc nulls first,
+    \"busy\".\"sales_total\" asc nulls first
 LIMIT (100)"""

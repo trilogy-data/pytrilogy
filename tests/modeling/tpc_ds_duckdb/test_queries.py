@@ -466,7 +466,7 @@ def test_fifty_seven(engine):
 
 def test_fifty_eight(engine):
     query = run_query(engine, 58)
-    assert len(query) < 6500, query
+    assert len(query) < 7000, query
 
 
 def test_sixty(engine):

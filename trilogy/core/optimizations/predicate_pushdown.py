@@ -95,10 +95,17 @@ class PredicatePushdown(OptimizationRule):
         row_conditions = {x.address for x in candidate.row_arguments}
         if not row_conditions:
             return False
-        union_outputs = {x.address for x in parent_cte.output_columns}
-        if not row_conditions.issubset(union_outputs):
-            return False
         if parent_cte.source.source_type == SourceType.FILTER:
+            return False
+
+        # Concepts the union can expose. ``output_columns`` lists what the
+        # union QDS chose to project, but each branch's ``source_map`` often
+        # carries additional concepts (joined dim columns, etc.) that the
+        # rendered UNION ALL still emits, so use the wider view.
+        union_reachable = {x.address for x in parent_cte.output_columns}
+        for b in parent_cte.internal_ctes:
+            union_reachable |= set(b.source_map.keys())
+        if not row_conditions.issubset(union_reachable):
             return False
 
         existence_conditions = {
@@ -106,7 +113,7 @@ class PredicatePushdown(OptimizationRule):
         }
         # Existence concepts produced inside the union itself can't be
         # referenced as external IN targets from a branch.
-        if existence_conditions and existence_conditions.intersection(union_outputs):
+        if existence_conditions and existence_conditions.intersection(union_reachable):
             return False
 
         all_inputs = {x.address for x in candidate.concept_arguments}

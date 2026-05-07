@@ -1,8 +1,15 @@
 query_id = "33"
-gen_length = 5059
+gen_length = 5351
 generated_sql = """
 
 WITH 
+quizzical as (
+SELECT
+    CASE WHEN \"items_items\".\"I_CATEGORY\" = 'Electronics' THEN \"items_items\".\"I_MANUFACT_ID\" ELSE NULL END as \"electronics_manuf_ids\"
+FROM
+    \"memory\".\"item\" as \"items_items\"
+GROUP BY
+    1),
 abundant as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_ADDR_SK\" as \"sales_bill_address_id\",
@@ -21,7 +28,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null)
 
 UNION ALL
 SELECT
@@ -41,7 +48,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null)
 
 UNION ALL
 SELECT
@@ -61,24 +68,14 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5
+    \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null)
 ),
-quizzical as (
-SELECT
-    CASE WHEN \"items_items\".\"I_CATEGORY\" = 'Electronics' THEN \"items_items\".\"I_MANUFACT_ID\" ELSE NULL END as \"electronics_manuf_ids\"
-FROM
-    \"memory\".\"item\" as \"items_items\"
-GROUP BY
-    1),
 juicy as (
 SELECT
     \"abundant\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
     \"abundant\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\"
 FROM
     \"abundant\"
-WHERE
-    \"abundant\".\"sales_item_manufacturer_id\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null)
-
 GROUP BY
     1,
     2,
