@@ -38,18 +38,14 @@ def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bo
     if not isinstance(consumer, CTE):
         return True
     for j in consumer.joins:
-        if not isinstance(j, Join):
+        if not isinstance(j, Join) or j.jointype == JoinType.INNER:
             continue
-        if j.jointype == JoinType.INNER:
-            continue
-        right = j.right_cte
-        if isinstance(right, UnionCTE) and right.name == union.name:
+        # right side of any outer join is nullable
+        if isinstance(j.right_cte, UnionCTE) and j.right_cte.name == union.name:
             return True
-        left = j.left_cte
-        if (
-            j.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL)
-            and isinstance(left, UnionCTE)
-            and left.name == union.name
+        # left side is nullable for RIGHT_OUTER/FULL only
+        if j.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
+            isinstance(j.left_cte, UnionCTE) and j.left_cte.name == union.name
         ):
             return True
     return False
@@ -202,26 +198,17 @@ class PredicatePushdown(OptimizationRule):
             for x in existence_extras:
                 if x in branch.source_map or x in branch.existence_source_map:
                     continue
-                # Existence concepts may live in either source_map (regular)
-                # or existence_source_map (subselect-only). Propagate from
-                # whichever the consumer used.
-                origin: list[str] | None = None
-                target_map: str | None = None
+                # Propagate from whichever map the consumer used (regular
+                # source_map vs. existence_source_map for subselect-only).
                 if x in cte.source_map:
                     origin = list(cte.source_map[x])
-                    target_map = "source_map"
+                    branch.source_map[x] = origin
                 elif x in cte.existence_source_map:
                     origin = list(cte.existence_source_map[x])
-                    target_map = "existence_source_map"
-                if origin is None or target_map is None:
-                    continue
-                sources = [
-                    parent for parent in cte.parent_ctes if parent.name in origin
-                ]
-                if target_map == "source_map":
-                    branch.source_map[x] = origin
-                else:
                     branch.existence_source_map[x] = origin
+                else:
+                    continue
+                sources = [p for p in cte.parent_ctes if p.name in origin]
                 branch.parent_ctes = unique(branch.parent_ctes + sources, "name")
                 union_dependencies_changed = True
             self.log(

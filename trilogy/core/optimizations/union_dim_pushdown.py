@@ -19,7 +19,7 @@ consumer level, and before any rule that flattens / inlines the UnionCTE.
 
 from typing import cast
 
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import BooleanOperator, JoinType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -127,10 +127,6 @@ class _DimDescriptor:
     @property
     def fk_left_addrs(self) -> set[str]:
         return {p.left.address for p in self.key_pairs}
-
-    @property
-    def fk_right_addrs(self) -> set[str]:
-        return {p.right.address for p in self.key_pairs}
 
 
 class UnionDimPushdown(OptimizationRule):
@@ -434,16 +430,10 @@ class UnionDimPushdown(OptimizationRule):
             if branch.condition is None:
                 branch.condition = atom
             elif not self._atom_in(atom, branch.condition):
-                from trilogy.core.enums import BooleanOperator
-                from trilogy.core.models.build import BuildConditional
-
                 branch.condition = BuildConditional(
                     left=branch.condition,
                     operator=BooleanOperator.AND,
-                    right=cast(
-                        BuildComparison | BuildConditional | BuildParenthetical,
-                        atom,
-                    ),
+                    right=cast(ConditionExpression, atom),
                 )
         return True
 
@@ -547,33 +537,27 @@ class UnionDimPushdown(OptimizationRule):
             return False
         if condition == atom:
             return True
-        if isinstance(condition, BuildConditional):
-            from trilogy.core.enums import BooleanOperator
-
-            if condition.operator == BooleanOperator.AND:
-                return self._atom_in(atom, condition.left) or self._atom_in(
-                    atom, condition.right
-                )
+        if (
+            isinstance(condition, BuildConditional)
+            and condition.operator == BooleanOperator.AND
+        ):
+            return self._atom_in(atom, condition.left) or self._atom_in(
+                atom, condition.right
+            )
         return False
 
     def _strip_atom(self, condition, atom):
-        if condition is None:
+        if condition is None or condition == atom:
             return None
-        if condition == atom:
-            return None
-        if isinstance(condition, BuildConditional):
-            from trilogy.core.enums import BooleanOperator
-
-            if condition.operator == BooleanOperator.AND:
-                left = self._strip_atom(condition.left, atom)
-                right = self._strip_atom(condition.right, atom)
-                if left is None and right is None:
-                    return None
-                if left is None:
-                    return right
-                if right is None:
-                    return left
-                return BuildConditional(
-                    left=left, operator=BooleanOperator.AND, right=right
-                )
-        return condition
+        if not (
+            isinstance(condition, BuildConditional)
+            and condition.operator == BooleanOperator.AND
+        ):
+            return condition
+        left = self._strip_atom(condition.left, atom)
+        right = self._strip_atom(condition.right, atom)
+        if left is None:
+            return right
+        if right is None:
+            return left
+        return BuildConditional(left=left, operator=BooleanOperator.AND, right=right)

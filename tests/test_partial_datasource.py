@@ -256,3 +256,48 @@ address store_returns_table;
     # item_id, nor a property of them. The intrinsic partials survive at the
     # union level (verified end-to-end by tpc_ds q78 / q80 which depend on
     # the resulting LEFT_OUTER sales→returns join).
+
+
+def test_column_level_partial_concepts_property():
+    """The ``column_level_partial_concepts`` property resolves intrinsic-partial
+    addresses to the concept objects on both Datasource and BuildDatasource.
+    Empty when nothing is column-tagged; non-empty when ``~col`` is used."""
+    src = """
+key order_id int;
+key customer_id int;
+property order_id.price float;
+
+partial datasource orders (
+    order_id: order_id,
+    customer_id: ~customer_id,
+    price: price,
+)
+grain (order_id)
+address my_table;
+"""
+    env, _ = parse(src)
+    ds = env.datasources["orders"]
+    intrinsic = ds.column_level_partial_concepts
+    assert {c.address for c in intrinsic} == {"local.customer_id"}
+
+    # BuildDatasource should expose the same property after materialization,
+    # carrying the address set through the Factory build path.
+    build_env = env.materialize_for_select()
+    build_ds = build_env.datasources["orders"]
+    intrinsic_build = build_ds.column_level_partial_concepts
+    assert {c.address for c in intrinsic_build} == {"local.customer_id"}
+
+    # No tildes anywhere → both lists empty (early-return path).
+    src_no_intrinsic = """
+key order_id int;
+property order_id.price float;
+datasource orders (
+    order_id: order_id,
+    price: price,
+) grain (order_id) address my_table;
+"""
+    env2, _ = parse(src_no_intrinsic)
+    ds2 = env2.datasources["orders"]
+    assert ds2.column_level_partial_concepts == []
+    build_ds2 = env2.materialize_for_select().datasources["orders"]
+    assert build_ds2.column_level_partial_concepts == []
