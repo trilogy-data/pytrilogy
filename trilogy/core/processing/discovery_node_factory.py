@@ -351,7 +351,19 @@ class RootNodeHandler:
     def _handle_expanded_node(
         self, expanded: StrategyNode, root_targets: List[BuildConcept]
     ) -> None:
-        extra = restrict_node_outputs_targets(expanded, root_targets, self.ctx.depth)
+        # gen_merge_node intentionally returns the node *without* preexisting
+        # conditions so the calling discovery loop can attach the WHERE clause
+        # itself; that wiring requires the condition row arguments to remain
+        # in the node's outputs so validate_stack can see them. Without this,
+        # the loop reports INCOMPLETE_CONDITION and trips the guardrail.
+        keep: List[BuildConcept] = list(root_targets)
+        if self.ctx.conditions:
+            seen = {c.address for c in keep}
+            for arg in self.ctx.conditions.row_arguments:
+                if arg.address not in seen:
+                    keep.append(arg)
+                    seen.add(arg.address)
+        extra = restrict_node_outputs_targets(expanded, keep, self.ctx.depth)
 
         logger.info(
             f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "

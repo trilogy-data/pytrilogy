@@ -49,9 +49,7 @@ from trilogy.utility import unique
 ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
 
 
-def _find_dim_cte_for_qds(
-    consumer: CTE, join_qds_id: str
-) -> CTE | UnionCTE | None:
+def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | None:
     """Locate the CTE the consumer's BaseJoin actually targets.
 
     Match strictly on ``cte.source.identifier == join_qds_id`` — never on
@@ -93,9 +91,7 @@ def _dim_local_atoms(
     for atom in decompose_condition(cte.condition):
         if not is_scalar_condition(atom):
             continue
-        if any(
-            arg for tup in getattr(atom, "existence_arguments", ()) for arg in tup
-        ):
+        if any(arg for tup in getattr(atom, "existence_arguments", ()) for arg in tup):
             continue
         atom_addrs = {x.address for x in atom.row_arguments}
         if not atom_addrs or not atom_addrs.issubset(dim_outs):
@@ -219,31 +215,23 @@ class UnionDimPushdown(OptimizationRule):
             left_addrs = {p.left.address for p in j.concept_pairs}
             if not left_addrs.issubset(union_outputs):
                 continue
-            dim_grain_addrs = (
-                set(dim_ds.grain.components) if dim_ds.grain else set()
-            )
+            dim_grain_addrs = set(dim_ds.grain.components) if dim_ds.grain else set()
             right_addrs = {p.right.address for p in j.concept_pairs}
             if dim_grain_addrs and not dim_grain_addrs.issubset(right_addrs):
                 continue
             key = (
                 dim_ds.identifier,
-                frozenset(
-                    (p.left.address, p.right.address) for p in j.concept_pairs
-                ),
+                frozenset((p.left.address, p.right.address) for p in j.concept_pairs),
             )
             where_atoms = _dim_local_atoms(consumer, dim_ds)
             # Only project dim concepts the consumer actually uses (FK keys
             # plus any non-key dim concepts the consumer references).
-            consumer_uses = {
-                c.address for c in consumer.source.input_concepts
-            }
+            consumer_uses = {c.address for c in consumer.source.input_concepts}
             consumer_uses |= {c.address for c in consumer.output_columns}
             if consumer.condition is not None:
                 for atom in decompose_condition(consumer.condition):
                     if hasattr(atom, "concept_arguments"):
-                        consumer_uses |= {
-                            c.address for c in atom.concept_arguments
-                        }
+                        consumer_uses |= {c.address for c in atom.concept_arguments}
             dim_concepts = [
                 c for c in dim_ds.output_concepts if c.address in consumer_uses
             ]
@@ -267,9 +255,7 @@ class UnionDimPushdown(OptimizationRule):
         self, union: UnionCTE, consumers: list[CTE]
     ) -> list[_DimDescriptor]:
         union_outputs = {x.address for x in union.output_columns}
-        per_consumer = [
-            self._consumer_dim_map(c, union_outputs) for c in consumers
-        ]
+        per_consumer = [self._consumer_dim_map(c, union_outputs) for c in consumers]
         if not per_consumer or any(not m for m in per_consumer):
             return []
         common_keys = set(per_consumer[0].keys())
@@ -280,8 +266,7 @@ class UnionDimPushdown(OptimizationRule):
         out: list[_DimDescriptor] = []
         for key in sorted(common_keys, key=lambda k: k[0]):
             atom_strs = [
-                frozenset(str(a) for a in m[key]["where_atoms"])
-                for m in per_consumer
+                frozenset(str(a) for a in m[key]["where_atoms"]) for m in per_consumer
             ]
             if len(set(atom_strs)) != 1:
                 continue
@@ -299,9 +284,7 @@ class UnionDimPushdown(OptimizationRule):
 
     # ---- transform ----
 
-    def _apply(
-        self, union: UnionCTE, consumers: list[CTE], d: _DimDescriptor
-    ) -> bool:
+    def _apply(self, union: UnionCTE, consumers: list[CTE], d: _DimDescriptor) -> bool:
         # Locate the dim CTE on each consumer so we can re-target into branches.
         dim_cte: CTE | UnionCTE | None = None
         inlined_entry = None
@@ -490,6 +473,7 @@ class UnionDimPushdown(OptimizationRule):
                 and getattr(j.right_datasource, "base_datasource", None) is d.dim_qds
             ):
                 dim_aliases.add(j.right_datasource.safe_identifier)
+
         # Remove BaseJoin (match by base_datasource too — j.right_datasource
         # may be a QDS wrapper over the BD form we're tracking).
         def _is_dim_basejoin(j) -> bool:
@@ -500,7 +484,10 @@ class UnionDimPushdown(OptimizationRule):
                 return True
             base = getattr(rd, "base_datasource", None)
             return base is d.dim_qds
-        consumer.source.joins = [j for j in consumer.source.joins if not _is_dim_basejoin(j)]
+
+        consumer.source.joins = [
+            j for j in consumer.source.joins if not _is_dim_basejoin(j)
+        ]
         # Remove Join
         consumer.joins = [
             j

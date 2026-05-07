@@ -2,9 +2,10 @@ import unified_sales as sales;
 
 # frequent_ss_items: items with at least one (truncated_desc, item.id, sold_date) combo having > 4 store_sales rows in 2000-2003
 property sales.item.id.desc_truncated <- substring(sales.item.desc, 1, 30);
-auto ss_combo_count <- count(sales.order_id ? sales.sales_channel = 'STORE' and sales.date.year in (2000, 2001, 2002, 2003)) by sales.item.desc_truncated, sales.item.id, sales.date.date;
+auto ss_combo_count <- count(sales.order_id) by sales.item.desc_truncated, sales.item.id, sales.date.date;
 
 with frequent_items as
+WHERE sales.sales_channel = 'STORE' and  sales.date.year in (2000, 2001, 2002, 2003)
 SELECT
     sales.item.id as frequent_item_id,
     --ss_combo_count,
@@ -13,21 +14,24 @@ HAVING
 ;
 
 # max_store_sales: scalar max over customers of total ss_qty*ss_price for years 2000-2003
-auto customer_total_in_window <- sum(sales.quantity * sales.sales_price ? sales.sales_channel = 'STORE' and sales.date.year in (2000, 2001, 2002, 2003) and sales.customer.id is not null) by sales.customer.id;
+auto customer_total_in_window <- sum(sales.quantity * sales.sales_price) by sales.customer.id;
 
 with max_total as
 WHERE
     sales.customer.id is not null
+    and sales.sales_channel = 'STORE'
+    and  sales.date.year in (2000, 2001, 2002, 2003)
 SELECT
     max(customer_total_in_window) as cmax,
 ;
 
 # best_ss_customer: customers whose lifetime ss_qty*ss_price > 50% of cmax (no date filter)
-auto customer_total_overall <- sum(sales.quantity * sales.sales_price ? sales.sales_channel = 'STORE' and sales.customer.id is not null) by sales.customer.id;
+auto customer_total_overall <- sum(sales.quantity * sales.sales_price) by sales.customer.id;
 
 with best_customers as
 WHERE
     sales.customer.id is not null
+    and sales.sales_channel = 'STORE'
 SELECT
     sales.customer.id as best_customer_id,
     --customer_total_overall,

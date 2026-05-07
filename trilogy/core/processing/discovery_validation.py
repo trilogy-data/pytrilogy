@@ -2,6 +2,7 @@ from collections import defaultdict
 from enum import Enum
 from typing import List
 
+from trilogy.core.enums import Granularity
 from trilogy.core.models.build import (
     BuildConcept,
     BuildWhereClause,
@@ -13,6 +14,20 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.utility import (
     get_disconnected_components,
 )
+
+
+def _is_scalar_only(node: StrategyNode) -> bool:
+    """A node whose visible outputs are all single-row scalars (e.g. a CTE
+    aggregate referenced as a constant). Such nodes are cross-joined into the
+    consumer; their preexisting_conditions reflect the CTE's own WHERE and are
+    independent of the outer query's row-level conditions."""
+    resolved = node.resolve()
+    visible = [
+        c for c in resolved.output_concepts if c.address not in resolved.hidden_concepts
+    ]
+    if not visible:
+        return False
+    return all(c.granularity == Granularity.SINGLE_ROW for c in visible)
 
 
 class ValidationResult(Enum):
@@ -128,7 +143,11 @@ def validate_stack(
         conditions_met = True
     else:
         conditions_met = all(
-            [node.preexisting_conditions == conditions.conditional for node in stack]
+            [
+                node.preexisting_conditions == conditions.conditional
+                or _is_scalar_only(node)
+                for node in stack
+            ]
         ) or all([c.address in found_addresses for c in mandatory_with_filter])
     # zip in those we know we found
     if not all([c.address in found_addresses for c in concepts]) or not conditions_met:

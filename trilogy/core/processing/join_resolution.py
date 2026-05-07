@@ -62,9 +62,7 @@ def compute_outer_null_status(
     for join in joins:
         if not isinstance(join, BaseJoin):
             continue
-        left_id = (
-            join.left_datasource.identifier if join.left_datasource else None
-        )
+        left_id = join.left_datasource.identifier if join.left_datasource else None
         right_id = join.right_datasource.identifier
         if join.join_type == JoinType.LEFT_OUTER:
             score[right_id] = score.get(right_id, 0) + 1
