@@ -36,7 +36,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildParenthetical,
 )
-from trilogy.core.models.execute import CTE, Join, UnionCTE
+from trilogy.core.models.execute import CTE, CTEConceptPair, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
@@ -89,22 +89,6 @@ def _gather_proofs(
     }
 
 
-# NOTE: A future extension could harvest additional non-null proofs from
-# downstream ``INNER`` join keys — surviving rows must hold both sides of an
-# ``=`` predicate non-null, so e.g. ``LEFT JOIN store_sales ... INNER JOIN
-# store ON SS_STORE_SK = S_STORE_SK`` should be able to deduce that
-# ``SS_STORE_SK`` is non-null in surviving rows and promote the upstream
-# LEFT to INNER. Naive approach (collect every INNER pair's left/right
-# addresses as proofs) over-fires under OR-conditioned multi-FULL chains
-# (q10's `(web_year=2002 OR catalog_year=2002)`-style filter): trilogy
-# emits a coalesce(...) on the INNER join keys to model the OR, but reports
-# the joinkey_pair as a single concept address that's shared across the OR
-# branches, so the proof collapses to "this concept must be non-null in any
-# branch" — and the OR allows it to be NULL on the side we'd promote.
-# Resolving this needs the join-key predicate to expose its actual `=`
-# operands rather than the merged concept; left as a follow-up.
-
-
 def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
     if cte is None:
         return set()
@@ -144,13 +128,11 @@ def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
         if not isinstance(j, Join):
             continue
         for pair in j.joinkey_pairs or []:
-            pair_cte = getattr(pair, "cte", None)
-            if (
-                isinstance(pair_cte, (CTE, UnionCTE))
-                and pair_cte.name not in right_names
-            ):
-                return _cte_addresses(pair_cte)
-    base = getattr(getattr(cte, "source", None), "base_datasource", None)
+            if not isinstance(pair, CTEConceptPair):
+                continue
+            if pair.cte.name not in right_names:
+                return _cte_addresses(pair.cte)
+    base = cte.source.base_datasource
     if base is not None:
         return {c.address for c in base.output_concepts}
     return set()
