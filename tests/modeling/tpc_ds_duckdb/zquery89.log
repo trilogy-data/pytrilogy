@@ -1,5 +1,5 @@
 query_id = "89"
-gen_length = 4103
+gen_length = 4123
 generated_sql = """
 
 WITH 
@@ -18,7 +18,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_store_store\".\"S_STORE_SK\" is not null and ( ( \"store_sales_item_items\".\"I_CATEGORY\" in ('Books','Electronics','Sports') and \"store_sales_item_items\".\"I_CLASS\" in ('computers','stereo','football') ) or ( \"store_sales_item_items\".\"I_CATEGORY\" in ('Men','Jewelry','Women') and \"store_sales_item_items\".\"I_CLASS\" in ('shirts','birdal','dresses') ) )
+    \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null and ( ( \"store_sales_item_items\".\"I_CATEGORY\" in ('Books','Electronics','Sports') and \"store_sales_item_items\".\"I_CLASS\" in ('computers','stereo','football') ) or ( \"store_sales_item_items\".\"I_CATEGORY\" in ('Men','Jewelry','Women') and \"store_sales_item_items\".\"I_CLASS\" in ('shirts','birdal','dresses') ) )
 
 GROUP BY
     1,
@@ -52,7 +52,7 @@ SELECT
     \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
     \"questionable\"
-    FULL JOIN \"thoughtful\" on \"questionable\".\"store_sales_item_brand_name\" = \"thoughtful\".\"store_sales_item_brand_name\" AND \"questionable\".\"store_sales_item_category\" is not distinct from \"thoughtful\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_store_company_name\" is not distinct from \"thoughtful\".\"store_sales_store_company_name\" AND \"questionable\".\"store_sales_store_name\" = \"thoughtful\".\"store_sales_store_name\"
+    FULL JOIN \"thoughtful\" on \"questionable\".\"store_sales_item_brand_name\" = \"thoughtful\".\"store_sales_item_brand_name\" AND \"questionable\".\"store_sales_item_category\" is not distinct from \"thoughtful\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_store_company_name\" is not distinct from \"thoughtful\".\"store_sales_store_company_name\" AND \"questionable\".\"store_sales_store_name\" is not distinct from \"thoughtful\".\"store_sales_store_name\"
 WHERE
     CASE
 	WHEN \"questionable\".\"avg_monthly_sales\" != 0 THEN abs(\"thoughtful\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\") / \"questionable\".\"avg_monthly_sales\"

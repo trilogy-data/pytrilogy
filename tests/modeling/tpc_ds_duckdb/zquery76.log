@@ -1,0 +1,236 @@
+query_id = "76"
+gen_length = 9027
+generated_sql = """
+
+WITH 
+busy as (
+SELECT
+    \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_id\",
+    \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\",
+    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" as \"ws_ship_customer_id\"
+FROM
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+WHERE
+    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
+),
+sparkling as (
+SELECT
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
+    \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
+),
+quizzical as (
+SELECT
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+WHERE
+    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
+),
+divergent as (
+SELECT
+    \"ws_date_date\".\"D_QOY\" as \"ws_date_quarter\",
+    \"ws_date_date\".\"D_YEAR\" as \"ws_date_year\",
+    \"ws_item_items\".\"I_CATEGORY\" as \"ws_item_category\",
+    \"ws_item_items\".\"I_ITEM_SK\" as \"ws_item_id\",
+    \"ws_web_sales\".\"WS_EXT_SALES_PRICE\" as \"ws_ext_sales_price\",
+    \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\"
+FROM
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
+),
+young as (
+SELECT
+    \"ss_date_date\".\"D_QOY\" as \"ss_date_quarter\",
+    \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
+    \"ss_item_items\".\"I_CATEGORY\" as \"ss_item_category\",
+    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
+    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\",
+    \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
+),
+cooperative as (
+SELECT
+    \"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\" as \"cs_ext_sales_price\",
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_date_date\".\"D_QOY\" as \"cs_date_quarter\",
+    \"cs_date_date\".\"D_YEAR\" as \"cs_date_year\",
+    \"cs_item_items\".\"I_CATEGORY\" as \"cs_item_category\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
+),
+uneven as (
+SELECT
+    :channel_a as \"channel_a\",
+    :channel_b as \"channel_b\",
+    :channel_c as \"channel_c\",
+    :col_name_a as \"col_name_a\",
+    :col_name_b as \"col_name_b\",
+    :col_name_c as \"col_name_c\"
+),
+charming as (
+SELECT
+    \"busy\".\"ws_item_id\" as \"ws_item_id\",
+    \"busy\".\"ws_order_number\" as \"ws_order_number\",
+    CASE
+	WHEN \"busy\".\"ws_ship_customer_id\" is null THEN 1
+	ELSE 0
+	END as \"ws_row_flag\"
+FROM
+    \"busy\"),
+abhorrent as (
+SELECT
+    \"sparkling\".\"ss_item_id\" as \"ss_item_id\",
+    \"sparkling\".\"ss_ticket_number\" as \"ss_ticket_number\",
+    CASE
+	WHEN \"sparkling\".\"ss_store_id\" is null THEN 1
+	ELSE 0
+	END as \"ss_row_flag\"
+FROM
+    \"sparkling\"),
+highfalutin as (
+SELECT
+    \"quizzical\".\"cs_item_id\" as \"cs_item_id\",
+    \"quizzical\".\"cs_order_number\" as \"cs_order_number\",
+    CASE
+	WHEN \"quizzical\".\"cs_customer_address_id\" is null THEN 1
+	ELSE 0
+	END as \"cs_row_flag\"
+FROM
+    \"quizzical\"),
+protective as (
+SELECT
+    \"divergent\".\"ws_date_quarter\" as \"qoy_b\",
+    \"divergent\".\"ws_date_year\" as \"year_b\",
+    \"divergent\".\"ws_item_category\" as \"category_b\",
+    sum(\"charming\".\"ws_row_flag\") as \"cnt_b\",
+    sum(\"divergent\".\"ws_ext_sales_price\") as \"amt_b\"
+FROM
+    \"divergent\"
+    INNER JOIN \"charming\" on \"divergent\".\"ws_item_id\" = \"charming\".\"ws_item_id\" AND \"divergent\".\"ws_order_number\" = \"charming\".\"ws_order_number\"
+GROUP BY
+    1,
+    2,
+    3),
+sweltering as (
+SELECT
+    \"young\".\"ss_date_quarter\" as \"qoy_a\",
+    \"young\".\"ss_date_year\" as \"year_a\",
+    \"young\".\"ss_item_category\" as \"category_a\",
+    sum(\"abhorrent\".\"ss_row_flag\") as \"cnt_a\",
+    sum(\"young\".\"ss_ext_sales_price\") as \"amt_a\"
+FROM
+    \"young\"
+    INNER JOIN \"abhorrent\" on \"young\".\"ss_item_id\" = \"abhorrent\".\"ss_item_id\" AND \"young\".\"ss_ticket_number\" = \"abhorrent\".\"ss_ticket_number\"
+GROUP BY
+    1,
+    2,
+    3),
+questionable as (
+SELECT
+    \"cooperative\".\"cs_date_quarter\" as \"qoy_c\",
+    \"cooperative\".\"cs_date_year\" as \"year_c\",
+    \"cooperative\".\"cs_item_category\" as \"category_c\",
+    sum(\"cooperative\".\"cs_ext_sales_price\") as \"amt_c\",
+    sum(\"highfalutin\".\"cs_row_flag\") as \"cnt_c\"
+FROM
+    \"cooperative\"
+    INNER JOIN \"highfalutin\" on \"cooperative\".\"cs_item_id\" = \"highfalutin\".\"cs_item_id\" AND \"cooperative\".\"cs_order_number\" = \"highfalutin\".\"cs_order_number\"
+GROUP BY
+    1,
+    2,
+    3),
+puzzled as (
+SELECT
+    \"protective\".\"amt_b\" as \"amt_b\",
+    \"protective\".\"category_b\" as \"i_category\",
+    \"protective\".\"cnt_b\" as \"cnt_b\",
+    \"protective\".\"qoy_b\" as \"d_qoy\",
+    \"protective\".\"year_b\" as \"d_year\",
+    \"uneven\".\"channel_b\" as \"channel\",
+    \"uneven\".\"col_name_b\" as \"col_name\"
+FROM
+    \"protective\"
+    FULL JOIN \"uneven\" on 1=1),
+macho as (
+SELECT
+    \"sweltering\".\"amt_a\" as \"amt_a\",
+    \"sweltering\".\"category_a\" as \"i_category\",
+    \"sweltering\".\"cnt_a\" as \"cnt_a\",
+    \"sweltering\".\"qoy_a\" as \"d_qoy\",
+    \"sweltering\".\"year_a\" as \"d_year\",
+    \"uneven\".\"channel_a\" as \"channel\",
+    \"uneven\".\"col_name_a\" as \"col_name\"
+FROM
+    \"sweltering\"
+    FULL JOIN \"uneven\" on 1=1),
+yummy as (
+SELECT
+    \"questionable\".\"amt_c\" as \"amt_c\",
+    \"questionable\".\"category_c\" as \"i_category\",
+    \"questionable\".\"cnt_c\" as \"cnt_c\",
+    \"questionable\".\"qoy_c\" as \"d_qoy\",
+    \"questionable\".\"year_c\" as \"d_year\",
+    \"uneven\".\"channel_c\" as \"channel\",
+    \"uneven\".\"col_name_c\" as \"col_name\"
+FROM
+    \"questionable\"
+    FULL JOIN \"uneven\" on 1=1),
+waggish as (
+SELECT
+    coalesce(\"macho\".\"amt_a\",\"puzzled\".\"amt_b\",\"yummy\".\"amt_c\") as \"sales_amt\",
+    coalesce(\"macho\".\"channel\",\"puzzled\".\"channel\",\"yummy\".\"channel\") as \"channel\",
+    coalesce(\"macho\".\"cnt_a\",\"puzzled\".\"cnt_b\",\"yummy\".\"cnt_c\") as \"sales_cnt\",
+    coalesce(\"macho\".\"col_name\",\"puzzled\".\"col_name\",\"yummy\".\"col_name\") as \"col_name\",
+    coalesce(\"macho\".\"d_qoy\",\"puzzled\".\"d_qoy\",\"yummy\".\"d_qoy\") as \"d_qoy\",
+    coalesce(\"macho\".\"d_year\",\"puzzled\".\"d_year\",\"yummy\".\"d_year\") as \"d_year\",
+    coalesce(\"macho\".\"i_category\",\"puzzled\".\"i_category\",\"yummy\".\"i_category\") as \"i_category\"
+FROM
+    \"macho\"
+    FULL JOIN \"puzzled\" on \"macho\".\"channel\" is not distinct from \"puzzled\".\"channel\" AND \"macho\".\"col_name\" is not distinct from \"puzzled\".\"col_name\" AND \"macho\".\"d_qoy\" is not distinct from \"puzzled\".\"d_qoy\" AND \"macho\".\"d_year\" is not distinct from \"puzzled\".\"d_year\" AND \"macho\".\"i_category\" is not distinct from \"puzzled\".\"i_category\"
+    FULL JOIN \"yummy\" on coalesce(\"macho\".\"channel\", \"puzzled\".\"channel\") = \"yummy\".\"channel\" AND coalesce(\"macho\".\"col_name\", \"puzzled\".\"col_name\") = \"yummy\".\"col_name\" AND coalesce(\"macho\".\"d_qoy\", \"puzzled\".\"d_qoy\") = \"yummy\".\"d_qoy\" AND coalesce(\"macho\".\"d_year\", \"puzzled\".\"d_year\") = \"yummy\".\"d_year\" AND coalesce(\"macho\".\"i_category\", \"puzzled\".\"i_category\") = \"yummy\".\"i_category\")
+SELECT
+    \"waggish\".\"channel\" as \"q76_results_channel\",
+    \"waggish\".\"col_name\" as \"q76_results_col_name\",
+    \"waggish\".\"d_year\" as \"q76_results_d_year\",
+    \"waggish\".\"d_qoy\" as \"q76_results_d_qoy\",
+    \"waggish\".\"i_category\" as \"q76_results_i_category\",
+    \"waggish\".\"sales_cnt\" as \"q76_results_sales_cnt\",
+    \"waggish\".\"sales_amt\" as \"q76_results_sales_amt\"
+FROM
+    \"waggish\"
+    FULL JOIN \"uneven\" on 1=1
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+ORDER BY 
+    \"q76_results_channel\" asc nulls first,
+    \"q76_results_col_name\" asc nulls first,
+    \"q76_results_d_year\" asc nulls first,
+    \"q76_results_d_qoy\" asc nulls first,
+    \"q76_results_i_category\" asc nulls first
+LIMIT (100)"""

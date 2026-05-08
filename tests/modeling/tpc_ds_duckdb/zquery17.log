@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 8766
+gen_length = 8804
 generated_sql = """
 
 WITH 
@@ -23,9 +23,9 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
@@ -49,10 +49,10 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"highfalutin\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"highfalutin\".\"store_sales_return_customer_id\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"highfalutin\".\"store_sales_item_id\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"highfalutin\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" is not distinct from \"highfalutin\".\"store_sales_return_customer_id\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"highfalutin\".\"store_sales_item_id\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"highfalutin\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"highfalutin\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
@@ -121,7 +121,7 @@ SELECT
     \"concerned\".\"_virt_agg_stddev_1487339425028120\" / \"concerned\".\"_virt_agg_avg_3580903309191796\" as \"catalog_sales_quantitycov\"
 FROM
     \"juicy\"
-    FULL JOIN \"concerned\" on \"juicy\".\"store_sales_item_desc\" is not distinct from \"concerned\".\"store_sales_item_desc\" AND \"juicy\".\"store_sales_item_name\" is not distinct from \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_state\" = \"concerned\".\"store_sales_store_state\"
+    FULL JOIN \"concerned\" on \"juicy\".\"store_sales_item_desc\" is not distinct from \"concerned\".\"store_sales_item_desc\" AND \"juicy\".\"store_sales_item_name\" is not distinct from \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_state\" is not distinct from \"concerned\".\"store_sales_store_state\"
 ORDER BY 
     coalesce(\"concerned\".\"store_sales_item_name\",\"juicy\".\"store_sales_item_name\") asc nulls first,
     coalesce(\"concerned\".\"store_sales_item_desc\",\"juicy\".\"store_sales_item_desc\") asc nulls first,

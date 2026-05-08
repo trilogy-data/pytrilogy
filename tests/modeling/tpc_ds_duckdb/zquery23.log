@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 8792
+gen_length = 8782
 generated_sql = """
 
 WITH 
@@ -23,7 +23,7 @@ SELECT
     cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
 FROM
     \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"sales_store_sales_unified\" on \"sales_date_date\".\"D_DATE_SK\" = \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\"
+    INNER JOIN \"memory\".\"store_sales\" as \"sales_store_sales_unified\" on \"sales_date_date\".\"D_DATE_SK\" = \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
      'STORE'  = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
@@ -46,7 +46,7 @@ SELECT
     sum(\"concerned\".\"sales_quantity\" * \"concerned\".\"sales_sales_price\") as \"customer_total_in_window\"
 FROM
     \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"concerned\" on \"sales_date_date\".\"D_DATE_SK\" = \"concerned\".\"sales_date_id\"
+    INNER JOIN \"concerned\" on \"sales_date_date\".\"D_DATE_SK\" = \"concerned\".\"sales_date_id\"
 WHERE
     \"concerned\".\"sales_customer_id\" is not null and \"concerned\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
 

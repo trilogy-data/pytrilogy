@@ -1,5 +1,5 @@
 query_id = "44"
-gen_length = 4431
+gen_length = 4536
 generated_sql = """
 
 WITH 
@@ -55,25 +55,25 @@ GROUP BY
     1),
 yummy as (
 SELECT
-    \"cooperative\".\"ss_store_id\" as \"ss_store_id\",
     \"cooperative\".\"threshold\" as \"threshold\",
-    \"wakeful\".\"ss_item_id\" as \"ss_item_id\"
+    \"wakeful\".\"ss_item_id\" as \"ss_item_id\",
+    coalesce(\"cooperative\".\"ss_store_id\",\"wakeful\".\"ss_store_id\") as \"ss_store_id\"
 FROM
     \"cooperative\"
-    INNER JOIN \"wakeful\" on \"cooperative\".\"ss_store_id\" = \"wakeful\".\"ss_store_id\"),
+    FULL JOIN \"wakeful\" on \"cooperative\".\"ss_store_id\" is not distinct from \"wakeful\".\"ss_store_id\"),
 questionable as (
 SELECT
     \"cheerful\".\"ss_item_id\" as \"ss_item_id\",
     \"cheerful\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
-    \"cooperative\".\"threshold\" as \"threshold\"
+    \"cooperative\".\"threshold\" as \"threshold\",
+    coalesce(\"cheerful\".\"ss_store_id\",\"cooperative\".\"ss_store_id\") as \"ss_store_id\"
 FROM
     \"cheerful\"
-    INNER JOIN \"cooperative\" on \"cheerful\".\"ss_store_id\" = \"cooperative\".\"ss_store_id\"),
+    FULL JOIN \"cooperative\" on \"cheerful\".\"ss_store_id\" is not distinct from \"cooperative\".\"ss_store_id\"),
 juicy as (
 SELECT
     \"abundant\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"abundant\".\"ss_item_id\" as \"ss_item_id\"
+    \"yummy\".\"ss_item_id\" as \"ss_item_id\"
 FROM
     \"yummy\"
     INNER JOIN \"abundant\" on \"yummy\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"

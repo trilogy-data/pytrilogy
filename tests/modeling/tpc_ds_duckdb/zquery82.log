@@ -1,5 +1,5 @@
 query_id = "82"
-gen_length = 1767
+gen_length = 1756
 generated_sql = """
 
 WITH 
@@ -24,8 +24,8 @@ SELECT
 FROM
     \"wakeful\"
     INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"wakeful\".\"inventory_date_id\" = \"inventory_date_date\".\"D_DATE_SK\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"wakeful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"inventory_item_items\" on \"store_sales_item_items\".\"I_ITEM_SK\" = \"inventory_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"wakeful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"inventory_item_items\" on \"store_sales_item_items\".\"I_ITEM_SK\" = \"inventory_item_items\".\"I_ITEM_SK\"
 WHERE
     \"inventory_item_items\".\"I_CURRENT_PRICE\" >= 62 and \"inventory_item_items\".\"I_CURRENT_PRICE\" <= 92 and cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-05-25' and cast(\"inventory_date_date\".\"D_DATE\" as date) <= date '2000-07-24' and \"inventory_item_items\".\"I_MANUFACT_ID\" in (129,270,821,423) and \"wakeful\".\"inventory_quantity_on_hand\" >= 100 and \"wakeful\".\"inventory_quantity_on_hand\" <= 500 and \"store_sales_item_items\".\"I_ITEM_SK\" is not null
 

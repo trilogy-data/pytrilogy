@@ -1,5 +1,5 @@
 query_id = "50"
-gen_length = 6306
+gen_length = 6417
 generated_sql = """
 
 WITH 
@@ -11,10 +11,10 @@ SELECT
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" = 8 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_store_returns\".\"SR_CUSTOMER_SK\"
+    \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" = 8 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,
@@ -23,12 +23,12 @@ GROUP BY
     4),
 thoughtful as (
 SELECT
+    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
     \"store_sales_store_store\".\"S_CITY\" as \"store_sales_store_city\",
     \"store_sales_store_store\".\"S_COMPANY_ID\" as \"store_sales_store_company_id\",
     \"store_sales_store_store\".\"S_COUNTY\" as \"store_sales_store_county\",
     \"store_sales_store_store\".\"S_STATE\" as \"store_sales_store_state\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
     \"store_sales_store_store\".\"S_STREET_NAME\" as \"store_sales_store_street_name\",
     \"store_sales_store_store\".\"S_STREET_NUMBER\" as \"store_sales_store_street_number\",
     \"store_sales_store_store\".\"S_STREET_TYPE\" as \"store_sales_store_street_type\",
@@ -36,11 +36,11 @@ SELECT
     \"store_sales_store_store\".\"S_ZIP\" as \"store_sales_store_zip\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" = 8 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_store_returns\".\"SR_CUSTOMER_SK\"
+    \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" = 8 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,
@@ -97,7 +97,7 @@ SELECT
     \"uneven\".\"days_120_plus\" as \"days_120_plus\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"uneven\" on \"thoughtful\".\"store_sales_store_id\" = \"uneven\".\"store_sales_store_id\"
+    FULL JOIN \"uneven\" on \"thoughtful\".\"store_sales_store_id\" is not distinct from \"uneven\".\"store_sales_store_id\"
 ORDER BY 
     \"thoughtful\".\"store_sales_store_name\" asc nulls first,
     \"thoughtful\".\"store_sales_store_company_id\" asc nulls first,

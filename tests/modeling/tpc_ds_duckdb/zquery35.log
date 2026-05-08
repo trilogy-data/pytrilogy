@@ -1,5 +1,5 @@
 query_id = "35"
-gen_length = 9101
+gen_length = 9125
 generated_sql = """
 
 WITH 
@@ -35,8 +35,8 @@ SELECT
     coalesce(\"cooperative\".\"customer_id\",\"customer_customers\".\"C_CUSTOMER_SK\",\"quizzical\".\"customer_id\",\"uneven\".\"customer_id\") as \"relevant_customers\"
 FROM
     \"uneven\"
-    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"uneven\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
-    FULL JOIN \"quizzical\" on \"uneven\".\"customer_id\" = \"quizzical\".\"customer_id\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"uneven\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"quizzical\" on \"uneven\".\"customer_id\" is not distinct from \"quizzical\".\"customer_id\"
     FULL JOIN \"cooperative\" on coalesce(\"quizzical\".\"customer_id\", \"uneven\".\"customer_id\") = \"cooperative\".\"customer_id\"
     FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"quizzical\".\"customer_id\", \"cooperative\".\"customer_id\", \"uneven\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
     RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"cooperative\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"

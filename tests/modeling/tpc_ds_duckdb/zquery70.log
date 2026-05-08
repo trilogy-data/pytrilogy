@@ -1,5 +1,5 @@
 query_id = "70"
-gen_length = 10750
+gen_length = 10755
 generated_sql = """
 
 WITH 
@@ -10,7 +10,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211
 

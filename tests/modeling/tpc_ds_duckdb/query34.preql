@@ -12,6 +12,7 @@ WHERE
               else null end) > 1.2
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.county = 'Williamson County'
+    and store_sales.customer.id is not null
 SELECT
     --store_sales.customer.id,
     store_sales.customer.last_name,

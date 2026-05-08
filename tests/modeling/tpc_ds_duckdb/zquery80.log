@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 11773
+gen_length = 11768
 generated_sql = """
 
 WITH 
@@ -136,7 +136,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"uneven\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"scrawny\" on \"uneven\".\"sales_item_id\" = \"scrawny\".\"sales_item_id\" AND \"uneven\".\"sales_order_id\" = \"scrawny\".\"sales_order_id\" AND \"uneven\".\"sales_sales_channel\" = \"scrawny\".\"sales_sales_channel\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"uneven\".\"sales_promotion_id\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
-    LEFT OUTER JOIN \"thoughtful\" on \"uneven\".\"sales_channel_dim_id\" = \"thoughtful\".\"sales_channel_dim_id\" AND \"uneven\".\"sales_sales_channel\" = \"thoughtful\".\"sales_sales_channel\"
+    INNER JOIN \"thoughtful\" on \"uneven\".\"sales_channel_dim_id\" = \"thoughtful\".\"sales_channel_dim_id\" AND \"uneven\".\"sales_sales_channel\" = \"thoughtful\".\"sales_sales_channel\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"uneven\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
     cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N' and \"thoughtful\".\"sales_channel_dim_text_id\" is not null

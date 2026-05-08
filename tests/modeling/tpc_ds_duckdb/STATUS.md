@@ -9,9 +9,10 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 85 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 61, 62, 63, 65, 66, 68, 69, 70, 71, 73, 74, 78, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 86 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 61, 62, 63, 65, 66, 68, 69, 70, 71, 73, 74, 76, 78, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | Skipped (preql exists) | 3 | 5, 29, 85 |
-| Missing (no preql / no test) | 11 | 14, 51, 54, 59, 64, 67, 72, 75, 76, 77, 84 |
+| XFAIL (committed broken for experimentation) | 1 | 14 |
+| Missing (no preql / no test) | 9 | 51, 54, 59, 64, 67, 72, 75, 77, 84 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -237,6 +238,123 @@ exercising different planner paths — they share an SQL reference.)
   null` to the inline `?` filter AND the rowset's `WHERE` so the phantom
   group is excluded from the grain.
 
+## Recent Model Extensions (truthful nullable FKs across fact tables)
+
+Every FK on `store_sales`, `catalog_sales`, and `web_sales` that is
+actually nullable in the sf=1 parquet data is now marked `?` (nullable):
+- `store_sales`: 4.5% NULL rate on every `_sk` (date, time, customer,
+  cdemo, hdemo, addr, store, promo).
+- `catalog_sales`: 0.5% NULL rate on every `_sk` (date, sold_date, time,
+  ship_date, customer, cdemo, hdemo, addr, ship_addr, ship_cdemo,
+  ship_hdemo, call_center, catalog_page, ship_mode, warehouse, promo).
+- `web_sales`: 0.02–0.03% NULL rate across all `_sk`s.
+
+Grain keys (`SS_TICKET_NUMBER`, `CS_ORDER_NUMBER`, `WS_ORDER_NUMBER`,
+`*_ITEM_SK` for the item.id grain part) stay non-nullable.
+
+### What this means for queries
+
+When a fact has a nullable FK to a complete dim:
+- The trilogy planner picks `JoinType.FULL` between the fact and the dim
+  (see `get_join_type` in `core/processing/join_resolution.py`). This is
+  the truthful join: it preserves *both* fact rows with NULL FK *and*
+  dim rows with no matching fact.
+- For queries whose reference SQL uses `FROM fact, dim WHERE
+  fact.fk = dim.pk` (INNER), add an explicit `dim.id is not null` filter
+  per dim hop **and** a `fact.<grain_key> is not null` filter to drop
+  the phantom dim-only rows. The grain-key filter is the trilogy
+  equivalent of "row exists in the fact table".
+
+Examples of the filter pattern:
+- q6: added `store_sales.customer.id is not null and
+  store_sales.customer.address.id is not null` (reference INNER joins
+  customer and address).
+- q34, q79: added `store_sales.customer.id is not null`.
+- q50, q65: added `store_sales.store.id is not null`.
+- q62: added `ws.warehouse.id is not null and ws.ship_mode.id is not
+  null and ws.web_site.id is not null`.
+- q76 (NULL-FK probe query): adds both `<dim>.id is null` *and*
+  `<fact>.<grain_key> is not null` *and* `<fact>.date.id is not null`,
+  so the catalog branch is `WHERE cs.customer_address.id is null and
+  cs.order_number is not null and cs.date.id is not null`.
+
+### Note on `FULL JOIN` vs `LEFT JOIN`
+
+q61's `get_join_type` already handles the simple cases (single-side
+nullable, single-side partial) by returning LEFT_OUTER or RIGHT_OUTER.
+For "left nullable + left partial-on-key, right complete" — the typical
+fact-to-dim shape — `get_join_type` returns FULL because:
+> if the right has nulls on the join key the non-nullable left has
+> nothing to match them against — they'd land on the dropped side.
+> Upgrade to FULL so they survive.
+
+The phantom dim rows that come with this are legitimate truthful output
+(every dim row with no fact match), and the burden of filtering them
+falls on the query writer.
+
+## Recent Query Additions (q76)
+
+- **q76** — Per-channel UNION ALL of NULL-FK probes (ss_store_sk,
+  ws_ship_customer_sk, cs_ship_addr_sk). Three-branch MERGE with
+  per-channel `WHERE <dim>.id is null` filters that work directly off
+  the now-nullable FK joins.
+  - **count() in multi-fact MERGE branches gets wrapped in
+    `coalesce(., 0)`, breaking the cross-branch
+    `coalesce(cnt_a, cnt_b, cnt_c)` derive** — the inner coalesce
+    converts NULL to 0, then the outer coalesce takes the first non-NULL
+    (the 0). Workaround: replace `count(...)` with a row-grain 0/1 flag
+    and `sum(flag)`:
+    `auto ss_row_flag <- sum(case when ss.store.id is null then 1 else 0 end) by ss.ticket_number, ss.item.id;`
+    then `sum(ss_row_flag) as cnt_a`. Similar pattern for each branch.
+
+## Open issue: planner FULL JOIN for fact-dim with nullable FK
+
+When a fact has a nullable FK to a dim and the join graph also has the
+fact marked as partial on that key (typical of any fact→dim FK — the
+fact only spans a subset of the dim's rows), `get_join_type` in
+`trilogy/core/processing/join_resolution.py:154` falls into the
+"both not complete" branch and returns `JoinType.FULL`. With
+`is not distinct from` equality and a FULL JOIN, every dim row appears
+in the result (even those without a matching fact), producing phantom
+dim-only rows that — though *truthful* output — pollute aggregations
+that expected reference-SQL INNER semantics.
+
+This is currently treated as expected behavior (the model says the FK
+is nullable; the join is truthful), and individual queries use the
+`<fact>.<grain_key> is not null` + `<dim>.id is not null` filter
+pattern to drop phantom rows when needed.
+
+A future refinement could have the planner emit `fact LEFT JOIN dim`
+(forcing fact-on-LEFT) when only the fact-side FK is nullable — the
+phantom dim rows aren't actually useful for any query I've written so
+far. But that's an optimization, not a correctness fix.
+
+## Recent Query Additions (q14 — XFAIL, blocked)
+
+- **q14** — `INTERSECT` of 3 (brand_id, class_id, category_id) sets +
+  4-level rollup + `avg_sales` HAVING threshold. Two shapes attempted,
+  both blocked; the in_cross_items chain shape is committed in
+  `query14.preql` with `@pytest.mark.xfail(strict=True)` on
+  `test_fourteen` so we can iterate.
+  - **Shape A (committed)**: defines `store_pres / catalog_pres /
+    web_pres` autos at `(brand_id, class_id, category_id)` grain,
+    combines them into `in_cross_items`, and uses it inside
+    `bucket_sum`'s case-when. Trilogy re-derives the presence
+    aggregations inside each merge branch's `bucket_sum > avg_sales`
+    filtered scope — `store_pres` becomes "rows that *also* pass
+    HAVING" rather than "rows in the original dataset". Result: ~6.6%
+    undercount on sf=1.
+  - **Shape B (rowset + IN, not committed)**: replaces the chain with
+    `with cross_items_set as WHERE in_window_channel_count = 3 SELECT
+    sales.item.id;` and filters `sales.item.id in cross_items_set
+    .ci_item_id`. Avoids the re-derivation, but `auto bucket_sum <-
+    sum(sales.quantity * sales.list_price) by sales.sales_channel,
+    sales.item.brand_id, sales.item.class_id, sales.item.category_id`
+    is then sourced from the unfiltered partial-datasource union (no
+    Nov-2001 date filter, no IN cross_items_set membership applied),
+    giving all-time totals. count() also routed through the returns
+    partial in this shape, producing absurd over-counts.
+
 ## Recent Model Extensions (q27/q86 batch)
 
 - `store.preql` — removed the redundant `S_MARKET_ID: market_id` mapping.
@@ -372,11 +490,6 @@ These look tractable without further framework work:
   `bill_household_demographic`), but the inventory + sales + returns
   triple-join blows up to OOM during planning. Needs filter pushdown
   improvements or a smaller, more targeted query shape.
-- **q76** — UNION ALL of three null-column filters. `ship_customer` is
-  now exposed on web_sales, but `store.id is null` filters require the
-  store-side join to be LEFT, which trilogy currently inners. Same on
-  catalog's `customer_address.id is null`. Needs nullable-join semantics
-  (or a raw escape hatch) for the FK NULL probe.
 
 ## Backport Candidates (use unified_sales)
 
@@ -395,9 +508,11 @@ These need framework work first:
 
 - **q14** — `INTERSECT` of 3 (brand_id, class_id, category_id) sets to find
   items present in all 3 channels, plus a 4-level rollup over (channel,
-  brand, class, category) and an `avg_sales` HAVING threshold. The intersect
-  pattern from q38 should work for the cross_items prefilter; the rollup is
-  a q22-style cascade. Untried but likely tractable.
+  brand, class, category) and an `avg_sales` HAVING threshold. **XFAIL**
+  — `query14.preql` is committed with the in_cross_items-chain shape and
+  `test_fourteen` has `@pytest.mark.xfail(strict=True)`. See "Recent
+  Query Additions (q14 — XFAIL, blocked)" above for the two attempted
+  shapes and the underlying planner bugs.
 - **q77** — same store/catalog/web rollup as q5. Has the same sale-vs-return
   date filter mismatch (sale-date filter vs return-date filter). Catalog uses
   `cs_call_center_sk` as id (not catalog_page) and store/web use LEFT JOINs

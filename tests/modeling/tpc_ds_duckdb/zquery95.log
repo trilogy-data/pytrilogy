@@ -1,5 +1,5 @@
 query_id = "95"
-gen_length = 5056
+gen_length = 4987
 generated_sql = """
 
 WITH 
@@ -30,7 +30,7 @@ SELECT
     CASE WHEN CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True THEN \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" ELSE NULL END as \"returned_orders\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
-    LEFT OUTER JOIN \"memory\".\"web_returns\" as \"web_sales_web_returns\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_web_returns\".\"WR_ITEM_SK\" AND \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" = \"web_sales_web_returns\".\"WR_ORDER_NUMBER\"
+    INNER JOIN \"memory\".\"web_returns\" as \"web_sales_web_returns\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_web_returns\".\"WR_ITEM_SK\" AND \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" = \"web_sales_web_returns\".\"WR_ORDER_NUMBER\"
 WHERE
     CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null)
 
@@ -38,20 +38,20 @@ GROUP BY
     1),
 cooperative as (
 SELECT
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\"
+    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
+    \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\" as \"web_sales_ship_address_id\",
+    \"web_sales_web_sales\".\"WS_SHIP_DATE_SK\" as \"web_sales_ship_date_id\",
+    \"web_sales_web_sales\".\"WS_WEB_SITE_SK\" as \"web_sales_web_site_id\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
-    INNER JOIN \"memory\".\"web_site\" as \"web_sales_web_site_web_site\" on \"web_sales_web_sales\".\"WS_WEB_SITE_SK\" = \"web_sales_web_site_web_site\".\"web_site_sk\"
-    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_ship_date_date\" on \"web_sales_web_sales\".\"WS_SHIP_DATE_SK\" = \"web_sales_ship_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select thoughtful.\"returned_orders\" from thoughtful where thoughtful.\"returned_orders\" is not null)
+    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select thoughtful.\"returned_orders\" from thoughtful where thoughtful.\"returned_orders\" is not null)
 
 GROUP BY
     1,
-    coalesce(\"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\",\"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\"),
-    coalesce(\"web_sales_ship_date_date\".\"D_DATE_SK\",\"web_sales_web_sales\".\"WS_SHIP_DATE_SK\"),
-    coalesce(\"web_sales_web_sales\".\"WS_WEB_SITE_SK\",\"web_sales_web_site_web_site\".\"web_site_sk\")),
+    2,
+    3,
+    4),
 concerned as (
 SELECT
     sum(\"web_sales_web_sales\".\"WS_EXT_SHIP_COST\") as \"total_shipping_cost\",
@@ -69,8 +69,11 @@ SELECT
     \"cooperative\".\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
     \"cooperative\"
+    INNER JOIN \"memory\".\"web_site\" as \"web_sales_web_site_web_site\" on \"cooperative\".\"web_sales_web_site_id\" = \"web_sales_web_site_web_site\".\"web_site_sk\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_ship_date_date\" on \"cooperative\".\"web_sales_ship_date_id\" = \"web_sales_ship_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"cooperative\".\"web_sales_ship_address_id\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"cooperative\".\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"cooperative\".\"web_sales_order_number\" in (select thoughtful.\"returned_orders\" from thoughtful where thoughtful.\"returned_orders\" is not null)
+    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"cooperative\".\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"cooperative\".\"web_sales_order_number\" in (select thoughtful.\"returned_orders\" from thoughtful where thoughtful.\"returned_orders\" is not null)
 
 GROUP BY
     1),

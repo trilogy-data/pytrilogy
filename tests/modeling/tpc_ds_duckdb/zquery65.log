@@ -1,5 +1,5 @@
 query_id = "65"
-gen_length = 4355
+gen_length = 4757
 generated_sql = """
 
 WITH 
@@ -12,35 +12,37 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,
     2),
 questionable as (
 SELECT
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187
+    \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,
-    coalesce(\"store_sales_date_date\".\"D_DATE_SK\",\"store_sales_store_sales\".\"SS_SOLD_DATE_SK\")),
+    2),
 cheerful as (
 SELECT
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\"
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
+    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187
+    \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,
-    coalesce(\"store_sales_date_date\".\"D_DATE_SK\",\"store_sales_store_sales\".\"SS_SOLD_DATE_SK\")),
+    2,
+    3),
 vacuous as (
 SELECT
     \"uneven\".\"store_sales_store_id\" as \"store_sales_store_id\",
@@ -51,11 +53,15 @@ GROUP BY
     1),
 abundant as (
 SELECT
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\"
+    \"questionable\".\"store_sales_store_id\" as \"store_sales_store_id\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
     \"questionable\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"questionable\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"questionable\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187 and \"questionable\".\"store_sales_store_id\" is not null
+
 GROUP BY
     1,
     2),
@@ -68,7 +74,11 @@ SELECT
     \"store_sales_item_items\".\"I_WHOLESALE_COST\" as \"store_sales_item_wholesale_cost\"
 FROM
     \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"cheerful\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"cheerful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187 and \"cheerful\".\"store_sales_store_id\" is not null
+
 GROUP BY
     1,
     2,
@@ -77,17 +87,17 @@ GROUP BY
     5),
 juicy as (
 SELECT
-    \"abundant\".\"store_sales_store_id\" as \"store_sales_store_id\",
     \"abundant\".\"store_sales_store_name\" as \"store_sales_store_name\",
     \"thoughtful\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
     \"thoughtful\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
     \"thoughtful\".\"store_sales_item_wholesale_cost\" as \"store_sales_item_wholesale_cost\",
-    \"uneven\".\"item_revenue\" as \"item_revenue\"
+    \"uneven\".\"item_revenue\" as \"item_revenue\",
+    coalesce(\"abundant\".\"store_sales_store_id\",\"uneven\".\"store_sales_store_id\") as \"store_sales_store_id\"
 FROM
     \"thoughtful\"
     INNER JOIN \"uneven\" on \"thoughtful\".\"store_sales_item_id\" = \"uneven\".\"store_sales_item_id\"
-    INNER JOIN \"abundant\" on \"uneven\".\"store_sales_store_id\" = \"abundant\".\"store_sales_store_id\"
+    FULL JOIN \"abundant\" on \"uneven\".\"store_sales_store_id\" is not distinct from \"abundant\".\"store_sales_store_id\"
 GROUP BY
     1,
     2,
@@ -105,7 +115,7 @@ SELECT
     \"juicy\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\"
 FROM
     \"juicy\"
-    INNER JOIN \"vacuous\" on \"juicy\".\"store_sales_store_id\" = \"vacuous\".\"store_sales_store_id\"
+    RIGHT OUTER JOIN \"vacuous\" on \"juicy\".\"store_sales_store_id\" is not distinct from \"vacuous\".\"store_sales_store_id\"
 WHERE
     \"juicy\".\"item_revenue\" <= 0.1 * \"vacuous\".\"store_avg_revenue\"
 

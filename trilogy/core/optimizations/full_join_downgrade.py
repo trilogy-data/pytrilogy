@@ -1,15 +1,11 @@
-"""Downgrade FULL joins when the WHERE proves they're stricter than needed.
+"""Downgrade OUTER joins when the WHERE proves they're stricter than needed.
 
-The asymmetric-nullable rule in `get_join_type` promotes some joins to FULL so
-NULL rows on the nullable side aren't lost against the non-nullable side. When
-the surrounding WHERE forces a side to contribute non-null data — either on
-the join keys themselves or on any column unique to that side — the unmatched
-rows that FULL was preserving can never satisfy the filter, so we can
-downgrade:
-
-  - filter forces left side non-null AND right side non-null → ``INNER``
-  - filter forces only the left side non-null  (drops right-unmatched) → ``LEFT_OUTER``
-  - filter forces only the right side non-null (drops left-unmatched)  → ``RIGHT_OUTER``
+Outer joins exist to preserve unmatched rows by NULL-padding one side. When the
+surrounding WHERE rejects rows where those NULL-padded columns appear (directly
+via ``IS NOT NULL`` or via any null-propagating predicate that mentions a
+concept on that side), the unmatched rows can never satisfy the filter — so
+the OUTER join produces the same surviving rows as a stricter join, and we
+can downgrade.
 
 A predicate "forces a concept non-null in surviving rows" if it can never be
 TRUE when that concept is NULL — direct ``IS NOT NULL``, null-propagating
@@ -17,6 +13,19 @@ comparisons against literals, or any concept reference inside a null-
 propagating expression. ``COALESCE``/``NULLIF``/``CASE``/``COUNT`` are treated
 as opaque (they can be non-null even when an arg is NULL), so we don't recurse
 into them.
+
+Downgrades by current join type:
+
+  - ``FULL``
+      both sides forced non-null  → ``INNER``
+      only left forced (drops left-unmatched rows that have NULL left-side
+      columns) → ``LEFT_OUTER``
+      only right forced (drops right-unmatched rows with NULL right-side
+      columns) → ``RIGHT_OUTER``
+  - ``LEFT_OUTER`` (NULL-padding lives on the right side)
+      right forced → ``INNER``
+  - ``RIGHT_OUTER`` (NULL-padding lives on the left side)
+      left forced → ``INNER``
 """
 
 from __future__ import annotations
@@ -27,7 +36,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildParenthetical,
 )
-from trilogy.core.models.execute import CTE, Join, UnionCTE
+from trilogy.core.models.execute import CTE, CTEConceptPair, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
@@ -35,6 +44,11 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
     is_null_literal,
 )
+
+# Joins whose surviving rows can be a strict subset under a null-rejecting
+# WHERE. INNER joins already drop both unmatched sides, so they're never
+# eligible to be downgraded further.
+_OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
 
 
 def _proves_non_null(
@@ -81,31 +95,104 @@ def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
     return {c.address for c in cte.output_columns}
 
 
+def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
+    """Addresses available from the CTE's FROM clause — the LEFT side of the
+    chain's first join.
+
+    The "left" of an in-rendered join can come from any of:
+      - ``joins[0].left_cte`` (explicit).
+      - A ``parent_cte`` that isn't consumed as any join's right side.
+      - A ``joinkey_pair.cte`` attached to a join — set when an upstream CTE
+        was inlined into this one. Without this branch a chain whose left
+        side is an inlined CTE (e.g. gcat ``vehicle_lv_info``) shows up with
+        no ``parent_cte`` and no explicit ``left_cte``, so the rule would
+        otherwise see an empty left and (wrongly) treat shared join-key
+        columns as right-only proofs.
+      - A direct base datasource (raw table FROM).
+
+    Each non-seed parent gets consumed as some join's ``right_cte``; the
+    FROM-clause table is the leftover."""
+    if not isinstance(cte, CTE) or not cte.joins:
+        return set()
+    first = cte.joins[0]
+    if not isinstance(first, Join):
+        return set()
+    if first.left_cte is not None:
+        return _cte_addresses(first.left_cte)
+    right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
+    for parent in cte.parent_ctes:
+        if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
+            return _cte_addresses(parent)
+    # Inlined-left case: a join carries its own left CTE on the joinkey_pairs.
+    for j in cte.joins:
+        if not isinstance(j, Join):
+            continue
+        for pair in j.joinkey_pairs or []:
+            if not isinstance(pair, CTEConceptPair):
+                continue
+            if pair.cte.name not in right_names:
+                return _cte_addresses(pair.cte)
+    base = cte.source.base_datasource
+    if base is not None:
+        return {c.address for c in base.output_concepts}
+    return set()
+
+
+def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:
+    """Columns visible on the LEFT side of join ``idx`` — the accumulated FROM.
+
+    The seed (FROM clause) contributes its columns; for ``idx > 0`` every prior
+    join's ``right_cte`` also contributes (already merged into the LEFT by the
+    time this join is evaluated). Without the accumulation, ``right_only`` for
+    a downstream join over-includes columns the left already carried, and a
+    WHERE proof on a shared column would falsely promote the join."""
+    addrs: set[str] = set()
+    if not isinstance(cte, CTE):
+        return addrs
+    join = cte.joins[idx] if idx < len(cte.joins) else None
+    if isinstance(join, Join) and join.left_cte is not None:
+        addrs |= _cte_addresses(join.left_cte)
+    addrs |= _seed_addresses(cte)
+    for prior_idx in range(idx):
+        prior = cte.joins[prior_idx]
+        if not isinstance(prior, Join):
+            continue
+        addrs |= _cte_addresses(prior.right_cte)
+    return addrs
+
+
 def _side_addresses(
-    join: Join, default_left: CTE | UnionCTE
+    cte: CTE | UnionCTE,
+    idx: int,
+    join: Join,
 ) -> tuple[set[str], set[str]]:
     """Addresses unique to each side of the join. Filters that touch only
     one side are unambiguous about which side they constrain."""
-    left = join.left_cte or default_left
-    right = join.right_cte
-    left_all = _cte_addresses(left)
-    right_all = _cte_addresses(right)
+    left_all = _accumulated_left_addresses(cte, idx)
+    right_all = _cte_addresses(join.right_cte)
     return left_all - right_all, right_all - left_all
 
 
 def _downgrade(
-    join: Join, left_default: CTE | UnionCTE, proofs: set[str]
+    cte: CTE | UnionCTE,
+    idx: int,
+    join: Join,
+    proofs: set[str],
 ) -> JoinType | None:
     """Pick the strictest join that still produces the same surviving rows."""
+    current = join.jointype
+    if current not in _OUTER_JOIN_TYPES:
+        return None
+
     pairs = join.joinkey_pairs or []
     left_keys = {p.left.address for p in pairs}
     right_keys = {p.right.address for p in pairs}
-    left_only, right_only = _side_addresses(join, left_default)
+    left_only, right_only = _side_addresses(cte, idx, join)
 
     # The left side is "forced present" when the WHERE references a concept
     # that only exists on the left, OR when every left join key is individually
-    # proven non-null. Either case rules out the unmatched rows whose left
-    # columns were filled with NULL. Mirror for the right side.
+    # proven non-null. Either case rules out unmatched rows whose left columns
+    # were filled with NULL. Mirror for the right side.
     left_forced = bool(proofs & left_only) or (
         bool(left_keys) and left_keys.issubset(proofs)
     )
@@ -113,47 +200,46 @@ def _downgrade(
         bool(right_keys) and right_keys.issubset(proofs)
     )
 
-    if left_forced and right_forced:
-        return JoinType.INNER
-    # left_forced → filter drops right-unmatched (their left columns are NULL
-    # fill, so any non-null check on a left column fails) → LEFT_OUTER drops
-    # the same set. Mirror for right_forced.
-    if left_forced:
-        return JoinType.LEFT_OUTER
-    if right_forced:
-        return JoinType.RIGHT_OUTER
+    if current == JoinType.FULL:
+        if left_forced and right_forced:
+            return JoinType.INNER
+        # left_forced → filter drops left-unmatched rows (NULL left columns)
+        # → LEFT_OUTER drops the same set. Mirror for right_forced.
+        if left_forced:
+            return JoinType.LEFT_OUTER
+        if right_forced:
+            return JoinType.RIGHT_OUTER
+        return None
+
+    if current == JoinType.LEFT_OUTER:
+        # NULL-padding lives on the right side; right_forced removes the
+        # padded rows, leaving only matched rows → INNER.
+        if right_forced:
+            return JoinType.INNER
+        return None
+
+    if current == JoinType.RIGHT_OUTER:
+        if left_forced:
+            return JoinType.INNER
+        return None
+
     return None
 
 
-def _previous_left(cte: CTE | UnionCTE, idx: int) -> CTE | UnionCTE | None:
-    """When a join doesn't carry an explicit left_cte, the LEFT side is the
-    accumulated FROM up to that point. For the first join that's whichever
-    parent CTE isn't the join's right side; for subsequent joins it's the
-    prior join's right CTE."""
-    if idx == 0:
-        if isinstance(cte, CTE) and cte.joins:
-            first = cte.joins[0]
-            if not isinstance(first, Join):
-                return None
-            right_name = first.right_cte.name
-            for parent in cte.parent_ctes:
-                if isinstance(parent, (CTE, UnionCTE)) and parent.name != right_name:
-                    return parent
-        return None
-    prior = cte.joins[idx - 1]  # type: ignore[union-attr]
-    if not isinstance(prior, Join):
-        return None
-    return prior.right_cte
-
-
 class DowngradeFullJoinOnGuards(OptimizationRule):
+    """Downgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
+    enclosing WHERE rejects the unmatched rows the OUTER join was preserving.
+
+    Class name kept for backwards compatibility; the rule covers all three
+    OUTER join types now."""
+
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE) or not cte.condition or not cte.joins:
             return False, None
         if not any(
-            isinstance(j, Join) and j.jointype == JoinType.FULL for j in cte.joins
+            isinstance(j, Join) and j.jointype in _OUTER_JOIN_TYPES for j in cte.joins
         ):
             return False, None
 
@@ -163,26 +249,20 @@ class DowngradeFullJoinOnGuards(OptimizationRule):
 
         changed = False
         for idx, join in enumerate(cte.joins):
-            if not isinstance(join, Join) or join.jointype != JoinType.FULL:
+            if not isinstance(join, Join) or join.jointype not in _OUTER_JOIN_TYPES:
                 continue
-            # The structural left of the first join is the CTE's FROM clause
-            # (a sibling parent CTE); subsequent joins accumulate the prior
-            # join's right_cte. join.left_cte takes precedence when set.
-            default_left = join.left_cte or _previous_left(cte, idx)
-            if default_left is None:
-                continue
-            target = _downgrade(join, default_left, proofs)
+            target = _downgrade(cte, idx, join, proofs)
             if target is None or target == join.jointype:
                 continue
             dropped = {
-                JoinType.INNER: "both left- and right-unmatched",
+                JoinType.INNER: "unmatched",
                 JoinType.LEFT_OUTER: "right-unmatched",
                 JoinType.RIGHT_OUTER: "left-unmatched",
             }[target]
             self.log(
-                f"FULL→{target.value} on {cte.name} for join with"
+                f"{join.jointype.value}→{target.value} on {cte.name} for join with"
                 f" {join.right_cte.name}: WHERE filters out"
-                f" {dropped} rows that FULL was preserving"
+                f" {dropped} rows that the OUTER join was preserving"
             )
             join.jointype = target
             changed = True
