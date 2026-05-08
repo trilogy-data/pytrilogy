@@ -45,11 +45,16 @@ def deduplicate_nodes(
     removed: set[str] = set()
     set_map: dict[str, set[str]] = {}
     for k, v in merged.items():
+        # Hidden concepts are excluded by ``resolve_concept_map`` for
+        # QueryDatasources, so a parent that hides a concept does not
+        # actually supply it downstream — don't let it shadow another
+        # parent that exposes the same concept publicly.
+        hidden = set(v.hidden_concepts) if isinstance(v, QueryDatasource) else set()
         unique_outputs = [
             # the concept may be a in a different environment for a rowset.
             (environment.concepts.get(x.address) or x).address
             for x in v.output_concepts
-            if x not in v.partial_concepts
+            if x not in v.partial_concepts and x.address not in hidden
         ]
         set_map[k] = set(unique_outputs)
     for k1, v1 in set_map.items():

@@ -9,9 +9,9 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 83 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 62, 63, 65, 66, 68, 69, 70, 71, 73, 74, 78, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 85 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 61, 62, 63, 65, 66, 68, 69, 70, 71, 73, 74, 78, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | Skipped (preql exists) | 3 | 5, 29, 85 |
-| Missing (no preql / no test) | 13 | 14, 36, 51, 54, 59, 61, 64, 67, 72, 75, 76, 77, 84 |
+| Missing (no preql / no test) | 11 | 14, 51, 54, 59, 64, 67, 72, 75, 76, 77, 84 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -35,7 +35,8 @@ exercising different planner paths — they share an SQL reference.)
   semantics or an "exists in catalog_sales" filter that is correctly pushed
   to all branches.
 - **q85** — DuckDB Comparison (PRAGMA tpcds(85)) hangs on dev machine; skip.
-  Preql exists and parses; this is solely a comparison-reference issue.
+  Preql exists and parses; this is solely a comparison-reference issue. [Note: 
+  consider certain tests having an override to use sf=.1 or smaller]
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
@@ -287,6 +288,46 @@ exercising different planner paths — they share an SQL reference.)
   are filtered via `customer.id is not null` to mirror the reference's
   inner join semantics.
 
+## Recent Query Additions (q36/q61 batch)
+
+- **q36** — same shape as q86 (3-level rollup over (i_category, i_class)
+  with per-level rank). Aggregate is a ratio: `gross_margin =
+  sum(net_profit) / sum(ext_sales_price)`. Pre-compute paired profit/sales
+  sums per grain and derive the ratio: `cast(profit as numeric(15,4)) /
+  cast(sales as numeric(15,4))` matches duckdb's
+  `(sum*1.0000)/sum` (DOUBLE result) at the bit level — `cast as float`
+  diverges at the 7th decimal (q90 caveat). ASC rank order, otherwise
+  identical to q86.
+- **q61** — promotional / total ratio over (Jewelry × gmt_offset=-5)
+  filter. Concise shape: `metric promotional_sales <- sum(filter ...)`,
+  shared `WHERE` clause, inline `sum(ss.ext_sales_price) -> total` and
+  inline ratio in the same SELECT. Required three fixes to land:
+  - **Model:** `store_sales.preql` `SS_PROMO_SK: promotion.id` →
+    `?promotion.id`. ~4.5% of `ss_promo_sk` values are NULL in the data;
+    the non-nullable mapping forced an INNER JOIN that under-counted the
+    `all_sales` denominator (~$25K of $5.586M dropped in the q61 window).
+  - **Planner — join direction:** `get_join_type` in
+    `trilogy/core/processing/join_resolution.py` returned `RIGHT_OUTER`
+    for "left nullable, right complete", preserving the dim and *still*
+    dropping the fact's NULL-key rows. Now branches on partial vs nullable:
+    nullable-only on the left maps to `LEFT_OUTER` (preserves left's
+    NULL-key rows); partial-only stays `RIGHT_OUTER` (preserves the
+    complete right); both maps to `FULL`. Symmetric to the existing
+    right-side handling.
+  - **Planner — merge dedup:** `deduplicate_nodes` in
+    `trilogy/core/processing/nodes/merge_node.py` compared parent
+    `output_concepts` (excluding partials only) and dropped subset
+    parents. With the inline ratio shape, the discovery loop produced
+    three GroupNodes including one for `total` alone and one for
+    `{promotional_sales, ratio, total}` where both `promotional_sales`
+    and `total` were marked **hidden**. The total-only parent was
+    dropped as "subset" — but the surviving parent's `total` is hidden
+    and `resolve_concept_map` skips hidden concepts when building the
+    source map, leaving `local.total` unmapped and tripping
+    `QueryDatasource.__post_init__`'s validate_missing check. Fix:
+    exclude hidden concepts from the subset comparison so a parent that
+    hides a concept doesn't shadow another that exposes it.
+
 ## Recent Query Additions (q27/q86 batch)
 
 - **q27** — 3-level `MERGE … align … derive` cascade modelled on q22/q80.
@@ -318,10 +359,15 @@ exercising different planner paths — they share an SQL reference.)
 
 These look tractable without further framework work:
 
-- **q67** — same shape as q70/q86 but 9 rollup levels and `rank() OVER
-  (PARTITION BY i_category ORDER BY sumsales DESC)`. The q86 per-level
-  rank trick should extend, but it'll be ~9 MERGE branches. Verbose but
-  mechanical.
+- **q67** — 9-level rollup with `rank() OVER (PARTITION BY i_category
+  ORDER BY sumsales DESC)`. **Unlike q70/q86 the partition does NOT
+  include any per-level grouping**, so all rolled-up rows in a category
+  compete in one rank ordering. The q86 per-level-rank trick does not
+  extend: rank must be applied across the merged rowset (e.g. via a
+  rowset-level window with a synthesised composite row id, or via
+  multi-key rank target — which trilogy's grammar doesn't accept today,
+  rank's target is a single expr). 9 MERGE branches plus a workable
+  cross-branch rank are needed.
 - **q72** — model extensions are now done (catalog_sales has
   `bill_household_demographic`), but the inventory + sales + returns
   triple-join blows up to OOM during planning. Needs filter pushdown
@@ -352,15 +398,10 @@ These need framework work first:
   brand, class, category) and an `avg_sales` HAVING threshold. The intersect
   pattern from q38 should work for the cross_items prefilter; the rollup is
   a q22-style cascade. Untried but likely tractable.
-- **q61** — needs LEFT JOIN to promotion, OR a way to compute total without
-  pulling promotion into the join (currently inner-joins drop NULL promo rows).
 - **q77** — same store/catalog/web rollup as q5. Has the same sale-vs-return
   date filter mismatch (sale-date filter vs return-date filter). Catalog uses
   `cs_call_center_sk` as id (not catalog_page) and store/web use LEFT JOINs
   for returns. Blocked on the same return-side dim mapping as q5.
-- **q36** — 3-level rollup (q22-style cascade) + `rank() OVER (PARTITION BY
-  lochierarchy, CASE WHEN t_class=0 THEN i_category END ORDER BY gross_margin)`
-  window. Doable but verbose; needs window over rollup output.
 - **q51** — FULL OUTER JOIN + cumulative window over union of two
   per-channel CTEs. Needs both full-outer-join semantics and the cumulative
   `sum(sum(...)) OVER (... ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`
