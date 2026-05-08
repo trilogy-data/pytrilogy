@@ -1,5 +1,5 @@
 query_id = "71"
-gen_length = 2477
+gen_length = 5204
 generated_sql = """
 
 WITH 
@@ -10,9 +10,23 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
      'CATALOG'  as \"sales_sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" as \"sales_time_id\"
+    \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" as \"sales_time_id\",
+    \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
+    \"sales_item_items\".\"I_BRAND\" as \"sales_item_brand_name\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
+    \"sales_item_items\".\"I_MANAGER_ID\" as \"sales_item_manager_id\",
+    \"sales_time_time\".\"T_HOUR\" as \"sales_time_hour\",
+    \"sales_time_time\".\"T_MINUTE\" as \"sales_time_minute\",
+    \"sales_time_time\".\"T_MEAL_TIME\" as \"sales_time_meal_time\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
+WHERE
+    \"sales_date_date\".\"D_YEAR\" = 1999 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_item_items\".\"I_MANAGER_ID\" = 1 and ( \"sales_time_time\".\"T_MEAL_TIME\" = 'breakfast' or \"sales_time_time\".\"T_MEAL_TIME\" = 'dinner' )
+
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
@@ -20,9 +34,23 @@ SELECT
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
      'STORE'  as \"sales_sales_channel\",
-    \"sales_store_sales_unified\".\"SS_SOLD_TIME_SK\" as \"sales_time_id\"
+    \"sales_store_sales_unified\".\"SS_SOLD_TIME_SK\" as \"sales_time_id\",
+    \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
+    \"sales_item_items\".\"I_BRAND\" as \"sales_item_brand_name\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
+    \"sales_item_items\".\"I_MANAGER_ID\" as \"sales_item_manager_id\",
+    \"sales_time_time\".\"T_HOUR\" as \"sales_time_hour\",
+    \"sales_time_time\".\"T_MINUTE\" as \"sales_time_minute\",
+    \"sales_time_time\".\"T_MEAL_TIME\" as \"sales_time_meal_time\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_store_sales_unified\".\"SS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
+WHERE
+    \"sales_date_date\".\"D_YEAR\" = 1999 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_item_items\".\"I_MANAGER_ID\" = 1 and ( \"sales_time_time\".\"T_MEAL_TIME\" = 'breakfast' or \"sales_time_time\".\"T_MEAL_TIME\" = 'dinner' )
+
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
@@ -30,23 +58,31 @@ SELECT
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
      'WEB'  as \"sales_sales_channel\",
-    \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" as \"sales_time_id\"
+    \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" as \"sales_time_id\",
+    \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
+    \"sales_item_items\".\"I_BRAND\" as \"sales_item_brand_name\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
+    \"sales_item_items\".\"I_MANAGER_ID\" as \"sales_item_manager_id\",
+    \"sales_time_time\".\"T_HOUR\" as \"sales_time_hour\",
+    \"sales_time_time\".\"T_MINUTE\" as \"sales_time_minute\",
+    \"sales_time_time\".\"T_MEAL_TIME\" as \"sales_time_meal_time\"
 FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\")
-SELECT
-    \"sales_item_items\".\"I_BRAND_ID\" as \"brand_id\",
-    \"sales_item_items\".\"I_BRAND\" as \"brand\",
-    \"sales_time_time\".\"T_HOUR\" as \"t_hour\",
-    \"sales_time_time\".\"T_MINUTE\" as \"t_minute\",
-    sum(\"cheerful\".\"sales_ext_sales_price\") as \"ext_price\"
-FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"cheerful\" on \"sales_date_date\".\"D_DATE_SK\" = \"cheerful\".\"sales_date_id\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"cheerful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 1999 and \"sales_date_date\".\"D_MOY\" = 11 and \"sales_item_items\".\"I_MANAGER_ID\" = 1 and ( \"sales_time_time\".\"T_MEAL_TIME\" = 'breakfast' or \"sales_time_time\".\"T_MEAL_TIME\" = 'dinner' )
-
+)
+SELECT
+    \"cheerful\".\"sales_item_brand_id\" as \"brand_id\",
+    \"cheerful\".\"sales_item_brand_name\" as \"brand\",
+    \"cheerful\".\"sales_time_hour\" as \"t_hour\",
+    \"cheerful\".\"sales_time_minute\" as \"t_minute\",
+    sum(\"cheerful\".\"sales_ext_sales_price\") as \"ext_price\"
+FROM
+    \"cheerful\"
 GROUP BY
     1,
     2,

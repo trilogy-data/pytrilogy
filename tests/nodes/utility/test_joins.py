@@ -7,13 +7,16 @@ from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.execute import (
     CTE,
+    BaseJoin,
     ConceptPair,
     CTEConceptPair,
     Join,
     QueryDatasource,
 )
 from trilogy.core.processing.join_resolution import (
+    compute_outer_null_status,
     get_join_type,
+    prune_outer_join_pairs,
     reduce_concept_pairs,
 )
 from trilogy.dialect.base import BaseDialect
@@ -451,3 +454,221 @@ datasource fact2 (id:fact2_id, sid:f2_shared) grain(fact2_id) address fact2_tabl
     ]
     result_no_partial = reduce_concept_pairs(pairs_no_partial, ds_dim)
     assert len(result_no_partial) == 1
+
+
+def test_reduce_concept_pairs_outer_join_keeps_dups():
+    """For OUTER joins, ``reduce_concept_pairs`` must keep duplicate
+    ``(right, left.address)`` pairs from different datasources — the JOIN ON
+    renderer (or downstream prune) needs all candidates to decide which side
+    is preserved."""
+    env, _ = parse("""
+key shared_id int;
+key fact1_id int;
+key fact2_id int;
+
+datasource dim (id:shared_id) grain(shared_id) address dim_table;
+datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
+datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
+    """)
+    env = env.materialize_for_select()
+    shared = env.concepts["shared_id"]
+    ds_f1 = env.datasources["fact1"]
+    ds_f2 = env.datasources["fact2"]
+    ds_dim = env.datasources["dim"]
+
+    pairs = [
+        ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+        ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+    ]
+    # INNER (default) deduplicates because neither pair is partial.
+    inner_result = reduce_concept_pairs(pairs, ds_dim, JoinType.INNER)
+    assert len(inner_result) == 1
+
+    # LEFT OUTER preserves both pairs — one of the lefts may be the NULL-able
+    # side of an upstream outer join, and a later pass must be free to pick
+    # the preserved one.
+    for outer in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.FULL):
+        outer_result = reduce_concept_pairs(list(pairs), ds_dim, outer)
+        assert len(outer_result) == 2, f"{outer.name} should keep both pairs"
+
+
+def test_compute_outer_null_status():
+    """Each datasource's null-status counts how many upstream joins place it
+    on the NULL-able side. A score of 0 means it's preserved everywhere."""
+    env, _ = parse("""
+key id int;
+datasource a (id:id) grain(id) address a;
+datasource b (id:id) grain(id) address b;
+datasource c (id:id) grain(id) address c;
+    """)
+    env = env.materialize_for_select()
+    ds_a = env.datasources["a"]
+    ds_b = env.datasources["b"]
+    ds_c = env.datasources["c"]
+
+    # A LEFT OUTER B  →  B is NULL-able (score 1), A preserved (score 0).
+    joins = [
+        BaseJoin(
+            left_datasource=ds_a,
+            right_datasource=ds_b,
+            join_type=JoinType.LEFT_OUTER,
+            concepts=[],
+        )
+    ]
+    status = compute_outer_null_status(joins)
+    assert status.get(ds_a.identifier, 0) == 0
+    assert status[ds_b.identifier] == 1
+
+    # A RIGHT OUTER B  →  A is NULL-able, B preserved.
+    joins = [
+        BaseJoin(
+            left_datasource=ds_a,
+            right_datasource=ds_b,
+            join_type=JoinType.RIGHT_OUTER,
+            concepts=[],
+        )
+    ]
+    status = compute_outer_null_status(joins)
+    assert status[ds_a.identifier] == 1
+    assert status.get(ds_b.identifier, 0) == 0
+
+    # FULL → both NULL-able.
+    joins = [
+        BaseJoin(
+            left_datasource=ds_a,
+            right_datasource=ds_b,
+            join_type=JoinType.FULL,
+            concepts=[],
+        )
+    ]
+    status = compute_outer_null_status(joins)
+    assert status[ds_a.identifier] == 1
+    assert status[ds_b.identifier] == 1
+
+    # INNER → no contribution.
+    joins = [
+        BaseJoin(
+            left_datasource=ds_a,
+            right_datasource=ds_b,
+            join_type=JoinType.INNER,
+            concepts=[],
+        )
+    ]
+    status = compute_outer_null_status(joins)
+    assert status == {}
+
+    # Stacked outer joins accumulate. A LEFT B, then (A merged) LEFT C →
+    # B and C each get score 1.
+    joins = [
+        BaseJoin(
+            left_datasource=ds_a,
+            right_datasource=ds_b,
+            join_type=JoinType.LEFT_OUTER,
+            concepts=[],
+        ),
+        BaseJoin(
+            left_datasource=None,  # multi-left after first join
+            right_datasource=ds_c,
+            join_type=JoinType.LEFT_OUTER,
+            concepts=[],
+        ),
+    ]
+    status = compute_outer_null_status(joins)
+    assert status.get(ds_a.identifier, 0) == 0
+    assert status[ds_b.identifier] == 1
+    assert status[ds_c.identifier] == 1
+
+
+def test_prune_outer_join_pairs_drops_nullable_side():
+    """When a LEFT/RIGHT OUTER join has multi-left pairs sharing the same
+    ``(right_addr, left_addr)``, prune to keep the most-preserved side. The
+    NULL-able side's pair would render ``coalesce(preserved, nullable) =
+    right`` — always equal to ``preserved``, so pure SQL bloat."""
+    env, _ = parse("""
+key shared_id int;
+key fact1_id int;
+key fact2_id int;
+
+datasource dim (id:shared_id) grain(shared_id) address dim_table;
+datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
+datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
+    """)
+    env = env.materialize_for_select()
+    shared = env.concepts["shared_id"]
+    ds_dim = env.datasources["dim"]
+    ds_f1 = env.datasources["fact1"]
+    ds_f2 = env.datasources["fact2"]
+
+    # f1 LEFT OUTER f2 → f2 is NULL-able. Then dim LEFT JOIN with multi-left
+    # candidates {f1, f2} sharing shared_id. The pair from f2 should be pruned.
+    upstream_join = BaseJoin(
+        left_datasource=ds_f1,
+        right_datasource=ds_f2,
+        join_type=JoinType.LEFT_OUTER,
+        concepts=[],
+    )
+    multi_left_join = BaseJoin(
+        left_datasource=None,
+        right_datasource=ds_dim,
+        join_type=JoinType.LEFT_OUTER,
+        concept_pairs=[
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+        ],
+    )
+    joins = [upstream_join, multi_left_join]
+    null_status = compute_outer_null_status(joins)
+    assert null_status[ds_f2.identifier] == 1
+    prune_outer_join_pairs(joins, null_status)
+    # Only the preserved (f1) pair survives.
+    assert len(multi_left_join.concept_pairs) == 1
+    assert (
+        multi_left_join.concept_pairs[0].existing_datasource.identifier
+        == ds_f1.identifier
+    )
+
+    # FULL join is left untouched: both sides may be NULL → keep all pairs so
+    # the renderer COALESCEs.
+    full_join = BaseJoin(
+        left_datasource=None,
+        right_datasource=ds_dim,
+        join_type=JoinType.FULL,
+        concept_pairs=[
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+        ],
+    )
+    prune_outer_join_pairs([full_join], null_status)
+    assert len(full_join.concept_pairs) == 2
+
+    # Distinct (right, left_addr) groups are independent: pruning one doesn't
+    # touch the other.
+    other_concept = env.concepts["fact1_id"]
+    other_concept_f2_alias = env.concepts["fact2_id"]
+    # Two distinct join keys on the same outer join: shared_id (multi-left)
+    # and a distinct key from each side. Only the multi-left group dedups.
+    multi_left_with_distinct = BaseJoin(
+        left_datasource=None,
+        right_datasource=ds_dim,
+        join_type=JoinType.LEFT_OUTER,
+        concept_pairs=[
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+            ConceptPair(left=other_concept, right=shared, existing_datasource=ds_f1),
+            ConceptPair(
+                left=other_concept_f2_alias,
+                right=shared,
+                existing_datasource=ds_f2,
+            ),
+        ],
+    )
+    prune_outer_join_pairs([upstream_join, multi_left_with_distinct], null_status)
+    # shared/shared group → 1 pair (preserved). Distinct-left groups → unchanged.
+    addresses = sorted(
+        (p.left.address, p.existing_datasource.identifier)
+        for p in multi_left_with_distinct.concept_pairs
+    )
+    assert (shared.address, ds_f1.identifier) in addresses
+    assert (shared.address, ds_f2.identifier) not in addresses
+    assert (other_concept.address, ds_f1.identifier) in addresses
+    assert (other_concept_f2_alias.address, ds_f2.identifier) in addresses

@@ -194,12 +194,13 @@ def test_three(engine):
     assert len(query) < 2000, query
 
 
-@pytest.mark.skip(reason="Is duckdb correct??")
 def test_four(engine):
     run_query(engine, 4)
 
 
-@pytest.mark.skip(reason="Is duckdb correct??")
+@pytest.mark.skip(
+    reason="Returns w/o matching sale rows lack channel_dim_id in unified_sales — total returns ~2.7% low. See STATUS.md."
+)
 def test_five(engine):
     run_query(engine, 5)
 
@@ -265,6 +266,10 @@ def test_seventeen(engine):
     assert len(query) < 12000, query
 
 
+def test_eighteen(engine):
+    _ = run_query(engine, 18)
+
+
 def test_twenty(engine):
     query = run_query(engine, 20)
     # size gating
@@ -301,6 +306,10 @@ def test_twenty_five(engine):
 def test_thirty_five(engine):
     query = run_query(engine, 35)
     assert len(query) < 10000, query
+
+
+def test_thirty_eight(engine):
+    _ = run_query(engine, 38)
 
 
 def test_thirty_seven(engine):
@@ -344,7 +353,6 @@ def test_forty_six(engine):
     assert query.count("GROUP BY") == 1, query
 
 
-@pytest.mark.skip(reason="Still cooking")
 def test_forty_four(engine):
     _ = run_query(engine, 44)
 
@@ -392,12 +400,14 @@ def test_thirty(engine):
 
 def test_thirty_one(engine):
     query = run_query(engine, 31)
-    assert len(query) < 6500, query
+    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
+    assert len(query) < 7500, query
 
 
 def test_thirty_three(engine):
     query = run_query(engine, 33)
-    assert len(query) < 3500, query
+    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
+    assert len(query) < 5500, query
 
 
 def test_thirty_four(engine):
@@ -456,7 +466,7 @@ def test_fifty_seven(engine):
 
 def test_fifty_eight(engine):
     query = run_query(engine, 58)
-    assert len(query) < 6500, query
+    assert len(query) < 7000, query
 
 
 def test_sixty(engine):
@@ -495,9 +505,14 @@ def test_sixty_nine(engine):
     assert len(query) < 5000, query
 
 
+def test_seventy(engine):
+    _ = run_query(engine, 70)
+
+
 def test_seventy_one(engine):
     query = run_query(engine, 71)
-    assert len(query) < 3500, query
+    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
+    assert len(query) < 5500, query
 
 
 def test_seventy_three(engine):
@@ -527,7 +542,8 @@ def test_eighty_two(engine):
 
 def test_eighty_three(engine):
     query = run_query(engine, 83)
-    assert len(query) < 8500, query
+    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
+    assert len(query) < 9500, query
 
 
 @pytest.mark.skip(
@@ -541,6 +557,10 @@ def test_eighty_five(engine):
 def test_eighty_six(engine):
     query = run_query(engine, 86)
     assert len(query) < 6000, query
+
+
+def test_eighty_seven(engine):
+    _ = run_query(engine, 87)
 
 
 def test_eighty_eight(engine):

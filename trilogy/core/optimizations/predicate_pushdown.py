@@ -1,5 +1,6 @@
 from trilogy.core.enums import (
     BooleanOperator,
+    JoinType,
     SourceType,
 )
 from trilogy.core.models.build import (
@@ -10,7 +11,7 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildWindowItem,
 )
-from trilogy.core.models.execute import CTE, UnionCTE
+from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     conditions_mutually_exclusive,
@@ -30,10 +31,197 @@ def is_child_of(a, comparison):
     return base
 
 
+def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bool:
+    """True if ``consumer`` references ``union`` on the nullable side of an
+    outer join — pushing predicates into the union branches in that case
+    changes outer-join semantics."""
+    if not isinstance(consumer, CTE):
+        return True
+    for j in consumer.joins:
+        if not isinstance(j, Join) or j.jointype == JoinType.INNER:
+            continue
+        # right side of any outer join is nullable
+        if isinstance(j.right_cte, UnionCTE) and j.right_cte.name == union.name:
+            return True
+        # left side is nullable for RIGHT_OUTER/FULL only
+        if j.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
+            isinstance(j.left_cte, UnionCTE) and j.left_cte.name == union.name
+        ):
+            return True
+    return False
+
+
+def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
+    """True if the consumer's ``condition`` is implied by ``parent``.
+
+    For a plain CTE that's just ``is_child_of(condition, parent.condition)``.
+    For a UnionCTE, the parent has no top-level condition — we check that
+    every branch's condition covers the consumer atom (so the post-union
+    rows are already filtered).
+    """
+    if isinstance(parent, UnionCTE):
+        if not parent.internal_ctes:
+            return False
+        return all(
+            is_child_of(condition, branch.condition) for branch in parent.internal_ctes
+        )
+    return is_child_of(condition, parent.condition)
+
+
 class PredicatePushdown(OptimizationRule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
+
+    def _push_into_union_branches(
+        self,
+        cte: CTE | UnionCTE,
+        parent_cte: UnionCTE,
+        candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+    ) -> bool:
+        """AND-extend each surviving branch's condition with ``candidate``.
+
+        Mirrors the plain-CTE path in ``_check_parent``: only fires when every
+        consumer of the union already carries the atom (so applying it once
+        per branch is identical to applying it post-union).
+        """
+        if not isinstance(candidate, BuildConceptArgs):
+            return False
+        row_conditions = {x.address for x in candidate.row_arguments}
+        if not row_conditions:
+            return False
+        if parent_cte.source.source_type == SourceType.FILTER:
+            return False
+
+        # Concepts the union can expose. ``output_columns`` lists what the
+        # union QDS chose to project, but each branch's ``source_map`` often
+        # carries additional concepts (joined dim columns, etc.) that the
+        # rendered UNION ALL still emits, so use the wider view.
+        union_reachable = {x.address for x in parent_cte.output_columns}
+        for b in parent_cte.internal_ctes:
+            union_reachable |= set(b.source_map.keys())
+        if not row_conditions.issubset(union_reachable):
+            return False
+
+        existence_conditions = {
+            y.address for x in candidate.existence_arguments for y in x
+        }
+        # Existence concepts produced inside the union itself can't be
+        # referenced as external IN targets from a branch.
+        if existence_conditions and existence_conditions.intersection(union_reachable):
+            return False
+
+        all_inputs = {x.address for x in candidate.concept_arguments}
+        existence_extras = all_inputs - row_conditions
+
+        children = inverse_map.get(parent_cte.name, [])
+        if not children:
+            return False
+        if not all(is_child_of(candidate, child.condition) for child in children):
+            return False
+        # Bail when any consumer outer-joins the union — predicates on the
+        # union's outputs interact with NULL-padding semantics and pushing
+        # them into branches changes which rows survive the outer join.
+        if any(_consumer_outer_joins_union(child, parent_cte) for child in children):
+            return False
+
+        # Only handle plain-CTE branches for now (mirrors UnionDimPushdown).
+        if not all(isinstance(b, CTE) for b in parent_cte.internal_ctes):
+            return False
+
+        actionable: list[CTE] = []
+        for raw_branch in parent_cte.internal_ctes:
+            assert isinstance(raw_branch, CTE)
+            branch = raw_branch
+            if branch.condition is not None and is_child_of(
+                candidate, branch.condition
+            ):
+                continue
+            if branch.condition is not None and not is_scalar_condition(
+                branch.condition
+            ):
+                return False
+            non_materialized = [k for k, v in branch.source_map.items() if v == []]
+            concrete = [
+                x for x in branch.output_columns if x.address in non_materialized
+            ]
+            if any(isinstance(x.lineage, BuildWindowItem) for x in concrete):
+                return False
+            join_derived_addrs = {x.address for x in branch.join_derived_concepts}
+            if row_conditions & join_derived_addrs:
+                return False
+            materialized = {k for k, v in branch.source_map.items() if v != []}
+            if branch.is_root_datasource:
+                base = branch.source.base_datasource
+                if base is not None:
+                    extra = {x.address for x in base.output_concepts}
+                    if row_conditions.issubset(extra):
+                        materialized |= row_conditions
+            if not row_conditions.issubset(materialized):
+                return False
+            if existence_extras:
+                for x in existence_extras:
+                    if (
+                        x not in cte.source_map
+                        and x not in cte.existence_source_map
+                        and x not in branch.source_map
+                        and x not in branch.existence_source_map
+                    ):
+                        return False
+            actionable.append(branch)
+
+        if not actionable:
+            return False
+
+        union_dependencies_changed = False
+        for branch in actionable:
+            if branch.is_root_datasource:
+                base = branch.source.base_datasource
+                if base is not None:
+                    materialized_now = {
+                        k for k, v in branch.source_map.items() if v != []
+                    }
+                    extra = {x.address for x in base.output_concepts}
+                    if row_conditions.issubset(extra):
+                        for x in row_conditions:
+                            if x not in materialized_now:
+                                branch.source_map[x] = [base.name]
+            if branch.condition is None:
+                branch.condition = candidate
+            else:
+                branch.condition = BuildConditional(
+                    left=branch.condition,
+                    operator=BooleanOperator.AND,
+                    right=candidate,
+                )
+            for x in existence_extras:
+                if x in branch.source_map or x in branch.existence_source_map:
+                    continue
+                # Propagate from whichever map the consumer used (regular
+                # source_map vs. existence_source_map for subselect-only).
+                if x in cte.source_map:
+                    origin = list(cte.source_map[x])
+                    branch.source_map[x] = origin
+                elif x in cte.existence_source_map:
+                    origin = list(cte.existence_source_map[x])
+                    branch.existence_source_map[x] = origin
+                else:
+                    continue
+                sources = [p for p in cte.parent_ctes if p.name in origin]
+                branch.parent_ctes = unique(branch.parent_ctes + sources, "name")
+                union_dependencies_changed = True
+            self.log(
+                f"Pushed {candidate} into union branch {branch.name} of {parent_cte.name}"
+            )
+
+        if union_dependencies_changed:
+            # Re-derive union.parent_ctes so reorder_ctes sees the new edges.
+            parent_cte.parent_ctes = unique(
+                [p for branch in parent_cte.internal_ctes for p in branch.parent_ctes],
+                "name",
+            )
+        return True
 
     def _prune_union_parent(
         self,
@@ -93,7 +281,11 @@ class PredicatePushdown(OptimizationRule):
         if not isinstance(candidate, BuildConceptArgs):
             return False
         if isinstance(parent_cte, UnionCTE):
-            return self._prune_union_parent(parent_cte, candidate)
+            pruned = self._prune_union_parent(parent_cte, candidate)
+            pushed = self._push_into_union_branches(
+                cte, parent_cte, candidate, inverse_map
+            )
+            return pruned or pushed
         if not isinstance(parent_cte, CTE):
             return False
         row_conditions = {x.address for x in candidate.row_arguments}
@@ -255,7 +447,7 @@ class PredicatePushdownRemove(OptimizationRule):
             return False, None
 
         parent_filter_status = {
-            parent.name: is_child_of(cte.condition, parent.condition)
+            parent.name: _parent_covers_condition(parent, cte.condition)
             for parent in cte.parent_ctes
         }
         # flatten existnce argument tuples to a list

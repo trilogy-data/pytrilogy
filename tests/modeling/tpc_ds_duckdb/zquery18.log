@@ -1,0 +1,655 @@
+query_id = "18"
+gen_length = 31864
+generated_sql = """
+
+WITH 
+thoughtful as (
+SELECT
+    \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" as \"cs_bill_customer_demographic_id\",
+    \"cs_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"cs_bill_customer_id\",
+    \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"cs_date_id\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+GROUP BY
+    1,
+    2,
+    3),
+brave as (
+SELECT
+    avg(cast(\"cs_bill_customer_customers\".\"C_BIRTH_YEAR\" as numeric(12,2))) as \"agg6_e\"
+FROM
+    \"memory\".\"customer\" as \"cs_bill_customer_customers\"
+    INNER JOIN \"memory\".\"catalog_sales\" as \"cs_catalog_sales\" on \"cs_bill_customer_customers\".\"C_CUSTOMER_SK\" = \"cs_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"),
+colossal as (
+SELECT
+    avg(cast(\"cs_bill_customer_demographic_customer_demographics\".\"CD_DEP_COUNT\" as numeric(12,2))) as \"agg7_e\"
+FROM
+    \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\"
+    INNER JOIN \"memory\".\"catalog_sales\" as \"cs_catalog_sales\" on \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\" = \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\"),
+vacuous as (
+SELECT
+    \"cs_bill_customer_customers\".\"C_BIRTH_YEAR\" as \"cs_bill_customer_birth_year\",
+    \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEP_COUNT\" as \"cs_bill_customer_demographic_dependent_count\",
+    \"cs_catalog_sales\".\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
+    \"cs_catalog_sales\".\"CS_LIST_PRICE\" as \"cs_list_price\",
+    \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_catalog_sales\".\"CS_QUANTITY\" as \"cs_quantity\",
+    \"cs_catalog_sales\".\"CS_SALES_PRICE\" as \"cs_sales_price\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"cs_bill_customer_customers\" on \"cs_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"cs_bill_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"cs_bill_customer_address_customer_address\" on \"cs_bill_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_bill_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+WHERE
+    \"cs_bill_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_bill_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_bill_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_bill_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
+),
+sparkling as (
+SELECT
+    \"cs_bill_customer_address_customer_address\".\"CA_COUNTRY\" as \"cs_bill_customer_address_country\",
+    \"cs_bill_customer_address_customer_address\".\"CA_COUNTY\" as \"cs_bill_customer_address_county\",
+    \"cs_bill_customer_address_customer_address\".\"CA_STATE\" as \"cs_bill_customer_address_state\",
+    \"cs_catalog_sales\".\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
+    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
+    \"cs_catalog_sales\".\"CS_LIST_PRICE\" as \"cs_list_price\",
+    \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_catalog_sales\".\"CS_QUANTITY\" as \"cs_quantity\",
+    \"cs_catalog_sales\".\"CS_SALES_PRICE\" as \"cs_sales_price\",
+    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_name\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"cs_bill_customer_customers\" on \"cs_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"cs_bill_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"cs_bill_customer_address_customer_address\" on \"cs_bill_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_bill_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+WHERE
+    \"cs_bill_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_bill_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_bill_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_bill_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
+),
+abundant as (
+SELECT
+    cast(null as string) as \"null_country_d\",
+    cast(null as string) as \"null_country_e\",
+    cast(null as string) as \"null_county_b\",
+    cast(null as string) as \"null_county_c\",
+    cast(null as string) as \"null_county_d\",
+    cast(null as string) as \"null_county_e\",
+    cast(null as string) as \"null_item_id_e\",
+    cast(null as string) as \"null_state_c\",
+    cast(null as string) as \"null_state_d\",
+    cast(null as string) as \"null_state_e\"
+),
+fabulous as (
+SELECT
+    avg(cast(\"cs_catalog_sales\".\"CS_NET_PROFIT\" as numeric(12,2))) as \"agg5_e\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"),
+questionable as (
+SELECT
+    \"cs_bill_customer_address_customer_address\".\"CA_STATE\" as \"cs_bill_customer_address_state\",
+    \"cs_bill_customer_customers\".\"C_BIRTH_MONTH\" as \"cs_bill_customer_birth_month\",
+    \"cs_bill_customer_customers\".\"C_CURRENT_CDEMO_SK\" as \"cs_bill_customer_demographics_id\",
+    \"cs_bill_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
+    \"cs_bill_customer_demographic_customer_demographics\".\"CD_GENDER\" as \"cs_bill_customer_demographic_gender\",
+    \"cs_date_date\".\"D_YEAR\" as \"cs_date_year\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"thoughtful\".\"cs_date_id\" = \"cs_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"cs_bill_customer_customers\" on \"thoughtful\".\"cs_bill_customer_id\" = \"cs_bill_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"cs_bill_customer_address_customer_address\" on \"cs_bill_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_bill_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\" on \"thoughtful\".\"cs_bill_customer_demographic_id\" = \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+WHERE
+    \"cs_bill_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_bill_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"cs_bill_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2) and \"cs_date_date\".\"D_YEAR\" = 1998 and \"cs_bill_customer_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA')
+),
+elegant as (
+SELECT
+    \"brave\".\"agg6_e\" as \"agg6_e\"
+FROM
+    \"brave\"
+    FULL JOIN \"colossal\" on 1=1),
+late as (
+SELECT
+    \"vacuous\".\"cs_bill_customer_demographic_dependent_count\" as \"row_dep_count\",
+    \"vacuous\".\"cs_item_id\" as \"cs_item_id\",
+    \"vacuous\".\"cs_order_number\" as \"cs_order_number\"
+FROM
+    \"vacuous\"),
+concerned as (
+SELECT
+    \"vacuous\".\"cs_bill_customer_birth_year\" as \"row_birth_year\",
+    \"vacuous\".\"cs_item_id\" as \"cs_item_id\",
+    \"vacuous\".\"cs_order_number\" as \"cs_order_number\"
+FROM
+    \"vacuous\"),
+hard as (
+SELECT
+    avg(cast(\"vacuous\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3_e\",
+    avg(cast(\"vacuous\".\"cs_list_price\" as numeric(12,2))) as \"agg2_e\",
+    avg(cast(\"vacuous\".\"cs_net_profit\" as numeric(12,2))) as \"agg5_e\",
+    avg(cast(\"vacuous\".\"cs_quantity\" as numeric(12,2))) as \"agg1_e\",
+    avg(cast(\"vacuous\".\"cs_sales_price\" as numeric(12,2))) as \"agg4_e\"
+FROM
+    \"vacuous\"),
+round as (
+SELECT
+    \"sparkling\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"sparkling\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
+    \"sparkling\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"sparkling\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"sparkling\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3_a\",
+    avg(cast(\"sparkling\".\"cs_list_price\" as numeric(12,2))) as \"agg2_a\",
+    avg(cast(\"sparkling\".\"cs_net_profit\" as numeric(12,2))) as \"agg5_a\",
+    avg(cast(\"sparkling\".\"cs_quantity\" as numeric(12,2))) as \"agg1_a\",
+    avg(cast(\"sparkling\".\"cs_sales_price\" as numeric(12,2))) as \"agg4_a\"
+FROM
+    \"sparkling\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+cloudy as (
+SELECT
+    \"sparkling\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"sparkling\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"sparkling\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3_c\",
+    avg(cast(\"sparkling\".\"cs_list_price\" as numeric(12,2))) as \"agg2_c\",
+    avg(cast(\"sparkling\".\"cs_net_profit\" as numeric(12,2))) as \"agg5_c\",
+    avg(cast(\"sparkling\".\"cs_quantity\" as numeric(12,2))) as \"agg1_c\",
+    avg(cast(\"sparkling\".\"cs_sales_price\" as numeric(12,2))) as \"agg4_c\"
+FROM
+    \"sparkling\"
+GROUP BY
+    1,
+    2),
+cool as (
+SELECT
+    \"sparkling\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"sparkling\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"sparkling\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"sparkling\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3_b\",
+    avg(cast(\"sparkling\".\"cs_list_price\" as numeric(12,2))) as \"agg2_b\",
+    avg(cast(\"sparkling\".\"cs_net_profit\" as numeric(12,2))) as \"agg5_b\",
+    avg(cast(\"sparkling\".\"cs_quantity\" as numeric(12,2))) as \"agg1_b\",
+    avg(cast(\"sparkling\".\"cs_sales_price\" as numeric(12,2))) as \"agg4_b\"
+FROM
+    \"sparkling\"
+GROUP BY
+    1,
+    2,
+    3),
+kaput as (
+SELECT
+    \"sparkling\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"sparkling\".\"cs_coupon_amt\" as numeric(12,2))) as \"agg3_d\",
+    avg(cast(\"sparkling\".\"cs_list_price\" as numeric(12,2))) as \"agg2_d\",
+    avg(cast(\"sparkling\".\"cs_net_profit\" as numeric(12,2))) as \"agg5_d\",
+    avg(cast(\"sparkling\".\"cs_quantity\" as numeric(12,2))) as \"agg1_d\",
+    avg(cast(\"sparkling\".\"cs_sales_price\" as numeric(12,2))) as \"agg4_d\"
+FROM
+    \"sparkling\"
+GROUP BY
+    1),
+level as (
+SELECT
+    \"abundant\".\"null_state_c\" as \"null_state_c\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+bewildered as (
+SELECT
+    \"abundant\".\"null_county_c\" as \"null_county_c\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+resonant as (
+SELECT
+    \"abundant\".\"null_county_b\" as \"null_county_b\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+puzzled as (
+SELECT
+    \"abundant\".\"null_state_e\" as \"null_state_e\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+premium as (
+SELECT
+    \"abundant\".\"null_item_id_e\" as \"null_item_id_e\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+protective as (
+SELECT
+    \"abundant\".\"null_county_e\" as \"null_county_e\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+charming as (
+SELECT
+    \"abundant\".\"null_country_e\" as \"null_country_e\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+juicy as (
+SELECT
+    \"abundant\".\"null_state_d\" as \"null_state_d\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+yummy as (
+SELECT
+    \"abundant\".\"null_county_d\" as \"null_county_d\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+uneven as (
+SELECT
+    \"abundant\".\"null_country_d\" as \"null_country_d\"
+FROM
+    \"questionable\"
+    LEFT OUTER JOIN \"abundant\" on 1=1
+WHERE
+    \"questionable\".\"cs_bill_customer_demographic_gender\" = 'F' and \"questionable\".\"cs_bill_customer_demographic_education_status\" = 'Unknown' and \"questionable\".\"cs_bill_customer_demographics_id\" is not null and \"questionable\".\"cs_bill_customer_birth_month\" in (1,6,8,9,12,2) and \"questionable\".\"cs_date_year\" = 1998 and \"questionable\".\"cs_bill_customer_address_state\" in ('MS','IN','ND','OK','NM','VA')
+
+GROUP BY
+    1),
+vivacious as (
+SELECT
+    \"fabulous\".\"agg5_e\" as \"agg5_e\"
+FROM
+    \"elegant\"
+    FULL JOIN \"fabulous\" on 1=1),
+macho as (
+SELECT
+    \"late\".\"row_dep_count\" as \"row_dep_count\",
+    \"sparkling\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"sparkling\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
+    \"sparkling\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"sparkling\".\"cs_item_name\" as \"cs_item_name\"
+FROM
+    \"late\"
+    INNER JOIN \"sparkling\" on \"late\".\"cs_item_id\" = \"sparkling\".\"cs_item_id\" AND \"late\".\"cs_order_number\" = \"sparkling\".\"cs_order_number\"),
+rambunctious as (
+SELECT
+    avg(cast(\"late\".\"row_dep_count\" as numeric(12,2))) as \"agg7_e\"
+FROM
+    \"late\"),
+abhorrent as (
+SELECT
+    \"concerned\".\"row_birth_year\" as \"row_birth_year\",
+    \"sparkling\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"sparkling\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
+    \"sparkling\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"sparkling\".\"cs_item_name\" as \"cs_item_name\"
+FROM
+    \"concerned\"
+    INNER JOIN \"sparkling\" on \"concerned\".\"cs_item_id\" = \"sparkling\".\"cs_item_id\" AND \"concerned\".\"cs_order_number\" = \"sparkling\".\"cs_order_number\"),
+waggish as (
+SELECT
+    avg(cast(\"concerned\".\"row_birth_year\" as numeric(12,2))) as \"agg6_e\"
+FROM
+    \"concerned\"),
+quick as (
+SELECT
+    \"macho\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"macho\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
+    \"macho\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"macho\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"macho\".\"row_dep_count\" as numeric(12,2))) as \"agg7_a\"
+FROM
+    \"macho\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+ceaseless as (
+SELECT
+    \"macho\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"macho\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"macho\".\"row_dep_count\" as numeric(12,2))) as \"agg7_c\"
+FROM
+    \"macho\"
+GROUP BY
+    1,
+    2),
+courageous as (
+SELECT
+    \"macho\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"macho\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"macho\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"macho\".\"row_dep_count\" as numeric(12,2))) as \"agg7_b\"
+FROM
+    \"macho\"
+GROUP BY
+    1,
+    2,
+    3),
+scrawny as (
+SELECT
+    \"macho\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"macho\".\"row_dep_count\" as numeric(12,2))) as \"agg7_d\"
+FROM
+    \"macho\"
+GROUP BY
+    1),
+trite as (
+SELECT
+    \"abhorrent\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"abhorrent\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
+    \"abhorrent\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"abhorrent\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"abhorrent\".\"row_birth_year\" as numeric(12,2))) as \"agg6_a\"
+FROM
+    \"abhorrent\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+wooden as (
+SELECT
+    \"abhorrent\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"abhorrent\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"abhorrent\".\"row_birth_year\" as numeric(12,2))) as \"agg6_c\"
+FROM
+    \"abhorrent\"
+GROUP BY
+    1,
+    2),
+dapper as (
+SELECT
+    \"abhorrent\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"abhorrent\".\"cs_bill_customer_address_state\" as \"cs_bill_customer_address_state\",
+    \"abhorrent\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"abhorrent\".\"row_birth_year\" as numeric(12,2))) as \"agg6_b\"
+FROM
+    \"abhorrent\"
+GROUP BY
+    1,
+    2,
+    3),
+sweltering as (
+SELECT
+    \"abhorrent\".\"cs_item_name\" as \"cs_item_name\",
+    avg(cast(\"abhorrent\".\"row_birth_year\" as numeric(12,2))) as \"agg6_d\"
+FROM
+    \"abhorrent\"
+GROUP BY
+    1),
+puffy as (
+SELECT
+    \"rambunctious\".\"agg7_e\" as \"agg7_e\",
+    \"waggish\".\"agg6_e\" as \"agg6_e\"
+FROM
+    \"waggish\"
+    FULL JOIN \"rambunctious\" on 1=1),
+nondescript as (
+SELECT
+    \"quick\".\"agg7_a\" as \"agg7_a\",
+    \"trite\".\"agg6_a\" as \"agg6_a\",
+    coalesce(\"quick\".\"cs_bill_customer_address_country\",\"trite\".\"cs_bill_customer_address_country\") as \"cs_bill_customer_address_country\",
+    coalesce(\"quick\".\"cs_bill_customer_address_county\",\"trite\".\"cs_bill_customer_address_county\") as \"cs_bill_customer_address_county\",
+    coalesce(\"quick\".\"cs_bill_customer_address_state\",\"trite\".\"cs_bill_customer_address_state\") as \"cs_bill_customer_address_state\",
+    coalesce(\"quick\".\"cs_item_name\",\"trite\".\"cs_item_name\") as \"cs_item_name\"
+FROM
+    \"quick\"
+    FULL JOIN \"trite\" on \"quick\".\"cs_bill_customer_address_country\" = \"trite\".\"cs_bill_customer_address_country\" AND \"quick\".\"cs_bill_customer_address_county\" = \"trite\".\"cs_bill_customer_address_county\" AND \"quick\".\"cs_bill_customer_address_state\" is not distinct from \"trite\".\"cs_bill_customer_address_state\" AND \"quick\".\"cs_item_name\" = \"trite\".\"cs_item_name\"),
+tearful as (
+SELECT
+    \"ceaseless\".\"agg7_c\" as \"agg7_c\",
+    \"wooden\".\"agg6_c\" as \"agg6_c\",
+    \"wooden\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
+    \"wooden\".\"cs_item_name\" as \"cs_item_name\"
+FROM
+    \"ceaseless\"
+    INNER JOIN \"wooden\" on \"ceaseless\".\"cs_bill_customer_address_country\" = \"wooden\".\"cs_bill_customer_address_country\" AND \"ceaseless\".\"cs_item_name\" = \"wooden\".\"cs_item_name\"),
+vast as (
+SELECT
+    \"courageous\".\"agg7_b\" as \"agg7_b\",
+    \"dapper\".\"agg6_b\" as \"agg6_b\",
+    coalesce(\"courageous\".\"cs_bill_customer_address_country\",\"dapper\".\"cs_bill_customer_address_country\") as \"cs_bill_customer_address_country\",
+    coalesce(\"courageous\".\"cs_bill_customer_address_state\",\"dapper\".\"cs_bill_customer_address_state\") as \"cs_bill_customer_address_state\",
+    coalesce(\"courageous\".\"cs_item_name\",\"dapper\".\"cs_item_name\") as \"cs_item_name\"
+FROM
+    \"courageous\"
+    FULL JOIN \"dapper\" on \"courageous\".\"cs_bill_customer_address_country\" = \"dapper\".\"cs_bill_customer_address_country\" AND \"courageous\".\"cs_bill_customer_address_state\" is not distinct from \"dapper\".\"cs_bill_customer_address_state\" AND \"courageous\".\"cs_item_name\" = \"dapper\".\"cs_item_name\"),
+friendly as (
+SELECT
+    \"scrawny\".\"agg7_d\" as \"agg7_d\",
+    \"sweltering\".\"agg6_d\" as \"agg6_d\",
+    \"sweltering\".\"cs_item_name\" as \"cs_item_name\"
+FROM
+    \"scrawny\"
+    INNER JOIN \"sweltering\" on \"scrawny\".\"cs_item_name\" = \"sweltering\".\"cs_item_name\"),
+sedate as (
+SELECT
+    \"hard\".\"agg1_e\" as \"agg1_e\",
+    \"hard\".\"agg2_e\" as \"agg2_e\",
+    \"hard\".\"agg3_e\" as \"agg3_e\",
+    \"hard\".\"agg4_e\" as \"agg4_e\",
+    \"hard\".\"agg5_e\" as \"agg5_e\",
+    \"puffy\".\"agg6_e\" as \"agg6_e\",
+    \"puffy\".\"agg7_e\" as \"agg7_e\"
+FROM
+    \"puffy\"
+    FULL JOIN \"hard\" on 1=1),
+slow as (
+SELECT
+    \"nondescript\".\"agg6_a\" as \"agg6_a\",
+    \"nondescript\".\"agg7_a\" as \"agg7_a\",
+    \"round\".\"agg1_a\" as \"agg1_a\",
+    \"round\".\"agg2_a\" as \"agg2_a\",
+    \"round\".\"agg3_a\" as \"agg3_a\",
+    \"round\".\"agg4_a\" as \"agg4_a\",
+    \"round\".\"agg5_a\" as \"agg5_a\",
+    coalesce(\"nondescript\".\"cs_bill_customer_address_country\",\"round\".\"cs_bill_customer_address_country\") as \"ca_country\",
+    coalesce(\"nondescript\".\"cs_bill_customer_address_county\",\"round\".\"cs_bill_customer_address_county\") as \"ca_county\",
+    coalesce(\"nondescript\".\"cs_bill_customer_address_state\",\"round\".\"cs_bill_customer_address_state\") as \"ca_state\",
+    coalesce(\"nondescript\".\"cs_item_name\",\"round\".\"cs_item_name\") as \"i_item_id\"
+FROM
+    \"nondescript\"
+    FULL JOIN \"round\" on \"nondescript\".\"cs_bill_customer_address_country\" = \"round\".\"cs_bill_customer_address_country\" AND \"nondescript\".\"cs_bill_customer_address_county\" = \"round\".\"cs_bill_customer_address_county\" AND \"nondescript\".\"cs_bill_customer_address_state\" is not distinct from \"round\".\"cs_bill_customer_address_state\" AND \"nondescript\".\"cs_item_name\" = \"round\".\"cs_item_name\"),
+gullible as (
+SELECT
+    \"cloudy\".\"agg1_c\" as \"agg1_c\",
+    \"cloudy\".\"agg2_c\" as \"agg2_c\",
+    \"cloudy\".\"agg3_c\" as \"agg3_c\",
+    \"cloudy\".\"agg4_c\" as \"agg4_c\",
+    \"cloudy\".\"agg5_c\" as \"agg5_c\",
+    \"tearful\".\"agg6_c\" as \"agg6_c\",
+    \"tearful\".\"agg7_c\" as \"agg7_c\",
+    \"tearful\".\"cs_bill_customer_address_country\" as \"country_c\",
+    \"tearful\".\"cs_item_name\" as \"item_id_c\"
+FROM
+    \"tearful\"
+    INNER JOIN \"cloudy\" on \"tearful\".\"cs_bill_customer_address_country\" = \"cloudy\".\"cs_bill_customer_address_country\" AND \"tearful\".\"cs_item_name\" = \"cloudy\".\"cs_item_name\"),
+elated as (
+SELECT
+    \"cool\".\"agg1_b\" as \"agg1_b\",
+    \"cool\".\"agg2_b\" as \"agg2_b\",
+    \"cool\".\"agg3_b\" as \"agg3_b\",
+    \"cool\".\"agg4_b\" as \"agg4_b\",
+    \"cool\".\"agg5_b\" as \"agg5_b\",
+    \"vast\".\"agg6_b\" as \"agg6_b\",
+    \"vast\".\"agg7_b\" as \"agg7_b\",
+    coalesce(\"cool\".\"cs_bill_customer_address_country\",\"vast\".\"cs_bill_customer_address_country\") as \"country_b\",
+    coalesce(\"cool\".\"cs_bill_customer_address_state\",\"vast\".\"cs_bill_customer_address_state\") as \"state_b\",
+    coalesce(\"cool\".\"cs_item_name\",\"vast\".\"cs_item_name\") as \"item_id_b\"
+FROM
+    \"vast\"
+    FULL JOIN \"cool\" on \"vast\".\"cs_bill_customer_address_country\" = \"cool\".\"cs_bill_customer_address_country\" AND \"vast\".\"cs_bill_customer_address_state\" is not distinct from \"cool\".\"cs_bill_customer_address_state\" AND \"vast\".\"cs_item_name\" = \"cool\".\"cs_item_name\"),
+divergent as (
+SELECT
+    \"friendly\".\"agg6_d\" as \"agg6_d\",
+    \"friendly\".\"agg7_d\" as \"agg7_d\",
+    \"friendly\".\"cs_item_name\" as \"item_id_d\",
+    \"kaput\".\"agg1_d\" as \"agg1_d\",
+    \"kaput\".\"agg2_d\" as \"agg2_d\",
+    \"kaput\".\"agg3_d\" as \"agg3_d\",
+    \"kaput\".\"agg4_d\" as \"agg4_d\",
+    \"kaput\".\"agg5_d\" as \"agg5_d\"
+FROM
+    \"friendly\"
+    INNER JOIN \"kaput\" on \"friendly\".\"cs_item_name\" = \"kaput\".\"cs_item_name\"),
+yellow as (
+SELECT
+    \"charming\".\"null_country_e\" as \"ca_country\",
+    \"premium\".\"null_item_id_e\" as \"i_item_id\",
+    \"protective\".\"null_county_e\" as \"ca_county\",
+    \"puzzled\".\"null_state_e\" as \"ca_state\",
+    \"sedate\".\"agg1_e\" as \"agg1_e\",
+    \"sedate\".\"agg2_e\" as \"agg2_e\",
+    \"sedate\".\"agg3_e\" as \"agg3_e\",
+    \"sedate\".\"agg4_e\" as \"agg4_e\",
+    \"sedate\".\"agg5_e\" as \"agg5_e\",
+    \"sedate\".\"agg6_e\" as \"agg6_e\",
+    \"sedate\".\"agg7_e\" as \"agg7_e\"
+FROM
+    \"charming\"
+    FULL JOIN \"protective\" on 1=1
+    FULL JOIN \"premium\" on 1=1
+    FULL JOIN \"puzzled\" on 1=1
+    FULL JOIN \"sedate\" on 1=1),
+flashy as (
+SELECT
+    \"bewildered\".\"null_county_c\" as \"ca_county\",
+    \"gullible\".\"agg1_c\" as \"agg1_c\",
+    \"gullible\".\"agg2_c\" as \"agg2_c\",
+    \"gullible\".\"agg3_c\" as \"agg3_c\",
+    \"gullible\".\"agg4_c\" as \"agg4_c\",
+    \"gullible\".\"agg5_c\" as \"agg5_c\",
+    \"gullible\".\"agg6_c\" as \"agg6_c\",
+    \"gullible\".\"agg7_c\" as \"agg7_c\",
+    \"gullible\".\"country_c\" as \"ca_country\",
+    \"gullible\".\"item_id_c\" as \"i_item_id\",
+    \"level\".\"null_state_c\" as \"ca_state\"
+FROM
+    \"gullible\"
+    FULL JOIN \"bewildered\" on 1=1
+    FULL JOIN \"level\" on 1=1),
+wary as (
+SELECT
+    \"elated\".\"agg1_b\" as \"agg1_b\",
+    \"elated\".\"agg2_b\" as \"agg2_b\",
+    \"elated\".\"agg3_b\" as \"agg3_b\",
+    \"elated\".\"agg4_b\" as \"agg4_b\",
+    \"elated\".\"agg5_b\" as \"agg5_b\",
+    \"elated\".\"agg6_b\" as \"agg6_b\",
+    \"elated\".\"agg7_b\" as \"agg7_b\",
+    \"elated\".\"country_b\" as \"ca_country\",
+    \"elated\".\"item_id_b\" as \"i_item_id\",
+    \"elated\".\"state_b\" as \"ca_state\",
+    \"resonant\".\"null_county_b\" as \"ca_county\"
+FROM
+    \"elated\"
+    FULL JOIN \"resonant\" on 1=1),
+busy as (
+SELECT
+    \"divergent\".\"agg1_d\" as \"agg1_d\",
+    \"divergent\".\"agg2_d\" as \"agg2_d\",
+    \"divergent\".\"agg3_d\" as \"agg3_d\",
+    \"divergent\".\"agg4_d\" as \"agg4_d\",
+    \"divergent\".\"agg5_d\" as \"agg5_d\",
+    \"divergent\".\"agg6_d\" as \"agg6_d\",
+    \"divergent\".\"agg7_d\" as \"agg7_d\",
+    \"divergent\".\"item_id_d\" as \"i_item_id\",
+    \"juicy\".\"null_state_d\" as \"ca_state\",
+    \"uneven\".\"null_country_d\" as \"ca_country\",
+    \"yummy\".\"null_county_d\" as \"ca_county\"
+FROM
+    \"divergent\"
+    FULL JOIN \"uneven\" on 1=1
+    FULL JOIN \"yummy\" on 1=1
+    FULL JOIN \"juicy\" on 1=1),
+spiritual as (
+SELECT
+    coalesce(\"busy\".\"ca_country\",\"flashy\".\"ca_country\",\"slow\".\"ca_country\",\"wary\".\"ca_country\",\"yellow\".\"ca_country\") as \"ca_country\",
+    coalesce(\"busy\".\"ca_county\",\"flashy\".\"ca_county\",\"slow\".\"ca_county\",\"wary\".\"ca_county\",\"yellow\".\"ca_county\") as \"ca_county\",
+    coalesce(\"busy\".\"ca_state\",\"flashy\".\"ca_state\",\"slow\".\"ca_state\",\"wary\".\"ca_state\",\"yellow\".\"ca_state\") as \"ca_state\",
+    coalesce(\"busy\".\"i_item_id\",\"flashy\".\"i_item_id\",\"slow\".\"i_item_id\",\"wary\".\"i_item_id\",\"yellow\".\"i_item_id\") as \"i_item_id\",
+    coalesce(\"slow\".\"agg1_a\",\"wary\".\"agg1_b\",\"flashy\".\"agg1_c\",\"busy\".\"agg1_d\",\"yellow\".\"agg1_e\") as \"agg1\",
+    coalesce(\"slow\".\"agg2_a\",\"wary\".\"agg2_b\",\"flashy\".\"agg2_c\",\"busy\".\"agg2_d\",\"yellow\".\"agg2_e\") as \"agg2\",
+    coalesce(\"slow\".\"agg3_a\",\"wary\".\"agg3_b\",\"flashy\".\"agg3_c\",\"busy\".\"agg3_d\",\"yellow\".\"agg3_e\") as \"agg3\",
+    coalesce(\"slow\".\"agg4_a\",\"wary\".\"agg4_b\",\"flashy\".\"agg4_c\",\"busy\".\"agg4_d\",\"yellow\".\"agg4_e\") as \"agg4\",
+    coalesce(\"slow\".\"agg5_a\",\"wary\".\"agg5_b\",\"flashy\".\"agg5_c\",\"busy\".\"agg5_d\",\"yellow\".\"agg5_e\") as \"agg5\",
+    coalesce(\"slow\".\"agg6_a\",\"wary\".\"agg6_b\",\"flashy\".\"agg6_c\",\"busy\".\"agg6_d\",\"yellow\".\"agg6_e\") as \"agg6\",
+    coalesce(\"slow\".\"agg7_a\",\"wary\".\"agg7_b\",\"flashy\".\"agg7_c\",\"busy\".\"agg7_d\",\"yellow\".\"agg7_e\") as \"agg7\"
+FROM
+    \"slow\"
+    FULL JOIN \"wary\" on \"slow\".\"ca_country\" is not distinct from \"wary\".\"ca_country\" AND \"slow\".\"ca_county\" is not distinct from \"wary\".\"ca_county\" AND \"slow\".\"ca_state\" is not distinct from \"wary\".\"ca_state\" AND \"slow\".\"i_item_id\" is not distinct from \"wary\".\"i_item_id\"
+    FULL JOIN \"flashy\" on coalesce(\"slow\".\"ca_country\", \"wary\".\"ca_country\") = \"flashy\".\"ca_country\" AND coalesce(\"slow\".\"ca_county\", \"wary\".\"ca_county\") = \"flashy\".\"ca_county\" AND coalesce(\"slow\".\"ca_state\", \"wary\".\"ca_state\") = \"flashy\".\"ca_state\" AND coalesce(\"slow\".\"i_item_id\", \"wary\".\"i_item_id\") = \"flashy\".\"i_item_id\"
+    FULL JOIN \"busy\" on coalesce(\"slow\".\"ca_country\", \"wary\".\"ca_country\", \"flashy\".\"ca_country\") = \"busy\".\"ca_country\" AND coalesce(\"slow\".\"ca_county\", \"wary\".\"ca_county\", \"flashy\".\"ca_county\") = \"busy\".\"ca_county\" AND coalesce(\"slow\".\"ca_state\", \"wary\".\"ca_state\", \"flashy\".\"ca_state\") = \"busy\".\"ca_state\" AND coalesce(\"slow\".\"i_item_id\", \"wary\".\"i_item_id\", \"flashy\".\"i_item_id\") = \"busy\".\"i_item_id\"
+    FULL JOIN \"yellow\" on coalesce(\"slow\".\"ca_country\", \"wary\".\"ca_country\", \"flashy\".\"ca_country\", \"busy\".\"ca_country\") = \"yellow\".\"ca_country\" AND coalesce(\"slow\".\"ca_county\", \"wary\".\"ca_county\", \"flashy\".\"ca_county\", \"busy\".\"ca_county\") = \"yellow\".\"ca_county\" AND coalesce(\"slow\".\"ca_state\", \"wary\".\"ca_state\", \"flashy\".\"ca_state\", \"busy\".\"ca_state\") = \"yellow\".\"ca_state\" AND coalesce(\"slow\".\"i_item_id\", \"wary\".\"i_item_id\", \"flashy\".\"i_item_id\", \"busy\".\"i_item_id\") = \"yellow\".\"i_item_id\")
+SELECT
+    \"spiritual\".\"i_item_id\" as \"q18_results_i_item_id\",
+    \"spiritual\".\"ca_country\" as \"q18_results_ca_country\",
+    \"spiritual\".\"ca_state\" as \"q18_results_ca_state\",
+    \"spiritual\".\"ca_county\" as \"q18_results_ca_county\",
+    \"spiritual\".\"agg1\" as \"q18_results_agg1\",
+    \"spiritual\".\"agg2\" as \"q18_results_agg2\",
+    \"spiritual\".\"agg3\" as \"q18_results_agg3\",
+    \"spiritual\".\"agg4\" as \"q18_results_agg4\",
+    \"spiritual\".\"agg5\" as \"q18_results_agg5\",
+    \"spiritual\".\"agg6\" as \"q18_results_agg6\",
+    \"spiritual\".\"agg7\" as \"q18_results_agg7\"
+FROM
+    \"spiritual\"
+    FULL JOIN \"vivacious\" on 1=1
+    FULL JOIN \"abundant\" on 1=1
+ORDER BY 
+    \"q18_results_ca_country\" asc nulls first,
+    \"q18_results_ca_state\" asc nulls first,
+    \"q18_results_ca_county\" asc nulls first,
+    \"q18_results_i_item_id\" asc nulls first
+LIMIT (100)"""

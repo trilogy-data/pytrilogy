@@ -1,5 +1,5 @@
 query_id = "66"
-gen_length = 35606
+gen_length = 35149
 generated_sql = """
 
 WITH 
@@ -19,22 +19,9 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-UNION ALL
-SELECT
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
-    \"sales_store_sales_unified\".\"SS_NET_PAID_INC_TAX\" as \"sales_net_paid_inc_tax\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-    \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
-     'STORE'  as \"sales_sales_channel\",
-    \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\",
-     NULL  as \"sales_ship_mode_id\",
-    \"sales_store_sales_unified\".\"SS_SOLD_TIME_SK\" as \"sales_time_id\",
-     NULL  as \"sales_warehouse_id\"
-FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+WHERE
+     'CATALOG'  in ('WEB','CATALOG') and \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null
+
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
@@ -50,7 +37,10 @@ SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" as \"sales_time_id\",
     \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
 FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+WHERE
+     'WEB'  in ('WEB','CATALOG') and \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null
+),
 quizzical as (
 SELECT
     :ship_carriers as \"ship_carriers\"
@@ -58,15 +48,14 @@ SELECT
 cooperative as (
 SELECT
     \"thoughtful\".\"sales_date_id\" as \"sales_date_id\",
+    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"thoughtful\".\"sales_warehouse_id\" as \"sales_warehouse_id\"
 FROM
     \"thoughtful\"
-WHERE
-    \"thoughtful\".\"sales_warehouse_id\" is not null
-
 GROUP BY
     1,
-    2),
+    2,
+    3),
 young as (
 SELECT
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
@@ -120,31 +109,31 @@ SELECT
     sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 8 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_aug_sales\",
     sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 9 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"thoughtful\".\"sales_warehouse_id\" is not null THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_sep_sales\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"thoughtful\" on \"sales_date_date\".\"D_DATE_SK\" = \"thoughtful\".\"sales_date_id\"
-    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"thoughtful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
-    FULL JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"thoughtful\".\"sales_ship_mode_id\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"thoughtful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
+    INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"thoughtful\".\"sales_ship_mode_id\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"thoughtful\".\"sales_warehouse_id\" is not null
+    \"thoughtful\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"sales_date_date\".\"D_YEAR\" = 2001 and \"thoughtful\".\"sales_warehouse_id\" is not null
 
 GROUP BY
     1,
     2),
 juicy as (
 SELECT
+    \"cooperative\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
     \"sales_warehouse_warehouse\".\"w_city\" as \"sales_warehouse_city\",
     \"sales_warehouse_warehouse\".\"w_country\" as \"sales_warehouse_country\",
     \"sales_warehouse_warehouse\".\"w_county\" as \"sales_warehouse_county\",
     \"sales_warehouse_warehouse\".\"w_state\" as \"sales_warehouse_state\",
     \"sales_warehouse_warehouse\".\"w_warehouse_name\" as \"sales_warehouse_name\",
-    \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" as \"sales_warehouse_square_feet\",
-    coalesce(\"cooperative\".\"sales_warehouse_id\",\"sales_warehouse_warehouse\".\"w_warehouse_sk\") as \"sales_warehouse_id\"
+    \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" as \"sales_warehouse_square_feet\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"cooperative\" on \"sales_date_date\".\"D_DATE_SK\" = \"cooperative\".\"sales_date_id\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cooperative\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"warehouse\" as \"sales_warehouse_warehouse\" on \"cooperative\".\"sales_warehouse_id\" = \"sales_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and coalesce(\"cooperative\".\"sales_warehouse_id\",\"sales_warehouse_warehouse\".\"w_warehouse_sk\") is not null
+    \"cooperative\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"sales_date_date\".\"D_YEAR\" = 2001 and \"cooperative\".\"sales_warehouse_id\" is not null
 
 GROUP BY
     1,
@@ -156,13 +145,14 @@ GROUP BY
     7),
 abundant as (
 SELECT
+    \"cooperative\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"cooperative\".\"sales_warehouse_id\" as \"sales_warehouse_id\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"cooperative\" on \"sales_date_date\".\"D_DATE_SK\" = \"cooperative\".\"sales_date_id\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cooperative\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"cooperative\".\"sales_warehouse_id\" is not null
+    \"cooperative\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"sales_date_date\".\"D_YEAR\" = 2001 and \"cooperative\".\"sales_warehouse_id\" is not null
 ),
 sweltering as (
 SELECT
@@ -210,8 +200,8 @@ SELECT
     coalesce(\"young\".\"ws_sep_net\",0) + coalesce(\"young\".\"cs_sep_net\",0) as \"sep_net\",
     coalesce(\"young\".\"ws_sep_sales\",0) + coalesce(\"young\".\"cs_sep_sales\",0) as \"sep_sales\"
 FROM
-    \"young\"
-    FULL JOIN \"juicy\" on \"young\".\"sales_warehouse_id\" is not distinct from \"juicy\".\"sales_warehouse_id\"
+    \"juicy\"
+    INNER JOIN \"young\" on \"juicy\".\"sales_warehouse_id\" = \"young\".\"sales_warehouse_id\"
 GROUP BY
     1,
     2,
@@ -311,7 +301,7 @@ FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"abundant\" on 1=1
 WHERE
-    \"abundant\".\"sales_date_year\" = 2001 and \"abundant\".\"sales_warehouse_id\" is not null
+    \"abundant\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"abundant\".\"sales_date_year\" = 2001 and \"abundant\".\"sales_warehouse_id\" is not null
 
 GROUP BY
     1)

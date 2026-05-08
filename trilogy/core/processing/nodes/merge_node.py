@@ -20,7 +20,11 @@ from trilogy.core.processing.grain_utility import (
     grain_satisfied_by_pregrain,
     has_condition_key_outside_grain,
 )
-from trilogy.core.processing.join_resolution import get_node_joins
+from trilogy.core.processing.join_resolution import (
+    compute_outer_null_status,
+    get_node_joins,
+    prune_outer_join_pairs,
+)
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
     StrategyNode,
@@ -351,6 +355,16 @@ class MergeNode(StrategyNode):
         )
         for join in joins:
             downgrade_join_for_condition(join, self.conditions, final_datasets)
+        # Compute per-datasource NULL-ability based on the resolved join graph.
+        # Used to (a) order ``final_datasets`` so the preserved side wins
+        # ``resolve_concept_map``'s first-pass for shared concepts and
+        # (b) prune NULL-able-side ``ConceptPair`` entries from JOIN ON when
+        # a preserved alternative exists. Both reduce redundant ``coalesce``.
+        null_status = compute_outer_null_status(joins)
+        prune_outer_join_pairs(joins, null_status)
+        # ``full_join_concepts`` covers FULL JOINs only — both sides may be
+        # NULL, so source_map needs every input that supplies the address. For
+        # LEFT/RIGHT OUTER the preserved-side ordering above is sufficient.
         full_join_concepts = []
         for join in joins:
             if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
@@ -396,8 +410,15 @@ class MergeNode(StrategyNode):
 
         qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
 
-        source_map = resolve_concept_map(
+        # Preserved sides first — first-wins inside ``resolve_concept_map``
+        # naturally picks the always-non-NULL source when multiple datasources
+        # supply the same concept.
+        ordered_datasets = sorted(
             final_datasets,
+            key=lambda ds: (null_status.get(ds.identifier, 0), ds.identifier),
+        )
+        source_map = resolve_concept_map(
+            ordered_datasets,
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,

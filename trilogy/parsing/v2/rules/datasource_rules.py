@@ -580,6 +580,22 @@ def datasource_node(
 
     if addr.is_file and partition_by:
         addr.partition_columns = [c.address.split(".")[-1] for c in partition_by]
+    # ``~col`` always means the column is partial — independent of the
+    # ``partial datasource`` keyword and of any union concerns. Capture these
+    # intrinsic markers BEFORE the table-level stamp below so downstream code
+    # can distinguish them from columns that became partial only by virtue of
+    # the keyword. The two flavors differ in how a covering UNION treats them:
+    #   - implicit (table-level): every column gets PARTIAL stamped because
+    #     the datasource keyword says the table itself is partial. A union
+    #     whose siblings together cover the universe of the table's
+    #     discriminator can drop these — the union is no longer partial.
+    #   - intrinsic (``~col``): the column itself is partial. Whether a union
+    #     repairs it depends on whether the union's coverage extends to the
+    #     column's universe; that decision lives in the union builder, not
+    #     here. We just record the addresses.
+    column_level_partial_addresses: set[str] = {
+        pc.concept.address for pc in columns if Modifier.PARTIAL in pc.modifiers
+    }
     if is_partial:
         for pc in columns:
             if Modifier.PARTIAL not in pc.modifiers:
@@ -601,6 +617,7 @@ def datasource_node(
         refresh_script=refresh_script,
         is_root=is_root,
         is_partial=is_partial,
+        column_level_partial_addresses=column_level_partial_addresses,
     )
     # Propagate keys from datasource grain to foreign key concepts.
     # A KEY concept on a datasource that isn't part of the grain

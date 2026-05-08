@@ -1687,6 +1687,8 @@ class BuildDatasource:
     )
     where: Optional[BuildWhereClause] = None
     non_partial_for: Optional[BuildWhereClause] = None
+    # See ``Datasource.column_level_partial_addresses``.
+    column_level_partial_addresses: set[str] = field(default_factory=set)
 
     def __hash__(self):
         return self.identifier.__hash__()
@@ -1756,6 +1758,17 @@ class BuildDatasource:
     @property
     def partial_concepts(self) -> List[BuildConcept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
+
+    @property
+    def column_level_partial_concepts(self) -> List[BuildConcept]:
+        """Columns with intrinsic (pre-stamp) PARTIAL — survive a covering UNION."""
+        if not self.column_level_partial_addresses:
+            return []
+        return [
+            c.concept
+            for c in self.columns
+            if c.concept.address in self.column_level_partial_addresses
+        ]
 
     def get_alias(
         self,
@@ -2893,6 +2906,7 @@ class Factory:
             non_partial_for=(
                 factory.build(base.non_partial_for) if base.non_partial_for else None
             ),
+            column_level_partial_addresses=set(base.column_level_partial_addresses),
         )
 
     def handle_constant(self, base):

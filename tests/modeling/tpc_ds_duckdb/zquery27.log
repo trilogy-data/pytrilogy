@@ -1,0 +1,242 @@
+query_id = "27"
+gen_length = 11621
+generated_sql = """
+
+WITH 
+cooperative as (
+SELECT
+    \"store_sales_store_sales\".\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
+    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+GROUP BY
+    1,
+    2,
+    3),
+yummy as (
+SELECT
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
+    \"store_sales_store_sales\".\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
+    \"store_sales_store_sales\".\"SS_LIST_PRICE\" as \"store_sales_list_price\",
+    \"store_sales_store_sales\".\"SS_QUANTITY\" as \"store_sales_quantity\",
+    \"store_sales_store_sales\".\"SS_SALES_PRICE\" as \"store_sales_sales_price\",
+    \"store_sales_store_store\".\"S_STATE\" as \"store_sales_store_state\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+WHERE
+    \"store_sales_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"store_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"store_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"store_sales_date_date\".\"D_YEAR\" = 2002 and \"store_sales_store_store\".\"S_STATE\" = 'TN'
+),
+quizzical as (
+SELECT
+    0 as \"g_state_a\",
+    1 as \"g_state_b\",
+    1 as \"g_state_c\",
+    cast(null as string) as \"null_item_c\",
+    cast(null as string) as \"null_state_b\",
+    cast(null as string) as \"null_state_c\"
+),
+scrawny as (
+SELECT
+    avg(cast(\"store_sales_store_sales\".\"SS_COUPON_AMT\" as numeric(12,2))) as \"agg3_c\",
+    avg(cast(\"store_sales_store_sales\".\"SS_LIST_PRICE\" as numeric(12,2))) as \"agg2_c\",
+    avg(cast(\"store_sales_store_sales\".\"SS_QUANTITY\" as numeric(12,2))) as \"agg1_c\",
+    avg(cast(\"store_sales_store_sales\".\"SS_SALES_PRICE\" as numeric(12,2))) as \"agg4_c\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+WHERE
+    \"store_sales_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"store_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"store_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"store_sales_date_date\".\"D_YEAR\" = 2002 and \"store_sales_store_store\".\"S_STATE\" = 'TN'
+),
+busy as (
+SELECT
+    avg(cast(\"store_sales_store_sales\".\"SS_SALES_PRICE\" as numeric(12,2))) as \"agg4_c\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"),
+questionable as (
+SELECT
+    \"store_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" as \"store_sales_customer_demographic_education_status\",
+    \"store_sales_customer_demographic_customer_demographics\".\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",
+    \"store_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" as \"store_sales_customer_demographic_marital_status\",
+    \"store_sales_date_date\".\"D_YEAR\" as \"store_sales_date_year\",
+    \"store_sales_store_store\".\"S_STATE\" as \"store_sales_store_state\"
+FROM
+    \"cooperative\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"cooperative\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"cooperative\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"cooperative\".\"store_sales_customer_demographic_id\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+WHERE
+    \"store_sales_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"store_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"store_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"store_sales_date_date\".\"D_YEAR\" = 2002 and \"store_sales_store_store\".\"S_STATE\" = 'TN'
+),
+sparkling as (
+SELECT
+    \"yummy\".\"store_sales_item_name\" as \"item_b\",
+    avg(cast(\"yummy\".\"store_sales_coupon_amt\" as numeric(12,2))) as \"agg3_b\",
+    avg(cast(\"yummy\".\"store_sales_list_price\" as numeric(12,2))) as \"agg2_b\",
+    avg(cast(\"yummy\".\"store_sales_quantity\" as numeric(12,2))) as \"agg1_b\",
+    avg(cast(\"yummy\".\"store_sales_sales_price\" as numeric(12,2))) as \"agg4_b\"
+FROM
+    \"yummy\"
+GROUP BY
+    1),
+juicy as (
+SELECT
+    \"yummy\".\"store_sales_item_name\" as \"item_a\",
+    \"yummy\".\"store_sales_store_state\" as \"state_a\",
+    avg(cast(\"yummy\".\"store_sales_coupon_amt\" as numeric(12,2))) as \"agg3_a\",
+    avg(cast(\"yummy\".\"store_sales_list_price\" as numeric(12,2))) as \"agg2_a\",
+    avg(cast(\"yummy\".\"store_sales_quantity\" as numeric(12,2))) as \"agg1_a\",
+    avg(cast(\"yummy\".\"store_sales_sales_price\" as numeric(12,2))) as \"agg4_a\"
+FROM
+    \"yummy\"
+GROUP BY
+    1,
+    2),
+macho as (
+SELECT
+    \"quizzical\".\"null_state_c\" as \"null_state_c\"
+FROM
+    \"quizzical\"
+    RIGHT OUTER JOIN \"questionable\" on 1=1
+WHERE
+    \"questionable\".\"store_sales_customer_demographic_gender\" = 'M' and \"questionable\".\"store_sales_customer_demographic_marital_status\" = 'S' and \"questionable\".\"store_sales_customer_demographic_education_status\" = 'College' and \"questionable\".\"store_sales_date_year\" = 2002 and \"questionable\".\"store_sales_store_state\" = 'TN'
+
+GROUP BY
+    1),
+late as (
+SELECT
+    \"quizzical\".\"null_item_c\" as \"null_item_c\"
+FROM
+    \"quizzical\"
+    RIGHT OUTER JOIN \"questionable\" on 1=1
+WHERE
+    \"questionable\".\"store_sales_customer_demographic_gender\" = 'M' and \"questionable\".\"store_sales_customer_demographic_marital_status\" = 'S' and \"questionable\".\"store_sales_customer_demographic_education_status\" = 'College' and \"questionable\".\"store_sales_date_year\" = 2002 and \"questionable\".\"store_sales_store_state\" = 'TN'
+
+GROUP BY
+    1),
+sweltering as (
+SELECT
+    \"quizzical\".\"g_state_c\" as \"g_state_c\"
+FROM
+    \"quizzical\"
+    RIGHT OUTER JOIN \"questionable\" on 1=1
+WHERE
+    \"questionable\".\"store_sales_customer_demographic_gender\" = 'M' and \"questionable\".\"store_sales_customer_demographic_marital_status\" = 'S' and \"questionable\".\"store_sales_customer_demographic_education_status\" = 'College' and \"questionable\".\"store_sales_date_year\" = 2002 and \"questionable\".\"store_sales_store_state\" = 'TN'
+
+GROUP BY
+    1),
+young as (
+SELECT
+    \"quizzical\".\"null_state_b\" as \"null_state_b\"
+FROM
+    \"quizzical\"
+    RIGHT OUTER JOIN \"questionable\" on 1=1
+WHERE
+    \"questionable\".\"store_sales_customer_demographic_gender\" = 'M' and \"questionable\".\"store_sales_customer_demographic_marital_status\" = 'S' and \"questionable\".\"store_sales_customer_demographic_education_status\" = 'College' and \"questionable\".\"store_sales_date_year\" = 2002 and \"questionable\".\"store_sales_store_state\" = 'TN'
+
+GROUP BY
+    1),
+concerned as (
+SELECT
+    \"quizzical\".\"g_state_b\" as \"g_state_b\"
+FROM
+    \"quizzical\"
+    RIGHT OUTER JOIN \"questionable\" on 1=1
+WHERE
+    \"questionable\".\"store_sales_customer_demographic_gender\" = 'M' and \"questionable\".\"store_sales_customer_demographic_marital_status\" = 'S' and \"questionable\".\"store_sales_customer_demographic_education_status\" = 'College' and \"questionable\".\"store_sales_date_year\" = 2002 and \"questionable\".\"store_sales_store_state\" = 'TN'
+
+GROUP BY
+    1),
+abundant as (
+SELECT
+    \"quizzical\".\"g_state_a\" as \"g_state_a\"
+FROM
+    \"quizzical\"
+    RIGHT OUTER JOIN \"questionable\" on 1=1
+WHERE
+    \"questionable\".\"store_sales_customer_demographic_gender\" = 'M' and \"questionable\".\"store_sales_customer_demographic_marital_status\" = 'S' and \"questionable\".\"store_sales_customer_demographic_education_status\" = 'College' and \"questionable\".\"store_sales_date_year\" = 2002 and \"questionable\".\"store_sales_store_state\" = 'TN'
+
+GROUP BY
+    1),
+kaput as (
+SELECT
+    \"late\".\"null_item_c\" as \"i_item_id\",
+    \"macho\".\"null_state_c\" as \"s_state\",
+    \"scrawny\".\"agg1_c\" as \"agg1_c\",
+    \"scrawny\".\"agg2_c\" as \"agg2_c\",
+    \"scrawny\".\"agg3_c\" as \"agg3_c\",
+    \"scrawny\".\"agg4_c\" as \"agg4_c\",
+    \"sweltering\".\"g_state_c\" as \"g_state\"
+FROM
+    \"sweltering\"
+    FULL JOIN \"late\" on 1=1
+    FULL JOIN \"macho\" on 1=1
+    FULL JOIN \"scrawny\" on 1=1),
+abhorrent as (
+SELECT
+    \"concerned\".\"g_state_b\" as \"g_state\",
+    \"sparkling\".\"agg1_b\" as \"agg1_b\",
+    \"sparkling\".\"agg2_b\" as \"agg2_b\",
+    \"sparkling\".\"agg3_b\" as \"agg3_b\",
+    \"sparkling\".\"agg4_b\" as \"agg4_b\",
+    \"sparkling\".\"item_b\" as \"i_item_id\",
+    \"young\".\"null_state_b\" as \"s_state\"
+FROM
+    \"sparkling\"
+    FULL JOIN \"concerned\" on 1=1
+    FULL JOIN \"young\" on 1=1),
+vacuous as (
+SELECT
+    \"abundant\".\"g_state_a\" as \"g_state\",
+    \"juicy\".\"agg1_a\" as \"agg1_a\",
+    \"juicy\".\"agg2_a\" as \"agg2_a\",
+    \"juicy\".\"agg3_a\" as \"agg3_a\",
+    \"juicy\".\"agg4_a\" as \"agg4_a\",
+    \"juicy\".\"item_a\" as \"i_item_id\",
+    \"juicy\".\"state_a\" as \"s_state\"
+FROM
+    \"juicy\"
+    FULL JOIN \"abundant\" on 1=1),
+divergent as (
+SELECT
+    coalesce(\"abhorrent\".\"g_state\",\"kaput\".\"g_state\",\"vacuous\".\"g_state\") as \"g_state\",
+    coalesce(\"abhorrent\".\"i_item_id\",\"kaput\".\"i_item_id\",\"vacuous\".\"i_item_id\") as \"i_item_id\",
+    coalesce(\"abhorrent\".\"s_state\",\"kaput\".\"s_state\",\"vacuous\".\"s_state\") as \"s_state\",
+    coalesce(\"vacuous\".\"agg1_a\",\"abhorrent\".\"agg1_b\",\"kaput\".\"agg1_c\") as \"agg1\",
+    coalesce(\"vacuous\".\"agg2_a\",\"abhorrent\".\"agg2_b\",\"kaput\".\"agg2_c\") as \"agg2\",
+    coalesce(\"vacuous\".\"agg3_a\",\"abhorrent\".\"agg3_b\",\"kaput\".\"agg3_c\") as \"agg3\",
+    coalesce(\"vacuous\".\"agg4_a\",\"abhorrent\".\"agg4_b\",\"kaput\".\"agg4_c\") as \"agg4\"
+FROM
+    \"vacuous\"
+    FULL JOIN \"abhorrent\" on \"vacuous\".\"g_state\" is not distinct from \"abhorrent\".\"g_state\" AND \"vacuous\".\"i_item_id\" is not distinct from \"abhorrent\".\"i_item_id\" AND \"vacuous\".\"s_state\" is not distinct from \"abhorrent\".\"s_state\"
+    FULL JOIN \"kaput\" on coalesce(\"vacuous\".\"g_state\", \"abhorrent\".\"g_state\") = \"kaput\".\"g_state\" AND coalesce(\"vacuous\".\"i_item_id\", \"abhorrent\".\"i_item_id\") = \"kaput\".\"i_item_id\" AND coalesce(\"vacuous\".\"s_state\", \"abhorrent\".\"s_state\") = \"kaput\".\"s_state\")
+SELECT
+    \"divergent\".\"i_item_id\" as \"q27_results_i_item_id\",
+    \"divergent\".\"s_state\" as \"q27_results_s_state\",
+    \"divergent\".\"g_state\" as \"q27_results_g_state\",
+    \"divergent\".\"agg1\" as \"q27_results_agg1\",
+    \"divergent\".\"agg2\" as \"q27_results_agg2\",
+    \"divergent\".\"agg3\" as \"q27_results_agg3\",
+    \"divergent\".\"agg4\" as \"q27_results_agg4\"
+FROM
+    \"divergent\"
+    FULL JOIN \"busy\" on 1=1
+    FULL JOIN \"quizzical\" on 1=1
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+ORDER BY 
+    \"q27_results_i_item_id\" asc nulls first,
+    \"q27_results_s_state\" asc nulls first
+LIMIT (100)"""

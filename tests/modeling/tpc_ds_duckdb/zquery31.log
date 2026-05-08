@@ -1,5 +1,5 @@
 query_id = "31"
-gen_length = 5683
+gen_length = 7186
 generated_sql = """
 
 WITH 
@@ -10,9 +10,17 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
-     'CATALOG'  as \"sales_sales_channel\"
+     'CATALOG'  as \"sales_sales_channel\",
+    \"sales_bill_address_customer_address\".\"CA_COUNTY\" as \"sales_bill_address_county\",
+    \"sales_date_date\".\"D_QOY\" as \"sales_date_quarter\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"sales_catalog_sales_unified\".\"CS_BILL_ADDR_SK\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_date_date\".\"D_YEAR\" = 2000
+
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_ADDR_SK\" as \"sales_bill_address_id\",
@@ -20,9 +28,17 @@ SELECT
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-     'STORE'  as \"sales_sales_channel\"
+     'STORE'  as \"sales_sales_channel\",
+    \"sales_bill_address_customer_address\".\"CA_COUNTY\" as \"sales_bill_address_county\",
+    \"sales_date_date\".\"D_QOY\" as \"sales_date_quarter\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"sales_store_sales_unified\".\"SS_ADDR_SK\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_date_date\".\"D_YEAR\" = 2000
+
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" as \"sales_bill_address_id\",
@@ -30,40 +46,43 @@ SELECT
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
-     'WEB'  as \"sales_sales_channel\"
-FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\")
-SELECT
+     'WEB'  as \"sales_sales_channel\",
     \"sales_bill_address_customer_address\".\"CA_COUNTY\" as \"sales_bill_address_county\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"web_q1_q2_increase\",
-    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"store_q1_q2_increase\",
-    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"web_q2_q3_increase\",
-    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"store_q2_q3_increase\"
+    \"sales_date_date\".\"D_QOY\" as \"sales_date_quarter\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"thoughtful\" on \"sales_date_date\".\"D_DATE_SK\" = \"thoughtful\".\"sales_date_id\"
-    FULL JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"thoughtful\".\"sales_bill_address_id\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" = 2000
-
+)
+SELECT
+    \"thoughtful\".\"sales_bill_address_county\" as \"sales_bill_address_county\",
+    \"thoughtful\".\"sales_date_year\" as \"sales_date_year\",
+    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"web_q1_q2_increase\",
+    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"store_q1_q2_increase\",
+    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"web_q2_q3_increase\",
+    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) as \"store_q2_q3_increase\"
+FROM
+    \"thoughtful\"
 GROUP BY
     1,
     2
 HAVING
-    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and ( CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
 	ELSE null
 	END > CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
 	ELSE null
 	END ) and ( CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
 	ELSE null
 	END > CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_QOY\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
 	ELSE null
 	END )
 
 ORDER BY 
-    \"sales_bill_address_customer_address\".\"CA_COUNTY\" asc nulls first"""
+    \"thoughtful\".\"sales_bill_address_county\" asc nulls first"""

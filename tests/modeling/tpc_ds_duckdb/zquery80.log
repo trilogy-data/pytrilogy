@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 12326
+gen_length = 11773
 generated_sql = """
 
 WITH 
@@ -97,8 +97,8 @@ waggish as (
 SELECT
     sum(coalesce(\"scrawny\".\"sales_return_amount\",0)) as \"returns_c\"
 FROM
-    \"scrawny\"
-    FULL JOIN \"uneven\" on \"scrawny\".\"sales_item_id\" = \"uneven\".\"sales_item_id\" AND \"scrawny\".\"sales_order_id\" = \"uneven\".\"sales_order_id\" AND \"scrawny\".\"sales_sales_channel\" = \"uneven\".\"sales_sales_channel\"),
+    \"uneven\"
+    LEFT OUTER JOIN \"scrawny\" on \"uneven\".\"sales_item_id\" = \"scrawny\".\"sales_item_id\" AND \"uneven\".\"sales_order_id\" = \"scrawny\".\"sales_order_id\" AND \"uneven\".\"sales_sales_channel\" = \"scrawny\".\"sales_sales_channel\"),
 yummy as (
 SELECT
     \"uneven\".\"sales_channel_dim_id\" as \"sales_channel_dim_id\",
@@ -120,24 +120,24 @@ SELECT
     \"uneven\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
     \"uneven\".\"sales_net_profit\" - coalesce(\"scrawny\".\"sales_return_net_loss\",0) as \"profit_minus_loss\",
     CASE
-	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'STORE' THEN 'store channel'
-	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'CATALOG' THEN 'catalog channel'
-	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'WEB' THEN 'web channel'
+	WHEN \"uneven\".\"sales_sales_channel\" = 'STORE' THEN 'store channel'
+	WHEN \"uneven\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog channel'
+	WHEN \"uneven\".\"sales_sales_channel\" = 'WEB' THEN 'web channel'
 	ELSE null
 	END as \"channel_label\",
     CASE
-	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'STORE' THEN ('store' || \"thoughtful\".\"sales_channel_dim_text_id\")
-	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"thoughtful\".\"sales_channel_dim_text_id\")
-	WHEN coalesce(\"scrawny\".\"sales_sales_channel\",\"thoughtful\".\"sales_sales_channel\",\"uneven\".\"sales_sales_channel\") = 'WEB' THEN ('web_site' || \"thoughtful\".\"sales_channel_dim_text_id\")
+	WHEN \"uneven\".\"sales_sales_channel\" = 'STORE' THEN ('store' || \"thoughtful\".\"sales_channel_dim_text_id\")
+	WHEN \"uneven\".\"sales_sales_channel\" = 'CATALOG' THEN ('catalog_page' || \"thoughtful\".\"sales_channel_dim_text_id\")
+	WHEN \"uneven\".\"sales_sales_channel\" = 'WEB' THEN ('web_site' || \"thoughtful\".\"sales_channel_dim_text_id\")
 	ELSE null
 	END as \"id_label\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"uneven\" on \"sales_date_date\".\"D_DATE_SK\" = \"uneven\".\"sales_date_id\"
-    FULL JOIN \"scrawny\" on \"uneven\".\"sales_item_id\" = \"scrawny\".\"sales_item_id\" AND \"uneven\".\"sales_order_id\" = \"scrawny\".\"sales_order_id\" AND \"uneven\".\"sales_sales_channel\" = \"scrawny\".\"sales_sales_channel\"
-    RIGHT OUTER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"uneven\".\"sales_promotion_id\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
-    INNER JOIN \"thoughtful\" on \"uneven\".\"sales_channel_dim_id\" = \"thoughtful\".\"sales_channel_dim_id\" AND coalesce(\"scrawny\".\"sales_sales_channel\", \"uneven\".\"sales_sales_channel\") = \"thoughtful\".\"sales_sales_channel\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on coalesce(\"scrawny\".\"sales_item_id\", \"uneven\".\"sales_item_id\") = \"sales_item_items\".\"I_ITEM_SK\"
+    \"uneven\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"uneven\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"scrawny\" on \"uneven\".\"sales_item_id\" = \"scrawny\".\"sales_item_id\" AND \"uneven\".\"sales_order_id\" = \"scrawny\".\"sales_order_id\" AND \"uneven\".\"sales_sales_channel\" = \"scrawny\".\"sales_sales_channel\"
+    INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"uneven\".\"sales_promotion_id\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
+    LEFT OUTER JOIN \"thoughtful\" on \"uneven\".\"sales_channel_dim_id\" = \"thoughtful\".\"sales_channel_dim_id\" AND \"uneven\".\"sales_sales_channel\" = \"thoughtful\".\"sales_sales_channel\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"uneven\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
     cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N' and \"thoughtful\".\"sales_channel_dim_text_id\" is not null
 ),
@@ -148,9 +148,9 @@ SELECT
     \"thoughtful\".\"sales_channel_dim_text_id\" as \"sales_channel_dim_text_id\",
     cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    LEFT OUTER JOIN \"yummy\" on \"sales_date_date\".\"D_DATE_SK\" = \"yummy\".\"sales_date_id\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"yummy\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+    \"yummy\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"yummy\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"yummy\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"yummy\".\"sales_promotion_id\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
     INNER JOIN \"thoughtful\" on \"yummy\".\"sales_channel_dim_id\" = \"thoughtful\".\"sales_channel_dim_id\" AND \"yummy\".\"sales_sales_channel\" = \"thoughtful\".\"sales_sales_channel\"
 WHERE

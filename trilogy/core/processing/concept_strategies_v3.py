@@ -24,6 +24,7 @@ from trilogy.core.processing.discovery_utility import (
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
+    _is_scalar_only,
     validate_stack,
 )
 from trilogy.core.processing.nodes import (
@@ -280,6 +281,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
     elif all(
         [
             x.preexisting_conditions == context.conditions.conditional
+            or _is_scalar_only(x)
             for x in context.stack
         ]
     ):

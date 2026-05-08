@@ -39,11 +39,10 @@ class UnionNode(StrategyNode):
             partial_concepts=partial_concepts,
             preexisting_conditions=preexisting_conditions,
         )
-        if self.partial_concepts != []:
-            raise ValueError(
-                f"UnionNode should not have partial concepts, has {self.partial_concepts}, was given {partial_concepts}"
-            )
-        self.partial_concepts = []
+        # Intrinsic column-level partials (``~col`` inside a ``partial
+        # datasource``) survive a covering UNION; the caller in
+        # ``create_union_datasource`` filters out non-intrinsic stamps before
+        # passing them in. Anything else is a usage error.
 
     def add_output_concepts(self, concepts, rebuild=True, unhide=True):
         for x in self.parents:
