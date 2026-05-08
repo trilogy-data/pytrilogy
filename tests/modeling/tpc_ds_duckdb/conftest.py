@@ -40,6 +40,7 @@ def _make_engine(sf: float, subdir: str) -> Executor:
         conf=DuckDBConfig(),
     )
     engine.execute_raw_sql(f"IMPORT DATABASE '{import_path}';")
+    engine.execute_raw_sql("SET enable_progress_bar=false;")
     return engine
 
 
@@ -52,6 +53,13 @@ def engine():
 def engine_sf01():
     """sf=0.1 dataset for tests where the sf=1 reference PRAGMA hangs/OOMs."""
     yield _make_engine(sf=0.1, subdir="memory_sf01")
+
+
+@pytest.fixture(scope="session")
+def engine_sf001():
+    """sf=0.01 dataset for tests where the reference PRAGMA is slow even at sf=0.1
+    (e.g. query 72's non-equi inventory x catalog_sales join)."""
+    yield _make_engine(sf=0.01, subdir="memory_sf001")
 
 
 @pytest.fixture(autouse=True, scope="session")

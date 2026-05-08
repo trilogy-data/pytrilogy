@@ -22,49 +22,24 @@
 
 import unified_sales as sales;
 
-# Cross-channel set: tuple (brand_id, class_id, category_id) appears in all 3 channels in 1999..2001
-auto store_pres <- sum(
-    case when sales.sales_channel = 'STORE' and sales.date.year between 1999 and 2001
-         then 1 else 0 end
-) by sales.item.brand_id, sales.item.class_id, sales.item.category_id;
 
-auto catalog_pres <- sum(
-    case when sales.sales_channel = 'CATALOG' and sales.date.year between 1999 and 2001
-         then 1 else 0 end
-) by sales.item.brand_id, sales.item.class_id, sales.item.category_id;
+auto eligible_brands <- sales.item.brand_id ? count(sales.sales_channel ? sales.date.year between 1999 and 2001) by sales.item.brand_id;
+auto eligible_classes <- sales.item.class_id ? count(sales.sales_channel ? sales.date.year between 1999 and 2001) by sales.item.class_id;
+auto eligible_categories <- sales.item.category_id ? count(sales.sales_channel ? sales.date.year between 1999 and 2001) by sales.item.category_id;
 
-auto web_pres <- sum(
-    case when sales.sales_channel = 'WEB' and sales.date.year between 1999 and 2001
-         then 1 else 0 end
-) by sales.item.brand_id, sales.item.class_id, sales.item.category_id;
 
-auto in_cross_items <- case when store_pres > 0 and catalog_pres > 0 and web_pres > 0 then 1 else 0 end;
-
+auto eligible_items <- sales.item.id ? sales.item.brand_id in eligible_brands
+    and sales.item.class_id in eligible_classes
+    and sales.item.category_id in eligible_categories;
 # avg_sales: avg(quantity*list_price) over all 3 channels in 1999..2001 (single scalar)
 auto avg_sales <- avg(sales.quantity * sales.list_price ? sales.date.year between 1999 and 2001);
 
-# Per-bucket sum at (channel, brand_id, class_id, category_id) grain — Nov 2001, cross_items only
-auto bucket_sum <- sum(
-    case when in_cross_items = 1
-              and sales.date.year = 2001
-              and sales.date.month_of_year = 11
-         then sales.quantity * sales.list_price else cast(0 as float) end
-) by sales.sales_channel, sales.item.brand_id, sales.item.class_id, sales.item.category_id;
-
-# Per-row 0/1 flag pinned at unified_sales row grain so we can count rows per bucket
-auto bucket_row_flag <- sum(
-    case when in_cross_items = 1
-              and sales.date.year = 2001
-              and sales.date.month_of_year = 11
-         then 1 else 0 end
-) by sales.sales_channel, sales.order_id, sales.item.id;
-
-auto bucket_count <- sum(bucket_row_flag)
-    by sales.sales_channel, sales.item.brand_id, sales.item.class_id, sales.item.category_id;
+auto bucket_sum <- avg(sales.quantity*sales.list_price);
+auto bucket_count <- sum(count(sales.item.id) by sales.order_id);
 
 with q14_results as
 # L0: detail (channel, brand_id, class_id, category_id)
-WHERE bucket_sum > avg_sales
+WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
 SELECT
     cast(sales.sales_channel as string) as channel_a,
     sales.item.brand_id as brand_a,
@@ -74,7 +49,7 @@ SELECT
     bucket_count as cnt_a,
 MERGE
 # L1: (channel, brand_id, class_id), null category
-WHERE bucket_sum > avg_sales
+WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
 SELECT
     cast(sales.sales_channel as string) as channel_b,
     sales.item.brand_id as brand_b,
@@ -84,7 +59,7 @@ SELECT
     sum(bucket_count) as cnt_b,
 MERGE
 # L2: (channel, brand_id), null class+cat
-WHERE bucket_sum > avg_sales
+WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
 SELECT
     cast(sales.sales_channel as string) as channel_c,
     sales.item.brand_id as brand_c,
@@ -94,7 +69,7 @@ SELECT
     sum(bucket_count) as cnt_c,
 MERGE
 # L3: (channel), null brand+class+cat
-WHERE bucket_sum > avg_sales
+WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
 SELECT
     cast(sales.sales_channel as string) as channel_d,
     cast(null as int) as null_brand_d,
@@ -104,7 +79,7 @@ SELECT
     sum(bucket_count) as cnt_d,
 MERGE
 # L4: grand total
-WHERE bucket_sum > avg_sales
+WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
 SELECT
     cast(null as string) as null_channel_e,
     cast(null as int) as null_brand_e,
