@@ -433,7 +433,11 @@ union  = { _UNION ~ (expr ~ ",")* ~ expr ~ ")" }
 // AGGREGATES
 // =============================================================================
 aggregate_all  = { "*" }
-aggregate_over = { ^"by" ~ (aggregate_all | over_list) }
+aggregate_rollup = { ^"rollup" ~ over_list }
+aggregate_cube = { ^"cube" ~ over_list }
+grouping_set = { "(" ~ over_list? ~ ")" }
+aggregate_grouping_sets = { ^"grouping" ~ ^"sets" ~ grouping_set ~ ("," ~ grouping_set)* }
+aggregate_over = { ^"by" ~ (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | over_list) }
 
 // Mirrors lark's single-token regex: /(group)\s+([a-zA-Z_][a-zA-Z0-9_.]*)/i
 // Emits "group <identname>" as a single string so the hydrator's
@@ -443,6 +447,8 @@ aggregate_by = { GROUP_TARGET ~ ^"by" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
 
 count          = { ^"count" ~ "(" ~ expr ~ ")" }
 count_distinct = { ^"count_distinct" ~ "(" ~ expr ~ ")" }
+grouping       = { ^"grouping" ~ "(" ~ expr ~ ")" }
+grouping_id    = { ^"grouping_id" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")" }
 sum            = { ^"sum" ~ "(" ~ expr ~ ")" }
 avg            = { ^"avg" ~ "(" ~ expr ~ ")" }
 stddev         = { ^"stddev" ~ "(" ~ expr ~ ")" }
@@ -455,7 +461,7 @@ bool_or        = { ^"bool_or" ~ "(" ~ expr ~ ")" }
 any            = { ^"any" ~ "(" ~ expr ~ ")" }
 
 aggregate_functions = {
-    (count_distinct | count | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) ~ aggregate_over?
+    (count_distinct | count | grouping_id | grouping | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) ~ aggregate_over?
 }
 
 fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }

@@ -1,30 +1,8 @@
 query_id = "22"
-gen_length = 7431
+gen_length = 1547
 generated_sql = """
 
 WITH 
-questionable as (
-SELECT
-    cast(null as string) as \"null_brand\",
-    cast(null as string) as \"null_brand2\",
-    cast(null as string) as \"null_category\",
-    cast(null as string) as \"null_category2\",
-    cast(null as string) as \"null_category3\",
-    cast(null as string) as \"null_category4\",
-    cast(null as string) as \"null_class\",
-    cast(null as string) as \"null_class2\",
-    cast(null as string) as \"null_class3\",
-    cast(null as string) as \"null_name\"
-),
-concerned as (
-SELECT
-    avg(\"inventory_warehouse_inventory\".\"inv_quantity_on_hand\") as \"qoh5\"
-FROM
-    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
-    INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"inventory_warehouse_inventory\".\"inv_date_sk\" = \"inventory_date_date\".\"D_DATE_SK\"
-WHERE
-    \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
-),
 cheerful as (
 SELECT
     \"inventory_item_items\".\"I_BRAND\" as \"inventory_item_brand_name\",
@@ -38,123 +16,21 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"inventory_item_items\" on \"inventory_warehouse_inventory\".\"inv_item_sk\" = \"inventory_item_items\".\"I_ITEM_SK\"
 WHERE
     \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
-),
-sweltering as (
-SELECT
-    avg(\"inventory_warehouse_inventory\".\"inv_quantity_on_hand\") as \"qoh5\"
-FROM
-    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"),
-sparkling as (
-SELECT
-    \"concerned\".\"qoh5\" as \"qoh5\",
-    \"questionable\".\"null_brand2\" as \"i_brand\",
-    \"questionable\".\"null_category4\" as \"i_category\",
-    \"questionable\".\"null_class3\" as \"i_class\",
-    \"questionable\".\"null_name\" as \"i_product_name\"
-FROM
-    \"concerned\"
-    FULL JOIN \"questionable\" on 1=1),
-juicy as (
+)
 SELECT
     \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
-    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh4\"
-FROM
-    \"cheerful\"
-GROUP BY
-    1),
-uneven as (
-SELECT
-    \"cheerful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
-    \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
-    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh3\"
-FROM
-    \"cheerful\"
-GROUP BY
-    1,
-    2),
-cooperative as (
-SELECT
     \"cheerful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
     \"cheerful\".\"inventory_item_class\" as \"inventory_item_class\",
-    \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
-    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh2\"
+    \"cheerful\".\"inventory_item_category\" as \"inventory_item_category\",
+    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh\"
 FROM
     \"cheerful\"
 GROUP BY
-    1,
-    2,
-    3),
-thoughtful as (
-SELECT
-    \"cheerful\".\"inventory_item_brand_name\" as \"i_brand\",
-    \"cheerful\".\"inventory_item_category\" as \"i_category\",
-    \"cheerful\".\"inventory_item_class\" as \"i_class\",
-    \"cheerful\".\"inventory_item_product_name\" as \"i_product_name\",
-    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh1\"
-FROM
-    \"cheerful\"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-vacuous as (
-SELECT
-    \"juicy\".\"inventory_item_product_name\" as \"i_product_name\",
-    \"juicy\".\"qoh4\" as \"qoh4\",
-    \"questionable\".\"null_brand\" as \"i_brand\",
-    \"questionable\".\"null_category3\" as \"i_category\",
-    \"questionable\".\"null_class2\" as \"i_class\"
-FROM
-    \"juicy\"
-    FULL JOIN \"questionable\" on 1=1),
-yummy as (
-SELECT
-    \"questionable\".\"null_category2\" as \"i_category\",
-    \"questionable\".\"null_class\" as \"i_class\",
-    \"uneven\".\"inventory_item_brand_name\" as \"i_brand\",
-    \"uneven\".\"inventory_item_product_name\" as \"i_product_name\",
-    \"uneven\".\"qoh3\" as \"qoh3\"
-FROM
-    \"uneven\"
-    FULL JOIN \"questionable\" on 1=1),
-abundant as (
-SELECT
-    \"cooperative\".\"inventory_item_brand_name\" as \"i_brand\",
-    \"cooperative\".\"inventory_item_class\" as \"i_class\",
-    \"cooperative\".\"inventory_item_product_name\" as \"i_product_name\",
-    \"cooperative\".\"qoh2\" as \"qoh2\",
-    \"questionable\".\"null_category\" as \"i_category\"
-FROM
-    \"cooperative\"
-    FULL JOIN \"questionable\" on 1=1),
-abhorrent as (
-SELECT
-    coalesce(\"abundant\".\"i_brand\",\"sparkling\".\"i_brand\",\"thoughtful\".\"i_brand\",\"vacuous\".\"i_brand\",\"yummy\".\"i_brand\") as \"i_brand\",
-    coalesce(\"abundant\".\"i_category\",\"sparkling\".\"i_category\",\"thoughtful\".\"i_category\",\"vacuous\".\"i_category\",\"yummy\".\"i_category\") as \"i_category\",
-    coalesce(\"abundant\".\"i_class\",\"sparkling\".\"i_class\",\"thoughtful\".\"i_class\",\"vacuous\".\"i_class\",\"yummy\".\"i_class\") as \"i_class\",
-    coalesce(\"abundant\".\"i_product_name\",\"sparkling\".\"i_product_name\",\"thoughtful\".\"i_product_name\",\"vacuous\".\"i_product_name\",\"yummy\".\"i_product_name\") as \"i_product_name\",
-    coalesce(\"thoughtful\".\"qoh1\",\"abundant\".\"qoh2\",\"yummy\".\"qoh3\",\"vacuous\".\"qoh4\",\"sparkling\".\"qoh5\") as \"qoh_all\"
-FROM
-    \"thoughtful\"
-    FULL JOIN \"abundant\" on \"thoughtful\".\"i_brand\" is not distinct from \"abundant\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"abundant\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"abundant\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"abundant\".\"i_product_name\"
-    FULL JOIN \"yummy\" on coalesce(\"thoughtful\".\"i_brand\", \"abundant\".\"i_brand\") = \"yummy\".\"i_brand\" AND coalesce(\"thoughtful\".\"i_category\", \"abundant\".\"i_category\") = \"yummy\".\"i_category\" AND coalesce(\"thoughtful\".\"i_class\", \"abundant\".\"i_class\") = \"yummy\".\"i_class\" AND coalesce(\"thoughtful\".\"i_product_name\", \"abundant\".\"i_product_name\") = \"yummy\".\"i_product_name\"
-    FULL JOIN \"vacuous\" on coalesce(\"thoughtful\".\"i_brand\", \"abundant\".\"i_brand\", \"yummy\".\"i_brand\") = \"vacuous\".\"i_brand\" AND coalesce(\"thoughtful\".\"i_category\", \"abundant\".\"i_category\", \"yummy\".\"i_category\") = \"vacuous\".\"i_category\" AND coalesce(\"thoughtful\".\"i_class\", \"abundant\".\"i_class\", \"yummy\".\"i_class\") = \"vacuous\".\"i_class\" AND coalesce(\"thoughtful\".\"i_product_name\", \"abundant\".\"i_product_name\", \"yummy\".\"i_product_name\") = \"vacuous\".\"i_product_name\"
-    FULL JOIN \"sparkling\" on coalesce(\"thoughtful\".\"i_brand\", \"abundant\".\"i_brand\", \"yummy\".\"i_brand\", \"vacuous\".\"i_brand\") = \"sparkling\".\"i_brand\" AND coalesce(\"thoughtful\".\"i_category\", \"abundant\".\"i_category\", \"yummy\".\"i_category\", \"vacuous\".\"i_category\") = \"sparkling\".\"i_category\" AND coalesce(\"thoughtful\".\"i_class\", \"abundant\".\"i_class\", \"yummy\".\"i_class\", \"vacuous\".\"i_class\") = \"sparkling\".\"i_class\" AND coalesce(\"thoughtful\".\"i_product_name\", \"abundant\".\"i_product_name\", \"yummy\".\"i_product_name\", \"vacuous\".\"i_product_name\") = \"sparkling\".\"i_product_name\")
-SELECT
-    \"abhorrent\".\"i_product_name\" as \"level0_i_product_name\",
-    \"abhorrent\".\"i_brand\" as \"level0_i_brand\",
-    \"abhorrent\".\"i_class\" as \"level0_i_class\",
-    \"abhorrent\".\"i_category\" as \"level0_i_category\",
-    \"abhorrent\".\"qoh_all\" as \"level0_qoh_all\"
-FROM
-    \"abhorrent\"
-    FULL JOIN \"questionable\" on 1=1
-    FULL JOIN \"sweltering\" on 1=1
+    ROLLUP (1, 2, 3, 4)
 ORDER BY 
-    \"level0_qoh_all\" asc nulls first,
-    \"level0_i_product_name\" asc nulls first,
-    \"level0_i_brand\" asc nulls first,
-    \"level0_i_class\" asc nulls first,
-    \"level0_i_category\" asc nulls first
+    \"qoh\" asc nulls first,
+    \"cheerful\".\"inventory_item_product_name\" asc nulls first,
+    \"cheerful\".\"inventory_item_brand_name\" asc nulls first,
+    \"cheerful\".\"inventory_item_class\" asc nulls first,
+    \"cheerful\".\"inventory_item_category\" asc nulls first
 LIMIT (100)"""

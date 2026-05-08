@@ -1,4 +1,4 @@
-"""upgrades joins when the WHERE proves they can be inner. 
+"""upgrades joins when the WHERE proves they can be inner.
 
 Outer joins exist to preserve unmatched rows by NULL-padding one side. When the
 surrounding WHERE rejects rows where those NULL-padded columns appear (directly

@@ -25,6 +25,7 @@ from typing import (
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
+    AggregateGroupingMode,
     BooleanOperator,
     ComparisonOperator,
     ConceptSource,
@@ -1071,7 +1072,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
                 environment.concepts[c].reference for c in grain.components
             ]
             new_lineage = AggregateWrapper(
-                function=new_lineage.function, by=grain_components
+                function=new_lineage.function,
+                by=grain_components,
+                grouping=new_lineage.grouping,
+                grouping_sets=new_lineage.grouping_sets,
             )
             final_grain = grain
             keys = set([x.address for x in new_lineage.by])
@@ -2021,22 +2025,45 @@ class FunctionCallWrapper(
         return arg_to_datatype(self.content)
 
 
+def _concept_to_ref(item: ConceptRef | Concept) -> ConceptRef:
+    if isinstance(item, Concept):
+        return item.reference
+    return item
+
+
+@dataclass
+class AggregateGrouping:
+    mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
+    by: List[ConceptRef | Concept] = dc_field(default_factory=list)
+    grouping_sets: List[List[ConceptRef | Concept]] = dc_field(default_factory=list)
+
+    def __post_init__(self):
+        self.by = [_concept_to_ref(item) for item in self.by]
+        self.grouping_sets = [
+            [_concept_to_ref(item) for item in grouping_set]
+            for grouping_set in self.grouping_sets
+        ]
+
+
 @dataclass
 class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced):
     function: Function
     by: List[ConceptRef | Concept] = dc_field(default_factory=list)
+    grouping: AggregateGroupingMode = AggregateGroupingMode.STANDARD
+    grouping_sets: List[List[ConceptRef | Concept]] = dc_field(default_factory=list)
 
     def __post_init__(self):
-        output = []
-        for item in self.by:
-            if isinstance(item, Concept):
-                output.append(item.reference)
-            else:
-                output.append(item)
-        self.by = output
+        self.by = [_concept_to_ref(item) for item in self.by]
+        self.grouping_sets = [
+            [_concept_to_ref(item) for item in grouping_set]
+            for grouping_set in self.grouping_sets
+        ]
 
     def __str__(self):
-        grain_str = [str(c) for c in self.by] if self.by else "abstract"
+        if self.grouping == AggregateGroupingMode.GROUPING_SETS:
+            grain_str = [[str(c) for c in group] for group in self.grouping_sets]
+        else:
+            grain_str = [str(c) for c in self.by] if self.by else "abstract"
         return f"{str(self.function)}<{grain_str}>"
 
     @property
@@ -2063,6 +2090,11 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced):
                 if self.by
                 else []
             ),
+            grouping=self.grouping,
+            grouping_sets=[
+                [c.with_merge(source, target, modifiers) for c in grouping_set]
+                for grouping_set in self.grouping_sets
+            ],
         )
 
     def with_reference_replacement(self, source, target):
@@ -2073,12 +2105,22 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced):
                 if self.by
                 else []
             ),
+            grouping=self.grouping,
+            grouping_sets=[
+                [c.with_reference_replacement(source, target) for c in grouping_set]
+                for grouping_set in self.grouping_sets
+            ],
         )
 
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
         return AggregateWrapper(
             function=self.function.with_namespace(namespace),
             by=[c.with_namespace(namespace) for c in self.by] if self.by else [],
+            grouping=self.grouping,
+            grouping_sets=[
+                [c.with_namespace(namespace) for c in grouping_set]
+                for grouping_set in self.grouping_sets
+            ],
         )
 
 

@@ -9,10 +9,10 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 86 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 60, 61, 62, 63, 65, 66, 68, 69, 70, 71, 73, 74, 76, 78, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 88 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | Skipped (preql exists) | 3 | 5, 29, 85 |
 | XFAIL (committed broken for experimentation) | 1 | 14 |
-| Missing (no preql / no test) | 9 | 51, 54, 59, 64, 67, 72, 75, 77, 84 |
+| Missing (no preql / no test) | 7 | 51, 54, 64, 67, 75, 77, 84 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -552,9 +552,41 @@ These need framework work first:
   comparison. For queries where the duckdb pragma differs from the canonical
   SQL (or for queries with NULLs-FIRST/LAST behavior that varies), pass
   `sql_override=True` and provide a `queryNN.sql` file so we compare against
-  a deterministic reference. Used for: q2, q17, q19, q34, q40, q56, q82.
+  a deterministic reference. Used for: q2, q17, q19, q34, q40, q56, q59, q82.
 - Skipped tests still parse — the preql files are valid; they just disagree
   with the reference at runtime.
 - q46 and q68 currently take ~2+ minutes each. Plan churn from the
   `customer.address.city != customer_address.city` cross-comparison; not
   yet investigated.
+- An `engine_sf01` fixture (sf=0.1 dataset, separate `memory_sf01/` dir) is
+  available for tests where the sf=1 reference PRAGMA hangs/OOMs on a given
+  machine. Opt in by taking `engine_sf01` instead of `engine` as the test
+  parameter. Dataset is generated lazily on first use via raw duckdb (avoids
+  capturing trilogy's `uv_run` macro into the exported `schema.sql`).
+
+## Recent Query Additions (q59, q72 batch)
+
+- **q59** — week-over-year-week store sales ratios per day-of-week. wss
+  CTE computed as autos `sun_sales`/.../`sat_sales` at `(ss.store.id,
+  ss.date.week_seq)` grain via inline `?` filter on `ss.date.day_name`.
+  Two rowsets `year1` / `year2` filter weeks by `in_year{1,2}` presence
+  flags (max-of-case at the same grain), and merge on
+  `store_text_id` + a derived `week_seq + 52` join key. The merge produces
+  a `FULL JOIN`, so `1 as year{1,2}_present` flags are projected and
+  filtered in the outer SELECT to drop unmatched FULL-JOIN-synthesised
+  NULL rows — the documented "FULL JOIN trap" workaround.
+  - Uses `sql_override` (`query59.sql`): the reference TPC-DS q59 cross-
+    joins wss to `date_dim` on week_seq inside both y/x subqueries,
+    producing ~49 duplicate output rows per logical (store, week_seq)
+    pair. The override pre-deduplicates the week_seq filter so row-by-row
+    comparison is meaningful.
+- **q72** — catalog_sales × inventory triple join with bill demographics
+  filter (`hd_buy_potential = '>10000'`, `cd_marital_status = 'D'`,
+  `d_year=1999`), `inv.date.week_seq = cs.sold_date.week_seq` alignment,
+  `date_diff(sold, ship, DAY) > 5` ship-delay filter, and
+  `inv.quantity_on_hand < cs.quantity` stock-shortage filter. Modelled
+  via `merge inv.item.id into cs.item.id;` plus the four conjunctive
+  WHERE conditions. count, no_promo, promo aggregates emitted per
+  (item.desc, warehouse.name, sold_date.week_seq) grain. Earlier OOM
+  concern (STATUS) was a stale data point — at sf=1 the trilogy plan
+  runs in ~1s and the reference PRAGMA matches in ~1s.

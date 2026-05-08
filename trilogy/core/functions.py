@@ -281,6 +281,16 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
+    FunctionType.GROUPING: FunctionConfig(
+        output_purpose=Purpose.METRIC,
+        output_type=DataType.INTEGER,
+        arg_count=1,
+    ),
+    FunctionType.GROUPING_ID: FunctionConfig(
+        output_purpose=Purpose.METRIC,
+        output_type=DataType.INTEGER,
+        arg_count=InfiniteFunctionArgs,
+    ),
     FunctionType.MAX: FunctionConfig(
         valid_inputs={
             DataType.INTEGER,

@@ -1,7 +1,10 @@
 from enum import Enum
 
-from trilogy.core.enums import Derivation, SourceType
+from trilogy.core.enums import AggregateGroupingMode, Derivation, SourceType
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
+    BuildConcept,
+    BuildRowsetItem,
     BuildWindowItem,
 )
 from trilogy.core.models.execute import (
@@ -49,6 +52,15 @@ def get_merge_mode(cte: CTE) -> MergeMode | None:
     return None
 
 
+def has_nonstandard_aggregate_grouping(concept: BuildConcept) -> bool:
+    lineage = concept.lineage
+    if isinstance(lineage, BuildAggregateWrapper):
+        return lineage.grouping != AggregateGroupingMode.STANDARD
+    if isinstance(lineage, BuildRowsetItem):
+        return has_nonstandard_aggregate_grouping(lineage.content)
+    return False
+
+
 def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
     if merge_mode == MergeMode.AGGREGATE:
         return parent.group_to_grain or parent.source.source_type in (
@@ -82,6 +94,11 @@ def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
         return True
     if merge_mode == MergeMode.BASIC and cte.condition is not None:
         return True
+    if merge_mode == MergeMode.AGGREGATE:
+        return any(
+            has_nonstandard_aggregate_grouping(concept)
+            for concept in cte.output_columns
+        )
     return False
 
 

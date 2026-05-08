@@ -30,6 +30,13 @@ class GroupMode(Enum):
     BY_INDEX = "by_index"
 
 
+class AggregateGroupingMode(Enum):
+    STANDARD = "standard"
+    ROLLUP = "rollup"
+    CUBE = "cube"
+    GROUPING_SETS = "grouping_sets"
+
+
 class ConceptSource(Enum):
     MANUAL = "manual"
     CTE = "cte"
@@ -255,6 +262,8 @@ class FunctionType(Enum):
     BOOL_OR = "bool_or"
     BOOL_AND = "bool_and"
     ANY = "any"
+    GROUPING = "grouping"
+    GROUPING_ID = "grouping_id"
 
     # String
     LIKE = "like"
@@ -333,6 +342,8 @@ class FunctionClass(Enum):
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
         FunctionType.ANY,
+        FunctionType.GROUPING,
+        FunctionType.GROUPING_ID,
         FunctionType.BOOL_OR,
         FunctionType.BOOL_AND,
     ]

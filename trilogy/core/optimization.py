@@ -6,7 +6,6 @@ from trilogy.core.models.build import (
 from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
     CollapseSingleParent,
-    UpgradeJoinOnGuards,
     HideUnusedConcepts,
     InlineDatasource,
     JoinHoist,
@@ -15,6 +14,7 @@ from trilogy.core.optimizations import (
     PredicatePushdown,
     PredicatePushdownRemove,
     UnionDimPushdown,
+    UpgradeJoinOnGuards,
 )
 from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement

@@ -108,6 +108,11 @@ def test_full_kept_when_only_coalesced_key_proven():
 
 def test_proves_non_null_helpers():
     """Direct unit coverage of the proof extractor."""
+    from trilogy.core.optimizations.full_join_downgrade import (
+        _gather_proofs,
+        _proves_non_null,
+    )
+
     from trilogy import Environment
     from trilogy.constants import MagicConstants
     from trilogy.core.enums import ComparisonOperator, FunctionType
@@ -116,10 +121,6 @@ def test_proves_non_null_helpers():
         BuildFunction,
     )
     from trilogy.core.models.core import DataType
-    from trilogy.core.optimizations.full_join_downgrade import (
-        _gather_proofs,
-        _proves_non_null,
-    )
     from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
     env = Environment()
@@ -255,6 +256,11 @@ def test_left_address_helpers_skip_non_join_entries():
     """``_seed_addresses`` and ``_accumulated_left_addresses`` must
     short-circuit when the relevant join slot is an UnnestJoin (or other
     non-Join entry) rather than a Join."""
+    from trilogy.core.optimizations.full_join_downgrade import (
+        _accumulated_left_addresses,
+        _seed_addresses,
+    )
+
     from trilogy.core.enums import Purpose
     from trilogy.core.models.build import (
         BuildColumnAssignment,
@@ -264,10 +270,6 @@ def test_left_address_helpers_skip_non_join_entries():
     )
     from trilogy.core.models.core import DataType
     from trilogy.core.models.execute import CTE, InstantiatedUnnestJoin
-    from trilogy.core.optimizations.full_join_downgrade import (
-        _accumulated_left_addresses,
-        _seed_addresses,
-    )
 
     concept = BuildConcept(
         name="c",
@@ -345,9 +347,10 @@ def test_seed_addresses_inlined_left_via_joinkey_pair():
     no parent CTE), ``_seed_addresses`` must recover it from the ``cte``
     field on a ``CTEConceptPair`` — the "left" CTE is attached to the
     join-key pair instead of the join itself."""
+    from trilogy.core.optimizations.full_join_downgrade import _seed_addresses
+
     from trilogy.core.enums import JoinType
     from trilogy.core.models.execute import CTEConceptPair, Join
-    from trilogy.core.optimizations.full_join_downgrade import _seed_addresses
 
     left_concept = _build_concept("L_KEY")
     right_concept = _build_concept("R_KEY")
@@ -381,9 +384,10 @@ def test_seed_addresses_base_datasource_fallback():
     ``cte.source.base_datasource`` — the literal FROM-clause table.
     Without this branch, ``FROM table LEFT JOIN dim …`` chains never get
     a left side and the rule silently skips ``idx == 0``."""
+    from trilogy.core.optimizations.full_join_downgrade import _seed_addresses
+
     from trilogy.core.enums import JoinType
     from trilogy.core.models.execute import ConceptPair, Join
-    from trilogy.core.optimizations.full_join_downgrade import _seed_addresses
 
     base_concept = _build_concept("BASE_COL")
     right_concept = _build_concept("R_KEY")
@@ -416,9 +420,10 @@ def test_seed_addresses_returns_empty_when_no_fallback_resolves():
     """All four resolution paths fail: no explicit left, no eligible parent,
     no CTE-bearing joinkey_pair, no base datasource. Must return an empty
     set rather than raise — caller treats empty seed as "no left forced"."""
+    from trilogy.core.optimizations.full_join_downgrade import _seed_addresses
+
     from trilogy.core.enums import JoinType
     from trilogy.core.models.execute import ConceptPair, Join
-    from trilogy.core.optimizations.full_join_downgrade import _seed_addresses
 
     right_concept = _build_concept("R_KEY")
     right_cte = _build_cte("right", [right_concept])

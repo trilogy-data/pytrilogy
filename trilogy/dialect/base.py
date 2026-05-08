@@ -27,6 +27,7 @@ from trilogy.constants import (
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import (
     AddressType,
+    AggregateGroupingMode,
     ComparisonOperator,
     CreateMode,
     DatePart,
@@ -361,6 +362,8 @@ FUNCTION_MAP = {
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x, types: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x, types: f"count({x[0]})",
+    FunctionType.GROUPING: lambda x, types: f"grouping({','.join(x)})",
+    FunctionType.GROUPING_ID: lambda x, types: f"grouping_id({','.join(x)})",
     FunctionType.SUM: lambda x, types: f"sum({x[0]})",
     FunctionType.ARRAY_AGG: lambda x, types: f"array_agg({x[0]})",
     FunctionType.LENGTH: lambda x, types: f"length({x[0]})",
@@ -518,6 +521,19 @@ def safe_get_cte_value(
     )
 
 
+def get_grouped_aggregate_wrapper(
+    concept: BuildConcept,
+) -> BuildAggregateWrapper | None:
+    lineage = concept.lineage
+    if isinstance(lineage, BuildAggregateWrapper):
+        return lineage
+    if isinstance(lineage, BuildRowsetItem) and isinstance(
+        lineage.content.lineage, BuildAggregateWrapper
+    ):
+        return lineage.content.lineage
+    return None
+
+
 class BaseDialect:
     WINDOW_FUNCTION_MAP = WINDOW_FUNCTION_MAP
     FUNCTION_MAP = FUNCTION_MAP
@@ -530,6 +546,7 @@ class BaseDialect:
     DB_COLUMN_TYPE_MAP = DB_COLUMN_TYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
+    SUPPORTS_AGGREGATE_GROUPING_MODES = False
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
@@ -1234,12 +1251,103 @@ class BaseDialect:
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
+    def _get_aggregate_grouping(
+        self, cte: CTE | UnionCTE
+    ) -> tuple[AggregateGroupingMode, list[BuildConcept], list[list[BuildConcept]]]:
+        grouped = [
+            aggregate
+            for c in cte.output_columns
+            if (aggregate := get_grouped_aggregate_wrapper(c)) is not None
+            and aggregate.grouping != AggregateGroupingMode.STANDARD
+        ]
+        if not grouped:
+            return AggregateGroupingMode.STANDARD, [], []
+
+        first = grouped[0]
+        mode = first.grouping
+        by = first.by
+        grouping_sets = first.grouping_sets
+        by_addresses = [c.address for c in by]
+        grouping_set_addresses = [
+            [c.address for c in grouping_set] for grouping_set in grouping_sets
+        ]
+        for aggregate in grouped[1:]:
+            if aggregate.grouping != mode:
+                raise ValueError("Cannot mix aggregate grouping modes in one CTE")
+            if [c.address for c in aggregate.by] != by_addresses:
+                raise ValueError("Aggregate grouping dimensions must match in one CTE")
+            if [
+                [c.address for c in grouping_set]
+                for grouping_set in aggregate.grouping_sets
+            ] != grouping_set_addresses:
+                raise ValueError("Aggregate grouping sets must match in one CTE")
+        return mode, by, grouping_sets
+
+    def _render_grouping_concept(
+        self,
+        concept: BuildConcept,
+        cte: CTE | UnionCTE,
+        select_index: dict[str, int],
+        rendered_to_index: dict[str, int],
+    ) -> str:
+        if self.GROUP_MODE == GroupMode.AUTO:
+            return self.render_concept_sql(concept, cte, alias=False)
+        if concept.address in select_index:
+            return str(select_index[concept.address])
+        sql = self.render_concept_sql(concept, cte, alias=False)
+        existing_idx = rendered_to_index.get(sql)
+        if existing_idx is not None:
+            return str(existing_idx)
+        return sql
+
+    def _render_grouping_mode(
+        self,
+        cte: CTE | UnionCTE,
+        select_index: dict[str, int],
+    ) -> list[str] | None:
+        mode, by, grouping_sets = self._get_aggregate_grouping(cte)
+        if mode == AggregateGroupingMode.STANDARD:
+            return None
+        if not self.SUPPORTS_AGGREGATE_GROUPING_MODES:
+            raise NotImplementedError(
+                f"{self.__class__.__name__} does not support aggregate grouping mode {mode.value}"
+            )
+
+        rendered_to_index: dict[str, int] = {}
+        for addr, idx in select_index.items():
+            for c in cte.output_columns:
+                if c.address == addr:
+                    sql = self.render_concept_sql(c, cte, alias=False)
+                    rendered_to_index[sql] = idx
+                    break
+
+        def render_concepts(concepts: list[BuildConcept]) -> str:
+            return ", ".join(
+                self._render_grouping_concept(c, cte, select_index, rendered_to_index)
+                for c in concepts
+            )
+
+        if mode == AggregateGroupingMode.ROLLUP:
+            return [f"ROLLUP ({render_concepts(by)})"]
+        if mode == AggregateGroupingMode.CUBE:
+            return [f"CUBE ({render_concepts(by)})"]
+        if mode == AggregateGroupingMode.GROUPING_SETS:
+            rendered_sets = []
+            for grouping_set in grouping_sets:
+                rendered_sets.append(f"({render_concepts(grouping_set)})")
+            return [f"GROUPING SETS ({', '.join(rendered_sets)})"]
+        raise ValueError(f"Unsupported aggregate grouping mode {mode}")
+
     def render_cte_group_by(
         self, cte: CTE | UnionCTE, select_index: dict[str, int]
     ) -> Optional[list[str]]:
 
         if not cte.group_to_grain:
             return None
+
+        grouping_mode = self._render_grouping_mode(cte, select_index)
+        if grouping_mode is not None:
+            return grouping_mode
 
         if self.GROUP_MODE == GroupMode.AUTO:
             base = set(

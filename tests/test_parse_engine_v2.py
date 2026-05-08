@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from trilogy.constants import CONFIG, ParserBackend
-from trilogy.core.enums import DatasourceState
+from trilogy.core.enums import AggregateGroupingMode, DatasourceState
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.models.environment import (
     DictImportResolver,
@@ -382,6 +382,29 @@ def test_parse_error_does_not_mention_pest() -> None:
             assert (
                 "pest" not in message.lower()
             ), f"{backend.value} error leaked 'pest': {message!r}"
+
+
+def test_aggregate_grouping_modes_parse_and_render() -> None:
+    query = """
+key a int;
+key b int;
+key x int;
+select
+    a,
+    b,
+    sum(x) by rollup a, b as sx,
+    sum(x) by grouping sets (a, b), (a), () as sx_sets;
+"""
+    for backend in (ParserBackend.PEST, ParserBackend.LARK):
+        with _using_backend(backend):
+            env, output = parse_text(query, Environment())
+        rollup = env.concepts["local.sx"].lineage
+        grouping_sets = env.concepts["local.sx_sets"].lineage
+        assert rollup.grouping == AggregateGroupingMode.ROLLUP
+        assert grouping_sets.grouping == AggregateGroupingMode.GROUPING_SETS
+        rendered = str(output[-1])
+        assert "sum(x) by rollup a, b -> sx" in rendered
+        assert "sum(x) by grouping sets (a, b), (a), () -> sx_sets" in rendered
 
 
 def test_lark_parse_error_keeps_rich_error_codes() -> None:

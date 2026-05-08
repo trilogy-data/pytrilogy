@@ -1700,3 +1700,82 @@ query '''select 2024 as year_via_func, 2 as x_count union all select 2025, 1''';
 
     sql_attr = executor.generate_sql("select x_date.year, x_count;")[-1]
     assert "events_by_year" in sql_attr, sql_attr
+
+
+def test_duckdb_aggregate_grouping_modes_render():
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text("""
+key a int;
+key b int;
+property <a, b>.x int;
+datasource test_data (
+    a: a,
+    b: b,
+    x: x
+)
+grain (a, b)
+query '''
+    select 1 as a, 1 as b, 10 as x
+    union all
+    select 1 as a, 2 as b, 20 as x
+''';
+""")
+
+    rollup_sql = executor.generate_sql("select a, b, sum(x) by rollup a, b as sx;")[-1]
+    cube_sql = executor.generate_sql("select a, b, sum(x) by cube a, b as sx;")[-1]
+    grouping_sets_sql = executor.generate_sql(
+        "select a, b, sum(x) by grouping sets (a, b), (a), () as sx;"
+    )[-1]
+
+    assert "GROUP BY" in rollup_sql
+    assert "ROLLUP (1, 2)" in rollup_sql
+    assert "CUBE (1, 2)" in cube_sql
+    assert "GROUPING SETS ((1, 2), (1), ())" in grouping_sets_sql
+
+
+def test_duckdb_grouping_functions_with_rollup():
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text("""
+key a int;
+key b int?;
+property <a, b>.x int;
+datasource test_data (
+    a: a,
+    b: b,
+    x: x
+)
+grain (a, b)
+query '''
+    select 1 as a, 1 as b, 10 as x
+    union all
+    select 1 as a, 2 as b, 20 as x
+''';
+""")
+
+    sql = executor.generate_sql("""
+SELECT
+    a,
+    b,
+    sum(x) by rollup a, b as sx,
+    grouping(a) by rollup a, b as ga,
+    grouping_id(a, b) by rollup a, b as gid
+ORDER BY
+    gid asc,
+    a asc nulls first,
+    b asc nulls first;
+""")[-1]
+    results = list(executor.execute_raw_sql(sql).fetchall())
+
+    assert "ROLLUP" in sql
+    assert "grouping(" in sql
+    assert "grouping_id(" in sql
+    assert results == [
+        (1, 1, 10, 0, 0),
+        (1, 2, 20, 0, 0),
+        (1, None, 30, 0, 1),
+        (None, None, 30, 1, 3),
+    ]

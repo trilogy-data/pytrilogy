@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import FunctionType
+from trilogy.core.enums import AggregateGroupingMode, FunctionType
 from trilogy.core.internal import ALL_ROWS_CONCEPT
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -235,6 +235,11 @@ def gen_group_node(
         environment=environment,
         parents=parents,
         depth=depth,
+        force_group=(
+            concept.is_aggregate
+            and isinstance(concept.lineage, BuildAggregateWrapper)
+            and concept.lineage.grouping != AggregateGroupingMode.STANDARD
+        ),
         preexisting_conditions=conditions.conditional if conditions else None,
         required_outputs=parent_concepts,
     )

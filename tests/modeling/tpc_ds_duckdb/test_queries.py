@@ -546,6 +546,11 @@ def test_seventy_one(engine):
     assert len(query) < 5500, query
 
 
+def test_seventy_two(engine):
+    query = run_query(engine, 72)
+    assert len(query) < 8000, query
+
+
 def test_seventy_three(engine):
     query = run_query(engine, 73)
     assert len(query) < 7500, query
@@ -583,7 +588,8 @@ def test_eighty_three(engine):
 
 
 @pytest.mark.skip(
-    reason="DuckDB OOMs/hangs running the PRAGMA tpcds(85) comparison query"
+    reason="DuckDB OOMs/hangs running the PRAGMA tpcds(85) comparison query on some "
+    "machines. If observed, switch the fixture to engine_sf01 (sf=0.1)."
 )
 def test_eighty_five(engine):
     query = run_query(engine, 85)

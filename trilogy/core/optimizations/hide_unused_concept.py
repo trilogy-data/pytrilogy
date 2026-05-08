@@ -16,6 +16,7 @@ class HideUnusedConcepts(OptimizationRule):
         from trilogy.dialect.base import BaseDialect
 
         renderer = BaseDialect()
+        renderer.SUPPORTS_AGGREGATE_GROUPING_MODES = True
         children = inverse_map.get(cte.name, [])
         if not children:
             return False, None

@@ -24,44 +24,11 @@ WHERE
     AND sales.promotion.channel_tv = 'N'
     AND sales.channel_dim_text_id is not null
 SELECT
-    channel_label as channel_a,
-    id_label as id_a,
-    sum(sales.ext_sales_price) as sales_a,
-    sum(coalesce(sales.return_amount, 0)) as returns_a,
-    sum(profit_minus_loss) as profit_a,
-MERGE
-WHERE
-    sales.date.date >= cast('2000-08-23' as date)
-    AND sales.date.date <= cast('2000-09-22' as date)
-    AND sales.item.current_price > 50
-    AND sales.promotion.channel_tv = 'N'
-    AND sales.channel_dim_text_id is not null
-SELECT
-    channel_label as channel_b,
-    cast(null as string) as null_id_b,
-    sum(sales.ext_sales_price) as sales_b,
-    sum(coalesce(sales.return_amount, 0)) as returns_b,
-    sum(profit_minus_loss) as profit_b,
-MERGE
-WHERE
-    sales.date.date >= cast('2000-08-23' as date)
-    AND sales.date.date <= cast('2000-09-22' as date)
-    AND sales.item.current_price > 50
-    AND sales.promotion.channel_tv = 'N'
-    AND sales.channel_dim_text_id is not null
-SELECT
-    cast(null as string) as null_channel_c,
-    cast(null as string) as null_id_c,
-    sum(sales.ext_sales_price) as sales_c,
-    sum(coalesce(sales.return_amount, 0)) as returns_c,
-    sum(profit_minus_loss) as profit_c,
-align
-    channel: channel_a, channel_b, null_channel_c
-    AND id: id_a, null_id_b, null_id_c
-derive
-    coalesce(q80_results.sales_a, q80_results.sales_b, q80_results.sales_c) -> sales_total,
-    coalesce(q80_results.returns_a, q80_results.returns_b, q80_results.returns_c) -> returns_total,
-    coalesce(q80_results.profit_a, q80_results.profit_b, q80_results.profit_c) -> profit_total
+    channel_label as channel,
+    id_label as id,
+    sum(sales.ext_sales_price) by rollup channel_label, id_label as sales_total,
+    sum(coalesce(sales.return_amount, 0)) by rollup channel_label, id_label as returns_total,
+    sum(profit_minus_loss) by rollup channel_label, id_label as profit_total,
 ;
 
 SELECT
