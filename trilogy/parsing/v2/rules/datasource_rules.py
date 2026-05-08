@@ -346,6 +346,14 @@ def _resolve_const_paths(
 def _process_file_path(context: RuleContext, ipath: str) -> tuple[str, str, bool]:
     from trilogy.core.models.environment import DictImportResolver
 
+    resolver = context.environment.config.import_resolver
+    # Literal-path match in data_files: caller has explicitly registered this
+    # path (e.g. a basename for a sandboxed client like duckdb-wasm), so skip
+    # working_path resolution and preserve ipath verbatim in the address.
+    if isinstance(resolver, DictImportResolver) and ipath in resolver.data_files:
+        suffix = "." + ipath.rsplit(".", 1)[-1] if "." in ipath else ""
+        return ipath, suffix, True
+
     is_cloud = ipath.startswith(REMOTE_PREFIXES)
     is_glob = any(c in ipath for c in "*?[")
     if is_cloud:
@@ -357,7 +365,6 @@ def _process_file_path(context: RuleContext, ipath: str) -> tuple[str, str, bool
             path = Path(context.environment.working_path) / path
         base = str(path.resolve().absolute())
         suffix = path.suffix
-    resolver = context.environment.config.import_resolver
     in_resolver = isinstance(resolver, DictImportResolver) and resolver.has_data_file(
         ipath, base
     )

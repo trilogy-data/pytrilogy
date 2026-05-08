@@ -175,6 +175,35 @@ file `./virtual.csv`;
     assert "virtual_ds" in build_env.datasources
 
 
+def test_parse_text_v2_datasource_data_file_preserves_literal_address() -> None:
+    """A data_files key that matches the literal `file '…'` path is preserved
+    verbatim in the address — no working_path resolution. Use case: sandboxed
+    clients (e.g. duckdb-wasm) where rendered SQL must reference the basename
+    the client registered, not an absolute path on the parsing host."""
+    env = Environment(
+        config=EnvironmentConfig(
+            import_resolver=DictImportResolver(
+                data_files={"ratings.csv": b""},
+            )
+        )
+    )
+    parse_text(
+        """
+key id int;
+datasource ratings_ds (
+    id: id,
+)
+grain (id)
+file `ratings.csv`;
+""",
+        env,
+    )
+    ds = env.datasources["local.ratings_ds"]
+    assert ds.status == DatasourceState.PUBLISHED
+    assert ds.address.location == "ratings.csv"
+    assert ds.address.exists is True
+
+
 def test_parse_text_v2_datasource_data_file_missing_marks_unpopulated() -> None:
     env = Environment(config=EnvironmentConfig(import_resolver=DictImportResolver()))
     parse_text(
