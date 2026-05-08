@@ -312,6 +312,11 @@ def test_thirty_eight(engine):
     _ = run_query(engine, 38)
 
 
+def test_thirty_six(engine):
+    query = run_query(engine, 36)
+    assert len(query) < 8000, query
+
+
 def test_thirty_seven(engine):
     query = run_query(engine, 37)
     assert len(query) < 2200, query
@@ -472,6 +477,11 @@ def test_fifty_eight(engine):
 def test_sixty(engine):
     query = run_query(engine, 60)
     assert len(query) < 5000, query
+
+
+def test_sixty_one(engine):
+    query = run_query(engine, 61)
+    assert len(query) < 8000, query
 
 
 def test_sixty_two(engine):

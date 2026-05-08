@@ -237,7 +237,10 @@ address baz;
     [
         (False, False, False, False, JoinType.INNER),
         (True, False, False, False, JoinType.RIGHT_OUTER),
-        (False, True, False, False, JoinType.RIGHT_OUTER),
+        # left is nullable, not partial — preserve left's NULL-key rows; RIGHT_OUTER
+        # would drop them. LEFT_OUTER is the mirror of the (False,False,True,False)
+        # partial-right case above.
+        (False, True, False, False, JoinType.LEFT_OUTER),
         (False, False, True, False, JoinType.LEFT_OUTER),
         # right is nullable, left is not — LEFT_OUTER would drop right's NULL
         # rows since the non-nullable left has nothing to match them. Upgrade
@@ -245,7 +248,10 @@ address baz;
         (False, False, False, True, JoinType.FULL),
         (True, False, True, False, JoinType.FULL),
         (False, True, False, True, JoinType.FULL),
-        (True, True, False, False, JoinType.RIGHT_OUTER),
+        # left is BOTH partial and nullable — partial wants RIGHT_OUTER (preserve
+        # the complete right), nullable wants LEFT_OUTER (preserve NULL-key rows).
+        # FULL satisfies both.
+        (True, True, False, False, JoinType.FULL),
         (False, False, True, True, JoinType.FULL),
         (True, True, True, True, JoinType.FULL),
     ],

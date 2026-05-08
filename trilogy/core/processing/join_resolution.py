@@ -154,16 +154,23 @@ def get_join_type(
     if not left_complete and not right_complete:
         return JoinType.FULL
     elif not left_complete and right_complete:
+        # Differentiate "partial" (left's row set is a subset of expected) from
+        # "nullable" (left has all its rows but the join key can be NULL).
+        # - partial-only: preserve the complete right (RIGHT_OUTER).
+        # - nullable-only: preserve left's NULL-key rows (LEFT_OUTER). RIGHT_OUTER
+        #   would drop them since NULL doesn't match anything on the right.
+        # - both: FULL preserves the complete right AND left's NULL-key rows.
+        if left_is_nullable and left_is_partial:
+            return JoinType.FULL
+        if left_is_nullable:
+            return JoinType.LEFT_OUTER
         return JoinType.RIGHT_OUTER
     elif not right_complete and left_complete:
         # LEFT_OUTER would preserve the complete left and drop the right's
         # unmatched rows. With null-aware equality NULL only matches NULL, so
         # if the right has nulls on the join key the non-nullable left has
         # nothing to match them against — they'd land on the dropped side.
-        # Upgrade to FULL so they survive. (RIGHT_OUTER above intentionally
-        # stays unchanged: it's already preserving the side with the data
-        # most queries want to keep, and switching it would be a much larger
-        # behavioural change.)
+        # Upgrade to FULL so they survive.
         if right_is_nullable:
             return JoinType.FULL
         return JoinType.LEFT_OUTER

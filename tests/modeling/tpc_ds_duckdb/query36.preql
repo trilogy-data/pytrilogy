@@ -1,0 +1,66 @@
+import store_sales as ss;
+
+# Per-(category, class) gross margin for L1 rank
+auto class_profit <- sum(ss.net_profit ? ss.date.year = 2001 and ss.store.state = 'TN')
+    by ss.item.category, ss.item.class;
+auto class_sales <- sum(ss.ext_sales_price ? ss.date.year = 2001 and ss.store.state = 'TN')
+    by ss.item.category, ss.item.class;
+auto class_gross_margin <- cast(class_profit as numeric(15,4)) / cast(class_sales as numeric(15,4));
+
+# Per-category gross margin for L2 rank
+auto category_profit <- sum(ss.net_profit ? ss.date.year = 2001 and ss.store.state = 'TN')
+    by ss.item.category;
+auto category_sales <- sum(ss.ext_sales_price ? ss.date.year = 2001 and ss.store.state = 'TN')
+    by ss.item.category;
+auto category_gross_margin <- cast(category_profit as numeric(15,4)) / cast(category_sales as numeric(15,4));
+
+with q36_results as
+# L1: detail (cat, class), lochierarchy=0
+WHERE
+    ss.date.year = 2001 and ss.store.state = 'TN'
+SELECT
+    ss.item.category as category_a,
+    ss.item.class as class_a,
+    0 as lochierarchy_a,
+    class_gross_margin as gm_a,
+    rank ss.item.class over ss.item.category by class_gross_margin asc as rank_a,
+MERGE
+# L2: roll up class, keep cat, lochierarchy=1
+WHERE
+    ss.date.year = 2001 and ss.store.state = 'TN'
+SELECT
+    ss.item.category as category_b,
+    cast(null as string) as null_class_b,
+    1 as lochierarchy_b,
+    category_gross_margin as gm_b,
+    rank ss.item.category by category_gross_margin asc as rank_b,
+MERGE
+# L3: grand total, lochierarchy=2
+WHERE
+    ss.date.year = 2001 and ss.store.state = 'TN'
+SELECT
+    cast(null as string) as null_category_c,
+    cast(null as string) as null_class_c,
+    2 as lochierarchy_c,
+    cast(sum(ss.net_profit) as numeric(15,4)) / cast(sum(ss.ext_sales_price) as numeric(15,4)) as gm_c,
+    1 as rank_c,
+align
+    i_category: category_a, category_b, null_category_c
+    AND i_class: class_a, null_class_b, null_class_c
+    AND lochierarchy: lochierarchy_a, lochierarchy_b, lochierarchy_c
+derive
+    coalesce(q36_results.gm_a, q36_results.gm_b, q36_results.gm_c) -> gross_margin,
+    coalesce(q36_results.rank_a, q36_results.rank_b, q36_results.rank_c) -> rank_within_parent
+;
+
+SELECT
+    q36_results.gross_margin,
+    q36_results.i_category,
+    q36_results.i_class,
+    q36_results.lochierarchy,
+    q36_results.rank_within_parent,
+ORDER BY
+    q36_results.lochierarchy desc nulls first,
+    CASE WHEN q36_results.lochierarchy = 0 THEN q36_results.i_category ELSE null END asc nulls first,
+    q36_results.rank_within_parent asc nulls first
+LIMIT 100;
