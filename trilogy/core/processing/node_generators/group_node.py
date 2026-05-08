@@ -30,6 +30,32 @@ def _can_use_grouped_materialized_source(concept: BuildConcept) -> bool:
     return concept.lineage.function.operator in (FunctionType.COUNT, FunctionType.SUM)
 
 
+def _shared_nonstandard_grouping(
+    a: BuildConcept, b: BuildConcept
+) -> bool:
+    """Two aggregates with the same non-standard grouping mode and same by-list
+    must share a GROUP BY clause (ROLLUP/CUBE/GROUPING SETS) and therefore must
+    co-locate in a single group node — even if their per-arg parent grains
+    differ."""
+    if not isinstance(a.lineage, BuildAggregateWrapper):
+        return False
+    if not isinstance(b.lineage, BuildAggregateWrapper):
+        return False
+    if a.lineage.grouping == AggregateGroupingMode.STANDARD:
+        return False
+    if a.lineage.grouping != b.lineage.grouping:
+        return False
+    if [c.address for c in a.lineage.by] != [c.address for c in b.lineage.by]:
+        return False
+    if [
+        [c.address for c in gs] for gs in a.lineage.grouping_sets
+    ] != [
+        [c.address for c in gs] for gs in b.lineage.grouping_sets
+    ]:
+        return False
+    return True
+
+
 def get_aggregate_grain(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> BuildGrain:
@@ -117,7 +143,9 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                     )
-                elif comp_grain == build_grain_parents:
+                elif comp_grain == build_grain_parents or _shared_nonstandard_grouping(
+                    concept, possible_agg
+                ):
                     extra = [x for x in agg_parents if x.address not in parent_concepts]
                     parent_concepts += extra
                     output_concepts.append(possible_agg)
@@ -153,7 +181,9 @@ def gen_group_node(
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                 )
-            elif comp_grain == get_aggregate_grain(concept, environment):
+            elif comp_grain == get_aggregate_grain(
+                concept, environment
+            ) or _shared_nonstandard_grouping(concept, possible_agg):
                 extra = [x for x in agg_parents if x.address not in parent_concepts]
                 parent_concepts += extra
                 output_concepts.append(possible_agg)

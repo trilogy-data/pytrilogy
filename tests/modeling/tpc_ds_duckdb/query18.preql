@@ -5,8 +5,6 @@ import catalog_sales as cs;
 auto row_birth_year <- group cs.bill_customer.birth_year by cs.order_number, cs.item.id;
 auto row_dep_count <- group cs.bill_customer_demographic.dependent_count by cs.order_number, cs.item.id;
 
-with q18_results as
-# L0: detail (item_id, country, state, county) — full
 WHERE
     cs.bill_customer_demographic.gender = 'F'
     AND cs.bill_customer_demographic.education_status = 'Unknown'
@@ -15,131 +13,55 @@ WHERE
     AND cs.date.year = 1998
     AND cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
 SELECT
-    cs.item.name as item_id_a,
-    cs.bill_customer.address.country as country_a,
-    cs.bill_customer.address.state as state_a,
-    cs.bill_customer.address.county as county_a,
-    avg(cast(cs.quantity as numeric(12, 2))) as agg1_a,
-    avg(cast(cs.list_price as numeric(12, 2))) as agg2_a,
-    avg(cast(cs.coupon_amt as numeric(12, 2))) as agg3_a,
-    avg(cast(cs.sales_price as numeric(12, 2))) as agg4_a,
-    avg(cast(cs.net_profit as numeric(12, 2))) as agg5_a,
-    avg(cast(row_birth_year as numeric(12, 2))) as agg6_a,
-    avg(cast(row_dep_count as numeric(12, 2))) as agg7_a,
-MERGE
-# L1: (item_id, country, state) — drop county
-WHERE
-    cs.bill_customer_demographic.gender = 'F'
-    AND cs.bill_customer_demographic.education_status = 'Unknown'
-    AND cs.bill_customer.demographics.id is not null
-    AND cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
-    AND cs.date.year = 1998
-    AND cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
-SELECT
-    cs.item.name as item_id_b,
-    cs.bill_customer.address.country as country_b,
-    cs.bill_customer.address.state as state_b,
-    cast(null as string) as null_county_b,
-    avg(cast(cs.quantity as numeric(12, 2))) as agg1_b,
-    avg(cast(cs.list_price as numeric(12, 2))) as agg2_b,
-    avg(cast(cs.coupon_amt as numeric(12, 2))) as agg3_b,
-    avg(cast(cs.sales_price as numeric(12, 2))) as agg4_b,
-    avg(cast(cs.net_profit as numeric(12, 2))) as agg5_b,
-    avg(cast(row_birth_year as numeric(12, 2))) as agg6_b,
-    avg(cast(row_dep_count as numeric(12, 2))) as agg7_b,
-MERGE
-# L2: (item_id, country) — drop state, county
-WHERE
-    cs.bill_customer_demographic.gender = 'F'
-    AND cs.bill_customer_demographic.education_status = 'Unknown'
-    AND cs.bill_customer.demographics.id is not null
-    AND cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
-    AND cs.date.year = 1998
-    AND cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
-SELECT
-    cs.item.name as item_id_c,
-    cs.bill_customer.address.country as country_c,
-    cast(null as string) as null_state_c,
-    cast(null as string) as null_county_c,
-    avg(cast(cs.quantity as numeric(12, 2))) as agg1_c,
-    avg(cast(cs.list_price as numeric(12, 2))) as agg2_c,
-    avg(cast(cs.coupon_amt as numeric(12, 2))) as agg3_c,
-    avg(cast(cs.sales_price as numeric(12, 2))) as agg4_c,
-    avg(cast(cs.net_profit as numeric(12, 2))) as agg5_c,
-    avg(cast(row_birth_year as numeric(12, 2))) as agg6_c,
-    avg(cast(row_dep_count as numeric(12, 2))) as agg7_c,
-MERGE
-# L3: (item_id) — drop country, state, county
-WHERE
-    cs.bill_customer_demographic.gender = 'F'
-    AND cs.bill_customer_demographic.education_status = 'Unknown'
-    AND cs.bill_customer.demographics.id is not null
-    AND cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
-    AND cs.date.year = 1998
-    AND cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
-SELECT
-    cs.item.name as item_id_d,
-    cast(null as string) as null_country_d,
-    cast(null as string) as null_state_d,
-    cast(null as string) as null_county_d,
-    avg(cast(cs.quantity as numeric(12, 2))) as agg1_d,
-    avg(cast(cs.list_price as numeric(12, 2))) as agg2_d,
-    avg(cast(cs.coupon_amt as numeric(12, 2))) as agg3_d,
-    avg(cast(cs.sales_price as numeric(12, 2))) as agg4_d,
-    avg(cast(cs.net_profit as numeric(12, 2))) as agg5_d,
-    avg(cast(row_birth_year as numeric(12, 2))) as agg6_d,
-    avg(cast(row_dep_count as numeric(12, 2))) as agg7_d,
-MERGE
-# L4: grand total
-WHERE
-    cs.bill_customer_demographic.gender = 'F'
-    AND cs.bill_customer_demographic.education_status = 'Unknown'
-    AND cs.bill_customer.demographics.id is not null
-    AND cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
-    AND cs.date.year = 1998
-    AND cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
-SELECT
-    cast(null as string) as null_item_id_e,
-    cast(null as string) as null_country_e,
-    cast(null as string) as null_state_e,
-    cast(null as string) as null_county_e,
-    avg(cast(cs.quantity as numeric(12, 2))) as agg1_e,
-    avg(cast(cs.list_price as numeric(12, 2))) as agg2_e,
-    avg(cast(cs.coupon_amt as numeric(12, 2))) as agg3_e,
-    avg(cast(cs.sales_price as numeric(12, 2))) as agg4_e,
-    avg(cast(cs.net_profit as numeric(12, 2))) as agg5_e,
-    avg(cast(row_birth_year as numeric(12, 2))) as agg6_e,
-    avg(cast(row_dep_count as numeric(12, 2))) as agg7_e,
-align
-    i_item_id: item_id_a, item_id_b, item_id_c, item_id_d, null_item_id_e
-    AND ca_country: country_a, country_b, country_c, null_country_d, null_country_e
-    AND ca_state: state_a, state_b, null_state_c, null_state_d, null_state_e
-    AND ca_county: county_a, null_county_b, null_county_c, null_county_d, null_county_e
-derive
-    coalesce(q18_results.agg1_a, q18_results.agg1_b, q18_results.agg1_c, q18_results.agg1_d, q18_results.agg1_e) -> agg1,
-    coalesce(q18_results.agg2_a, q18_results.agg2_b, q18_results.agg2_c, q18_results.agg2_d, q18_results.agg2_e) -> agg2,
-    coalesce(q18_results.agg3_a, q18_results.agg3_b, q18_results.agg3_c, q18_results.agg3_d, q18_results.agg3_e) -> agg3,
-    coalesce(q18_results.agg4_a, q18_results.agg4_b, q18_results.agg4_c, q18_results.agg4_d, q18_results.agg4_e) -> agg4,
-    coalesce(q18_results.agg5_a, q18_results.agg5_b, q18_results.agg5_c, q18_results.agg5_d, q18_results.agg5_e) -> agg5,
-    coalesce(q18_results.agg6_a, q18_results.agg6_b, q18_results.agg6_c, q18_results.agg6_d, q18_results.agg6_e) -> agg6,
-    coalesce(q18_results.agg7_a, q18_results.agg7_b, q18_results.agg7_c, q18_results.agg7_d, q18_results.agg7_e) -> agg7
-;
-
-SELECT
-    q18_results.i_item_id,
-    q18_results.ca_country,
-    q18_results.ca_state,
-    q18_results.ca_county,
-    q18_results.agg1,
-    q18_results.agg2,
-    q18_results.agg3,
-    q18_results.agg4,
-    q18_results.agg5,
-    q18_results.agg6,
-    q18_results.agg7,
+    cs.item.name,
+    cs.bill_customer.address.country,
+    cs.bill_customer.address.state,
+    cs.bill_customer.address.county,
+    avg(cast(cs.quantity as numeric(12, 2))) by rollup
+        cs.item.name,
+        cs.bill_customer.address.country,
+        cs.bill_customer.address.state,
+        cs.bill_customer.address.county
+        as agg1,
+    avg(cast(cs.list_price as numeric(12, 2))) by rollup
+        cs.item.name,
+        cs.bill_customer.address.country,
+        cs.bill_customer.address.state,
+        cs.bill_customer.address.county
+        as agg2,
+    avg(cast(cs.coupon_amt as numeric(12, 2))) by rollup
+        cs.item.name,
+        cs.bill_customer.address.country,
+        cs.bill_customer.address.state,
+        cs.bill_customer.address.county
+        as agg3,
+    avg(cast(cs.sales_price as numeric(12, 2))) by rollup
+        cs.item.name,
+        cs.bill_customer.address.country,
+        cs.bill_customer.address.state,
+        cs.bill_customer.address.county
+        as agg4,
+    avg(cast(cs.net_profit as numeric(12, 2))) by rollup
+        cs.item.name,
+        cs.bill_customer.address.country,
+        cs.bill_customer.address.state,
+        cs.bill_customer.address.county
+        as agg5,
+    avg(cast(row_birth_year as numeric(12, 2))) by rollup
+        cs.item.name,
+        cs.bill_customer.address.country,
+        cs.bill_customer.address.state,
+        cs.bill_customer.address.county
+        as agg6,
+    avg(cast(row_dep_count as numeric(12, 2))) by rollup
+        cs.item.name,
+        cs.bill_customer.address.country,
+        cs.bill_customer.address.state,
+        cs.bill_customer.address.county
+        as agg7,
 ORDER BY
-    q18_results.ca_country asc nulls first,
-    q18_results.ca_state asc nulls first,
-    q18_results.ca_county asc nulls first,
-    q18_results.i_item_id asc nulls first
+    cs.bill_customer.address.country asc nulls first,
+    cs.bill_customer.address.state asc nulls first,
+    cs.bill_customer.address.county asc nulls first,
+    cs.item.name asc nulls first
 LIMIT 100;
