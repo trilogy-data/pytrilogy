@@ -251,9 +251,10 @@ def test_cte_addresses_none_returns_empty():
     assert _cte_addresses(None) == set()
 
 
-def test_previous_left_skips_non_join_first_and_prior():
-    """``_previous_left`` must short-circuit when the relevant join slot is an
-    UnnestJoin (or other non-Join entry) rather than a Join."""
+def test_left_address_helpers_skip_non_join_entries():
+    """``_seed_addresses`` and ``_accumulated_left_addresses`` must
+    short-circuit when the relevant join slot is an UnnestJoin (or other
+    non-Join entry) rather than a Join."""
     from trilogy.core.enums import Purpose
     from trilogy.core.models.build import (
         BuildColumnAssignment,
@@ -263,7 +264,10 @@ def test_previous_left_skips_non_join_first_and_prior():
     )
     from trilogy.core.models.core import DataType
     from trilogy.core.models.execute import CTE, InstantiatedUnnestJoin
-    from trilogy.core.optimizations.full_join_downgrade import _previous_left
+    from trilogy.core.optimizations.full_join_downgrade import (
+        _accumulated_left_addresses,
+        _seed_addresses,
+    )
 
     concept = BuildConcept(
         name="c",
@@ -286,10 +290,11 @@ def test_previous_left_skips_non_join_first_and_prior():
 
     unnest = InstantiatedUnnestJoin(object_to_unnest=concept, alias="u")
 
-    # idx == 0 with an InstantiatedUnnestJoin as the first join → returns None
+    # First "join" slot is an UnnestJoin → no seed can be derived from it.
     cte.joins = [unnest]
-    assert _previous_left(cte, 0) is None
+    assert _seed_addresses(cte) == set()
 
-    # idx > 0 where the prior join is not a Join → returns None
+    # idx > 0 with a non-Join prior contributes nothing to the accumulated
+    # left, and the (still non-Join) first slot gives no seed either.
     cte.joins = [unnest, unnest]
-    assert _previous_left(cte, 1) is None
+    assert _accumulated_left_addresses(cte, 1) == set()

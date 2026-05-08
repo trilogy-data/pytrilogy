@@ -1,5 +1,5 @@
 query_id = "88"
-gen_length = 3856
+gen_length = 3843
 generated_sql = """
 
 WITH 
@@ -14,8 +14,8 @@ SELECT
     count(CASE WHEN \"store_sales_time_time\".\"T_HOUR\" = 9 and \"store_sales_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_time_time\".\"T_MINUTE\" < 30 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_2910789853377884\",
     count(CASE WHEN \"store_sales_time_time\".\"T_HOUR\" = 9 and \"store_sales_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_time_time\".\"T_MINUTE\" < 60 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_2219364601882723\"
 FROM
-    \"memory\".\"time_dim\" as \"store_sales_time_time\"
-    FULL JOIN \"memory\".\"store_sales\" as \"store_sales_store_sales\" on \"store_sales_time_time\".\"T_TIME_SK\" is not distinct from \"store_sales_store_sales\".\"SS_SOLD_TIME_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"store_sales_time_time\" on \"store_sales_store_sales\".\"SS_SOLD_TIME_SK\" = \"store_sales_time_time\".\"T_TIME_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     LEFT OUTER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE

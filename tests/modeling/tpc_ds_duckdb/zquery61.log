@@ -1,5 +1,5 @@
 query_id = "61"
-gen_length = 3503
+gen_length = 3455
 generated_sql = """
 
 WITH 
@@ -10,8 +10,8 @@ SELECT
     \"ss_promotion_promotion\".\"P_CHANNEL_TV\" as \"ss_promotion_channel_tv\",
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
 FROM
-    \"memory\".\"date_dim\" as \"ss_date_date\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
     LEFT OUTER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"
@@ -24,8 +24,8 @@ vacuous as (
 SELECT
     sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total\"
 FROM
-    \"memory\".\"date_dim\" as \"ss_date_date\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
     LEFT OUTER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"

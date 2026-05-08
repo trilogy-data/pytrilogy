@@ -1,11 +1,11 @@
 query_id = "48"
-gen_length = 2551
+gen_length = 2527
 generated_sql = """
 SELECT
     sum(\"store_sales_store_sales\".\"SS_QUANTITY\") as \"total_quantity\"
 FROM
-    \"memory\".\"date_dim\" as \"store_sales_date_date\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"store_sales_store_sales\" on \"store_sales_date_date\".\"D_DATE_SK\" is not distinct from \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_address\" as \"store_sales_sale_address_customer_address\" on \"store_sales_store_sales\".\"SS_ADDR_SK\" = \"store_sales_sale_address_customer_address\".\"CA_ADDRESS_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE

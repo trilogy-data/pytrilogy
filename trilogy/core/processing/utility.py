@@ -120,9 +120,22 @@ def find_nullable_concepts(
         for x in datasources
         if isinstance(x, (BuildDatasource, QueryDatasource))
     }
-    # pre-build address sets for O(1) lookup in inner loops
+
+    # pre-build address sets for O(1) lookup in inner loops. Include each
+    # nullable concept's pseudonyms so a column whose ``Modifier.NULLABLE``
+    # only sits on the pre-merge address (e.g. ``store_sales.date.id``) is
+    # still detected when the caller looks it up under the merged target
+    # (``date.id``). Without this, ``MERGE store_sales.date.* into ~date.*``
+    # would silently strip nullability off the merged join key.
+    def _expanded_nullable_addrs(ds) -> set[str]:
+        out: set[str] = set()
+        for c in ds.nullable_concepts:
+            out.add(c.address)
+            out.update(c.pseudonyms)
+        return out
+
     nullable_addrs: dict[str, set[str]] = {
-        ds.identifier: {c.address for c in ds.nullable_concepts}
+        ds.identifier: _expanded_nullable_addrs(ds)
         for ds in datasources
         if isinstance(ds, (BuildDatasource, QueryDatasource))
     }

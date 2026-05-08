@@ -1,11 +1,11 @@
 query_id = "96"
-gen_length = 1022
+gen_length = 998
 generated_sql = """
 SELECT
     count((cast(\"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as string) || '-' || cast(\"store_sales_store_sales\".\"SS_ITEM_SK\" as string))) as \"ct\"
 FROM
-    \"memory\".\"time_dim\" as \"store_sales_time_time\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"store_sales_store_sales\" on \"store_sales_time_time\".\"T_TIME_SK\" is not distinct from \"store_sales_store_sales\".\"SS_SOLD_TIME_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"time_dim\" as \"store_sales_time_time\" on \"store_sales_store_sales\".\"SS_SOLD_TIME_SK\" = \"store_sales_time_time\".\"T_TIME_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE

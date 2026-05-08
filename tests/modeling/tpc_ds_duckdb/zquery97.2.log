@@ -1,5 +1,5 @@
 query_id = "97.2"
-gen_length = 2949
+gen_length = 2901
 generated_sql = """
 
 WITH 
@@ -32,8 +32,8 @@ SELECT
     \"cooperative\".\"store_sales_item_id\" as \"item_id\",
     \"cooperative\".\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
-    \"memory\".\"date_dim\" as \"store_sales_date_date\"
-    LEFT OUTER JOIN \"cooperative\" on \"store_sales_date_date\".\"D_DATE_SK\" is not distinct from \"cooperative\".\"store_sales_date_id\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"cooperative\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
@@ -49,8 +49,8 @@ SELECT
     \"quizzical\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     \"quizzical\".\"catalog_sales_item_id\" as \"item_id\"
 FROM
-    \"memory\".\"date_dim\" as \"catalog_sales_date_date\"
-    LEFT OUTER JOIN \"quizzical\" on \"catalog_sales_date_date\".\"D_DATE_SK\" is not distinct from \"quizzical\".\"catalog_sales_date_id\"
+    \"quizzical\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"catalog_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 

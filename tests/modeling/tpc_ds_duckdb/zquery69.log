@@ -1,5 +1,5 @@
 query_id = "69"
-gen_length = 4628
+gen_length = 4556
 generated_sql = """
 
 WITH 
@@ -34,8 +34,8 @@ sparkling as (
 SELECT
     \"concerned\".\"web_sales_customer_id\" as \"web_buyers\"
 FROM
-    \"memory\".\"date_dim\" as \"web_sales_date_date\"
-    LEFT OUTER JOIN \"concerned\" on \"web_sales_date_date\".\"D_DATE_SK\" is not distinct from \"concerned\".\"web_sales_date_id\"
+    \"concerned\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"concerned\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"web_sales_date_date\".\"D_YEAR\" = 2001 and \"web_sales_date_date\".\"D_MOY\" >= 4 and \"web_sales_date_date\".\"D_MOY\" <= 6
 
@@ -45,8 +45,8 @@ juicy as (
 SELECT
     \"uneven\".\"store_sales_customer_id\" as \"store_buyers\"
 FROM
-    \"memory\".\"date_dim\" as \"store_sales_date_date\"
-    LEFT OUTER JOIN \"uneven\" on \"store_sales_date_date\".\"D_DATE_SK\" is not distinct from \"uneven\".\"store_sales_date_id\"
+    \"uneven\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"uneven\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_date_date\".\"D_MOY\" >= 4 and \"store_sales_date_date\".\"D_MOY\" <= 6
 
@@ -56,8 +56,8 @@ cheerful as (
 SELECT
     \"quizzical\".\"catalog_sales_customer_id\" as \"catalog_buyers\"
 FROM
-    \"memory\".\"date_dim\" as \"catalog_sales_date_date\"
-    LEFT OUTER JOIN \"quizzical\" on \"catalog_sales_date_date\".\"D_DATE_SK\" is not distinct from \"quizzical\".\"catalog_sales_date_id\"
+    \"quizzical\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"catalog_sales_date_date\".\"D_YEAR\" = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 6
 

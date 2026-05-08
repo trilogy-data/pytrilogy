@@ -1,5 +1,5 @@
 query_id = "94"
-gen_length = 4373
+gen_length = 4335
 generated_sql = """
 
 WITH 
@@ -53,8 +53,8 @@ SELECT
     \"ws_web_sales\".\"WS_EXT_SHIP_COST\" as \"ws_ext_ship_cost\",
     \"ws_web_sales\".\"WS_NET_PROFIT\" as \"ws_net_profit\"
 FROM
-    \"memory\".\"web_site\" as \"ws_web_site_web_site\"
-    INNER JOIN \"memory\".\"web_sales\" as \"ws_web_sales\" on \"ws_web_site_web_site\".\"web_site_sk\" is not distinct from \"ws_web_sales\".\"WS_WEB_SITE_SK\"
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+    INNER JOIN \"memory\".\"web_site\" as \"ws_web_site_web_site\" on \"ws_web_sales\".\"WS_WEB_SITE_SK\" = \"ws_web_site_web_site\".\"web_site_sk\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"ws_web_sales\".\"WS_SHIP_DATE_SK\" = \"ws_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
@@ -69,8 +69,8 @@ juicy as (
 SELECT
     \"cooperative\".\"ws_order_number\" as \"ws_order_number\"
 FROM
-    \"memory\".\"web_site\" as \"ws_web_site_web_site\"
-    INNER JOIN \"cooperative\" on \"ws_web_site_web_site\".\"web_site_sk\" is not distinct from \"cooperative\".\"ws_web_site_id\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"web_site\" as \"ws_web_site_web_site\" on \"cooperative\".\"ws_web_site_id\" = \"ws_web_site_web_site\".\"web_site_sk\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"cooperative\".\"ws_ship_date_id\" = \"ws_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"cooperative\".\"ws_ship_address_id\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE

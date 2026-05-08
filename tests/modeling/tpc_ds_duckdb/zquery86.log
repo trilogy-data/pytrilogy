@@ -1,5 +1,5 @@
 query_id = "86"
-gen_length = 5094
+gen_length = 5041
 generated_sql = """
 
 WITH 
@@ -17,8 +17,8 @@ vacuous as (
 SELECT
     sum(\"web_sales_web_sales\".\"WS_NET_PAID\") as \"total_c\"
 FROM
-    \"memory\".\"date_dim\" as \"web_sales_date_date\"
-    LEFT OUTER JOIN \"memory\".\"web_sales\" as \"web_sales_web_sales\" on \"web_sales_date_date\".\"D_DATE_SK\" is not distinct from \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\"
+    \"memory\".\"web_sales\" as \"web_sales_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"web_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"web_sales_date_date\".\"D_MONTH_SEQ\" <= 1211
 ),
@@ -28,9 +28,9 @@ SELECT
     \"web_sales_item_items\".\"I_CLASS\" as \"web_sales_item_class\",
     \"web_sales_web_sales\".\"WS_NET_PAID\" as \"_virt_filter_net_paid_1727315324891705\"
 FROM
-    \"memory\".\"date_dim\" as \"web_sales_date_date\"
-    LEFT OUTER JOIN \"memory\".\"web_sales\" as \"web_sales_web_sales\" on \"web_sales_date_date\".\"D_DATE_SK\" is not distinct from \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"web_sales\" as \"web_sales_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"web_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"web_sales_date_date\".\"D_MONTH_SEQ\" <= 1211
 ),

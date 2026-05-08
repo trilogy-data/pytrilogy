@@ -1,5 +1,5 @@
 query_id = "79"
-gen_length = 4491
+gen_length = 4425
 generated_sql = """
 
 WITH 
@@ -28,8 +28,8 @@ SELECT
     sum(\"store_sales_store_sales\".\"SS_COUPON_AMT\") as \"amt\",
     sum(\"store_sales_store_sales\".\"SS_NET_PROFIT\") as \"profit\"
 FROM
-    \"memory\".\"date_dim\" as \"store_sales_date_date\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"store_sales_store_sales\" on \"store_sales_date_date\".\"D_DATE_SK\" is not distinct from \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     LEFT OUTER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
@@ -42,17 +42,17 @@ GROUP BY
     4),
 questionable as (
 SELECT
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    \"cooperative\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\"
 FROM
-    \"memory\".\"date_dim\" as \"store_sales_date_date\"
-    LEFT OUTER JOIN \"cooperative\" on \"store_sales_date_date\".\"D_DATE_SK\" is not distinct from \"cooperative\".\"store_sales_date_id\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"cooperative\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"cooperative\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_id\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
     LEFT OUTER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"cooperative\".\"store_sales_household_demographic_id\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
-    ( \"store_sales_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 6 or \"store_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 2 ) and \"store_sales_date_date\".\"D_DOW\" = 1 and \"store_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"store_sales_store_store\".\"S_NUMBER_EMPLOYEES\" >= 200 and \"store_sales_store_store\".\"S_NUMBER_EMPLOYEES\" <= 295 and \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" is not null
+    ( \"store_sales_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 6 or \"store_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 2 ) and \"store_sales_date_date\".\"D_DOW\" = 1 and \"store_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"store_sales_store_store\".\"S_NUMBER_EMPLOYEES\" >= 200 and \"store_sales_store_store\".\"S_NUMBER_EMPLOYEES\" <= 295 and \"cooperative\".\"store_sales_customer_id\" is not null
 
 GROUP BY
     1,

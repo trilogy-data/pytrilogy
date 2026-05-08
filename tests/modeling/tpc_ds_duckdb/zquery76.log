@@ -1,5 +1,5 @@
 query_id = "76"
-gen_length = 9318
+gen_length = 9027
 generated_sql = """
 
 WITH 
@@ -42,11 +42,11 @@ SELECT
     \"ws_web_sales\".\"WS_EXT_SALES_PRICE\" as \"ws_ext_sales_price\",
     \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\"
 FROM
-    \"memory\".\"date_dim\" as \"ws_date_date\"
-    FULL JOIN \"memory\".\"web_sales\" as \"ws_web_sales\" on \"ws_date_date\".\"D_DATE_SK\" is not distinct from \"ws_web_sales\".\"WS_SOLD_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and coalesce(\"ws_date_date\".\"D_DATE_SK\",\"ws_web_sales\".\"WS_SOLD_DATE_SK\") is not null
+    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
 ),
 young as (
 SELECT
@@ -57,11 +57,11 @@ SELECT
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\",
     \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\"
 FROM
-    \"memory\".\"date_dim\" as \"ss_date_date\"
-    FULL JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and coalesce(\"ss_date_date\".\"D_DATE_SK\",\"ss_store_sales\".\"SS_SOLD_DATE_SK\") is not null
+    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
 ),
 cooperative as (
 SELECT
@@ -72,11 +72,11 @@ SELECT
     \"cs_date_date\".\"D_YEAR\" as \"cs_date_year\",
     \"cs_item_items\".\"I_CATEGORY\" as \"cs_item_category\"
 FROM
-    \"memory\".\"date_dim\" as \"cs_date_date\"
-    FULL JOIN \"memory\".\"catalog_sales\" as \"cs_catalog_sales\" on \"cs_date_date\".\"D_DATE_SK\" is not distinct from \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and coalesce(\"cs_catalog_sales\".\"CS_SOLD_DATE_SK\",\"cs_date_date\".\"D_DATE_SK\") is not null
+    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
 ),
 uneven as (
 SELECT
@@ -125,8 +125,8 @@ SELECT
     sum(\"charming\".\"ws_row_flag\") as \"cnt_b\",
     sum(\"divergent\".\"ws_ext_sales_price\") as \"amt_b\"
 FROM
-    \"charming\"
-    FULL JOIN \"divergent\" on \"charming\".\"ws_item_id\" is not distinct from \"divergent\".\"ws_item_id\" AND \"charming\".\"ws_order_number\" is not distinct from \"divergent\".\"ws_order_number\"
+    \"divergent\"
+    INNER JOIN \"charming\" on \"divergent\".\"ws_item_id\" = \"charming\".\"ws_item_id\" AND \"divergent\".\"ws_order_number\" = \"charming\".\"ws_order_number\"
 GROUP BY
     1,
     2,
@@ -139,8 +139,8 @@ SELECT
     sum(\"abhorrent\".\"ss_row_flag\") as \"cnt_a\",
     sum(\"young\".\"ss_ext_sales_price\") as \"amt_a\"
 FROM
-    \"abhorrent\"
-    FULL JOIN \"young\" on \"abhorrent\".\"ss_item_id\" is not distinct from \"young\".\"ss_item_id\" AND \"abhorrent\".\"ss_ticket_number\" is not distinct from \"young\".\"ss_ticket_number\"
+    \"young\"
+    INNER JOIN \"abhorrent\" on \"young\".\"ss_item_id\" = \"abhorrent\".\"ss_item_id\" AND \"young\".\"ss_ticket_number\" = \"abhorrent\".\"ss_ticket_number\"
 GROUP BY
     1,
     2,
@@ -153,8 +153,8 @@ SELECT
     sum(\"cooperative\".\"cs_ext_sales_price\") as \"amt_c\",
     sum(\"highfalutin\".\"cs_row_flag\") as \"cnt_c\"
 FROM
-    \"highfalutin\"
-    FULL JOIN \"cooperative\" on \"highfalutin\".\"cs_item_id\" is not distinct from \"cooperative\".\"cs_item_id\" AND \"highfalutin\".\"cs_order_number\" is not distinct from \"cooperative\".\"cs_order_number\"
+    \"cooperative\"
+    INNER JOIN \"highfalutin\" on \"cooperative\".\"cs_item_id\" = \"highfalutin\".\"cs_item_id\" AND \"cooperative\".\"cs_order_number\" = \"highfalutin\".\"cs_order_number\"
 GROUP BY
     1,
     2,

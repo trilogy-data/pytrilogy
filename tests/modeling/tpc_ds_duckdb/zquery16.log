@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 4537
+gen_length = 4499
 generated_sql = """
 
 WITH 
@@ -53,8 +53,8 @@ SELECT
     \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_ext_ship_cost\",
     \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\"
 FROM
-    \"memory\".\"date_dim\" as \"cs_ship_date_date\"
-    INNER JOIN \"memory\".\"catalog_sales\" as \"cs_catalog_sales\" on \"cs_ship_date_date\".\"D_DATE_SK\" is not distinct from \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\"
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
@@ -69,8 +69,8 @@ juicy as (
 SELECT
     \"thoughtful\".\"cs_order_number\" as \"cs_order_number\"
 FROM
-    \"memory\".\"date_dim\" as \"cs_ship_date_date\"
-    INNER JOIN \"thoughtful\" on \"cs_ship_date_date\".\"D_DATE_SK\" is not distinct from \"thoughtful\".\"cs_ship_date_id\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"thoughtful\".\"cs_ship_date_id\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"thoughtful\".\"cs_call_center_id\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"thoughtful\".\"cs_customer_address_id\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE

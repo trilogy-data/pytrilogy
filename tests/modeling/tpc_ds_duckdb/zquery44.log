@@ -1,5 +1,5 @@
 query_id = "44"
-gen_length = 4558
+gen_length = 4536
 generated_sql = """
 
 WITH 
@@ -73,10 +73,10 @@ FROM
 juicy as (
 SELECT
     \"abundant\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"abundant\".\"ss_item_id\" as \"ss_item_id\"
+    \"yummy\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"abundant\"
-    INNER JOIN \"yummy\" on \"abundant\".\"ss_item_id\" is not distinct from \"yummy\".\"ss_item_id\"
+    \"yummy\"
+    INNER JOIN \"abundant\" on \"yummy\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
 WHERE
     \"yummy\".\"ss_store_id\" = 4 and \"abundant\".\"item_avg_profit\" > 0.9 * \"yummy\".\"threshold\"
 

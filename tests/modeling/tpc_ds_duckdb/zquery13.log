@@ -1,5 +1,5 @@
 query_id = "13"
-gen_length = 3176
+gen_length = 3152
 generated_sql = """
 SELECT
     avg(\"store_sales_store_sales\".\"SS_QUANTITY\") as \"avg1\",
@@ -7,8 +7,8 @@ SELECT
     avg(\"store_sales_store_sales\".\"SS_EXT_WHOLESALE_COST\") as \"avg3\",
     sum(\"store_sales_store_sales\".\"SS_EXT_WHOLESALE_COST\") as \"sum_ewc\"
 FROM
-    \"memory\".\"date_dim\" as \"store_sales_date_date\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"store_sales_store_sales\" on \"store_sales_date_date\".\"D_DATE_SK\" is not distinct from \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\"
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_address\" as \"store_sales_sale_address_customer_address\" on \"store_sales_store_sales\".\"SS_ADDR_SK\" = \"store_sales_sale_address_customer_address\".\"CA_ADDRESS_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
     LEFT OUTER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"

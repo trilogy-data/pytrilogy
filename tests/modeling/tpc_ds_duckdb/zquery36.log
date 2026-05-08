@@ -1,5 +1,5 @@
 query_id = "36"
-gen_length = 8043
+gen_length = 7972
 generated_sql = """
 
 WITH 
@@ -19,9 +19,9 @@ SELECT
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"_virt_filter_ext_sales_price_2129231884164397\",
     \"ss_store_sales\".\"SS_NET_PROFIT\" as \"_virt_filter_net_profit_2712442945174069\"
 FROM
-    \"memory\".\"date_dim\" as \"ss_date_date\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_YEAR\" = 2001 and \"ss_store_store\".\"S_STATE\" = 'TN'
@@ -40,8 +40,8 @@ kaput as (
 SELECT
     cast(sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as numeric(15,4)) / cast(sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as numeric(15,4)) as \"gm_c\"
 FROM
-    \"memory\".\"date_dim\" as \"ss_date_date\"
-    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_YEAR\" = 2001 and \"ss_store_store\".\"S_STATE\" = 'TN'
@@ -56,8 +56,8 @@ SELECT
     \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
     \"ss_store_store\".\"S_STATE\" as \"ss_store_state\"
 FROM
-    \"memory\".\"date_dim\" as \"ss_date_date\"
-    FULL JOIN \"thoughtful\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"thoughtful\".\"ss_date_id\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"thoughtful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"thoughtful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_YEAR\" = 2001 and \"ss_store_store\".\"S_STATE\" = 'TN'

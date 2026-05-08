@@ -89,26 +89,113 @@ def _gather_proofs(
     }
 
 
+# NOTE: A future extension could harvest additional non-null proofs from
+# downstream ``INNER`` join keys — surviving rows must hold both sides of an
+# ``=`` predicate non-null, so e.g. ``LEFT JOIN store_sales ... INNER JOIN
+# store ON SS_STORE_SK = S_STORE_SK`` should be able to deduce that
+# ``SS_STORE_SK`` is non-null in surviving rows and promote the upstream
+# LEFT to INNER. Naive approach (collect every INNER pair's left/right
+# addresses as proofs) over-fires under OR-conditioned multi-FULL chains
+# (q10's `(web_year=2002 OR catalog_year=2002)`-style filter): trilogy
+# emits a coalesce(...) on the INNER join keys to model the OR, but reports
+# the joinkey_pair as a single concept address that's shared across the OR
+# branches, so the proof collapses to "this concept must be non-null in any
+# branch" — and the OR allows it to be NULL on the side we'd promote.
+# Resolving this needs the join-key predicate to expose its actual `=`
+# operands rather than the merged concept; left as a follow-up.
+
+
 def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
     if cte is None:
         return set()
     return {c.address for c in cte.output_columns}
 
 
+def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
+    """Addresses available from the CTE's FROM clause — the LEFT side of the
+    chain's first join.
+
+    The "left" of an in-rendered join can come from any of:
+      - ``joins[0].left_cte`` (explicit).
+      - A ``parent_cte`` that isn't consumed as any join's right side.
+      - A ``joinkey_pair.cte`` attached to a join — set when an upstream CTE
+        was inlined into this one. Without this branch a chain whose left
+        side is an inlined CTE (e.g. gcat ``vehicle_lv_info``) shows up with
+        no ``parent_cte`` and no explicit ``left_cte``, so the rule would
+        otherwise see an empty left and (wrongly) treat shared join-key
+        columns as right-only proofs.
+      - A direct base datasource (raw table FROM).
+
+    Each non-seed parent gets consumed as some join's ``right_cte``; the
+    FROM-clause table is the leftover."""
+    if not isinstance(cte, CTE) or not cte.joins:
+        return set()
+    first = cte.joins[0]
+    if not isinstance(first, Join):
+        return set()
+    if first.left_cte is not None:
+        return _cte_addresses(first.left_cte)
+    right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
+    for parent in cte.parent_ctes:
+        if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
+            return _cte_addresses(parent)
+    # Inlined-left case: a join carries its own left CTE on the joinkey_pairs.
+    for j in cte.joins:
+        if not isinstance(j, Join):
+            continue
+        for pair in j.joinkey_pairs or []:
+            pair_cte = getattr(pair, "cte", None)
+            if (
+                isinstance(pair_cte, (CTE, UnionCTE))
+                and pair_cte.name not in right_names
+            ):
+                return _cte_addresses(pair_cte)
+    base = getattr(getattr(cte, "source", None), "base_datasource", None)
+    if base is not None:
+        return {c.address for c in base.output_concepts}
+    return set()
+
+
+def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:
+    """Columns visible on the LEFT side of join ``idx`` — the accumulated FROM.
+
+    The seed (FROM clause) contributes its columns; for ``idx > 0`` every prior
+    join's ``right_cte`` also contributes (already merged into the LEFT by the
+    time this join is evaluated). Without the accumulation, ``right_only`` for
+    a downstream join over-includes columns the left already carried, and a
+    WHERE proof on a shared column would falsely promote the join."""
+    addrs: set[str] = set()
+    if not isinstance(cte, CTE):
+        return addrs
+    join = cte.joins[idx] if idx < len(cte.joins) else None
+    if isinstance(join, Join) and join.left_cte is not None:
+        addrs |= _cte_addresses(join.left_cte)
+    addrs |= _seed_addresses(cte)
+    for prior_idx in range(idx):
+        prior = cte.joins[prior_idx]
+        if not isinstance(prior, Join):
+            continue
+        addrs |= _cte_addresses(prior.right_cte)
+    return addrs
+
+
 def _side_addresses(
-    join: Join, default_left: CTE | UnionCTE
+    cte: CTE | UnionCTE,
+    idx: int,
+    join: Join,
 ) -> tuple[set[str], set[str]]:
     """Addresses unique to each side of the join. Filters that touch only
     one side are unambiguous about which side they constrain."""
-    left = join.left_cte or default_left
-    right = join.right_cte
-    left_all = _cte_addresses(left)
-    right_all = _cte_addresses(right)
+    left_all = _accumulated_left_addresses(cte, idx)
+    right_all = _cte_addresses(join.right_cte)
     return left_all - right_all, right_all - left_all
 
 
 def _downgrade(
-    join: Join, left_default: CTE | UnionCTE, proofs: set[str]
+    cte: CTE | UnionCTE,
+    idx: int,
+    join: Join,
+    proofs: set[str],
 ) -> JoinType | None:
     """Pick the strictest join that still produces the same surviving rows."""
     current = join.jointype
@@ -118,7 +205,7 @@ def _downgrade(
     pairs = join.joinkey_pairs or []
     left_keys = {p.left.address for p in pairs}
     right_keys = {p.right.address for p in pairs}
-    left_only, right_only = _side_addresses(join, left_default)
+    left_only, right_only = _side_addresses(cte, idx, join)
 
     # The left side is "forced present" when the WHERE references a concept
     # that only exists on the left, OR when every left join key is individually
@@ -157,27 +244,6 @@ def _downgrade(
     return None
 
 
-def _previous_left(cte: CTE | UnionCTE, idx: int) -> CTE | UnionCTE | None:
-    """When a join doesn't carry an explicit left_cte, the LEFT side is the
-    accumulated FROM up to that point. For the first join that's whichever
-    parent CTE isn't the join's right side; for subsequent joins it's the
-    prior join's right CTE."""
-    if idx == 0:
-        if isinstance(cte, CTE) and cte.joins:
-            first = cte.joins[0]
-            if not isinstance(first, Join):
-                return None
-            right_name = first.right_cte.name
-            for parent in cte.parent_ctes:
-                if isinstance(parent, (CTE, UnionCTE)) and parent.name != right_name:
-                    return parent
-        return None
-    prior = cte.joins[idx - 1]  # type: ignore[union-attr]
-    if not isinstance(prior, Join):
-        return None
-    return prior.right_cte
-
-
 class DowngradeFullJoinOnGuards(OptimizationRule):
     """Downgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
     enclosing WHERE rejects the unmatched rows the OUTER join was preserving.
@@ -203,13 +269,7 @@ class DowngradeFullJoinOnGuards(OptimizationRule):
         for idx, join in enumerate(cte.joins):
             if not isinstance(join, Join) or join.jointype not in _OUTER_JOIN_TYPES:
                 continue
-            # The structural left of the first join is the CTE's FROM clause
-            # (a sibling parent CTE); subsequent joins accumulate the prior
-            # join's right_cte. join.left_cte takes precedence when set.
-            default_left = join.left_cte or _previous_left(cte, idx)
-            if default_left is None:
-                continue
-            target = _downgrade(join, default_left, proofs)
+            target = _downgrade(cte, idx, join, proofs)
             if target is None or target == join.jointype:
                 continue
             dropped = {

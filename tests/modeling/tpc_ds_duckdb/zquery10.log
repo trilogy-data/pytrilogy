@@ -1,5 +1,5 @@
 query_id = "10"
-gen_length = 4826
+gen_length = 4832
 generated_sql = """
 
 WITH 
@@ -34,9 +34,9 @@ vacuous as (
 SELECT
     coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"questionable\".\"customer_id\",\"quizzical\".\"customer_id\",\"yummy\".\"customer_id\") as \"relevant_customers\"
 FROM
-    \"memory\".\"date_dim\" as \"web_sales_date_date\"
-    FULL JOIN \"yummy\" on \"web_sales_date_date\".\"D_DATE_SK\" is not distinct from \"yummy\".\"web_sales_date_id\"
-    FULL JOIN \"quizzical\" on \"yummy\".\"customer_id\" = \"quizzical\".\"customer_id\"
+    \"yummy\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"yummy\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"quizzical\" on \"yummy\".\"customer_id\" is not distinct from \"quizzical\".\"customer_id\"
     FULL JOIN \"questionable\" on coalesce(\"quizzical\".\"customer_id\", \"yummy\".\"customer_id\") = \"questionable\".\"customer_id\"
     FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"quizzical\".\"customer_id\", \"questionable\".\"customer_id\", \"yummy\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
