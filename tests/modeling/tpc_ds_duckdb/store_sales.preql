@@ -37,11 +37,11 @@ properties <ticket_number,item.id> (
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
 
 datasource store_sales (
-    SS_SOLD_DATE_SK: date.id,
-    SS_SOLD_TIME_SK: time.id,
-    SS_CUSTOMER_SK: customer.id,
-    SS_CDEMO_SK: customer_demographic.id,
-    SS_HDEMO_SK: household_demographic.id,
+    SS_SOLD_DATE_SK: ?date.id,
+    SS_SOLD_TIME_SK: ?time.id,
+    SS_CUSTOMER_SK: ?customer.id,
+    SS_CDEMO_SK: ?customer_demographic.id,
+    SS_HDEMO_SK: ?household_demographic.id,
     SS_TICKET_NUMBER: ticket_number,
     SS_ITEM_SK: item.id,
     SS_SALES_PRICE: sales_price,
@@ -54,11 +54,11 @@ datasource store_sales (
     SS_PROMO_SK: ?promotion.id,
     SS_QUANTITY: quantity,
     SS_COUPON_AMT: coupon_amt,
-    SS_STORE_SK: store.id,
+    SS_STORE_SK: ?store.id,
     SS_NET_PAID: net_paid,
     SS_EXT_TAX: ext_tax,
     SS_WHOLESALE_COST: wholesale_cost,
-    SS_ADDR_SK: sale_address.id,
+    SS_ADDR_SK: ?sale_address.id,
 )
 grain (ticket_number, item.id)
 address memory.store_sales

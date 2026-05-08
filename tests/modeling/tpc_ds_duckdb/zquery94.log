@@ -1,5 +1,5 @@
 query_id = "94"
-gen_length = 4399
+gen_length = 4373
 generated_sql = """
 
 WITH 
@@ -34,27 +34,27 @@ FROM
     \"abundant\"),
 cooperative as (
 SELECT
-    \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\"
+    \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\",
+    \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" as \"ws_ship_address_id\",
+    \"ws_web_sales\".\"WS_SHIP_DATE_SK\" as \"ws_ship_date_id\",
+    \"ws_web_sales\".\"WS_WEB_SITE_SK\" as \"ws_web_site_id\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
-    INNER JOIN \"memory\".\"web_site\" as \"ws_web_site_web_site\" on \"ws_web_sales\".\"WS_WEB_SITE_SK\" = \"ws_web_site_web_site\".\"web_site_sk\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"ws_web_sales\".\"WS_SHIP_DATE_SK\" = \"ws_ship_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and cast(\"ws_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"ws_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"ws_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"ws_web_sales\".\"WS_ORDER_NUMBER\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
+    \"ws_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"ws_web_sales\".\"WS_ORDER_NUMBER\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
 
 GROUP BY
     1,
-    coalesce(\"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\",\"ws_web_sales\".\"WS_SHIP_ADDR_SK\"),
-    coalesce(\"ws_ship_date_date\".\"D_DATE_SK\",\"ws_web_sales\".\"WS_SHIP_DATE_SK\"),
-    coalesce(\"ws_web_sales\".\"WS_WEB_SITE_SK\",\"ws_web_site_web_site\".\"web_site_sk\")),
+    2,
+    3,
+    4),
 concerned as (
 SELECT
     \"ws_web_sales\".\"WS_EXT_SHIP_COST\" as \"ws_ext_ship_cost\",
     \"ws_web_sales\".\"WS_NET_PROFIT\" as \"ws_net_profit\"
 FROM
-    \"memory\".\"web_sales\" as \"ws_web_sales\"
-    INNER JOIN \"memory\".\"web_site\" as \"ws_web_site_web_site\" on \"ws_web_sales\".\"WS_WEB_SITE_SK\" = \"ws_web_site_web_site\".\"web_site_sk\"
+    \"memory\".\"web_site\" as \"ws_web_site_web_site\"
+    INNER JOIN \"memory\".\"web_sales\" as \"ws_web_sales\" on \"ws_web_site_web_site\".\"web_site_sk\" is not distinct from \"ws_web_sales\".\"WS_WEB_SITE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"ws_web_sales\".\"WS_SHIP_DATE_SK\" = \"ws_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
@@ -69,9 +69,12 @@ juicy as (
 SELECT
     \"cooperative\".\"ws_order_number\" as \"ws_order_number\"
 FROM
-    \"cooperative\"
+    \"memory\".\"web_site\" as \"ws_web_site_web_site\"
+    INNER JOIN \"cooperative\" on \"ws_web_site_web_site\".\"web_site_sk\" is not distinct from \"cooperative\".\"ws_web_site_id\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"cooperative\".\"ws_ship_date_id\" = \"ws_ship_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"cooperative\".\"ws_ship_address_id\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"cooperative\".\"ws_order_number\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"cooperative\".\"ws_order_number\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
+    cast(\"ws_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"ws_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"ws_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and \"cooperative\".\"ws_order_number\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"cooperative\".\"ws_order_number\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
 
 GROUP BY
     1),

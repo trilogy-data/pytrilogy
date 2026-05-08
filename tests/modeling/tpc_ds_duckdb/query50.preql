@@ -11,6 +11,7 @@ WHERE
     store_sales.return_date.year = 2001
     and store_sales.return_date.month_of_year = 8
     and store_sales.customer.id = store_sales.return_customer.id
+    and store_sales.store.id is not null
 SELECT
     --store_sales.store.id,
     store_sales.store.name,

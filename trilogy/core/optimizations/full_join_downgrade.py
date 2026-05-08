@@ -1,15 +1,11 @@
-"""Downgrade FULL joins when the WHERE proves they're stricter than needed.
+"""Downgrade OUTER joins when the WHERE proves they're stricter than needed.
 
-The asymmetric-nullable rule in `get_join_type` promotes some joins to FULL so
-NULL rows on the nullable side aren't lost against the non-nullable side. When
-the surrounding WHERE forces a side to contribute non-null data — either on
-the join keys themselves or on any column unique to that side — the unmatched
-rows that FULL was preserving can never satisfy the filter, so we can
-downgrade:
-
-  - filter forces left side non-null AND right side non-null → ``INNER``
-  - filter forces only the left side non-null  (drops right-unmatched) → ``LEFT_OUTER``
-  - filter forces only the right side non-null (drops left-unmatched)  → ``RIGHT_OUTER``
+Outer joins exist to preserve unmatched rows by NULL-padding one side. When the
+surrounding WHERE rejects rows where those NULL-padded columns appear (directly
+via ``IS NOT NULL`` or via any null-propagating predicate that mentions a
+concept on that side), the unmatched rows can never satisfy the filter — so
+the OUTER join produces the same surviving rows as a stricter join, and we
+can downgrade.
 
 A predicate "forces a concept non-null in surviving rows" if it can never be
 TRUE when that concept is NULL — direct ``IS NOT NULL``, null-propagating
@@ -17,6 +13,19 @@ comparisons against literals, or any concept reference inside a null-
 propagating expression. ``COALESCE``/``NULLIF``/``CASE``/``COUNT`` are treated
 as opaque (they can be non-null even when an arg is NULL), so we don't recurse
 into them.
+
+Downgrades by current join type:
+
+  - ``FULL``
+      both sides forced non-null  → ``INNER``
+      only left forced (drops left-unmatched rows that have NULL left-side
+      columns) → ``LEFT_OUTER``
+      only right forced (drops right-unmatched rows with NULL right-side
+      columns) → ``RIGHT_OUTER``
+  - ``LEFT_OUTER`` (NULL-padding lives on the right side)
+      right forced → ``INNER``
+  - ``RIGHT_OUTER`` (NULL-padding lives on the left side)
+      left forced → ``INNER``
 """
 
 from __future__ import annotations
@@ -35,6 +44,11 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
     is_null_literal,
 )
+
+# Joins whose surviving rows can be a strict subset under a null-rejecting
+# WHERE. INNER joins already drop both unmatched sides, so they're never
+# eligible to be downgraded further.
+_OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
 
 
 def _proves_non_null(
@@ -97,6 +111,10 @@ def _downgrade(
     join: Join, left_default: CTE | UnionCTE, proofs: set[str]
 ) -> JoinType | None:
     """Pick the strictest join that still produces the same surviving rows."""
+    current = join.jointype
+    if current not in _OUTER_JOIN_TYPES:
+        return None
+
     pairs = join.joinkey_pairs or []
     left_keys = {p.left.address for p in pairs}
     right_keys = {p.right.address for p in pairs}
@@ -104,8 +122,8 @@ def _downgrade(
 
     # The left side is "forced present" when the WHERE references a concept
     # that only exists on the left, OR when every left join key is individually
-    # proven non-null. Either case rules out the unmatched rows whose left
-    # columns were filled with NULL. Mirror for the right side.
+    # proven non-null. Either case rules out unmatched rows whose left columns
+    # were filled with NULL. Mirror for the right side.
     left_forced = bool(proofs & left_only) or (
         bool(left_keys) and left_keys.issubset(proofs)
     )
@@ -113,15 +131,29 @@ def _downgrade(
         bool(right_keys) and right_keys.issubset(proofs)
     )
 
-    if left_forced and right_forced:
-        return JoinType.INNER
-    # left_forced → filter drops right-unmatched (their left columns are NULL
-    # fill, so any non-null check on a left column fails) → LEFT_OUTER drops
-    # the same set. Mirror for right_forced.
-    if left_forced:
-        return JoinType.LEFT_OUTER
-    if right_forced:
-        return JoinType.RIGHT_OUTER
+    if current == JoinType.FULL:
+        if left_forced and right_forced:
+            return JoinType.INNER
+        # left_forced → filter drops left-unmatched rows (NULL left columns)
+        # → LEFT_OUTER drops the same set. Mirror for right_forced.
+        if left_forced:
+            return JoinType.LEFT_OUTER
+        if right_forced:
+            return JoinType.RIGHT_OUTER
+        return None
+
+    if current == JoinType.LEFT_OUTER:
+        # NULL-padding lives on the right side; right_forced removes the
+        # padded rows, leaving only matched rows → INNER.
+        if right_forced:
+            return JoinType.INNER
+        return None
+
+    if current == JoinType.RIGHT_OUTER:
+        if left_forced:
+            return JoinType.INNER
+        return None
+
     return None
 
 
@@ -147,13 +179,19 @@ def _previous_left(cte: CTE | UnionCTE, idx: int) -> CTE | UnionCTE | None:
 
 
 class DowngradeFullJoinOnGuards(OptimizationRule):
+    """Downgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
+    enclosing WHERE rejects the unmatched rows the OUTER join was preserving.
+
+    Class name kept for backwards compatibility; the rule covers all three
+    OUTER join types now."""
+
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE) or not cte.condition or not cte.joins:
             return False, None
         if not any(
-            isinstance(j, Join) and j.jointype == JoinType.FULL for j in cte.joins
+            isinstance(j, Join) and j.jointype in _OUTER_JOIN_TYPES for j in cte.joins
         ):
             return False, None
 
@@ -163,7 +201,7 @@ class DowngradeFullJoinOnGuards(OptimizationRule):
 
         changed = False
         for idx, join in enumerate(cte.joins):
-            if not isinstance(join, Join) or join.jointype != JoinType.FULL:
+            if not isinstance(join, Join) or join.jointype not in _OUTER_JOIN_TYPES:
                 continue
             # The structural left of the first join is the CTE's FROM clause
             # (a sibling parent CTE); subsequent joins accumulate the prior
@@ -175,14 +213,14 @@ class DowngradeFullJoinOnGuards(OptimizationRule):
             if target is None or target == join.jointype:
                 continue
             dropped = {
-                JoinType.INNER: "both left- and right-unmatched",
+                JoinType.INNER: "unmatched",
                 JoinType.LEFT_OUTER: "right-unmatched",
                 JoinType.RIGHT_OUTER: "left-unmatched",
             }[target]
             self.log(
-                f"FULL→{target.value} on {cte.name} for join with"
+                f"{join.jointype.value}→{target.value} on {cte.name} for join with"
                 f" {join.right_cte.name}: WHERE filters out"
-                f" {dropped} rows that FULL was preserving"
+                f" {dropped} rows that the OUTER join was preserving"
             )
             join.jointype = target
             changed = True

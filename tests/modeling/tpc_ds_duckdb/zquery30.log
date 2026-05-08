@@ -1,5 +1,5 @@
 query_id = "30"
-gen_length = 8215
+gen_length = 8210
 generated_sql = """
 
 WITH 
@@ -116,7 +116,7 @@ SELECT
     \"juicy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"juicy\"
-    LEFT OUTER JOIN \"vacuous\" on \"juicy\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
+    INNER JOIN \"vacuous\" on \"juicy\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
 WHERE
     \"juicy\".\"customer_state_returns_2002\" > 1.2 * \"vacuous\".\"_virt_agg_avg_3885168128306444\" and \"juicy\".\"web_returns_customer_address_state\" = 'GA' and \"juicy\".\"web_returns_return_address_state\" is not null
 

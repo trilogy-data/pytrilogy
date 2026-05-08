@@ -1,0 +1,137 @@
+# XFAIL — see STATUS.md "Open trilogy issues exposed by q14".
+#
+# Two shapes attempted; both blocked.
+#
+# Shape A (this file, in_cross_items chain): defines presence flags per
+# (brand_id, class_id, category_id) for each channel, an in_cross_items
+# combo, and a bucket_sum that case-when-filters on it. The planner re-
+# derives the presence flags inside each merge branch's filtered scope
+# (where bucket_sum > avg_sales is applied), so in_cross_items collapses
+# to "in all 3 channels among rows that passed HAVING" — undercounts
+# results by ~6.6% on sf=1.
+#
+# Shape B (rowset + IN): pulls the cross_items membership into a rowset
+# `with cross_items_set as ...` and uses `sales.item.id in
+# cross_items_set.ci_item_id` in WHERE. Bypasses the re-derivation, but
+# `auto bucket_sum <- sum(sales.quantity * sales.list_price) by sales.sales_channel,
+# sales.item.brand_id, sales.item.class_id, sales.item.category_id`
+# then sources from the unfiltered partial-datasource union (no Nov-2001
+# date filter applied, no IN cross_items applied), so bucket_sum ends up
+# at all-time totals; the multi-branch FULL JOIN with item also routes
+# through the returns partial for count, giving spectacular over-counts.
+
+import unified_sales as sales;
+
+# Cross-channel set: tuple (brand_id, class_id, category_id) appears in all 3 channels in 1999..2001
+auto store_pres <- sum(
+    case when sales.sales_channel = 'STORE' and sales.date.year between 1999 and 2001
+         then 1 else 0 end
+) by sales.item.brand_id, sales.item.class_id, sales.item.category_id;
+
+auto catalog_pres <- sum(
+    case when sales.sales_channel = 'CATALOG' and sales.date.year between 1999 and 2001
+         then 1 else 0 end
+) by sales.item.brand_id, sales.item.class_id, sales.item.category_id;
+
+auto web_pres <- sum(
+    case when sales.sales_channel = 'WEB' and sales.date.year between 1999 and 2001
+         then 1 else 0 end
+) by sales.item.brand_id, sales.item.class_id, sales.item.category_id;
+
+auto in_cross_items <- case when store_pres > 0 and catalog_pres > 0 and web_pres > 0 then 1 else 0 end;
+
+# avg_sales: avg(quantity*list_price) over all 3 channels in 1999..2001 (single scalar)
+auto avg_sales <- avg(sales.quantity * sales.list_price ? sales.date.year between 1999 and 2001);
+
+# Per-bucket sum at (channel, brand_id, class_id, category_id) grain — Nov 2001, cross_items only
+auto bucket_sum <- sum(
+    case when in_cross_items = 1
+              and sales.date.year = 2001
+              and sales.date.month_of_year = 11
+         then sales.quantity * sales.list_price else cast(0 as float) end
+) by sales.sales_channel, sales.item.brand_id, sales.item.class_id, sales.item.category_id;
+
+# Per-row 0/1 flag pinned at unified_sales row grain so we can count rows per bucket
+auto bucket_row_flag <- sum(
+    case when in_cross_items = 1
+              and sales.date.year = 2001
+              and sales.date.month_of_year = 11
+         then 1 else 0 end
+) by sales.sales_channel, sales.order_id, sales.item.id;
+
+auto bucket_count <- sum(bucket_row_flag)
+    by sales.sales_channel, sales.item.brand_id, sales.item.class_id, sales.item.category_id;
+
+with q14_results as
+# L0: detail (channel, brand_id, class_id, category_id)
+WHERE bucket_sum > avg_sales
+SELECT
+    cast(sales.sales_channel as string) as channel_a,
+    sales.item.brand_id as brand_a,
+    sales.item.class_id as class_a,
+    sales.item.category_id as category_a,
+    bucket_sum as sum_a,
+    bucket_count as cnt_a,
+MERGE
+# L1: (channel, brand_id, class_id), null category
+WHERE bucket_sum > avg_sales
+SELECT
+    cast(sales.sales_channel as string) as channel_b,
+    sales.item.brand_id as brand_b,
+    sales.item.class_id as class_b,
+    cast(null as int) as null_cat_b,
+    sum(bucket_sum) as sum_b,
+    sum(bucket_count) as cnt_b,
+MERGE
+# L2: (channel, brand_id), null class+cat
+WHERE bucket_sum > avg_sales
+SELECT
+    cast(sales.sales_channel as string) as channel_c,
+    sales.item.brand_id as brand_c,
+    cast(null as int) as null_class_c,
+    cast(null as int) as null_cat_c,
+    sum(bucket_sum) as sum_c,
+    sum(bucket_count) as cnt_c,
+MERGE
+# L3: (channel), null brand+class+cat
+WHERE bucket_sum > avg_sales
+SELECT
+    cast(sales.sales_channel as string) as channel_d,
+    cast(null as int) as null_brand_d,
+    cast(null as int) as null_class_d,
+    cast(null as int) as null_cat_d,
+    sum(bucket_sum) as sum_d,
+    sum(bucket_count) as cnt_d,
+MERGE
+# L4: grand total
+WHERE bucket_sum > avg_sales
+SELECT
+    cast(null as string) as null_channel_e,
+    cast(null as int) as null_brand_e,
+    cast(null as int) as null_class_e,
+    cast(null as int) as null_cat_e,
+    sum(bucket_sum) as sum_e,
+    sum(bucket_count) as cnt_e,
+align
+    channel: channel_a, channel_b, channel_c, channel_d, null_channel_e
+    AND brand_id: brand_a, brand_b, brand_c, null_brand_d, null_brand_e
+    AND class_id: class_a, class_b, null_class_c, null_class_d, null_class_e
+    AND category_id: category_a, null_cat_b, null_cat_c, null_cat_d, null_cat_e
+derive
+    coalesce(q14_results.sum_a, q14_results.sum_b, q14_results.sum_c, q14_results.sum_d, q14_results.sum_e) -> sum_total,
+    coalesce(q14_results.cnt_a, q14_results.cnt_b, q14_results.cnt_c, q14_results.cnt_d, q14_results.cnt_e) -> cnt_total
+;
+
+SELECT
+    q14_results.channel,
+    q14_results.brand_id,
+    q14_results.class_id,
+    q14_results.category_id,
+    q14_results.sum_total as sum_sales,
+    q14_results.cnt_total as sum_number_sales,
+ORDER BY
+    q14_results.channel asc nulls first,
+    q14_results.brand_id asc nulls first,
+    q14_results.class_id asc nulls first,
+    q14_results.category_id asc nulls first
+LIMIT 100;

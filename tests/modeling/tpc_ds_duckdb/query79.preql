@@ -5,6 +5,7 @@ WHERE
     and store_sales.date.day_of_week = 1
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.employees between 200 and 295
+    and store_sales.customer.id is not null
 SELECT
     --store_sales.sale_address.id,
     store_sales.customer.last_name,

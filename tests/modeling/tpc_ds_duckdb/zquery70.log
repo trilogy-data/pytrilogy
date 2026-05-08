@@ -1,5 +1,5 @@
 query_id = "70"
-gen_length = 10750
+gen_length = 10875
 generated_sql = """
 
 WITH 
@@ -8,9 +8,9 @@ SELECT
     \"ss_store_store\".\"S_STATE\" as \"ss_store_state\",
     sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"state_total\"
 FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
+    \"memory\".\"date_dim\" as \"ss_date_date\"
+    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211
 
@@ -59,8 +59,8 @@ SELECT
     \"ss_date_date\".\"D_MONTH_SEQ\" as \"ss_date_month_seq\",
     \"ss_store_store\".\"S_STATE\" as \"ss_store_state\"
 FROM
-    \"uneven\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"uneven\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
+    \"memory\".\"date_dim\" as \"ss_date_date\"
+    LEFT OUTER JOIN \"uneven\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"uneven\".\"ss_date_id\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"uneven\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
@@ -69,8 +69,8 @@ rambunctious as (
 SELECT
     \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\"
 FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    \"memory\".\"date_dim\" as \"ss_date_date\"
+    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
@@ -84,8 +84,8 @@ SELECT
     \"ss_store_store\".\"S_STATE\" as \"ss_store_state\",
     CASE WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 THEN \"ss_store_sales\".\"SS_NET_PROFIT\" ELSE NULL END as \"_virt_filter_net_profit_8054884665585597\"
 FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    \"memory\".\"date_dim\" as \"ss_date_date\"
+    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
@@ -101,8 +101,8 @@ SELECT
     \"ss_store_store\".\"S_STATE\" as \"ss_store_state\",
     CASE WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 THEN \"ss_store_sales\".\"SS_NET_PROFIT\" ELSE NULL END as \"_virt_filter_net_profit_8054884665585597\"
 FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    \"memory\".\"date_dim\" as \"ss_date_date\"
+    LEFT OUTER JOIN \"memory\".\"store_sales\" as \"ss_store_sales\" on \"ss_date_date\".\"D_DATE_SK\" is not distinct from \"ss_store_sales\".\"SS_SOLD_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)

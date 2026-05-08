@@ -1,5 +1,5 @@
 query_id = "06"
-gen_length = 2479
+gen_length = 3025
 generated_sql = """
 
 WITH 
@@ -14,22 +14,24 @@ GROUP BY
 abundant as (
 SELECT
     \"item_items\".\"I_CATEGORY\" as \"item_category\",
-    \"item_items\".\"I_ITEM_SK\" as \"item_id\",
+    \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\" as \"store_sales_customer_address_id\",
     \"store_sales_customer_address_customer_address\".\"CA_STATE\" as \"store_sales_customer_address_state\",
+    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
     \"store_sales_date_date\".\"D_YEAR\" as \"store_sales_date_year\",
     \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    coalesce(\"item_items\".\"I_ITEM_SK\",\"store_sales_item_items\".\"I_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") as \"item_id\"
 FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    \"memory\".\"date_dim\" as \"store_sales_date_date\"
+    FULL JOIN \"memory\".\"store_sales\" as \"store_sales_store_sales\" on \"store_sales_date_date\".\"D_DATE_SK\" is not distinct from \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"item_items\".\"I_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"item_items\".\"I_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_date_date\".\"D_MOY\" = 1
+    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_date_date\".\"D_MOY\" = 1 and \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" is not null and \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\" is not null
 )
 SELECT
     \"abundant\".\"store_sales_customer_address_state\" as \"store_sales_customer_address_state\",
@@ -38,7 +40,7 @@ FROM
     \"abundant\"
     INNER JOIN \"highfalutin\" on \"abundant\".\"item_category\" is not distinct from \"highfalutin\".\"item_category\"
 WHERE
-    \"abundant\".\"store_sales_date_year\" = 2001 and \"abundant\".\"store_sales_item_category\" is not null and \"abundant\".\"store_sales_date_month_of_year\" = 1 and \"abundant\".\"store_sales_item_current_price\" > 1.2 * \"highfalutin\".\"_virt_agg_avg_5942253052406187\"
+    \"abundant\".\"store_sales_date_year\" = 2001 and \"abundant\".\"store_sales_item_category\" is not null and \"abundant\".\"store_sales_date_month_of_year\" = 1 and \"abundant\".\"store_sales_item_current_price\" > 1.2 * \"highfalutin\".\"_virt_agg_avg_5942253052406187\" and \"abundant\".\"store_sales_customer_id\" is not null and \"abundant\".\"store_sales_customer_address_id\" is not null
 
 GROUP BY
     1
