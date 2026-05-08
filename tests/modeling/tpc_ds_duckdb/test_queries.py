@@ -487,6 +487,14 @@ def test_fifty_eight(engine):
     assert len(query) < 7000, query
 
 
+# Override: reference y/x subqueries cross-join wss to date_dim on week_seq,
+# producing ~49 duplicate rows per (store, week_seq) pair. The override
+# pre-dedups the week filter so row-by-row comparison is meaningful.
+def test_fifty_nine(engine):
+    query = run_query(engine, 59, sql_override=True)
+    assert len(query) < 12000, query
+
+
 def test_sixty(engine):
     query = run_query(engine, 60)
     assert len(query) < 5000, query
