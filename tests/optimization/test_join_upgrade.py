@@ -1,6 +1,6 @@
-"""Coverage for `DowngradeFullJoinOnGuards`.
+"""Coverage for `UpgradeJoinOnGuards`.
 
-The asymmetric-nullable rule in `get_join_type` promotes some joins to FULL.
+The asymmetric-nullable rule in `get_join_type` downgrades some joins to FULL.
 This pass undoes that promotion when the surrounding WHERE makes the
 preserved-by-FULL rows unreachable (their NULL fills can never satisfy the
 filter).
