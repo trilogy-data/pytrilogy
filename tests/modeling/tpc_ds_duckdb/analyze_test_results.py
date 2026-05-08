@@ -5,6 +5,7 @@ from os import environ
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import tomllib
 
@@ -34,11 +35,20 @@ def plot_perf(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> No
     fig, ax = plt.subplots()
     ax.set_title(title)
     ax.set_xlabel("Generation")
-    ax.set_ylabel("Execution time (s)")
-    ax.boxplot(
-        [frame["exec_time"], frame["comp_time"]],
-        tick_labels=["Trilogy", "DuckDBDefault"],
-    )
+    ax.set_ylabel("Execution time (s, log scale)")
+    ax.set_yscale("log")
+    series = [frame["exec_time"].to_numpy(), frame["comp_time"].to_numpy()]
+    labels = ["Trilogy", "DuckDBDefault"]
+    positions = list(range(1, len(series) + 1))
+    parts = ax.violinplot(series, positions=positions, showmedians=True)
+    for body in parts["bodies"]:
+        body.set_alpha(0.3)
+    rng = np.random.default_rng(0)
+    for pos, values in zip(positions, series):
+        jitter = rng.uniform(-0.08, 0.08, size=len(values))
+        ax.scatter(pos + jitter, values, s=12, alpha=0.6, color="C0")
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels)
     if show:
         plt.show()
     else:
