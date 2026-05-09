@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from trilogy.constants import MagicConstants
+from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
+    AggregateGroupingMode,
     ComparisonOperator,
     FunctionType,
     Ordering,
@@ -13,6 +14,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.internal import INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
+    AggregateGrouping,
     AggregateWrapper,
     ArgBinding,
     CaseElse,
@@ -127,6 +129,8 @@ SIMPLE_FUNCTION_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
 AGGREGATE_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
     SyntaxNodeKind.COUNT: FunctionType.COUNT,
     SyntaxNodeKind.COUNT_DISTINCT: FunctionType.COUNT_DISTINCT,
+    SyntaxNodeKind.GROUPING: FunctionType.GROUPING,
+    SyntaxNodeKind.GROUPING_ID: FunctionType.GROUPING_ID,
     SyntaxNodeKind.SUM: FunctionType.SUM,
     SyntaxNodeKind.AVG: FunctionType.AVG,
     SyntaxNodeKind.STDDEV: FunctionType.STDDEV,
@@ -207,6 +211,14 @@ def aggregate_functions(
 ) -> AggregateWrapper:
     args = hydrated_children(node, hydrate)
     if len(args) == 2:
+        if isinstance(args[1], AggregateGrouping):
+            grouping = args[1]
+            return AggregateWrapper(
+                function=args[0],
+                by=grouping.by,
+                grouping=grouping.mode,
+                grouping_sets=grouping.grouping_sets,
+            )
         return AggregateWrapper(function=args[0], by=args[1])
     return AggregateWrapper(function=args[0])
 
@@ -218,6 +230,60 @@ def aggregate_over(
 ) -> Any:
     args = hydrated_children(node, hydrate)
     return args[0]
+
+
+def aggregate_rollup(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> AggregateGrouping:
+    return AggregateGrouping(
+        mode=AggregateGroupingMode.ROLLUP,
+        by=hydrated_children(node, hydrate)[0],
+    )
+
+
+def aggregate_cube(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> AggregateGrouping:
+    return AggregateGrouping(
+        mode=AggregateGroupingMode.CUBE,
+        by=hydrated_children(node, hydrate)[0],
+    )
+
+
+def grouping_set(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> list[Any]:
+    args = hydrated_children(node, hydrate)
+    if not args:
+        return []
+    return args[0]
+
+
+def aggregate_grouping_sets(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> AggregateGrouping:
+    grouping_sets = hydrated_children(node, hydrate)
+    by: list[Any] = []
+    seen: set[str] = set()
+    for grouping_set_items in grouping_sets:
+        for item in grouping_set_items:
+            if item.address in seen:
+                continue
+            seen.add(item.address)
+            by.append(item)
+    return AggregateGrouping(
+        mode=AggregateGroupingMode.GROUPING_SETS,
+        by=by,
+        grouping_sets=grouping_sets,
+    )
 
 
 def aggregate_all(
@@ -273,7 +339,10 @@ def over_component(
 ) -> ConceptRef:
     args = hydrated_children(node, hydrate)
     addr = str(args[0]).lstrip(",").strip()
-    return ConceptRef(address=addr)
+    if "." not in addr and context.environment.namespace == DEFAULT_NAMESPACE:
+        addr = f"{DEFAULT_NAMESPACE}.{addr}"
+    mapping = context.concepts.require(addr)
+    return ConceptRef(address=mapping.address, datatype=mapping.output_datatype)
 
 
 # --- Special function handlers ---
@@ -794,6 +863,10 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.AGGREGATE_FUNCTIONS: aggregate_functions,
     SyntaxNodeKind.AGGREGATE_OVER: aggregate_over,
     SyntaxNodeKind.AGGREGATE_ALL: aggregate_all,
+    SyntaxNodeKind.AGGREGATE_ROLLUP: aggregate_rollup,
+    SyntaxNodeKind.AGGREGATE_CUBE: aggregate_cube,
+    SyntaxNodeKind.AGGREGATE_GROUPING_SETS: aggregate_grouping_sets,
+    SyntaxNodeKind.GROUPING_SET: grouping_set,
     SyntaxNodeKind.AGGREGATE_BY: aggregate_by,
     SyntaxNodeKind.FGROUP: fgroup,
     SyntaxNodeKind.OVER_LIST: over_list,

@@ -3,9 +3,16 @@
 No DB connection required — these run on every platform.
 """
 
+import sys
+
 import pytest
 
 from trilogy.dialect.config import ClickhouseConfig
+
+# chdb has no Windows wheel; skip engine-construction tests there.
+skip_on_windows = pytest.mark.skipif(
+    sys.platform == "win32", reason="chdb has no Windows wheel"
+)
 
 
 def test_chdb_default():
@@ -115,6 +122,7 @@ def test_database_default_when_unset():
     assert "/default" in cs
 
 
+@skip_on_windows
 def test_default_engine_chdb_mode():
     """Dialects.CLICKHOUSE.default_engine wires chdb mode to ChdbEngine."""
     from trilogy import Dialects
@@ -124,6 +132,7 @@ def test_default_engine_chdb_mode():
     assert isinstance(engine, ChdbEngine)
 
 
+@skip_on_windows
 def test_default_engine_server_mode_constructs_sqlalchemy():
     """Server mode produces a SQLAlchemy engine without connecting."""
     from trilogy import Dialects

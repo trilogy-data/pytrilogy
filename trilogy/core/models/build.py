@@ -23,6 +23,7 @@ from typing import (
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import (
+    AggregateGroupingMode,
     BooleanOperator,
     ComparisonOperator,
     DatasourceState,
@@ -1384,6 +1385,8 @@ class BuildFunction(DataTyped, BuildConceptArgs):
 class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     function: BuildFunction
     by: List[BuildConcept] = field(default_factory=list)
+    grouping: AggregateGroupingMode = AggregateGroupingMode.STANDARD
+    grouping_sets: List[List[BuildConcept]] = field(default_factory=list)
 
     def __str__(self):
         grain_str = [str(c) for c in self.by] if self.by else "abstract"
@@ -2265,10 +2268,18 @@ class Factory:
             ]
         else:
             by = [self.build(x) for x in base.by]
+        grouping_sets = [
+            [self.build(x) for x in grouping_set] for grouping_set in base.grouping_sets
+        ]
+        if base.grouping == AggregateGroupingMode.STANDARD:
+            by = sorted(by, key=lambda x: x.address)
 
         parent: BuildFunction = self._build_function(base.function)  # type: ignore
         return BuildAggregateWrapper(
-            function=parent, by=sorted(by, key=lambda x: x.address)
+            function=parent,
+            by=by,
+            grouping=base.grouping,
+            grouping_sets=grouping_sets,
         )
 
     @build.register

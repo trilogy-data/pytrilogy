@@ -818,6 +818,21 @@ class Renderer:
     @to_string.register
     def _(self, arg: AggregateWrapper):
         if arg.by:
+            if arg.grouping.value == "rollup":
+                by = ", ".join([self.to_string(x) for x in arg.by])
+                return f"{self.to_string(arg.function)} by rollup {by}"
+            if arg.grouping.value == "cube":
+                by = ", ".join([self.to_string(x) for x in arg.by])
+                return f"{self.to_string(arg.function)} by cube {by}"
+            if arg.grouping.value == "grouping_sets":
+                sets = []
+                for grouping_set in arg.grouping_sets:
+                    sets.append(
+                        f"({', '.join([self.to_string(x) for x in grouping_set])})"
+                    )
+                return f"{self.to_string(arg.function)} by grouping sets " + ", ".join(
+                    sets
+                )
             by = ", ".join([self.to_string(x) for x in arg.by])
             return f"{self.to_string(arg.function)} by {by}"
         return f"{self.to_string(arg.function)}"

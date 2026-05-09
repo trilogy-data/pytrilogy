@@ -45,7 +45,7 @@ class Optimizations:
     hide_unused_concepts: bool = True
     merge_aggregate: bool = True
     merge_irrelevant_group_by: bool = True
-    downgrade_full_join: bool = True
+    upgrade_condition_joins: bool = True
     join_hoist: bool = True
     union_dim_pushdown: bool = True
 

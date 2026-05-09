@@ -1,12 +1,13 @@
 from typing import TYPE_CHECKING
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import AggregateGroupingMode, Derivation, Granularity
 from trilogy.core.graph_models import (
     ReferenceGraph,
     datasource_has_filter_sensitive_aggregate,
 )
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
@@ -144,6 +145,13 @@ def create_datasource_node(
         force_group = any(
             x.granularity != Granularity.SINGLE_ROW for x in datasource.output_concepts
         )
+    if any(
+        c.is_aggregate
+        and isinstance(c.lineage, BuildAggregateWrapper)
+        and c.lineage.grouping != AggregateGroupingMode.STANDARD
+        for c in all_concepts
+    ):
+        force_group = True
     rollup_concepts = (
         get_additive_rollup_concepts(
             datasource=datasource,

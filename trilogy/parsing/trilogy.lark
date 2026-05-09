@@ -487,6 +487,8 @@
     count:   _COUNT  expr ")"
     
     count_distinct: "count_distinct"i "(" expr ")"
+    grouping: "grouping"i "(" expr ")"
+    grouping_id: "grouping_id"i "(" (expr ",")* expr ")"
     
     // avoid conflicts with the window
     _SUM.1: "sum("i
@@ -512,8 +514,12 @@
 
     //aggregates can force a grain
     aggregate_all: "*"
-    aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) aggregate_over?
+    aggregate_rollup: "ROLLUP"i over_list
+    aggregate_cube: "CUBE"i over_list
+    grouping_set: "(" over_list? ")"
+    aggregate_grouping_sets: "GROUPING"i "SETS"i grouping_set ("," grouping_set)*
+    aggregate_over: ("BY"i (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | over_list))
+    aggregate_functions: (count | count_distinct | grouping_id | grouping | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) aggregate_over?
 
     // date functions
     _DATE.1: "date("i
@@ -607,7 +613,8 @@
 
 
 
-    int_lit:  /\-?[0-9]+/
+    INT_LITERAL_PART: /\-?[0-9]+/
+    int_lit: INT_LITERAL_PART
     
     float_lit: /\-?[0-9]*\.[0-9]+/
 

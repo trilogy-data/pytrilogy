@@ -1,0 +1,311 @@
+query_id = "59"
+gen_length = 10835
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"ss_store_sales\".\"SS_SOLD_DATE_SK\" as \"ss_date_id\",
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" is not null
+
+GROUP BY
+    1,
+    2),
+juicy as (
+SELECT
+    \"ss_date_date\".\"D_DAY_NAME\" as \"ss_date_day_name\",
+    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
+    \"ss_store_sales\".\"SS_SALES_PRICE\" as \"ss_sales_price\",
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+),
+quizzical as (
+SELECT
+    1 as \"year1_present\",
+    1 as \"year2_present\"
+),
+thoughtful as (
+SELECT
+    \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
+    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
+    max(CASE
+	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1212 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1223 THEN 1
+	ELSE 0
+	END) as \"in_year1\",
+    max(CASE
+	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1224 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235 THEN 1
+	ELSE 0
+	END) as \"in_year2\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
+WHERE
+    \"cheerful\".\"ss_store_id\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+
+GROUP BY
+    1,
+    2),
+late as (
+SELECT
+    \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
+    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
+    \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_text_id\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
+WHERE
+    \"cheerful\".\"ss_store_id\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+
+GROUP BY
+    1,
+    2,
+    3),
+uneven as (
+SELECT
+    \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
+    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
+    \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_text_id\",
+    \"ss_store_store\".\"S_STORE_NAME\" as \"ss_store_name\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
+WHERE
+    \"cheerful\".\"ss_store_id\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+scrawny as (
+SELECT
+    \"thoughtful\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
+    \"thoughtful\".\"ss_store_id\" as \"ss_store_id\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Friday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"fri_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Monday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"mon_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Saturday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"sat_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Sunday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"sun_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Thursday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"thu_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Tuesday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"tue_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Wednesday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"wed_sales\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"juicy\" on \"thoughtful\".\"ss_date_week_seq\" is not distinct from \"juicy\".\"ss_date_week_seq\" AND \"thoughtful\".\"ss_store_id\" is not distinct from \"juicy\".\"ss_store_id\"
+WHERE
+    \"thoughtful\".\"in_year2\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
+
+GROUP BY
+    1,
+    2),
+sweltering as (
+SELECT
+    \"quizzical\".\"year2_present\" as \"year2_present\"
+FROM
+    \"thoughtful\"
+    LEFT OUTER JOIN \"quizzical\" on 1=1
+WHERE
+    \"thoughtful\".\"in_year2\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
+),
+vacuous as (
+SELECT
+    \"thoughtful\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
+    \"thoughtful\".\"ss_store_id\" as \"ss_store_id\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Friday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"fri_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Monday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"mon_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Saturday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"sat_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Sunday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"sun_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Thursday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"thu_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Tuesday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"tue_sales\",
+    sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Wednesday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"wed_sales\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"juicy\" on \"thoughtful\".\"ss_date_week_seq\" is not distinct from \"juicy\".\"ss_date_week_seq\" AND \"thoughtful\".\"ss_store_id\" is not distinct from \"juicy\".\"ss_store_id\"
+WHERE
+    \"thoughtful\".\"in_year1\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
+
+GROUP BY
+    1,
+    2),
+questionable as (
+SELECT
+    \"quizzical\".\"year1_present\" as \"year1_present\"
+FROM
+    \"thoughtful\"
+    LEFT OUTER JOIN \"quizzical\" on 1=1
+WHERE
+    \"thoughtful\".\"in_year1\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
+),
+macho as (
+SELECT
+    \"late\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
+    \"late\".\"ss_store_id\" as \"ss_store_id\",
+    \"late\".\"ss_store_text_id\" as \"ss_store_text_id\"
+FROM
+    \"late\"
+    INNER JOIN \"thoughtful\" on \"late\".\"ss_date_week_seq\" is not distinct from \"thoughtful\".\"ss_date_week_seq\" AND \"late\".\"ss_store_id\" is not distinct from \"thoughtful\".\"ss_store_id\"
+WHERE
+    \"thoughtful\".\"in_year2\" = 1 and \"late\".\"ss_store_id\" is not null and \"late\".\"ss_date_week_seq\" is not null
+),
+yummy as (
+SELECT
+    \"uneven\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
+    \"uneven\".\"ss_store_id\" as \"ss_store_id\",
+    \"uneven\".\"ss_store_name\" as \"ss_store_name\",
+    \"uneven\".\"ss_store_text_id\" as \"ss_store_text_id\"
+FROM
+    \"uneven\"
+    INNER JOIN \"thoughtful\" on \"uneven\".\"ss_date_week_seq\" is not distinct from \"thoughtful\".\"ss_date_week_seq\" AND \"uneven\".\"ss_store_id\" is not distinct from \"thoughtful\".\"ss_store_id\"
+WHERE
+    \"thoughtful\".\"in_year1\" = 1 and \"uneven\".\"ss_store_id\" is not null and \"uneven\".\"ss_date_week_seq\" is not null
+),
+divergent as (
+SELECT
+    \"macho\".\"ss_store_text_id\" as \"store_text_id_2\",
+    \"scrawny\".\"fri_sales\" as \"fri2\",
+    \"scrawny\".\"mon_sales\" as \"mon2\",
+    \"scrawny\".\"sat_sales\" as \"sat2\",
+    \"scrawny\".\"sun_sales\" as \"sun2\",
+    \"scrawny\".\"thu_sales\" as \"thu2\",
+    \"scrawny\".\"tue_sales\" as \"tue2\",
+    \"scrawny\".\"wed_sales\" as \"wed2\",
+    coalesce(\"macho\".\"ss_date_week_seq\",\"scrawny\".\"ss_date_week_seq\") as \"week_seq_2\"
+FROM
+    \"macho\"
+    FULL JOIN \"scrawny\" on \"macho\".\"ss_date_week_seq\" = \"scrawny\".\"ss_date_week_seq\" AND \"macho\".\"ss_store_id\" is not distinct from \"scrawny\".\"ss_store_id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9),
+sparkling as (
+SELECT
+    \"vacuous\".\"fri_sales\" as \"fri1\",
+    \"vacuous\".\"mon_sales\" as \"mon1\",
+    \"vacuous\".\"sat_sales\" as \"sat1\",
+    \"vacuous\".\"sun_sales\" as \"sun1\",
+    \"vacuous\".\"thu_sales\" as \"thu1\",
+    \"vacuous\".\"tue_sales\" as \"tue1\",
+    \"vacuous\".\"wed_sales\" as \"wed1\",
+    \"yummy\".\"ss_store_name\" as \"store_name_1\",
+    \"yummy\".\"ss_store_text_id\" as \"store_text_id_1\",
+    coalesce(\"vacuous\".\"ss_date_week_seq\",\"yummy\".\"ss_date_week_seq\") + 52 as \"join_week\",
+    coalesce(\"vacuous\".\"ss_date_week_seq\",\"yummy\".\"ss_date_week_seq\") as \"week_seq_1\"
+FROM
+    \"yummy\"
+    FULL JOIN \"vacuous\" on \"yummy\".\"ss_date_week_seq\" = \"vacuous\".\"ss_date_week_seq\" AND \"yummy\".\"ss_store_id\" is not distinct from \"vacuous\".\"ss_store_id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11),
+busy as (
+SELECT
+    \"divergent\".\"fri2\" as \"year2_fri2\",
+    \"divergent\".\"mon2\" as \"year2_mon2\",
+    \"divergent\".\"sat2\" as \"year2_sat2\",
+    \"divergent\".\"store_text_id_2\" as \"year2_store_text_id_2\",
+    \"divergent\".\"sun2\" as \"year2_sun2\",
+    \"divergent\".\"thu2\" as \"year2_thu2\",
+    \"divergent\".\"tue2\" as \"year2_tue2\",
+    \"divergent\".\"wed2\" as \"year2_wed2\",
+    \"divergent\".\"week_seq_2\" as \"year2_week_seq_2\",
+    \"sweltering\".\"year2_present\" as \"year2_year2_present\"
+FROM
+    \"divergent\"
+    FULL JOIN \"sweltering\" on 1=1
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10),
+abhorrent as (
+SELECT
+    \"questionable\".\"year1_present\" as \"year1_year1_present\",
+    \"sparkling\".\"fri1\" as \"year1_fri1\",
+    \"sparkling\".\"join_week\" as \"year1_join_week\",
+    \"sparkling\".\"mon1\" as \"year1_mon1\",
+    \"sparkling\".\"sat1\" as \"year1_sat1\",
+    \"sparkling\".\"store_name_1\" as \"year1_store_name_1\",
+    \"sparkling\".\"store_text_id_1\" as \"year1_store_text_id_1\",
+    \"sparkling\".\"sun1\" as \"year1_sun1\",
+    \"sparkling\".\"thu1\" as \"year1_thu1\",
+    \"sparkling\".\"tue1\" as \"year1_tue1\",
+    \"sparkling\".\"wed1\" as \"year1_wed1\",
+    \"sparkling\".\"week_seq_1\" as \"year1_week_seq_1\"
+FROM
+    \"sparkling\"
+    FULL JOIN \"questionable\" on 1=1
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12)
+SELECT
+    \"abhorrent\".\"year1_store_name_1\" as \"s_store_name1\",
+    \"busy\".\"year2_store_text_id_2\" as \"s_store_id1\",
+    \"abhorrent\".\"year1_week_seq_1\" as \"d_week_seq1\",
+    \"abhorrent\".\"year1_sun1\" / \"busy\".\"year2_sun2\" as \"sun_sales_ratio\",
+    \"abhorrent\".\"year1_mon1\" / \"busy\".\"year2_mon2\" as \"mon_sales_ratio\",
+    \"abhorrent\".\"year1_tue1\" / \"busy\".\"year2_tue2\" as \"tue_sales_ratio\",
+    \"abhorrent\".\"year1_wed1\" / \"busy\".\"year2_wed2\" as \"wed_sales_ratio\",
+    \"abhorrent\".\"year1_thu1\" / \"busy\".\"year2_thu2\" as \"thu_sales_ratio\",
+    \"abhorrent\".\"year1_fri1\" / \"busy\".\"year2_fri2\" as \"fri_sales_ratio\",
+    \"abhorrent\".\"year1_sat1\" / \"busy\".\"year2_sat2\" as \"sat_sales_ratio\"
+FROM
+    \"abhorrent\"
+    INNER JOIN \"busy\" on \"abhorrent\".\"year1_join_week\" is not distinct from \"busy\".\"year2_week_seq_2\" AND \"abhorrent\".\"year1_store_text_id_1\" is not distinct from \"busy\".\"year2_store_text_id_2\"
+WHERE
+    \"abhorrent\".\"year1_year1_present\" = 1 and \"busy\".\"year2_year2_present\" = 1
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+ORDER BY 
+    \"s_store_name1\" asc nulls first,
+    \"s_store_id1\" asc nulls first,
+    \"d_week_seq1\" asc nulls first
+LIMIT (100)"""

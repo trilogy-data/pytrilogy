@@ -487,6 +487,14 @@ def test_fifty_eight(engine):
     assert len(query) < 7000, query
 
 
+# Override: reference y/x subqueries cross-join wss to date_dim on week_seq,
+# producing ~49 duplicate rows per (store, week_seq) pair. The override
+# pre-dedups the week filter so row-by-row comparison is meaningful.
+def test_fifty_nine(engine):
+    query = run_query(engine, 59, sql_override=True)
+    assert len(query) < 12000, query
+
+
 def test_sixty(engine):
     query = run_query(engine, 60)
     assert len(query) < 5000, query
@@ -538,6 +546,11 @@ def test_seventy_one(engine):
     assert len(query) < 5500, query
 
 
+def test_seventy_two(engine_sf001):
+    query = run_query(engine_sf001, 72)
+    assert len(query) < 8000, query
+
+
 def test_seventy_three(engine):
     query = run_query(engine, 73)
     assert len(query) < 7500, query
@@ -575,7 +588,8 @@ def test_eighty_three(engine):
 
 
 @pytest.mark.skip(
-    reason="DuckDB OOMs/hangs running the PRAGMA tpcds(85) comparison query"
+    reason="DuckDB OOMs/hangs running the PRAGMA tpcds(85) comparison query on some "
+    "machines. If observed, switch the fixture to engine_sf01 (sf=0.1)."
 )
 def test_eighty_five(engine):
     query = run_query(engine, 85)

@@ -1,11 +1,11 @@
-"""Downgrade OUTER joins when the WHERE proves they're stricter than needed.
+"""upgrades joins when the WHERE proves they can be inner.
 
 Outer joins exist to preserve unmatched rows by NULL-padding one side. When the
 surrounding WHERE rejects rows where those NULL-padded columns appear (directly
 via ``IS NOT NULL`` or via any null-propagating predicate that mentions a
 concept on that side), the unmatched rows can never satisfy the filter — so
 the OUTER join produces the same surviving rows as a stricter join, and we
-can downgrade.
+can upgrade.
 
 A predicate "forces a concept non-null in surviving rows" if it can never be
 TRUE when that concept is NULL — direct ``IS NOT NULL``, null-propagating
@@ -14,7 +14,7 @@ propagating expression. ``COALESCE``/``NULLIF``/``CASE``/``COUNT`` are treated
 as opaque (they can be non-null even when an arg is NULL), so we don't recurse
 into them.
 
-Downgrades by current join type:
+Upgrades by current join type:
 
   - ``FULL``
       both sides forced non-null  → ``INNER``
@@ -226,12 +226,10 @@ def _downgrade(
     return None
 
 
-class DowngradeFullJoinOnGuards(OptimizationRule):
-    """Downgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
+class UpgradeJoinOnGuards(OptimizationRule):
+    """Upgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
     enclosing WHERE rejects the unmatched rows the OUTER join was preserving.
-
-    Class name kept for backwards compatibility; the rule covers all three
-    OUTER join types now."""
+    """
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]

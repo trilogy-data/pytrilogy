@@ -5,6 +5,7 @@ from os import environ
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import tomllib
 
@@ -34,11 +35,32 @@ def plot_perf(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> No
     fig, ax = plt.subplots()
     ax.set_title(title)
     ax.set_xlabel("Generation")
-    ax.set_ylabel("Execution time (s)")
-    ax.boxplot(
-        [frame["exec_time"], frame["comp_time"]],
-        tick_labels=["Trilogy", "DuckDBDefault"],
-    )
+    ax.set_ylabel("Execution time (s, log scale)")
+    ax.set_yscale("log")
+    exec_times = frame["exec_time"].to_numpy()
+    comp_times = frame["comp_time"].to_numpy()
+    series = [exec_times, comp_times]
+    trilogy_wins = exec_times < comp_times
+    duck_wins = comp_times < exec_times
+    win_masks = [trilogy_wins, duck_wins]
+    counts = [int(trilogy_wins.sum()), int(duck_wins.sum())]
+    totals = [float(exec_times.sum()), float(comp_times.sum())]
+    labels = [
+        f"Trilogy ({counts[0]} wins, {totals[0]:.1f}s total)",
+        f"DuckDBDefault ({counts[1]} wins, {totals[1]:.1f}s total)",
+    ]
+    positions = list(range(1, len(series) + 1))
+    parts = ax.violinplot(series, positions=positions, showmedians=True)
+    for body in parts["bodies"]:
+        body.set_alpha(0.2)
+        body.set_facecolor("gray")
+    rng = np.random.default_rng(0)
+    for pos, values, wins in zip(positions, series, win_masks):
+        jitter = rng.uniform(-0.08, 0.08, size=len(values))
+        colors = np.where(wins, "#2ca02c", "#d62728")
+        ax.scatter(pos + jitter, values, s=14, alpha=0.55, c=colors, linewidths=0)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels)
     if show:
         plt.show()
     else:

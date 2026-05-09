@@ -23,6 +23,7 @@ from trilogy.core.enums import BooleanOperator, JoinType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
+    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildParenthetical,
@@ -47,6 +48,41 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.utility import unique
 
 ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+
+
+def _add_render_dependencies(
+    concepts: list[BuildConcept],
+    dim_ds: BuildDatasource | QueryDatasource,
+) -> list[BuildConcept]:
+    available = dim_ds.output_concepts
+    available_by_address = {concept.address: concept for concept in available}
+    alias_by_address = {}
+    if isinstance(dim_ds, BuildDatasource):
+        alias_by_address = {
+            column.concept.address: column.alias for column in dim_ds.columns
+        }
+    seen = {concept.address for concept in concepts}
+    idx = 0
+    while idx < len(concepts):
+        concept = concepts[idx]
+        idx += 1
+        dependency_sources: list[BuildConceptArgs] = []
+        if concept.lineage is not None:
+            dependency_sources.append(concept.lineage)
+        alias = alias_by_address.get(concept.address)
+        if isinstance(alias, BuildConceptArgs):
+            dependency_sources.append(alias)
+        for source in dependency_sources:
+            dependencies = getattr(source, "rendered_concept_arguments", [])
+            for dependency in dependencies:
+                if dependency.address in seen:
+                    continue
+                available_dependency = available_by_address.get(dependency.address)
+                if available_dependency is None:
+                    continue
+                concepts.append(available_dependency)
+                seen.add(available_dependency.address)
+    return concepts
 
 
 def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | None:
@@ -237,6 +273,10 @@ class UnionDimPushdown(OptimizationRule):
                 if p.right.address not in present:
                     dim_concepts.append(p.right)
                     present.add(p.right.address)
+            dim_concepts = _add_render_dependencies(
+                dim_concepts,
+                dim_ds,
+            )
             result[key] = {
                 "base_join": j,
                 "dim_qds": dim_ds,

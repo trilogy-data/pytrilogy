@@ -1,7 +1,5 @@
 import store_sales as store_sales;
 
-with q27_results as
-# Level 1: Detail (item, state)
 WHERE
     store_sales.customer_demographic.gender = 'M'
     and store_sales.customer_demographic.marital_status = 'S'
@@ -9,65 +7,29 @@ WHERE
     and store_sales.date.year = 2002
     and store_sales.store.state = 'TN'
 SELECT
-    store_sales.item.name as item_a,
-    store_sales.store.state as state_a,
-    0 as g_state_a,
-    avg(cast(store_sales.quantity as numeric(12, 2))) as agg1_a,
-    avg(cast(store_sales.list_price as numeric(12, 2))) as agg2_a,
-    avg(cast(store_sales.coupon_amt as numeric(12, 2))) as agg3_a,
-    avg(cast(store_sales.sales_price as numeric(12, 2))) as agg4_a,
-MERGE
-# Level 2: Roll up state, keep item
-WHERE
-    store_sales.customer_demographic.gender = 'M'
-    and store_sales.customer_demographic.marital_status = 'S'
-    and store_sales.customer_demographic.education_status = 'College'
-    and store_sales.date.year = 2002
-    and store_sales.store.state = 'TN'
-SELECT
-    store_sales.item.name as item_b,
-    cast(null as string) as null_state_b,
-    1 as g_state_b,
-    avg(cast(store_sales.quantity as numeric(12, 2))) as agg1_b,
-    avg(cast(store_sales.list_price as numeric(12, 2))) as agg2_b,
-    avg(cast(store_sales.coupon_amt as numeric(12, 2))) as agg3_b,
-    avg(cast(store_sales.sales_price as numeric(12, 2))) as agg4_b,
-MERGE
-# Level 3: Grand total
-WHERE
-    store_sales.customer_demographic.gender = 'M'
-    and store_sales.customer_demographic.marital_status = 'S'
-    and store_sales.customer_demographic.education_status = 'College'
-    and store_sales.date.year = 2002
-    and store_sales.store.state = 'TN'
-SELECT
-    cast(null as string) as null_item_c,
-    cast(null as string) as null_state_c,
-    1 as g_state_c,
-    avg(cast(store_sales.quantity as numeric(12, 2))) as agg1_c,
-    avg(cast(store_sales.list_price as numeric(12, 2))) as agg2_c,
-    avg(cast(store_sales.coupon_amt as numeric(12, 2))) as agg3_c,
-    avg(cast(store_sales.sales_price as numeric(12, 2))) as agg4_c,
-align
-    i_item_id: item_a, item_b, null_item_c
-    AND s_state: state_a, null_state_b, null_state_c
-    AND g_state: g_state_a, g_state_b, g_state_c
-derive
-    coalesce(q27_results.agg1_a, q27_results.agg1_b, q27_results.agg1_c) -> agg1,
-    coalesce(q27_results.agg2_a, q27_results.agg2_b, q27_results.agg2_c) -> agg2,
-    coalesce(q27_results.agg3_a, q27_results.agg3_b, q27_results.agg3_c) -> agg3,
-    coalesce(q27_results.agg4_a, q27_results.agg4_b, q27_results.agg4_c) -> agg4
-;
-
-SELECT
-    q27_results.i_item_id,
-    q27_results.s_state,
-    q27_results.g_state,
-    q27_results.agg1,
-    q27_results.agg2,
-    q27_results.agg3,
-    q27_results.agg4,
+    store_sales.item.name,
+    store_sales.store.state,
+    grouping(store_sales.store.state) by rollup
+        store_sales.item.name,
+        store_sales.store.state
+        as g_state,
+    avg(cast(store_sales.quantity as numeric(12, 2))) by rollup
+        store_sales.item.name,
+        store_sales.store.state
+        as agg1,
+    avg(cast(store_sales.list_price as numeric(12, 2))) by rollup
+        store_sales.item.name,
+        store_sales.store.state
+        as agg2,
+    avg(cast(store_sales.coupon_amt as numeric(12, 2))) by rollup
+        store_sales.item.name,
+        store_sales.store.state
+        as agg3,
+    avg(cast(store_sales.sales_price as numeric(12, 2))) by rollup
+        store_sales.item.name,
+        store_sales.store.state
+        as agg4,
 ORDER BY
-    q27_results.i_item_id asc nulls first,
-    q27_results.s_state asc nulls first
+    store_sales.item.name asc nulls first,
+    store_sales.store.state asc nulls first
 LIMIT 100;
