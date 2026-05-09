@@ -244,9 +244,9 @@ exec_time = 0.197652
 comp_time = 0.208965
 
 [query_51]
-parse_time = 0.177028
-exec_time = 0.297944
-comp_time = 0.397367
+parse_time = 0.22903
+exec_time = 0.279796
+comp_time = 0.46939
 
 [query_52]
 parse_time = 0.055829

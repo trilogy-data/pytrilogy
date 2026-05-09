@@ -17,13 +17,13 @@ auto store_has_row <- max(case when sales.sales_channel = 'STORE' then 1 else 0 
 # Cumulative sum per channel. SQL SUM() ignores NULLs, so on (item, date) rows
 # where this channel had no sale, the cumulative is the same as the prior day's
 # cumulative (forward-fill behavior matches the reference's outer max(cume_sales)).
-property <sales.item.id, sales.date.date>.web_cume <- sum web_daily over sales.item.id order by sales.date.date asc;
-property <sales.item.id, sales.date.date>.store_cume <- sum store_daily over sales.item.id order by sales.date.date asc;
+auto web_cume <- sum web_daily over sales.item.id order by sales.date.date asc;
+auto store_cume <- sum store_daily over sales.item.id order by sales.date.date asc;
 
 # Reference's `web_sales` column is NULL on (item, date) rows where web had no
 # sale row at all — distinct from `web_cumulative` (which forward-fills).
-property <sales.item.id, sales.date.date>.web_sales_visible <- case when web_has_row = 1 then web_cume else null end;
-property <sales.item.id, sales.date.date>.store_sales_visible <- case when store_has_row = 1 then store_cume else null end;
+auto web_sales_visible <- case when web_has_row = 1 then web_cume else null end;
+auto store_sales_visible <- case when store_has_row = 1 then store_cume else null end;
 
 WHERE
     sales.date.month_seq between 1200 and 1211
