@@ -315,7 +315,9 @@ class Renderer:
             base += f"\nfreshness by `{arg.freshness_probe}`"
         if arg.refresh_script:
             base += f"\nrefresh `{arg.refresh_script}`"
-        if arg.status != DatasourceState.PUBLISHED:
+        # UNPOPULATED is auto-derived by the parser from file non-existence,
+        # not a token in the grammar — only emit states the parser accepts.
+        if arg.status == DatasourceState.UNPUBLISHED:
             base += f"\nstate {arg.status.value.lower()}"
 
         base += ";"
@@ -408,7 +410,14 @@ class Renderer:
                 return f"query '''{arg.location[1:-1]}'''"
             return f"query '''{arg.location}'''"
         elif arg.is_file:
-            return f"file '''`{arg.location}`'''"
+            if arg.additional_locations:
+                paths = ", ".join(
+                    f"`{p}`" for p in (arg.location, *arg.additional_locations)
+                )
+                return f"file [{paths}]"
+            if arg.write_location:
+                return f"file `{arg.location}`:`{arg.write_location}`"
+            return f"file `{arg.location}`"
         return f"address {arg.location}"
 
     @to_string.register

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from trilogy.authoring import DataType
@@ -339,7 +340,7 @@ def test_ingest_no_tables_specified():
 
     print(result.output)
     assert result.exit_code == 1
-    assert "No tables specified" in result.output
+    assert "No sources specified" in result.output
 
 
 def test_ingest_with_debug_flag_success():
@@ -1306,6 +1307,241 @@ class TestProcessColumnWithPrefixStripping:
         # Should work normally
         assert concept.name == "user_id"
         assert column_assignment.alias == "user_id"
+
+
+class TestFileSourceDetection:
+    """Detection helpers for distinguishing file paths from table names."""
+
+    def test_local_csv_is_file(self):
+        from trilogy.scripts.ingest import _looks_like_file_source
+
+        assert _looks_like_file_source("data.csv")
+        assert _looks_like_file_source("/abs/path/foo.parquet")
+        assert _looks_like_file_source("./relative/x.tsv")
+
+    def test_url_is_file(self):
+        from trilogy.scripts.ingest import _looks_like_file_source
+
+        assert _looks_like_file_source("https://example.com/data.csv")
+        assert _looks_like_file_source("gs://bucket/x.parquet")
+        assert _looks_like_file_source("s3://bucket/x.tsv")
+
+    def test_table_name_is_not_file(self):
+        from trilogy.scripts.ingest import _looks_like_file_source
+
+        assert not _looks_like_file_source("users")
+        assert not _looks_like_file_source("schema.users")
+        assert not _looks_like_file_source("users_with_pk")
+
+    def test_unsupported_extension_is_not_file(self):
+        from trilogy.scripts.ingest import _looks_like_file_source
+
+        # JSON isn't supported by the trilogy `file` grammar today
+        assert not _looks_like_file_source("data.json")
+        assert not _looks_like_file_source("foo.txt")
+
+    def test_datasource_name_from_path(self):
+        from trilogy.scripts.ingest import _datasource_name_from_path
+
+        assert _datasource_name_from_path("/a/b/sales.csv") == "sales"
+        assert _datasource_name_from_path("UserData.parquet") == "user_data"
+        assert _datasource_name_from_path("https://x.com/data.csv?token=abc") == "data"
+
+
+def test_ingest_local_csv_file():
+    """End-to-end ingest of a local CSV without a configured trilogy.toml."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "orders.csv"
+        csv_path.write_text(
+            "order_id,customer_email,total\n"
+            "1,alice@test.com,99.50\n"
+            "2,bob@test.com,42.00\n"
+            "3,carol@test.com,17.25\n"
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["ingest", str(csv_path), "--output", str(out_dir)],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        out_file = out_dir / "orders.preql"
+        assert out_file.exists()
+        content = out_file.read_text()
+        assert "order_id" in content
+        assert "customer_email" in content
+        # File address syntax must use backticks (round-trips with the parser)
+        assert "file `" in content
+        assert content.rstrip().endswith("`;") or "`;" in content
+        # Email rich type detected
+        assert "email_address" in content
+
+
+def test_ingest_local_parquet_file():
+    """Ingest a local parquet file via DuckDB."""
+    import tempfile
+
+    duckdb = pytest.importorskip("duckdb")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        parquet_path = tmppath / "events.parquet"
+        conn = duckdb.connect()
+        conn.execute(
+            "COPY (SELECT 1 AS event_id, 'login' AS event_type, "
+            "TIMESTAMP '2024-01-01 00:00:00' AS event_ts UNION ALL "
+            "SELECT 2, 'click', TIMESTAMP '2024-01-01 00:01:00') "
+            f"TO '{parquet_path.as_posix()}' (FORMAT PARQUET)"
+        )
+        conn.close()
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["ingest", str(parquet_path), "--output", str(out_dir)],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        out_file = out_dir / "events.preql"
+        assert out_file.exists()
+        content = out_file.read_text()
+        assert "event_id" in content
+        assert "event_type" in content
+        assert "file `" in content
+
+
+def test_ingest_file_with_name_override():
+    """--name renames the generated datasource."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "data.csv"
+        csv_path.write_text("id,name\n1,alice\n2,bob\n")
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                str(csv_path),
+                "--output",
+                str(out_dir),
+                "--name",
+                "customers",
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert (out_dir / "customers.preql").exists()
+        assert not (out_dir / "data.preql").exists()
+
+
+def test_ingest_mixed_table_and_file_under_duckdb():
+    """DuckDB can introspect both tables and files in one call."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "events.csv"
+        csv_path.write_text("event_id,event_type\n1,click\n2,view\n")
+        setup_sql = tmppath / "setup.sql"
+        setup_sql.write_text(
+            "CREATE TABLE customers (id INTEGER PRIMARY KEY, name VARCHAR);\n"
+            "INSERT INTO customers VALUES (1,'alice'),(2,'bob');"
+        )
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n'
+            f'[setup]\nsql = ["{setup_sql.as_posix()}"]\n'
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                f"customers,{csv_path}",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert (out_dir / "customers.preql").exists()
+        assert (out_dir / "events.preql").exists()
+        # Table source uses `address …`; file source uses `file `…``.
+        assert "address customers" in (out_dir / "customers.preql").read_text()
+        assert "file `" in (out_dir / "events.preql").read_text()
+
+
+def test_ingest_file_with_non_duckdb_dialect_rejected():
+    """File ingest requires duckdb; other dialects fail fast."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "x.csv"
+        csv_path.write_text("a,b\n1,2\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                str(csv_path),
+                "snowflake",
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+        assert result.exit_code == 1
+        assert "duckdb" in result.output.lower()
+
+
+def test_ingest_file_round_trips_through_parser():
+    """The generated .preql for a file source must reparse cleanly."""
+    import tempfile
+
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "round.csv"
+        csv_path.write_text("id,name\n1,alice\n2,bob\n")
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["ingest", str(csv_path), "--output", str(out_dir)],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        content = (out_dir / "round.preql").read_text()
+        # Must reparse without error - guards the renderer fix.
+        env, stmts = parse_text(content)
+        ds = next(s for s in stmts if hasattr(s, "address") and hasattr(s, "columns"))
+        assert ds.address.location.endswith("round.csv")
 
 
 def test_parse_foreign_keys():
