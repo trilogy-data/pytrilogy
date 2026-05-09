@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Iterator, Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Iterator, Sequence
 
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import print_info, print_success
+
+if TYPE_CHECKING:
+    from trilogy.scripts.ingest import IngestSummaryRow
 
 try:
     from rich import box
@@ -109,26 +113,25 @@ class _PlainIngestProgress(_IngestProgress):
 
 
 def _shorten(path: str, max_len: int = 50) -> str:
-    """Shorten an absolute path for display (basename + parent only when long)."""
+    """Shorten a long path for display.
+
+    Tries `.../parent/basename` first; if that's still too long, falls back to
+    a tail-truncated form `...<last N chars>`.
+    """
     if len(path) <= max_len:
         return path
-    from pathlib import Path
-
     p = Path(path)
-    if p.parent.name:
-        candidate = f".../{p.parent.name}/{p.name}"
-    else:
-        candidate = p.name
+    candidate = f".../{p.parent.name}/{p.name}" if p.parent.name else p.name
     if len(candidate) <= max_len:
         return candidate
     return "..." + path[-(max_len - 3) :]
 
 
-def show_ingest_summary(rows: list[dict[str, str]]) -> None:
+def show_ingest_summary(rows: list["IngestSummaryRow"]) -> None:
     """Print a final summary table across all ingested sources."""
     if not rows:
         return
-    successes = sum(1 for r in rows if r.get("status", "").lower() == "ok")
+    successes = sum(1 for r in rows if r.ok)
     if _core.RICH_AVAILABLE and _core.console is not None:
         table = Table(
             title=f"Ingest Summary ({successes}/{len(rows)} ok)",
@@ -141,24 +144,20 @@ def show_ingest_summary(rows: list[dict[str, str]]) -> None:
         table.add_column("Grain", style="green", overflow="ellipsis", max_width=30)
         table.add_column("Status")
         for r in rows:
-            ok = r.get("status", "").lower() == "ok"
-            status_cell = (
-                "[green]ok[/green]" if ok else f"[red]{r.get('status', 'failed')}[/red]"
-            )
+            status_cell = "[green]ok[/green]" if r.ok else f"[red]{r.status}[/red]"
             table.add_row(
-                _shorten(r.get("source", ""), 50),
-                _shorten(r.get("output", ""), 40),
-                r.get("columns", ""),
-                r.get("grain", ""),
+                _shorten(r.source, 50),
+                _shorten(r.output, 40),
+                r.columns,
+                r.grain,
                 status_cell,
             )
         _core.console.print(table)
     else:
         for r in rows:
             print_info(
-                f"{r.get('source', '')} -> {r.get('output', '')} "
-                f"[{r.get('columns', '?')} cols, grain={r.get('grain', '-')}, "
-                f"{r.get('status', '?')}]"
+                f"{r.source} -> {r.output} "
+                f"[{r.columns} cols, grain={r.grain}, {r.status}]"
             )
     print_success(
         f"\nIngested {successes} of {len(rows)} source(s)."

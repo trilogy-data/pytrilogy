@@ -1,9 +1,9 @@
 """Ingest command for Trilogy CLI - bootstraps datasources from warehouse tables or files."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from itertools import combinations
 from pathlib import Path as PathlibPath
-from typing import Any
 
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
@@ -55,6 +55,34 @@ _FILE_EXT_TO_TYPE: dict[str, AddressType] = {
     ".tsv": AddressType.TSV,
     ".parquet": AddressType.PARQUET,
 }
+
+ScriptStatement = Datasource | Comment | ConceptDeclarationStatement | ImportStatement
+
+
+@dataclass
+class IngestRecord:
+    """One row of ingest results, used both for FK linking and the summary table."""
+
+    source: str
+    datasource: Datasource
+    concepts: list[Concept]
+    required_imports: set[str]
+    script: list[ScriptStatement]
+
+
+@dataclass
+class IngestSummaryRow:
+    """User-facing summary of one source's ingest outcome."""
+
+    source: str
+    output: str
+    columns: str
+    grain: str
+    status: str
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "ok"
 
 
 def _looks_like_file_source(arg: str) -> bool:
@@ -418,10 +446,8 @@ def _build_script_content(
     datasource: Datasource,
     concepts: list[Concept],
     required_imports: set[str],
-) -> list[Datasource | Comment | ConceptDeclarationStatement | ImportStatement]:
-    script_content: list[
-        Datasource | Comment | ConceptDeclarationStatement | ImportStatement
-    ] = [
+) -> list[ScriptStatement]:
+    script_content: list[ScriptStatement] = [
         Comment(text=f"# Datasource ingested from {source_label}"),
         Comment(text=f"# Generated on {datetime.now()}"),
     ]
@@ -508,9 +534,6 @@ def ingest(
         raise Exit(1)
 
     fk_map = parse_foreign_keys(fks) if fks else {}
-    if has_files and any(k in file_sources for k in fk_map):
-        print_warning("--fks entries keyed on file paths are ignored")
-        fk_map = {k: v for k, v in fk_map.items() if k not in file_sources}
 
     # Determine output directory.
     if output:
@@ -593,10 +616,9 @@ def ingest(
             print_warning(f"Failed to load httpfs (remote reads may fail): {e}")
 
     ingested_files: list[PathlibPath] = []
-    ingested_data: dict[str, tuple[Datasource, list[Concept], set[str], list[Any]]] = {}
-    summary_rows: list[dict[str, str]] = []
+    ingested: dict[str, IngestRecord] = {}
+    summary_rows: list[IngestSummaryRow] = []
     renderer = Renderer()
-    datasources: dict[str, Datasource] = {}
 
     with ingest_progress(total=len(source_list)) as progress:
         for source in source_list:
@@ -610,26 +632,23 @@ def ingest(
                         )
                     )
                     source_label = location
-                    fk_key = source  # FK lookups use the file path verbatim
                 else:
                     datasource, concepts, required_imports = (
                         create_datasource_from_table(exec, source, schema, root=True)
                     )
                     source_label = f"{schema}.{source}" if schema else source
-                    fk_key = source
                 if name and not is_file:
                     datasource.name = name
 
-                datasources[fk_key] = datasource
                 progress.step(source, "writing")
-                script_content = _build_script_content(
-                    source_label, datasource, concepts, required_imports
-                )
-                ingested_data[fk_key] = (
-                    datasource,
-                    concepts,
-                    required_imports,
-                    script_content,
+                ingested[source] = IngestRecord(
+                    source=source,
+                    datasource=datasource,
+                    concepts=concepts,
+                    required_imports=required_imports,
+                    script=_build_script_content(
+                        source_label, datasource, concepts, required_imports
+                    ),
                 )
             except Exception as e:
                 print_error(f"Failed to ingest {source}: {e}")
@@ -645,13 +664,13 @@ def ingest(
                 except Exception:
                     pass
                 summary_rows.append(
-                    {
-                        "source": source,
-                        "output": "-",
-                        "columns": "-",
-                        "grain": "-",
-                        "status": f"failed: {type(e).__name__}",
-                    }
+                    IngestSummaryRow(
+                        source=source,
+                        output="-",
+                        columns="-",
+                        grain="-",
+                        status=f"failed: {type(e).__name__}",
+                    )
                 )
                 progress.advance()
                 continue
@@ -660,30 +679,26 @@ def ingest(
     if fk_map:
         print_info("Processing foreign key relationships...")
 
-    for fk_key, (
-        datasource,
-        concepts,
-        required_imports,
-        script_content,
-    ) in ingested_data.items():
-        output_file = output_dir / f"{datasource.name}.preql"
-        if fk_map and fk_key in fk_map:
-            column_mappings = fk_map[fk_key]
+    fk_datasources = {key: rec.datasource for key, rec in ingested.items()}
+    for source, rec in ingested.items():
+        output_file = output_dir / f"{rec.datasource.name}.preql"
+        if fk_map and source in fk_map:
+            column_mappings = fk_map[source]
             modified_content = apply_foreign_key_references(
-                fk_key, datasource, datasources, script_content, column_mappings
+                source, rec.datasource, fk_datasources, rec.script, column_mappings
             )
             output_file.write_text(modified_content)
         else:
-            output_file.write_text(renderer.render_statement_string(script_content))
+            output_file.write_text(renderer.render_statement_string(rec.script))
         ingested_files.append(output_file)
         summary_rows.append(
-            {
-                "source": fk_key,
-                "output": str(output_file),
-                "columns": str(len(concepts)),
-                "grain": _grain_label(datasource),
-                "status": "ok",
-            }
+            IngestSummaryRow(
+                source=source,
+                output=str(output_file),
+                columns=str(len(rec.concepts)),
+                grain=_grain_label(rec.datasource),
+                status="ok",
+            )
         )
 
     exec.close()

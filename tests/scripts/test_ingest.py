@@ -1347,6 +1347,388 @@ class TestFileSourceDetection:
         assert _datasource_name_from_path("UserData.parquet") == "user_data"
         assert _datasource_name_from_path("https://x.com/data.csv?token=abc") == "data"
 
+    def test_datasource_name_falls_back_to_source_when_blank(self):
+        from trilogy.scripts.ingest import _datasource_name_from_path
+
+        # When canonicalization strips everything we still emit a usable identifier.
+        assert _datasource_name_from_path("___.csv") == "source"
+        assert _datasource_name_from_path("@@@@.csv") == "source"
+
+
+class TestResolveFileSource:
+    """`_resolve_file_source` decides URL passthrough vs. local-path resolution."""
+
+    def test_unsupported_extension_raises(self):
+        from trilogy.scripts.ingest import _resolve_file_source
+
+        with pytest.raises(ValueError, match="Unsupported file extension"):
+            _resolve_file_source("/tmp/data.json")
+
+    def test_url_passes_through_unchanged(self):
+        from trilogy.core.enums import AddressType
+        from trilogy.scripts.ingest import _resolve_file_source
+
+        url = "https://example.com/data.parquet"
+        loc, addr_type = _resolve_file_source(url)
+        assert loc == url
+        assert addr_type == AddressType.PARQUET
+
+    def test_glob_passes_through_unchanged(self):
+        from trilogy.core.enums import AddressType
+        from trilogy.scripts.ingest import _resolve_file_source
+
+        glob = "/tmp/data/*.csv"
+        loc, addr_type = _resolve_file_source(glob)
+        assert loc == glob
+        assert addr_type == AddressType.CSV
+
+    def test_local_path_is_resolved_absolute(self):
+        from trilogy.scripts.ingest import _resolve_file_source
+
+        loc, _ = _resolve_file_source("./relative.csv")
+        assert Path(loc).is_absolute()
+
+
+class TestFileIntrospectionSource:
+    """`_file_introspection_source` builds the read_* SQL fragment."""
+
+    def test_csv_uses_read_csv_auto(self):
+        from trilogy.core.enums import AddressType
+        from trilogy.scripts.ingest import _file_introspection_source
+
+        assert _file_introspection_source("/a/b.csv", AddressType.CSV) == (
+            "read_csv_auto('/a/b.csv')"
+        )
+
+    def test_tsv_uses_tab_delimiter(self):
+        from trilogy.core.enums import AddressType
+        from trilogy.scripts.ingest import _file_introspection_source
+
+        sql = _file_introspection_source("/a/b.tsv", AddressType.TSV)
+        assert sql.startswith("read_csv_auto(")
+        assert "delim='\\t'" in sql
+
+    def test_parquet_uses_read_parquet(self):
+        from trilogy.core.enums import AddressType
+        from trilogy.scripts.ingest import _file_introspection_source
+
+        assert _file_introspection_source("/a/b.parquet", AddressType.PARQUET) == (
+            "read_parquet('/a/b.parquet')"
+        )
+
+    def test_unsupported_addr_type_raises(self):
+        from trilogy.core.enums import AddressType
+        from trilogy.scripts.ingest import _file_introspection_source
+
+        with pytest.raises(ValueError, match="Unsupported file address type"):
+            _file_introspection_source("/a/b", AddressType.QUERY)
+
+    def test_single_quote_in_path_is_escaped(self):
+        from trilogy.core.enums import AddressType
+        from trilogy.scripts.ingest import _file_introspection_source
+
+        # SQL injection guard: path with a literal apostrophe must be escaped.
+        sql = _file_introspection_source("/a/b's.csv", AddressType.CSV)
+        assert sql == "read_csv_auto('/a/b''s.csv')"
+
+
+class TestMaybeLoadHttpfs:
+    """`_maybe_load_httpfs` only fires for remote URLs."""
+
+    def test_local_path_skipped(self):
+        from trilogy.scripts.ingest import _maybe_load_httpfs
+
+        # No exec calls expected — pass a sentinel that would error if used.
+        class Boom:
+            def execute_raw_sql(self, *a, **kw):
+                raise AssertionError("should not call execute_raw_sql for local path")
+
+        _maybe_load_httpfs(Boom(), "/tmp/data.csv")  # type: ignore[arg-type]
+
+    def test_remote_url_loads_extension(self):
+        from trilogy.scripts.ingest import _maybe_load_httpfs
+
+        calls: list[str] = []
+
+        class Recorder:
+            def execute_raw_sql(self, sql: str):
+                calls.append(sql)
+                return None
+
+        _maybe_load_httpfs(Recorder(), "https://example.com/x.csv")  # type: ignore[arg-type]
+        assert any("httpfs" in s.lower() for s in calls)
+
+    def test_remote_url_swallows_install_error(self):
+        from trilogy.scripts.ingest import _maybe_load_httpfs
+
+        class Failing:
+            def execute_raw_sql(self, sql: str):
+                raise RuntimeError("network down")
+
+        # Should warn but not raise.
+        _maybe_load_httpfs(Failing(), "gs://bucket/x.parquet")  # type: ignore[arg-type]
+
+
+def test_ingest_heap_csv_no_unique_grain():
+    """A CSV with no unique columns falls back to a grainless datasource."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "events.csv"
+        # Every row identical → no unique key combination
+        csv_path.write_text(
+            "event_type,event_value\n" "click,1\n" "click,1\n" "click,1\n" "click,1\n"
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["ingest", str(csv_path), "--output", str(out_dir)])
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert "No primary key or unique grain" in result.output
+        content = (out_dir / "events.preql").read_text()
+        # No grain clause emitted
+        assert "grain (" not in content
+
+
+def test_ingest_name_with_multiple_sources_rejected():
+    """--name only makes sense when ingesting a single source."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv1 = tmppath / "a.csv"
+        csv1.write_text("id\n1\n")
+        csv2 = tmppath / "b.csv"
+        csv2.write_text("id\n2\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                f"{csv1},{csv2}",
+                "--output",
+                str(tmppath / "raw"),
+                "--name",
+                "merged",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "--name can only be set" in result.output
+
+
+def test_ingest_env_parse_error():
+    """--env with bad input fails fast with a clear error."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "x.csv"
+        csv_path.write_text("a\n1\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                str(csv_path),
+                "--output",
+                str(tmppath / "raw"),
+                # Path that doesn't exist and isn't KEY=VALUE → ValueError
+                "--env",
+                "/nonexistent/path/that/does/not/exist",
+            ],
+        )
+        assert result.exit_code == 1
+
+
+def test_ingest_table_name_override():
+    """--name applied to a table source renames the generated datasource."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        setup_sql = tmppath / "setup.sql"
+        setup_sql.write_text(
+            "CREATE TABLE raw_users (id INTEGER PRIMARY KEY, email VARCHAR);\n"
+            "INSERT INTO raw_users VALUES (1,'a@x.com');"
+        )
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n'
+            f'[setup]\nsql = ["{setup_sql.as_posix()}"]\n'
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "raw_users",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+                "--name",
+                "users",
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert (out_dir / "users.preql").exists()
+        assert not (out_dir / "raw_users.preql").exists()
+
+
+def test_ingest_table_with_fk_to_other_table():
+    """FK relationships are written into the dependent table's preql."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        setup_sql = tmppath / "setup.sql"
+        setup_sql.write_text(
+            "CREATE TABLE customers (id INTEGER PRIMARY KEY, name VARCHAR);\n"
+            "CREATE TABLE orders (\n"
+            "  order_id INTEGER PRIMARY KEY,\n"
+            "  customer_id INTEGER,\n"
+            "  total DOUBLE\n"
+            ");\n"
+            "INSERT INTO customers VALUES (1,'alice'),(2,'bob');\n"
+            "INSERT INTO orders VALUES (10,1,99.5),(11,2,42.0);"
+        )
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n'
+            f'[setup]\nsql = ["{setup_sql.as_posix()}"]\n'
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "customers,orders",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+                "--fks",
+                "orders.customer_id:customers.id",
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert "Processing foreign key relationships" in result.output
+        assert (out_dir / "orders.preql").exists()
+        assert (out_dir / "customers.preql").exists()
+
+
+def test_ingest_no_dialect_no_files_fails_fast():
+    """Without dialect or file sources we need a dialect — error out."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        # trilogy.toml without an engine section
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text("[setup]\nsql = []\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "some_table",
+                "--config",
+                str(config_file),
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+        assert result.exit_code == 1
+        assert "No dialect specified" in result.output
+
+
+def test_ingest_failure_recovers_for_subsequent_sources():
+    """A failed source rolls back the transaction; later sources still succeed."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        good = tmppath / "good.csv"
+        good.write_text("id,name\n1,alice\n2,bob\n")
+        # Path that does not exist on disk → DuckDB IO Error → rollback
+        bad = tmppath / "missing.csv"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                f"{bad},{good}",
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+        # Exit 0 because at least one source succeeded.
+        assert result.exit_code == 0
+        assert (tmppath / "raw" / "good.preql").exists()
+        assert "Failed to ingest" in result.output
+
+
+def test_ingest_debug_traceback_for_file_failure():
+    """--debug on a file failure prints a traceback."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "--debug",
+                "ingest",
+                str(tmppath / "missing.csv"),
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+        assert result.exit_code == 1
+        assert "Traceback" in result.output
+
+
+class TestIngestSummaryRow:
+    """The typed summary record exposed for display."""
+
+    def test_ok_status(self):
+        from trilogy.scripts.ingest import IngestSummaryRow
+
+        row = IngestSummaryRow(
+            source="x.csv", output="raw/x.preql", columns="3", grain="id", status="ok"
+        )
+        assert row.ok
+
+    def test_failure_status(self):
+        from trilogy.scripts.ingest import IngestSummaryRow
+
+        row = IngestSummaryRow(
+            source="x.csv",
+            output="-",
+            columns="-",
+            grain="-",
+            status="failed: OperationalError",
+        )
+        assert not row.ok
+
 
 def test_ingest_local_csv_file():
     """End-to-end ingest of a local CSV without a configured trilogy.toml."""
@@ -1540,7 +1922,11 @@ def test_ingest_file_round_trips_through_parser():
         content = (out_dir / "round.preql").read_text()
         # Must reparse without error - guards the renderer fix.
         env, stmts = parse_text(content)
-        ds = next(s for s in stmts if hasattr(s, "address") and hasattr(s, "columns"))
+        from trilogy.core.models.datasource import Address as ParsedAddress
+        from trilogy.core.models.datasource import Datasource as ParsedDatasource
+
+        ds = next(s for s in stmts if isinstance(s, ParsedDatasource))
+        assert isinstance(ds.address, ParsedAddress)
         assert ds.address.location.endswith("round.csv")
 
 
