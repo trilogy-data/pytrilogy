@@ -305,7 +305,12 @@ def concept_derivation(
                 f'Concept {name} purpose {concept_value.purpose} does not match declared purpose {purpose}. Suggest defaulting to "auto"',
             )
         if purpose == Purpose.PROPERTY and keys:
-            concept_value.keys = set(keys)
+            new_keys = set(keys)
+            # WindowItem's pin args widen the concept's keys — preserve them
+            # even when an explicit property <keys>.x clause is present.
+            if isinstance(source_value, WindowItem) and source_value.pin:
+                new_keys |= {p.address for p in source_value.pin}
+            concept_value.keys = new_keys
     elif isinstance(source_value, CONSTANT_TYPES):
         concept_value = constant_to_concept(
             source_value,

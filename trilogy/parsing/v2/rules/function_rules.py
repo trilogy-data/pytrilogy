@@ -686,12 +686,17 @@ def window_item(
 
 def _parse_window_args(
     args: list[Any], context: RuleContext
-) -> tuple[WindowType, Concept | None, int | None, list[Any], list[Any]]:
+) -> tuple[
+    WindowType, Concept | None, int | None, list[Any], list[Any], list[Concept]
+]:
     wtype = WindowType.ROW_NUMBER
     concept: Concept | None = None
     index: int | None = None
     order_by: list[Any] = []
     over: list[Any] = []
+    # Field args after the first are pins; lag/lead's int_lit second arg is
+    # still the offset and stays out of pin.
+    field_args: list[Concept] = []
     for item in args:
         if isinstance(item, int):
             index = item
@@ -703,15 +708,19 @@ def _parse_window_args(
             over = item.get("over", [])
             order_by = item.get("order", [])
         elif isinstance(item, str):
-            concept = context.concepts.require(item)
+            field_args.append(context.concepts.require(item))
         elif isinstance(item, ConceptRef):
-            concept = context.concepts.require(item.address)
+            field_args.append(context.concepts.require(item.address))
         elif isinstance(item, WindowType):
             wtype = item
         else:
-            concept = arbitrary_to_concept_v2(item, context=context)
-            context.add_virtual_concept(concept, meta=core_meta(None))
-    return wtype, concept, index, order_by, over
+            virt = arbitrary_to_concept_v2(item, context=context)
+            context.add_virtual_concept(virt, meta=core_meta(None))
+            field_args.append(virt)
+    if field_args:
+        concept = field_args[0]
+    pins = field_args[1:]
+    return wtype, concept, index, order_by, over, pins
 
 
 _WINDOW_ITEM_MISSING_FIELD_ERROR: dict[SyntaxNodeKind, str] = {
@@ -727,11 +736,16 @@ def window_item_from_args(
 ) -> WindowItem:
     assert node.kind is not None
     args = hydrated_children(node, hydrate)
-    wtype, concept, index, order_by, over = _parse_window_args(args, context)
+    wtype, concept, index, order_by, over, pins = _parse_window_args(args, context)
     if not concept:
         raise fail(node, _WINDOW_ITEM_MISSING_FIELD_ERROR[node.kind])
     return WindowItem(
-        type=wtype, content=concept.reference, over=over, order_by=order_by, index=index
+        type=wtype,
+        content=concept.reference,
+        over=over,
+        order_by=order_by,
+        index=index,
+        pin=[p.reference for p in pins],
     )
 
 

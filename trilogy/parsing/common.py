@@ -756,8 +756,15 @@ def window_item_to_concept(
     else:
         local_purpose = Purpose.PROPERTY
         keys = Grain.from_concepts(
-            [bcontent.address] + [y.address for y in parent.over], environment
+            [bcontent.address]
+            + [y.address for y in parent.over]
+            + [y.address for y in parent.pin],
+            environment,
         ).components
+    if parent.pin:
+        # Pin concepts widen the window's keys regardless of purpose so the
+        # planner pulls them through gen_window_node's enrichment join.
+        keys = (set(keys) if keys else set()) | {y.address for y in parent.pin}
 
     # when including the order by in discovery grain
     if parent.order_by:

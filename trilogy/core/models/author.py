@@ -1401,6 +1401,12 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
     order_by: List["OrderItem"]
     over: List["ConceptRef"] = dc_field(default_factory=list)
     index: Optional[int] = None
+    # Additional concepts that pin the window's output grain. Surfaced in
+    # SQL syntax as `rank(content, pin1, pin2, ...) over (partition ... order ...)`.
+    # The pins do not appear in the rendered window function (it's still
+    # `rank() over (...)`), but they're added to concept_arguments / the
+    # window concept's keys so the planner widens the enrichment join.
+    pin: List["ConceptRef"] = dc_field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.content, Concept):
@@ -1414,6 +1420,15 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
             else:
                 final.append(item)
         self.over = final
+        pin_final = []
+        for item in self.pin:
+            if isinstance(item, Concept):
+                pin_final.append(
+                    ConceptRef(address=item.address, datatype=item.datatype)
+                )
+            else:
+                pin_final.append(item)
+        self.pin = pin_final
 
     def __str__(self):
         return self.__repr__()
@@ -1434,6 +1449,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
             over=[x.with_merge(source, target, modifiers) for x in self.over],
             order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
             index=self.index,
+            pin=[x.with_merge(source, target, modifiers) for x in self.pin],
         )
         return output
 
@@ -1450,6 +1466,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
                 x.with_reference_replacement(source, target) for x in self.order_by
             ],
             index=self.index,
+            pin=[x.with_reference_replacement(source, target) for x in self.pin],
         )
 
     def with_namespace(self, namespace: str) -> "WindowItem":
@@ -1463,6 +1480,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
             index=self.index,
+            pin=[x.with_namespace(namespace) for x in self.pin],
         )
 
     @property
@@ -1472,6 +1490,8 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
         for order in self.order_by:
             output += get_concept_arguments(order)
         for item in self.over:
+            output += get_concept_arguments(item)
+        for item in self.pin:
             output += get_concept_arguments(item)
         return output
 

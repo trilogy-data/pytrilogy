@@ -511,7 +511,11 @@ window_item_legacy = {
       WINDOW_TYPE_LEGACY ~ int_lit ~ !WINDOW_LEGACY_KW ~ expr ~ window_item_over? ~ window_item_order?
     | WINDOW_TYPE_LEGACY ~ expr ~ window_item_over? ~ window_item_order?
 }
-window_item_sql    = { WINDOW_TYPE_SQL ~ expr ~ ("," ~ int_lit)? ~ ")" ~ window_sql_over? }
+// rank/dense_rank/row_number accept multiple comma-separated fields after the
+// first; extra fields pin the window concept's grain (used to widen the
+// enrichment join when ranking ROLLUP output — see q67). lag/lead still take
+// `field, offset` so int_lit is tried before plain expr.
+window_item_sql    = { WINDOW_TYPE_SQL ~ expr ~ ("," ~ (int_lit | expr))* ~ ")" ~ window_sql_over? }
 window_item        = { window_item_sql | window_item_legacy }
 
 // Allow newlines/CR between the comma and the identifier so multi-line

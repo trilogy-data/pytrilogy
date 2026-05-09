@@ -9,10 +9,10 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 88 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 90 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | Skipped (preql exists) | 3 | 5, 29, 85 |
 | XFAIL (committed broken for experimentation) | 1 | 14 |
-| Missing (no preql / no test) | 7 | 51, 54, 64, 67, 75, 77, 84 |
+| Missing (no preql / no test) | 5 | 51, 54, 64, 75, 77 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -237,6 +237,22 @@ exercising different planner paths — they share an SQL reference.)
   the INNER JOIN to `customer`. In trilogy, add `sales.customer.id is not
   null` to the inline `?` filter AND the rowset's `WHERE` so the phantom
   group is excluded from the grain.
+- **Pin window-function grain by passing extra fields to `rank(...)` when
+  ranking ROLLUP output (q67).** `gen_window_node`'s `parent_concepts`
+  only includes `(target, partition, order_by)` from the window lineage
+  plus whatever's in `concept.keys`. Other dims requested by the SELECT
+  come back through a `gen_enrichment_node` join keyed on
+  `parent_concepts` with `IS NOT DISTINCT FROM`. For ROLLUP output that
+  join key is non-unique (multiple rolled-up rows can share `(NULL,
+  NULL, value)`), so the back-join multi-matches and duplicates results.
+  The SQL-style window grammar accepts extra comma-separated fields
+  after the first — `rank(target, pin1, pin2, ...) over (partition by p
+  order by o)` — and `WindowItem.pin` flows them into `concept.keys`,
+  so the planner pulls every pin through the window CTE and no
+  enrichment join is needed. Pair with `HAVING rk <= 100` (not WHERE) —
+  WHERE re-routes the threshold into the source path, which produces a
+  second ROLLUP and a third rank (plan balloons to 5 CTEs and the
+  result is wrong).
 
 ## Recent Model Extensions (truthful nullable FKs across fact tables)
 
@@ -477,15 +493,6 @@ far. But that's an optimization, not a correctness fix.
 
 These look tractable without further framework work:
 
-- **q67** — 9-level rollup with `rank() OVER (PARTITION BY i_category
-  ORDER BY sumsales DESC)`. **Unlike q70/q86 the partition does NOT
-  include any per-level grouping**, so all rolled-up rows in a category
-  compete in one rank ordering. The q86 per-level-rank trick does not
-  extend: rank must be applied across the merged rowset (e.g. via a
-  rowset-level window with a synthesised composite row id, or via
-  multi-key rank target — which trilogy's grammar doesn't accept today,
-  rank's target is a single expr). 9 MERGE branches plus a workable
-  cross-branch rank are needed.
 - **q72** — model extensions are now done (catalog_sales has
   `bill_household_demographic`), but the inventory + sales + returns
   triple-join blows up to OOM during planning. Needs filter pushdown
@@ -539,12 +546,6 @@ These need framework work first:
   "dedup by exact value tuple before sum" needs a primitive we don't have.
   Without dedup, summed counts diverge by ~16 per affected (brand, class,
   cat, manufact) group.
-- **q84** — reference SQL `SELECT customer_id, customername FROM customer,
-  ..., store_returns WHERE sr_cdemo_sk = cd_demo_sk AND ...` produces
-  duplicate customer rows (one per matching `store_returns`) with no
-  `DISTINCT`. Trilogy's GROUP BY semantics dedup by default. Also requires
-  an `income_band` model (parquet present, no preql) and a merge between
-  `customer.demographics.id` and `store_returns.customer_demographic.id`.
 
 ## Test Infra Notes
 
@@ -563,6 +564,62 @@ These need framework work first:
   machine. Opt in by taking `engine_sf01` instead of `engine` as the test
   parameter. Dataset is generated lazily on first use via raw duckdb (avoids
   capturing trilogy's `uv_run` macro into the exported `schema.sql`).
+
+## Recent Query Additions (q84)
+
+- **q84** — Edgewood customers in a fixed income band, joined to
+  `store_returns` on `sr_cdemo_sk = cd_demo_sk`. The reference SQL has
+  no DISTINCT, so a customer with N matching returns rows shows up N
+  times (sf=1 returns 16 rows, including one customer twice).
+
+  Modelling pieces added:
+  - `income_band.preql` — new dim (id, lower_bound, upper_bound).
+  - `household_demographic.preql` — added
+    `import income_band as income_band` and a second mapping
+    `HD_INCOME_BAND_SK: income_band.id` (alongside the existing scalar
+    `income_band_id` mapping). This lets queries traverse
+    `customer.household_demographic.income_band.lower_bound` etc.
+  - `store_returns.preql` — added
+    `import customer_demographic as customer_demographic` and
+    `SR_CDEMO_SK: customer_demographic.id` so q84 can match
+    `customer.demographics.id` to the return-side cdemo via merge.
+
+  Query mechanics:
+  - `merge customer.demographics.id into returns.customer_demographic.id;`
+    fuses the two cdemo concepts so the planner emits an INNER JOIN
+    `customer.cdemo_sk = returns.sr_cdemo_sk`.
+  - Hidden `--returns.store_sales.ticket_number, --returns.item.id` in
+    SELECT keep the row grain at (customer.id, ticket, item) instead of
+    grouping by (customer_id, customername) — preserves the per-return
+    duplicates without exposing the keys in the output.
+
+## Recent Query Additions (q67)
+
+- **q67** — 8-dim ROLLUP with `rank() OVER (PARTITION BY i_category
+  ORDER BY sumsales DESC)` across all rolled-up rows. Earlier the q86
+  per-level-rank trick didn't extend (one rank ordering crosses every
+  level inside a category), so this stayed missing.
+
+  Working shape: a single SELECT with `auto sumsales <- sum(...) by
+  rollup ...;` for the aggregate plus an explicit
+  `property <8 dims>.rk <- rank target over partition by order;` declaration
+  to pin the rank concept's keys. The property keys go into
+  `concept.keys`, which `resolve_window_parent_concepts` appends to
+  `parent_concepts` — so `gen_window_node` carries every rollup dim
+  through the window CTE rather than enriching back via a narrow
+  `(target, partition, order_by)` join. Plan: 3 CTEs (base + grouped
+  rollup + windowed) and a flat outer SELECT, no enrichment join.
+
+  Caveats:
+  - The threshold filter must be `HAVING rk <= 100`, not `WHERE`. Putting
+    `rk <= 100` in WHERE makes the planner re-enter the source path with
+    `rk` as an additional output, which produces a second ROLLUP and a
+    third rank — plan balloons to 5 CTEs and the result is wrong.
+  - Without the property declaration, `rank target over X by Y` plans
+    the rank with `parent_concepts = (target, X, Y)`, then enriches via
+    a 3-key join that's non-unique under ROLLUP (e.g. multiple rolled-up
+    rows share `(NULL_category, NULL_target, sumsales)` at sf=1) — the
+    Cartesian blowup pushes legitimate rows past `LIMIT 100`.
 
 ## Recent Query Additions (q59, q72 batch)
 

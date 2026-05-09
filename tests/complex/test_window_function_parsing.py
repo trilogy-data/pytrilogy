@@ -275,6 +275,33 @@ select user_id, country, score, country_rank;
     assert len(window_item.order_by) == 1
 
 
+def test_sql_window_pin_keys():
+    """rank(target, pin1, pin2, ...) over (...) — extra fields pin the
+    window concept's keys/grain so the planner widens the enrichment join.
+    Used by q67 (TPC-DS) when ranking ROLLUP output."""
+    declarations = """
+key user_id int;
+property user_id.country string;
+property user_id.region string;
+property user_id.score int;
+property user_id.country_rank <-
+    rank(user_id, region) over (partition by country order by score desc);
+
+datasource users (
+    id: user_id, country: country, region: region, score: score,
+)
+grain (user_id)
+address memory.users;
+"""
+    env, _ = parse(declarations)
+    lineage = env.concepts["country_rank"].lineage
+    assert isinstance(lineage, WindowItem)
+    assert lineage.content.address == "local.user_id"
+    assert [p.address for p in lineage.pin] == ["local.region"]
+    keys = env.concepts["country_rank"].keys
+    assert "local.region" in keys
+
+
 def test_sql_window_lag_with_index():
     """Test SQL-like lag/lead with index inside parentheses: lag(field, 2)"""
     declarations = """

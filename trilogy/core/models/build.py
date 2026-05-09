@@ -1209,9 +1209,11 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
     order_by: List[BuildOrderItem]
     over: List["BuildConcept"] = field(default_factory=list)
     index: Optional[int] = None
+    # Extra pin keys from `rank(content, pin1, ...) over (...)` syntax.
+    pin: List["BuildConcept"] = field(default_factory=list)
 
     def __repr__(self) -> str:
-        return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
+        return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by}, pin={self.pin})"
 
     def __str__(self):
         return self.__repr__()
@@ -1222,6 +1224,8 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
         for order in self.order_by:
             output += order.concept_arguments
         for item in self.over:
+            output += [item]
+        for item in self.pin:
             output += [item]
         return output
 
@@ -2404,6 +2408,7 @@ class Factory:
             order_by=[self.build(x) for x in final_by],
             over=[self._build_concept_ref(x) for x in base.over],
             index=base.index,
+            pin=[self._build_concept_ref(x) for x in base.pin],
         )
 
     @build.register

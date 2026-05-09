@@ -227,8 +227,11 @@
     window_item_legacy: WINDOW_TYPE_LEGACY int_lit? expr window_item_over? window_item_order?
 
     // SQL-like window item: row_number(field) over (partition by x order by y)
-    // Also supports lag(field, 2) and lead(field, 1) with offset inside parens
-    window_item_sql: WINDOW_TYPE_SQL expr ("," int_lit)? ")" window_sql_over?
+    // Also supports lag(field, 2) and lead(field, 1) with offset inside parens.
+    // For rank/dense_rank/row_number, additional comma-separated fields
+    // pin the window concept's grain (used to widen the enrichment join when
+    // ranking ROLLUP output — see q67).
+    window_item_sql: WINDOW_TYPE_SQL expr ("," (int_lit | expr))* ")" window_sql_over?
 
     window_item: window_item_sql | window_item_legacy
     
