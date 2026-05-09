@@ -30,9 +30,7 @@ def _can_use_grouped_materialized_source(concept: BuildConcept) -> bool:
     return concept.lineage.function.operator in (FunctionType.COUNT, FunctionType.SUM)
 
 
-def _shared_nonstandard_grouping(
-    a: BuildConcept, b: BuildConcept
-) -> bool:
+def _shared_nonstandard_grouping(a: BuildConcept, b: BuildConcept) -> bool:
     """Two aggregates with the same non-standard grouping mode and same by-list
     must share a GROUP BY clause (ROLLUP/CUBE/GROUPING SETS) and therefore must
     co-locate in a single group node — even if their per-arg parent grains
@@ -47,9 +45,7 @@ def _shared_nonstandard_grouping(
         return False
     if [c.address for c in a.lineage.by] != [c.address for c in b.lineage.by]:
         return False
-    if [
-        [c.address for c in gs] for gs in a.lineage.grouping_sets
-    ] != [
+    if [[c.address for c in gs] for gs in a.lineage.grouping_sets] != [
         [c.address for c in gs] for gs in b.lineage.grouping_sets
     ]:
         return False

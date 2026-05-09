@@ -590,3 +590,55 @@ These need framework work first:
   (item.desc, warehouse.name, sold_date.week_seq) grain. Earlier OOM
   concern (STATUS) was a stale data point — at sf=1 the trilogy plan
   runs in ~1s and the reference PRAGMA matches in ~1s.
+
+## Recent Query Conversions (native ROLLUP — q18, q27)
+
+The new `by rollup col1, col2, ...` aggregate syntax replaces the manual
+N-branch `MERGE … align … derive coalesce()` pattern with a single
+`GROUP BY ROLLUP` SQL emit.
+
+- **q22, q80** — POC conversions; previously had simple per-level rollups.
+- **q18** — converted from 5-level MERGE/align cascade. Each aggregate
+  carries its own `by rollup` clause; all share the same dim list, so
+  the planner emits one `GROUP BY ROLLUP (...)` over the joined source.
+- **q27** — converted from 3-level MERGE/align. Uses `grouping(state)` to
+  emit the `g_state` column (1 for L1/L2, 0 for L0).
+
+### Planner fix landed for compatible grouping merging
+
+`gen_group_node` previously rejected merging two aggregates whose
+GROUP BY grain matched but whose argument-derived parent grains
+differed (e.g. `avg(quantity)` at row grain + `grouping(state)` at
+store.id grain). Result: aggregates were split into two ROLLUP CTEs
+joined back via FULL JOIN with `=` (not `is not distinct from`) on
+non-nullable keys, so grand-total NULL rows didn't match.
+
+Fix in `trilogy/core/processing/node_generators/group_node.py`: when
+two aggregates share the same non-standard grouping mode (ROLLUP /
+CUBE / GROUPING_SETS) and the same `by` list, they MUST share a
+GROUP BY in SQL — so the merge rule loosens to widen parent_concepts
+even when the per-arg grains differ. Captured in `_shared_nonstandard_grouping`.
+
+### Not converted
+
+- **q14** (xfailed) — tried single-rowset + ROLLUP shape; hits an
+  unrelated planner cycle (`Graph contains a cycle`). The blocker is
+  the cross-channel intersect + HAVING interaction, not rollup.
+- **q36, q70, q86** — left as per-level MERGE/align. Reference SQL uses
+  `rank() OVER (PARTITION BY grouping(...)+grouping(...), CASE WHEN
+  grouping(class)=0 THEN i_category END ORDER BY total DESC)`. Two
+  obstacles to a single-rollup conversion:
+  1. Trilogy's window `PARTITION BY` only accepts concept refs
+     (`over_list = concept_lit, …`), not arbitrary expressions.
+     Workaround: hoist the CASE/grouping expressions into autos
+     (`auto level_key <- grouping(a)+grouping(b);`).
+  2. Trilogy's rank syntax requires a per-row "target" concept
+     (`rank X over Y by Z`). Bare `rank()` over rollup output has no
+     natural target — the rolled-up `(category, class)` tuple is
+     unique per row but each individual column is NULL at higher
+     levels. Synthesising via `coalesce(class, category, '__total__')`
+     parses but the planner can't source the rowset-derived ROLLUP
+     concepts in the outer SELECT (same family as the q80 issue
+     "Final SELECT alias of rowset-derived concepts hangs").
+  Future: extending `over_list` to accept arbitrary exprs OR allowing
+  bare `rank()` (no target) would unlock single-rollup conversion.
