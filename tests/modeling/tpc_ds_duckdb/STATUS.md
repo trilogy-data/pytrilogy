@@ -9,10 +9,10 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 90 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 91 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | Skipped (preql exists) | 3 | 5, 29, 85 |
 | XFAIL (committed broken for experimentation) | 1 | 14 |
-| Missing (no preql / no test) | 5 | 51, 54, 64, 75, 77 |
+| Missing (no preql / no test) | 4 | 54, 64, 75, 77 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -489,6 +489,61 @@ far. But that's an optimization, not a correctness fix.
   (trilogy now accepts CASE expressions in ORDER BY without needing a
   hidden `--alias`).
 
+## Recent Query Additions (q51 — cumulative window via unified_sales)
+
+- **q51** — FULL OUTER JOIN of two per-channel cumulative-sum CTEs +
+  outer running-max forward-fill. Solved without explicit FULL JOIN /
+  rowset merge by leaning on three properties of `unified_sales` +
+  trilogy's window semantics:
+  1. The (item, date) grain emitted from a `sales_channel in ('WEB',
+     'STORE')` filtered SELECT is the union of (item, date) tuples from
+     either channel — implicitly a FULL JOIN of the two per-channel
+     daily-aggregate sets.
+  2. Each per-channel daily total uses an inline `?` filter:
+     `sum(sales.sales_price ? sales.sales_channel = 'WEB') by sales.item.id, sales.date.date`.
+     On rows where the channel had no sale, the SUM yields NULL.
+  3. SQL's cumulative `sum(daily) over (partition by item order by date)`
+     ignores NULL inputs, so the cumulative is automatically
+     forward-filled across NULL-daily rows — no explicit running MAX
+     needed (the reference's outer `max(cume_sales) OVER ...` is
+     redundant given the inner `sum()` is already monotonic in
+     non-negative sales).
+
+  Subtleties found:
+  - The reference's `web_sales` / `store_sales` columns are NULL on
+    `(item, date)` rows where the channel had no sale-row at all — but
+    `daily IS NOT NULL` is the wrong gate, because some rows have a
+    real `ss_sales_price = NULL` (sf=1 has these). Use a row-presence
+    flag aggregate instead:
+    `auto store_has_row <- max(case when sales.sales_channel = 'STORE' then 1 else 0 end) by sales.item.id, sales.date.date;`
+    then `case when store_has_row = 1 then store_cume else null end`.
+  - **WHERE on cross-window concepts trims the wrong CTE column.** The
+    naive `WHERE web_cume > store_cume` produced an extra "juicy" CTE
+    that carried `web_cume` but **not** `store_cume` — the outer
+    SELECT then tried to re-derive `store_cume` from a CTE missing
+    `sales_ext_sales_price`, producing a `Missing source reference`
+    error. Workaround: move the cross-concept comparison to `HAVING
+    web_cumulative > store_cumulative` (HAVING-on-non-aggregates is
+    accepted) so both columns are projected through the SELECT
+    plumbing.
+  - Reference uses `ws_sales_price` (per-unit), **not**
+    `ws_ext_sales_price` (line total). Diff is ~50× per row — easy to
+    miss; q51 has no row-by-row reference checker for that field.
+
+## Trilogy planner change for q51
+
+- **`max` / `min` as window functions** (`trilogy/dialect/base.py`).
+  `WindowType.MAX` / `WindowType.MIN` were enum-defined and accepted
+  by the parser, and the parser also auto-converted them to
+  `AggregateWrapper` when no `order_by` was present, but the
+  `WINDOW_FUNCTION_MAP` lacked render entries — so `max X over Y order
+  by Z` failed with `KeyError`. Added `window_factory("max",
+  include_concept=True)` / `window_factory("min", include_concept=True)`
+  alongside the existing SUM/COUNT/AVG entries. q51's solution does
+  not use these (cumulative SUM of NULLs already forward-fills), but
+  the support is now landed for future running-max / running-min
+  needs.
+
 ## Suggested Next Batch (by complexity)
 
 These look tractable without further framework work:
@@ -524,10 +579,6 @@ These need framework work first:
   date filter mismatch (sale-date filter vs return-date filter). Catalog uses
   `cs_call_center_sk` as id (not catalog_page) and store/web use LEFT JOINs
   for returns. Blocked on the same return-side dim mapping as q5.
-- **q51** — FULL OUTER JOIN + cumulative window over union of two
-  per-channel CTEs. Needs both full-outer-join semantics and the cumulative
-  `sum(sum(...)) OVER (... ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`
-  pattern.
 - **q54** — DISTINCT customer set built from `(catalog_sales UNION ALL
   web_sales)`-derived "is buyer" lookup, then revenue aggregation against
   store_sales over a `d_month_seq BETWEEN scalar_subq AND scalar_subq` window,

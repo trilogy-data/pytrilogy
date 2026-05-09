@@ -234,6 +234,8 @@ WINDOW_FUNCTION_MAP = {
     WindowType.SUM: window_factory("sum", include_concept=True),
     WindowType.COUNT: window_factory("count", include_concept=True),
     WindowType.AVG: window_factory("avg", include_concept=True),
+    WindowType.MAX: window_factory("max", include_concept=True),
+    WindowType.MIN: window_factory("min", include_concept=True),
 }
 
 DATATYPE_MAP: dict[DataType, str] = {
