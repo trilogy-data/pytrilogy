@@ -613,7 +613,8 @@
 
 
 
-    int_lit:  /\-?[0-9]+/
+    INT_LITERAL_PART: /\-?[0-9]+/
+    int_lit: INT_LITERAL_PART
     
     float_lit: /\-?[0-9]*\.[0-9]+/
 

@@ -609,7 +609,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "CONCEPTS": SyntaxTokenKind.CONCEPTS,
     "DATASOURCES": SyntaxTokenKind.DATASOURCES,
     "LINE_SEPARATOR": SyntaxTokenKind.LINE_SEPARATOR,
-    "__ANON_18": SyntaxTokenKind.INT_LITERAL_PART,
+    "INT_LITERAL_PART": SyntaxTokenKind.INT_LITERAL_PART,
     "LOGICAL_AND": SyntaxTokenKind.LOGICAL_AND,
     "LOGICAL_OR": SyntaxTokenKind.LOGICAL_OR,
     "CONDITION_NOT": SyntaxTokenKind.CONDITION_NOT,
