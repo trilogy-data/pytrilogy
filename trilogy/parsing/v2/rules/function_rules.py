@@ -686,9 +686,7 @@ def window_item(
 
 def _parse_window_args(
     args: list[Any], context: RuleContext
-) -> tuple[
-    WindowType, Concept | None, int | None, list[Any], list[Any], list[Concept]
-]:
+) -> tuple[WindowType, Concept | None, int | None, list[Any], list[Any], list[Concept]]:
     wtype = WindowType.ROW_NUMBER
     concept: Concept | None = None
     index: int | None = None

@@ -3,6 +3,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import render_cte_used_map
 
 
 class HideUnusedConcepts(OptimizationRule):
@@ -12,19 +13,15 @@ class HideUnusedConcepts(OptimizationRule):
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
-        used = set()
-        from trilogy.dialect.base import BaseDialect
-
-        renderer = BaseDialect()
-        renderer.SUPPORTS_AGGREGATE_GROUPING_MODES = True
         children = inverse_map.get(cte.name, [])
         if not children:
             return False, None
+        used: set[str] = set()
         for v in children:
             self.log(f"Analyzing usage of {cte.name} in {v.name}")
-            renderer.render_cte(v)
-        used = renderer.used_map.get(cte.name, set())
-        self.log(f"Used concepts for {cte.name}: {used} from {renderer.used_map}")
+            child_used_map = render_cte_used_map(v)
+            used.update(child_used_map.get(cte.name, set()))
+        self.log(f"Used concepts for {cte.name}: {used}")
         add_to_hidden: list[BuildConcept] = []
         for concept in cte.output_columns:
             if concept.address not in used:

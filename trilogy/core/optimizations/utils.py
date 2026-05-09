@@ -1,6 +1,19 @@
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 
 
+def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:
+    """Render ``cte`` against a throwaway dialect and return the per-parent map
+    of addresses it actually consumed. The renderer follows alias/lineage
+    chains, so it captures concepts reached via ``output_column.lineage`` that
+    a shallow ``output_columns`` scan would miss."""
+    from trilogy.dialect.base import BaseDialect
+
+    renderer = BaseDialect()
+    renderer.SUPPORTS_AGGREGATE_GROUPING_MODES = True
+    renderer.render_cte(cte)
+    return dict(renderer.used_map)
+
+
 def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE) -> None:
     """Replace old parent with new parent in target CTE's source map."""
     target.parent_ctes = [
