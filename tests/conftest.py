@@ -17,9 +17,9 @@ from trilogy.core.models.author import (
     FilterItem,
     Function,
     Grain,
+    NumberingWindowItem,
     OrderItem,
     WhereClause,
-    WindowItem,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
@@ -151,9 +151,9 @@ def test_environment():
         name="product_revenue_rank",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
+        lineage=NumberingWindowItem(
             type=WindowType.RANK,
-            content=product_id,
+            arguments=[product_id],
             order_by=[
                 OrderItem(expr=total_revenue.with_grain(product_id), order="desc")
             ],
@@ -165,9 +165,9 @@ def test_environment():
         name="product_revenue_rank_by_category",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
+        lineage=NumberingWindowItem(
             type=WindowType.RANK,
-            content=product_id,
+            arguments=[product_id],
             over=[category_id],
             order_by=[OrderItem(expr=total_revenue, order="desc")],
         ),

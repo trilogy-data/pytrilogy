@@ -1,12 +1,8 @@
-from typing import Any, Callable, Mapping
-
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, GroupMode, UnnestMode, WindowType
+from trilogy.core.enums import FunctionType, GroupMode, UnnestMode
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
-
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda x, types: f"count({x[0]})",
@@ -78,7 +74,6 @@ MAX_IDENTIFIER_LENGTH = 50
 
 
 class PrestoDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
     FUNCTION_GRAIN_MATCH_MAP = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,

@@ -25,6 +25,8 @@ from typing import (
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
+    NAVIGATION_WINDOW_TYPES,
+    NUMBERING_WINDOW_TYPES,
     AggregateGroupingMode,
     BooleanOperator,
     ComparisonOperator,
@@ -1395,51 +1397,99 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced):
 
 
 @dataclass
-class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
+class NumberingWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
     type: WindowType
-    content: FuncArgs
+    arguments: List["ConceptRef"]
     order_by: List["OrderItem"]
     over: List["ConceptRef"] = dc_field(default_factory=list)
-    index: Optional[int] = None
-    # Additional concepts that pin the window's output grain. Surfaced in
-    # SQL syntax as `rank(content, pin1, pin2, ...) over (partition ... order ...)`.
-    # The pins do not appear in the rendered window function (it's still
-    # `rank() over (...)`), but they're added to concept_arguments / the
-    # window concept's keys so the planner widens the enrichment join.
-    pin: List["ConceptRef"] = dc_field(default_factory=list)
 
     def __post_init__(self):
-        if isinstance(self.content, Concept):
-            self.content = ConceptRef(
-                address=self.content.address, datatype=self.content.datatype
-            )
-        final = []
-        for item in self.over:
-            if isinstance(item, Concept):
-                final.append(ConceptRef(address=item.address, datatype=item.datatype))
-            else:
-                final.append(item)
-        self.over = final
-        pin_final = []
-        for item in self.pin:
-            if isinstance(item, Concept):
-                pin_final.append(
-                    ConceptRef(address=item.address, datatype=item.datatype)
-                )
-            else:
-                pin_final.append(item)
-        self.pin = pin_final
+        assert (
+            self.type in NUMBERING_WINDOW_TYPES
+        ), f"NumberingWindowItem requires a numbering window type, got {self.type}"
+        self.arguments = [_concept_to_ref(x) for x in self.arguments]
+        self.over = [_concept_to_ref(x) for x in self.over]
 
     def __str__(self):
         return self.__repr__()
 
     def __repr__(self):
-        return f"{self.type.value} {self.content} by {self.index} over {self.over} order {self.order_by}"
+        return f"{self.type.value}({self.arguments}) over {self.over} order {self.order_by}"
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "WindowItem":
-        output = WindowItem(
+    ) -> "NumberingWindowItem":
+        return NumberingWindowItem(
+            type=self.type,
+            arguments=[x.with_merge(source, target, modifiers) for x in self.arguments],
+            over=[x.with_merge(source, target, modifiers) for x in self.over],
+            order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
+        )
+
+    def with_reference_replacement(self, source, target):
+        return NumberingWindowItem(
+            type=self.type,
+            arguments=[
+                x.with_reference_replacement(source, target) for x in self.arguments
+            ],
+            over=[x.with_reference_replacement(source, target) for x in self.over],
+            order_by=[
+                x.with_reference_replacement(source, target) for x in self.order_by
+            ],
+        )
+
+    def with_namespace(self, namespace: str) -> "NumberingWindowItem":
+        return NumberingWindowItem(
+            type=self.type,
+            arguments=[x.with_namespace(namespace) for x in self.arguments],
+            over=[x.with_namespace(namespace) for x in self.over],
+            order_by=[x.with_namespace(namespace) for x in self.order_by],
+        )
+
+    @property
+    def concept_arguments(self) -> List[ConceptRef]:
+        output: List[ConceptRef] = []
+        for arg in self.arguments:
+            output += get_concept_arguments(arg)
+        for order in self.order_by:
+            output += get_concept_arguments(order)
+        for item in self.over:
+            output += get_concept_arguments(item)
+        return output
+
+    @property
+    def output_datatype(self):
+        return DataType.INTEGER
+
+
+@dataclass
+class NavigationWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
+    type: WindowType
+    content: FuncArgs
+    order_by: List["OrderItem"]
+    over: List["ConceptRef"] = dc_field(default_factory=list)
+    offset: Optional[int] = None
+
+    def __post_init__(self):
+        assert (
+            self.type in NAVIGATION_WINDOW_TYPES
+        ), f"NavigationWindowItem requires a navigation window type, got {self.type}"
+        if isinstance(self.content, Concept):
+            self.content = ConceptRef(
+                address=self.content.address, datatype=self.content.datatype
+            )
+        self.over = [_concept_to_ref(x) for x in self.over]
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return f"{self.type.value}({self.content}, offset={self.offset}) over {self.over} order {self.order_by}"
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "NavigationWindowItem":
+        return NavigationWindowItem(
             type=self.type,
             content=(
                 self.content.with_merge(source, target, modifiers)
@@ -1448,13 +1498,11 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
             ),
             over=[x.with_merge(source, target, modifiers) for x in self.over],
             order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
-            index=self.index,
-            pin=[x.with_merge(source, target, modifiers) for x in self.pin],
+            offset=self.offset,
         )
-        return output
 
     def with_reference_replacement(self, source, target):
-        return WindowItem(
+        return NavigationWindowItem(
             type=self.type,
             content=(
                 self.content.with_reference_replacement(source, target)
@@ -1465,12 +1513,11 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
             order_by=[
                 x.with_reference_replacement(source, target) for x in self.order_by
             ],
-            index=self.index,
-            pin=[x.with_reference_replacement(source, target) for x in self.pin],
+            offset=self.offset,
         )
 
-    def with_namespace(self, namespace: str) -> "WindowItem":
-        return WindowItem(
+    def with_namespace(self, namespace: str) -> "NavigationWindowItem":
+        return NavigationWindowItem(
             type=self.type,
             content=(
                 self.content.with_namespace(namespace)
@@ -1479,27 +1526,31 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
             ),
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
-            index=self.index,
-            pin=[x.with_namespace(namespace) for x in self.pin],
+            offset=self.offset,
         )
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
-        output = []
+        output: List[ConceptRef] = []
         output += get_concept_arguments(self.content)
         for order in self.order_by:
             output += get_concept_arguments(order)
         for item in self.over:
             output += get_concept_arguments(item)
-        for item in self.pin:
-            output += get_concept_arguments(item)
         return output
 
     @property
     def output_datatype(self):
-        if self.type in (WindowType.RANK, WindowType.ROW_NUMBER):
+        if self.type in (WindowType.COUNT, WindowType.COUNT_DISTINCT):
             return DataType.INTEGER
         return self.content.output_datatype
+
+
+# Window function expressions split by SQL semantics:
+# - NumberingWindowItem: rank/dense_rank/row_number — `name() over (...)` (no input).
+# - NavigationWindowItem: lag/lead/sum/count/avg/max/min — `name(field) over (...)`.
+# Use isinstance(x, WindowItem) to check for any window expression.
+WindowItem = NumberingWindowItem | NavigationWindowItem
 
 
 def get_basic_type(

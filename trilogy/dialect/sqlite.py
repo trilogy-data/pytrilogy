@@ -1,12 +1,8 @@
-from typing import Any, Callable, Mapping
-
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, WindowType
+from trilogy.core.enums import FunctionType
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
-
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 MONTH_NAME_CASE = (
     "CASE CAST(strftime('%m', {expr}) AS INTEGER) "
@@ -235,7 +231,6 @@ DATATYPE_MAP: dict[DataType, str] = {
 
 
 class SQLiteDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
     FUNCTION_GRAIN_MATCH_MAP = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,

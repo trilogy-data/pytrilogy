@@ -193,7 +193,8 @@ class SyntaxNodeKind(str, Enum):
     # Phase 5: window + function definitions
     WINDOW_ITEM = "window_item"
     WINDOW_ITEM_LEGACY = "window_item_legacy"
-    WINDOW_ITEM_SQL = "window_item_sql"
+    WINDOW_ITEM_SQL_NUMBERING = "window_item_sql_numbering"
+    WINDOW_ITEM_SQL_NAVIGATION = "window_item_sql_navigation"
     WINDOW_ITEM_OVER = "window_item_over"
     WINDOW_ITEM_ORDER = "window_item_order"
     WINDOW_SQL_OVER = "window_sql_over"
@@ -301,7 +302,8 @@ class SyntaxTokenKind(str, Enum):
     DATE_PART = "date_part"
     HASH_TYPE = "hash_type"
     WINDOW_TYPE_LEGACY = "window_type_legacy"
-    WINDOW_TYPE_SQL = "window_type_sql"
+    WINDOW_TYPE_SQL_NUMBERING = "window_type_sql_numbering"
+    WINDOW_TYPE_SQL_NAVIGATION = "window_type_sql_navigation"
     SELF_IMPORT = "self_import"
     DATASOURCE_STATUS = "datasource_status"
     PUBLISH_ACTION = "publish_action"
@@ -512,7 +514,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     # Phase 5: window + function definitions
     "window_item": SyntaxNodeKind.WINDOW_ITEM,
     "window_item_legacy": SyntaxNodeKind.WINDOW_ITEM_LEGACY,
-    "window_item_sql": SyntaxNodeKind.WINDOW_ITEM_SQL,
+    "window_item_sql_numbering": SyntaxNodeKind.WINDOW_ITEM_SQL_NUMBERING,
+    "window_item_sql_navigation": SyntaxNodeKind.WINDOW_ITEM_SQL_NAVIGATION,
     "window_item_over": SyntaxNodeKind.WINDOW_ITEM_OVER,
     "window_item_order": SyntaxNodeKind.WINDOW_ITEM_ORDER,
     "window_sql_over": SyntaxNodeKind.WINDOW_SQL_OVER,
@@ -619,7 +622,8 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "DATE_PART": SyntaxTokenKind.DATE_PART,
     "HASH_TYPE": SyntaxTokenKind.HASH_TYPE,
     "WINDOW_TYPE_LEGACY": SyntaxTokenKind.WINDOW_TYPE_LEGACY,
-    "WINDOW_TYPE_SQL": SyntaxTokenKind.WINDOW_TYPE_SQL,
+    "WINDOW_TYPE_SQL_NUMBERING": SyntaxTokenKind.WINDOW_TYPE_SQL_NUMBERING,
+    "WINDOW_TYPE_SQL_NAVIGATION": SyntaxTokenKind.WINDOW_TYPE_SQL_NAVIGATION,
     "SELF_IMPORT": SyntaxTokenKind.SELF_IMPORT,
     "DATASOURCE_STATUS": SyntaxTokenKind.DATASOURCE_STATUS,
     "PUBLISH_ACTION": SyntaxTokenKind.PUBLISH_ACTION,

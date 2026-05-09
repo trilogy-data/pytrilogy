@@ -275,10 +275,13 @@ select user_id, country, score, country_rank;
     assert len(window_item.order_by) == 1
 
 
-def test_sql_window_pin_keys():
-    """rank(target, pin1, pin2, ...) over (...) — extra fields pin the
-    window concept's keys/grain so the planner widens the enrichment join.
-    Used by q67 (TPC-DS) when ranking ROLLUP output."""
+def test_sql_window_multi_arg_keys():
+    """rank(a, b, c) over (...) — all comma-separated arguments are equal-status
+    grain keys; the window concept's keys widen so the planner pulls them
+    through gen_window_node's enrichment join. Used by q67 (TPC-DS) when ranking
+    ROLLUP output."""
+    from trilogy.core.models.author import NumberingWindowItem
+
     declarations = """
 key user_id int;
 property user_id.country string;
@@ -295,15 +298,16 @@ address memory.users;
 """
     env, _ = parse(declarations)
     lineage = env.concepts["country_rank"].lineage
-    assert isinstance(lineage, WindowItem)
-    assert lineage.content.address == "local.user_id"
-    assert [p.address for p in lineage.pin] == ["local.region"]
+    assert isinstance(lineage, NumberingWindowItem)
+    assert [a.address for a in lineage.arguments] == ["local.user_id", "local.region"]
     keys = env.concepts["country_rank"].keys
     assert "local.region" in keys
 
 
-def test_sql_window_lag_with_index():
-    """Test SQL-like lag/lead with index inside parentheses: lag(field, 2)"""
+def test_sql_window_lag_with_offset():
+    """Test SQL-like lag/lead with offset inside parentheses: lag(field, 2)"""
+    from trilogy.core.models.author import NavigationWindowItem
+
     declarations = """
 const x <- unnest([1,2,3,4,5]);
 
@@ -312,11 +316,10 @@ select
     lag(x, 2) over (order by x asc) -> lagged,
 order by x asc;"""
     env, _ = parse(declarations)
-    # Check that the lagged concept was created with the right index
     assert "lagged" in [c.split(".")[-1] for c in env.concepts.keys()]
     lineage = env.concepts["lagged"].lineage
-    assert isinstance(lineage, WindowItem)
-    assert lineage.index == 2
+    assert isinstance(lineage, NavigationWindowItem)
+    assert lineage.offset == 2
 
 
 def test_sql_window_error_missing_field():

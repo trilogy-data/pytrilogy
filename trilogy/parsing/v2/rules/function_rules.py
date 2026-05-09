@@ -6,6 +6,7 @@ from typing import Any
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
+    NUMBERING_WINDOW_TYPES,
     AggregateGroupingMode,
     ComparisonOperator,
     FunctionType,
@@ -26,6 +27,8 @@ from trilogy.core.models.author import (
     FilterItem,
     Function,
     FunctionCallWrapper,
+    NavigationWindowItem,
+    NumberingWindowItem,
     SubselectItem,
     TraitDataType,
     WhereClause,
@@ -676,7 +679,11 @@ def window_item(
 ) -> WindowItem | AggregateWrapper:
     args = hydrated_children(node, hydrate)
     item: WindowItem = args[0]
-    if not item.order_by and item.type in WINDOW_TO_AGGREGATE_MAP:
+    if (
+        isinstance(item, NavigationWindowItem)
+        and not item.order_by
+        and item.type in WINDOW_TO_AGGREGATE_MAP
+    ):
         func = context.function_factory.create_function(
             [item.content], WINDOW_TO_AGGREGATE_MAP[item.type]
         )
@@ -686,18 +693,15 @@ def window_item(
 
 def _parse_window_args(
     args: list[Any], context: RuleContext
-) -> tuple[WindowType, Concept | None, int | None, list[Any], list[Any], list[Concept]]:
+) -> tuple[WindowType, list[Concept], int | None, list[Any], list[Any]]:
     wtype = WindowType.ROW_NUMBER
-    concept: Concept | None = None
-    index: int | None = None
+    offset: int | None = None
     order_by: list[Any] = []
     over: list[Any] = []
-    # Field args after the first are pins; lag/lead's int_lit second arg is
-    # still the offset and stays out of pin.
     field_args: list[Concept] = []
     for item in args:
         if isinstance(item, int):
-            index = item
+            offset = item
         elif isinstance(item, WindowItemOrder):
             order_by = item.contents
         elif isinstance(item, WindowItemOver):
@@ -715,15 +719,13 @@ def _parse_window_args(
             virt = arbitrary_to_concept_v2(item, context=context)
             context.add_virtual_concept(virt, meta=core_meta(None))
             field_args.append(virt)
-    if field_args:
-        concept = field_args[0]
-    pins = field_args[1:]
-    return wtype, concept, index, order_by, over, pins
+    return wtype, field_args, offset, order_by, over
 
 
 _WINDOW_ITEM_MISSING_FIELD_ERROR: dict[SyntaxNodeKind, str] = {
     SyntaxNodeKind.WINDOW_ITEM_LEGACY: "Window statements must be on fields, not constants",
-    SyntaxNodeKind.WINDOW_ITEM_SQL: "Window function requires a field argument",
+    SyntaxNodeKind.WINDOW_ITEM_SQL_NUMBERING: "Numbering window function requires at least one field argument",
+    SyntaxNodeKind.WINDOW_ITEM_SQL_NAVIGATION: "Navigation window function requires a field argument",
 }
 
 
@@ -734,16 +736,22 @@ def window_item_from_args(
 ) -> WindowItem:
     assert node.kind is not None
     args = hydrated_children(node, hydrate)
-    wtype, concept, index, order_by, over, pins = _parse_window_args(args, context)
-    if not concept:
+    wtype, field_args, offset, order_by, over = _parse_window_args(args, context)
+    if not field_args:
         raise fail(node, _WINDOW_ITEM_MISSING_FIELD_ERROR[node.kind])
-    return WindowItem(
+    if wtype in NUMBERING_WINDOW_TYPES:
+        return NumberingWindowItem(
+            type=wtype,
+            arguments=[c.reference for c in field_args],
+            over=over,
+            order_by=order_by,
+        )
+    return NavigationWindowItem(
         type=wtype,
-        content=concept.reference,
+        content=field_args[0].reference,
         over=over,
         order_by=order_by,
-        index=index,
-        pin=[p.reference for p in pins],
+        offset=offset,
     )
 
 
@@ -909,7 +917,8 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     # window
     SyntaxNodeKind.WINDOW_ITEM: window_item,
     SyntaxNodeKind.WINDOW_ITEM_LEGACY: window_item_from_args,
-    SyntaxNodeKind.WINDOW_ITEM_SQL: window_item_from_args,
+    SyntaxNodeKind.WINDOW_ITEM_SQL_NUMBERING: window_item_from_args,
+    SyntaxNodeKind.WINDOW_ITEM_SQL_NAVIGATION: window_item_from_args,
     SyntaxNodeKind.WINDOW_ITEM_OVER: window_single_arg,
     SyntaxNodeKind.WINDOW_ITEM_ORDER: window_single_arg,
     SyntaxNodeKind.WINDOW_SQL_OVER: window_sql_over,

@@ -1,8 +1,6 @@
-from typing import Any, Callable, Mapping
-
 from jinja2 import Template
 
-from trilogy.core.enums import DatePart, FunctionType, WindowType
+from trilogy.core.enums import DatePart, FunctionType
 from trilogy.dialect.base import BaseDialect
 
 
@@ -23,8 +21,6 @@ def date_diff(first: str, second: str, grain: DatePart) -> str:
     else:
         raise NotImplementedError(f"Date diff not implemented for grain {grain}")
 
-
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x, types: f"string_to_array({x[0]}, {x[1]})",
@@ -79,7 +75,6 @@ MAX_IDENTIFIER_LENGTH = 50
 
 
 class PostgresDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
     FUNCTION_GRAIN_MATCH_MAP = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,

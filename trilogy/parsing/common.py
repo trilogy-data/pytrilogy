@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Iterable, List, Mapping, Sequence, Tuple
+from typing import Any, Iterable, List, Mapping, Sequence, Tuple
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.constants import ALL_ROWS_CONCEPT
@@ -34,6 +34,8 @@ from trilogy.core.models.author import (
     MapWrapper,
     Metadata,
     MultiSelectLineage,
+    NavigationWindowItem,
+    NumberingWindowItem,
     Parenthetical,
     SubselectComparison,
     SubselectItem,
@@ -717,14 +719,62 @@ def filter_item_to_concept(
     )
 
 
-def window_item_to_concept(
-    parent: WindowItem,
+def _numbering_window_to_concept(
+    parent: NumberingWindowItem,
     name: str,
     namespace: str,
     environment: Environment,
-    metadata: Metadata | None = None,
+    metadata: Metadata,
 ) -> Concept:
-    fmetadata = metadata or Metadata()
+    if not parent.arguments:
+        raise SyntaxError("Numbering window function requires at least one argument")
+    anchor = environment.concepts[parent.arguments[0].address]
+    if isinstance(anchor, UndefinedConcept):
+        return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
+    arg_addresses = [a.address for a in parent.arguments]
+    over_addresses = [y.address for y in parent.over]
+    keys = (
+        Grain.from_concepts(arg_addresses + over_addresses, environment).components
+        or set()
+    )
+    keys = set(keys) | set(arg_addresses)
+
+    grain_components: list = list(parent.over) + list(parent.arguments)
+    if parent.order_by:
+        for item in parent.order_by:
+            relevant, _ = get_relevant_parent_concepts(item.expr)
+            grain_components += relevant
+    final_grain = Grain.from_concepts(grain_components, environment)
+
+    modifiers = get_upstream_modifiers(parent.concept_arguments, environment)
+    if parent.type in (WindowType.RANK, WindowType.DENSE_RANK):
+        datatype: TraitDataType | DataType = TraitDataType(
+            type=DataType.INTEGER, traits=["rank"]
+        )
+    else:
+        datatype = DataType.INTEGER
+    return Concept(
+        name=name,
+        datatype=datatype,
+        purpose=Purpose.PROPERTY,
+        lineage=parent,
+        metadata=metadata,
+        grain=final_grain,
+        namespace=namespace,
+        keys=keys,
+        modifiers=modifiers,
+        derivation=Derivation.WINDOW,
+        granularity=anchor.granularity,
+    )
+
+
+def _navigation_window_to_concept(
+    parent: NavigationWindowItem,
+    name: str,
+    namespace: str,
+    environment: Environment,
+    metadata: Metadata,
+) -> Concept:
     if isinstance(
         parent.content,
         (
@@ -747,53 +797,38 @@ def window_item_to_concept(
         bcontent = environment.concepts[parent.content.address]
     else:
         raise NotImplementedError(
-            f"Window function with content type {type(parent.content)} not yet supported"
+            f"Navigation window function with content type {type(parent.content)} not yet supported"
         )
     if isinstance(bcontent, UndefinedConcept):
-        return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
+        return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
     if bcontent.purpose == Purpose.METRIC:
         local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
     else:
         local_purpose = Purpose.PROPERTY
         keys = Grain.from_concepts(
-            [bcontent.address]
-            + [y.address for y in parent.over]
-            + [y.address for y in parent.pin],
-            environment,
+            [bcontent.address] + [y.address for y in parent.over], environment
         ).components
-    if parent.pin:
-        # Pin concepts widen the window's keys regardless of purpose so the
-        # planner pulls them through gen_window_node's enrichment join.
-        keys = (set(keys) if keys else set()) | {y.address for y in parent.pin}
 
-    # when including the order by in discovery grain
     if parent.order_by:
-
         grain_components = parent.over + [bcontent.output]
         for item in parent.order_by:
             relevant, _ = get_relevant_parent_concepts(item.expr)
             grain_components += relevant
     else:
         grain_components = parent.over + [bcontent.output]
-
     final_grain = Grain.from_concepts(grain_components, environment)
+
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
-    datatype = bcontent.datatype
-    if parent.type in (
-        # WindowType.RANK,
-        WindowType.ROW_NUMBER,
-        WindowType.COUNT,
-        WindowType.COUNT_DISTINCT,
-    ):
-        datatype = DataType.INTEGER
-    if parent.type in (WindowType.RANK, WindowType.DENSE_RANK):
-        datatype = TraitDataType(type=DataType.INTEGER, traits=["rank"])
+    if parent.type in (WindowType.COUNT, WindowType.COUNT_DISTINCT):
+        datatype: Any = DataType.INTEGER
+    else:
+        datatype = bcontent.datatype
     return Concept(
         name=name,
         datatype=datatype,
         purpose=local_purpose,
         lineage=parent,
-        metadata=fmetadata,
+        metadata=metadata,
         grain=final_grain,
         namespace=namespace,
         keys=keys,
@@ -801,6 +836,25 @@ def window_item_to_concept(
         derivation=Derivation.WINDOW,
         granularity=bcontent.granularity,
     )
+
+
+def window_item_to_concept(
+    parent: WindowItem,
+    name: str,
+    namespace: str,
+    environment: Environment,
+    metadata: Metadata | None = None,
+) -> Concept:
+    fmetadata = metadata or Metadata()
+    if isinstance(parent, NumberingWindowItem):
+        return _numbering_window_to_concept(
+            parent, name, namespace, environment, fmetadata
+        )
+    if isinstance(parent, NavigationWindowItem):
+        return _navigation_window_to_concept(
+            parent, name, namespace, environment, fmetadata
+        )
+    raise NotImplementedError(f"Unknown window item type {type(parent)}")
 
 
 def agg_wrapper_to_concept(

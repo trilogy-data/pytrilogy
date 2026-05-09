@@ -168,6 +168,28 @@ class WindowType(Enum):
     COUNT_DISTINCT = "count_distinct"
 
 
+# Numbering window functions take no SQL input — `rank() over (...)`. Their
+# trilogy-side arguments are all equal-status grain keys, not function inputs.
+NUMBERING_WINDOW_TYPES = frozenset(
+    {WindowType.ROW_NUMBER, WindowType.RANK, WindowType.DENSE_RANK}
+)
+
+# Navigation/aggregation window functions take a single SQL input — `lag(x, n)`,
+# `sum(x) over (...)`. lag/lead also accept an integer offset.
+NAVIGATION_WINDOW_TYPES = frozenset(
+    {
+        WindowType.LAG,
+        WindowType.LEAD,
+        WindowType.SUM,
+        WindowType.MAX,
+        WindowType.MIN,
+        WindowType.AVG,
+        WindowType.COUNT,
+        WindowType.COUNT_DISTINCT,
+    }
+)
+
+
 class WindowOrder(Enum):
     ASCENDING = "top"
     DESCENDING = "bottom"

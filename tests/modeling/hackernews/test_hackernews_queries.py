@@ -83,7 +83,7 @@ def test_adhoc07():
     generated = BigqueryDialect().compile_statement(statement)
     assert re.search(
         r"`[a-z]+`\.`github_language` as `github_language`,\s+"
-        r"rank\(\) over \(order by `[a-z]+`\.`_virt_agg_count_7657693770587142` desc \) as `popularity_rank`",
+        r"rank\(\) over \(order by `[a-z]+`\.`_virt_agg_count_\d+` desc \) as `popularity_rank`",
         generated,
     ), generated
 
