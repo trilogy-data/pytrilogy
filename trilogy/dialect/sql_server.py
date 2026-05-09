@@ -1,8 +1,6 @@
-from typing import Any, Callable, Mapping
-
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, WindowType
+from trilogy.core.enums import FunctionType
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedQuery,
@@ -10,8 +8,6 @@ from trilogy.core.statements.execute import (
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.utility import string_to_hash
-
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda args, types: f"count({args[0]})",
@@ -71,7 +67,6 @@ MAX_IDENTIFIER_LENGTH = 128
 
 
 class SqlServerDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
     FUNCTION_GRAIN_MATCH_MAP = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,

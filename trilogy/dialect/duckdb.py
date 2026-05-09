@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from os import environ
-from typing import TYPE_CHECKING, Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from trilogy.constants import Rendering
@@ -17,14 +17,11 @@ from trilogy.core.enums import (
     GroupMode,
     Modifier,
     UnnestMode,
-    WindowType,
 )
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.models.datasource import Address
 from trilogy.dialect.base import BaseDialect
 from trilogy.utility import safe_open
-
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 SENTINAL_AUTO_CAPTURE_GROUP_VALUE = "-1"
 
@@ -349,7 +346,6 @@ LIMIT ({{ limit }}){% endif %}{% endif %}
 
 
 class DuckDBDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
     FUNCTION_GRAIN_MATCH_MAP = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,

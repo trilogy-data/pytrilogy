@@ -54,6 +54,8 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildMultiSelectLineage,
+    BuildNavigationWindowItem,
+    BuildNumberingWindowItem,
     BuildOrderItem,
     BuildParamaterizedConceptReference,
     BuildParenthetical,
@@ -142,7 +144,7 @@ def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
 
 LOGGER_PREFIX = "[RENDERING]"
 
-WINDOW_ITEMS = (BuildWindowItem,)
+WINDOW_ITEMS = (BuildNumberingWindowItem, BuildNavigationWindowItem)
 FILTER_ITEMS = (BuildFilterItem,)
 
 
@@ -203,37 +205,50 @@ def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
 
 
-def window_factory(string: str, include_concept: bool = False) -> Callable:
-    def render_window(
-        concept: str, window: str, sort: str, offset: int | None = None
-    ) -> str:
-        if not include_concept:
-            concept = ""
+def _window_over_clause(window: str, sort: str) -> str:
+    if window and sort:
+        return f"over (partition by {window} order by {sort} )"
+    if window:
+        return f"over (partition by {window})"
+    if sort:
+        return f"over (order by {sort} )"
+    return "over ()"
+
+
+def numbering_window_factory(name: str) -> Callable[[str, str], str]:
+    def render(window: str, sort: str) -> str:
+        return f"{name}() {_window_over_clause(window, sort)}"
+
+    return render
+
+
+def navigation_window_factory(name: str) -> Callable[[str, str, str, int | None], str]:
+    def render(concept: str, window: str, sort: str, offset: int | None = None) -> str:
         if offset is not None:
-            base = f"{string}({concept}, {offset})"
+            base = f"{name}({concept}, {offset})"
         else:
-            base = f"{string}({concept})"
-        if window and sort:
-            return f"{base} over (partition by {window} order by {sort} )"
-        elif window:
-            return f"{base} over (partition by {window})"
-        elif sort:
-            return f"{base} over (order by {sort} )"
-        else:
-            return f"{base} over ()"
+            base = f"{name}({concept})"
+        return f"{base} {_window_over_clause(window, sort)}"
 
-    return render_window
+    return render
 
 
-WINDOW_FUNCTION_MAP = {
-    WindowType.LAG: window_factory("lag", include_concept=True),
-    WindowType.LEAD: window_factory("lead", include_concept=True),
-    WindowType.RANK: window_factory("rank"),
-    WindowType.DENSE_RANK: window_factory("dense_rank"),
-    WindowType.ROW_NUMBER: window_factory("row_number"),
-    WindowType.SUM: window_factory("sum", include_concept=True),
-    WindowType.COUNT: window_factory("count", include_concept=True),
-    WindowType.AVG: window_factory("avg", include_concept=True),
+NUMBERING_WINDOW_FUNCTION_MAP: dict[WindowType, Callable[[str, str], str]] = {
+    WindowType.RANK: numbering_window_factory("rank"),
+    WindowType.DENSE_RANK: numbering_window_factory("dense_rank"),
+    WindowType.ROW_NUMBER: numbering_window_factory("row_number"),
+}
+
+NAVIGATION_WINDOW_FUNCTION_MAP: dict[
+    WindowType, Callable[[str, str, str, int | None], str]
+] = {
+    WindowType.LAG: navigation_window_factory("lag"),
+    WindowType.LEAD: navigation_window_factory("lead"),
+    WindowType.SUM: navigation_window_factory("sum"),
+    WindowType.COUNT: navigation_window_factory("count"),
+    WindowType.AVG: navigation_window_factory("avg"),
+    WindowType.MAX: navigation_window_factory("max"),
+    WindowType.MIN: navigation_window_factory("min"),
 }
 
 DATATYPE_MAP: dict[DataType, str] = {
@@ -535,7 +550,8 @@ def get_grouped_aggregate_wrapper(
 
 
 class BaseDialect:
-    WINDOW_FUNCTION_MAP = WINDOW_FUNCTION_MAP
+    NUMBERING_WINDOW_FUNCTION_MAP = NUMBERING_WINDOW_FUNCTION_MAP
+    NAVIGATION_WINDOW_FUNCTION_MAP = NAVIGATION_WINDOW_FUNCTION_MAP
     FUNCTION_MAP = FUNCTION_MAP
     FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
     QUOTE_CHARACTER = "`"
@@ -780,17 +796,24 @@ class BaseDialect:
                     )
                     for x in c.lineage.over
                 ]
-
-                rval = self.WINDOW_FUNCTION_MAP[c.lineage.type](
-                    concept=self.render_expr(
-                        c.lineage.content,
-                        cte=cte,
-                        raise_invalid=raise_invalid,
-                    ),
-                    window=",".join(rendered_over_components),
-                    sort=",".join(rendered_order_components),
-                    offset=c.lineage.index,
-                )
+                window_str = ",".join(rendered_over_components)
+                sort_str = ",".join(rendered_order_components)
+                rval: str | None
+                if isinstance(c.lineage, BuildNumberingWindowItem):
+                    rval = self.NUMBERING_WINDOW_FUNCTION_MAP[c.lineage.type](
+                        window_str, sort_str
+                    )
+                else:
+                    rval = self.NAVIGATION_WINDOW_FUNCTION_MAP[c.lineage.type](
+                        self.render_expr(
+                            c.lineage.content,
+                            cte=cte,
+                            raise_invalid=raise_invalid,
+                        ),
+                        window_str,
+                        sort_str,
+                        c.lineage.offset,
+                    )
             elif isinstance(c.lineage, FILTER_ITEMS):
                 # for cases when we've optimized this
                 if cte.condition == c.lineage.where.conditional:
@@ -929,6 +952,7 @@ class BaseDialect:
             )
         ):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])
+        assert rval is not None
         return rval
 
     def _render_subselect(
@@ -1134,7 +1158,18 @@ class BaseDialect:
                 self.render_expr(x, cte, cte_map=cte_map, raise_invalid=raise_invalid)
                 for x in e.over
             ]
-            return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
+            window_str = ",".join(rendered_over_components)
+            sort_str = ",".join(rendered_order_components)
+            if isinstance(e, BuildNumberingWindowItem):
+                return self.NUMBERING_WINDOW_FUNCTION_MAP[e.type](window_str, sort_str)
+            return self.NAVIGATION_WINDOW_FUNCTION_MAP[e.type](
+                self.render_expr(
+                    e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                ),
+                window_str,
+                sort_str,
+                e.offset,
+            )
         elif isinstance(e, PARENTHETICAL_ITEMS):
             # conditions need to be nested in parentheses
             if isinstance(e.content, list):

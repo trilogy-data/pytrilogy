@@ -1,0 +1,71 @@
+# Repro for the planner CTE-trim bug discovered while solving q51.
+#
+# Symptom: `engine.generate_sql(text)` emits SQL containing the literal string
+# `INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price>`
+# (here `sales.sales_price`). Executing the SQL then fails at duckdb parse.
+#
+# Trigger conditions:
+#   1. Two parallel cumulative-window properties at the same grain
+#      (web_cume, store_cume), each derived from a per-channel filtered SUM.
+#   2. The cross-channel comparison `web_cume > store_cume` is in WHERE
+#      (not HAVING).
+#   3. The auxiliary visible-on-this-row columns are declared as `auto`
+#      (not `property <grain>`) — this version of the bug only reproduces
+#      with auto. Promoting them to `property <sales.item.id,
+#      sales.date.date>.x <- ...` makes the planner happy.
+#
+# What the planner does (see generated SQL): it builds an "uneven" CTE with
+# both cumes, then a "juicy" CTE that joins uneven + a small WHERE-filter
+# CTE on (item, date). juicy carries `web_cume` + `web_daily` but NOT
+# `store_cume` / `store_daily`. The outer SELECT then references
+# `store_cumulative` (= store_cume) and tries to re-derive it from juicy
+# by re-applying `sum(case when channel='STORE' then sales_ext_sales_price …)
+# over (…)` — but `sales_ext_sales_price` is also absent from juicy,
+# producing the `INVALID_REFERENCE_BUG_<Missing source reference…>` marker
+# inline in the rendered SQL.
+#
+# Workarounds (both already known):
+#   - Move the comparison to HAVING (see query51.preql)
+#   - Promote the visible-on-row aliases from `auto` to
+#     `property <sales.item.id, sales.date.date>.…`
+#
+# Investigation hints:
+#   - The bug is in the source-projection step that decides which columns
+#     to carry through `juicy`. It correctly carries `web_cume` (referenced
+#     by the WHERE filter via `uneven.web_cume`) but stops there for
+#     store_cume even though the WHERE *also* references it.
+#   - With `auto` aliases, web_sales_visible / store_sales_visible are
+#     re-rendered inline in the outer SELECT (not materialized in juicy);
+#     possibly the planner counts only one direction of the inequality
+#     when deciding what's "needed downstream".
+#   - dialect/base.py `safe_get_cte_value` (or the source-map builder it
+#     calls into) is where the missing-reference marker is emitted.
+import unified_sales as sales;
+
+auto web_daily <- sum(sales.sales_price ? sales.sales_channel = 'WEB') by sales.item.id, sales.date.date;
+auto store_daily <- sum(sales.sales_price ? sales.sales_channel = 'STORE') by sales.item.id, sales.date.date;
+
+property <sales.item.id, sales.date.date>.web_cume <- sum web_daily over sales.item.id order by sales.date.date asc;
+property <sales.item.id, sales.date.date>.store_cume <- sum store_daily over sales.item.id order by sales.date.date asc;
+
+# `auto` form is part of the trigger — promoting these to
+# `property <sales.item.id, sales.date.date>.x <- …` makes the bug vanish.
+auto web_sales_visible <- case when web_daily is not null then web_cume else null end;
+auto store_sales_visible <- case when store_daily is not null then store_cume else null end;
+
+WHERE
+    sales.date.month_seq between 1200 and 1211
+    and sales.item.id is not null
+    and sales.sales_channel in ('WEB', 'STORE')
+    and web_cume > store_cume
+SELECT
+    sales.item.id as item_sk,
+    sales.date.date as d_date,
+    web_sales_visible as web_sales,
+    store_sales_visible as store_sales,
+    web_cume as web_cumulative,
+    store_cume as store_cumulative,
+ORDER BY
+    item_sk asc nulls first,
+    d_date asc nulls first
+LIMIT 100;

@@ -1,16 +1,12 @@
-from typing import Any, Callable, Mapping
-
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
 
 ENV_SNOWFLAKE_PW = "PREQL_SNOWFLAKE_PW"
 ENV_SNOWFLAKE_USER = "PREQL_SNOWFLAKE_USER"
 ENV_SNOWFLAKE_ACCOUNT = "PREQL_SNOWFLAKE_ACCOUNT"
-
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda x, types: f"count({x[0]})",
@@ -87,7 +83,6 @@ MAX_IDENTIFIER_LENGTH = 50
 
 
 class SnowflakeDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
     FUNCTION_GRAIN_MATCH_MAP = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,

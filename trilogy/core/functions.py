@@ -22,9 +22,10 @@ from trilogy.core.models.author import (
     Conditional,
     CustomType,
     Function,
+    NavigationWindowItem,
+    NumberingWindowItem,
     Parenthetical,
     UndefinedConcept,
-    WindowItem,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
@@ -1300,7 +1301,7 @@ def argument_to_purpose(arg) -> Purpose:
         case Parenthetical(content=content):
             return argument_to_purpose(content)
 
-        case WindowItem() | Conditional():
+        case NumberingWindowItem() | NavigationWindowItem() | Conditional():
             return Purpose.PROPERTY
 
         case Concept(purpose=base, lineage=lineage):

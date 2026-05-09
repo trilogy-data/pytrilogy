@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Callable, Dict, Mapping, Optional
+from typing import Dict, Optional
 
 from jinja2 import Template
 
@@ -7,7 +7,6 @@ from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
     UnnestMode,
-    WindowType,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -15,8 +14,6 @@ from trilogy.core.models.core import (
 from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
 from trilogy.core.statements.execute import ProcessedQueryPersist
 from trilogy.dialect.base import BaseDialect, safe_quote
-
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 
 def transform_date_part(part: str) -> str:
@@ -222,7 +219,6 @@ def parse_bigquery_table_name(
 
 
 class BigqueryDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
     FUNCTION_GRAIN_MATCH_MAP = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,

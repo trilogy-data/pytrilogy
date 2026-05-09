@@ -34,13 +34,14 @@ from trilogy.core.models.author import (
     Function,
     FunctionCallWrapper,
     Grain,
+    NavigationWindowItem,
+    NumberingWindowItem,
     OrderBy,
     Ordering,
     OrderItem,
     Parenthetical,
     SubselectComparison,
     WhereClause,
-    WindowItem,
 )
 from trilogy.core.models.core import (
     ArrayType,
@@ -666,28 +667,35 @@ class Renderer:
         return f"{lines}"
 
     @to_string.register
-    def _(self, arg: "WindowItem"):
+    def _(self, arg: "NumberingWindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)
         order = ",".join(self.to_string(c) for c in arg.order_by)
+        args = ",".join(self.to_string(a) for a in arg.arguments)
 
-        # Handle index for lag/lead
-        if arg.index is not None:
-            content = f"{self.to_string(arg.content)},{arg.index}"
-        else:
-            content = self.to_string(arg.content)
-
-        # Build over clause parts
         over_parts = []
         if over:
             over_parts.append(f"partition by {over}")
         if order:
             over_parts.append(f"order by {order}")
+        over_clause = f" over ({' '.join(over_parts)})" if over_parts else ""
+        return f"{arg.type.value}({args}){over_clause}"
 
-        if over_parts:
-            over_clause = f" over ({' '.join(over_parts)})"
+    @to_string.register
+    def _(self, arg: "NavigationWindowItem"):
+        over = ",".join(self.to_string(c) for c in arg.over)
+        order = ",".join(self.to_string(c) for c in arg.order_by)
+
+        if arg.offset is not None:
+            content = f"{self.to_string(arg.content)},{arg.offset}"
         else:
-            over_clause = ""
+            content = self.to_string(arg.content)
 
+        over_parts = []
+        if over:
+            over_parts.append(f"partition by {over}")
+        if order:
+            over_parts.append(f"order by {order}")
+        over_clause = f" over ({' '.join(over_parts)})" if over_parts else ""
         return f"{arg.type.value}({content}){over_clause}"
 
     @to_string.register

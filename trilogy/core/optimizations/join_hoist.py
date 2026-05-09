@@ -37,7 +37,6 @@ from typing import cast
 from trilogy.core.enums import BooleanOperator, JoinType, SourceType
 from trilogy.core.models.build import (
     BuildComparison,
-    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildParenthetical,
@@ -56,6 +55,7 @@ from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
 )
+from trilogy.core.optimizations.utils import render_cte_used_map
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.utility import unique
 
@@ -137,28 +137,34 @@ class JoinHoist(OptimizationRule):
     def _collect_referenced_addresses_excluding(
         self, cte: CTE, exclude_candidates: list
     ) -> set[str]:
-        """Concepts referenced anywhere in cte except inside any of the
-        excluded candidate predicates."""
-        excluded_ids = {id(c) for c in exclude_candidates}
+        """Addresses cte still consumes from any parent after the bundled
+        candidates are hypothetically removed.
+
+        Renders cte (mirroring ``HideUnusedConcepts``) so the check follows
+        alias/lineage chains a shallow scan of ``output_columns`` would miss —
+        e.g. ``store_cumulative <- alias(store_cume)`` is rendered as
+        ``parent.store_cume`` even though only ``store_cumulative`` is in
+        ``output_columns``. The bundled candidates are temporarily stripped
+        from ``cte.condition`` so their own references aren't counted as
+        "needed elsewhere".
+        """
+        original_condition = cte.condition
+        stripped_condition = original_condition
+        for cand in exclude_candidates:
+            stripped_condition = _strip_candidate(stripped_condition, cand)
+        cte.condition = stripped_condition
+        try:
+            used_map = render_cte_used_map(cte)
+        finally:
+            cte.condition = original_condition
         referenced: set[str] = set()
+        for addrs in used_map.values():
+            referenced.update(addrs)
+        # Concepts cte exposes downstream — these don't show up in cte's own
+        # used_map (consumers haven't been re-rendered) but the renderer still
+        # has to project them, so they pin source_map entries we shouldn't
+        # strip.
         referenced.update(c.address for c in cte.output_columns)
-        if cte.condition:
-            for cand in self._candidates(cte):
-                if id(cand) in excluded_ids:
-                    continue
-                if isinstance(cand, BuildConceptArgs):
-                    referenced.update(c.address for c in cand.row_arguments)
-        for j in cte.joins:
-            if not isinstance(j, Join):
-                continue
-            for pair in j.joinkey_pairs or []:
-                referenced.add(pair.left.address)
-                referenced.add(pair.right.address)
-        if cte.order_by:
-            for item in cte.order_by.items:
-                expr = item.expr
-                if isinstance(expr, BuildConceptArgs):
-                    referenced.update(c.address for c in expr.concept_arguments)
         return referenced
 
     def _join_hoist_plan(

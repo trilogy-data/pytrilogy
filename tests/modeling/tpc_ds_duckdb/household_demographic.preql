@@ -1,3 +1,4 @@
+import income_band as income_band;
 
 key id int;
 properties id (
@@ -11,6 +12,7 @@ properties id (
 datasource household_demographics (
     HD_DEMO_SK: id,
     HD_INCOME_BAND_SK: income_band_id,
+    HD_INCOME_BAND_SK: income_band.id,
     HD_BUY_POTENTIAL: buy_potential,
     HD_DEP_COUNT: dependent_count,
     HD_VEHICLE_COUNT: vehicle_count,

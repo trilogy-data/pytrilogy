@@ -209,9 +209,11 @@
     // Legacy: row_number field over other_field order by third_field
     // SQL-like: row_number(field) over (partition by field2 order by field3)
     WINDOW_TYPE_LEGACY: ("row_number"i|"rank"i|"dense_rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+/
-    // Only window-only functions use SQL-like syntax; sum/avg/max/min/count remain legacy
-    // since they can be either aggregates or window functions
-    WINDOW_TYPE_SQL.2: /row_number\s*\(/i | /rank\s*\(/i | /dense_rank\s*\(/i | /lag\s*\(/i | /lead\s*\(/i
+    // Numbering window functions (rank/dense_rank/row_number) take no SQL input —
+    // their args are all equal-status grain keys.
+    WINDOW_TYPE_SQL_NUMBERING.2: /row_number\s*\(/i | /rank\s*\(/i | /dense_rank\s*\(/i
+    // Navigation window functions (lag/lead) take a value field plus optional offset.
+    WINDOW_TYPE_SQL_NAVIGATION.2: /lag\s*\(/i | /lead\s*\(/i
 
     // Legacy over/order syntax (space-separated)
     window_item_over: ("OVER"i over_list)
@@ -226,11 +228,13 @@
     // Legacy window item: row_number field over other_field order by field desc
     window_item_legacy: WINDOW_TYPE_LEGACY int_lit? expr window_item_over? window_item_order?
 
-    // SQL-like window item: row_number(field) over (partition by x order by y)
-    // Also supports lag(field, 2) and lead(field, 1) with offset inside parens
-    window_item_sql: WINDOW_TYPE_SQL expr ("," int_lit)? ")" window_sql_over?
+    // SQL-like numbering: rank(a, b, c) over (partition by x order by y)
+    // All comma-separated fields are equal-status grain keys.
+    window_item_sql_numbering: WINDOW_TYPE_SQL_NUMBERING expr ("," expr)* ")" window_sql_over?
+    // SQL-like navigation: lag(field) or lag(field, 2) over (...)
+    window_item_sql_navigation: WINDOW_TYPE_SQL_NAVIGATION expr ("," int_lit)? ")" window_sql_over?
 
-    window_item: window_item_sql | window_item_legacy
+    window_item: window_item_sql_numbering | window_item_sql_navigation | window_item_legacy
     
     select_hide_modifier: "--"
     select_partial_modifier: "~"

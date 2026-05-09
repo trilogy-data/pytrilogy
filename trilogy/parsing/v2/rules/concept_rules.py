@@ -26,6 +26,7 @@ from trilogy.core.models.author import (
     FunctionCallWrapper,
     Grain,
     Metadata,
+    NumberingWindowItem,
     Parenthetical,
     SubselectItem,
     WindowItem,
@@ -305,7 +306,14 @@ def concept_derivation(
                 f'Concept {name} purpose {concept_value.purpose} does not match declared purpose {purpose}. Suggest defaulting to "auto"',
             )
         if purpose == Purpose.PROPERTY and keys:
-            concept_value.keys = set(keys)
+            new_keys = set(keys)
+            # NumberingWindowItem's extra arguments widen the concept's keys
+            # — preserve them even when an explicit `property <keys>.x` clause
+            # is present, so the planner pulls them through gen_window_node's
+            # enrichment join.
+            if isinstance(source_value, NumberingWindowItem):
+                new_keys |= {a.address for a in source_value.arguments}
+            concept_value.keys = new_keys
     elif isinstance(source_value, CONSTANT_TYPES):
         concept_value = constant_to_concept(
             source_value,

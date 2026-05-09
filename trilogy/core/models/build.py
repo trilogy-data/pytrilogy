@@ -23,6 +23,8 @@ from typing import (
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import (
+    NAVIGATION_WINDOW_TYPES,
+    NUMBERING_WINDOW_TYPES,
     AggregateGroupingMode,
     BooleanOperator,
     ComparisonOperator,
@@ -59,6 +61,8 @@ from trilogy.core.models.author import (
     HavingClause,
     Metadata,
     MultiSelectLineage,
+    NavigationWindowItem,
+    NumberingWindowItem,
     OrderBy,
     OrderItem,
     Parenthetical,
@@ -1203,15 +1207,60 @@ class BuildOrderItem(DataTyped, BuildConceptArgs):
 
 
 @dataclass(slots=True)
-class BuildWindowItem(DataTyped, BuildConceptArgs):
+class BuildNumberingWindowItem(DataTyped, BuildConceptArgs):
+    type: WindowType
+    arguments: List[BuildConcept]
+    order_by: List[BuildOrderItem]
+    over: List["BuildConcept"] = field(default_factory=list)
+
+    def __post_init__(self):
+        assert (
+            self.type in NUMBERING_WINDOW_TYPES
+        ), f"BuildNumberingWindowItem requires a numbering window type, got {self.type}"
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.type}({self.arguments}, over={self.over}, order_by={self.order_by})"
+        )
+
+    def __str__(self):
+        return self.__repr__()
+
+    @cached_property
+    def concept_arguments(self) -> List[BuildConcept]:
+        output: List[BuildConcept] = []
+        for arg in self.arguments:
+            output += get_concept_arguments(arg)
+        for order in self.order_by:
+            output += order.concept_arguments
+        for item in self.over:
+            output += [item]
+        return output
+
+    @property
+    def output_datatype(self):
+        return DataType.INTEGER
+
+    @property
+    def output_purpose(self):
+        return Purpose.PROPERTY
+
+
+@dataclass(slots=True)
+class BuildNavigationWindowItem(DataTyped, BuildConceptArgs):
     type: WindowType
     content: BuildConcept
     order_by: List[BuildOrderItem]
     over: List["BuildConcept"] = field(default_factory=list)
-    index: Optional[int] = None
+    offset: Optional[int] = None
+
+    def __post_init__(self):
+        assert (
+            self.type in NAVIGATION_WINDOW_TYPES
+        ), f"BuildNavigationWindowItem requires a navigation window type, got {self.type}"
 
     def __repr__(self) -> str:
-        return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
+        return f"{self.type}({self.content}, offset={self.offset}, over={self.over}, order_by={self.order_by})"
 
     def __str__(self):
         return self.__repr__()
@@ -1227,13 +1276,17 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
 
     @property
     def output_datatype(self):
-        if self.type in (WindowType.RANK, WindowType.ROW_NUMBER):
+        if self.type in (WindowType.COUNT, WindowType.COUNT_DISTINCT):
             return DataType.INTEGER
         return self.content.output_datatype
 
     @property
     def output_purpose(self):
         return Purpose.PROPERTY
+
+
+# Build-side window expression union. See author.WindowItem for category split.
+BuildWindowItem = BuildNumberingWindowItem | BuildNavigationWindowItem
 
 
 @dataclass(slots=True)
@@ -2381,10 +2434,38 @@ class Factory:
         return BuildHavingClause(conditional=self.build(base.conditional))
 
     @build.register
-    def _(self, base: WindowItem) -> BuildWindowItem:
-        return self._build_window_item(base)
+    def _(self, base: NumberingWindowItem) -> BuildNumberingWindowItem:
+        return self._build_numbering_window_item(base)
 
-    def _build_window_item(self, base: WindowItem) -> BuildWindowItem:
+    @build.register
+    def _(self, base: NavigationWindowItem) -> BuildNavigationWindowItem:
+        return self._build_navigation_window_item(base)
+
+    def _build_numbering_window_item(
+        self, base: NumberingWindowItem
+    ) -> BuildNumberingWindowItem:
+        # An AggregateWrapper with empty `by` inside the order_by needs an
+        # implicit grain — the rank's argument concepts define the row.
+        anchor = base.arguments[0] if base.arguments else None
+        final_by = []
+        for x in base.order_by:
+            if (
+                isinstance(x.expr, AggregateWrapper)
+                and not x.expr.by
+                and anchor is not None
+            ):
+                x.expr.by = [anchor]
+            final_by.append(x)
+        return BuildNumberingWindowItem(
+            type=base.type,
+            arguments=[self._build_concept_ref(x) for x in base.arguments],
+            order_by=[self.build(x) for x in final_by],
+            over=[self._build_concept_ref(x) for x in base.over],
+        )
+
+    def _build_navigation_window_item(
+        self, base: NavigationWindowItem
+    ) -> BuildNavigationWindowItem:
         content: Concept | FuncArgs = base.content
         validation = requires_concept_nesting(base.content)
         if validation:
@@ -2398,12 +2479,12 @@ class Factory:
             ):
                 x.expr.by = [content]
             final_by.append(x)
-        return BuildWindowItem(
+        return BuildNavigationWindowItem(
             type=base.type,
             content=self.build(content),
             order_by=[self.build(x) for x in final_by],
             over=[self._build_concept_ref(x) for x in base.over],
-            index=base.index,
+            offset=base.offset,
         )
 
     @build.register
@@ -2958,11 +3039,16 @@ def _canonical_str_for_hash(arg: Any) -> str:
     if isinstance(arg, BuildFunction):
         rendered = ",".join(_canonical_str_for_hash(a) for a in arg.arguments)
         return f"{arg.operator.value}({rendered})"
-    if isinstance(arg, BuildWindowItem):
+    if isinstance(arg, BuildNumberingWindowItem):
+        order_str = ",".join(_canonical_str_for_hash(o) for o in arg.order_by)
+        over_str = ",".join(_canonical_str_for_hash(o) for o in arg.over)
+        args_str = ",".join(_canonical_str_for_hash(a) for a in arg.arguments)
+        return f"{arg.type}([{args_str}], [{over_str}], [{order_str}])"
+    if isinstance(arg, BuildNavigationWindowItem):
         order_str = ",".join(_canonical_str_for_hash(o) for o in arg.order_by)
         over_str = ",".join(_canonical_str_for_hash(o) for o in arg.over)
         return (
-            f"{arg.type}({_canonical_str_for_hash(arg.content)} {arg.index},"
+            f"{arg.type}({_canonical_str_for_hash(arg.content)} {arg.offset},"
             f" [{over_str}], [{order_str}])"
         )
     if isinstance(arg, BuildOrderItem):
@@ -3010,7 +3096,8 @@ def _canonical_str_for_hash(arg: Any) -> str:
 _CONCEPT_NAME_GENERATORS.update(
     {
         BuildAggregateWrapper: _gen_agg_name,
-        BuildWindowItem: _gen_window_name,
+        BuildNumberingWindowItem: _gen_window_name,
+        BuildNavigationWindowItem: _gen_window_name,
         BuildFilterItem: _gen_filter_name,
         BuildFunction: _gen_function_name,
         BuildParenthetical: _gen_paren_name,

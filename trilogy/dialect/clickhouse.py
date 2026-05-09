@@ -1,15 +1,13 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType, MapWrapper
 from trilogy.dialect.base import BaseDialect
 
 if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
-
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 
 def _ch_struct(args, types):
@@ -205,7 +203,6 @@ LIMIT {{ limit }}{% endif %}{% endif %}
 
 
 class ClickhouseDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
     FUNCTION_GRAIN_MATCH_MAP = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,

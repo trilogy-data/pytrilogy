@@ -1,0 +1,117 @@
+query_id = "51"
+gen_length = 4309
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\",
+    \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"sales_date_date\".\"D_MONTH_SEQ\" as \"sales_date_month_seq\",
+    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and  'STORE'  in ('WEB','STORE') and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
+
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\",
+    \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"sales_date_date\".\"D_MONTH_SEQ\" as \"sales_date_month_seq\",
+    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null and  'WEB'  in ('WEB','STORE') and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
+),
+yummy as (
+SELECT
+    \"cheerful\".\"sales_date_date\" as \"sales_date_date\",
+    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
+    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1,
+    2,
+    3),
+cooperative as (
+SELECT
+    \"cheerful\".\"sales_date_date\" as \"sales_date_date\",
+    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
+    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
+    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1,
+    2),
+juicy as (
+SELECT
+    \"yummy\".\"sales_date_date\" as \"sales_date_date\",
+    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
+    max(CASE
+	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 1
+	ELSE 0
+	END) as \"store_has_row\",
+    max(CASE
+	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 1
+	ELSE 0
+	END) as \"web_has_row\"
+FROM
+    \"yummy\"
+GROUP BY
+    1,
+    2),
+uneven as (
+SELECT
+    \"cooperative\".\"sales_date_date\" as \"sales_date_date\",
+    \"cooperative\".\"sales_item_id\" as \"sales_item_id\",
+    sum(\"cooperative\".\"store_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"store_cume\",
+    sum(\"cooperative\".\"web_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"web_cume\"
+FROM
+    \"cooperative\"),
+vacuous as (
+SELECT
+    \"uneven\".\"sales_date_date\" as \"d_date\",
+    \"uneven\".\"sales_item_id\" as \"item_sk\",
+    \"uneven\".\"store_cume\" as \"store_cumulative\",
+    \"uneven\".\"web_cume\" as \"web_cumulative\",
+    CASE
+	WHEN \"juicy\".\"store_has_row\" = 1 THEN \"uneven\".\"store_cume\"
+	ELSE null
+	END as \"store_sales\",
+    CASE
+	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"uneven\".\"web_cume\"
+	ELSE null
+	END as \"web_sales\"
+FROM
+    \"uneven\"
+    INNER JOIN \"juicy\" on \"uneven\".\"sales_date_date\" = \"juicy\".\"sales_date_date\" AND \"uneven\".\"sales_item_id\" = \"juicy\".\"sales_item_id\")
+SELECT
+    \"vacuous\".\"item_sk\" as \"item_sk\",
+    \"vacuous\".\"d_date\" as \"d_date\",
+    \"vacuous\".\"web_sales\" as \"web_sales\",
+    \"vacuous\".\"store_sales\" as \"store_sales\",
+    \"vacuous\".\"web_cumulative\" as \"web_cumulative\",
+    \"vacuous\".\"store_cumulative\" as \"store_cumulative\"
+FROM
+    \"vacuous\"
+WHERE
+    \"vacuous\".\"web_cumulative\" > \"vacuous\".\"store_cumulative\"
+
+ORDER BY 
+    \"vacuous\".\"item_sk\" asc nulls first,
+    \"vacuous\".\"d_date\" asc nulls first
+LIMIT (100)"""
