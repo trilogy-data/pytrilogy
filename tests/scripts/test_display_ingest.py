@@ -1,5 +1,9 @@
 """Direct tests for display_ingest helpers (header, progress, summary, _shorten)."""
 
+import importlib.util
+
+import pytest
+
 from trilogy.scripts.display import set_rich_mode
 from trilogy.scripts.display_ingest import (
     _PlainIngestProgress,
@@ -9,6 +13,11 @@ from trilogy.scripts.display_ingest import (
     show_ingest_summary,
 )
 from trilogy.scripts.ingest import IngestSummaryRow
+
+RICH_AVAILABLE = importlib.util.find_spec("rich") is not None
+requires_rich = pytest.mark.skipif(
+    not RICH_AVAILABLE, reason="Rich library not available"
+)
 
 
 class TestShorten:
@@ -39,6 +48,7 @@ class TestShowIngestSummary:
         # No exception, no print — just an early return.
         show_ingest_summary([])
 
+    @requires_rich
     def test_rich_summary_renders(self, capsys):
         with set_rich_mode(True):
             show_ingest_summary(
@@ -64,6 +74,7 @@ class TestShowIngestSummary:
 
 
 class TestShowIngestHeader:
+    @requires_rich
     def test_rich_header(self, capsys):
         with set_rich_mode(True):
             show_ingest_header(["a.csv"], "raw/", "duck_db", "trilogy.toml")
@@ -97,6 +108,7 @@ class TestIngestProgress:
         assert "[1/2] a.csv: introspecting" in out
         assert "[2/2] b.csv: writing" in out
 
+    @requires_rich
     def test_rich_progress_yields_rich_class(self):
         from trilogy.scripts.display_ingest import _RichIngestProgress
 
