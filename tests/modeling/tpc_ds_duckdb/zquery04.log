@@ -1,5 +1,5 @@
 query_id = "04"
-gen_length = 11210
+gen_length = 11522
 generated_sql = """
 
 WITH 
@@ -77,7 +77,7 @@ SELECT
 FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 
@@ -139,46 +139,45 @@ GROUP BY
 vacuous as (
 SELECT
     \"abundant\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
     \"abundant\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"abundant\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"abundant\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
     \"abundant\".\"sales_date_year\" as \"sales_date_year\",
-    \"yummy\".\"web_second_year\" as \"web_second_year\"
+    \"yummy\".\"web_second_year\" as \"web_second_year\",
+    coalesce(\"abundant\".\"sales_customer_id\",\"yummy\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"abundant\"
-    INNER JOIN \"yummy\" on \"abundant\".\"sales_customer_id\" = \"yummy\".\"sales_customer_id\"),
+    FULL JOIN \"yummy\" on \"abundant\".\"sales_customer_id\" is not distinct from \"yummy\".\"sales_customer_id\"),
 sparkling as (
 SELECT
     \"concerned\".\"web_first_year\" as \"web_first_year\",
     \"vacuous\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"vacuous\".\"sales_customer_id\" as \"sales_customer_id\",
     \"vacuous\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"vacuous\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"vacuous\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
     \"vacuous\".\"sales_date_year\" as \"sales_date_year\",
-    \"vacuous\".\"web_second_year\" as \"web_second_year\"
+    \"vacuous\".\"web_second_year\" as \"web_second_year\",
+    coalesce(\"concerned\".\"sales_customer_id\",\"vacuous\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"vacuous\"
-    INNER JOIN \"concerned\" on \"vacuous\".\"sales_customer_id\" = \"concerned\".\"sales_customer_id\"),
+    FULL JOIN \"concerned\" on \"vacuous\".\"sales_customer_id\" is not distinct from \"concerned\".\"sales_customer_id\"),
 late as (
 SELECT
     \"abhorrent\".\"store_second_year\" as \"store_second_year\",
     \"sparkling\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"sparkling\".\"sales_customer_id\" as \"sales_customer_id\",
     \"sparkling\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"sparkling\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"sparkling\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
     \"sparkling\".\"sales_date_year\" as \"sales_date_year\",
     \"sparkling\".\"web_first_year\" as \"web_first_year\",
-    \"sparkling\".\"web_second_year\" as \"web_second_year\"
+    \"sparkling\".\"web_second_year\" as \"web_second_year\",
+    coalesce(\"abhorrent\".\"sales_customer_id\",\"sparkling\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"sparkling\"
-    INNER JOIN \"abhorrent\" on \"sparkling\".\"sales_customer_id\" = \"abhorrent\".\"sales_customer_id\"),
+    FULL JOIN \"abhorrent\" on \"sparkling\".\"sales_customer_id\" is not distinct from \"abhorrent\".\"sales_customer_id\"),
 friendly as (
 SELECT
     \"late\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"late\".\"sales_customer_id\" as \"sales_customer_id\",
     \"late\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"late\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"late\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
@@ -186,14 +185,14 @@ SELECT
     \"late\".\"store_second_year\" as \"store_second_year\",
     \"late\".\"web_first_year\" as \"web_first_year\",
     \"late\".\"web_second_year\" as \"web_second_year\",
-    \"macho\".\"store_first_year\" as \"store_first_year\"
+    \"macho\".\"store_first_year\" as \"store_first_year\",
+    coalesce(\"late\".\"sales_customer_id\",\"macho\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"late\"
-    INNER JOIN \"macho\" on \"late\".\"sales_customer_id\" = \"macho\".\"sales_customer_id\"),
+    FULL JOIN \"macho\" on \"late\".\"sales_customer_id\" is not distinct from \"macho\".\"sales_customer_id\"),
 busy as (
 SELECT
     \"friendly\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"friendly\".\"sales_customer_id\" as \"sales_customer_id\",
     \"friendly\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"friendly\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"friendly\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
@@ -202,10 +201,11 @@ SELECT
     \"friendly\".\"store_second_year\" as \"store_second_year\",
     \"friendly\".\"web_first_year\" as \"web_first_year\",
     \"friendly\".\"web_second_year\" as \"web_second_year\",
-    \"kaput\".\"catalog_second_year\" as \"catalog_second_year\"
+    \"kaput\".\"catalog_second_year\" as \"catalog_second_year\",
+    coalesce(\"friendly\".\"sales_customer_id\",\"kaput\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"friendly\"
-    INNER JOIN \"kaput\" on \"friendly\".\"sales_customer_id\" = \"kaput\".\"sales_customer_id\")
+    FULL JOIN \"kaput\" on \"friendly\".\"sales_customer_id\" is not distinct from \"kaput\".\"sales_customer_id\")
 SELECT
     \"busy\".\"sales_customer_text_id\" as \"customer_id\",
     \"busy\".\"sales_customer_first_name\" as \"customer_first_name\",
@@ -213,7 +213,7 @@ SELECT
     \"busy\".\"sales_customer_preferred_cust_flag\" as \"customer_preferred_cust_flag\"
 FROM
     \"busy\"
-    INNER JOIN \"charming\" on \"busy\".\"sales_customer_id\" = \"charming\".\"sales_customer_id\"
+    INNER JOIN \"charming\" on \"busy\".\"sales_customer_id\" is not distinct from \"charming\".\"sales_customer_id\"
 WHERE
     \"busy\".\"sales_date_year\" in (2001,2002) and \"busy\".\"store_first_year\" > 0 and \"charming\".\"catalog_first_year\" > 0 and \"busy\".\"web_first_year\" > 0 and ( CASE
 	WHEN \"charming\".\"catalog_first_year\" > 0 THEN \"busy\".\"catalog_second_year\" / \"charming\".\"catalog_first_year\"

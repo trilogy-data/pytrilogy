@@ -199,7 +199,11 @@ def test_four(engine):
 
 
 @pytest.mark.skip(
-    reason="Returns w/o matching sale rows lack channel_dim_id in unified_sales — total returns ~2.7% low. See STATUS.md."
+    reason="97/100 rows match. 3 mismatched rows (grand total + catalog channel level + 1 detail) "
+    "stem from the planner sourcing channel_dim_id only from sales partial: returns rows whose own "
+    "channel SK differs from their sale's get attributed to the wrong dim id. Adding "
+    "CR_CATALOG_PAGE_SK / SR_STORE_SK to channel_dim_id in returns_unified is in the model but "
+    "ignored by the planner (juicy CTE doesn't pull channel_dim_id). See STATUS.md q5."
 )
 def test_five(engine):
     run_query(engine, 5)
@@ -602,12 +606,8 @@ def test_eighty_four(engine):
     assert len(query) < 4000, query
 
 
-@pytest.mark.skip(
-    reason="DuckDB OOMs/hangs running the PRAGMA tpcds(85) comparison query on some "
-    "machines. If observed, switch the fixture to engine_sf01 (sf=0.1)."
-)
-def test_eighty_five(engine):
-    query = run_query(engine, 85)
+def test_eighty_five(engine_sf001):
+    query = run_query(engine_sf001, 85)
     assert len(query) < 12000, query
 
 

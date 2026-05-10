@@ -1,5 +1,5 @@
 query_id = "97"
-gen_length = 2445
+gen_length = 2450
 generated_sql = """
 
 WITH 
@@ -50,7 +50,7 @@ SELECT
 	END) as \"store_in_window\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"thoughtful\".\"sales_sales_channel\" in ('STORE','CATALOG')
 

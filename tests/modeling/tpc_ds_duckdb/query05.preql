@@ -14,57 +14,34 @@ auto id_label <- CASE
     ELSE null
 END;
 
-# Aliases so we can apply '?' filters: sum(coalesce(x, 0) ? cond) is rejected
-# by the parser (concept-only filters), so wrap the coalesce in a property auto.
-property <sales.sales_channel, sales.order_id, sales.item.id>.return_amount_safe <- coalesce(sales.return_amount, 0);
-property <sales.sales_channel, sales.order_id, sales.item.id>.return_net_loss_safe <- coalesce(sales.return_net_loss, 0);
+# Per-row sale/return amounts gated to the q5 window. Rows outside window
+# contribute 0 (matching the reference's UNION ALL with cast(0 AS decimal)).
+property <sales.sales_channel, sales.order_id, sales.item.id>.sale_in_window <-
+    case when sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)
+         then sales.ext_sales_price else 0.0 end;
+property <sales.sales_channel, sales.order_id, sales.item.id>.profit_in_window <-
+    case when sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)
+         then sales.net_profit else 0.0 end;
+property <sales.sales_channel, sales.order_id, sales.item.id>.return_in_window <-
+    case when sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)
+         then coalesce(sales.return_amount, 0.0) else 0.0 end;
+property <sales.sales_channel, sales.order_id, sales.item.id>.loss_in_window <-
+    case when sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)
+         then coalesce(sales.return_net_loss, 0.0) else 0.0 end;
 
-# Per-row filtered metrics. Sales side keys off date.date in window;
-# returns side keys off return_date.date in window. They're independent.
-
-with q5_results as
 WHERE
     sales.channel_dim_text_id is not null
+    and ((sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date))
+         or (sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)))
 SELECT
-    channel_label as channel_a,
-    id_label as id_a,
-    sum(sales.ext_sales_price ? sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as sales_a,
-    sum(return_amount_safe ? sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as returns_a,
-    sum(sales.net_profit ? sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) - sum(return_net_loss_safe ? sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as profit_a,
-MERGE
-WHERE
-    sales.channel_dim_text_id is not null
-SELECT
-    channel_label as channel_b,
-    cast(null as string) as null_id_b,
-    sum(sales.ext_sales_price ? sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as sales_b,
-    sum(return_amount_safe ? sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as returns_b,
-    sum(sales.net_profit ? sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) - sum(return_net_loss_safe ? sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as profit_b,
-MERGE
-WHERE
-    sales.channel_dim_text_id is not null
-SELECT
-    cast(null as string) as null_channel_c,
-    cast(null as string) as null_id_c,
-    sum(sales.ext_sales_price ? sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as sales_c,
-    sum(return_amount_safe ? sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as returns_c,
-    sum(sales.net_profit ? sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) - sum(return_net_loss_safe ? sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)) as profit_c,
-align
-    channel: channel_a, channel_b, null_channel_c
-    AND id: id_a, null_id_b, null_id_c
-derive
-    coalesce(q5_results.sales_a, q5_results.sales_b, q5_results.sales_c) -> sales_total,
-    coalesce(q5_results.returns_a, q5_results.returns_b, q5_results.returns_c) -> returns_total,
-    coalesce(q5_results.profit_a, q5_results.profit_b, q5_results.profit_c) -> profit_total
-;
-
-SELECT
-    q5_results.channel,
-    q5_results.id,
-    q5_results.sales_total,
-    q5_results.returns_total,
-    q5_results.profit_total,
+    channel_label as channel,
+    id_label as id,
+    sum(sale_in_window) by rollup channel_label, id_label as sales_total,
+    sum(return_in_window) by rollup channel_label, id_label as returns_total,
+    --sum(profit_in_window) by rollup channel_label, id_label as profit_only,
+    --sum(loss_in_window) by rollup channel_label, id_label as loss_only,
+    profit_only - loss_only as profit_total,
 ORDER BY
-    q5_results.channel asc nulls first,
-    q5_results.id asc nulls first
+    channel asc nulls first,
+    id asc nulls first
 LIMIT 100;

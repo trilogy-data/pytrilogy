@@ -1,5 +1,5 @@
 query_id = "66"
-gen_length = 35149
+gen_length = 35177
 generated_sql = """
 
 WITH 
@@ -111,8 +111,8 @@ SELECT
 FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"thoughtful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
-    INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"thoughtful\".\"sales_ship_mode_id\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
+    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"thoughtful\".\"sales_time_id\" = \"sales_time_time\".\"T_TIME_SK\"
+    LEFT OUTER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"thoughtful\".\"sales_ship_mode_id\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
 WHERE
     \"thoughtful\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"sales_date_date\".\"D_YEAR\" = 2001 and \"thoughtful\".\"sales_warehouse_id\" is not null
 
@@ -201,7 +201,7 @@ SELECT
     coalesce(\"young\".\"ws_sep_sales\",0) + coalesce(\"young\".\"cs_sep_sales\",0) as \"sep_sales\"
 FROM
     \"juicy\"
-    INNER JOIN \"young\" on \"juicy\".\"sales_warehouse_id\" = \"young\".\"sales_warehouse_id\"
+    FULL JOIN \"young\" on \"juicy\".\"sales_warehouse_id\" is not distinct from \"young\".\"sales_warehouse_id\"
 GROUP BY
     1,
     2,
