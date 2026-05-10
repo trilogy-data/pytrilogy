@@ -91,6 +91,7 @@ class SnowflakeDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SNOWFLAKE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.SNOWFLAKE
+    SUPPORTS_AGGREGATE_GROUPING_MODES = True
     TABLE_NOT_FOUND_PATTERN = "does not exist"
     COLUMN_NOT_FOUND_PATTERN = "invalid identifier"
 

@@ -74,6 +74,7 @@ class SqlServerDialect(BaseDialect):
     }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = TSQL_TEMPLATE
+    SUPPORTS_AGGREGATE_GROUPING_MODES = True
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None

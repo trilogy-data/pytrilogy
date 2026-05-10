@@ -82,6 +82,7 @@ class PostgresDialect(BaseDialect):
     }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = PG_SQL_TEMPLATE
+    SUPPORTS_AGGREGATE_GROUPING_MODES = True
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

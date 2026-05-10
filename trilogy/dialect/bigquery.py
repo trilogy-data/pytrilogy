@@ -229,6 +229,7 @@ class BigqueryDialect(BaseDialect):
     CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
+    SUPPORTS_AGGREGATE_GROUPING_MODES = True
 
     def hash_column_value(self, column_name: str) -> str:
         return f"FARM_FINGERPRINT(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS STRING))"
