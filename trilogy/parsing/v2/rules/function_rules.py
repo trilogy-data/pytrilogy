@@ -357,17 +357,7 @@ def expr_over_list(
     the raw items; the build phase materializes anything that isn't already
     a concept reference into a factory-local concept (no environment mutation
     at parse time)."""
-    out: list[Any] = []
-    for item in hydrated_children(node, hydrate):
-        # Plain identifier tokens resolve against the env (read-only).
-        if isinstance(item, str):
-            mapping = context.concepts.require(item)
-            out.append(
-                ConceptRef(address=mapping.address, datatype=mapping.output_datatype)
-            )
-        else:
-            out.append(item)
-    return out
+    return hydrated_children(node, hydrate)
 
 
 # --- Special function handlers ---
