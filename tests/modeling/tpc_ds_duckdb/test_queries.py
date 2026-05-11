@@ -198,13 +198,6 @@ def test_four(engine):
     run_query(engine, 4)
 
 
-@pytest.mark.skip(
-    reason="97/100 rows match. 3 mismatched rows (grand total + catalog channel level + 1 detail) "
-    "stem from the planner sourcing channel_dim_id only from sales partial: returns rows whose own "
-    "channel SK differs from their sale's get attributed to the wrong dim id. Adding "
-    "CR_CATALOG_PAGE_SK / SR_STORE_SK to channel_dim_id in returns_unified is in the model but "
-    "ignored by the planner (juicy CTE doesn't pull channel_dim_id). See STATUS.md q5."
-)
 def test_five(engine):
     run_query(engine, 5)
 

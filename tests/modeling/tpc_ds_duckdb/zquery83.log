@@ -1,5 +1,5 @@
 query_id = "83"
-gen_length = 9025
+gen_length = 9451
 generated_sql = """
 
 WITH 
@@ -23,13 +23,26 @@ FROM
     \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
 UNION ALL
 SELECT
-    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_id\",
-    \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_web_returns_unified\".\"WR_RETURNED_DATE_SK\" as \"sales_return_date_id\",
-    \"sales_web_returns_unified\".\"WR_RETURN_QUANTITY\" as \"sales_return_quantity\",
+    \"sales_web_returns_unified\".\"wr_item_sk\" as \"sales_item_id\",
+    \"sales_web_returns_unified\".\"wr_order_number\" as \"sales_order_id\",
+    \"sales_web_returns_unified\".\"wr_returned_date_sk\" as \"sales_return_date_id\",
+    \"sales_web_returns_unified\".\"wr_return_quantity\" as \"sales_return_quantity\",
      'WEB'  as \"sales_sales_channel\"
 FROM
-    \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
+    (
+SELECT
+    wr.WR_ORDER_NUMBER AS wr_order_number,
+    wr.WR_ITEM_SK AS wr_item_sk,
+    ws.WS_WEB_SITE_SK AS ws_web_site_sk,
+    wr.WR_RETURNED_DATE_SK AS wr_returned_date_sk,
+    wr.WR_RETURN_AMT AS wr_return_amt,
+    wr.WR_RETURN_QUANTITY AS wr_return_quantity,
+    wr.WR_NET_LOSS AS wr_net_loss
+FROM memory.web_returns wr
+LEFT OUTER JOIN memory.web_sales ws
+    ON wr.WR_ORDER_NUMBER = ws.WS_ORDER_NUMBER
+    AND wr.WR_ITEM_SK = ws.WS_ITEM_SK
+) as \"sales_web_returns_unified\"),
 juicy as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",

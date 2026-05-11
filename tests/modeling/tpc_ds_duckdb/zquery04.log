@@ -1,9 +1,9 @@
 query_id = "04"
-gen_length = 11522
+gen_length = 13013
 generated_sql = """
 
 WITH 
-cheerful as (
+abundant as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
@@ -42,42 +42,77 @@ SELECT
      'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-thoughtful as (
+cheerful as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"cheerful\".\"sales_date_id\" as \"sales_date_id\"
+    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
+     'CATALOG'  as \"sales_sales_channel\"
 FROM
-    \"cheerful\"
+    \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
+UNION ALL
+SELECT
+    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
+UNION ALL
+SELECT
+    \"sales_web_returns_unified\".\"wr_item_sk\" as \"sales_item_id\",
+    \"sales_web_returns_unified\".\"wr_order_number\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    (
+SELECT
+    wr.WR_ORDER_NUMBER AS wr_order_number,
+    wr.WR_ITEM_SK AS wr_item_sk,
+    ws.WS_WEB_SITE_SK AS ws_web_site_sk,
+    wr.WR_RETURNED_DATE_SK AS wr_returned_date_sk,
+    wr.WR_RETURN_AMT AS wr_return_amt,
+    wr.WR_RETURN_QUANTITY AS wr_return_quantity,
+    wr.WR_NET_LOSS AS wr_net_loss
+FROM memory.web_returns wr
+LEFT OUTER JOIN memory.web_sales ws
+    ON wr.WR_ORDER_NUMBER = ws.WS_ORDER_NUMBER
+    AND wr.WR_ITEM_SK = ws.WS_ITEM_SK
+) as \"sales_web_returns_unified\"),
+sweltering as (
+SELECT
+    \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
+    \"abundant\".\"sales_date_id\" as \"sales_date_id\"
+FROM
+    \"abundant\"
 GROUP BY
     1,
     2),
-uneven as (
+yummy as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"cheerful\".\"sales_ext_discount_amount\" as \"sales_ext_discount_amount\",
-    \"cheerful\".\"sales_ext_list_price\" as \"sales_ext_list_price\",
-    \"cheerful\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
-    \"cheerful\".\"sales_ext_wholesale_cost\" as \"sales_ext_wholesale_cost\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
+    \"abundant\".\"sales_ext_discount_amount\" as \"sales_ext_discount_amount\",
+    \"abundant\".\"sales_ext_list_price\" as \"sales_ext_list_price\",
+    \"abundant\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"abundant\".\"sales_ext_wholesale_cost\" as \"sales_ext_wholesale_cost\",
+    \"abundant\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 ),
-abundant as (
+macho as (
 SELECT
     \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
     \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
     \"sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_customer_preferred_cust_flag\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\"
+    \"sweltering\".\"sales_customer_id\" as \"sales_customer_id\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
+    \"sweltering\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sweltering\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"sweltering\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
     \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 
@@ -88,108 +123,79 @@ GROUP BY
     4,
     5,
     6),
+puzzled as (
+SELECT
+    \"yummy\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum((( ( \"yummy\".\"sales_ext_list_price\" - \"yummy\".\"sales_ext_wholesale_cost\" ) - \"yummy\".\"sales_ext_discount_amount\" ) + \"yummy\".\"sales_ext_sales_price\") / CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' and \"yummy\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"catalog_second_year\"
+FROM
+    \"yummy\"
+GROUP BY
+    1),
 charming as (
 SELECT
-    \"uneven\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'CATALOG' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"catalog_first_year\"
+    \"yummy\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum((( ( \"yummy\".\"sales_ext_list_price\" - \"yummy\".\"sales_ext_wholesale_cost\" ) - \"yummy\".\"sales_ext_discount_amount\" ) + \"yummy\".\"sales_ext_sales_price\") / CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' and \"yummy\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"store_first_year\"
 FROM
-    \"uneven\"
+    \"yummy\"
 GROUP BY
     1),
 kaput as (
 SELECT
-    \"uneven\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'CATALOG' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"catalog_second_year\"
+    \"yummy\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum((( ( \"yummy\".\"sales_ext_list_price\" - \"yummy\".\"sales_ext_wholesale_cost\" ) - \"yummy\".\"sales_ext_discount_amount\" ) + \"yummy\".\"sales_ext_sales_price\") / CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' and \"yummy\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"store_second_year\"
 FROM
-    \"uneven\"
+    \"yummy\"
 GROUP BY
     1),
-macho as (
+sparkling as (
 SELECT
-    \"uneven\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'STORE' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"store_first_year\"
+    \"yummy\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum((( ( \"yummy\".\"sales_ext_list_price\" - \"yummy\".\"sales_ext_wholesale_cost\" ) - \"yummy\".\"sales_ext_discount_amount\" ) + \"yummy\".\"sales_ext_sales_price\") / CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' and \"yummy\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"web_second_year\"
 FROM
-    \"uneven\"
-GROUP BY
-    1),
-abhorrent as (
-SELECT
-    \"uneven\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'STORE' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"store_second_year\"
-FROM
-    \"uneven\"
+    \"yummy\"
 GROUP BY
     1),
 concerned as (
 SELECT
-    \"uneven\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'WEB' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"web_first_year\"
+    \"yummy\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum((( ( \"yummy\".\"sales_ext_list_price\" - \"yummy\".\"sales_ext_wholesale_cost\" ) - \"yummy\".\"sales_ext_discount_amount\" ) + \"yummy\".\"sales_ext_sales_price\") / CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' and \"yummy\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"web_first_year\"
 FROM
-    \"uneven\"
+    \"yummy\"
 GROUP BY
     1),
-yummy as (
+juicy as (
 SELECT
-    \"uneven\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'WEB' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"web_second_year\"
+    \"yummy\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum((( ( \"yummy\".\"sales_ext_list_price\" - \"yummy\".\"sales_ext_wholesale_cost\" ) - \"yummy\".\"sales_ext_discount_amount\" ) + \"yummy\".\"sales_ext_sales_price\") / CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' and \"yummy\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"catalog_first_year\"
 FROM
-    \"uneven\"
+    \"yummy\"
 GROUP BY
     1),
-vacuous as (
+scrawny as (
 SELECT
-    \"abundant\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"abundant\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
-    \"abundant\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
-    \"abundant\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
-    \"abundant\".\"sales_date_year\" as \"sales_date_year\",
-    \"yummy\".\"web_second_year\" as \"web_second_year\",
-    coalesce(\"abundant\".\"sales_customer_id\",\"yummy\".\"sales_customer_id\") as \"sales_customer_id\"
-FROM
-    \"abundant\"
-    FULL JOIN \"yummy\" on \"abundant\".\"sales_customer_id\" is not distinct from \"yummy\".\"sales_customer_id\"),
-sparkling as (
-SELECT
-    \"concerned\".\"web_first_year\" as \"web_first_year\",
-    \"vacuous\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"vacuous\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
-    \"vacuous\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
-    \"vacuous\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
-    \"vacuous\".\"sales_date_year\" as \"sales_date_year\",
-    \"vacuous\".\"web_second_year\" as \"web_second_year\",
-    coalesce(\"concerned\".\"sales_customer_id\",\"vacuous\".\"sales_customer_id\") as \"sales_customer_id\"
-FROM
-    \"vacuous\"
-    FULL JOIN \"concerned\" on \"vacuous\".\"sales_customer_id\" is not distinct from \"concerned\".\"sales_customer_id\"),
-late as (
-SELECT
-    \"abhorrent\".\"store_second_year\" as \"store_second_year\",
-    \"sparkling\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"sparkling\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
-    \"sparkling\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
-    \"sparkling\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
-    \"sparkling\".\"sales_date_year\" as \"sales_date_year\",
-    \"sparkling\".\"web_first_year\" as \"web_first_year\",
+    \"macho\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"macho\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
+    \"macho\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
+    \"macho\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
+    \"macho\".\"sales_date_year\" as \"sales_date_year\",
     \"sparkling\".\"web_second_year\" as \"web_second_year\",
-    coalesce(\"abhorrent\".\"sales_customer_id\",\"sparkling\".\"sales_customer_id\") as \"sales_customer_id\"
+    coalesce(\"macho\".\"sales_customer_id\",\"sparkling\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"sparkling\"
-    FULL JOIN \"abhorrent\" on \"sparkling\".\"sales_customer_id\" is not distinct from \"abhorrent\".\"sales_customer_id\"),
+    FULL JOIN \"macho\" on \"sparkling\".\"sales_customer_id\" is not distinct from \"macho\".\"sales_customer_id\"),
 friendly as (
 SELECT
-    \"late\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"late\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
-    \"late\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
-    \"late\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
-    \"late\".\"sales_date_year\" as \"sales_date_year\",
-    \"late\".\"store_second_year\" as \"store_second_year\",
-    \"late\".\"web_first_year\" as \"web_first_year\",
-    \"late\".\"web_second_year\" as \"web_second_year\",
-    \"macho\".\"store_first_year\" as \"store_first_year\",
-    coalesce(\"late\".\"sales_customer_id\",\"macho\".\"sales_customer_id\") as \"sales_customer_id\"
+    \"concerned\".\"web_first_year\" as \"web_first_year\",
+    \"scrawny\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"scrawny\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
+    \"scrawny\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
+    \"scrawny\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
+    \"scrawny\".\"sales_date_year\" as \"sales_date_year\",
+    \"scrawny\".\"web_second_year\" as \"web_second_year\",
+    coalesce(\"concerned\".\"sales_customer_id\",\"scrawny\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
-    \"late\"
-    FULL JOIN \"macho\" on \"late\".\"sales_customer_id\" is not distinct from \"macho\".\"sales_customer_id\"),
+    \"scrawny\"
+    FULL JOIN \"concerned\" on \"scrawny\".\"sales_customer_id\" is not distinct from \"concerned\".\"sales_customer_id\"),
 busy as (
 SELECT
     \"friendly\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
@@ -197,35 +203,64 @@ SELECT
     \"friendly\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
     \"friendly\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
     \"friendly\".\"sales_date_year\" as \"sales_date_year\",
-    \"friendly\".\"store_first_year\" as \"store_first_year\",
-    \"friendly\".\"store_second_year\" as \"store_second_year\",
     \"friendly\".\"web_first_year\" as \"web_first_year\",
     \"friendly\".\"web_second_year\" as \"web_second_year\",
-    \"kaput\".\"catalog_second_year\" as \"catalog_second_year\",
+    \"kaput\".\"store_second_year\" as \"store_second_year\",
     coalesce(\"friendly\".\"sales_customer_id\",\"kaput\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"friendly\"
-    FULL JOIN \"kaput\" on \"friendly\".\"sales_customer_id\" is not distinct from \"kaput\".\"sales_customer_id\")
+    FULL JOIN \"kaput\" on \"friendly\".\"sales_customer_id\" is not distinct from \"kaput\".\"sales_customer_id\"),
+premium as (
 SELECT
-    \"busy\".\"sales_customer_text_id\" as \"customer_id\",
-    \"busy\".\"sales_customer_first_name\" as \"customer_first_name\",
-    \"busy\".\"sales_customer_last_name\" as \"customer_last_name\",
-    \"busy\".\"sales_customer_preferred_cust_flag\" as \"customer_preferred_cust_flag\"
+    \"busy\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"busy\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
+    \"busy\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
+    \"busy\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
+    \"busy\".\"sales_date_year\" as \"sales_date_year\",
+    \"busy\".\"store_second_year\" as \"store_second_year\",
+    \"busy\".\"web_first_year\" as \"web_first_year\",
+    \"busy\".\"web_second_year\" as \"web_second_year\",
+    \"charming\".\"store_first_year\" as \"store_first_year\",
+    coalesce(\"busy\".\"sales_customer_id\",\"charming\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"busy\"
-    INNER JOIN \"charming\" on \"busy\".\"sales_customer_id\" is not distinct from \"charming\".\"sales_customer_id\"
+    FULL JOIN \"charming\" on \"busy\".\"sales_customer_id\" is not distinct from \"charming\".\"sales_customer_id\"),
+rambunctious as (
+SELECT
+    \"premium\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"premium\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
+    \"premium\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\",
+    \"premium\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
+    \"premium\".\"sales_date_year\" as \"sales_date_year\",
+    \"premium\".\"store_first_year\" as \"store_first_year\",
+    \"premium\".\"store_second_year\" as \"store_second_year\",
+    \"premium\".\"web_first_year\" as \"web_first_year\",
+    \"premium\".\"web_second_year\" as \"web_second_year\",
+    \"puzzled\".\"catalog_second_year\" as \"catalog_second_year\",
+    coalesce(\"premium\".\"sales_customer_id\",\"puzzled\".\"sales_customer_id\") as \"sales_customer_id\"
+FROM
+    \"premium\"
+    FULL JOIN \"puzzled\" on \"premium\".\"sales_customer_id\" is not distinct from \"puzzled\".\"sales_customer_id\")
+SELECT
+    \"rambunctious\".\"sales_customer_text_id\" as \"customer_id\",
+    \"rambunctious\".\"sales_customer_first_name\" as \"customer_first_name\",
+    \"rambunctious\".\"sales_customer_last_name\" as \"customer_last_name\",
+    \"rambunctious\".\"sales_customer_preferred_cust_flag\" as \"customer_preferred_cust_flag\"
+FROM
+    \"rambunctious\"
+    INNER JOIN \"juicy\" on \"rambunctious\".\"sales_customer_id\" is not distinct from \"juicy\".\"sales_customer_id\"
 WHERE
-    \"busy\".\"sales_date_year\" in (2001,2002) and \"busy\".\"store_first_year\" > 0 and \"charming\".\"catalog_first_year\" > 0 and \"busy\".\"web_first_year\" > 0 and ( CASE
-	WHEN \"charming\".\"catalog_first_year\" > 0 THEN \"busy\".\"catalog_second_year\" / \"charming\".\"catalog_first_year\"
+    \"rambunctious\".\"sales_date_year\" in (2001,2002) and \"rambunctious\".\"store_first_year\" > 0 and \"juicy\".\"catalog_first_year\" > 0 and \"rambunctious\".\"web_first_year\" > 0 and ( CASE
+	WHEN \"juicy\".\"catalog_first_year\" > 0 THEN \"rambunctious\".\"catalog_second_year\" / \"juicy\".\"catalog_first_year\"
 	ELSE null
 	END ) > ( CASE
-	WHEN \"busy\".\"store_first_year\" > 0 THEN \"busy\".\"store_second_year\" / \"busy\".\"store_first_year\"
+	WHEN \"rambunctious\".\"store_first_year\" > 0 THEN \"rambunctious\".\"store_second_year\" / \"rambunctious\".\"store_first_year\"
 	ELSE null
 	END ) and ( CASE
-	WHEN \"charming\".\"catalog_first_year\" > 0 THEN \"busy\".\"catalog_second_year\" / \"charming\".\"catalog_first_year\"
+	WHEN \"juicy\".\"catalog_first_year\" > 0 THEN \"rambunctious\".\"catalog_second_year\" / \"juicy\".\"catalog_first_year\"
 	ELSE null
 	END ) > ( CASE
-	WHEN \"busy\".\"web_first_year\" > 0 THEN \"busy\".\"web_second_year\" / \"busy\".\"web_first_year\"
+	WHEN \"rambunctious\".\"web_first_year\" > 0 THEN \"rambunctious\".\"web_second_year\" / \"rambunctious\".\"web_first_year\"
 	ELSE null
 	END )
 

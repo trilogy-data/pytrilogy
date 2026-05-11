@@ -1,9 +1,36 @@
 query_id = "11"
-gen_length = 5098
+gen_length = 6204
 generated_sql = """
 
 WITH 
 cheerful as (
+SELECT
+    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
+UNION ALL
+SELECT
+    \"sales_web_returns_unified\".\"wr_item_sk\" as \"sales_item_id\",
+    \"sales_web_returns_unified\".\"wr_order_number\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    (
+SELECT
+    wr.WR_ORDER_NUMBER AS wr_order_number,
+    wr.WR_ITEM_SK AS wr_item_sk,
+    ws.WS_WEB_SITE_SK AS ws_web_site_sk,
+    wr.WR_RETURNED_DATE_SK AS wr_returned_date_sk,
+    wr.WR_RETURN_AMT AS wr_return_amt,
+    wr.WR_RETURN_QUANTITY AS wr_return_quantity,
+    wr.WR_NET_LOSS AS wr_net_loss
+FROM memory.web_returns wr
+LEFT OUTER JOIN memory.web_sales ws
+    ON wr.WR_ORDER_NUMBER = ws.WS_ORDER_NUMBER
+    AND wr.WR_ITEM_SK = ws.WS_ITEM_SK
+) as \"sales_web_returns_unified\"),
+abundant as (
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
@@ -31,47 +58,38 @@ FROM
 WHERE
      'WEB'  in ('STORE','WEB') and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 ),
-thoughtful as (
+vacuous as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"cheerful\".\"sales_date_id\" as \"sales_date_id\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
+    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_first_year\",
+    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_second_year\",
+    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_first_year\",
+    sum(\"abundant\".\"sales_ext_list_price\" - CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"abundant\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_second_year\"
 FROM
-    \"cheerful\"
-GROUP BY
-    1,
-    2,
-    3),
-uneven as (
-SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_first_year\",
-    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"store_second_year\",
-    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_first_year\",
-    sum(\"cheerful\".\"sales_ext_list_price\" - CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_ext_discount_amount\" ELSE NULL END) as \"web_second_year\"
-FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
 WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"cheerful\".\"sales_customer_id\" is not null
+    \"abundant\".\"sales_sales_channel\" in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"abundant\".\"sales_customer_id\" is not null
 
 GROUP BY
     1),
-abundant as (
+juicy as (
 SELECT
+    \"abundant\".\"sales_customer_id\" as \"sales_customer_id\",
+    \"abundant\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
     \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
     \"sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_customer_preferred_cust_flag\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"abundant\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"thoughtful\".\"sales_customer_id\" is not null
+    \"abundant\".\"sales_sales_channel\" in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"abundant\".\"sales_customer_id\" is not null
 
 GROUP BY
     1,
@@ -82,19 +100,19 @@ GROUP BY
     6,
     7)
 SELECT
-    \"abundant\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
-    \"abundant\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"abundant\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
-    \"abundant\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\"
+    \"juicy\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
+    \"juicy\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
+    \"juicy\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
+    \"juicy\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\"
 FROM
-    \"abundant\"
-    INNER JOIN \"uneven\" on \"abundant\".\"sales_customer_id\" is not distinct from \"uneven\".\"sales_customer_id\"
+    \"juicy\"
+    INNER JOIN \"vacuous\" on \"juicy\".\"sales_customer_id\" is not distinct from \"vacuous\".\"sales_customer_id\"
 WHERE
-    \"abundant\".\"sales_sales_channel\" in ('STORE','WEB') and \"abundant\".\"sales_date_year\" in (2001,2002) and \"abundant\".\"sales_customer_id\" is not null and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
-	WHEN \"uneven\".\"web_first_year\" > 0 THEN (\"uneven\".\"web_second_year\" * 1.0) / \"uneven\".\"web_first_year\"
+    \"juicy\".\"sales_sales_channel\" in ('STORE','WEB') and \"juicy\".\"sales_date_year\" in (2001,2002) and \"juicy\".\"sales_customer_id\" is not null and \"vacuous\".\"store_first_year\" > 0 and \"vacuous\".\"web_first_year\" > 0 and ( CASE
+	WHEN \"vacuous\".\"web_first_year\" > 0 THEN (\"vacuous\".\"web_second_year\" * 1.0) / \"vacuous\".\"web_first_year\"
 	ELSE 0.0
 	END ) > ( CASE
-	WHEN \"uneven\".\"store_first_year\" > 0 THEN (\"uneven\".\"store_second_year\" * 1.0) / \"uneven\".\"store_first_year\"
+	WHEN \"vacuous\".\"store_first_year\" > 0 THEN (\"vacuous\".\"store_second_year\" * 1.0) / \"vacuous\".\"store_first_year\"
 	ELSE 0.0
 	END )
 
@@ -104,8 +122,8 @@ GROUP BY
     3,
     4
 ORDER BY 
-    \"abundant\".\"sales_customer_text_id\" asc nulls first,
-    \"abundant\".\"sales_customer_first_name\" asc nulls first,
-    \"abundant\".\"sales_customer_last_name\" asc nulls first,
-    \"abundant\".\"sales_customer_preferred_cust_flag\" asc nulls first
+    \"juicy\".\"sales_customer_text_id\" asc nulls first,
+    \"juicy\".\"sales_customer_first_name\" asc nulls first,
+    \"juicy\".\"sales_customer_last_name\" asc nulls first,
+    \"juicy\".\"sales_customer_preferred_cust_flag\" asc nulls first
 LIMIT (100)"""

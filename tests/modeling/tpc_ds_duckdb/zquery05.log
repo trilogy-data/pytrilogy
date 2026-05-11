@@ -1,0 +1,211 @@
+query_id = "05"
+gen_length = 9968
+generated_sql = """
+
+WITH 
+macho as (
+SELECT
+    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_SK\" as \"sales_channel_dim_id\",
+    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_ID\" as \"sales_channel_dim_text_id\",
+     'CATALOG'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"catalog_page\" as \"sales_catalog_dim_unified\"
+UNION ALL
+SELECT
+    \"sales_store_dim_unified\".\"S_STORE_SK\" as \"sales_channel_dim_id\",
+    \"sales_store_dim_unified\".\"S_STORE_ID\" as \"sales_channel_dim_text_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store\" as \"sales_store_dim_unified\"
+UNION ALL
+SELECT
+    \"sales_web_dim_unified\".\"web_site_sk\" as \"sales_channel_dim_id\",
+    \"sales_web_dim_unified\".\"web_site_id\" as \"sales_channel_dim_text_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_site\" as \"sales_web_dim_unified\"),
+abundant as (
+SELECT
+    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
+     'CATALOG'  as \"sales_sales_channel\",
+    \"sales_catalog_returns_unified\".\"CR_RETURN_AMOUNT\" as \"sales_return_amount\",
+    \"sales_catalog_returns_unified\".\"CR_CATALOG_PAGE_SK\" as \"sales_return_channel_dim_id\",
+    \"sales_catalog_returns_unified\".\"CR_RETURNED_DATE_SK\" as \"sales_return_date_id\",
+    \"sales_catalog_returns_unified\".\"CR_NET_LOSS\" as \"sales_return_net_loss\"
+FROM
+    \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
+UNION ALL
+SELECT
+    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\",
+    \"sales_store_returns_unified\".\"SR_RETURN_AMT\" as \"sales_return_amount\",
+    \"sales_store_returns_unified\".\"SR_STORE_SK\" as \"sales_return_channel_dim_id\",
+    \"sales_store_returns_unified\".\"SR_RETURNED_DATE_SK\" as \"sales_return_date_id\",
+    \"sales_store_returns_unified\".\"SR_NET_LOSS\" as \"sales_return_net_loss\"
+FROM
+    \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
+UNION ALL
+SELECT
+    \"sales_web_returns_unified\".\"wr_item_sk\" as \"sales_item_id\",
+    \"sales_web_returns_unified\".\"wr_order_number\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\",
+    \"sales_web_returns_unified\".\"wr_return_amt\" as \"sales_return_amount\",
+    \"sales_web_returns_unified\".\"ws_web_site_sk\" as \"sales_return_channel_dim_id\",
+    \"sales_web_returns_unified\".\"wr_returned_date_sk\" as \"sales_return_date_id\",
+    \"sales_web_returns_unified\".\"wr_net_loss\" as \"sales_return_net_loss\"
+FROM
+    (
+SELECT
+    wr.WR_ORDER_NUMBER AS wr_order_number,
+    wr.WR_ITEM_SK AS wr_item_sk,
+    ws.WS_WEB_SITE_SK AS ws_web_site_sk,
+    wr.WR_RETURNED_DATE_SK AS wr_returned_date_sk,
+    wr.WR_RETURN_AMT AS wr_return_amt,
+    wr.WR_RETURN_QUANTITY AS wr_return_quantity,
+    wr.WR_NET_LOSS AS wr_net_loss
+FROM memory.web_returns wr
+LEFT OUTER JOIN memory.web_sales ws
+    ON wr.WR_ORDER_NUMBER = ws.WS_ORDER_NUMBER
+    AND wr.WR_ITEM_SK = ws.WS_ITEM_SK
+) as \"sales_web_returns_unified\"),
+vacuous as (
+SELECT
+    \"sales_catalog_sales_unified\".\"CS_CATALOG_PAGE_SK\" as \"sales_channel_dim_id\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_NET_PROFIT\" as \"sales_net_profit\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
+     'CATALOG'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_store_sales_unified\".\"SS_STORE_SK\" as \"sales_channel_dim_id\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_NET_PROFIT\" as \"sales_net_profit\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_WEB_SITE_SK\" as \"sales_channel_dim_id\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_NET_PROFIT\" as \"sales_net_profit\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+cheerful as (
+SELECT
+    \"sales_catalog_dim_return_unified\".\"CP_CATALOG_PAGE_SK\" as \"sales_return_channel_dim_id\",
+    \"sales_catalog_dim_return_unified\".\"CP_CATALOG_PAGE_ID\" as \"sales_return_channel_dim_text_id\",
+     'CATALOG'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"catalog_page\" as \"sales_catalog_dim_return_unified\"
+UNION ALL
+SELECT
+    \"sales_store_dim_return_unified\".\"S_STORE_SK\" as \"sales_return_channel_dim_id\",
+    \"sales_store_dim_return_unified\".\"S_STORE_ID\" as \"sales_return_channel_dim_text_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store\" as \"sales_store_dim_return_unified\"
+UNION ALL
+SELECT
+    \"sales_web_dim_return_unified\".\"web_site_sk\" as \"sales_return_channel_dim_id\",
+    \"sales_web_dim_return_unified\".\"web_site_id\" as \"sales_return_channel_dim_text_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_site\" as \"sales_web_dim_return_unified\"),
+friendly as (
+SELECT
+    \"vacuous\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"vacuous\".\"sales_net_profit\" as \"sales_net_profit\",
+    CASE
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'STORE' THEN 'store channel'
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog channel'
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' THEN 'web channel'
+	ELSE null
+	END as \"channel_label\",
+    CASE
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'STORE' THEN ('store' || \"macho\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' THEN ('catalog_page' || \"macho\".\"sales_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' THEN ('web_site' || \"macho\".\"sales_channel_dim_text_id\")
+	ELSE null
+	END as \"sales_id_label\"
+FROM
+    \"vacuous\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"vacuous\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\" AND \"vacuous\".\"sales_sales_channel\" = \"abundant\".\"sales_sales_channel\"
+    INNER JOIN \"macho\" on \"vacuous\".\"sales_channel_dim_id\" = \"macho\".\"sales_channel_dim_id\" AND \"vacuous\".\"sales_sales_channel\" = \"macho\".\"sales_sales_channel\"
+WHERE
+    \"macho\".\"sales_channel_dim_text_id\" is not null and cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+),
+young as (
+SELECT
+    \"abundant\".\"sales_return_amount\" as \"sales_return_amount\",
+    \"abundant\".\"sales_return_net_loss\" as \"sales_return_net_loss\",
+    CASE
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'STORE' THEN 'store channel'
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog channel'
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' THEN 'web channel'
+	ELSE null
+	END as \"channel_label\",
+    CASE
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'STORE' THEN ('store' || \"cheerful\".\"sales_return_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_return_channel_dim_text_id\")
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_return_channel_dim_text_id\")
+	ELSE null
+	END as \"return_id_label\"
+FROM
+    \"vacuous\"
+    LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\" AND \"vacuous\".\"sales_sales_channel\" = \"abundant\".\"sales_sales_channel\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"abundant\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"cheerful\" on \"abundant\".\"sales_return_channel_dim_id\" = \"cheerful\".\"sales_return_channel_dim_id\" AND \"vacuous\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
+WHERE
+    \"cheerful\".\"sales_return_channel_dim_text_id\" is not null and cast(\"sales_return_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_return_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+),
+kaput as (
+SELECT
+    \"friendly\".\"channel_label\" as \"channel\",
+    \"friendly\".\"channel_label\" as \"s_channel\",
+    \"friendly\".\"sales_id_label\" as \"id\",
+    \"friendly\".\"sales_id_label\" as \"s_id\",
+    sum(\"friendly\".\"sales_ext_sales_price\") as \"sales_total_a\",
+    sum(\"friendly\".\"sales_net_profit\") as \"profit_only_a\"
+FROM
+    \"friendly\"
+GROUP BY
+    ROLLUP (1, 3)),
+sparkling as (
+SELECT
+    \"young\".\"channel_label\" as \"channel\",
+    \"young\".\"channel_label\" as \"r_channel\",
+    \"young\".\"return_id_label\" as \"id\",
+    \"young\".\"return_id_label\" as \"r_id\",
+    sum(coalesce(\"young\".\"sales_return_amount\",0)) as \"returns_total_b\",
+    sum(coalesce(\"young\".\"sales_return_net_loss\",0)) as \"loss_only_b\"
+FROM
+    \"young\"
+GROUP BY
+    ROLLUP (1, 3))
+SELECT
+    coalesce(\"kaput\".\"channel\",\"sparkling\".\"channel\") as \"q5_results_channel\",
+    coalesce(\"kaput\".\"id\",\"sparkling\".\"id\") as \"q5_results_id\",
+    coalesce(\"kaput\".\"sales_total_a\",0.0) as \"sales\",
+    coalesce(\"sparkling\".\"returns_total_b\",0.0) as \"returns_\",
+    coalesce(\"kaput\".\"profit_only_a\",0.0) - coalesce(\"sparkling\".\"loss_only_b\",0.0) as \"profit\"
+FROM
+    \"kaput\"
+    FULL JOIN \"sparkling\" on \"kaput\".\"channel\" is not distinct from \"sparkling\".\"channel\" AND \"kaput\".\"id\" is not distinct from \"sparkling\".\"id\"
+ORDER BY 
+    \"q5_results_channel\" asc nulls first,
+    \"q5_results_id\" asc nulls first
+LIMIT (100)"""
