@@ -395,13 +395,6 @@ def test_seventy_eight(engine):
     _ = run_query(engine, 78)
 
 
-@pytest.mark.skip(
-    reason="Framework: store_sales+store_returns+catalog_sales merge planner "
-    "produces a FULL JOIN of (sales+returns) with (sales+returns+catalog), "
-    "so rows without matching catalog still appear. Q17 hides this because "
-    "the reference returns 0 rows; q29 has 1 reference row vs 3 trilogy rows. "
-    "Needs INNER-merge semantics or a way to require catalog_sales presence."
-)
 def test_twenty_nine(engine):
     query = run_query(engine, 29)
     assert len(query) < 12000, query
@@ -469,6 +462,10 @@ def test_fifty_two(engine):
 def test_fifty_three(engine):
     query = run_query(engine, 53)
     assert len(query) < 6000, query
+
+
+def test_fifty_four(engine):
+    _ = run_query(engine, 54)
 
 
 def test_fifty_five(engine):
