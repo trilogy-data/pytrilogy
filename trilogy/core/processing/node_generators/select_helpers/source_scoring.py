@@ -34,7 +34,6 @@ def _structural_partial_concepts(
     return ds.column_level_partial_concepts or []
 
 
-
 def get_graph_partial_nodes(
     g: ReferenceGraph, conditions: BuildWhereClause | None
 ) -> dict[str, list[str]]:
@@ -50,7 +49,9 @@ def get_graph_partial_nodes(
             # Condition satisfies the DS's complete-where, so the implicit
             # table-level partial stamp goes away — but column-level ~ partials
             # are structural and must survive.
-            partial[node] = [concept_to_node(c) for c in _structural_partial_concepts(ds)]
+            partial[node] = [
+                concept_to_node(c) for c in _structural_partial_concepts(ds)
+            ]
         else:
             partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
     return partial

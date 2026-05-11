@@ -1,6 +1,12 @@
 from unittest.mock import MagicMock
 
-from trilogy.core.enums import AddressType, BooleanOperator, ComparisonOperator, Modifier, Purpose
+from trilogy.core.enums import (
+    AddressType,
+    BooleanOperator,
+    ComparisonOperator,
+    Modifier,
+    Purpose,
+)
 from trilogy.core.graph_models import (
     ReferenceGraph,
     SearchCriteria,

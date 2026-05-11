@@ -175,8 +175,8 @@ datasource customer (
 grain (customer_id)
 address customer;
 
-datasource order (
-    order_id:~order_id,
+partial datasource order (
+    order_id:order_id,
     customer_id:customer_id,
     revenue:revenue)
 grain (order_id)

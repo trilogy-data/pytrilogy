@@ -86,5 +86,7 @@ SELECT
 
     results = test_executor.execute_text(test_select)[0].fetchall()
 
-    # different when we group via order
-    assert len(results) == 3
+    # Five distinct (store_by_order, product_id) pairs in the fixture:
+    # (1,1), (1,2), (2,1), (2,2), (3,2). Differs from the warehouse-grouped
+    # variant (3 pairs) because warehouses collapse some store/product combos.
+    assert len(results) == 5
