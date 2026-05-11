@@ -44,6 +44,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
+    get_concept_arguments,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment
@@ -463,8 +464,6 @@ def concepts_to_grain_concepts(
 
 
 def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
-    from trilogy.core.models.author import get_concept_arguments
-
     is_metric = False
     if isinstance(arg, Function):
         all = []
@@ -806,7 +805,7 @@ def _navigation_window_to_concept(
     else:
         local_purpose = Purpose.PROPERTY
         keys = Grain.from_concepts(
-            [bcontent.address] + [y.address for y in parent.over], environment
+            [bcontent.address] + [y.address for y in over_refs], environment
         ).components
 
     if parent.order_by:

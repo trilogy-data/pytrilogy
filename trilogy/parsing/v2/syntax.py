@@ -95,6 +95,7 @@ class SyntaxNodeKind(str, Enum):
     ANY = "any"
     FGROUP = "fgroup"
     OVER_LIST = "over_list"
+    EXPR_OVER_LIST = "expr_over_list"
     # Phase 3: merge + cast
     MERGE_STATEMENT = "merge_statement"
     FCAST = "fcast"
@@ -416,6 +417,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "any": SyntaxNodeKind.ANY,
     "fgroup": SyntaxNodeKind.FGROUP,
     "over_list": SyntaxNodeKind.OVER_LIST,
+    "expr_over_list": SyntaxNodeKind.EXPR_OVER_LIST,
     # Phase 3: merge + cast
     "merge_statement": SyntaxNodeKind.MERGE_STATEMENT,
     "fcast": SyntaxNodeKind.FCAST,

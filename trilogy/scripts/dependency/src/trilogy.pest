@@ -435,7 +435,7 @@ union  = { _UNION ~ (expr ~ ",")* ~ expr ~ ")" }
 aggregate_all  = { "*" }
 aggregate_rollup = { ^"rollup" ~ over_list }
 aggregate_cube = { ^"cube" ~ over_list }
-grouping_set = { "(" ~ over_list? ~ ")" }
+grouping_set = { "(" ~ expr_over_list? ~ ")" }
 aggregate_grouping_sets = { ^"grouping" ~ ^"sets" ~ grouping_set ~ ("," ~ grouping_set)* }
 aggregate_over = { ^"by" ~ (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | over_list) }
 
@@ -471,10 +471,12 @@ fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }
 // =============================================================================
 // PEG ordered-choice: longer prefixes first. `IDENTIFIER` would otherwise
 // match `upper` alone, commit, and fail at `?` before `_static_functions`
-// gets a chance to match `upper(...)`.
+// gets a chance to match `upper(...)`. Mirrors the lark `_filter_alt` LHS:
+// every non-left-recursive atom alternative, plus parenthesized `expr` for
+// arbitrary sub-trees.
 filter_item = {
       (^"filter" ~ IDENTIFIER ~ where)
-    | ((_static_functions | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
+    | ((_constant_functions | _static_functions | _generic_functions | _date_functions | aggregate_functions | aggregate_by | custom_function | window_item | unnest | union | subselect | fgroup | expr_tuple | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
 }
 
 // =============================================================================
@@ -500,7 +502,9 @@ WINDOW_TYPE_SQL_NAVIGATION = @{
 window_item_over   = { ^"over" ~ over_list }
 window_item_order  = { ^"order"? ~ ^"by" ~ order_list }
 
-window_sql_partition = { ^"partition" ~ ^"by" ~ over_list }
+// PARTITION BY accepts arbitrary expressions (e.g. `grouping(a)+grouping(b)`);
+// see the mirroring comment in trilogy.lark for the LALR-conflict rationale.
+window_sql_partition = { ^"partition" ~ ^"by" ~ expr_over_list }
 window_sql_order     = { ^"order" ~ ^"by" ~ order_list }
 _WINDOW_OVER_PAREN   = _{ ^"over" ~ (" " | "\t")* ~ "(" }
 window_sql_over      = { _WINDOW_OVER_PAREN ~ window_sql_partition? ~ window_sql_order? ~ ")" }
@@ -532,6 +536,10 @@ window_item                = { window_item_sql_numbering | window_item_sql_navig
 OVER_COMPONENT_REF = @{ "," ~ (" " | "\t" | "\r" | "\n")* ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
 over_component = { OVER_COMPONENT_REF ~ (^"end")? }
 over_list = { concept_lit ~ over_component* }
+
+// Paren-bounded over list: arbitrary expressions, comma-separated. Used in
+// PARTITION BY (inside OVER paren) and GROUPING SETS (...). Mirrors lark.
+expr_over_list = { expr ~ ("," ~ expr)* }
 
 // =============================================================================
 // CAST
