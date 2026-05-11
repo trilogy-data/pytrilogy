@@ -215,6 +215,7 @@ class ClickhouseDialect(BaseDialect):
     # CH doesn't accept arrayJoin as a FROM-clause table function; DIRECT mode
     # emits `SELECT arrayJoin(...) AS alias` with no FROM, which CH supports.
     UNNEST_MODE = UnnestMode.DIRECT
+    SUPPORTS_AGGREGATE_GROUPING_MODES = True
     TABLE_NOT_FOUND_PATTERN = "Table .* doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "Unknown identifier"
 
