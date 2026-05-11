@@ -55,6 +55,7 @@ partial datasource web_sales_unified (
     WS_BILL_ADDR_SK: ?bill_address.id,
     WS_PROMO_SK: ?promotion.id,
     WS_WEB_SITE_SK: ?channel_dim_id,
+    WS_WEB_SITE_SK: ?return_channel_dim_id,
     WS_WAREHOUSE_SK: ?warehouse.id,
     WS_SHIP_MODE_SK: ?ship_mode.id,
     WS_QUANTITY: quantity,
@@ -188,31 +189,17 @@ address memory.web_site;
 
 partial datasource web_returns_unified (
     raw(''' 'WEB' '''): sales_channel,
-    wr_order_number: ~order_id,
-    wr_item_sk: ~item.id,
-    ws_web_site_sk: ?return_channel_dim_id,
-    wr_returned_date_sk: ?return_date.id,
-    wr_return_amt: return_amount,
-    wr_return_quantity: return_quantity,
-    wr_net_loss: return_net_loss,
+    WR_ORDER_NUMBER: ~order_id,
+    WR_ITEM_SK: ~item.id,
+    WR_RETURNED_DATE_SK: ?return_date.id,
+    WR_RETURN_AMT: return_amount,
+    WR_RETURN_QUANTITY: return_quantity,
+    WR_NET_LOSS: return_net_loss,
     raw(''' true '''): is_returned,
 )
 grain (sales_channel, order_id, item.id)
 complete where sales_channel = 'WEB'
-query '''
-SELECT
-    wr.WR_ORDER_NUMBER AS wr_order_number,
-    wr.WR_ITEM_SK AS wr_item_sk,
-    ws.WS_WEB_SITE_SK AS ws_web_site_sk,
-    wr.WR_RETURNED_DATE_SK AS wr_returned_date_sk,
-    wr.WR_RETURN_AMT AS wr_return_amt,
-    wr.WR_RETURN_QUANTITY AS wr_return_quantity,
-    wr.WR_NET_LOSS AS wr_net_loss
-FROM memory.web_returns wr
-LEFT OUTER JOIN memory.web_sales ws
-    ON wr.WR_ORDER_NUMBER = ws.WS_ORDER_NUMBER
-    AND wr.WR_ITEM_SK = ws.WS_ITEM_SK
-''';
+address memory.web_returns;
 
 partial datasource catalog_returns_unified (
     raw(''' 'CATALOG' '''): sales_channel,
