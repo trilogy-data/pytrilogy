@@ -65,10 +65,14 @@ def _weight_triples(
         graph._cached_edges = edges
         if graph._shadow is not None:
             graph._assert_equal("edges()", edges, list(graph._shadow.edges))
-    # Hot loop — called from Steiner tree / shortest-path. Hoist attribute
-    # lookups, inline _edge_key, and skip the empty-dict allocation when the
-    # edge has no attrs.
     edge_attrs = graph._edge_attrs
+    # Fast path: when no edges carry attrs (the common case — only
+    # node_merge_node sets weights, and only for BASIC non-ATTR_ACCESS
+    # targets), every edge resolves to the default weight of 1.0.
+    if not edge_attrs:
+        return [(left, right, 1.0) for left, right in edges]
+    # Slow path — hoist attribute lookups, inline _edge_key, and skip the
+    # empty-dict allocation for edges without attrs.
     directed = graph.directed
     numeric_types = (int, float, str)
     output: list[tuple[str, str, float]] = []
