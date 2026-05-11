@@ -1975,6 +1975,7 @@ class Factory:
         pseudonym_map: dict[str, set[str]] | None = None,
         build_cache: dict[str, BuildConcept] | None = None,
         grain_build_cache: dict[tuple, "BuildGrain"] | None = None,
+        canonical_build_cache: dict[str, BuildConcept] | None = None,
     ):
         self.grain = grain or Grain()
         self.environment = environment
@@ -1990,6 +1991,15 @@ class Factory:
         # reuse the same normalized grains.
         self.grain_build_cache: dict[tuple, BuildGrain] = (
             {} if grain_build_cache is None else grain_build_cache
+        )
+        # Cache of BuildConcepts for "grain-stable" base concepts (no lineage
+        # + explicit grain). Their BuildConcept is determined entirely by the
+        # source Concept + env state and so is identical across every factory
+        # in the call tree, regardless of the factory's grain context. Keyed
+        # by base.address. Lifetime is one get_query_node call — created by
+        # the caller and threaded through.
+        self.canonical_build_cache: dict[str, BuildConcept] = (
+            {} if canonical_build_cache is None else canonical_build_cache
         )
         self.build_grain = self.build(self.grain) if self.grain else None
 
@@ -2232,6 +2242,58 @@ class Factory:
 
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
+        # Fast path for grain-stable concepts: a concept with no lineage and
+        # an explicit grain produces a BuildConcept fully determined by the
+        # source Concept + env state (the factory's own grain is irrelevant —
+        # get_select_grain_and_keys would just return base.grain). Cache by
+        # address so every factory in this get_query_node call reuses one
+        # entry — there are typically O(thousands) of these across O(hundreds)
+        # of datasource factories.
+        if base.lineage is None and base.grain.components:
+            cached = self.canonical_build_cache.get(base.address)
+            if cached is not None:
+                self.local_concepts[base.address] = cached
+                return cached
+            new_grain = self._build_grain(base.grain)
+            derivation = Concept.calculate_derivation(None, base.purpose)
+            granularity = Concept.calculate_granularity(derivation, base.grain, None)
+            if (
+                base.granularity == Granularity.SINGLE_ROW
+                and base.purpose == Purpose.PROPERTY
+                and base.keys
+                == {
+                    f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+                }
+            ):
+                granularity = Granularity.SINGLE_ROW
+            if base.address in self.environment.alias_origin_lookup:
+                lookup_address = self.environment.concepts[base.address].address
+                base_pseudonyms = {lookup_address}
+            else:
+                base_pseudonyms = {
+                    x
+                    for x in self.pseudonym_map.get(base.address, set())
+                    if x != base.address
+                }
+            rval = BuildConcept(
+                name=base.name,
+                canonical_name=base.name,
+                datatype=base.datatype,
+                purpose=base.purpose,
+                metadata=base.metadata,
+                lineage=None,
+                grain=new_grain,
+                namespace=base.namespace,
+                keys=base.keys,
+                modifiers=base.modifiers,
+                pseudonyms=base_pseudonyms,
+                derivation=derivation,
+                granularity=granularity,
+                build_is_aggregate=False,
+            )
+            self.local_concepts[base.address] = rval
+            self.canonical_build_cache[base.address] = rval
+            return rval
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
@@ -2630,6 +2692,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
+            canonical_build_cache=self.canonical_build_cache,
         )
         return BuildRowsetItem(
             content=factory._build_concept_ref(base.content),
@@ -2689,6 +2752,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
+            canonical_build_cache=self.canonical_build_cache,
         )
         where = factory._build_where_clause(base.where_clause)
         normalized = set()
@@ -2758,6 +2822,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
+            canonical_build_cache=self.canonical_build_cache,
         )
         for k, v in base.local_concepts.items():
             materialized[k] = factory.build(v)
@@ -2768,6 +2833,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
+            canonical_build_cache=self.canonical_build_cache,
         )
         where_clause = (
             where_factory.build(base.where_clause) if base.where_clause else None
@@ -2868,12 +2934,14 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
+            canonical_build_cache=self.canonical_build_cache,
         )
         where_factory = Factory(
             environment=self.environment,
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
+            canonical_build_cache=self.canonical_build_cache,
         )
         lineage = BuildMultiSelectLineage(
             # we don't build selects here; they'll be built automatically in query discovery
@@ -3008,6 +3076,7 @@ class Factory:
                 if CONFIG.generation.datasource_build_cache
                 else None
             ),
+            canonical_build_cache=self.canonical_build_cache,
         )
         # Filter out columns with undefined concepts (e.g., at max import depth)
         columns = [

@@ -416,6 +416,7 @@ class Environment:
         build_cache: dict | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         grain_build_cache: dict | None = None,
+        canonical_build_cache: dict | None = None,
     ) -> "BuildEnvironment":
         """helper method"""
         from trilogy.core.models.build import Factory
@@ -426,6 +427,7 @@ class Environment:
             build_cache=build_cache,
             pseudonym_map=pseudonym_map,
             grain_build_cache=grain_build_cache,
+            canonical_build_cache=canonical_build_cache,
         )
         return factory.build(self)
 

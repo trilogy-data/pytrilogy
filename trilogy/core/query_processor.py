@@ -450,9 +450,11 @@ def get_query_node(
         f"{LOGGER_PREFIX} building query node for {statement.output_components} grain {statement.grain}"
     )
     build_cache: dict[str, BuildConcept] = {}
+    canonical_build_cache: dict[str, BuildConcept] = {}
     base_factory = Factory(
         environment=environment,
         build_cache=build_cache,
+        canonical_build_cache=canonical_build_cache,
     )
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(
         statement
@@ -463,6 +465,7 @@ def get_query_node(
         build_cache=build_cache,
         pseudonym_map=base_factory.pseudonym_map,
         grain_build_cache=base_factory.grain_build_cache,
+        canonical_build_cache=canonical_build_cache,
     )
 
     graph = generate_graph(build_environment)
