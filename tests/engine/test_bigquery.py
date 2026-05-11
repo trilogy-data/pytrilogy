@@ -1,13 +1,25 @@
 import sys
+from contextlib import contextmanager
 
 import pytest
 
 from trilogy import Dialects
-from trilogy.constants import Rendering
+from trilogy.constants import CONFIG, ParserBackend, Rendering
 from trilogy.core.models.core import ArrayType, DataType, ListWrapper
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.query_debugger import DebuggingHook
+
+
+@contextmanager
+def _using_backend(backend: ParserBackend):
+    prev = CONFIG.parser_backend
+    CONFIG.parser_backend = backend
+    try:
+        yield
+    finally:
+        CONFIG.parser_backend = prev
+
 
 UNSUPPORTED_TUPLE = (3, 14)
 
@@ -584,3 +596,96 @@ def test_aggregate_checksum():
     dialect = BigqueryDialect()
     result = dialect.aggregate_checksum("FARM_FINGERPRINT(CAST(`id` AS STRING))")
     assert result == "BIT_XOR(FARM_FINGERPRINT(CAST(`id` AS STRING)))"
+
+
+_GROUPING_SCHEMA = """
+key gm_a int;
+key gm_b int?;
+property <gm_a, gm_b>.gm_x int;
+datasource gm_data (
+    gm_a: gm_a,
+    gm_b: gm_b,
+    gm_x: gm_x
+)
+grain (gm_a, gm_b)
+query '''
+select 1 as gm_a, 1 as gm_b, 10 as gm_x
+union all
+select 1 as gm_a, 2 as gm_b, 20 as gm_x
+union all
+select 2 as gm_a, 1 as gm_b, 30 as gm_x
+union all
+select 2 as gm_a, 2 as gm_b, 40 as gm_x
+''';
+"""
+
+
+def _normalize_grouping_rows(rows):
+    def key(row):
+        return (row[0] is None, row[0], row[1] is None, row[1])
+
+    return sorted(((row[0], row[1], int(row[2])) for row in rows), key=key)
+
+
+def test_aggregate_grouping_modes_bigquery():
+    environment = Environment()
+    executor = Dialects.BIGQUERY.default_executor(
+        environment=environment, rendering=Rendering(parameters=False)
+    )
+    # Pest backend doesn't yet ship with the rollup/cube grammar in the
+    # installed wheel; force lark until it's regenerated.
+    with _using_backend(ParserBackend.LARK):
+        executor.parse_text(_GROUPING_SCHEMA)
+
+        rollup_sql = executor.generate_sql(
+            "select gm_a, gm_b, sum(gm_x) by rollup gm_a, gm_b as sx;"
+        )[-1]
+        cube_sql = executor.generate_sql(
+            "select gm_a, gm_b, sum(gm_x) by cube gm_a, gm_b as sx;"
+        )[-1]
+        grouping_sets_sql = executor.generate_sql(
+            "select gm_a, gm_b, sum(gm_x) by grouping sets (gm_a, gm_b), (gm_a), () as sx;"
+        )[-1]
+
+    assert "ROLLUP" in rollup_sql.upper(), rollup_sql
+    assert "CUBE" in cube_sql.upper(), cube_sql
+    assert "GROUPING SETS" in grouping_sets_sql.upper(), grouping_sets_sql
+
+    rollup_rows = _normalize_grouping_rows(
+        executor.execute_raw_sql(rollup_sql).fetchall()
+    )
+    assert rollup_rows == [
+        (1, 1, 10),
+        (1, 2, 20),
+        (1, None, 30),
+        (2, 1, 30),
+        (2, 2, 40),
+        (2, None, 70),
+        (None, None, 100),
+    ]
+
+    cube_rows = _normalize_grouping_rows(executor.execute_raw_sql(cube_sql).fetchall())
+    assert cube_rows == [
+        (1, 1, 10),
+        (1, 2, 20),
+        (1, None, 30),
+        (2, 1, 30),
+        (2, 2, 40),
+        (2, None, 70),
+        (None, 1, 40),
+        (None, 2, 60),
+        (None, None, 100),
+    ]
+
+    grouping_sets_rows = _normalize_grouping_rows(
+        executor.execute_raw_sql(grouping_sets_sql).fetchall()
+    )
+    assert grouping_sets_rows == [
+        (1, 1, 10),
+        (1, 2, 20),
+        (1, None, 30),
+        (2, 1, 30),
+        (2, 2, 40),
+        (2, None, 70),
+        (None, None, 100),
+    ]
