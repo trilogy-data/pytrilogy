@@ -19,13 +19,11 @@ WHERE cs_ui_sale > 2 * cs_ui_refund
 SELECT cs.item.id as cs_ui_item_id
 ;
 
-# Tried a single multi-select rowset with align on (item, store_name, store_zip)
-# joining 1999 + 2000 branches. SQL generation hung indefinitely — likely the
-# same family as the q80 issue with aliased rowset-derived concepts. Two
-# separate rowsets + cross-rowset merge below plans in <1s.
-
-# cross_sales for syear=1999
-with cross_99 as
+# Reference q64 self-joins cross_sales on (item_sk, store_name, store_zip) with
+# cs1.syear=1999 and cs2.syear=2000. Express as a single multi-select rowset
+# with two branches (year=1999, year=2000) aligned on those three keys, so each
+# output row pairs the 99 metrics with the matching 00 metrics.
+with q64_results as
 WHERE
     ss.item.id in cs_ui.cs_ui_item_id
     and ss.date.year = 1999
@@ -41,10 +39,10 @@ WHERE
     and ss.sale_address.id is not null
     and ss.customer.address.id is not null
 SELECT
-    ss.item.product_name as p_name,
     ss.item.id as item_sk_99,
     ss.store.name as s_name_99,
     ss.store.zip as s_zip_99,
+    ss.item.product_name as p_name_99,
     ss.sale_address.street_number as b_sn_99,
     ss.sale_address.street_name as b_str_99,
     ss.sale_address.city as b_city_99,
@@ -60,10 +58,7 @@ SELECT
     sum(ss.wholesale_cost) as s1_99,
     sum(ss.list_price) as s2_99,
     sum(ss.coupon_amt) as s3_99,
-;
-
-# cross_sales for syear=2000
-with cross_00 as
+MERGE
 WHERE
     ss.item.id in cs_ui.cs_ui_item_id
     and ss.date.year = 2000
@@ -87,39 +82,39 @@ SELECT
     sum(ss.wholesale_cost) as s1_00,
     sum(ss.list_price) as s2_00,
     sum(ss.coupon_amt) as s3_00,
+align
+    item_sk: item_sk_99, item_sk_00
+    AND s_name: s_name_99, s_name_00
+    AND s_zip: s_zip_99, s_zip_00
 ;
 
-merge cross_99.item_sk_99 into cross_00.item_sk_00;
-merge cross_99.s_name_99 into cross_00.s_name_00;
-merge cross_99.s_zip_99 into cross_00.s_zip_00;
-
-WHERE cross_00.cnt_00 <= cross_99.cnt_99
+WHERE q64_results.cnt_00 <= q64_results.cnt_99
 SELECT
-    cross_99.p_name,
-    cross_99.s_name_99 as cs1_store_name,
-    cross_99.s_zip_99 as cs1_store_zip,
-    cross_99.b_sn_99 as cs1_b_street_number,
-    cross_99.b_str_99 as cs1_b_street_name,
-    cross_99.b_city_99 as cs1_b_city,
-    cross_99.b_zip_99 as cs1_b_zip,
-    cross_99.c_sn_99 as cs1_c_street_number,
-    cross_99.c_str_99 as cs1_c_street_name,
-    cross_99.c_city_99 as cs1_c_city,
-    cross_99.c_zip_99 as cs1_c_zip,
-    cross_99.syear_99 as cs1syear,
-    cross_99.cnt_99 as cs1cnt,
-    cross_99.s1_99 as s11,
-    cross_99.s2_99 as s21,
-    cross_99.s3_99 as s31,
-    cross_00.s1_00 as s12,
-    cross_00.s2_00 as s22,
-    cross_00.s3_00 as s32,
-    cross_00.syear_00,
-    cross_00.cnt_00,
+    q64_results.p_name_99,
+    q64_results.s_name,
+    q64_results.s_zip,
+    q64_results.b_sn_99,
+    q64_results.b_str_99,
+    q64_results.b_city_99,
+    q64_results.b_zip_99,
+    q64_results.c_sn_99,
+    q64_results.c_str_99,
+    q64_results.c_city_99,
+    q64_results.c_zip_99,
+    q64_results.syear_99,
+    q64_results.cnt_99,
+    q64_results.s1_99,
+    q64_results.s2_99,
+    q64_results.s3_99,
+    q64_results.s1_00,
+    q64_results.s2_00,
+    q64_results.s3_00,
+    q64_results.syear_00,
+    q64_results.cnt_00,
 ORDER BY
-    cross_99.p_name asc nulls first,
-    cs1_store_name asc nulls first,
-    cross_00.cnt_00 asc nulls first,
-    s11 asc nulls first,
-    s12 asc nulls first
+    q64_results.p_name_99 asc nulls first,
+    q64_results.s_name asc nulls first,
+    q64_results.cnt_00 asc nulls first,
+    q64_results.s1_99 asc nulls first,
+    q64_results.s1_00 asc nulls first
 ;

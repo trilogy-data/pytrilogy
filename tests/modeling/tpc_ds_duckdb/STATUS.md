@@ -155,10 +155,23 @@ exercising different planner paths — they share an SQL reference.)
 - **`raw('NULL')` requires multi-line string syntax.** `raw('NULL')` is a parse
   error (single-quote string not accepted in raw column expression).
   Use `raw(''' NULL ''')` (triple-single-quote MULTILINE_STRING).
-- **Open trilogy issues exposed by q80**:
-  - Final `SELECT alias` of rowset-derived concepts (e.g.
-    `q80_results.sales_total as sales`) causes the planner to hang
-    indefinitely. Bare references plan in <1s.
+- **Rowset-derived alias hang (q80 / q64) — fixed.** Final `SELECT
+  alias` of rowset-derived concepts (e.g.
+  `q64_results.cnt_99 as cs1cnt`) used to blow up `generate_sql()`
+  superlinearly in the count of unaligned "carry-through" columns —
+  4 columns took ~11s, 12 columns hung indefinitely. Bare references
+  planned in <1s. Two planner fixes landed together:
+  - `BuildDatasource.__eq__` / `UnnestJoin.__eq__` /
+    `QueryDatasource.__eq__` now align with `__hash__` and compare
+    by identifier instead of recursing through nested datasources
+    and source maps. The default dataclass-generated eq blew up
+    exponentially in nested multi-fact merges.
+  - `gen_rowset_node` now memoizes the parent select-node by
+    `rowset.name` on `History.rowset_history`, since the search
+    loop visits it twice when an outer SELECT mixes an aliased
+    rowset concept (BASIC derivation) with bare rowset references.
+  After the fix, q64 plans in <1s as a single multi-select with
+  `align` (see `query64.preql`).
 
 - **`group <prop> by <keys>` re-grains a dim property (q18).** When you need
   `avg(dim.prop) row-weighted by fact rows`, the naive `avg(catalog_sales.bill_customer.birth_year)`
@@ -305,7 +318,7 @@ These need framework work first:
      unique per row but each individual column is NULL at higher
      levels. Synthesising via `coalesce(class, category, '__total__')`
      parses but the planner can't source the rowset-derived ROLLUP
-     concepts in the outer SELECT (same family as the q80 issue
-     "Final SELECT alias of rowset-derived concepts hangs").
+     concepts in the outer SELECT. Worth retrying now that the
+     rowset-alias hang has been fixed (see q64 planner notes above).
   Future: extending `over_list` to accept arbitrary exprs OR allowing
   bare `rank()` (no target) would unlock single-rollup conversion.
