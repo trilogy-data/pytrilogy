@@ -19,6 +19,11 @@ WHERE cs_ui_sale > 2 * cs_ui_refund
 SELECT cs.item.id as cs_ui_item_id
 ;
 
+# Tried a single multi-select rowset with align on (item, store_name, store_zip)
+# joining 1999 + 2000 branches. SQL generation hung indefinitely — likely the
+# same family as the q80 issue with aliased rowset-derived concepts. Two
+# separate rowsets + cross-rowset merge below plans in <1s.
+
 # cross_sales for syear=1999
 with cross_99 as
 WHERE

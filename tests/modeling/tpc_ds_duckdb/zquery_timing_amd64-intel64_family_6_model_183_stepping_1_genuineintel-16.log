@@ -319,9 +319,9 @@ exec_time = 0.128799
 comp_time = 0.085542
 
 [query_64]
-parse_time = 4.243532
-exec_time = 0.039027
-comp_time = 17.46179
+parse_time = 3.830638
+exec_time = 0.030892
+comp_time = 21.155723
 
 [query_65]
 parse_time = 0.145952
