@@ -1,0 +1,93 @@
+# Repro for a planner blowup in multi-select rowsets with outer-SELECT aliases.
+#
+# Same family as the documented q80 hang:
+#   "Final `SELECT alias` of rowset-derived concepts (e.g.
+#    `q80_results.sales_total as sales`) causes the planner to hang
+#    indefinitely. Bare references plan in <1s."
+#
+# This repro tightens the trigger conditions and shows the scaling.
+#
+# Symptom: `engine.generate_sql(text)` time scales superlinearly with the
+# number of unaligned "carry-through" columns in the multi-select branches,
+# when the outer SELECT applies ANY alias to a rowset-derived concept.
+# At ~4 unaligned columns generation takes ~11s; at ~12 it does not
+# complete in 60s (treated as a hang).
+#
+# Trigger conditions (all required):
+#   1. A multi-select rowset (`with X as ... MERGE ... align ...;`).
+#   2. The branches have N unaligned columns each (carried into the merged
+#      rowset; not part of the align list).
+#   3. The outer SELECT applies an alias to one of the rowset-derived
+#      concepts, e.g. `q64_results.item_sk as ik` or
+#      `q64_results.cnt_99 as cnt_first`.
+#
+# Reproduces on memory_sf001 (sf=0.01 TPC-DS data) loaded via
+# `IMPORT DATABASE 'memory_sf001';`. The trigger does NOT need a real
+# query plan — it shows up in `engine.generate_sql()` alone (no
+# execution).
+#
+# Measurements (n = unaligned columns per branch, alias = single
+# `q64_results.item_sk as ik`):
+#   n=1   align-keys=1  → 0.2s   (no hang)
+#   n=1   align-keys=2  → 0.7s   (no hang)
+#   n=1   align-keys=3  → 1.1s   (no hang)
+#   n=4   align-keys=3  → 11.2s  (slow)
+#   n=12  align-keys=3  → >60s   (hang)
+#
+# Without the alias, n=12 generates in 0.4s — so the slowdown is purely
+# from the alias path.
+#
+# Workaround: drop the outer alias and use the rowset-qualified name
+# bare. If you need an aliased output column name, split into two
+# rowsets and use cross-rowset `merge a.k into b.k;` instead of a
+# multi-select align (this is what q64.preql currently does).
+#
+# To run as a standalone repro:
+#   cd tests/modeling/tpc_ds_duckdb
+#   .venv/Scripts/python -c "
+#   import sys, time
+#   sys.path.insert(0, '../../..')
+#   from trilogy import Dialects
+#   from trilogy.core.models.environment import Environment
+#   from trilogy.dialect.config import DuckDBConfig
+#   from pathlib import Path
+#   env = Environment(working_path=Path('.'))
+#   ex = Dialects.DUCK_DB.default_executor(environment=env, conf=DuckDBConfig())
+#   ex.execute_raw_sql(\"IMPORT DATABASE 'memory_sf001';\")
+#   text = open('query64_repro.preql').read()
+#   t = time.time(); sql = ex.generate_sql(text)[-1]; print(f'{time.time()-t:.1f}s')
+#   "
+
+import store_sales as ss;
+
+with q64_results as
+WHERE ss.date.year = 1999
+SELECT
+    ss.item.id as item_sk_99,
+    ss.store.name as s_name_99,
+    ss.store.zip as s_zip_99,
+    ss.item.product_name as p_name_99,
+    ss.sale_address.street_number as b_sn_99,
+    ss.sale_address.street_name as b_str_99,
+    ss.sale_address.city as b_city_99,
+    count(ss.ticket_number) as cnt_99,
+MERGE
+WHERE ss.date.year = 2000
+SELECT
+    ss.item.id as item_sk_00,
+    ss.store.name as s_name_00,
+    ss.store.zip as s_zip_00,
+    count(ss.ticket_number) as cnt_00,
+align
+    item_sk: item_sk_99, item_sk_00
+    AND s_name: s_name_99, s_name_00
+    AND s_zip: s_zip_99, s_zip_00
+;
+
+# This SELECT alone (with the `as ik` alias) blows up SQL gen to ~11s.
+# Removing the alias drops it to ~0.2s with the same body.
+SELECT
+    q64_results.item_sk as ik,
+    q64_results.cnt_99,
+    q64_results.cnt_00,
+;

@@ -1749,6 +1749,16 @@ class BuildDatasource:
     def __hash__(self):
         return self.identifier.__hash__()
 
+    def __eq__(self, other):
+        # Align with __hash__: identity is the (namespace, name) identifier.
+        # The dataclass-generated default recurses through columns /
+        # column_level_partial_addresses, which is needlessly expensive in
+        # set/dict lookups (datasources land in QueryDatasource.source_map
+        # sets alongside QueryDatasource).
+        if type(other) is not BuildDatasource:
+            return NotImplemented
+        return self.identifier == other.identifier
+
     def __add__(self, other):
         if not other == self:
             raise ValueError(
