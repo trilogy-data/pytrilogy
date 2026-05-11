@@ -225,21 +225,26 @@ trilogy file delete old_assets/ --recursive
 
 ---
 
-### trilogy ingest <tables> [dialect] [options] [conn_args...]
+### trilogy ingest <sources> [dialect] [options] [conn_args...]
 
-Bootstrap datasources from existing warehouse tables. Connects to a database,
-introspects table schemas, and generates Trilogy datasource definitions.
+Bootstrap datasources from existing warehouse tables OR from data files
+(local paths and remote URLs). Connects to a database, introspects schemas,
+and generates Trilogy datasource definitions.
 
 **Arguments:**
-- `tables` (required): Comma-separated list of table names
-- `dialect` (optional): Database dialect
+- `sources` (required): Comma-separated list of either table names OR file
+  paths/URLs (cannot be mixed in one call). Supported file types: `.csv`,
+  `.tsv`, `.parquet`. URL schemes: `https://`, `http://`, `gs://`, `gcs://`,
+  `s3://`, `az://`.
+- `dialect` (optional): Database dialect. File ingest forces `duckdb`.
 - `conn_args` (optional): Connection arguments
 
 **Options:**
 - `--output PATH`, `-o PATH`: Output directory for generated files
-- `--schema NAME`, `-s NAME`: Schema/database to ingest from
+- `--schema NAME`, `-s NAME`: Schema/database to ingest from (table mode only)
 - `--config PATH`: Path to trilogy.toml
 - `--fks SPEC`: Foreign key relationships (format: table.col:ref_table.col)
+- `--name NAME`: Override the generated datasource name (single source only)
 
 **Examples:**
 ```bash
@@ -251,6 +256,15 @@ trilogy ingest "customers" postgres -s public -o raw/ "postgresql://localhost/db
 
 # Ingest with foreign key relationships
 trilogy ingest "orders,customers" duckdb --fks "orders.customer_id:customers.id"
+
+# Ingest a local CSV (DuckDB is auto-selected; dialect arg optional)
+trilogy ingest ./data/orders.csv
+
+# Ingest a remote parquet over HTTPS
+trilogy ingest https://example.com/data/events.parquet --name events
+
+# Ingest from a public GCS bucket
+trilogy ingest gs://my-bucket/sales.parquet -o raw/
 ```
 
 ---

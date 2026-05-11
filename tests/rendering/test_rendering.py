@@ -833,6 +833,85 @@ state unpublished;"""
     basic.parse(test2)
 
 
+def test_render_file_address_single_path():
+    """Single-file `file `path`` form preserves the literal location."""
+    from trilogy.core.models.datasource import (
+        Address,
+        ColumnAssignment,
+        Datasource,
+    )
+
+    user_id = Concept(
+        name="user_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+    )
+    ds = Datasource(
+        name="raw_users",
+        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+        address=Address(location="/abs/data/users.csv", type=AddressType.CSV),
+        grain=Grain(components=[user_id]),
+    )
+    rendered = Renderer().to_string(ds)
+    assert "file `/abs/data/users.csv`" in rendered, rendered
+    # No spurious `state unpopulated` (which the grammar doesn't accept).
+    assert "state unpopulated" not in rendered
+
+
+def test_render_file_address_array_form():
+    """Multi-file `file [`a`, `b`]` form round-trips."""
+    from trilogy.core.models.datasource import (
+        Address,
+        ColumnAssignment,
+        Datasource,
+    )
+
+    user_id = Concept(
+        name="user_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+    )
+    ds = Datasource(
+        name="multi",
+        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+        address=Address(
+            location="/a.parquet",
+            type=AddressType.PARQUET,
+            additional_locations=["/b.parquet", "/c.parquet"],
+        ),
+        grain=Grain(components=[user_id]),
+    )
+    rendered = Renderer().to_string(ds)
+    assert "file [`/a.parquet`, `/b.parquet`, `/c.parquet`]" in rendered, rendered
+
+
+def test_render_file_address_write_location():
+    """`file `read`:`write`` form is preserved."""
+    from trilogy.core.models.datasource import (
+        Address,
+        ColumnAssignment,
+        Datasource,
+    )
+
+    user_id = Concept(
+        name="user_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+    )
+    ds = Datasource(
+        name="rw",
+        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+        address=Address(
+            location="/in.csv",
+            write_location="/out.csv",
+            type=AddressType.CSV,
+        ),
+        grain=Grain(components=[user_id]),
+    )
+    rendered = Renderer().to_string(ds)
+    assert "file `/in.csv`:`/out.csv`" in rendered, rendered
+
+
 def test_circular_rendering():
     basic = Environment()
 
