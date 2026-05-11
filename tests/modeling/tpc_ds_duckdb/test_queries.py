@@ -296,8 +296,8 @@ def test_twenty_two(engine):
     _ = run_query(engine, 22)
 
 
-def test_twenty_three(engine):
-    query = run_query(engine, 23)
+def test_twenty_three(engine_sf001):
+    query = run_query(engine_sf001, 23)
     assert len(query) < 9000, query
 
 

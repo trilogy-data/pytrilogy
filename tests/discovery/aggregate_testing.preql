@@ -270,11 +270,11 @@ select 104 as customer_id, 202 as product_id, '2024-01-18'::date as order_date, 
 ''';
 
 // Special filtered aggregate: Mouse (product_id = 202) specific totals
-datasource mouse_product_summary (
-    product_id: ~product_id,
-    product_revenue: ~product_revenue,
-    product_order_count: ~product_order_count,
-    product_customer_count: ~product_customer_count,
+partial datasource mouse_product_summary (
+    product_id: product_id,
+    product_revenue: product_revenue,
+    product_order_count: product_order_count,
+    product_customer_count: product_customer_count,
 )
 grain (product_id)
 complete where product_id = 202
@@ -283,11 +283,11 @@ select 202 as product_id, 235.55 as product_revenue, 3 as product_order_count, 3
 ''';
 
 # Special filtered aggregate: Mouse sales by customer
-datasource mouse_customer_summary (
-    customer_id: ~customer_id,
-    product_id: ~product_id,
-    customer_product_revenue: ~customer_product_revenue,
-    customer_product_order_count: ~customer_product_order_count,
+partial datasource mouse_customer_summary (
+    customer_id: customer_id,
+    product_id: product_id,
+    customer_product_revenue: customer_product_revenue,
+    customer_product_order_count: customer_product_order_count,
 )
 grain (customer_id, product_id)
 complete where product_id = 202
@@ -300,10 +300,10 @@ select 104 as customer_id, 202 as product_id, 156.80 as customer_product_revenue
 ''';
 
 # Special filtered aggregate: High-value customers (>$100 total revenue)
-datasource high_value_customers (
-    customer_id: ~customer_id,
-    customer_revenue: ~customer_revenue,
-    customer_order_count: ~customer_order_count,
+partial datasource high_value_customers (
+    customer_id: customer_id,
+    customer_revenue: customer_revenue,
+    customer_order_count: customer_order_count,
 )
 grain (customer_id)
 complete where customer_revenue > 100
