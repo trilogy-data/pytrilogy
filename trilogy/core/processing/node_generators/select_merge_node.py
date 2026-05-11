@@ -85,7 +85,6 @@ def create_pruned_concept_graph(
     g = g.copy()
     union_options = get_union_sources(datasources, all_concepts)
     concepts_by_address = {c.address: c for c in orig_g.concepts.values()}
-    target_canonical_addresses = {c.canonical_address for c in all_concepts}
     for node_address, datasource in list(g.datasources.items()):
         if not isinstance(datasource, BuildDatasource):
             continue
@@ -123,13 +122,7 @@ def create_pruned_concept_graph(
         g.datasources[node_address] = BuildUnionDatasource(
             children=ds_list, non_partial_for=reduced_non_partial_for
         )
-        # Only connect the union to concepts in the requested set. Adding edges
-        # for non-relevant union outputs pollutes the subgraph-subset pruning:
-        # the union appears to "uniquely cover" a concept nothing asks for,
-        # blocking it from being recognized as a subset of a broader DS.
         for c in common:
-            if c.canonical_address not in target_canonical_addresses:
-                continue
             cnode = concept_to_node(c)
             g.add_edge(node_address, cnode)
             g.add_edge(cnode, node_address)
