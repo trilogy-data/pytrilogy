@@ -716,6 +716,37 @@ select filtered_test;
     assert "filtered_test" in results, results
 
 
+def test_filter_inline_expression():
+    """Inline `?` filter must accept arbitrary expressions on the LHS,
+    not just identifiers/literals/static functions."""
+    text = """
+key x int;
+key y int;
+property x.return_amount float?;
+
+datasource test (
+x:x,
+y:y,
+ra:return_amount)
+grain(x)
+address `abc:def`
+;
+
+auto total_returns <- sum(coalesce(return_amount, 0) ? y > 10) by x;
+auto case_filtered <- sum(case when y > 5 then return_amount else 0.0 end ? y > 10) by x;
+auto cast_filtered <- sum(cast(return_amount as float) ? y > 10) by x;
+
+select x, total_returns, case_filtered, cast_filtered;
+"""
+    env, parsed = parse_text(text)
+
+    results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
+
+    assert "total_returns" in results, results
+    assert "case_filtered" in results, results
+    assert "cast_filtered" in results, results
+
+
 def test_unnest_parsing():
     x = """
 key scalar int;    

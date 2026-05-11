@@ -348,6 +348,18 @@ def over_component(
     return ConceptRef(address=mapping.address, datatype=mapping.output_datatype)
 
 
+def expr_over_list(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> list[Any]:
+    """Hydrate a paren-bounded over list of arbitrary expressions. Returns
+    the raw items; the build phase materializes anything that isn't already
+    a concept reference into a factory-local concept (no environment mutation
+    at parse time)."""
+    return hydrated_children(node, hydrate)
+
+
 # --- Special function handlers ---
 
 
@@ -891,6 +903,7 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.FGROUP: fgroup,
     SyntaxNodeKind.OVER_LIST: over_list,
     SyntaxNodeKind.OVER_COMPONENT: over_component,
+    SyntaxNodeKind.EXPR_OVER_LIST: expr_over_list,
     # special functions
     SyntaxNodeKind.FROUND: fround,
     SyntaxNodeKind.FLOG: flog,

@@ -201,7 +201,11 @@
     type_declaration: "type" IDENTIFIER data_type ("|" data_type)* type_drop_clause? 
 
     // user_id where state = Mexico
-    _filter_alt: (IDENTIFIER | literal | _static_functions | "(" expr ")") "?" conditional
+    // LHS enumerates every non-left-recursive atom alternative (everything
+    // in `?atom` except `filter_item` itself and `_access_expr`, which loops
+    // back through `atom`). Parenthesized `expr` covers arbitrary sub-trees,
+    // including unary/binary chains and filter nesting.
+    _filter_alt: (IDENTIFIER | literal | _constant_functions | _static_functions | _generic_functions | _date_functions | aggregate_functions | aggregate_by | custom_function | window_item | unnest | union | subselect | fgroup | expr_tuple | "(" expr ")") "?" conditional
     _filter_base: "filter"i IDENTIFIER where
     filter_item: _filter_base | _filter_alt
 
@@ -220,8 +224,14 @@
     window_item_order: ("ORDER"i? "BY"i order_list)
 
     // SQL-like over clause: over (partition by x order by y)
+    // PARTITION BY uses expr_over_list rather than over_list so it accepts
+    // arbitrary expressions (e.g. `grouping(a)+grouping(b)`). Safe here
+    // because the surrounding parens and trailing `ORDER BY` give the parser
+    // an unambiguous boundary — unlike the bare `aggregate_over: BY over_list`
+    // form, which relies on the lexer-level `,identifier` token to avoid
+    // shift/reduce conflicts against select_list's comma.
     _WINDOW_OVER_PAREN.2: /over\s*\(/i
-    window_sql_partition: ("PARTITION"i "BY"i over_list)
+    window_sql_partition: ("PARTITION"i "BY"i expr_over_list)
     window_sql_order: ("ORDER"i "BY"i order_list)
     window_sql_over: _WINDOW_OVER_PAREN window_sql_partition? window_sql_order? ")"
 
@@ -256,8 +266,14 @@
     order_list: _order_atom (","  _order_atom)* ","?
     
     over_component: /,\s*[a-zA-Z\_][a-zA-Z0-9\_\.]*/ "END"?
-    
-    over_list: concept_lit  over_component* 
+
+    over_list: concept_lit  over_component*
+
+    // Paren-bounded over list: arbitrary expressions, comma-separated. The
+    // surrounding parens (PARTITION BY inside OVER(...), GROUPING SETS (...))
+    // give the parser an unambiguous comma boundary, so unlike `over_list`
+    // we don't need the lexer-level `,identifier` token trick.
+    expr_over_list: expr ("," expr)*
     
     ORDERING_DIRECTION: /ASC|DESC/i
 
@@ -520,7 +536,7 @@
     aggregate_all: "*"
     aggregate_rollup: "ROLLUP"i over_list
     aggregate_cube: "CUBE"i over_list
-    grouping_set: "(" over_list? ")"
+    grouping_set: "(" expr_over_list? ")"
     aggregate_grouping_sets: "GROUPING"i "SETS"i grouping_set ("," grouping_set)*
     aggregate_over: ("BY"i (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | over_list))
     aggregate_functions: (count | count_distinct | grouping_id | grouping | sum | avg | stddev | variance | max | min | array_agg | bool_and | bool_or | any) aggregate_over?

@@ -1399,14 +1399,21 @@ class NumberingWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
     type: WindowType
     arguments: List["ConceptRef"]
     order_by: List["OrderItem"]
-    over: List["ConceptRef"] = dc_field(default_factory=list)
+    # `over` accepts both bare references (`ConceptRef`) and arbitrary
+    # expressions (`Function`, `AggregateWrapper`, ...). Expressions are
+    # materialized into factory-local concepts at build time; we deliberately
+    # keep them un-materialized at parse time so the environment isn't mutated.
+    over: List[Any] = dc_field(default_factory=list)
 
     def __post_init__(self):
         assert (
             self.type in NUMBERING_WINDOW_TYPES
         ), f"NumberingWindowItem requires a numbering window type, got {self.type}"
         self.arguments = [_concept_to_ref(x) for x in self.arguments]
-        self.over = [_concept_to_ref(x) for x in self.over]
+        self.over = [
+            _concept_to_ref(x) if isinstance(x, (Concept, ConceptRef)) else x
+            for x in self.over
+        ]
 
     def __str__(self):
         return self.__repr__()
@@ -1465,7 +1472,9 @@ class NavigationWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
     type: WindowType
     content: FuncArgs
     order_by: List["OrderItem"]
-    over: List["ConceptRef"] = dc_field(default_factory=list)
+    # `over` accepts both bare references (`ConceptRef`) and arbitrary
+    # expressions; expressions are materialized at build time, not parse time.
+    over: List[Any] = dc_field(default_factory=list)
     offset: Optional[int] = None
 
     def __post_init__(self):
@@ -1476,7 +1485,10 @@ class NavigationWindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
             self.content = ConceptRef(
                 address=self.content.address, datatype=self.content.datatype
             )
-        self.over = [_concept_to_ref(x) for x in self.over]
+        self.over = [
+            _concept_to_ref(x) if isinstance(x, (Concept, ConceptRef)) else x
+            for x in self.over
+        ]
 
     def __str__(self):
         return self.__repr__()

@@ -2,6 +2,7 @@ from pytest import raises
 
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.models.author import Function
 from trilogy.core.models.build import BuildGrain, BuildWindowItem
 from trilogy.core.processing.concept_strategies_v3 import (
     History,
@@ -302,6 +303,46 @@ address memory.users;
     assert [a.address for a in lineage.arguments] == ["local.user_id", "local.region"]
     keys = env.concepts["country_rank"].keys
     assert "local.region" in keys
+
+
+def test_sql_window_partition_by_expression():
+    """PARTITION BY should accept arbitrary expressions (function calls,
+    arithmetic, CASE). The parse phase keeps them as raw expressions; the
+    build phase materializes them into factory-local concepts."""
+    from trilogy.core.models.author import NumberingWindowItem
+
+    declarations = """
+key user_id int;
+property user_id.country string;
+property user_id.region string;
+property user_id.score int;
+property user_id.expr_rank <- rank(user_id) over (
+    partition by upper(country), case when region = 'EU' then 1 else 0 end
+    order by score desc
+);
+
+datasource users (
+    id: user_id,
+    country: country,
+    region: region,
+    score: score,
+)
+grain (user_id)
+address memory.users;
+
+select user_id, country, region, score, expr_rank;
+"""
+    env, _ = parse(declarations)
+    lineage = env.concepts["expr_rank"].lineage
+    assert isinstance(lineage, NumberingWindowItem)
+    assert len(lineage.over) == 2
+    # Items are left as raw expressions at parse time — not pre-materialized
+    # into virtual concepts (which would pollute the environment).
+    assert isinstance(lineage.over[0], Function)
+    assert isinstance(lineage.over[1], Function)
+    # SQL generation forces a build pass and exercises materialization.
+    sql = Dialects.DUCK_DB.default_executor().generate_sql(declarations)[0]
+    assert "expr_rank" in sql
 
 
 def test_sql_window_lag_with_offset():
