@@ -16,6 +16,7 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
 )
@@ -85,6 +86,7 @@ def create_pruned_concept_graph(
     g = g.copy()
     union_options = get_union_sources(datasources, all_concepts)
     concepts_by_address = {c.address: c for c in orig_g.concepts.values()}
+    target_grain = BuildGrain.from_concepts(all_concepts)
     for node_address, datasource in list(g.datasources.items()):
         if not isinstance(datasource, BuildDatasource):
             continue
@@ -93,6 +95,7 @@ def create_pruned_concept_graph(
             requested_concepts=all_concepts,
             concepts_by_address=concepts_by_address,
             datasources=datasources,
+            target_grain=target_grain,
             conditions=conditions,
         ):
             cnode = concept_to_node(concept)

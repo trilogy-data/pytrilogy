@@ -141,12 +141,12 @@ def get_additive_rollup_concepts(
     requested_concepts: list[BuildConcept],
     concepts_by_address: Mapping[str, BuildConcept],
     datasources: Iterable[BuildDatasource],
+    target_grain: BuildGrain,
     conditions: BuildWhereClause | None = None,
 ) -> list[BuildConcept]:
     if not _conditions_supported(datasource, conditions, concepts_by_address):
         return []
 
-    target_grain = BuildGrain.from_concepts(requested_concepts)
     datasource_grain = datasource.grain
     # Grand total (no group-by components on the target side): any datasource
     # that materializes an additive aggregate at finer grain can SUM-roll up

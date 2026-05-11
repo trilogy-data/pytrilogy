@@ -4,6 +4,7 @@ from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildGrain,
     BuildWhereClause,
     CanonicalBuildConceptList,
 )
@@ -66,20 +67,20 @@ def gen_select_node(
     fail_if_not_found: bool = True,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
+    build_datasources = [
+        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
+    ]
+    target_grain = BuildGrain.from_concepts(concepts)
     rollup_materialized = {
         concept.canonical_address
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
+        for datasource in build_datasources
         for concept in get_additive_rollup_concepts(
             datasource=datasource,
             requested_concepts=concepts,
             concepts_by_address=environment.concepts,
-            datasources=[
-                ds
-                for ds in environment.datasources.values()
-                if isinstance(ds, BuildDatasource)
-            ],
+            datasources=build_datasources,
             conditions=conditions,
+            target_grain=target_grain,
         )
     }
     all_lcl = CanonicalBuildConceptList(concepts=concepts)
