@@ -509,6 +509,10 @@ def test_sixty_two(engine):
     assert len(query) < 2500, query
 
 
+def test_sixty_four(engine_sf001):
+    _ = run_query(engine_sf001, 64, sql_override=True)
+
+
 def test_sixty_three(engine):
     query = run_query(engine, 63)
     assert len(query) < 6000, query

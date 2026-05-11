@@ -14,6 +14,8 @@ key order_number int;
 properties <order_number,item.id> (
     net_loss float,
     refunded_cash float?,
+    reversed_charge float?,
+    store_credit float?,
     return_amount float?,
     return_amt_inc_tax float?,
     return_quantity int?,
@@ -34,6 +36,8 @@ datasource catalog_returns (
     CR_REASON_SK: reason.id,
     CR_NET_LOSS: net_loss,
     CR_REFUNDED_CASH: refunded_cash,
+    CR_REVERSED_CHARGE: reversed_charge,
+    CR_STORE_CREDIT: store_credit,
     CR_RETURN_AMOUNT: return_amount,
     CR_RETURN_AMT_INC_TAX: return_amt_inc_tax,
     CR_RETURN_QUANTITY: return_quantity,

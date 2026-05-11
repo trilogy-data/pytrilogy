@@ -9,9 +9,9 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 95 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 96 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | XFAIL (committed broken for experimentation) | 1 | 14 |
-| Missing (no preql / no test) | 3 | 64, 75, 77 |
+| Missing (no preql / no test) | 2 | 75, 77 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
@@ -47,6 +47,39 @@ exercising different planner paths — they share an SQL reference.)
   `store_sales.customer.id = store_sales.return_customer.id` to WHERE
   matches the reference and trims the 3-row trilogy result to the 1-row
   reference. Same workaround documented for q50.
+
+## Recent Query Additions (q64)
+
+- **q64** — 16+ table self-join shape with a `cs_ui` filter (items where
+  catalog sale > 2× refund). Tested at sf=0.01 via `engine_sf001` fixture
+  with `sql_override=True`. Both reference and trilogy return 0 rows at
+  sf=0.01, so the test verifies the query parses, plans, and executes
+  end-to-end (sf=1 reference PRAGMA OOMs / times out; sf=0.1 reference
+  exceeds 5min). Two parallel `cross_99` / `cross_00` rowsets aggregate
+  ss + ad1 + ad2 + cd1 + cd2 + hd1 + hd2 + ib1 + ib2 + d1 + d2 + d3 +
+  store + item + promotion + cs_ui per (item, store, addr1, addr2,
+  year-triple), then merge on `(item_sk, store_name, store_zip)` with
+  `cnt_00 <= cnt_99`.
+
+  Model extensions:
+  - `customer.preql` — added `first_sales_date` / `first_shipto_date`
+    (date imports; `C_FIRST_SALES_DATE_SK` / `C_FIRST_SHIPTO_DATE_SK`).
+    Both nullable.
+  - `catalog_returns.preql` — added `reversed_charge` /
+    `store_credit` (`CR_REVERSED_CHARGE` / `CR_STORE_CREDIT`).
+  - `catalog_sales.preql` — added `ext_list_price` (`CS_EXT_LIST_PRICE`).
+
+  Key shape detail:
+  - The `cs_ui` filter is expressed via `merge cs.order_number into
+    cr.order_number; merge cs.item.id into cr.item.id;` joining
+    catalog_sales to catalog_returns (INNER on the loose merge), then
+    `auto cs_ui_sale <- sum(cs.ext_list_price) by cs.item.id;` /
+    `auto cs_ui_refund <- sum(cs.item.cs_ui_refund_amt) by cs.item.id;`.
+    The refund expression is hoisted into a property on `cs.item.id`
+    (per the q80 inline-`?`-filter caveat — `coalesce(x,0)+coalesce(y,0)`
+    needs to be a property before being summed).
+  - `ORDER BY` references *aliased* names (`s11`, `s12`) not the
+    rowset-qualified ones — the q73 ORDER BY restriction applies.
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
@@ -226,11 +259,6 @@ These need framework work first:
   store/call_center/web_page, plus cross-join semantics for the catalog
   branch; or (b) a 6-rowset hand-written shape outside unified_sales.
   Both are significant work. Defer.
-- **q59** — week-over-52-weeks self-join with day-of-week pivots. Doable in
-  trilogy with filtered aggregates per day, but the cross-year self-join on
-  `week_seq = week_seq2 - 52` plus `s_store_id1 = s_store_id2` is verbose.
-- **q64** — 20+ table join with `income_band` (model not present); even
-  with the model, the plan likely OOMs.
 - **q72** — listed above; OOM on planning.
 - **q75** — UNION DISTINCT of three per-channel `(year, brand, class, cat,
   manufact, qty_per_row, amt_per_row)` row sets. The DISTINCT collapses

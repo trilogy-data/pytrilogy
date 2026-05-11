@@ -1,0 +1,120 @@
+import store_sales as ss;
+import catalog_sales as cs;
+import catalog_returns as cr;
+
+# cs_ui: items where catalog sale (sum of cs_ext_list_price) exceeds twice
+# the catalog refund (sum of refunded_cash + reversed_charge + store_credit)
+# for rows that have a matching catalog_return.
+merge cs.order_number into cr.order_number;
+merge cs.item.id into cr.item.id;
+
+property <cs.item.id>.cs_ui_refund_amt <-
+    coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
+
+auto cs_ui_sale <- sum(cs.ext_list_price) by cs.item.id;
+auto cs_ui_refund <- sum(cs.item.cs_ui_refund_amt) by cs.item.id;
+
+with cs_ui as
+WHERE cs_ui_sale > 2 * cs_ui_refund
+SELECT cs.item.id as cs_ui_item_id
+;
+
+# cross_sales for syear=1999
+with cross_99 as
+WHERE
+    ss.item.id in cs_ui.cs_ui_item_id
+    and ss.date.year = 1999
+    and ss.is_returned
+    and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
+    and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
+    and ss.item.current_price >= 64
+    and ss.item.current_price <= 74
+    and ss.item.current_price >= 65
+    and ss.item.current_price <= 79
+    and ss.customer.id is not null
+    and ss.store.id is not null
+    and ss.sale_address.id is not null
+    and ss.customer.address.id is not null
+SELECT
+    ss.item.product_name as p_name,
+    ss.item.id as item_sk_99,
+    ss.store.name as s_name_99,
+    ss.store.zip as s_zip_99,
+    ss.sale_address.street_number as b_sn_99,
+    ss.sale_address.street_name as b_str_99,
+    ss.sale_address.city as b_city_99,
+    ss.sale_address.zip as b_zip_99,
+    ss.customer.address.street_number as c_sn_99,
+    ss.customer.address.street_name as c_str_99,
+    ss.customer.address.city as c_city_99,
+    ss.customer.address.zip as c_zip_99,
+    ss.date.year as syear_99,
+    ss.customer.first_sales_date.year as fsyear_99,
+    ss.customer.first_shipto_date.year as s2year_99,
+    count(ss.ticket_number) as cnt_99,
+    sum(ss.wholesale_cost) as s1_99,
+    sum(ss.list_price) as s2_99,
+    sum(ss.coupon_amt) as s3_99,
+;
+
+# cross_sales for syear=2000
+with cross_00 as
+WHERE
+    ss.item.id in cs_ui.cs_ui_item_id
+    and ss.date.year = 2000
+    and ss.is_returned
+    and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
+    and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
+    and ss.item.current_price >= 64
+    and ss.item.current_price <= 74
+    and ss.item.current_price >= 65
+    and ss.item.current_price <= 79
+    and ss.customer.id is not null
+    and ss.store.id is not null
+    and ss.sale_address.id is not null
+    and ss.customer.address.id is not null
+SELECT
+    ss.item.id as item_sk_00,
+    ss.store.name as s_name_00,
+    ss.store.zip as s_zip_00,
+    ss.date.year as syear_00,
+    count(ss.ticket_number) as cnt_00,
+    sum(ss.wholesale_cost) as s1_00,
+    sum(ss.list_price) as s2_00,
+    sum(ss.coupon_amt) as s3_00,
+;
+
+merge cross_99.item_sk_99 into cross_00.item_sk_00;
+merge cross_99.s_name_99 into cross_00.s_name_00;
+merge cross_99.s_zip_99 into cross_00.s_zip_00;
+
+WHERE cross_00.cnt_00 <= cross_99.cnt_99
+SELECT
+    cross_99.p_name,
+    cross_99.s_name_99 as cs1_store_name,
+    cross_99.s_zip_99 as cs1_store_zip,
+    cross_99.b_sn_99 as cs1_b_street_number,
+    cross_99.b_str_99 as cs1_b_street_name,
+    cross_99.b_city_99 as cs1_b_city,
+    cross_99.b_zip_99 as cs1_b_zip,
+    cross_99.c_sn_99 as cs1_c_street_number,
+    cross_99.c_str_99 as cs1_c_street_name,
+    cross_99.c_city_99 as cs1_c_city,
+    cross_99.c_zip_99 as cs1_c_zip,
+    cross_99.syear_99 as cs1syear,
+    cross_99.cnt_99 as cs1cnt,
+    cross_99.s1_99 as s11,
+    cross_99.s2_99 as s21,
+    cross_99.s3_99 as s31,
+    cross_00.s1_00 as s12,
+    cross_00.s2_00 as s22,
+    cross_00.s3_00 as s32,
+    cross_00.syear_00,
+    cross_00.cnt_00,
+ORDER BY
+    cross_99.p_name asc nulls first,
+    cs1_store_name asc nulls first,
+    cross_00.cnt_00 asc nulls first,
+    s11 asc nulls first,
+    s12 asc nulls first
+;
