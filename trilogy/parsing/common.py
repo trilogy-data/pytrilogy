@@ -718,6 +718,20 @@ def filter_item_to_concept(
     )
 
 
+def _window_over_refs(over: list) -> list[ConceptRef | Concept]:
+    """Flatten a window's `over` list to concept references for grain
+    purposes. Expression items (e.g. `partition by upper(country)`) are
+    replaced with their dependent concept refs since they carry no address
+    until they're materialized at build time."""
+    refs: list[ConceptRef | Concept] = []
+    for item in over:
+        if isinstance(item, (ConceptRef, Concept)):
+            refs.append(item)
+        else:
+            refs.extend(get_concept_arguments(item))
+    return refs
+
+
 def _numbering_window_to_concept(
     parent: NumberingWindowItem,
     name: str,
@@ -731,14 +745,15 @@ def _numbering_window_to_concept(
     if isinstance(anchor, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
     arg_addresses = [a.address for a in parent.arguments]
-    over_addresses = [y.address for y in parent.over]
+    over_refs = _window_over_refs(list(parent.over))
+    over_addresses = [y.address for y in over_refs]
     keys = (
         Grain.from_concepts(arg_addresses + over_addresses, environment).components
         or set()
     )
     keys = set(keys) | set(arg_addresses)
 
-    grain_components: list = list(parent.over) + list(parent.arguments)
+    grain_components: list = list(over_refs) + list(parent.arguments)
     if parent.order_by:
         for item in parent.order_by:
             relevant, _ = get_relevant_parent_concepts(item.expr)
@@ -800,6 +815,7 @@ def _navigation_window_to_concept(
         )
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
+    over_refs = _window_over_refs(list(parent.over))
     if bcontent.purpose == Purpose.METRIC:
         local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
     else:
@@ -808,13 +824,11 @@ def _navigation_window_to_concept(
             [bcontent.address] + [y.address for y in over_refs], environment
         ).components
 
+    grain_components: list = list(over_refs) + [bcontent.output]
     if parent.order_by:
-        grain_components = parent.over + [bcontent.output]
         for item in parent.order_by:
             relevant, _ = get_relevant_parent_concepts(item.expr)
             grain_components += relevant
-    else:
-        grain_components = parent.over + [bcontent.output]
     final_grain = Grain.from_concepts(grain_components, environment)
 
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)

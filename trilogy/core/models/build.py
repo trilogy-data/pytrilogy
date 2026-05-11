@@ -2521,6 +2521,21 @@ class Factory:
     def _(self, base: NavigationWindowItem) -> BuildNavigationWindowItem:
         return self._build_navigation_window_item(base)
 
+    def _build_over_items(self, over: list) -> list[BuildConcept]:
+        # `over` may contain arbitrary expressions from `partition by expr, …`;
+        # materialize anything that isn't already a reference into a
+        # factory-local concept so we can treat partitioning columns uniformly.
+        out: list[BuildConcept] = []
+        for x in over:
+            if isinstance(x, ConceptRef):
+                out.append(self._build_concept_ref(x))
+            elif isinstance(x, Concept):
+                out.append(self._build_concept(x))
+            else:
+                _, built = self.instantiate_concept(x)
+                out.append(built)
+        return out
+
     def _build_numbering_window_item(
         self, base: NumberingWindowItem
     ) -> BuildNumberingWindowItem:
@@ -2540,7 +2555,7 @@ class Factory:
             type=base.type,
             arguments=[self._build_concept_ref(x) for x in base.arguments],
             order_by=[self.build(x) for x in final_by],
-            over=[self._build_concept_ref(x) for x in base.over],
+            over=self._build_over_items(list(base.over)),
         )
 
     def _build_navigation_window_item(
@@ -2563,7 +2578,7 @@ class Factory:
             type=base.type,
             content=self.build(content),
             order_by=[self.build(x) for x in final_by],
-            over=[self._build_concept_ref(x) for x in base.over],
+            over=self._build_over_items(list(base.over)),
             offset=base.offset,
         )
 
