@@ -524,8 +524,6 @@ class UnnestJoin:
         return self.safe_identifier.__hash__()
 
     def __eq__(self, other):
-        # Align with __hash__: identity is safe_identifier. Auto-eq would
-        # recurse through concepts/parent BuildFunction on every set lookup.
         if type(other) is not UnnestJoin:
             return NotImplemented
         return self.safe_identifier == other.safe_identifier
@@ -761,18 +759,9 @@ class QueryDatasource:
         return (self.identifier).__hash__()
 
     def __eq__(self, other):
-        # Align with __hash__: identity is the computed identifier (datasource
-        # composition + grain + filter + group). The dataclass-generated
-        # default recurses through source_map / nested datasources, which
-        # blows up exponentially in nested merges (see q64 multi-select +
-        # outer-alias hang).
         if type(other) is not QueryDatasource:
             return NotImplemented
         return self.identifier == other.identifier
-
-    @property
-    def concepts(self):
-        return self.output_concepts
 
     @property
     def name(self):
