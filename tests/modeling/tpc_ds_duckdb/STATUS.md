@@ -9,8 +9,8 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 91 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
-| Skipped (preql exists) | 3 | 5, 29, 85 |
+| Passing | 92 | 1, 2 (+02-one, 02-two), 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Skipped (preql exists) | 2 | 5, 29 |
 | XFAIL (committed broken for experimentation) | 1 | 14 |
 | Missing (no preql / no test) | 4 | 54, 64, 75, 77 |
 
@@ -19,15 +19,47 @@ exercising different planner paths — they share an SQL reference.)
 
 ## Skipped Tests and Why
 
-- **q5** — Sales side filtered on `date`, returns side on `return_date`;
-  unified_sales joins them at row grain, but for STORE/CATALOG returns whose
-  ticket_number/order_id has no matching sale, the partial yields a row with
-  NULL `channel_dim_id` (the dim only flows from the sales partial, not the
-  returns partial). Filtering `channel_dim_text_id is not null` then drops
-  those return-only rows, undercounting returns by ~2.7% on sf=1. The
-  reference SQL uses `sr_store_sk` / `cr_catalog_page_sk` as their own dim
-  keys for return-only rows. Fixing requires mapping the return-side SKs to
-  `channel_dim_id` in the returns partials. (Sales totals already match.)
+- **q5** — 97/100 rows match. Restructured 2026-05-09 from a 3-branch
+  MERGE/align/derive cascade to a single SELECT with native `by rollup`
+  syntax + WHERE-clause date filter (sale OR return in window) + per-row
+  CASE-WHEN gating to 0 (mirroring the reference's UNION ALL with
+  `cast(0 AS decimal)` zero-fillers). Phantom NULL rows for every dim_id
+  are gone. Remaining shortfall:
+  - Grand total returns: 3208516 vs ref 3255243 (-46K, 1.4% short)
+  - Catalog channel returns: 1093915 vs ref 1083574 (+10K)
+  
+  Root cause is structural: every fact row in trilogy carries the SALE
+  side's `channel_dim_id` (e.g. `cs_catalog_page_sk`). When a return's
+  own `cr_catalog_page_sk` ≠ the sale's, the return amount is
+  attributed to the sale's page (trilogy) instead of the return's page
+  (reference). And when the sale's `*_store_sk` is NULL, the
+  `INNER JOIN thoughtful` (dim CTE) drops the row entirely.
+  
+  The model now declares `CR_CATALOG_PAGE_SK: ?channel_dim_id` /
+  `SR_STORE_SK: ?channel_dim_id` on the returns partials (truthful, since
+  these columns exist), but the planner still sources `channel_dim_id`
+  only from the sales partial and the returns CTE doesn't pull it. Real
+  fix needs framework work — the planner must coalesce sale-side and
+  return-side `channel_dim_id` per row.
+
+  **Tried (2026-05-09)** introducing a parallel `return_channel_dim_id`
+  / `return_channel_dim_text_id` concept on `unified_sales` (sourced
+  from CR/SR SK on returns partials, from WS_WEB_SITE_SK on web sales
+  partial), with separate dim partials for each channel, and a q5
+  shape that aggregates sales-by-sale-dim and returns-by-return-dim in
+  two rowsets joined via `merge`. Two structural blockers:
+  1. Without a `return_channel_dim_id` mapping on the catalog/store
+     sales partials, the planner errors with "Missing source map
+     entry" — every concept must have a source per partial.
+  2. Even with `raw('NULL')` fallback on sales partials, joining the
+     two rowsets uses INNER JOIN (not FULL OUTER) — so detail rows
+     where one side has no entry are dropped, AND no rollup-level
+     rows survive. Adding `~` to the merge doesn't change this.
+  
+  Combining sales-by-sale-dim and returns-by-return-dim into a single
+  output requires either (a) FULL OUTER join semantics for cross-
+  rowset merges, or (b) a model that splits each fact row into two
+  logical rows (one per attribution side) — both framework changes.
 - **q29** — same `merge bill_customer + item` shape as q17. With the merge planner
   producing a FULL JOIN of (store_sales+store_returns) with
   (store_sales+store_returns+catalog_sales), rows without a matching catalog
@@ -35,9 +67,9 @@ exercising different planner paths — they share an SQL reference.)
   sf=1; q29's reference returns 1 row vs trilogy's 3. Needs INNER-merge
   semantics or an "exists in catalog_sales" filter that is correctly pushed
   to all branches.
-- **q85** — DuckDB Comparison (PRAGMA tpcds(85)) hangs on dev machine; skip.
-  Preql exists and parses; this is solely a comparison-reference issue. [Note: 
-  consider certain tests having an override to use sf=.1 or smaller]
+- ~~**q85**~~ — moved to passing 2026-05-09 by switching the test fixture
+  from `engine` (sf=1) to `engine_sf001` (sf=0.01). PRAGMA tpcds(85) at
+  sf=1 hangs; sf=0.1 completes in ~28 min; sf=0.01 completes in ~3s.
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
@@ -253,6 +285,32 @@ exercising different planner paths — they share an SQL reference.)
   WHERE re-routes the threshold into the source path, which produces a
   second ROLLUP and a third rank (plan balloons to 5 CTEs and the
   result is wrong).
+
+## Recent Model Extensions (2026-05-09: truthful nullable across `unified_sales`)
+
+`unified_sales.preql` now mirrors the actual sf=1 parquet nullability
+across both sales and returns partials. Every FK and metric in the
+shared property declaration is nullable (`?`) and every per-partial
+mapping flags `?` where the source column is nullable:
+
+- web_sales/catalog_sales/store_sales partials: every `_SK` column +
+  every metric column has a nullable rate of 0.02% / 0.5% / 4.5%
+  respectively (only `*_ITEM_SK` and `*_ORDER_NUMBER`/`*_TICKET_NUMBER`
+  are non-nullable).
+- store_returns_unified, web_returns_unified: `*_RETURNED_DATE_SK` is
+  nullable (only `*_ITEM_SK`/`*_ORDER_NUMBER` non-nullable).
+- catalog_returns_unified: only `CR_RETURNED_DATE_SK` and
+  `CR_RETURNED_TIME_SK` happen to be non-nullable in the data.
+- Returns partials now also declare `CR_CATALOG_PAGE_SK` / `SR_STORE_SK`
+  → `?channel_dim_id` (truthful — both columns exist in the parquet).
+  Currently ignored by the planner (the returns CTE doesn't pull
+  `channel_dim_id`); kept for future framework support.
+
+This change rippled into one query:
+- q74: needed `sales.customer.id is not null` (same NULL-customer
+  phantom group trap documented for q23 — now applies because
+  `customer.id` flowing from sales partials is genuinely nullable).
+  All other 97 unified_sales-using tests still pass unchanged.
 
 ## Recent Model Extensions (truthful nullable FKs across fact tables)
 

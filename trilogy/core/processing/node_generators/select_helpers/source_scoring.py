@@ -20,6 +20,20 @@ from trilogy.core.processing.utility import padding
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 
 
+def _structural_partial_concepts(
+    ds: "BuildDatasource | BuildUnionDatasource",
+) -> list[BuildConcept]:
+    """Column-level (``~``) partials, which survive a satisfied complete-where.
+
+    BuildUnionDatasource doesn't carry per-child partial info; treat it as having
+    no structural partials of its own — its children's structural partials are
+    handled when those children are scored.
+    """
+    if isinstance(ds, BuildUnionDatasource):
+        return []
+    return ds.column_level_partial_concepts or []
+
+
 def get_graph_partial_nodes(
     g: ReferenceGraph, conditions: BuildWhereClause | None
 ) -> dict[str, list[str]]:
@@ -32,7 +46,12 @@ def get_graph_partial_nodes(
                 conditions.conditional, ds.non_partial_for.conditional
             )
         ):
-            partial[node] = []
+            # Condition satisfies the DS's complete-where, so the implicit
+            # table-level partial stamp goes away — but column-level ~ partials
+            # are structural and must survive.
+            partial[node] = [
+                concept_to_node(c) for c in _structural_partial_concepts(ds)
+            ]
         else:
             partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
     return partial
@@ -50,7 +69,9 @@ def get_graph_partial_canonical(
                 conditions.conditional, ds.non_partial_for.conditional
             )
         ):
-            partial[node] = set()
+            partial[node] = {
+                c.canonical_address for c in _structural_partial_concepts(ds)
+            }
         else:
             partial[node] = {c.canonical_address for c in ds.partial_concepts}
     return partial
@@ -276,7 +297,14 @@ def resolve_subgraphs(
     concept_map: dict[str, set[str]] = {}
     non_partial_map: dict[str, set[str]] = {}
     for ds in datasources:
-        all_addrs = {concepts[c].canonical_address for c in subgraphs[ds]}
+        # Only consider concepts in the requested set when judging coverage.
+        # A DS that exposes extra non-relevant concepts (e.g. a returns DS that
+        # also surfaces return_channel_dim_id when the query never asks for it)
+        # would otherwise look like it "uniquely covers" something — and never
+        # be recognized as a subset of a broader DS that the query does need.
+        all_addrs = {
+            concepts[c].canonical_address for c in subgraphs[ds]
+        } & canonical_relevant
         concept_map[ds] = all_addrs
         non_partial_map[ds] = all_addrs - partial_canonical[ds]
 

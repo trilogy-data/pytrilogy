@@ -1876,7 +1876,15 @@ class BuildUnionDatasource:
 
     @property
     def columns(self) -> List[BuildColumnAssignment]:
-        return self.children[0].columns
+        # Only columns whose concept appears in every child can be safely
+        # projected through the union — anything else would produce a NULL
+        # branch and break the "common output" contract enum unions rely on.
+        if not self.children:
+            return []
+        common = set(c.concept.address for c in self.children[0].columns)
+        for child in self.children[1:]:
+            common &= {c.concept.address for c in child.columns}
+        return [c for c in self.children[0].columns if c.concept.address in common]
 
     @property
     def grain(self) -> BuildGrain:

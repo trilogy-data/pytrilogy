@@ -409,12 +409,12 @@ merge sale_item_id into ~item_id;
 """
 
     staging = """
-datasource staged_sales (
-    sale_id: ~sale_id,
-    sale_year: ~sale_year,
-    item_id: ~item_id,
-    category: ~category,
-    sale_item_price: ~sale_item_price
+partial datasource staged_sales (
+    sale_id: sale_id,
+    sale_year: sale_year,
+    item_id: item_id,
+    category: category,
+    sale_item_price: sale_item_price
 ) grain (sale_id) complete where sale_year = 2023
 address staged_sales_tbl;
 """

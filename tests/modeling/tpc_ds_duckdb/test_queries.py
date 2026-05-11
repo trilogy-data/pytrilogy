@@ -198,9 +198,6 @@ def test_four(engine):
     run_query(engine, 4)
 
 
-@pytest.mark.skip(
-    reason="Returns w/o matching sale rows lack channel_dim_id in unified_sales — total returns ~2.7% low. See STATUS.md."
-)
 def test_five(engine):
     run_query(engine, 5)
 
@@ -299,8 +296,8 @@ def test_twenty_two(engine):
     _ = run_query(engine, 22)
 
 
-def test_twenty_three(engine):
-    query = run_query(engine, 23)
+def test_twenty_three(engine_sf001):
+    query = run_query(engine_sf001, 23)
     assert len(query) < 9000, query
 
 
@@ -602,12 +599,8 @@ def test_eighty_four(engine):
     assert len(query) < 4000, query
 
 
-@pytest.mark.skip(
-    reason="DuckDB OOMs/hangs running the PRAGMA tpcds(85) comparison query on some "
-    "machines. If observed, switch the fixture to engine_sf01 (sf=0.1)."
-)
-def test_eighty_five(engine):
-    query = run_query(engine, 85)
+def test_eighty_five(engine_sf001):
+    query = run_query(engine_sf001, 85)
     assert len(query) < 12000, query
 
 

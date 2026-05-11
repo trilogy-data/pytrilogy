@@ -1,12 +1,24 @@
 from unittest.mock import MagicMock
 
-from trilogy.core.enums import AddressType, BooleanOperator, ComparisonOperator, Purpose
+from trilogy.core.enums import (
+    AddressType,
+    BooleanOperator,
+    ComparisonOperator,
+    Modifier,
+    Purpose,
+)
+from trilogy.core.graph_models import (
+    ReferenceGraph,
+    SearchCriteria,
+    concept_to_node,
+)
 from trilogy.core.models.build import (
     BuildColumnAssignment,
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildGrain,
     BuildParenthetical,
     BuildWhereClause,
 )
@@ -18,7 +30,9 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_injection
     _extract_enum_value_for_key,
 )
 from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
+    get_graph_partial_nodes,
     get_materialization_score,
+    resolve_subgraphs,
     score_datasource_node,
 )
 
@@ -493,3 +507,225 @@ class TestExtractEnumValueForKey:
 
         result = _extract_enum_value_for_key(paren, key.address)
         assert result is None
+
+
+def _scoped_concept(name: str) -> BuildConcept:
+    """KEY concept at a single-component grain, with a populated namespace.
+
+    concept_to_node needs grain.str_no_condition, and many planner paths key off
+    canonical_address — both must be set explicitly.
+    """
+    addr = f"local.{name}"
+    return BuildConcept(
+        name=name,
+        canonical_name=name,
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        namespace="local",
+        grain=BuildGrain(components={addr}),
+    )
+
+
+def _build_two_ds_graph(
+    ds_a: BuildDatasource,
+    ds_b: BuildDatasource,
+    concepts: list[BuildConcept],
+) -> ReferenceGraph:
+    g = ReferenceGraph()
+    a_node = f"ds~{ds_a.name}"
+    b_node = f"ds~{ds_b.name}"
+    g.datasources = {a_node: ds_a, b_node: ds_b}
+    g.add_node(a_node)
+    g.add_node(b_node)
+    g.concepts = {concept_to_node(c): c for c in concepts}
+    for cnode in g.concepts:
+        g.add_node(cnode)
+    # Connect each DS to every concept it materially exposes.
+    for ds_name, ds in g.datasources.items():
+        for col in ds.columns:
+            cnode = concept_to_node(col.concept)
+            if cnode in g.concepts:
+                g.add_edge(ds_name, cnode)
+                g.add_edge(cnode, ds_name)
+    return g
+
+
+class TestResolveSubgraphsRelevanceFilter:
+    """resolve_subgraphs should judge subset coverage using only relevant
+    concepts. A DS that uniquely exposes a non-relevant concept must NOT be
+    treated as "uniquely covering" anything — otherwise the planner drags in
+    spurious datasources (e.g. a returns CTE for a query that only touches
+    sales)."""
+
+    def test_strict_subset_after_relevance_filter_drops_extra_ds(self):
+        """ds_b adds a non-relevant extra concept; ds_a covers strictly more
+        relevant concepts. ds_b must be pruned even though its raw output set
+        (including the non-relevant concept) is not a subset of ds_a's."""
+        a = _scoped_concept("a")
+        b = _scoped_concept("b")
+        c = _scoped_concept("c")
+        extra = _scoped_concept("extra")  # NOT in relevant
+
+        ds_a = BuildDatasource(
+            name="ds_wide",
+            columns=[
+                BuildColumnAssignment(alias="a", concept=a),
+                BuildColumnAssignment(alias="b", concept=b),
+                BuildColumnAssignment(alias="c", concept=c),
+            ],
+            address=Address(location="ds_wide", type=AddressType.TABLE),
+            grain=BuildGrain(components={a.canonical_address}),
+        )
+        ds_b = BuildDatasource(
+            name="ds_narrow_with_extra",
+            columns=[
+                BuildColumnAssignment(alias="a", concept=a),
+                BuildColumnAssignment(alias="b", concept=b),
+                BuildColumnAssignment(alias="extra", concept=extra),
+            ],
+            address=Address(location="ds_narrow_with_extra", type=AddressType.TABLE),
+            grain=BuildGrain(components={a.canonical_address}),
+        )
+        g = _build_two_ds_graph(ds_a, ds_b, [a, b, c, extra])
+
+        result = resolve_subgraphs(
+            g, relevant=[a, b, c], criteria=SearchCriteria.FULL_ONLY, conditions=None
+        )
+
+        # ds_b should be dropped: its relevant coverage {a, b} is a strict
+        # subset of ds_a's relevant coverage {a, b, c}.
+        assert "ds~ds_wide" in result
+        assert "ds~ds_narrow_with_extra" not in result
+
+    def test_uniquely_relevant_concept_blocks_subset_pruning(self):
+        """When a DS uniquely covers a *relevant* concept, it must be kept
+        even if it would otherwise look like a subset."""
+        a = _scoped_concept("a")
+        b = _scoped_concept("b")
+        c = _scoped_concept("c")  # relevant, ONLY on ds_b
+
+        ds_a = BuildDatasource(
+            name="ds_ab",
+            columns=[
+                BuildColumnAssignment(alias="a", concept=a),
+                BuildColumnAssignment(alias="b", concept=b),
+            ],
+            address=Address(location="ds_ab", type=AddressType.TABLE),
+            grain=BuildGrain(components={a.canonical_address}),
+        )
+        ds_b = BuildDatasource(
+            name="ds_ac",
+            columns=[
+                BuildColumnAssignment(alias="a", concept=a),
+                BuildColumnAssignment(alias="c", concept=c),
+            ],
+            address=Address(location="ds_ac", type=AddressType.TABLE),
+            grain=BuildGrain(components={a.canonical_address}),
+        )
+        g = _build_two_ds_graph(ds_a, ds_b, [a, b, c])
+
+        result = resolve_subgraphs(
+            g, relevant=[a, b, c], criteria=SearchCriteria.FULL_ONLY, conditions=None
+        )
+
+        # Neither is a strict subset on relevant concepts; both stay.
+        assert "ds~ds_ab" in result
+        assert "ds~ds_ac" in result
+
+
+class TestGetGraphPartialNodesPreservesStructuralPartials:
+    """Under a satisfied complete-where, the implicit table-level partial stamp
+    goes away — but a ``~col`` (column-level) partial is structural and survives.
+    A returns table that's `partial datasource ... complete where channel='STORE'`
+    with `~order_id` is NOT fully complete on order_id even when the query
+    filter satisfies the complete-where; only some sales have returns."""
+
+    def test_column_level_partial_survives_condition_implies(self):
+        channel = _scoped_concept("channel")
+        order_id = _scoped_concept("order_id")
+        amount = _scoped_concept("amount")
+
+        complete_where = BuildWhereClause(
+            conditional=BuildComparison(
+                left=channel, right="STORE", operator=ComparisonOperator.EQ
+            )
+        )
+
+        # `partial datasource` (is_partial=True) stamps Modifier.PARTIAL on
+        # every column; the explicit ~order_id additionally lands in
+        # column_level_partial_addresses (the structural set).
+        ds = BuildDatasource(
+            name="store_returns_like",
+            columns=[
+                BuildColumnAssignment(
+                    alias="channel",
+                    concept=channel,
+                    modifiers=[Modifier.PARTIAL],
+                ),
+                BuildColumnAssignment(
+                    alias="order_id",
+                    concept=order_id,
+                    modifiers=[Modifier.PARTIAL],
+                ),
+                BuildColumnAssignment(
+                    alias="amount",
+                    concept=amount,
+                    modifiers=[Modifier.PARTIAL],
+                ),
+            ],
+            address=Address(location="returns", type=AddressType.TABLE),
+            grain=BuildGrain(
+                components={channel.canonical_address, order_id.canonical_address}
+            ),
+            non_partial_for=complete_where,
+            column_level_partial_addresses={order_id.canonical_address},
+        )
+
+        g = ReferenceGraph()
+        node = f"ds~{ds.name}"
+        g.datasources = {node: ds}
+        g.add_node(node)
+
+        query_conditions = BuildWhereClause(
+            conditional=BuildComparison(
+                left=channel, right="STORE", operator=ComparisonOperator.EQ
+            )
+        )
+
+        partial_map = get_graph_partial_nodes(g, query_conditions)
+
+        # The implicit stamp on `channel` and `amount` is wiped by
+        # condition_implies, but the structural ~order_id survives.
+        partials = partial_map[node]
+        assert partials == [concept_to_node(order_id)], (
+            f"Expected only the structural ~order_id partial to remain "
+            f"under condition_implies; got {partials}"
+        )
+
+    def test_no_complete_where_means_all_partials_present(self):
+        """Sanity: without a complete-where, every Modifier.PARTIAL column shows
+        up in the partial map (no condition_implies path)."""
+        x = _scoped_concept("x")
+        y = _scoped_concept("y")
+
+        ds = BuildDatasource(
+            name="plain_partial",
+            columns=[
+                BuildColumnAssignment(
+                    alias="x", concept=x, modifiers=[Modifier.PARTIAL]
+                ),
+                BuildColumnAssignment(
+                    alias="y", concept=y, modifiers=[Modifier.PARTIAL]
+                ),
+            ],
+            address=Address(location="plain_partial", type=AddressType.TABLE),
+            grain=BuildGrain(components={x.canonical_address}),
+        )
+        g = ReferenceGraph()
+        node = f"ds~{ds.name}"
+        g.datasources = {node: ds}
+        g.add_node(node)
+
+        partial_map = get_graph_partial_nodes(g, None)
+        assert set(partial_map[node]) == {concept_to_node(x), concept_to_node(y)}

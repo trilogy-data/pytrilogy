@@ -82,4 +82,8 @@ select
 order by flight_count desc
 limit 100;
     """)[-1]
-    assert '"juicy"."flight_count" desc' in sql, sql
+    # Asserts the planner sources flight_count from a CTE alias (auto-generated
+    # name varies with source selection), not the raw table.
+    import re
+
+    assert re.search(r'"[a-z_]+"\."flight_count" desc', sql), sql

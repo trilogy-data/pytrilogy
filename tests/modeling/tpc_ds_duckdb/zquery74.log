@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3586
+gen_length = 3882
 generated_sql = """
 
 WITH 
@@ -14,7 +14,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 WHERE
-     'STORE'  in ('STORE','WEB')
+     'STORE'  in ('STORE','WEB') and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 
 UNION ALL
 SELECT
@@ -27,7 +27,7 @@ SELECT
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
 WHERE
-     'WEB'  in ('STORE','WEB')
+     'WEB'  in ('STORE','WEB') and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 ),
 thoughtful as (
 SELECT
@@ -47,9 +47,9 @@ SELECT
     sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"web_second_year\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB')
+    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB') and \"cheerful\".\"sales_customer_id\" is not null
 
 GROUP BY
     1),
@@ -64,7 +64,7 @@ FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB')
+    \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB') and \"thoughtful\".\"sales_customer_id\" is not null
 )
 SELECT
     \"questionable\".\"sales_customer_text_id\" as \"customer_id\",
@@ -72,9 +72,9 @@ SELECT
     \"questionable\".\"sales_customer_last_name\" as \"customer_last_name\"
 FROM
     \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" = \"questionable\".\"sales_customer_id\"
+    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
 WHERE
-    \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
+    \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"questionable\".\"sales_customer_id\" is not null and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
 	WHEN \"uneven\".\"web_first_year\" > 0 THEN \"uneven\".\"web_second_year\" / \"uneven\".\"web_first_year\"
 	ELSE null
 	END ) > ( CASE

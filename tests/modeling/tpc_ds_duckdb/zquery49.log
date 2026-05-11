@@ -1,5 +1,5 @@
 query_id = "49"
-gen_length = 11295
+gen_length = 11300
 generated_sql = """
 
 WITH 
@@ -102,7 +102,7 @@ SELECT
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"),
 juicy as (
 SELECT

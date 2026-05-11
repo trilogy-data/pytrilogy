@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 8782
+gen_length = 7517
 generated_sql = """
 
 WITH 
@@ -22,9 +22,9 @@ SELECT
     SUBSTRING(\"sales_item_items\".\"I_ITEM_DESC\",1,30) as \"sales_item_desc_truncated\",
     cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    INNER JOIN \"memory\".\"store_sales\" as \"sales_store_sales_unified\" on \"sales_date_date\".\"D_DATE_SK\" = \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
      'STORE'  = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
 
@@ -45,8 +45,8 @@ young as (
 SELECT
     sum(\"concerned\".\"sales_quantity\" * \"concerned\".\"sales_sales_price\") as \"customer_total_in_window\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
-    INNER JOIN \"concerned\" on \"sales_date_date\".\"D_DATE_SK\" = \"concerned\".\"sales_date_id\"
+    \"concerned\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"concerned\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"concerned\".\"sales_customer_id\" is not null and \"concerned\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
 
@@ -110,17 +110,11 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
-     'CATALOG'  as \"sales_sales_channel\",
-    \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
-    \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
-    \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
+     'CATALOG'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null) and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null)
 
 UNION ALL
 SELECT
@@ -130,17 +124,11 @@ SELECT
     \"sales_store_sales_unified\".\"SS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
-     'STORE'  as \"sales_sales_channel\",
-    \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
-    \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
-    \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
+     'STORE'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null) and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null)
 
 UNION ALL
 SELECT
@@ -150,26 +138,25 @@ SELECT
     \"sales_web_sales_unified\".\"WS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
-     'WEB'  as \"sales_sales_channel\",
-    \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
-    \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
-    \"sales_date_date\".\"D_MOY\" as \"sales_date_month_of_year\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
+     'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null) and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null)
 ),
 scrawny as (
 SELECT
-    \"cheerful\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
-    \"cheerful\".\"sales_customer_last_name\" as \"sales_customer_last_name\",
     \"cheerful\".\"sales_quantity\" * \"cheerful\".\"sales_list_price\" as \"_virt_func_multiply_8507033399516423\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
+    \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\"
 FROM
     \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"cheerful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2 and \"cheerful\".\"sales_item_id\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"cheerful\".\"sales_customer_id\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null)
+
 GROUP BY
     1,
     2,

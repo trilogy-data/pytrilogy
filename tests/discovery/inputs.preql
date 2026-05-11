@@ -65,9 +65,9 @@ select
 ;
 
 
-datasource customer_revenue_for_two (
-    customer_id:~customer_id,
-    total_customer_revenue:~total_customer_revenue,
+partial datasource customer_revenue_for_two (
+    customer_id:customer_id,
+    total_customer_revenue:total_customer_revenue,
 )
 grain (customer_id)
 complete where customer_id = 2
@@ -78,9 +78,9 @@ select
 '''
 ;
 
-datasource customer_revenue_for_sarah (
-    customer_id:~customer_id,
-    total_customer_revenue:~total_customer_revenue,
+partial datasource customer_revenue_for_sarah (
+    customer_id:customer_id,
+    total_customer_revenue:total_customer_revenue,
 )
 grain (customer_id)
 complete where name = 'Sarah'
