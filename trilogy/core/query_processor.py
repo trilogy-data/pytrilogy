@@ -461,7 +461,8 @@ def get_query_node(
     build_environment = environment.materialize_for_select(
         build_statement.local_concepts,
         build_cache=build_cache,
-        # factory=base_factory
+        pseudonym_map=base_factory.pseudonym_map,
+        grain_build_cache=base_factory.grain_build_cache,
     )
 
     graph = generate_graph(build_environment)

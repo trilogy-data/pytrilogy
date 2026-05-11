@@ -114,7 +114,7 @@ select
         dialect.parse_text(test_queries)
         end = datetime.now()
         durations.append((end - start).total_seconds())
-    # 0.42464
+    # 0.4037
     avg_duration = sum(durations) / len(durations)
     print(f"Parse times: {durations}")
     print(f"Average parse time: {avg_duration:.4f}s")

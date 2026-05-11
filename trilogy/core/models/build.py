@@ -2628,6 +2628,8 @@ class Factory:
             local_concepts={},
             grain=base.rowset.select.grain,
             pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,
+            grain_build_cache=self.grain_build_cache,
         )
         return BuildRowsetItem(
             content=factory._build_concept_ref(base.content),
@@ -2827,20 +2829,23 @@ class Factory:
         final_grain = self.build(base.grain)
         derived_base = []
         for k in base.derived_concepts:
-            base_concept = self.environment.concepts[k]
-            x = BuildConcept(
-                name=base_concept.name,
-                canonical_name=base_concept.name,
-                datatype=base_concept.datatype,
-                purpose=base_concept.purpose,
-                build_is_aggregate=False,
-                derivation=Derivation.MULTISELECT,
-                lineage=None,
-                grain=final_grain,
-                keys=base_concept.keys,
-                namespace=base_concept.namespace,
-            )
-            local_build_cache[k] = x
+            if k in local_build_cache:
+                x = local_build_cache[k]
+            else:
+                base_concept = self.environment.concepts[k]
+                x = BuildConcept(
+                    name=base_concept.name,
+                    canonical_name=base_concept.name,
+                    datatype=base_concept.datatype,
+                    purpose=base_concept.purpose,
+                    build_is_aggregate=False,
+                    derivation=Derivation.MULTISELECT,
+                    lineage=None,
+                    grain=final_grain,
+                    keys=base_concept.keys,
+                    namespace=base_concept.namespace,
+                )
+                local_build_cache[k] = x
             derived_base.append(x)
         all_input: list[BuildConcept] = []
         for parent in parents:
@@ -2861,9 +2866,14 @@ class Factory:
             environment=self.environment,
             local_concepts=local_build_cache,
             pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,
+            grain_build_cache=self.grain_build_cache,
         )
         where_factory = Factory(
-            environment=self.environment, pseudonym_map=self.pseudonym_map
+            environment=self.environment,
+            pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,
+            grain_build_cache=self.grain_build_cache,
         )
         lineage = BuildMultiSelectLineage(
             # we don't build selects here; they'll be built automatically in query discovery
