@@ -864,9 +864,11 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     grain: "Grain" = dc_field(default=None)  # type: ignore
     modifiers: List[Modifier] = dc_field(default_factory=list)
     pseudonyms: set[str] = dc_field(default_factory=set)
+    address: str = dc_field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
         self.namespace = self.namespace or DEFAULT_NAMESPACE
+        self.address = f"{self.namespace}.{self.name}"
         self.metadata = self.metadata or Metadata()
         if isinstance(self.datatype, str):
             self.datatype = DataType(self.datatype)
@@ -996,10 +998,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     def __str__(self):
         grain = str(self.grain) if self.grain else "Grain<>"
         return f"{self.namespace}.{self.name}@{grain}"
-
-    @property
-    def address(self) -> str:
-        return f"{self.namespace}.{self.name}"
 
     @property
     def equivalent_addresses(self) -> set[str]:

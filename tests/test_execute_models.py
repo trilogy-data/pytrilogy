@@ -237,6 +237,35 @@ def test_query_datasource_passes_when_address_in_source_map_but_canonical_differ
     )
 
 
+def test_unnest_join_equality_and_hash():
+    """``UnnestJoin`` equality/hash is keyed on ``safe_identifier`` (alias +
+    concept addresses); non-UnnestJoin comparisons return ``NotImplemented``."""
+    from trilogy.core.enums import FunctionType
+    from trilogy.core.models.build import BuildFunction
+    from trilogy.core.models.execute import UnnestJoin
+
+    parent = BuildFunction(
+        operator=FunctionType.UNNEST,
+        arguments=[],
+        output_data_type=DataType.INTEGER,
+        output_purpose=Purpose.PROPERTY,
+        arg_count=0,
+    )
+    a1 = UnnestJoin(concepts=[_key_concept("k")], parent=parent, alias="u")
+    a2 = UnnestJoin(concepts=[_key_concept("k")], parent=parent, alias="u")
+    diff_alias = UnnestJoin(concepts=[_key_concept("k")], parent=parent, alias="v")
+    diff_concept = UnnestJoin(
+        concepts=[_key_concept("other")], parent=parent, alias="u"
+    )
+
+    assert a1 == a2
+    assert hash(a1) == hash(a2)
+    assert a1 != diff_alias
+    assert a1 != diff_concept
+    assert a1.__eq__("not an unnest join") is NotImplemented
+    assert (a1 == "not an unnest join") is False
+
+
 def test_cte_inline_parent_rewrites_existence_source_map():
     """``inline_parent_datasource`` must rewrite existence_source_map entries
     that pointed to the parent QDS, mirroring the source_map loop."""

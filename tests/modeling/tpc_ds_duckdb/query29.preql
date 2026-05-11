@@ -12,6 +12,7 @@ WHERE
     and catalog_sales.date.year in (1999, 2000, 2001)
     and catalog_sales.quantity is not null
     and store_sales.is_returned
+    and store_sales.customer.id = store_sales.return_customer.id
 SELECT
     store_sales.item.name,
     store_sales.item.desc,

@@ -162,6 +162,7 @@ def create_datasource_node(
                 for ds in environment.datasources.values()
                 if isinstance(ds, BuildDatasource)
             ],
+            target_grain=target_grain,
             conditions=conditions,
         )
         if force_group

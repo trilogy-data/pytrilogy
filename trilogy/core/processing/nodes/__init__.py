@@ -23,6 +23,7 @@ class History(BaseModel):
     local_base_concepts: dict[str, Concept] = Field(default_factory=dict)
     history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
+    rowset_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     started: dict[str, int] = Field(default_factory=dict)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

@@ -39,7 +39,19 @@ def gen_rowset_node(
     rowset: BuildRowsetLineage = lineage.rowset
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
-    node = get_query_node(history.base_environment, select)
+    # Cache the parent select-node by rowset name: when an outer SELECT
+    # mixes an aliased rowset concept (BASIC derivation) with bare rowset
+    # references, the search loop visits gen_rowset_node twice (once for the
+    # rowset priority, once via gen_basic_node's parent re-sourcing). The
+    # select's structure is deterministic per rowset, so memoize the
+    # pre-mutation node and hand back a copy on cache hit.
+    cached = history.rowset_history.get(rowset.name)
+    if cached is not None:
+        node = cached.copy()
+    else:
+        node = get_query_node(history.base_environment, select)
+        if node is not None:
+            history.rowset_history[rowset.name] = node.copy()
 
     if not node:
         logger.info(

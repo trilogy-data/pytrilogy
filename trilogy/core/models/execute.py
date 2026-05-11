@@ -523,6 +523,11 @@ class UnnestJoin:
     def __hash__(self):
         return self.safe_identifier.__hash__()
 
+    def __eq__(self, other):
+        if type(other) is not UnnestJoin:
+            return NotImplemented
+        return self.safe_identifier == other.safe_identifier
+
     @property
     def safe_identifier(self) -> str:
         return self.alias + "".join([str(s.address) for s in self.concepts])
@@ -753,9 +758,10 @@ class QueryDatasource:
     def __hash__(self):
         return (self.identifier).__hash__()
 
-    @property
-    def concepts(self):
-        return self.output_concepts
+    def __eq__(self, other):
+        if type(other) is not QueryDatasource:
+            return NotImplemented
+        return self.identifier == other.identifier
 
     @property
     def name(self):

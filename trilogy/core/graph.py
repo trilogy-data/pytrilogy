@@ -65,16 +65,27 @@ def _weight_triples(
         graph._cached_edges = edges
         if graph._shadow is not None:
             graph._assert_equal("edges()", edges, list(graph._shadow.edges))
+    edge_attrs = graph._edge_attrs
+    # Fast path: when no edges carry attrs (the common case — only
+    # node_merge_node sets weights, and only for BASIC non-ATTR_ACCESS
+    # targets), every edge resolves to the default weight of 1.0.
+    if not edge_attrs:
+        return [(left, right, 1.0) for left, right in edges]
+    # Slow path — hoist attribute lookups, inline _edge_key, and skip the
+    # empty-dict allocation for edges without attrs.
+    directed = graph.directed
+    numeric_types = (int, float, str)
     output: list[tuple[str, str, float]] = []
+    append = output.append
     for left, right in edges:
-        raw = graph._edge_attrs.get(_edge_key(graph, left, right), {}).get(weight, 1.0)
-        output.append(
-            (
-                left,
-                right,
-                float(raw) if isinstance(raw, (int, float, str)) else 1.0,
-            )
-        )
+        key = (left, right) if directed or left <= right else (right, left)
+        attrs = edge_attrs.get(key)
+        if attrs is None:
+            w = 1.0
+        else:
+            raw = attrs.get(weight, 1.0)
+            w = float(raw) if isinstance(raw, numeric_types) else 1.0
+        append((left, right, w))
     return output
 
 

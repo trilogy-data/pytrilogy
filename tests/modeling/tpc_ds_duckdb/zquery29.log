@@ -1,0 +1,137 @@
+query_id = "29"
+gen_length = 8534
+generated_sql = """
+
+WITH 
+highfalutin as (
+SELECT
+    \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"store_sales_item_id\",
+    \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" as \"catalog_sales_quantity\",
+    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
+FROM
+    \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
+WHERE
+    \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" is not null
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+vacuous as (
+SELECT
+    \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" as \"catalog_sales_quantity\",
+    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
+    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MOY\" = 9 and \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_return_date_date\".\"D_MOY\" >= 9 and \"store_sales_return_date_date\".\"D_MOY\" <= 12 and \"store_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" is not null and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = coalesce(\"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\",\"store_sales_store_returns\".\"SR_CUSTOMER_SK\")
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\",
+    coalesce(\"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",\"store_sales_item_items\".\"I_ITEM_SK\",\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\")),
+yummy as (
+SELECT
+    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
+    \"store_sales_store_returns\".\"SR_RETURN_QUANTITY\" as \"store_sales_return_quantity\",
+    \"store_sales_store_sales\".\"SS_QUANTITY\" as \"store_sales_quantity\",
+    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"highfalutin\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" is not distinct from \"highfalutin\".\"store_sales_return_customer_id\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"highfalutin\".\"store_sales_item_id\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"highfalutin\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"highfalutin\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MOY\" = 9 and \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_return_date_date\".\"D_MOY\" >= 9 and \"store_sales_return_date_date\".\"D_MOY\" <= 12 and \"store_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"highfalutin\".\"catalog_sales_quantity\" is not null and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = coalesce(\"highfalutin\".\"store_sales_return_customer_id\",\"store_sales_store_returns\".\"SR_CUSTOMER_SK\")
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\",
+    coalesce(\"highfalutin\".\"store_sales_item_id\",\"store_sales_item_items\".\"I_ITEM_SK\",\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\")),
+concerned as (
+SELECT
+    \"vacuous\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"vacuous\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"vacuous\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"vacuous\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    sum(\"vacuous\".\"catalog_sales_quantity\") as \"catalog_sales_quantity\"
+FROM
+    \"vacuous\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+juicy as (
+SELECT
+    \"yummy\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"yummy\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"yummy\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"yummy\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    sum(\"yummy\".\"store_sales_quantity\") as \"store_sales_quantity\",
+    sum(\"yummy\".\"store_sales_return_quantity\") as \"store_returns_quantity\"
+FROM
+    \"yummy\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+young as (
+SELECT
+    \"concerned\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\",
+    \"juicy\".\"store_returns_quantity\" as \"store_returns_quantity\",
+    \"juicy\".\"store_sales_quantity\" as \"store_sales_quantity\",
+    coalesce(\"concerned\".\"store_sales_item_desc\",\"juicy\".\"store_sales_item_desc\") as \"store_sales_item_desc\",
+    coalesce(\"concerned\".\"store_sales_item_name\",\"juicy\".\"store_sales_item_name\") as \"store_sales_item_name\",
+    coalesce(\"concerned\".\"store_sales_store_name\",\"juicy\".\"store_sales_store_name\") as \"store_name\",
+    coalesce(\"concerned\".\"store_sales_store_text_id\",\"juicy\".\"store_sales_store_text_id\") as \"store_sales_store_text_id\"
+FROM
+    \"juicy\"
+    FULL JOIN \"concerned\" on \"juicy\".\"store_sales_item_desc\" is not distinct from \"concerned\".\"store_sales_item_desc\" AND \"juicy\".\"store_sales_item_name\" is not distinct from \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_name\" is not distinct from \"concerned\".\"store_sales_store_name\" AND \"juicy\".\"store_sales_store_text_id\" is not distinct from \"concerned\".\"store_sales_store_text_id\")
+SELECT
+    \"young\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"young\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"young\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    \"young\".\"store_name\" as \"store_name\",
+    \"young\".\"store_sales_quantity\" as \"store_sales_quantity\",
+    \"young\".\"store_returns_quantity\" as \"store_returns_quantity\",
+    \"young\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\"
+FROM
+    \"young\"
+WHERE
+    \"young\".\"catalog_sales_quantity\" > 0
+
+ORDER BY 
+    \"young\".\"store_sales_item_name\" asc,
+    \"young\".\"store_sales_item_desc\" asc,
+    \"young\".\"store_sales_store_text_id\" asc,
+    \"young\".\"store_name\" asc
+LIMIT (100)"""

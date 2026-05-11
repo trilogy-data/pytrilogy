@@ -1,0 +1,120 @@
+import store_sales as ss;
+import catalog_sales as cs;
+import catalog_returns as cr;
+
+# cs_ui: items where catalog sale (sum of cs_ext_list_price) exceeds twice
+# the catalog refund (sum of refunded_cash + reversed_charge + store_credit)
+# for rows that have a matching catalog_return.
+merge cs.order_number into cr.order_number;
+merge cs.item.id into cr.item.id;
+
+property <cs.item.id>.cs_ui_refund_amt <-
+    coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
+
+auto cs_ui_sale <- sum(cs.ext_list_price) by cs.item.id;
+auto cs_ui_refund <- sum(cs.item.cs_ui_refund_amt) by cs.item.id;
+
+with cs_ui as
+WHERE cs_ui_sale > 2 * cs_ui_refund
+SELECT cs.item.id as cs_ui_item_id
+;
+
+# Reference q64 self-joins cross_sales on (item_sk, store_name, store_zip) with
+# cs1.syear=1999 and cs2.syear=2000. Express as a single multi-select rowset
+# with two branches (year=1999, year=2000) aligned on those three keys, so each
+# output row pairs the 99 metrics with the matching 00 metrics.
+with q64_results as
+WHERE
+    ss.item.id in cs_ui.cs_ui_item_id
+    and ss.date.year = 1999
+    and ss.is_returned
+    and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
+    and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
+    and ss.item.current_price >= 64
+    and ss.item.current_price <= 74
+    and ss.item.current_price >= 65
+    and ss.item.current_price <= 79
+    and ss.customer.id is not null
+    and ss.store.id is not null
+    and ss.sale_address.id is not null
+    and ss.customer.address.id is not null
+SELECT
+    ss.item.id as item_sk_99,
+    ss.store.name as s_name_99,
+    ss.store.zip as s_zip_99,
+    ss.item.product_name as p_name_99,
+    ss.sale_address.street_number as b_sn_99,
+    ss.sale_address.street_name as b_str_99,
+    ss.sale_address.city as b_city_99,
+    ss.sale_address.zip as b_zip_99,
+    ss.customer.address.street_number as c_sn_99,
+    ss.customer.address.street_name as c_str_99,
+    ss.customer.address.city as c_city_99,
+    ss.customer.address.zip as c_zip_99,
+    ss.date.year as syear_99,
+    ss.customer.first_sales_date.year as fsyear_99,
+    ss.customer.first_shipto_date.year as s2year_99,
+    count(ss.ticket_number) as cnt_99,
+    sum(ss.wholesale_cost) as s1_99,
+    sum(ss.list_price) as s2_99,
+    sum(ss.coupon_amt) as s3_99,
+MERGE
+WHERE
+    ss.item.id in cs_ui.cs_ui_item_id
+    and ss.date.year = 2000
+    and ss.is_returned
+    and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
+    and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
+    and ss.item.current_price >= 64
+    and ss.item.current_price <= 74
+    and ss.item.current_price >= 65
+    and ss.item.current_price <= 79
+    and ss.customer.id is not null
+    and ss.store.id is not null
+    and ss.sale_address.id is not null
+    and ss.customer.address.id is not null
+SELECT
+    ss.item.id as item_sk_00,
+    ss.store.name as s_name_00,
+    ss.store.zip as s_zip_00,
+    ss.date.year as syear_00,
+    count(ss.ticket_number) as cnt_00,
+    sum(ss.wholesale_cost) as s1_00,
+    sum(ss.list_price) as s2_00,
+    sum(ss.coupon_amt) as s3_00,
+align
+    item_sk: item_sk_99, item_sk_00
+    AND s_name: s_name_99, s_name_00
+    AND s_zip: s_zip_99, s_zip_00
+;
+
+WHERE q64_results.cnt_00 <= q64_results.cnt_99
+SELECT
+    q64_results.p_name_99,
+    q64_results.s_name,
+    q64_results.s_zip,
+    q64_results.b_sn_99,
+    q64_results.b_str_99,
+    q64_results.b_city_99,
+    q64_results.b_zip_99,
+    q64_results.c_sn_99,
+    q64_results.c_str_99,
+    q64_results.c_city_99,
+    q64_results.c_zip_99,
+    q64_results.syear_99,
+    q64_results.cnt_99,
+    q64_results.s1_99,
+    q64_results.s2_99,
+    q64_results.s3_99,
+    q64_results.s1_00,
+    q64_results.s2_00,
+    q64_results.s3_00,
+    q64_results.syear_00,
+    q64_results.cnt_00,
+ORDER BY
+    q64_results.p_name_99 asc nulls first,
+    q64_results.s_name asc nulls first,
+    q64_results.cnt_00 asc nulls first,
+    q64_results.s1_99 asc nulls first,
+    q64_results.s1_00 asc nulls first
+;
