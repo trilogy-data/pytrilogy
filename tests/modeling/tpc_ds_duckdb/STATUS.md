@@ -9,12 +9,31 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 96 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 97 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | XFAIL (committed broken for experimentation) | 1 | 14 |
-| Missing (no preql / no test) | 2 | 75, 77 |
+| Missing (no preql / no test) | 1 | 77 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
+
+## Recent Query Additions (q75)
+
+- **q75** — books category, prev-yr (2001) vs curr-yr (2002) sales count
+  and amount across all 3 channels, kept only where curr/prev ratio < 0.9.
+  Reference uses `UNION DISTINCT` of three (year, brand, class, cat,
+  manuf, cnt_per_row, amt_per_row) tuples to dedup across channels before
+  the outer SUM, plus a self-join on (brand, class, cat, manuf) to
+  pair prev/curr years.
+  - **Deduped-rowset shape**: stage 1 is a `with deduped as … SELECT
+    year, brand_id, class_id, category_id, manufacturer_id,
+    cnt_per_row, amt_per_row` materialization. Trilogy's implicit
+    GROUP BY at SELECT grain collapses cross-channel duplicates of the
+    same row tuple. Stage 2 declares prev/curr autos as
+    `sum(deduped.cnt_per_row ? deduped.sales.date.year = 2001) by …`
+    keyed on (brand, class, cat, manuf), avoiding the need for a
+    self-join. The 0.9 ratio filter goes in `HAVING` referencing
+    aliased aggregates (`curr_yr_cnt`, `prev_yr_cnt`), per the HAVING
+    rule.
 
 ## Recent Query Additions (q54)
 
@@ -230,12 +249,10 @@ falls on the query writer.
 
 ## Suggested Next Batch (by complexity)
 
-These look tractable without further framework work:
+(q72 was the last item here; now passing at sf=0.01 via `engine_sf001` —
+see `test_seventy_two`. q75 was the other; now passing as a deduped
+rowset shape with per-(brand,class,cat,manufact) curr/prev aggregates.)
 
-- **q72** — model extensions are now done (catalog_sales has
-  `bill_household_demographic`), but the inventory + sales + returns
-  triple-join blows up to OOM during planning. Needs filter pushdown
-  improvements or a smaller, more targeted query shape.
 
 ## Backport Candidates (use unified_sales)
 
@@ -256,9 +273,21 @@ These need framework work first:
   items present in all 3 channels, plus a 4-level rollup over (channel,
   brand, class, category) and an `avg_sales` HAVING threshold. **XFAIL**
   — `query14.preql` is committed with the in_cross_items-chain shape and
-  `test_fourteen` has `@pytest.mark.xfail(strict=True)`. See "Recent
-  Query Additions (q14 — XFAIL, blocked)" above for the two attempted
-  shapes and the underlying planner bugs.
+  `test_fourteen` has `@pytest.mark.xfail(strict=True)`.
+  - Shape C tried (third attempt, also blocked): cross_items rowset
+    keyed on a `concat(brand|class|cat)` tuple_key with
+    `count_distinct(sales_channel) = 3` HAVING; avg_sales materialized
+    as its own rowset so it isn't inlined; l0_filtered rowset applies
+    HAVING `bucket_sum > avg_sales`; then 5-rowset merge over
+    l0_filtered for rollup. cross_items + avg_sales + l0_filtered all
+    work correctly. The blocker is the merge branches — expressions
+    like `sum(l0_filtered.bucket_sum_l0) by l0_filtered.channel_l0,
+    l0_filtered.brand_id_l0, l0_filtered.class_id_l0` compile to
+    `SELECT bucket_sum_l0, bucket_cnt_l0 FROM busy GROUP BY 1, 2` —
+    the SUM is dropped and the aggregation collapses to DISTINCT on
+    the bucket values. Higher rollup levels then equal L0 instead of
+    summing across L0 rows. Filing under planner-bug; same family as
+    the original Shape A/B issues.
 - **q77** — same store/catalog/web rollup as q5 in structure, but each
   channel uses a different dim than q5/q80: **store** uses `s_store_sk`
   (same), **catalog** uses `cs_call_center_sk` (q5 uses
@@ -266,20 +295,15 @@ These need framework work first:
   `web_site_sk`). The q5 fix to unified_sales (separate `channel_dim_id`
   and `return_channel_dim_id`) doesn't help here because the dim sources
   themselves differ per channel. Worse, q77's catalog branch does a
-  CROSS JOIN of cs and cr (no key match), inflating subtotal returns by
-  `N_cs`. Would need either: (a) a parallel `channel_dim_id_alt` /
+  CROSS JOIN of cs and cr (no key match): each per-(call_center) sales
+  total gets multiplied by N_cr_call_centers and each per-(call_center)
+  return total gets multiplied by N_cs_call_centers in the outer
+  ROLLUP. Would need either: (a) a parallel `channel_dim_id_alt` /
   `return_channel_dim_id_alt` concept set in unified_sales mapping
   store/call_center/web_page, plus cross-join semantics for the catalog
   branch; or (b) a 6-rowset hand-written shape outside unified_sales.
   Both are significant work. Defer.
-- **q72** — listed above; OOM on planning.
-- **q75** — UNION DISTINCT of three per-channel `(year, brand, class, cat,
-  manufact, qty_per_row, amt_per_row)` row sets. The DISTINCT collapses
-  ~1500 cross-channel duplicate tuples on sf=1 (480396 vs 478874 rows).
-  Trilogy's `unified_sales` aggregates after summing per-channel; expressing
-  "dedup by exact value tuple before sum" needs a primitive we don't have.
-  Without dedup, summed counts diverge by ~16 per affected (brand, class,
-  cat, manufact) group.
+
 
 ## Test Infra Notes
 
