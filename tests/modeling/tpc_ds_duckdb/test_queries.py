@@ -391,6 +391,10 @@ def test_seventy_four(engine):
     _ = run_query(engine, 74)
 
 
+def test_seventy_five(engine):
+    _ = run_query(engine, 75)
+
+
 def test_seventy_eight(engine):
     _ = run_query(engine, 78)
 

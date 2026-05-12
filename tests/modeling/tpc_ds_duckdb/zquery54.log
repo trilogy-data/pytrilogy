@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 5074
+gen_length = 5115
 generated_sql = """
 
 WITH 
@@ -89,7 +89,8 @@ FROM
     \"concerned\"
     INNER JOIN \"sparkling\" on \"concerned\".\"cust_ss_ss_cust_county\" = \"sparkling\".\"stores_cs_scs_county\" AND \"concerned\".\"cust_ss_ss_cust_state\" = \"sparkling\".\"stores_cs_scs_state\"
 GROUP BY
-    1),
+    1,
+    \"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\"),
 sweltering as (
 SELECT
     cast(round(\"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\" / 50,0) as int) * 50 as \"segment_base\",
@@ -103,7 +104,7 @@ GROUP BY
     \"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\"),
 macho as (
 SELECT
-    CASE WHEN \"late\".\"my_revenue_rev_cust_id\" IS NOT NULL THEN 1 ELSE 0 END as \"num_customers\"
+    count(\"late\".\"my_revenue_rev_cust_id\") as \"num_customers\"
 FROM
     \"late\")
 SELECT

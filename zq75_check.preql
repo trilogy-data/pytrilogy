@@ -1,0 +1,25 @@
+key row_id int;
+property row_id.group_key int;
+property row_id.val1 int;
+property row_id.val2 int;
+property row_id.return_val1 int?;
+property row_id.return_val2 int?;
+property row_id.is_returned bool;
+
+datasource src (row_id, group_key, val1, val2)
+grain (row_id)
+query '''
+select 1 as row_id, 100 as group_key, 10 as val1, 100 as val2 union all
+select 2 as row_id, 100 as group_key, 10 as val1, 200 as val2 union all
+select 3 as row_id, 100 as group_key, 20 as val1, 100 as val2 union all
+select 4 as row_id, 100 as group_key, 20 as val1, 200 as val2
+''';
+
+datasource src_returns (
+    row_id: ~row_id, return_val1, return_val2,
+    raw(''' True '''): is_returned,
+)
+grain (row_id) complete where is_returned is True
+query '''
+select 0 as row_id, 0 as return_val1, 0 as return_val2 where false
+''';

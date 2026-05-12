@@ -9,12 +9,40 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 96 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 97 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | XFAIL (committed broken for experimentation) | 1 | 14 |
-| Missing (no preql / no test) | 2 | 75, 77 |
+| Missing (no preql / no test) | 1 | 77 |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
+
+## Recent Query Additions (q75)
+
+- **q75** — UNION DISTINCT of three per-channel `(year, brand, class, cat,
+  manufact, sales_cnt, sales_amt)` row streams, then year-over-year
+  comparison. The 7-tuple dedup is expressed as a `with deduped as SELECT
+  …` rowset over `unified_sales`; trilogy's implicit GROUP BY at the
+  SELECT projection collapses cross-channel duplicates (the SELECT
+  DISTINCT semantic).
+  - **Planner fix required** (`resolve_function_parent_concepts`):
+    when two aggregates over the same named rowset (e.g.,
+    `sum(deduped.cnt)` + `sum(deduped.amt)`) plan independently, each
+    requests just its own column from the rowset; the discovery loop
+    sees the rowset materialization carrying more cols than the
+    consumer needs and prunes/regroups to the consumer's tighter grain.
+    Two CTEs end up with different `GROUP BY` projections, silently
+    splitting the rowset's declared grain across consumers. Fix: when
+    resolving an aggregate's parent concepts, if any parent transitively
+    wraps a rowset item, also include the rowset's sibling outputs as
+    parents (analogous to how property keys are included). Both
+    aggregates then request the same parent grain — the rowset's full
+    declared grain — so the discovery loop materializes the rowset
+    *once* at full grain and CTE dedup shares it across both consumers.
+    Walks lineage to handle inline-filter autos (`_virt_filter_*` from
+    `sum(x ? cond)`) and other BASIC wrappers around rowset items.
+    Regression coverage:
+    `tests/engine/test_duckdb.py::test_rowset_full_tuple_dedup_plain_select`
+    and `test_rowset_full_tuple_dedup_with_aggregates`.
 
 ## Recent Query Additions (q54)
 
@@ -230,12 +258,9 @@ falls on the query writer.
 
 ## Suggested Next Batch (by complexity)
 
-These look tractable without further framework work:
-
-- **q72** — model extensions are now done (catalog_sales has
-  `bill_household_demographic`), but the inventory + sales + returns
-  triple-join blows up to OOM during planning. Needs filter pushdown
-  improvements or a smaller, more targeted query shape.
+All single-query gaps that have a clear path are now covered. Remaining
+unconverted queries (q14, q75, q77) all need framework work — see
+"Not converted" below and the "Backport Candidates" subsection above.
 
 ## Backport Candidates (use unified_sales)
 
@@ -272,15 +297,6 @@ These need framework work first:
   store/call_center/web_page, plus cross-join semantics for the catalog
   branch; or (b) a 6-rowset hand-written shape outside unified_sales.
   Both are significant work. Defer.
-- **q72** — listed above; OOM on planning.
-- **q75** — UNION DISTINCT of three per-channel `(year, brand, class, cat,
-  manufact, qty_per_row, amt_per_row)` row sets. The DISTINCT collapses
-  ~1500 cross-channel duplicate tuples on sf=1 (480396 vs 478874 rows).
-  Trilogy's `unified_sales` aggregates after summing per-channel; expressing
-  "dedup by exact value tuple before sum" needs a primitive we don't have.
-  Without dedup, summed counts diverge by ~16 per affected (brand, class,
-  cat, manufact) group.
-
 ## Test Infra Notes
 
 - `run_query(engine, idx)` defaults to `PRAGMA tpcds(N)` for the reference
