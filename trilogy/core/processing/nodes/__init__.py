@@ -11,6 +11,7 @@ from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode
 from .recursive_node import RecursiveNode
+from .rowset_node import RowsetNode
 from .select_node_v2 import ConstantNode, SelectNode
 from .subselect_node import SubselectNode
 from .union_node import UnionNode
@@ -178,5 +179,6 @@ __all__ = [
     "History",
     "WhereSafetyNode",
     "RecursiveNode",
+    "RowsetNode",
     "SubselectNode",
 ]
