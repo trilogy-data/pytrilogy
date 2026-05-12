@@ -27,6 +27,60 @@ def test_gen_group_node_parents(test_environment: Environment):
     assert test_environment.concepts["category_id"] in parents
 
 
+def test_resolve_function_parents_sum_of_filter_on_rowset():
+    # SUM(rowset_col ? rowset_other_col = X) by rowset.group_key:
+    # the SUM's parent concepts must include EVERY component of the
+    # underlying rowset's declared grain, otherwise downstream
+    # materialization will be pruned to just the filter's inputs and
+    # dedup will collapse semantically-distinct rows.
+    env = Environment()
+    env.parse(
+        """
+key row_id int;
+property row_id.year int;
+property row_id.group_key int;
+property row_id.val1 int;
+property row_id.val2 int;
+
+datasource src (
+    row_id,
+    year,
+    group_key,
+    val1,
+    val2,
+)
+grain (row_id)
+query '''select 1 as row_id, 2001 as year, 100 as group_key, 10 as val1, 100 as val2''';
+
+with deduped as
+SELECT year, group_key, val1, val2,
+;
+
+SELECT
+    deduped.group_key as gk,
+    sum(deduped.val1 ? deduped.year = 2001) as v1_2001,
+;
+"""
+    )
+    build_env = env.materialize_for_select()
+    sum_concept = build_env.concepts["local.v1_2001"]
+    assert sum_concept.derivation == Derivation.AGGREGATE
+    parents = resolve_function_parent_concepts(sum_concept, environment=build_env)
+    parent_addresses = {p.address for p in parents}
+    # SUM must request every rowset grain component, not just the filter's
+    # inputs (val1, year). Without group_key + val2, the downstream
+    # materialization dedups at a strict subset of the rowset's grain.
+    for required in (
+        "deduped.year",
+        "deduped.group_key",
+        "deduped.val1",
+        "deduped.val2",
+    ):
+        assert required in parent_addresses, (
+            f"missing {required} from SUM parents; got {sorted(parent_addresses)}"
+        )
+
+
 def test_gen_group_node_basic(test_environment, test_environment_graph):
     history = History(base_environment=test_environment)
     test_environment = test_environment.materialize_for_select()

@@ -33,6 +33,39 @@ AGGREGATE_TYPES = (BuildAggregateWrapper,)
 FUNCTION_TYPES = (BuildFunction,)
 
 
+def _walk_to_rowset_grain(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    seen: Set[str] | None = None,
+) -> List[BuildConcept]:
+    """Walk a concept's lineage searching for any rowset source. When found,
+    yield the rowset-namespaced grain components (taken from the concept's
+    own ``grain`` so downstream discovery sees the rowset CTE outputs, not
+    the underlying SELECT's source addresses).
+
+    Aggregating over a wrapper (filter, basic) whose input is a rowset still
+    needs the rowset's full grain materialized — otherwise the rowset CTE
+    dedups at a strict subset of its declared grain and collapses rows that
+    the rowset marked distinct."""
+    seen = seen if seen is not None else set()
+    if concept.address in seen:
+        return []
+    seen.add(concept.address)
+    if concept.derivation == Derivation.ROWSET:
+        return [
+            environment.concepts[c]
+            for c in concept.grain.components
+            if c in environment.concepts
+        ]
+    if concept.lineage is None:
+        return []
+    collected: List[BuildConcept] = []
+    for arg in concept.lineage.concept_arguments:
+        if isinstance(arg, BuildConcept):
+            collected.extend(_walk_to_rowset_grain(arg, environment, seen))
+    return collected
+
+
 def resolve_function_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> List[BuildConcept]:
@@ -60,10 +93,11 @@ def resolve_function_parent_concepts(
         for x in extra_property_grain:
             if isinstance(x, BuildConcept) and x.purpose == Purpose.PROPERTY and x.keys:
                 base += [environment.concepts[c] for c in x.keys]
-            if isinstance(x, BuildConcept) and x.derivation == Derivation.ROWSET:
-                # a rowset must always be fetched with the grain keys at a minimum
-                assert isinstance(x.lineage, BuildRowsetItem)
-                base += [environment.concepts[c] for c in x.lineage.rowset.select.grain.components]
+            if isinstance(x, BuildConcept):
+                # a rowset must always be fetched with the grain keys at a
+                # minimum; walk lineage so wrappers (filter, basic) over a
+                # rowset still surface its declared grain
+                base += _walk_to_rowset_grain(x, environment)
         return unique(base, "address")
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
