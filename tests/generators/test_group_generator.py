@@ -27,6 +27,145 @@ def test_gen_group_node_parents(test_environment: Environment):
     assert test_environment.concepts["category_id"] in parents
 
 
+def test_resolve_function_parents_sum_of_filter_on_keyed_property():
+    # sum(filter(property ? condition)) by some grain: the SUM's parents
+    # must include the property's key so downstream materialization fetches
+    # rows at the property's row identity, not just the filtered value.
+    env = Environment()
+    env.parse("""
+key order_id int;
+property order_id.amount int;
+property order_id.status string;
+
+datasource orders (
+    order_id,
+    amount,
+    status,
+)
+grain (order_id)
+query '''select 1 as order_id, 10 as amount, 'open' as status''';
+
+SELECT
+    sum(amount ? status = 'open') as open_total,
+;
+""")
+    build_env = env.materialize_for_select()
+    sum_concept = build_env.concepts["local.open_total"]
+    assert sum_concept.derivation == Derivation.AGGREGATE
+    parents = resolve_function_parent_concepts(sum_concept, environment=build_env)
+    parent_addresses = {p.address for p in parents}
+    # The order_id key must be a parent — without it, the materialization
+    # has no row identity for the filtered amount column.
+    assert (
+        "local.order_id" in parent_addresses
+    ), f"missing order_id key; got {sorted(parent_addresses)}"
+
+
+def test_resolve_function_parents_aggregate_of_aggregate_stops_at_boundary():
+    # avg(sum(val1) by (group_key)): the outer avg's parents must NOT
+    # surface the rowset grain or row-level keys that sit behind the inner
+    # sum. The inner sum has already collapsed those rows to its own
+    # ``by`` grain; they are only relevant when sourcing the inner sum
+    # itself, not when sourcing the outer avg.
+    env = Environment()
+    env.parse("""
+key row_id int;
+property row_id.year int;
+property row_id.group_key int;
+property row_id.val1 int;
+
+datasource src (
+    row_id,
+    year,
+    group_key,
+    val1,
+)
+grain (row_id)
+query '''select 1 as row_id, 2001 as year, 100 as group_key, 10 as val1''';
+
+with deduped as
+SELECT year, group_key, val1,
+;
+
+auto inner_sum <- sum(deduped.val1) by deduped.group_key;
+
+SELECT
+    avg(inner_sum) as outer_avg,
+;
+""")
+    build_env = env.materialize_for_select()
+    outer = build_env.concepts["local.outer_avg"]
+    assert outer.derivation == Derivation.AGGREGATE
+    parents = resolve_function_parent_concepts(outer, environment=build_env)
+    parent_addresses = {p.address for p in parents}
+    # The inner sum's row-level upstreams (year, val1, the row_id key)
+    # must NOT bleed up to the outer avg's parents.
+    forbidden = {
+        "deduped.year",
+        "deduped.val1",
+        "local.year",
+        "local.val1",
+        "local.row_id",
+    }
+    leaked = forbidden & parent_addresses
+    assert not leaked, (
+        f"row-level upstreams of inner aggregate leaked into outer avg parents: "
+        f"{sorted(leaked)}; full parent set {sorted(parent_addresses)}"
+    )
+
+
+def test_resolve_function_parents_sum_of_filter_on_rowset():
+    # SUM(rowset_col ? rowset_other_col = X) by rowset.group_key:
+    # the SUM's parent concepts must include EVERY component of the
+    # underlying rowset's declared grain, otherwise downstream
+    # materialization will be pruned to just the filter's inputs and
+    # dedup will collapse semantically-distinct rows.
+    env = Environment()
+    env.parse("""
+key row_id int;
+property row_id.year int;
+property row_id.group_key int;
+property row_id.val1 int;
+property row_id.val2 int;
+
+datasource src (
+    row_id,
+    year,
+    group_key,
+    val1,
+    val2,
+)
+grain (row_id)
+query '''select 1 as row_id, 2001 as year, 100 as group_key, 10 as val1, 100 as val2''';
+
+with deduped as
+SELECT year, group_key, val1, val2,
+;
+
+SELECT
+    deduped.group_key as gk,
+    sum(deduped.val1 ? deduped.year = 2001) as v1_2001,
+;
+""")
+    build_env = env.materialize_for_select()
+    sum_concept = build_env.concepts["local.v1_2001"]
+    assert sum_concept.derivation == Derivation.AGGREGATE
+    parents = resolve_function_parent_concepts(sum_concept, environment=build_env)
+    parent_addresses = {p.address for p in parents}
+    # SUM must request every rowset grain component, not just the filter's
+    # inputs (val1, year). Without group_key + val2, the downstream
+    # materialization dedups at a strict subset of the rowset's grain.
+    for required in (
+        "deduped.year",
+        "deduped.group_key",
+        "deduped.val1",
+        "deduped.val2",
+    ):
+        assert (
+            required in parent_addresses
+        ), f"missing {required} from SUM parents; got {sorted(parent_addresses)}"
+
+
 def test_gen_group_node_basic(test_environment, test_environment_graph):
     history = History(base_environment=test_environment)
     test_environment = test_environment.materialize_for_select()

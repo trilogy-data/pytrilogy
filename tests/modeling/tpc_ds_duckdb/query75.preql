@@ -1,0 +1,57 @@
+import unified_sales as sales;
+
+# UNION DISTINCT semantics in the reference's `sales_detail` subquery dedups
+# rows with identical (year, brand, class, cat, manufact, cnt_per_row,
+# amt_per_row) tuples — including across cs/ss/ws — before the outer SUM.
+# Materialize the 7-tuple via the `deduped` rowset; trilogy's implicit
+# GROUP BY at SELECT grain collapses duplicates.
+
+auto cnt_per_row <- sales.quantity - coalesce(sales.return_quantity, 0);
+auto amt_per_row <- sales.ext_sales_price - coalesce(sales.return_amount, 0.0);
+
+with deduped as
+WHERE
+    sales.item.category = 'Books'
+    and sales.date.year in (2001, 2002)
+SELECT
+    sales.date.year,
+    sales.item.brand_id,
+    sales.item.class_id,
+    sales.item.category_id,
+    sales.item.manufacturer_id,
+    cnt_per_row,
+    amt_per_row,
+;
+
+# Per-(brand, class, cat, manufact) prev_yr / curr_yr aggregates over the
+# deduped row stream.
+auto prev_cnt <- sum(deduped.cnt_per_row ? deduped.sales.date.year = 2001)
+    by deduped.sales.item.brand_id, deduped.sales.item.class_id,
+       deduped.sales.item.category_id, deduped.sales.item.manufacturer_id;
+auto curr_cnt <- sum(deduped.cnt_per_row ? deduped.sales.date.year = 2002)
+    by deduped.sales.item.brand_id, deduped.sales.item.class_id,
+       deduped.sales.item.category_id, deduped.sales.item.manufacturer_id;
+auto prev_amt <- sum(deduped.amt_per_row ? deduped.sales.date.year = 2001)
+    by deduped.sales.item.brand_id, deduped.sales.item.class_id,
+       deduped.sales.item.category_id, deduped.sales.item.manufacturer_id;
+auto curr_amt <- sum(deduped.amt_per_row ? deduped.sales.date.year = 2002)
+    by deduped.sales.item.brand_id, deduped.sales.item.class_id,
+       deduped.sales.item.category_id, deduped.sales.item.manufacturer_id;
+
+SELECT
+    2001 as prev_year,
+    2002 as year_,
+    deduped.sales.item.brand_id as i_brand_id,
+    deduped.sales.item.class_id as i_class_id,
+    deduped.sales.item.category_id as i_category_id,
+    deduped.sales.item.manufacturer_id as i_manufact_id,
+    prev_cnt as prev_yr_cnt,
+    curr_cnt as curr_yr_cnt,
+    curr_cnt - prev_cnt as sales_cnt_diff,
+    curr_amt - prev_amt as sales_amt_diff,
+HAVING
+    cast(curr_yr_cnt as numeric(17, 2)) / cast(prev_yr_cnt as numeric(17, 2)) < 0.9
+ORDER BY
+    sales_cnt_diff asc nulls first,
+    sales_amt_diff asc nulls first
+LIMIT 100;

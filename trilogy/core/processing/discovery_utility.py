@@ -291,12 +291,13 @@ def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
     if not base.lineage:
         return upstream
     for x in base.lineage.concept_arguments:
-        # if it's derived from any value in a rowset, ALL rowset items are upstream
+        # if it's derived from any value in a rowset, ALL rowset items are upstream.
+        # use the rowset's already-namespaced derived_concepts rather than splicing
+        # `rowset.name` onto the underlying SELECT's addresses, which would produce
+        # nonsense like `deduped.local.group_key` and silently miss real upstreams.
         if x.derivation == Derivation.ROWSET:
             assert isinstance(x.lineage, BuildRowsetItem), type(x.lineage)
-            for y in x.lineage.rowset.select.output_components:
-                upstream.add(f"{x.lineage.rowset.name}.{y.address}")
-                # upstream = upstream.union(get_upstream_concepts(y, nested=True))
+            upstream.update(x.lineage.rowset.derived_concepts)
         upstream = upstream.union(get_upstream_concepts(x, nested=True))
     return upstream
 

@@ -31,6 +31,60 @@ AGGREGATE_TYPES = (BuildAggregateWrapper,)
 FUNCTION_TYPES = (BuildFunction,)
 
 
+def _walk_aggregate_grain_inputs(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    seen: Set[str] | None = None,
+) -> List[BuildConcept]:
+    """Collect row-identity concepts an aggregate needs from its arg's
+    upstream — without crossing a row-identity boundary.
+
+    Each concept defines its own row identity if it is:
+      - a rowset (row identity = its declared grain)
+      - a property with keys (row identity = its keys)
+
+    Walks through grain-preserving wrappers to find the row identity, then
+    stops:
+      - FilterItem: walk only ``content`` (the value being filtered defines
+        row identity; ``where`` predicates do not)
+      - Function (BASIC): walk all concept args (a row-level expression
+        inherits row identity from its inputs)
+      - AGGREGATE / ROWSET: do not descend (the inner aggregate has already
+        collapsed its upstream rows to its own ``by`` grain; a rowset
+        defines a fresh row identity we've already captured)"""
+    seen = seen if seen is not None else set()
+    if concept.address in seen:
+        return []
+    seen.add(concept.address)
+
+    if concept.derivation == Derivation.AGGREGATE:
+        return []
+    if concept.derivation == Derivation.ROWSET:
+        return [
+            environment.concepts[c]
+            for c in concept.grain.components
+            if c in environment.concepts
+        ]
+    if concept.purpose == Purpose.PROPERTY and concept.keys:
+        return [
+            environment.concepts[c] for c in concept.keys if c in environment.concepts
+        ]
+    if concept.lineage is None:
+        return []
+    if isinstance(concept.lineage, BuildFilterItem):
+        # A filter's row identity is its content's; the where clause is a
+        # predicate, not part of the result's row identity.
+        content = concept.lineage.content
+        if isinstance(content, BuildConcept):
+            return _walk_aggregate_grain_inputs(content, environment, seen)
+        return []
+    collected: List[BuildConcept] = []
+    for arg in concept.lineage.concept_arguments:
+        if isinstance(arg, BuildConcept):
+            collected.extend(_walk_aggregate_grain_inputs(arg, environment, seen))
+    return collected
+
+
 def resolve_function_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> List[BuildConcept]:
@@ -56,8 +110,13 @@ def resolve_function_parent_concepts(
         else:
             extra_property_grain = concept.lineage.concept_arguments
         for x in extra_property_grain:
-            if isinstance(x, BuildConcept) and x.purpose == Purpose.PROPERTY and x.keys:
-                base += [environment.concepts[c] for c in x.keys]
+            if isinstance(x, BuildConcept):
+                # Walk wrappers (filter, basic) to surface row-identity
+                # concepts the aggregate needs from each arg: rowset grain
+                # components and property keys. Stops at aggregate
+                # boundaries — an inner aggregate has already collapsed its
+                # upstream rows to its own ``by`` grain.
+                base += _walk_aggregate_grain_inputs(x, environment)
         return unique(base, "address")
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
