@@ -15,6 +15,8 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildUnionDatasource,
+    BuildRowsetLineage,
+    BuildRowsetItem,
     BuildWhereClause,
     LooseBuildConceptList,
 )
@@ -58,6 +60,10 @@ def resolve_function_parent_concepts(
         for x in extra_property_grain:
             if isinstance(x, BuildConcept) and x.purpose == Purpose.PROPERTY and x.keys:
                 base += [environment.concepts[c] for c in x.keys]
+            if isinstance(x, BuildConcept) and x.derivation == Derivation.ROWSET:
+                # a rowset must always be fetched with the grain keys at a minimum
+                assert isinstance(x.lineage, BuildRowsetItem)
+                base += [environment.concepts[c] for c in x.lineage.rowset.select.grain.components]
         return unique(base, "address")
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")

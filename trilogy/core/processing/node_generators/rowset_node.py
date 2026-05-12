@@ -164,6 +164,7 @@ def gen_rowset_node(
         for x in enrich_node.output_concepts
         if x.address not in enrich_node.hidden_concepts
     ]
+
     return MergeNode(
         input_concepts=non_hidden + non_hidden_enrich,
         output_concepts=non_hidden + local_optional,

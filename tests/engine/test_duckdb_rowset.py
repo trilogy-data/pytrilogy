@@ -1,4 +1,3 @@
-
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +17,7 @@ from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse_text
+from logging import INFO
 
 _ROWSET_DEDUP_FIXTURE = """
 key row_id int;
@@ -74,7 +74,9 @@ auto net_val2 <- val2 - coalesce(return_val2, 0);
 
 SELECT group_key, net_val1, net_val2;
 """)[0].fetchall()
-    assert len(results) == 4, f"expected 4 distinct (gk, val1, val2) rows, got {len(results)}: {results}"
+    assert (
+        len(results) == 4
+    ), f"expected 4 distinct (gk, val1, val2) rows, got {len(results)}: {results}"
     assert {(r[0], r[1], r[2]) for r in results} == {
         (100, 10, 100),
         (100, 10, 200),
@@ -91,7 +93,38 @@ def test_rowset_full_tuple_dedup_with_aggregates():
     # aggregates should resolve via one shared rowset materialization at
     # the rowset's full grain.
     executor = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
+    executor.execute_text(_ROWSET_DEDUP_FIXTURE)
+    results = executor.execute_text("""
+auto net_val1 <- val1 - coalesce(return_val1, 0);
+auto net_val2 <- val2 - coalesce(return_val2, 0);
+
+with deduped as
+SELECT group_key, net_val1, net_val2,
+;
+
+SELECT
+    deduped.group_key as gk,
+    sum(deduped.net_val1) as total_val1,
+;
+""")[0].fetchall()
+    assert len(results) == 1
+    row = results[0]
+    assert row.gk == 100
+    # 4 distinct (group_key, net_val1, net_val2) rows: sums should be 10+10+20+20=60 and 100+200+100+200=600
+    assert (
+        row.total_val1 == 60
+    ), f"expected 60, got {row.total_val1} (per-column dedup of net_val1 collapsed 4 rows to 2)"
+
+
+def test_rowset_full_tuple_dedup_with_aggregates_two():
+    # Same rowset shape, but with two SUM aggregates over the rowset's
+    # row-level columns. This is the q75-shape bug: each aggregate plans
+    # its own rowset materialization pruned to its own column, silently
+    # splitting the rowset's declared grain across consumers. Both
+    # aggregates should resolve via one shared rowset materialization at
+    # the rowset's full grain.
+    executor = Dialects.DUCK_DB.default_executor()
+
     executor.execute_text(_ROWSET_DEDUP_FIXTURE)
     results = executor.execute_text("""
 auto net_val1 <- val1 - coalesce(return_val1, 0);
@@ -111,8 +144,12 @@ SELECT
     row = results[0]
     assert row.gk == 100
     # 4 distinct (group_key, net_val1, net_val2) rows: sums should be 10+10+20+20=60 and 100+200+100+200=600
-    assert row.total_val1 == 60, f"expected 60, got {row.total_val1} (per-column dedup of net_val1 collapsed 4 rows to 2)"
-    assert row.total_val2 == 600, f"expected 600, got {row.total_val2} (per-column dedup of net_val2 collapsed 4 rows to 2)"
+    assert (
+        row.total_val1 == 60
+    ), f"expected 60, got {row.total_val1} (per-column dedup of net_val1 collapsed 4 rows to 2)"
+    assert (
+        row.total_val2 == 600
+    ), f"expected 600, got {row.total_val2} (per-column dedup of net_val2 collapsed 4 rows to 2)"
 
 
 # Variant: source has a 'year' column distinguishing rows. The q75 shape
@@ -177,6 +214,7 @@ def test_rowset_full_tuple_dedup_with_filtered_aggregates():
     # aggregates (val1 ∈ {2001, 2002} × val2 ∈ {2001, 2002}).
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_ROWSET_DEDUP_YEAR_FIXTURE)
+    DebuggingHook(INFO)
     results = executor.execute_text("""
 auto net_val1 <- val1 - coalesce(return_val1, 0);
 auto net_val2 <- val2 - coalesce(return_val2, 0);
