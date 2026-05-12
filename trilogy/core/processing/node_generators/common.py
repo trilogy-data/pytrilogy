@@ -15,8 +15,6 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildUnionDatasource,
-    BuildRowsetLineage,
-    BuildRowsetItem,
     BuildWhereClause,
     LooseBuildConceptList,
 )
@@ -33,36 +31,57 @@ AGGREGATE_TYPES = (BuildAggregateWrapper,)
 FUNCTION_TYPES = (BuildFunction,)
 
 
-def _walk_to_rowset_grain(
+def _walk_aggregate_grain_inputs(
     concept: BuildConcept,
     environment: BuildEnvironment,
     seen: Set[str] | None = None,
 ) -> List[BuildConcept]:
-    """Walk a concept's lineage searching for any rowset source. When found,
-    yield the rowset-namespaced grain components (taken from the concept's
-    own ``grain`` so downstream discovery sees the rowset CTE outputs, not
-    the underlying SELECT's source addresses).
+    """Collect row-identity concepts an aggregate needs from its arg's
+    upstream — without crossing a row-identity boundary.
 
-    Aggregating over a wrapper (filter, basic) whose input is a rowset still
-    needs the rowset's full grain materialized — otherwise the rowset CTE
-    dedups at a strict subset of its declared grain and collapses rows that
-    the rowset marked distinct."""
+    Each concept defines its own row identity if it is:
+      - a rowset (row identity = its declared grain)
+      - a property with keys (row identity = its keys)
+
+    Walks through grain-preserving wrappers to find the row identity, then
+    stops:
+      - FilterItem: walk only ``content`` (the value being filtered defines
+        row identity; ``where`` predicates do not)
+      - Function (BASIC): walk all concept args (a row-level expression
+        inherits row identity from its inputs)
+      - AGGREGATE / ROWSET: do not descend (the inner aggregate has already
+        collapsed its upstream rows to its own ``by`` grain; a rowset
+        defines a fresh row identity we've already captured)"""
     seen = seen if seen is not None else set()
     if concept.address in seen:
         return []
     seen.add(concept.address)
+
+    if concept.derivation == Derivation.AGGREGATE:
+        return []
     if concept.derivation == Derivation.ROWSET:
         return [
             environment.concepts[c]
             for c in concept.grain.components
             if c in environment.concepts
         ]
+    if concept.purpose == Purpose.PROPERTY and concept.keys:
+        return [
+            environment.concepts[c] for c in concept.keys if c in environment.concepts
+        ]
     if concept.lineage is None:
+        return []
+    if isinstance(concept.lineage, BuildFilterItem):
+        # A filter's row identity is its content's; the where clause is a
+        # predicate, not part of the result's row identity.
+        content = concept.lineage.content
+        if isinstance(content, BuildConcept):
+            return _walk_aggregate_grain_inputs(content, environment, seen)
         return []
     collected: List[BuildConcept] = []
     for arg in concept.lineage.concept_arguments:
         if isinstance(arg, BuildConcept):
-            collected.extend(_walk_to_rowset_grain(arg, environment, seen))
+            collected.extend(_walk_aggregate_grain_inputs(arg, environment, seen))
     return collected
 
 
@@ -91,13 +110,13 @@ def resolve_function_parent_concepts(
         else:
             extra_property_grain = concept.lineage.concept_arguments
         for x in extra_property_grain:
-            if isinstance(x, BuildConcept) and x.purpose == Purpose.PROPERTY and x.keys:
-                base += [environment.concepts[c] for c in x.keys]
             if isinstance(x, BuildConcept):
-                # a rowset must always be fetched with the grain keys at a
-                # minimum; walk lineage so wrappers (filter, basic) over a
-                # rowset still surface its declared grain
-                base += _walk_to_rowset_grain(x, environment)
+                # Walk wrappers (filter, basic) to surface row-identity
+                # concepts the aggregate needs from each arg: rowset grain
+                # components and property keys. Stops at aggregate
+                # boundaries — an inner aggregate has already collapsed its
+                # upstream rows to its own ``by`` grain.
+                base += _walk_aggregate_grain_inputs(x, environment)
         return unique(base, "address")
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
