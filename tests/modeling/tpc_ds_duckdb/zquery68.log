@@ -1,5 +1,5 @@
 query_id = "68"
-gen_length = 3031
+gen_length = 3115
 generated_sql = """
 
 WITH 
@@ -16,6 +16,7 @@ uneven as (
 SELECT
     \"store_sales_sale_address_customer_address\".\"CA_CITY\" as \"store_sales_sale_address_city\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     sum(\"store_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"list_price\",
     sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"extended_price\",
@@ -32,7 +33,8 @@ WHERE
 GROUP BY
     1,
     2,
-    3)
+    3,
+    4)
 SELECT
     \"wakeful\".\"customer_last_name\" as \"dn_customer_last_name\",
     \"wakeful\".\"customer_first_name\" as \"dn_customer_first_name\",

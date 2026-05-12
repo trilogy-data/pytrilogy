@@ -29,7 +29,12 @@ from trilogy.core.processing.grain_utility import (
     _grain_coverage_addresses,
     concept_source_address,
 )
-from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    GroupNode,
+    MergeNode,
+    RowsetNode,
+    StrategyNode,
+)
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
 
@@ -220,6 +225,24 @@ def check_if_group_required(
     )
 
 
+def _has_rowset_ancestor(node: StrategyNode) -> bool:
+    """Return True if ``node`` is a RowsetNode or a passthrough wrapper
+    over one (basic / filter pushdown into a single rowset parent).
+
+    The rowset CTE downstream is responsible for grain integrity; wrapping
+    it in another GroupNode at a tighter target would silently re-dedup
+    on fewer columns. Walk single-parent chains to catch wrappers that
+    pass the rowset's grain through unchanged.
+    """
+    if isinstance(node, RowsetNode):
+        return True
+    # Only follow a single-parent chain — multi-parent merges introduce a
+    # join boundary where regrouping IS the right thing to do.
+    if len(node.parents) == 1:
+        return _has_rowset_ancestor(node.parents[0])
+    return False
+
+
 def group_if_required_v2(
     root: StrategyNode,
     final: List[BuildConcept],
@@ -240,6 +263,15 @@ def group_if_required_v2(
         if x.address in final or any(c in final for c in x.pseudonyms)
     ]
     if required.required:
+        if _has_rowset_ancestor(root):
+            # The root is (or wraps) a RowsetNode — frozen at the rowset's
+            # full declared grain. Wrapping it in a GroupNode that groups
+            # to a tighter target subset would re-dedup the rowset on
+            # fewer columns and silently shrink the grain (the SELECT
+            # DISTINCT semantic of the rowset). Return root unchanged;
+            # downstream consumers project the subset they need from the
+            # rowset's full output set.
+            return root
         if isinstance(root, MergeNode):
             root.force_group = True
             root.set_output_concepts(targets, rebuild=False, change_visibility=False)

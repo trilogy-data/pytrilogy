@@ -279,10 +279,18 @@ class MergeNode(StrategyNode):
             merged.values(), key=lambda source: source.identifier
         )
 
+        # Compare by address (not BuildConcept object equality) so that an
+        # existence-only parent whose concept objects were rebuilt by a
+        # different planner pass (e.g. the inner select inside a RowsetNode
+        # boundary) is still recognized — otherwise minor lineage/grain
+        # differences would defeat the check and the existence parent
+        # would be cross-joined instead of left as a WHERE subselect.
+        existence_addresses = {y.address for y in self.existence_concepts}
         existence_final = [
             x
             for x in final_datasets
-            if all([y in self.existence_concepts for y in x.output_concepts])
+            if x.output_concepts
+            and all(y.address in existence_addresses for y in x.output_concepts)
         ]
         if len(merged.keys()) == 1:
             final: QueryDatasource | BuildDatasource = list(merged.values())[0]

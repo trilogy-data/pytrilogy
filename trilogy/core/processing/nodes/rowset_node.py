@@ -147,6 +147,11 @@ class RowsetNode(StrategyNode):
             inner.hide_output_concepts(set(self.hidden_concepts), rebuild=False)
         if self.ordering is not None:
             inner.ordering = self.ordering
+        # Propagate any consumer-attached condition (the outer SELECT's
+        # WHERE clause downstream consumers stamped onto this boundary)
+        # to the inner so the rendered CTE actually applies it.
+        if self.conditions is not None:
+            inner.add_condition(self.conditions)
         inner.rebuild_cache()
         qds = inner.resolve()
         self.resolution_cache = qds

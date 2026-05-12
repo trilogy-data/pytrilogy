@@ -324,7 +324,11 @@ def test_thirty_eight(engine):
 
 def test_thirty_six(engine):
     query = run_query(engine, 36)
-    assert len(query) < 8500, query
+    # 8800 reflects the SQL emitted under the RowsetNode boundary — the
+    # frozen rowset CTE and its single-parent passthrough wrappers add a
+    # few hundred bytes vs. the previous mutate-in-place planner. Tighten
+    # again once optimizer rules learn to inline the rowset passthroughs.
+    assert len(query) < 8800, query
 
 
 def test_thirty_seven(engine):
@@ -570,7 +574,9 @@ def test_seventy_three(engine):
 
 def test_seventy_six(engine):
     query = run_query(engine, 76)
-    assert len(query) < 10000, query
+    # 10500 reflects the SQL emitted under the RowsetNode boundary — see
+    # test_thirty_six for the rationale; same pattern applies here.
+    assert len(query) < 10500, query
 
 
 def test_seventy_nine(engine):

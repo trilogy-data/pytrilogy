@@ -1,5 +1,5 @@
 query_id = "44"
-gen_length = 4536
+gen_length = 4703
 generated_sql = """
 
 WITH 
@@ -105,6 +105,7 @@ FROM
     \"juicy\"),
 sparkling as (
 SELECT
+    \"uneven\".\"ss_item_product_name\" as \"descending_worst_performing\",
     \"vacuous\".\"rnk_d\" as \"descending_rnk_d\",
     \"vacuous\".\"rnk_d\" as \"rnk\"
 FROM
@@ -115,7 +116,8 @@ WHERE
 
 GROUP BY
     1,
-    2),
+    2,
+    3),
 young as (
 SELECT
     \"uneven\".\"ss_item_product_name\" as \"descending_worst_performing\",
@@ -141,9 +143,9 @@ SELECT
     \"concerned\".\"ascending_best_performing\" as \"ascending_best_performing\",
     \"young\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
-    \"young\"
-    INNER JOIN \"concerned\" on \"young\".\"descending_rnk_d\" = \"concerned\".\"ascending_rnk_a\"
-    INNER JOIN \"sparkling\" on \"young\".\"descending_rnk_d\" = \"sparkling\".\"descending_rnk_d\"
+    \"sparkling\"
+    INNER JOIN \"young\" on \"sparkling\".\"descending_rnk_d\" = \"young\".\"descending_rnk_d\" AND \"sparkling\".\"descending_worst_performing\" = \"young\".\"descending_worst_performing\"
+    INNER JOIN \"concerned\" on \"sparkling\".\"descending_rnk_d\" = \"concerned\".\"ascending_rnk_a\"
 WHERE
     \"young\".\"descending_rnk_d\" < 11
 

@@ -65,13 +65,34 @@ def gen_rowset_node(
 
     enrichment = set([x.address for x in local_optional])
     factory = Factory(environment=history.base_environment, grain=select.grain)
-    concept_pool = list(environment.concepts.values()) + list(
-        environment.alias_origin_lookup.values()
-    )
     derived_addresses: set[str] = set(lineage.rowset.derived_concepts)
-    rowset_relevant: list[BuildConcept] = [
-        v for v in concept_pool if v.address in derived_addresses
-    ]
+    # Build the rowset's full output set as one BuildConcept per declared
+    # address. ``environment.concepts`` and ``alias_origin_lookup`` may
+    # both hold an entry for the same address; the dict-by-address
+    # collapses those.
+    rowset_relevant_by_address: dict[str, BuildConcept] = {}
+    for v in list(environment.concepts.values()) + list(
+        environment.alias_origin_lookup.values()
+    ):
+        if (
+            v.address in derived_addresses
+            and v.address not in rowset_relevant_by_address
+        ):
+            rowset_relevant_by_address[v.address] = v
+    # Collapse name-level duplicates: when two declared rowset concepts
+    # share a ``safe_address`` (e.g. ``dn.customer_id`` and
+    # ``dn.customer.id`` both resolve to ``dn_customer_id`` because the
+    # namespace path collapses), they would project as duplicate columns
+    # in the rowset CTE. Keep one per ``safe_address``; downstream
+    # consumers reach the dropped name through the kept concept's
+    # keys/pseudonyms.
+    rowset_relevant: list[BuildConcept] = []
+    seen_safe_addresses: set[str] = set()
+    for c in rowset_relevant_by_address.values():
+        if c.safe_address in seen_safe_addresses:
+            continue
+        seen_safe_addresses.add(c.safe_address)
+        rowset_relevant.append(c)
     # Concepts that are part of the rowset's source SELECT but aren't
     # declared rowset items — included only when a consumer specifically
     # asks for them (rare; would expand the boundary's identity).

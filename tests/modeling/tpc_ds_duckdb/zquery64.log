@@ -1,5 +1,5 @@
 query_id = "64"
-gen_length = 14250
+gen_length = 14794
 generated_sql = """
 
 WITH 
@@ -143,8 +143,11 @@ charming as (
 SELECT
     \"busy\".\"ss_date_year\" as \"syear_00\",
     \"busy\".\"ss_item_id\" as \"item_sk\",
+    \"busy\".\"ss_item_id\" as \"item_sk_00\",
     \"busy\".\"ss_store_name\" as \"s_name\",
+    \"busy\".\"ss_store_name\" as \"s_name_00\",
     \"busy\".\"ss_store_zip\" as \"s_zip\",
+    \"busy\".\"ss_store_zip\" as \"s_zip_00\",
     count(\"busy\".\"ss_ticket_number\") as \"cnt_00\",
     sum(\"busy\".\"ss_coupon_amt\") as \"s3_00\",
     sum(\"busy\".\"ss_list_price\") as \"s2_00\",
@@ -155,13 +158,18 @@ GROUP BY
     1,
     2,
     3,
-    4),
+    4,
+    5,
+    6,
+    7),
 friendly as (
 SELECT
     \"scrawny\".\"ss_customer_address_city\" as \"ss_customer_address_city\",
     \"scrawny\".\"ss_customer_address_street_name\" as \"ss_customer_address_street_name\",
     \"scrawny\".\"ss_customer_address_street_number\" as \"ss_customer_address_street_number\",
     \"scrawny\".\"ss_customer_address_zip\" as \"ss_customer_address_zip\",
+    \"scrawny\".\"ss_customer_first_sales_date_year\" as \"ss_customer_first_sales_date_year\",
+    \"scrawny\".\"ss_customer_first_shipto_date_year\" as \"ss_customer_first_shipto_date_year\",
     \"scrawny\".\"ss_date_year\" as \"ss_date_year\",
     \"scrawny\".\"ss_item_id\" as \"ss_item_id\",
     \"scrawny\".\"ss_sale_address_city\" as \"ss_sale_address_city\",
@@ -189,8 +197,8 @@ GROUP BY
     10,
     11,
     12,
-    \"scrawny\".\"ss_customer_first_sales_date_year\",
-    \"scrawny\".\"ss_customer_first_shipto_date_year\"),
+    13,
+    14),
 divergent as (
 SELECT
     \"friendly\".\"cnt_99\" as \"cnt_99\",
@@ -201,15 +209,20 @@ SELECT
     \"friendly\".\"ss_customer_address_street_name\" as \"c_str_99\",
     \"friendly\".\"ss_customer_address_street_number\" as \"c_sn_99\",
     \"friendly\".\"ss_customer_address_zip\" as \"c_zip_99\",
+    \"friendly\".\"ss_customer_first_sales_date_year\" as \"fsyear_99\",
+    \"friendly\".\"ss_customer_first_shipto_date_year\" as \"s2year_99\",
     \"friendly\".\"ss_date_year\" as \"syear_99\",
     \"friendly\".\"ss_sale_address_city\" as \"b_city_99\",
     \"friendly\".\"ss_sale_address_street_name\" as \"b_str_99\",
     \"friendly\".\"ss_sale_address_street_number\" as \"b_sn_99\",
     \"friendly\".\"ss_sale_address_zip\" as \"b_zip_99\",
     \"friendly\".\"ss_store_name\" as \"s_name\",
+    \"friendly\".\"ss_store_name\" as \"s_name_99\",
     \"friendly\".\"ss_store_zip\" as \"s_zip\",
+    \"friendly\".\"ss_store_zip\" as \"s_zip_99\",
     \"kaput\".\"ss_item_product_name\" as \"p_name_99\",
-    coalesce(\"friendly\".\"ss_item_id\",\"kaput\".\"ss_item_id\") as \"item_sk\"
+    coalesce(\"friendly\".\"ss_item_id\",\"kaput\".\"ss_item_id\") as \"item_sk\",
+    coalesce(\"friendly\".\"ss_item_id\",\"kaput\".\"ss_item_id\") as \"item_sk_99\"
 FROM
     \"friendly\"
     FULL JOIN \"kaput\" on \"friendly\".\"ss_item_id\" = \"kaput\".\"ss_item_id\")

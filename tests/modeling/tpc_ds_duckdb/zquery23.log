@@ -1,9 +1,9 @@
 query_id = "23"
-gen_length = 7517
+gen_length = 7541
 generated_sql = """
 
 WITH 
-concerned as (
+vacuous as (
 SELECT
      'STORE'  as \"sales_sales_channel\",
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
@@ -33,25 +33,25 @@ GROUP BY
     2,
     3,
     4),
-sweltering as (
+abhorrent as (
 SELECT
-    \"concerned\".\"sales_customer_id\" as \"best_customer_id\",
-    sum(\"concerned\".\"sales_quantity\" * \"concerned\".\"sales_sales_price\") as \"customer_total_overall\"
+    \"vacuous\".\"sales_customer_id\" as \"best_customer_id\",
+    sum(\"vacuous\".\"sales_quantity\" * \"vacuous\".\"sales_sales_price\") as \"customer_total_overall\"
 FROM
-    \"concerned\"
+    \"vacuous\"
 GROUP BY
     1),
-young as (
+concerned as (
 SELECT
-    sum(\"concerned\".\"sales_quantity\" * \"concerned\".\"sales_sales_price\") as \"customer_total_in_window\"
+    sum(\"vacuous\".\"sales_quantity\" * \"vacuous\".\"sales_sales_price\") as \"customer_total_in_window\"
 FROM
-    \"concerned\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"concerned\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    \"vacuous\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"vacuous\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"concerned\".\"sales_customer_id\" is not null and \"concerned\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
+    \"vacuous\".\"sales_customer_id\" is not null and \"vacuous\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003)
 
 GROUP BY
-    \"concerned\".\"sales_customer_id\"),
+    \"vacuous\".\"sales_customer_id\"),
 uneven as (
 SELECT
     \"abundant\".\"sales_item_id\" as \"sales_item_id\",
@@ -62,11 +62,11 @@ GROUP BY
     1,
     \"abundant\".\"sales_date_date\",
     \"abundant\".\"sales_item_desc_truncated\"),
-abhorrent as (
+sparkling as (
 SELECT
-    max(\"young\".\"customer_total_in_window\") as \"max_total_cmax\"
+    max(\"concerned\".\"customer_total_in_window\") as \"max_total_cmax\"
 FROM
-    \"young\"),
+    \"concerned\"),
 yummy as (
 SELECT
     \"uneven\".\"sales_item_id\" as \"frequent_item_id\",
@@ -76,14 +76,14 @@ FROM
 GROUP BY
     1,
     2),
-late as (
+sweltering as (
 SELECT
-    \"abhorrent\".\"max_total_cmax\" as \"max_total_cmax\",
-    \"sweltering\".\"best_customer_id\" as \"best_customer_id\",
-    \"sweltering\".\"customer_total_overall\" as \"customer_total_overall\"
+    \"abhorrent\".\"best_customer_id\" as \"best_customer_id\",
+    \"abhorrent\".\"customer_total_overall\" as \"customer_total_overall\",
+    \"sparkling\".\"max_total_cmax\" as \"max_total_cmax\"
 FROM
-    \"sweltering\"
-    FULL JOIN \"abhorrent\" on 1=1),
+    \"abhorrent\"
+    FULL JOIN \"sparkling\" on 1=1),
 juicy as (
 SELECT
     \"yummy\".\"frequent_item_id\" as \"frequent_items_frequent_item_id\"
@@ -91,16 +91,14 @@ FROM
     \"yummy\"
 WHERE
     \"yummy\".\"ss_combo_count\" > 4
-
-GROUP BY
-    1),
-macho as (
+),
+late as (
 SELECT
-    \"late\".\"best_customer_id\" as \"best_customers_best_customer_id\"
+    \"sweltering\".\"best_customer_id\" as \"best_customers_best_customer_id\"
 FROM
-    \"late\"
+    \"sweltering\"
 WHERE
-    \"late\".\"customer_total_overall\" > 0.5 * \"late\".\"max_total_cmax\"
+    \"sweltering\".\"customer_total_overall\" > 0.5 * \"sweltering\".\"max_total_cmax\"
 ),
 cheerful as (
 SELECT
@@ -114,7 +112,7 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null)
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" in (select late.\"best_customers_best_customer_id\" from late where late.\"best_customers_best_customer_id\" is not null)
 
 UNION ALL
 SELECT
@@ -128,7 +126,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null)
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" in (select late.\"best_customers_best_customer_id\" from late where late.\"best_customers_best_customer_id\" is not null)
 
 UNION ALL
 SELECT
@@ -142,9 +140,9 @@ SELECT
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null)
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" in (select late.\"best_customers_best_customer_id\" from late where late.\"best_customers_best_customer_id\" is not null)
 ),
-scrawny as (
+macho as (
 SELECT
     \"cheerful\".\"sales_quantity\" * \"cheerful\".\"sales_list_price\" as \"_virt_func_multiply_8507033399516423\",
     \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
@@ -154,8 +152,10 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"cheerful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"late\" on 1=1
+    INNER JOIN \"juicy\" on 1=1
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2 and \"cheerful\".\"sales_item_id\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"cheerful\".\"sales_customer_id\" in (select macho.\"best_customers_best_customer_id\" from macho where macho.\"best_customers_best_customer_id\" is not null)
+    \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2 and \"cheerful\".\"sales_item_id\" in (select juicy.\"frequent_items_frequent_item_id\" from juicy where juicy.\"frequent_items_frequent_item_id\" is not null) and \"cheerful\".\"sales_customer_id\" in (select late.\"best_customers_best_customer_id\" from late where late.\"best_customers_best_customer_id\" is not null)
 
 GROUP BY
     1,
@@ -164,27 +164,27 @@ GROUP BY
     4,
     \"cheerful\".\"sales_item_id\",
     \"cheerful\".\"sales_order_id\"),
-friendly as (
+scrawny as (
 SELECT
-    \"scrawny\".\"sales_customer_first_name\" as \"c_first_name\",
-    \"scrawny\".\"sales_customer_last_name\" as \"c_last_name\",
-    sum(CASE WHEN \"scrawny\".\"sales_sales_channel\" in ('WEB','CATALOG') THEN \"scrawny\".\"_virt_func_multiply_8507033399516423\" ELSE NULL END) as \"sales_total\"
+    \"macho\".\"sales_customer_first_name\" as \"c_first_name\",
+    \"macho\".\"sales_customer_last_name\" as \"c_last_name\",
+    sum(CASE WHEN \"macho\".\"sales_sales_channel\" in ('WEB','CATALOG') THEN \"macho\".\"_virt_func_multiply_8507033399516423\" ELSE NULL END) as \"sales_total\"
 FROM
-    \"scrawny\"
+    \"macho\"
 GROUP BY
     1,
     2)
 SELECT
-    \"friendly\".\"c_last_name\" as \"c_last_name\",
-    \"friendly\".\"c_first_name\" as \"c_first_name\",
-    \"friendly\".\"sales_total\" as \"sales_total\"
+    \"scrawny\".\"c_last_name\" as \"c_last_name\",
+    \"scrawny\".\"c_first_name\" as \"c_first_name\",
+    \"scrawny\".\"sales_total\" as \"sales_total\"
 FROM
-    \"friendly\"
+    \"scrawny\"
 WHERE
-    \"friendly\".\"sales_total\" > 0
+    \"scrawny\".\"sales_total\" > 0
 
 ORDER BY 
-    \"friendly\".\"c_last_name\" asc nulls first,
-    \"friendly\".\"c_first_name\" asc nulls first,
-    \"friendly\".\"sales_total\" asc nulls first
+    \"scrawny\".\"c_last_name\" asc nulls first,
+    \"scrawny\".\"c_first_name\" asc nulls first,
+    \"scrawny\".\"sales_total\" asc nulls first
 LIMIT (100)"""

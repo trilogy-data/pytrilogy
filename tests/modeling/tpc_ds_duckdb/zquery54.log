@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 5115
+gen_length = 5153
 generated_sql = """
 
 WITH 
@@ -101,6 +101,7 @@ FROM
 GROUP BY
     1,
     2,
+    \"concerned\".\"cust_ss_ss_cust_id\",
     \"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\"),
 macho as (
 SELECT

@@ -1,5 +1,5 @@
 query_id = "70"
-gen_length = 10755
+gen_length = 11898
 generated_sql = """
 
 WITH 
@@ -72,6 +72,7 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -87,6 +88,7 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -104,6 +106,7 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -119,6 +122,7 @@ SELECT
 FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"yummy\" on 1=1
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -130,6 +134,7 @@ SELECT
 FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"yummy\" on 1=1
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -141,6 +146,7 @@ SELECT
 FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"yummy\" on 1=1
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -152,6 +158,7 @@ SELECT
 FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"yummy\" on 1=1
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -163,6 +170,7 @@ SELECT
 FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"yummy\" on 1=1
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -174,6 +182,7 @@ SELECT
 FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"yummy\" on 1=1
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -185,6 +194,7 @@ SELECT
 FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"yummy\" on 1=1
+    INNER JOIN \"abundant\" on 1=1
 WHERE
     \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
 
@@ -245,6 +255,7 @@ charming as (
 SELECT
     \"busy\".\"rank_b\" as \"rank_b\",
     \"busy\".\"state_b\" as \"s_state\",
+    \"busy\".\"state_b\" as \"state_b\",
     \"busy\".\"total_b\" as \"total_b\",
     \"late\".\"lochierarchy_b\" as \"lochierarchy\",
     \"macho\".\"null_county_b\" as \"s_county\"
@@ -254,9 +265,11 @@ FROM
     FULL JOIN \"busy\" on 1=1),
 sweltering as (
 SELECT
+    \"abhorrent\".\"county_a\" as \"county_a\",
     \"abhorrent\".\"county_a\" as \"s_county\",
     \"abhorrent\".\"rank_a\" as \"rank_a\",
     \"abhorrent\".\"state_a\" as \"s_state\",
+    \"abhorrent\".\"state_a\" as \"state_a\",
     \"abhorrent\".\"total_a\" as \"total_a\",
     \"juicy\".\"lochierarchy_a\" as \"lochierarchy\"
 FROM
@@ -264,6 +277,13 @@ FROM
     FULL JOIN \"juicy\" on 1=1),
 sedate as (
 SELECT
+    \"charming\".\"rank_b\" as \"rank_b\",
+    \"charming\".\"state_b\" as \"state_b\",
+    \"charming\".\"total_b\" as \"total_b\",
+    \"sweltering\".\"county_a\" as \"county_a\",
+    \"sweltering\".\"rank_a\" as \"rank_a\",
+    \"sweltering\".\"state_a\" as \"state_a\",
+    \"sweltering\".\"total_a\" as \"total_a\",
     coalesce(\"charming\".\"lochierarchy\",\"hard\".\"lochierarchy\",\"sweltering\".\"lochierarchy\") as \"lochierarchy\",
     coalesce(\"charming\".\"s_county\",\"hard\".\"s_county\",\"sweltering\".\"s_county\") as \"s_county\",
     coalesce(\"charming\".\"s_state\",\"hard\".\"s_state\",\"sweltering\".\"s_state\") as \"s_state\",
@@ -288,7 +308,22 @@ GROUP BY
     2,
     3,
     4,
-    5
+    5,
+    \"quizzical\".\"lochierarchy_a\",
+    \"quizzical\".\"lochierarchy_b\",
+    \"quizzical\".\"lochierarchy_c\",
+    \"quizzical\".\"null_county_b\",
+    \"quizzical\".\"null_county_c\",
+    \"quizzical\".\"null_state_c\",
+    \"quizzical\".\"rank_c\",
+    \"sedate\".\"county_a\",
+    \"sedate\".\"rank_a\",
+    \"sedate\".\"rank_b\",
+    \"sedate\".\"state_a\",
+    \"sedate\".\"state_b\",
+    \"sedate\".\"total_a\",
+    \"sedate\".\"total_b\",
+    \"yellow\".\"total_c\"
 ORDER BY 
     \"q70_results_lochierarchy\" desc nulls first,
     CASE

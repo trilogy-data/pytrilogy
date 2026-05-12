@@ -1,5 +1,5 @@
 query_id = "36"
-gen_length = 7972
+gen_length = 8799
 generated_sql = """
 
 WITH 
@@ -187,6 +187,7 @@ FROM
     FULL JOIN \"kaput\" on 1=1),
 sweltering as (
 SELECT
+    \"abhorrent\".\"category_b\" as \"category_b\",
     \"abhorrent\".\"category_b\" as \"i_category\",
     \"abhorrent\".\"gm_b\" as \"gm_b\",
     \"abhorrent\".\"rank_b\" as \"rank_b\",
@@ -198,7 +199,9 @@ FROM
     FULL JOIN \"young\" on 1=1),
 vacuous as (
 SELECT
+    \"juicy\".\"category_a\" as \"category_a\",
     \"juicy\".\"category_a\" as \"i_category\",
+    \"juicy\".\"class_a\" as \"class_a\",
     \"juicy\".\"class_a\" as \"i_class\",
     \"juicy\".\"gm_a\" as \"gm_a\",
     \"juicy\".\"rank_a\" as \"rank_a\",
@@ -208,6 +211,13 @@ FROM
     FULL JOIN \"questionable\" on 1=1),
 charming as (
 SELECT
+    \"sweltering\".\"category_b\" as \"category_b\",
+    \"sweltering\".\"gm_b\" as \"gm_b\",
+    \"sweltering\".\"rank_b\" as \"rank_b\",
+    \"vacuous\".\"category_a\" as \"category_a\",
+    \"vacuous\".\"class_a\" as \"class_a\",
+    \"vacuous\".\"gm_a\" as \"gm_a\",
+    \"vacuous\".\"rank_a\" as \"rank_a\",
     coalesce(\"busy\".\"i_category\",\"sweltering\".\"i_category\",\"vacuous\".\"i_category\") as \"i_category\",
     coalesce(\"busy\".\"i_class\",\"sweltering\".\"i_class\",\"vacuous\".\"i_class\") as \"i_class\",
     coalesce(\"busy\".\"lochierarchy\",\"sweltering\".\"lochierarchy\",\"vacuous\".\"lochierarchy\") as \"lochierarchy\",
@@ -232,7 +242,22 @@ GROUP BY
     2,
     3,
     4,
-    5
+    5,
+    \"charming\".\"category_a\",
+    \"charming\".\"category_b\",
+    \"charming\".\"class_a\",
+    \"charming\".\"gm_a\",
+    \"charming\".\"gm_b\",
+    \"charming\".\"rank_a\",
+    \"charming\".\"rank_b\",
+    \"protective\".\"gm_c\",
+    \"quizzical\".\"lochierarchy_a\",
+    \"quizzical\".\"lochierarchy_b\",
+    \"quizzical\".\"lochierarchy_c\",
+    \"quizzical\".\"null_category_c\",
+    \"quizzical\".\"null_class_b\",
+    \"quizzical\".\"null_class_c\",
+    \"quizzical\".\"rank_c\"
 ORDER BY 
     \"q36_results_lochierarchy\" desc nulls first,
     CASE

@@ -1,5 +1,5 @@
 query_id = "86"
-gen_length = 5041
+gen_length = 5884
 generated_sql = """
 
 WITH 
@@ -85,7 +85,9 @@ FROM
 juicy as (
 SELECT
     \"quizzical\".\"lochierarchy_a\" as \"lochierarchy\",
+    \"yummy\".\"category_a\" as \"category_a\",
     \"yummy\".\"category_a\" as \"i_category\",
+    \"yummy\".\"class_a\" as \"class_a\",
     \"yummy\".\"class_a\" as \"i_class\",
     \"yummy\".\"rank_a\" as \"rank_a\",
     \"yummy\".\"total_a\" as \"total_a\"
@@ -94,6 +96,7 @@ FROM
     FULL JOIN \"quizzical\" on 1=1),
 abundant as (
 SELECT
+    \"questionable\".\"category_b\" as \"category_b\",
     \"questionable\".\"category_b\" as \"i_category\",
     \"questionable\".\"rank_b\" as \"rank_b\",
     \"questionable\".\"total_b\" as \"total_b\",
@@ -104,6 +107,13 @@ FROM
     FULL JOIN \"quizzical\" on 1=1),
 sparkling as (
 SELECT
+    \"abundant\".\"category_b\" as \"category_b\",
+    \"abundant\".\"rank_b\" as \"rank_b\",
+    \"abundant\".\"total_b\" as \"total_b\",
+    \"juicy\".\"category_a\" as \"category_a\",
+    \"juicy\".\"class_a\" as \"class_a\",
+    \"juicy\".\"rank_a\" as \"rank_a\",
+    \"juicy\".\"total_a\" as \"total_a\",
     coalesce(\"abundant\".\"i_category\",\"juicy\".\"i_category\",\"young\".\"i_category\") as \"i_category\",
     coalesce(\"abundant\".\"i_class\",\"juicy\".\"i_class\",\"young\".\"i_class\") as \"i_class\",
     coalesce(\"abundant\".\"lochierarchy\",\"juicy\".\"lochierarchy\",\"young\".\"lochierarchy\") as \"lochierarchy\",
@@ -128,7 +138,22 @@ GROUP BY
     2,
     3,
     4,
-    5
+    5,
+    \"abhorrent\".\"total_c\",
+    \"quizzical\".\"lochierarchy_a\",
+    \"quizzical\".\"lochierarchy_b\",
+    \"quizzical\".\"lochierarchy_c\",
+    \"quizzical\".\"null_category_c\",
+    \"quizzical\".\"null_class_b\",
+    \"quizzical\".\"null_class_c\",
+    \"quizzical\".\"rank_c\",
+    \"sparkling\".\"category_a\",
+    \"sparkling\".\"category_b\",
+    \"sparkling\".\"class_a\",
+    \"sparkling\".\"rank_a\",
+    \"sparkling\".\"rank_b\",
+    \"sparkling\".\"total_a\",
+    \"sparkling\".\"total_b\"
 ORDER BY 
     \"q86_results_lochierarchy\" desc nulls first,
     CASE

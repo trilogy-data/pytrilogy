@@ -1,5 +1,5 @@
 query_id = "76"
-gen_length = 9027
+gen_length = 10450
 generated_sql = """
 
 WITH 
@@ -162,10 +162,13 @@ GROUP BY
 puzzled as (
 SELECT
     \"protective\".\"amt_b\" as \"amt_b\",
+    \"protective\".\"category_b\" as \"category_b\",
     \"protective\".\"category_b\" as \"i_category\",
     \"protective\".\"cnt_b\" as \"cnt_b\",
     \"protective\".\"qoy_b\" as \"d_qoy\",
+    \"protective\".\"qoy_b\" as \"qoy_b\",
     \"protective\".\"year_b\" as \"d_year\",
+    \"protective\".\"year_b\" as \"year_b\",
     \"uneven\".\"channel_b\" as \"channel\",
     \"uneven\".\"col_name_b\" as \"col_name\"
 FROM
@@ -174,10 +177,13 @@ FROM
 macho as (
 SELECT
     \"sweltering\".\"amt_a\" as \"amt_a\",
+    \"sweltering\".\"category_a\" as \"category_a\",
     \"sweltering\".\"category_a\" as \"i_category\",
     \"sweltering\".\"cnt_a\" as \"cnt_a\",
     \"sweltering\".\"qoy_a\" as \"d_qoy\",
+    \"sweltering\".\"qoy_a\" as \"qoy_a\",
     \"sweltering\".\"year_a\" as \"d_year\",
+    \"sweltering\".\"year_a\" as \"year_a\",
     \"uneven\".\"channel_a\" as \"channel\",
     \"uneven\".\"col_name_a\" as \"col_name\"
 FROM
@@ -186,10 +192,13 @@ FROM
 yummy as (
 SELECT
     \"questionable\".\"amt_c\" as \"amt_c\",
+    \"questionable\".\"category_c\" as \"category_c\",
     \"questionable\".\"category_c\" as \"i_category\",
     \"questionable\".\"cnt_c\" as \"cnt_c\",
     \"questionable\".\"qoy_c\" as \"d_qoy\",
+    \"questionable\".\"qoy_c\" as \"qoy_c\",
     \"questionable\".\"year_c\" as \"d_year\",
+    \"questionable\".\"year_c\" as \"year_c\",
     \"uneven\".\"channel_c\" as \"channel\",
     \"uneven\".\"col_name_c\" as \"col_name\"
 FROM
@@ -197,6 +206,21 @@ FROM
     FULL JOIN \"uneven\" on 1=1),
 waggish as (
 SELECT
+    \"macho\".\"amt_a\" as \"amt_a\",
+    \"macho\".\"category_a\" as \"category_a\",
+    \"macho\".\"cnt_a\" as \"cnt_a\",
+    \"macho\".\"qoy_a\" as \"qoy_a\",
+    \"macho\".\"year_a\" as \"year_a\",
+    \"puzzled\".\"amt_b\" as \"amt_b\",
+    \"puzzled\".\"category_b\" as \"category_b\",
+    \"puzzled\".\"cnt_b\" as \"cnt_b\",
+    \"puzzled\".\"qoy_b\" as \"qoy_b\",
+    \"puzzled\".\"year_b\" as \"year_b\",
+    \"yummy\".\"amt_c\" as \"amt_c\",
+    \"yummy\".\"category_c\" as \"category_c\",
+    \"yummy\".\"cnt_c\" as \"cnt_c\",
+    \"yummy\".\"qoy_c\" as \"qoy_c\",
+    \"yummy\".\"year_c\" as \"year_c\",
     coalesce(\"macho\".\"amt_a\",\"puzzled\".\"amt_b\",\"yummy\".\"amt_c\") as \"sales_amt\",
     coalesce(\"macho\".\"channel\",\"puzzled\".\"channel\",\"yummy\".\"channel\") as \"channel\",
     coalesce(\"macho\".\"cnt_a\",\"puzzled\".\"cnt_b\",\"yummy\".\"cnt_c\") as \"sales_cnt\",
@@ -226,7 +250,28 @@ GROUP BY
     4,
     5,
     6,
-    7
+    7,
+    \"uneven\".\"channel_a\",
+    \"uneven\".\"channel_b\",
+    \"uneven\".\"channel_c\",
+    \"uneven\".\"col_name_a\",
+    \"uneven\".\"col_name_b\",
+    \"uneven\".\"col_name_c\",
+    \"waggish\".\"amt_a\",
+    \"waggish\".\"amt_b\",
+    \"waggish\".\"amt_c\",
+    \"waggish\".\"category_a\",
+    \"waggish\".\"category_b\",
+    \"waggish\".\"category_c\",
+    \"waggish\".\"cnt_a\",
+    \"waggish\".\"cnt_b\",
+    \"waggish\".\"cnt_c\",
+    \"waggish\".\"qoy_a\",
+    \"waggish\".\"qoy_b\",
+    \"waggish\".\"qoy_c\",
+    \"waggish\".\"year_a\",
+    \"waggish\".\"year_b\",
+    \"waggish\".\"year_c\"
 ORDER BY 
     \"q76_results_channel\" asc nulls first,
     \"q76_results_col_name\" asc nulls first,

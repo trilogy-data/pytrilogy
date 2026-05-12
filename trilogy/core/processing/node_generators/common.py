@@ -14,7 +14,6 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
-    BuildRowsetItem,
     BuildUnionDatasource,
     BuildWhereClause,
     LooseBuildConceptList,
@@ -59,60 +58,9 @@ def resolve_function_parent_concepts(
         for x in extra_property_grain:
             if isinstance(x, BuildConcept) and x.purpose == Purpose.PROPERTY and x.keys:
                 base += [environment.concepts[c] for c in x.keys]
-            # Resolving a concept that is (or transitively wraps) a rowset
-            # item must pull in the rowset's full declared output set —
-            # those siblings define the rowset's grain (SELECT DISTINCT
-            # semantic). Without this, two consumers of different rowset
-            # outputs request different parent grains, plan independently,
-            # and each materializes the rowset pruned to its own subset of
-            # columns — silently splitting the rowset's declared grain
-            # across consumers. Walks lineage to handle inline-filter
-            # autos (`_virt_filter_*`) and other BASIC wrappers.
-            if isinstance(x, BuildConcept):
-                base += _collect_rowset_siblings(x, environment)
         return unique(base, "address")
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
-
-
-def _collect_rowset_siblings(
-    concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
-    """Walk lineage to find rowset items the concept depends on, then
-    return all sibling outputs of those rowsets that aren't the item
-    itself. Returns the concepts that — together with the rowset item —
-    define the rowset's declared grain (SELECT DISTINCT semantic)."""
-    seen: set[str] = set()
-    rowset_items: list[BuildConcept] = []
-    stack: list[BuildConcept] = [concept]
-    while stack:
-        c = stack.pop()
-        if c.address in seen:
-            continue
-        seen.add(c.address)
-        if isinstance(c.lineage, BuildRowsetItem):
-            rowset_items.append(c)
-            # don't recurse through the rowset item's content; the rowset
-            # is the boundary
-            continue
-        if c.lineage is None:
-            continue
-        for arg in c.lineage.concept_arguments:
-            if arg.address not in seen:
-                stack.append(arg)
-    siblings: list[BuildConcept] = []
-    sibling_addresses: set[str] = set()
-    for item in rowset_items:
-        assert isinstance(item.lineage, BuildRowsetItem)
-        for addr in item.lineage.rowset.derived_concepts:
-            if (
-                addr != item.address
-                and addr not in sibling_addresses
-                and addr in environment.concepts
-            ):
-                siblings.append(environment.concepts[addr])
-                sibling_addresses.add(addr)
-    return siblings
 
 
 def resolve_condition_parent_concepts(
