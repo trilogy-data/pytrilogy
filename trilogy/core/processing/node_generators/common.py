@@ -15,6 +15,8 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildUnionDatasource,
+    BuildRowsetLineage,
+    BuildRowsetItem,
     BuildWhereClause,
     LooseBuildConceptList,
 )
