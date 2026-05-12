@@ -1,0 +1,114 @@
+import catalog_sales as cs;
+import catalog_returns as cr;
+import store_sales as ss;
+import web_sales as ws;
+import web_returns as wr;
+
+# Catalog returns aggregated per call_center (NULL group included via
+# coalesce sentinel), then folded to a 1-row scalar so the catalog branch
+# can broadcast: per-id sales/profit get multiplied by N_cr_groups, per-id
+# returns/loss broadcast as the total. This replicates the reference's
+# `FROM cs , cr` (CROSS JOIN with no key) catalog branch.
+with cr_grouped as
+WHERE
+    cr.date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+SELECT
+    coalesce(cr.call_center.id, -1) as cr_cc_key,
+    sum(cr.return_amount) as cr_returns_per_cc,
+    sum(cr.net_loss) as cr_loss_per_cc,
+;
+
+with cr_totals as
+SELECT
+    count(cr_grouped.cr_cc_key) as cr_n_groups,
+    sum(cr_grouped.cr_returns_per_cc) as cr_total_returns,
+    sum(cr_grouped.cr_loss_per_cc) as cr_total_loss,
+;
+
+# Store-side per-store_sk aggregations.
+with ss_grouped as
+WHERE
+    ss.date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+SELECT
+    ss.store.id as ss_store_id,
+    sum(ss.ext_sales_price) as ss_sales,
+    sum(ss.net_profit) as ss_profit,
+;
+
+with sr_grouped as
+WHERE
+    ss.return_date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+SELECT
+    ss.return_store.id as sr_store_id,
+    sum(ss.return_amount) as sr_returns,
+    sum(ss.return_net_loss) as sr_loss,
+;
+merge sr_grouped.sr_store_id into ss_grouped.ss_store_id;
+
+# Web-side per-web_page_sk aggregations.
+with ws_grouped as
+WHERE
+    ws.date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+SELECT
+    ws.web_page.id as ws_wp_id,
+    sum(ws.ext_sales_price) as ws_sales,
+    sum(ws.net_profit) as ws_profit,
+;
+
+with wr_grouped as
+WHERE
+    wr.return_date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+SELECT
+    wr.web_page.id as wr_wp_id,
+    sum(wr.return_amount) as wr_returns,
+    sum(wr.net_loss) as wr_loss,
+;
+merge wr_grouped.wr_wp_id into ws_grouped.ws_wp_id;
+
+# UNION the 3 branches via multi-select with align. The catalog branch is
+# inlined (rather than wrapped in its own rowset) to keep the force_group
+# flag uniform across all multi-select branches — wrapping the cross-join
+# in a rowset hits "can only merge two datasources if the force_group
+# flag is the same" during planning.
+with l0_union as
+WHERE cs.date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+SELECT
+    'catalog channel' as u_channel_c,
+    cs.call_center.id as u_id_c,
+    cast(sum(cs.ext_sales_price) * cr_totals.cr_n_groups as numeric(15, 2)) as u_sales_c,
+    cast(cr_totals.cr_total_returns as numeric(15, 2)) as u_returns_c,
+    cast(sum(cs.net_profit) * cr_totals.cr_n_groups - cr_totals.cr_total_loss as numeric(15, 2)) as u_profit_c,
+MERGE
+SELECT
+    'store channel' as u_channel_s,
+    ss_grouped.ss_store_id as u_id_s,
+    cast(ss_grouped.ss_sales as numeric(15, 2)) as u_sales_s,
+    cast(coalesce(sr_grouped.sr_returns, 0) as numeric(15, 2)) as u_returns_s,
+    cast(ss_grouped.ss_profit - coalesce(sr_grouped.sr_loss, 0) as numeric(15, 2)) as u_profit_s,
+MERGE
+SELECT
+    'web channel' as u_channel_w,
+    ws_grouped.ws_wp_id as u_id_w,
+    cast(ws_grouped.ws_sales as numeric(15, 2)) as u_sales_w,
+    cast(coalesce(wr_grouped.wr_returns, 0) as numeric(15, 2)) as u_returns_w,
+    cast(ws_grouped.ws_profit - coalesce(wr_grouped.wr_loss, 0) as numeric(15, 2)) as u_profit_w,
+align
+    u_channel: u_channel_c, u_channel_s, u_channel_w
+    AND u_id: u_id_c, u_id_s, u_id_w
+    AND u_sales: u_sales_c, u_sales_s, u_sales_w
+    AND u_returns: u_returns_c, u_returns_s, u_returns_w
+    AND u_profit: u_profit_c, u_profit_s, u_profit_w
+;
+
+# Final ROLLUP(channel, id) over the unioned L0.
+SELECT
+    l0_union.u_channel as channel,
+    l0_union.u_id as id,
+    sum(l0_union.u_sales) by rollup l0_union.u_channel, l0_union.u_id as sales,
+    sum(l0_union.u_returns) by rollup l0_union.u_channel, l0_union.u_id as returns_,
+    sum(l0_union.u_profit) by rollup l0_union.u_channel, l0_union.u_id as profit,
+ORDER BY
+    channel asc nulls first,
+    id asc nulls first,
+    returns_ desc
+LIMIT 100;

@@ -573,6 +573,10 @@ def test_seventy_six(engine):
     assert len(query) < 10000, query
 
 
+def test_seventy_seven(engine):
+    _ = run_query(engine, 77)
+
+
 def test_seventy_nine(engine):
     query = run_query(engine, 79)
     assert len(query) < 8000, query
