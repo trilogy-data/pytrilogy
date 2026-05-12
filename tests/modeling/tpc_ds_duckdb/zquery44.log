@@ -1,5 +1,5 @@
 query_id = "44"
-gen_length = 4536
+gen_length = 4262
 generated_sql = """
 
 WITH 
@@ -103,8 +103,9 @@ SELECT
     rank() over (order by \"juicy\".\"item_avg_profit\" desc ) as \"rnk_d\"
 FROM
     \"juicy\"),
-sparkling as (
+young as (
 SELECT
+    \"uneven\".\"ss_item_product_name\" as \"descending_worst_performing\",
     \"vacuous\".\"rnk_d\" as \"descending_rnk_d\",
     \"vacuous\".\"rnk_d\" as \"rnk\"
 FROM
@@ -115,17 +116,8 @@ WHERE
 
 GROUP BY
     1,
-    2),
-young as (
-SELECT
-    \"uneven\".\"ss_item_product_name\" as \"descending_worst_performing\",
-    \"vacuous\".\"rnk_d\" as \"descending_rnk_d\"
-FROM
-    \"uneven\"
-    INNER JOIN \"vacuous\" on \"uneven\".\"ss_item_id\" = \"vacuous\".\"ss_item_id\"
-GROUP BY
-    1,
-    2),
+    2,
+    3),
 concerned as (
 SELECT
     \"uneven\".\"ss_item_product_name\" as \"ascending_best_performing\",
@@ -137,18 +129,17 @@ GROUP BY
     1,
     2)
 SELECT
-    \"sparkling\".\"rnk\" as \"rnk\",
+    \"young\".\"rnk\" as \"rnk\",
     \"concerned\".\"ascending_best_performing\" as \"ascending_best_performing\",
     \"young\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
     \"young\"
     INNER JOIN \"concerned\" on \"young\".\"descending_rnk_d\" = \"concerned\".\"ascending_rnk_a\"
-    INNER JOIN \"sparkling\" on \"young\".\"descending_rnk_d\" = \"sparkling\".\"descending_rnk_d\"
 WHERE
     \"young\".\"descending_rnk_d\" < 11
 
 ORDER BY 
-    \"sparkling\".\"rnk\" asc nulls first,
+    \"young\".\"rnk\" asc nulls first,
     \"concerned\".\"ascending_best_performing\" desc nulls first,
     \"young\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""
