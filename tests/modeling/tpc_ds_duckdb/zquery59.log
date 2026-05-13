@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 10218
+gen_length = 10368
 generated_sql = """
 
 WITH 
@@ -152,9 +152,9 @@ SELECT
     \"late\".\"ss_store_text_id\" as \"ss_store_text_id\"
 FROM
     \"late\"
-    RIGHT OUTER JOIN \"thoughtful\" on \"late\".\"ss_date_week_seq\" is not distinct from \"thoughtful\".\"ss_date_week_seq\" AND \"late\".\"ss_store_id\" is not distinct from \"thoughtful\".\"ss_store_id\"
+    INNER JOIN \"thoughtful\" on \"late\".\"ss_date_week_seq\" is not distinct from \"thoughtful\".\"ss_date_week_seq\" AND \"late\".\"ss_store_id\" is not distinct from \"thoughtful\".\"ss_store_id\"
 WHERE
-    \"thoughtful\".\"in_year2\" = 1
+    \"thoughtful\".\"in_year2\" = 1 and \"late\".\"ss_store_id\" is not null and \"late\".\"ss_date_week_seq\" is not null
 ),
 yummy as (
 SELECT
@@ -164,9 +164,9 @@ SELECT
     \"uneven\".\"ss_store_text_id\" as \"ss_store_text_id\"
 FROM
     \"uneven\"
-    RIGHT OUTER JOIN \"thoughtful\" on \"uneven\".\"ss_date_week_seq\" is not distinct from \"thoughtful\".\"ss_date_week_seq\" AND \"uneven\".\"ss_store_id\" is not distinct from \"thoughtful\".\"ss_store_id\"
+    INNER JOIN \"thoughtful\" on \"uneven\".\"ss_date_week_seq\" is not distinct from \"thoughtful\".\"ss_date_week_seq\" AND \"uneven\".\"ss_store_id\" is not distinct from \"thoughtful\".\"ss_store_id\"
 WHERE
-    \"thoughtful\".\"in_year1\" = 1
+    \"thoughtful\".\"in_year1\" = 1 and \"uneven\".\"ss_store_id\" is not null and \"uneven\".\"ss_date_week_seq\" is not null
 ),
 divergent as (
 SELECT

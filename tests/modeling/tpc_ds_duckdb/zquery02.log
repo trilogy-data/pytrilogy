@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 5054
+gen_length = 4970
 generated_sql = """
 
 WITH 
@@ -9,18 +9,12 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-WHERE
-     'CATALOG'  in ('WEB','CATALOG')
-
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\"
 FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-WHERE
-     'WEB'  in ('WEB','CATALOG')
-),
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
 cooperative as (
 SELECT
     \"sales_date_date\".\"D_WEEK_SEQ\" as \"relevent_week_seq\"

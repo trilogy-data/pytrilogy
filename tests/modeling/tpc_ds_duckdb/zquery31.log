@@ -1,5 +1,5 @@
 query_id = "31"
-gen_length = 5516
+gen_length = 5452
 generated_sql = """
 
 WITH 
@@ -14,7 +14,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-     'STORE'  in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_QOY\" in (1,2,3)
+    \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_QOY\" in (1,2,3)
 
 UNION ALL
 SELECT
@@ -27,7 +27,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-     'WEB'  in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_QOY\" in (1,2,3)
+    \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_QOY\" in (1,2,3)
 )
 SELECT
     \"sales_bill_address_customer_address\".\"CA_COUNTY\" as \"sales_bill_address_county\",

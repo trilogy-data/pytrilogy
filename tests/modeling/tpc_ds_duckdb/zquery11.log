@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 4720
+gen_length = 4656
 generated_sql = """
 
 WITH 
@@ -15,7 +15,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-     'STORE'  in ('STORE','WEB') and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" in (2001,2002)
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 
 UNION ALL
 SELECT
@@ -29,7 +29,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-     'WEB'  in ('STORE','WEB') and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" in (2001,2002)
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 ),
 thoughtful as (
 SELECT

@@ -1,5 +1,5 @@
 query_id = "39"
-gen_length = 3994
+gen_length = 3868
 generated_sql = """
 
 WITH 
@@ -62,9 +62,6 @@ SELECT
 FROM
     \"questionable\"
     LEFT OUTER JOIN \"abundant\" on 1=1
-WHERE
-    \"questionable\".\"inventory_warehouse_id\" is not null
-
 GROUP BY
     1),
 uneven as (
@@ -73,9 +70,6 @@ SELECT
 FROM
     \"questionable\"
     LEFT OUTER JOIN \"abundant\" on 1=1
-WHERE
-    \"questionable\".\"inventory_warehouse_id\" is not null
-
 GROUP BY
     1),
 juicy as (

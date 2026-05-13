@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 3876
+gen_length = 3812
 generated_sql = """
 
 WITH 
@@ -12,7 +12,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and  'STORE'  in ('WEB','STORE')
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null
 
 UNION ALL
 SELECT
@@ -23,7 +23,7 @@ SELECT
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null and  'WEB'  in ('WEB','STORE')
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null
 ),
 yummy as (
 SELECT

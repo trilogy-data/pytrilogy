@@ -11,7 +11,7 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildWindowItem,
 )
-from trilogy.core.models.execute import BaseJoin, CTE, Join, UnionCTE
+from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     condition_value_implies,
@@ -52,7 +52,7 @@ def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bo
     return False
 
 
-def _branch_constraint_implies(branch: CTE, condition) -> bool:
+def _branch_constraint_implies(branch: CTE | UnionCTE, condition) -> bool:
     """True if the branch's base_datasource ``non_partial_for`` constraint
     value-implies the condition (so the condition is tautologically true on
     rows from this branch). Handles the partial-datasource case where a
@@ -521,12 +521,8 @@ class PredicatePushdownRemove(OptimizationRule):
                     cte_ref = getattr(pair, "cte", None)
                     if cte_ref is not None and cte_ref.name == parent_name:
                         return True
-        for j in cte.source.joins or []:
-            if not isinstance(j, BaseJoin) or j.join_type == JoinType.INNER:
-                continue
-            # BaseJoins target datasources, not CTEs by name — they don't
-            # render a parent_name CTE nullable.
-            continue
+        # BaseJoins on cte.source.joins target datasources, not CTEs by
+        # name, so they can't render a parent_name CTE nullable.
         return False
 
     def optimize(

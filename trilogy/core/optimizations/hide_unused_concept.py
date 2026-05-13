@@ -21,15 +21,6 @@ class HideUnusedConcepts(OptimizationRule):
             self.log(f"Analyzing usage of {cte.name} in {v.name}")
             child_used_map = render_cte_used_map(v)
             used.update(child_used_map.get(cte.name, set()))
-        # Grain concepts pin the CTE's row grain (used by the rendered
-        # GROUP BY). Hiding them would force the renderer to use qualified
-        # column names in the GROUP BY where SELECT positional indices
-        # would otherwise work, and would also remove a concept that is
-        # actually still referenced — just by the CTE itself, not by its
-        # consumers.
-        grain_components = getattr(getattr(cte, "grain", None), "components", None)
-        if grain_components:
-            used.update(grain_components)
         self.log(f"Used concepts for {cte.name}: {used}")
         add_to_hidden: list[BuildConcept] = []
         for concept in cte.output_columns:

@@ -1,5 +1,5 @@
 query_id = "66"
-gen_length = 24994
+gen_length = 24719
 generated_sql = """
 
 WITH 
@@ -20,7 +20,7 @@ FROM
     INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"sales_catalog_sales_unified\".\"CS_SHIP_MODE_SK\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
     INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
-     'CATALOG'  in ('WEB','CATALOG') and \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638
+    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638
 
 UNION ALL
 SELECT
@@ -39,7 +39,7 @@ FROM
     INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"sales_web_sales_unified\".\"WS_SHIP_MODE_SK\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
     INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
-     'WEB'  in ('WEB','CATALOG') and \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638
+    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638
 ),
 quizzical as (
 SELECT
@@ -48,7 +48,6 @@ SELECT
 cooperative as (
 SELECT
     \"thoughtful\".\"sales_date_id\" as \"sales_date_id\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"thoughtful\".\"sales_ship_mode_id\" as \"sales_ship_mode_id\",
     \"thoughtful\".\"sales_time_id\" as \"sales_time_id\",
     \"thoughtful\".\"sales_warehouse_id\" as \"sales_warehouse_id\"
@@ -59,7 +58,7 @@ GROUP BY
     2,
     3,
     4,
-    5),
+    \"thoughtful\".\"sales_sales_channel\"),
 young as (
 SELECT
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
@@ -149,7 +148,6 @@ GROUP BY
     7),
 yummy as (
 SELECT
-    \"cooperative\".\"sales_sales_channel\" as \"sales_sales_channel\",
     \"cooperative\".\"sales_warehouse_id\" as \"sales_warehouse_id\"
 FROM
     \"cooperative\"
@@ -305,9 +303,6 @@ SELECT
 FROM
     \"quizzical\"
     RIGHT OUTER JOIN \"yummy\" on 1=1
-WHERE
-    \"yummy\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"yummy\".\"sales_warehouse_id\" is not null
-
 GROUP BY
     1)
 SELECT

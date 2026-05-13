@@ -1,12 +1,13 @@
 query_id = "82"
-gen_length = 1617
+gen_length = 1756
 generated_sql = """
 
 WITH 
 wakeful as (
 SELECT
     \"inventory_warehouse_inventory\".\"inv_date_sk\" as \"inventory_date_id\",
-    \"inventory_warehouse_inventory\".\"inv_item_sk\" as \"store_sales_item_id\"
+    \"inventory_warehouse_inventory\".\"inv_item_sk\" as \"store_sales_item_id\",
+    \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\"
 FROM
     \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
 WHERE
@@ -15,7 +16,7 @@ WHERE
 GROUP BY
     1,
     2,
-    \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\")
+    3)
 SELECT
     \"inventory_item_items\".\"I_ITEM_ID\" as \"inventory_item_name\",
     \"inventory_item_items\".\"I_ITEM_DESC\" as \"inventory_item_desc\",
@@ -26,7 +27,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"wakeful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"item\" as \"inventory_item_items\" on \"store_sales_item_items\".\"I_ITEM_SK\" = \"inventory_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"inventory_item_items\".\"I_CURRENT_PRICE\" >= 62 and \"inventory_item_items\".\"I_CURRENT_PRICE\" <= 92 and cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-05-25' and cast(\"inventory_date_date\".\"D_DATE\" as date) <= date '2000-07-24' and \"inventory_item_items\".\"I_MANUFACT_ID\" in (129,270,821,423) and \"store_sales_item_items\".\"I_ITEM_SK\" is not null
+    \"inventory_item_items\".\"I_CURRENT_PRICE\" >= 62 and \"inventory_item_items\".\"I_CURRENT_PRICE\" <= 92 and cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-05-25' and cast(\"inventory_date_date\".\"D_DATE\" as date) <= date '2000-07-24' and \"inventory_item_items\".\"I_MANUFACT_ID\" in (129,270,821,423) and \"wakeful\".\"inventory_quantity_on_hand\" >= 100 and \"wakeful\".\"inventory_quantity_on_hand\" <= 500 and \"store_sales_item_items\".\"I_ITEM_SK\" is not null
 
 GROUP BY
     1,
