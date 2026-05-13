@@ -1,15 +1,12 @@
 query_id = "31"
-gen_length = 5923
+gen_length = 5516
 generated_sql = """
 
 WITH 
 thoughtful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_ADDR_SK\" as \"sales_bill_address_id\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
      'STORE'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_QOY\" as \"sales_date_quarter\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
@@ -22,10 +19,7 @@ WHERE
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" as \"sales_bill_address_id\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
      'WEB'  as \"sales_sales_channel\",
     \"sales_date_date\".\"D_QOY\" as \"sales_date_quarter\",
     \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"

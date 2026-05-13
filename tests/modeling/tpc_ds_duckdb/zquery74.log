@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3706
+gen_length = 3437
 generated_sql = """
 
 WITH 
@@ -7,9 +7,7 @@ cheerful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
      'STORE'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -20,9 +18,7 @@ UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
      'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"

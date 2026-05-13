@@ -1,5 +1,5 @@
 query_id = "66"
-gen_length = 25522
+gen_length = 24994
 generated_sql = """
 
 WITH 
@@ -7,18 +7,14 @@ thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_NET_PAID\" as \"sales_net_paid\",
     \"sales_catalog_sales_unified\".\"CS_NET_PAID_INC_TAX\" as \"sales_net_paid_inc_tax\",
-    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
      'CATALOG'  as \"sales_sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_SALES_PRICE\" as \"sales_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_SHIP_MODE_SK\" as \"sales_ship_mode_id\",
     \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" as \"sales_time_id\",
-    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" as \"sales_warehouse_id\",
-    \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" as \"sales_ship_mode_carrier\",
-    \"sales_time_time\".\"T_TIME\" as \"sales_time_time\"
+    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"sales_catalog_sales_unified\".\"CS_SHIP_MODE_SK\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
@@ -30,18 +26,14 @@ UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
     \"sales_web_sales_unified\".\"WS_NET_PAID_INC_TAX\" as \"sales_net_paid_inc_tax\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
      'WEB'  as \"sales_sales_channel\",
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\",
     \"sales_web_sales_unified\".\"WS_SHIP_MODE_SK\" as \"sales_ship_mode_id\",
     \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" as \"sales_time_id\",
-    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" as \"sales_warehouse_id\",
-    \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" as \"sales_ship_mode_carrier\",
-    \"sales_time_time\".\"T_TIME\" as \"sales_time_time\"
+    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"sales_web_sales_unified\".\"WS_SHIP_MODE_SK\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"

@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 11433
+gen_length = 10430
 generated_sql = """
 
 WITH 
@@ -27,14 +27,9 @@ FROM
 scrawny as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_CATALOG_PAGE_SK\" as \"sales_channel_dim_id\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_NET_PROFIT\" as \"sales_net_profit\",
-    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
-     'CATALOG'  as \"sales_sales_channel\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
-    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\"
+     'CATALOG'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -44,14 +39,9 @@ WHERE
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_STORE_SK\" as \"sales_channel_dim_id\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_NET_PROFIT\" as \"sales_net_profit\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-     'STORE'  as \"sales_sales_channel\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
-    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\"
+     'STORE'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
@@ -61,14 +51,9 @@ WHERE
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_WEB_SITE_SK\" as \"sales_channel_dim_id\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_NET_PROFIT\" as \"sales_net_profit\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
-     'WEB'  as \"sales_sales_channel\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
-    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\"
+     'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"

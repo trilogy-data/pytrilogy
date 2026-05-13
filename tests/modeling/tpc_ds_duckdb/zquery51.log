@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 4017
+gen_length = 3876
 generated_sql = """
 
 WITH 
@@ -7,7 +7,6 @@ cheerful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
      'STORE'  as \"sales_sales_channel\",
     \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
@@ -19,7 +18,6 @@ UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
      'WEB'  as \"sales_sales_channel\",
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\"
 FROM

@@ -54,4 +54,18 @@ class HideUnusedConcepts(OptimizationRule):
         if not candidates:
             return False, None
         cte.hidden_concepts = set(candidates)
+        # UnionCTE rendering joins the per-branch CTEs with UNION ALL; each
+        # branch's SELECT list is filtered by *that branch's* hidden_concepts,
+        # not the union's. Propagate the hide so the branches also drop the
+        # unused columns from their projections (e.g. q66's pushed-up
+        # ``sales.ship_mode.carrier`` / ``sales.time.time`` that no consumer
+        # references after stripping).
+        if isinstance(cte, UnionCTE):
+            for branch in cte.internal_ctes:
+                if not isinstance(branch, CTE):
+                    continue
+                branch_outputs = {c.address for c in branch.output_columns}
+                branch.hidden_concepts |= {
+                    addr for addr in candidates if addr in branch_outputs
+                }
         return True, None

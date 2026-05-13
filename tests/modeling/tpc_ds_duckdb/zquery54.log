@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 4933
+gen_length = 4697
 generated_sql = """
 
 WITH 
@@ -8,9 +8,7 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
-     'CATALOG'  as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_CATEGORY\" as \"sales_item_category\",
-    \"sales_item_items\".\"I_CLASS\" as \"sales_item_class\"
+     'CATALOG'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
@@ -22,9 +20,7 @@ SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-     'WEB'  as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_CATEGORY\" as \"sales_item_category\",
-    \"sales_item_items\".\"I_CLASS\" as \"sales_item_class\"
+     'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
