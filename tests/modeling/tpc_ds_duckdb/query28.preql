@@ -1,33 +1,33 @@
 import store_sales as store_sales;
 
 def b_avg(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> avg(
-    store_sales.list_price ?
-        store_sales.quantity between qmin and qmax
+    case when store_sales.quantity between qmin and qmax
         and (
             store_sales.list_price between lpmin and lpmax
             or store_sales.coupon_amt between camin and camax
             or store_sales.wholesale_cost between wcmin and wcmax
         )
+        then store_sales.list_price else null end
 );
 
 def b_cnt(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> count(
-    store_sales.list_price ?
-        store_sales.quantity between qmin and qmax
+    case when store_sales.quantity between qmin and qmax
         and (
             store_sales.list_price between lpmin and lpmax
             or store_sales.coupon_amt between camin and camax
             or store_sales.wholesale_cost between wcmin and wcmax
         )
+        then store_sales.list_price else null end
 );
 
 def b_cntd(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> count_distinct(
-    store_sales.list_price ?
-        store_sales.quantity between qmin and qmax
+    case when store_sales.quantity between qmin and qmax
         and (
             store_sales.list_price between lpmin and lpmax
             or store_sales.coupon_amt between camin and camax
             or store_sales.wholesale_cost between wcmin and wcmax
         )
+        then store_sales.list_price else null end
 );
 
 WHERE store_sales.quantity between 0 and 30
