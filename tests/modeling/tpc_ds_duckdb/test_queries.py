@@ -242,15 +242,6 @@ def test_thirteen(engine):
     assert len(query) < 5500, query
 
 
-@pytest.mark.xfail(
-    reason="Trilogy planner re-derives the in_cross_items presence autos inside "
-    "each merge branch's bucket_sum > avg_sales filtered scope, so the cross-"
-    "channel flag collapses to 'in all 3 channels among rows that passed HAVING' "
-    "instead of 'in all 3 channels overall'. Undercounts by ~6.6% on sf=1. "
-    "Alternate rowset+IN shape ran into a separate bug where bucket_sum sourced "
-    "from unfiltered partials. See STATUS.md 'Open trilogy issues exposed by q14'.",
-    strict=True,
-)
 def test_fourteen(engine):
     run_query(engine, 14)
 
