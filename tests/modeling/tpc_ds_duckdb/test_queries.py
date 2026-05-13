@@ -3,7 +3,6 @@ import platform
 from datetime import datetime
 from pathlib import Path
 
-import pytest
 import tomli_w
 import tomllib
 

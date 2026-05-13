@@ -9,8 +9,8 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 98 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
-| XFAIL (committed broken for experimentation) | 1 | 14 |
+| Passing | 99 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| XFAIL (committed broken for experimentation) | 0 | — |
 | Missing (no preql / no test) | 0 | — |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
@@ -224,27 +224,22 @@ Blocked by missing `unified_sales` features:
   keep as-is.
 
 
-These need framework work first:
-
-- **q14** — `INTERSECT` of 3 (brand_id, class_id, category_id) sets to find
-  items present in all 3 channels, plus a 4-level rollup over (channel,
-  brand, class, category) and an `avg_sales` HAVING threshold. **XFAIL**
-  — `query14.preql` is committed with the in_cross_items-chain shape and
-  `test_fourteen` has `@pytest.mark.xfail(strict=True)`.
-  - Shape C tried (third attempt, also blocked): cross_items rowset
-    keyed on a `concat(brand|class|cat)` tuple_key with
-    `count_distinct(sales_channel) = 3` HAVING; avg_sales materialized
-    as its own rowset so it isn't inlined; l0_filtered rowset applies
-    HAVING `bucket_sum > avg_sales`; then 5-rowset merge over
-    l0_filtered for rollup. cross_items + avg_sales + l0_filtered all
-    work correctly. The blocker is the merge branches — expressions
-    like `sum(l0_filtered.bucket_sum_l0) by l0_filtered.channel_l0,
-    l0_filtered.brand_id_l0, l0_filtered.class_id_l0` compile to
-    `SELECT bucket_sum_l0, bucket_cnt_l0 FROM busy GROUP BY 1, 2` —
-    the SUM is dropped and the aggregation collapses to DISTINCT on
-    the bucket values. Higher rollup levels then equal L0 instead of
-    summing across L0 rows. Filing under planner-bug; same family as
-    the original Shape A/B issues.
+**q14 — now passing.** Shape that works: tuple_key + cross_tuples rowset
+(`count_distinct(sales.sales_channel) = 3` HAVING) + scalar avg_sales rowset
++ single l0_filtered rowset grouping by (channel, brand, class, cat) with
+`HAVING bucket_sum > avg_sales`, then a final `SELECT … sum(...) by rollup`
+over the l0_filtered concepts. The Shape C blocker (5-rowset merge dropping
+the SUM in higher rollup levels) is bypassed entirely by using `sum() by
+rollup` on the single l0_filtered rowset — same pattern q77 uses on
+l0_union. Notes:
+- HAVING in a rowset only resolves concepts that appear in the SELECT
+  projection. `--cross_channel_count,` and `--avg_sales.average_sales,`
+  are listed in the respective rowset SELECTs so HAVING can reference
+  them. (Same rule q31/q65 documented.)
+- `fact_row_one <- count(sales.order_id) by sales.sales_channel,
+  sales.order_id, sales.item.id` pins the count to row grain so the
+  outer `sum(fact_row_one)` reproduces `count(*)` correctly across the
+  unified union.
 
 
 ## Test Infra Notes
@@ -265,26 +260,37 @@ These need framework work first:
   parameter. Dataset is generated lazily on first use via raw duckdb (avoids
   capturing trilogy's `uv_run` macro into the exported `schema.sql`).
 
-### Not converted
+### q36/q70/q86 — converted to single-rollup form
 
-- **q14** (xfailed) — tried single-rowset + ROLLUP shape; hits an
-  unrelated planner cycle (`Graph contains a cycle`). The blocker is
-  the cross-channel intersect + HAVING interaction, not rollup.
-- **q36, q70, q86** — left as per-level MERGE/align. Reference SQL uses
-  `rank() OVER (PARTITION BY grouping(...)+grouping(...), CASE WHEN
-  grouping(class)=0 THEN i_category END ORDER BY total DESC)`. Two
-  obstacles to a single-rollup conversion:
-  1. Trilogy's window `PARTITION BY` only accepts concept refs
-     (`over_list = concept_lit, …`), not arbitrary expressions.
-     Workaround: hoist the CASE/grouping expressions into autos
-     (`auto level_key <- grouping(a)+grouping(b);`).
-  2. Trilogy's rank syntax requires a per-row "target" concept
-     (`rank X over Y by Z`). Bare `rank()` over rollup output has no
-     natural target — the rolled-up `(category, class)` tuple is
-     unique per row but each individual column is NULL at higher
-     levels. Synthesising via `coalesce(class, category, '__total__')`
-     parses but the planner can't source the rowset-derived ROLLUP
-     concepts in the outer SELECT. Worth retrying now that the
-     rowset-alias hang has been fixed (see q64 planner notes above).
-  Future: extending `over_list` to accept arbitrary exprs OR allowing
-  bare `rank()` (no target) would unlock single-rollup conversion.
+All three now passing as a single `with rowset as ... SELECT ... rank()
+over (partition by … order by …)` shape, replacing the prior 3-level
+MERGE/align expansion. The crucial planner-quirks discovered while
+landing this:
+
+- **Multiple `by rollup` aggregates in one SELECT get split across CTEs.**
+  When two `sum(...) by rollup` aggregates (or `sum + grouping`) live in
+  the same SELECT/rowset and the planner sees that they need different
+  base columns, it materializes them into separate rollup CTEs and joins
+  them. The join uses `=` (not `IS NOT DISTINCT FROM`) on the rollup
+  dims, so the L2 grand-total row (all-NULL dims) drops out. Workaround:
+  put all the aggregates inside a rowset with the underlying sums and
+  grouping bits hidden (`--`), and expose only the derived columns
+  (gross_margin, lochierarchy, partition_cat). The hidden form keeps the
+  planner from treating the two sums as separately-projectable outputs.
+  See `query36.preql` for the canonical example.
+- **`grouping()` is needed when source data may contain NULLs in the
+  rollup dims (q36, q86).** Detecting "is this NULL because of rollup or
+  data?" via `IS NULL` on the rollup output gives the wrong answer when
+  the dim itself can be NULL (item.category has 65 NULL rows at sf=1).
+  When the dims are guaranteed non-null (store.state, store.county for
+  q70), the NULL-pattern trick is fine and avoids the planner split
+  entirely — q70 uses this and ends up with a 2-CTE plan.
+- **PARTITION BY accepts arbitrary expressions** via `expr_over_list`
+  in the SQL-style window grammar — `rank(...) over (partition by
+  grouping(a)+grouping(b), CASE WHEN ... THEN ... END order by ...)`
+  parses fine. (The pest binary needed `maturin develop` to pick up the
+  May 11 grammar change; older builds reject expression partitions
+  with "expected window_sql_order or OVER_COMPONENT_REF".)
+
+q36/q70/q86 collectively shed the `coalesce(...rank_a, rank_b, rank_c)`
+align/derive scaffolding, reducing each preql to ~50 lines.

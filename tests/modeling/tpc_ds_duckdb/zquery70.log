@@ -1,9 +1,9 @@
 query_id = "70"
-gen_length = 10755
+gen_length = 2786
 generated_sql = """
 
 WITH 
-thoughtful as (
+cheerful as (
 SELECT
     \"ss_store_store\".\"S_STATE\" as \"ss_store_state\",
     sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"state_total\"
@@ -16,284 +16,64 @@ WHERE
 
 GROUP BY
     1),
-uneven as (
+cooperative as (
 SELECT
-    \"ss_store_sales\".\"SS_SOLD_DATE_SK\" as \"ss_date_id\",
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\"
+    \"cheerful\".\"ss_store_state\" as \"ts_state\",
+    rank() over (order by \"cheerful\".\"state_total\" desc ) as \"state_rnk\"
 FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-GROUP BY
-    1,
-    2),
-quizzical as (
-SELECT
-    0 as \"lochierarchy_a\",
-    1 as \"lochierarchy_b\",
-    1 as \"rank_c\",
-    2 as \"lochierarchy_c\",
-    cast(null as string) as \"null_county_b\",
-    cast(null as string) as \"null_county_c\",
-    cast(null as string) as \"null_state_c\"
-),
-yellow as (
-SELECT
-    sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"total_c\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"),
+    \"cheerful\"),
 questionable as (
 SELECT
-    \"thoughtful\".\"ss_store_state\" as \"ts_state\",
-    rank() over (order by \"thoughtful\".\"state_total\" desc ) as \"state_rnk\"
+    \"cooperative\".\"ts_state\" as \"top_states_ts_state\"
 FROM
-    \"thoughtful\"),
+    \"cooperative\"
+WHERE
+    \"cooperative\".\"state_rnk\" <= 5
+),
 abundant as (
 SELECT
-    \"questionable\".\"ts_state\" as \"top_states_ts_state\"
-FROM
-    \"questionable\"
-WHERE
-    \"questionable\".\"state_rnk\" <= 5
-),
-yummy as (
-SELECT
-    \"ss_date_date\".\"D_MONTH_SEQ\" as \"ss_date_month_seq\",
-    \"ss_store_store\".\"S_STATE\" as \"ss_store_state\"
-FROM
-    \"uneven\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"uneven\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"uneven\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
-WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-),
-rambunctious as (
-SELECT
-    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
-WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1,
-    \"ss_store_sales\".\"SS_ITEM_SK\",
-    \"ss_store_sales\".\"SS_TICKET_NUMBER\"),
-scrawny as (
-SELECT
-    \"ss_store_store\".\"S_STATE\" as \"ss_store_state\",
-    CASE WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 THEN \"ss_store_sales\".\"SS_NET_PROFIT\" ELSE NULL END as \"_virt_filter_net_profit_8054884665585597\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
-WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1,
-    2,
-    \"ss_store_sales\".\"SS_ITEM_SK\",
-    \"ss_store_sales\".\"SS_TICKET_NUMBER\"),
-vacuous as (
-SELECT
-    \"ss_store_store\".\"S_COUNTY\" as \"ss_store_county\",
-    \"ss_store_store\".\"S_STATE\" as \"ss_store_state\",
-    CASE WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 THEN \"ss_store_sales\".\"SS_NET_PROFIT\" ELSE NULL END as \"_virt_filter_net_profit_8054884665585597\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
-WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1,
-    2,
-    3,
-    \"ss_store_sales\".\"SS_ITEM_SK\",
-    \"ss_store_sales\".\"SS_TICKET_NUMBER\"),
-waggish as (
-SELECT
-    \"quizzical\".\"rank_c\" as \"rank_c\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"yummy\" on 1=1
-WHERE
-    \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1),
-puzzled as (
-SELECT
-    \"quizzical\".\"null_state_c\" as \"null_state_c\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"yummy\" on 1=1
-WHERE
-    \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1),
-premium as (
-SELECT
-    \"quizzical\".\"null_county_c\" as \"null_county_c\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"yummy\" on 1=1
-WHERE
-    \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1),
-protective as (
-SELECT
-    \"quizzical\".\"lochierarchy_c\" as \"lochierarchy_c\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"yummy\" on 1=1
-WHERE
-    \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1),
-macho as (
-SELECT
-    \"quizzical\".\"null_county_b\" as \"null_county_b\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"yummy\" on 1=1
-WHERE
-    \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1),
-late as (
-SELECT
-    \"quizzical\".\"lochierarchy_b\" as \"lochierarchy_b\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"yummy\" on 1=1
-WHERE
-    \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1),
-juicy as (
-SELECT
-    \"quizzical\".\"lochierarchy_a\" as \"lochierarchy_a\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"yummy\" on 1=1
-WHERE
-    \"yummy\".\"ss_date_month_seq\" >= 1200 and \"yummy\".\"ss_date_month_seq\" <= 1211 and \"yummy\".\"ss_store_state\" in (select abundant.\"top_states_ts_state\" from abundant where abundant.\"top_states_ts_state\" is not null)
-
-GROUP BY
-    1),
-puffy as (
-SELECT
-    sum(\"rambunctious\".\"ss_net_profit\") as \"total_c\"
-FROM
-    \"rambunctious\"),
-divergent as (
-SELECT
-    \"scrawny\".\"ss_store_state\" as \"ss_store_state\",
-    sum(\"scrawny\".\"_virt_filter_net_profit_8054884665585597\") as \"state_total\"
-FROM
-    \"scrawny\"
-GROUP BY
-    1),
-sparkling as (
-SELECT
-    \"vacuous\".\"ss_store_county\" as \"ss_store_county\",
-    \"vacuous\".\"ss_store_state\" as \"ss_store_state\",
-    sum(\"vacuous\".\"_virt_filter_net_profit_8054884665585597\") as \"county_total\"
-FROM
-    \"vacuous\"
-GROUP BY
-    1,
-    2),
-hard as (
-SELECT
-    \"premium\".\"null_county_c\" as \"s_county\",
-    \"protective\".\"lochierarchy_c\" as \"lochierarchy\",
-    \"puffy\".\"total_c\" as \"total_c\",
-    \"puzzled\".\"null_state_c\" as \"s_state\",
-    \"waggish\".\"rank_c\" as \"rank_c\"
-FROM
-    \"protective\"
-    FULL JOIN \"premium\" on 1=1
-    FULL JOIN \"puzzled\" on 1=1
-    FULL JOIN \"waggish\" on 1=1
-    FULL JOIN \"puffy\" on 1=1),
-busy as (
-SELECT
-    \"divergent\".\"ss_store_state\" as \"state_b\",
-    \"divergent\".\"state_total\" as \"total_b\",
-    rank() over (order by \"divergent\".\"state_total\" desc ) as \"rank_b\"
-FROM
-    \"divergent\"),
-abhorrent as (
-SELECT
-    \"sparkling\".\"county_total\" as \"total_a\",
-    \"sparkling\".\"ss_store_county\" as \"county_a\",
-    \"sparkling\".\"ss_store_state\" as \"state_a\",
-    rank() over (partition by \"sparkling\".\"ss_store_state\" order by \"sparkling\".\"county_total\" desc ) as \"rank_a\"
-FROM
-    \"sparkling\"),
-charming as (
-SELECT
-    \"busy\".\"rank_b\" as \"rank_b\",
-    \"busy\".\"state_b\" as \"s_state\",
-    \"busy\".\"total_b\" as \"total_b\",
-    \"late\".\"lochierarchy_b\" as \"lochierarchy\",
-    \"macho\".\"null_county_b\" as \"s_county\"
-FROM
-    \"late\"
-    FULL JOIN \"macho\" on 1=1
-    FULL JOIN \"busy\" on 1=1),
-sweltering as (
-SELECT
-    \"abhorrent\".\"county_a\" as \"s_county\",
-    \"abhorrent\".\"rank_a\" as \"rank_a\",
-    \"abhorrent\".\"state_a\" as \"s_state\",
-    \"abhorrent\".\"total_a\" as \"total_a\",
-    \"juicy\".\"lochierarchy_a\" as \"lochierarchy\"
-FROM
-    \"abhorrent\"
-    FULL JOIN \"juicy\" on 1=1),
-sedate as (
-SELECT
-    coalesce(\"charming\".\"lochierarchy\",\"hard\".\"lochierarchy\",\"sweltering\".\"lochierarchy\") as \"lochierarchy\",
-    coalesce(\"charming\".\"s_county\",\"hard\".\"s_county\",\"sweltering\".\"s_county\") as \"s_county\",
-    coalesce(\"charming\".\"s_state\",\"hard\".\"s_state\",\"sweltering\".\"s_state\") as \"s_state\",
-    coalesce(\"sweltering\".\"rank_a\",\"charming\".\"rank_b\",\"hard\".\"rank_c\") as \"rank_within_parent\",
-    coalesce(\"sweltering\".\"total_a\",\"charming\".\"total_b\",\"hard\".\"total_c\") as \"total_sum\"
-FROM
-    \"sweltering\"
-    FULL JOIN \"charming\" on \"sweltering\".\"lochierarchy\" is not distinct from \"charming\".\"lochierarchy\" AND \"sweltering\".\"s_county\" is not distinct from \"charming\".\"s_county\" AND \"sweltering\".\"s_state\" is not distinct from \"charming\".\"s_state\"
-    FULL JOIN \"hard\" on coalesce(\"sweltering\".\"lochierarchy\", \"charming\".\"lochierarchy\") = \"hard\".\"lochierarchy\" AND coalesce(\"sweltering\".\"s_county\", \"charming\".\"s_county\") = \"hard\".\"s_county\" AND coalesce(\"sweltering\".\"s_state\", \"charming\".\"s_state\") = \"hard\".\"s_state\")
-SELECT
-    \"sedate\".\"total_sum\" as \"q70_results_total_sum\",
-    \"sedate\".\"s_state\" as \"q70_results_s_state\",
-    \"sedate\".\"s_county\" as \"q70_results_s_county\",
-    \"sedate\".\"lochierarchy\" as \"q70_results_lochierarchy\",
-    \"sedate\".\"rank_within_parent\" as \"q70_results_rank_within_parent\"
-FROM
-    \"sedate\"
-    FULL JOIN \"quizzical\" on 1=1
-    FULL JOIN \"yellow\" on 1=1
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5
-ORDER BY 
-    \"q70_results_lochierarchy\" desc nulls first,
+    \"ss_store_store\".\"S_COUNTY\" as \"q70_rolled_r_county\",
+    \"ss_store_store\".\"S_STATE\" as \"q70_rolled_r_state\",
     CASE
-	WHEN \"sedate\".\"lochierarchy\" = 0 THEN \"sedate\".\"s_state\"
+	WHEN \"ss_store_store\".\"S_COUNTY\" is not null THEN \"ss_store_store\".\"S_STATE\"
+	ELSE null
+	END as \"_virt_func_case_1856097115431918\",
+    CASE
+	WHEN \"ss_store_store\".\"S_COUNTY\" is not null THEN 0
+	WHEN \"ss_store_store\".\"S_STATE\" is not null THEN 1
+	ELSE 2
+	END as \"_virt_func_case_2737614828591950\",
+    sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"q70_rolled_total_sum\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
+WHERE
+    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select questionable.\"top_states_ts_state\" from questionable where questionable.\"top_states_ts_state\" is not null)
+
+GROUP BY
+    ROLLUP (2, 1))
+SELECT
+    \"abundant\".\"q70_rolled_total_sum\" as \"q70_rolled_total_sum\",
+    \"abundant\".\"q70_rolled_r_state\" as \"s_state\",
+    \"abundant\".\"q70_rolled_r_county\" as \"s_county\",
+    CASE
+	WHEN \"abundant\".\"q70_rolled_r_county\" is not null THEN 0
+	WHEN \"abundant\".\"q70_rolled_r_state\" is not null THEN 1
+	ELSE 2
+	END as \"lochierarchy\",
+    rank() over (partition by \"abundant\".\"_virt_func_case_2737614828591950\",\"abundant\".\"_virt_func_case_1856097115431918\" order by \"abundant\".\"q70_rolled_total_sum\" desc ) as \"rank_within_parent\"
+FROM
+    \"abundant\"
+ORDER BY 
+    \"lochierarchy\" desc nulls first,
+    CASE
+	WHEN CASE
+	WHEN \"abundant\".\"q70_rolled_r_county\" is not null THEN 0
+	WHEN \"abundant\".\"q70_rolled_r_state\" is not null THEN 1
+	ELSE 2
+	END = 0 THEN \"abundant\".\"q70_rolled_r_state\"
 	ELSE null
 	END asc nulls first,
-    \"q70_results_rank_within_parent\" asc nulls first
+    \"rank_within_parent\" asc nulls first
 LIMIT (100)"""
