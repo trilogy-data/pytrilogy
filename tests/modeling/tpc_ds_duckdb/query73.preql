@@ -1,6 +1,10 @@
 import store_sales as store_sales;
 WHERE
-    store_sales.date.day_of_month >= 1 and store_sales.date.day_of_month <= 2 and (store_sales.household_demographic.buy_potential = '>10000' or store_sales.household_demographic.buy_potential = 'Unknown') and store_sales.household_demographic.vehicle_count > 0 and (CASE
+    store_sales.date.day_of_month >= 1 
+    and store_sales.date.day_of_month <= 2 
+    and (store_sales.household_demographic.buy_potential = '>10000' or store_sales.household_demographic.buy_potential = 'Unknown') 
+    and store_sales.household_demographic.vehicle_count > 0
+     and (CASE
             WHEN store_sales.household_demographic.vehicle_count > 0 THEN (store_sales.household_demographic.dependent_count * 1.0) / store_sales.household_demographic.vehicle_count
             ELSE null
         END) > 1 and store_sales.date.year in (1999, 2000, 2001) and store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')

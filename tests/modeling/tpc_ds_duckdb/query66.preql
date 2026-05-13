@@ -95,7 +95,12 @@ auto nov_net <- @channel_total(ws_nov_net, cs_nov_net);
 auto dec_net <- @channel_total(ws_dec_net, cs_dec_net);
 
 
-
+WHERE
+    sales.sales_channel in ('WEB', 'CATALOG')
+    and sales.date.year = 2001
+    and sales.time.time between 30838 and 59638
+    and sales.ship_mode.carrier in ('DHL', 'BARIAN')
+    and sales.warehouse.id is not null
 SELECT
     sales.warehouse.name as w_warehouse_name,
     sales.warehouse.square_feet as w_warehouse_sq_ft,
@@ -141,12 +146,7 @@ SELECT
     oct_net,
     nov_net,
     dec_net,
-WHERE
-    sales.sales_channel in ('WEB', 'CATALOG')
-    and sales.date.year = 2001
-    and sales.time.time between 30838 and 59638
-    and sales.ship_mode.carrier in ('DHL', 'BARIAN')
-    and sales.warehouse.id is not null
+
 ORDER BY
     w_warehouse_name asc nulls first,
     year_ asc nulls first

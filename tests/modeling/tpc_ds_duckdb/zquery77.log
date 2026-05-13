@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 8613
+gen_length = 8608
 preql_size = 3293
 comp_size = 3129
 generated_sql = """
@@ -51,7 +51,7 @@ SELECT
     sum(\"ss_store_returns\".\"SR_RETURN_AMT\") as \"sr_grouped_sr_returns\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"ss_return_date_date\".\"D_DATE\" as date) >= :period_start and cast(\"ss_return_date_date\".\"D_DATE\" as date) <= :period_end

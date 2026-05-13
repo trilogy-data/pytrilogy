@@ -309,13 +309,72 @@ class UpgradeJoinOnGuards(OptimizationRule):
         if not proofs:
             return False, None
 
+        # Iterate to fixpoint: when a join becomes INNER, both sides' join keys
+        # must be non-null on surviving rows. Adding those keys to the proof
+        # set can unlock further upgrades — e.g. a downstream dim INNER-joined
+        # under a null-rejecting filter forces the join-key column on its
+        # upstream LEFT_OUTER-joined fact non-null, which then promotes that
+        # earlier join too.
+        #
+        # Skip adding a join key whose address appears on 3+ datasources in
+        # this CTE: that's a merged concept (e.g. `customer.id` unified across
+        # multiple sales-source CTEs by `merge`). Its non-null in surviving
+        # rows means *some* source contributed via COALESCE — it doesn't pin
+        # any specific source side, and treating it as a side-bound proof
+        # would wrongly promote sibling joins that the OR/COALESCE semantics
+        # are protecting (q10's web/catalog/store union over customer).
+        #
+        # A clean FK↔PK pair shows up on exactly 2 datasources (the FK on the
+        # fact and the PK on the dim) and is safe.
+        address_source_count: dict[str, int] = {}
+        for ds in cte.source.datasources:
+            for c in ds.output_concepts:
+                address_source_count[c.address] = (
+                    address_source_count.get(c.address, 0) + 1
+                )
+
+        def _safe_proof_add(address: str) -> bool:
+            return address_source_count.get(address, 0) <= 2
         changed = False
-        if not self.base_join_only:
-            for idx, join in enumerate(cte.joins or []):
-                if not isinstance(join, Join) or join.jointype not in _OUTER_JOIN_TYPES:
+        while True:
+            iter_changed = False
+            if not self.base_join_only:
+                for idx, join in enumerate(cte.joins or []):
+                    if (
+                        not isinstance(join, Join)
+                        or join.jointype not in _OUTER_JOIN_TYPES
+                    ):
+                        continue
+                    target = _downgrade(cte, idx, join, proofs)
+                    if target is None or target == join.jointype:
+                        continue
+                    dropped = {
+                        JoinType.INNER: "unmatched",
+                        JoinType.LEFT_OUTER: "right-unmatched",
+                        JoinType.RIGHT_OUTER: "left-unmatched",
+                    }[target]
+                    self.log(
+                        f"{join.jointype.value}→{target.value} on {cte.name} for join with"
+                        f" {join.right_cte.name}: WHERE filters out"
+                        f" {dropped} rows that the OUTER join was preserving"
+                    )
+                    join.jointype = target
+                    if target == JoinType.INNER:
+                        for pair in join.joinkey_pairs or []:
+                            if _safe_proof_add(pair.left.address):
+                                proofs.add(pair.left.address)
+                            if _safe_proof_add(pair.right.address):
+                                proofs.add(pair.right.address)
+                    iter_changed = True
+
+            for base_join in cte.source.joins or []:
+                if (
+                    not isinstance(base_join, BaseJoin)
+                    or base_join.join_type not in _OUTER_JOIN_TYPES
+                ):
                     continue
-                target = _downgrade(cte, idx, join, proofs)
-                if target is None or target == join.jointype:
+                target = _downgrade_base_join(cte, base_join, proofs)
+                if target is None or target == base_join.join_type:
                     continue
                 dropped = {
                     JoinType.INNER: "unmatched",
@@ -323,35 +382,20 @@ class UpgradeJoinOnGuards(OptimizationRule):
                     JoinType.RIGHT_OUTER: "left-unmatched",
                 }[target]
                 self.log(
-                    f"{join.jointype.value}→{target.value} on {cte.name} for join with"
-                    f" {join.right_cte.name}: WHERE filters out"
-                    f" {dropped} rows that the OUTER join was preserving"
+                    f"{base_join.join_type.value}→{target.value} on {cte.name} for "
+                    f"base join with {base_join.right_datasource.identifier}: WHERE "
+                    f"filters out {dropped} rows that the OUTER join was preserving"
                 )
-                join.jointype = target
-                changed = True
+                base_join.join_type = target
+                if target == JoinType.INNER:
+                    for bpair in base_join.concept_pairs or []:
+                        if _safe_proof_add(bpair.left.address):
+                            proofs.add(bpair.left.address)
+                        if _safe_proof_add(bpair.right.address):
+                            proofs.add(bpair.right.address)
+                iter_changed = True
 
-        # Mirror the upgrade onto BaseJoins so dim joins (e.g. q66's
-        # date_dim/time_dim/ship_mode) become INNER and downstream rules like
-        # UnionDimPushdown can match them.
-        for base_join in cte.source.joins or []:
-            if (
-                not isinstance(base_join, BaseJoin)
-                or base_join.join_type not in _OUTER_JOIN_TYPES
-            ):
-                continue
-            target = _downgrade_base_join(cte, base_join, proofs)
-            if target is None or target == base_join.join_type:
-                continue
-            dropped = {
-                JoinType.INNER: "unmatched",
-                JoinType.LEFT_OUTER: "right-unmatched",
-                JoinType.RIGHT_OUTER: "left-unmatched",
-            }[target]
-            self.log(
-                f"{base_join.join_type.value}→{target.value} on {cte.name} for "
-                f"base join with {base_join.right_datasource.identifier}: WHERE "
-                f"filters out {dropped} rows that the OUTER join was preserving"
-            )
-            base_join.join_type = target
+            if not iter_changed:
+                break
             changed = True
         return changed, None
