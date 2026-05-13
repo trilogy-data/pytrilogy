@@ -297,6 +297,63 @@ auto random <- @plus_two(@weekday_sales(10));
     assert results[1].test2 == 17
 
 
+def test_user_function_predicate_in_where():
+    """`def` body may be a chained AND/OR predicate, callable in WHERE.
+
+    Substitution flows through `_build_function_call_wrapper`; the grammar
+    widening from `expr` to `conditional` is what enables this form.
+    """
+    x = Dialects.DUCK_DB.default_executor()
+    results = x.execute_query("""
+key x int;
+property x.price float;
+
+datasource raw_data (
+x: x,
+price: price
+)
+grain (x)
+query '''
+select 1 as x, 2.0 as price
+union all
+select 2 as x, 3.0 as price
+union all
+select 3 as x, 4.0 as price
+union all
+select 10 as x, 5.0 as price
+''';
+
+def in_band(lo, hi) -> x >= lo and x <= hi and price > 2.5;
+
+where @in_band(2, 10)
+select x, price
+order by x asc;
+""")
+    rows = results.fetchall()
+    assert [(r.x, r.price) for r in rows] == [(2, 3.0), (3, 4.0), (10, 5.0)]
+
+
+def test_user_function_predicate_or_chain():
+    """OR-chained predicate body — exercises the full conditional grammar path."""
+    x = Dialects.DUCK_DB.default_executor()
+    results = x.execute_query("""
+key x int;
+
+datasource raw_data (x: x)
+grain (x)
+query '''
+select 1 as x union all select 2 union all select 3 union all select 4 union all select 5
+''';
+
+def edges(lo, hi) -> x = lo or x = hi;
+
+where @edges(1, 5)
+select x
+order by x asc;
+""")
+    assert [r.x for r in results.fetchall()] == [1, 5]
+
+
 def test_user_function_aggregate_two():
     from trilogy.hooks.query_debugger import DebuggingHook
 

@@ -23,12 +23,9 @@ SELECT cs.item.id as cs_ui_item_id
 # cs1.syear=1999 and cs2.syear=2000. Express as a single multi-select rowset
 # with two branches (year=1999, year=2000) aligned on those three keys, so each
 # output row pairs the 99 metrics with the matching 00 metrics.
-# (`def` bodies must be value expressions, so the WHERE clauses can't be
-# hoisted into a function — the per-branch predicate stays spelled out.)
-with q64_results as
-WHERE
+def year_filter(yr) ->
     ss.item.id in cs_ui.cs_ui_item_id
-    and ss.date.year = 1999
+    and ss.date.year = yr
     and ss.is_returned
     and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
     and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
@@ -36,7 +33,10 @@ WHERE
     and ss.customer.id is not null
     and ss.store.id is not null
     and ss.sale_address.id is not null
-    and ss.customer.address.id is not null
+    and ss.customer.address.id is not null;
+
+with q64_results as
+WHERE @year_filter(1999)
 SELECT
     ss.item.id as item_sk_99,
     ss.store.name as s_name_99,
@@ -58,17 +58,7 @@ SELECT
     sum(ss.list_price) as s2_99,
     sum(ss.coupon_amt) as s3_99,
 MERGE
-WHERE
-    ss.item.id in cs_ui.cs_ui_item_id
-    and ss.date.year = 2000
-    and ss.is_returned
-    and ss.customer_demographic.marital_status != ss.customer.demographics.marital_status
-    and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
-    and ss.item.current_price between 65 and 74
-    and ss.customer.id is not null
-    and ss.store.id is not null
-    and ss.sale_address.id is not null
-    and ss.customer.address.id is not null
+WHERE @year_filter(2000)
 SELECT
     ss.item.id as item_sk_00,
     ss.store.name as s_name_00,
