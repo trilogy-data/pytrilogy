@@ -4,22 +4,17 @@
 import unified_sales as sales;
 
 auto store_in_window <- sum(
-    CASE WHEN sales.sales_channel = 'STORE'
-              and sales.date.month_seq between 1200 and 1200 + 11
-              and sales.customer.id is not null
-              and sales.item.id is not null
-         THEN 1 ELSE 0 END
+    CASE WHEN sales.sales_channel = 'STORE' THEN 1 ELSE 0 END
 ) by sales.customer.id, sales.item.id;
 
 auto catalog_in_window <- sum(
-    CASE WHEN sales.sales_channel = 'CATALOG'
-              and sales.date.month_seq between 1200 and 1200 + 11
-              and sales.customer.id is not null
-              and sales.item.id is not null
-         THEN 1 ELSE 0 END
+    CASE WHEN sales.sales_channel = 'CATALOG' THEN 1 ELSE 0 END
 ) by sales.customer.id, sales.item.id;
 
 where sales.sales_channel in ('STORE', 'CATALOG')
+    and sales.date.month_seq between 1200 and 1200 + 11
+    and sales.customer.id is not null
+    and sales.item.id is not null
 SELECT
     sum(CASE WHEN store_in_window > 0 and catalog_in_window = 0 THEN 1 ELSE 0 END) as store_sale_count,
     sum(CASE WHEN store_in_window = 0 and catalog_in_window > 0 THEN 1 ELSE 0 END) as catalog_sale_count,

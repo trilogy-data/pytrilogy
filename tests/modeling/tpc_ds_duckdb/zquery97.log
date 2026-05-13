@@ -1,6 +1,6 @@
 query_id = "97"
-gen_length = 2357
-preql_size = 999
+gen_length = 2501
+preql_size = 793
 comp_size = 1159
 generated_sql = """
 
@@ -13,6 +13,9 @@ SELECT
      'CATALOG'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+WHERE
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" is not null
+
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
@@ -20,7 +23,10 @@ SELECT
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
      'STORE'  as \"sales_sales_channel\"
 FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"),
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+WHERE
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null
+),
 thoughtful as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
@@ -36,35 +42,46 @@ GROUP BY
     4),
 questionable as (
 SELECT
+    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
+    \"thoughtful\".\"sales_item_id\" as \"sales_item_id\",
+    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
+
+GROUP BY
+    1,
+    2,
+    3),
+abundant as (
+SELECT
     sum(CASE
-	WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and \"thoughtful\".\"sales_customer_id\" is not null and \"thoughtful\".\"sales_item_id\" is not null THEN 1
+	WHEN \"questionable\".\"sales_sales_channel\" = 'CATALOG' THEN 1
 	ELSE 0
 	END) as \"catalog_in_window\",
     sum(CASE
-	WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and \"thoughtful\".\"sales_customer_id\" is not null and \"thoughtful\".\"sales_item_id\" is not null THEN 1
+	WHEN \"questionable\".\"sales_sales_channel\" = 'STORE' THEN 1
 	ELSE 0
 	END) as \"store_in_window\"
 FROM
-    \"thoughtful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"thoughtful\".\"sales_sales_channel\" in ('STORE','CATALOG')
-
+    \"questionable\"
 GROUP BY
-    \"thoughtful\".\"sales_customer_id\",
-    \"thoughtful\".\"sales_item_id\")
+    \"questionable\".\"sales_customer_id\",
+    \"questionable\".\"sales_item_id\")
 SELECT
     sum(CASE
-	WHEN \"questionable\".\"store_in_window\" > 0 and \"questionable\".\"catalog_in_window\" = 0 THEN 1
+	WHEN \"abundant\".\"store_in_window\" > 0 and \"abundant\".\"catalog_in_window\" = 0 THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"questionable\".\"store_in_window\" = 0 and \"questionable\".\"catalog_in_window\" > 0 THEN 1
+	WHEN \"abundant\".\"store_in_window\" = 0 and \"abundant\".\"catalog_in_window\" > 0 THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"questionable\".\"store_in_window\" > 0 and \"questionable\".\"catalog_in_window\" > 0 THEN 1
+	WHEN \"abundant\".\"store_in_window\" > 0 and \"abundant\".\"catalog_in_window\" > 0 THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"questionable\""""
+    \"abundant\""""
