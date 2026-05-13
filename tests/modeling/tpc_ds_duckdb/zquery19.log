@@ -1,5 +1,7 @@
 query_id = "19"
 gen_length = 1799
+preql_size = 645
+comp_size = 709
 generated_sql = """
 SELECT
     \"store_sales_item_items\".\"I_BRAND_ID\" as \"store_sales_item_brand_id\",

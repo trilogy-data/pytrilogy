@@ -34,7 +34,7 @@ table reference exactly like any other dim join.
 
 from typing import cast
 
-from trilogy.core.enums import BooleanOperator, JoinType, SourceType
+from trilogy.core.enums import JoinType, SourceType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
@@ -55,48 +55,26 @@ from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
 )
-from trilogy.core.optimizations.utils import render_cte_used_map
+from trilogy.core.optimizations.utils import (
+    add_datasource_sorted,
+    add_parent_cte,
+    append_condition,
+    condition_contains_atom,
+    render_cte_used_map,
+    strip_condition_atom,
+)
 from trilogy.core.processing.condition_utility import is_scalar_condition
-from trilogy.utility import unique
 
 
 def _is_child_of(candidate, condition) -> bool:
     """Value-based: True if `candidate` appears anywhere in an AND-tree of
     `condition`. Siblings carry structurally identical but referentially
     distinct copies of the same predicate, so we compare by ``==``."""
-    if condition is None:
-        return False
-    if condition == candidate:
-        return True
-    if (
-        isinstance(condition, BuildConditional)
-        and condition.operator == BooleanOperator.AND
-    ):
-        return _is_child_of(candidate, condition.left) or _is_child_of(
-            candidate, condition.right
-        )
-    return False
+    return condition_contains_atom(candidate, condition)
 
 
 def _strip_candidate(condition, candidate):
-    if condition is None or condition == candidate:
-        return None
-    if (
-        isinstance(condition, BuildConditional)
-        and condition.operator == BooleanOperator.AND
-    ):
-        new_left = _strip_candidate(condition.left, candidate)
-        new_right = _strip_candidate(condition.right, candidate)
-        if new_left is None and new_right is None:
-            return None
-        if new_left is None:
-            return new_right
-        if new_right is None:
-            return new_left
-        return BuildConditional(
-            left=new_left, operator=BooleanOperator.AND, right=new_right
-        )
-    return condition
+    return strip_condition_atom(condition, candidate)
 
 
 class JoinHoist(OptimizationRule):
@@ -333,11 +311,7 @@ class JoinHoist(OptimizationRule):
                 modifiers=list(join.modifiers),
             )
             parent_cte.source.joins.append(new_base_join)
-            if dim_qds not in parent_cte.source.datasources:
-                parent_cte.source.datasources = sorted(
-                    parent_cte.source.datasources + [dim_qds],
-                    key=lambda d: d.identifier,
-                )
+            add_datasource_sorted(parent_cte, dim_qds)
             existing_input_addrs = {c.address for c in parent_cte.source.input_concepts}
             for c in dim_cte.output_columns:
                 if c.address not in existing_input_addrs:
@@ -363,7 +337,7 @@ class JoinHoist(OptimizationRule):
                 modifiers=list(join.modifiers),
             )
             parent_cte.joins.append(new_join)
-            parent_cte.parent_ctes = unique(parent_cte.parent_ctes + [dim_cte], "name")
+            add_parent_cte(parent_cte, dim_cte)
             for c in dim_cte.output_columns:
                 parent_cte.source_map.setdefault(c.address, [])
                 if dim_cte.name not in parent_cte.source_map[c.address]:
@@ -478,17 +452,13 @@ class JoinHoist(OptimizationRule):
                 if not self._hoist_join(cte, parent_cte, join):
                     continue
                 for cand in to_push:
-                    if parent_cte.condition:
-                        parent_cte.condition = BuildConditional(
-                            left=parent_cte.condition,
-                            operator=BooleanOperator.AND,
-                            right=cast(
-                                BuildComparison | BuildConditional | BuildParenthetical,
-                                cand,
-                            ),
-                        )
-                    else:
-                        parent_cte.condition = cand
+                    parent_cte.condition = append_condition(
+                        parent_cte.condition,
+                        cast(
+                            BuildComparison | BuildConditional | BuildParenthetical,
+                            cand,
+                        ),
+                    )
                     cte.condition = _strip_candidate(cte.condition, cand)
                 for cand in to_strip_only:
                     cte.condition = _strip_candidate(cte.condition, cand)

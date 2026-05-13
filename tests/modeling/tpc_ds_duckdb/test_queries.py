@@ -48,6 +48,7 @@ def run_query(
     query_label = label or f"{idx:02d}"
     with open(working_path / filename) as f:
         text = f.read()
+    preql_size = len(text)
 
     # fetch our results
     parse_start = datetime.now()
@@ -69,6 +70,11 @@ def run_query(
     base_results = list(base.fetchall())
     comp_time = datetime.now() - comp_start
 
+    # Always prefer the on-disk reference SQL for size comparison when available,
+    # so the PRAGMA-driven runs still report a meaningful comp_size.
+    sql_path = working_path / f"query{idx:02d}.sql"
+    comp_size = len(sql_path.read_text()) if sql_path.exists() else len(rquery)
+
     if len(base_results) > 0:
         assert len(comp_results) > 0, "No results returned"
 
@@ -88,6 +94,8 @@ def run_query(
                 {
                     "query_id": query_label,
                     "gen_length": len(query),
+                    "preql_size": preql_size,
+                    "comp_size": comp_size,
                     "generated_sql": query,
                 },
                 multiline_strings=True,

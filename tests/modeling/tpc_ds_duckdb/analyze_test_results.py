@@ -68,6 +68,52 @@ def plot_perf(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> No
     plt.close(fig)
 
 
+def plot_sizes(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> None:
+    needed = ["preql_size", "gen_length", "comp_size"]
+    if frame.empty or not all(c in frame.columns for c in needed):
+        return
+    sub = frame.dropna(subset=needed)
+    if sub.empty:
+        return
+    sizes = np.vstack([sub[c].to_numpy(dtype=float) for c in needed])
+    mins = sizes.min(axis=0)
+    maxs = sizes.max(axis=0)
+    series = [sizes[i] for i in range(len(needed))]
+    pretty = ["PreQL", "Generated SQL", "Reference SQL"]
+    labels = []
+    for i, name in enumerate(pretty):
+        smallest = int((sizes[i] == mins).sum())
+        largest = int((sizes[i] == maxs).sum())
+        total = int(sizes[i].sum())
+        labels.append(f"{name} ({smallest} smallest, {largest} largest, {total} chars)")
+
+    fig, ax = plt.subplots()
+    ax.set_title(title)
+    ax.set_xlabel("Source")
+    ax.set_ylabel("Size (chars, log scale)")
+    ax.set_yscale("log")
+    positions = list(range(1, len(series) + 1))
+    parts = ax.violinplot(series, positions=positions, showmedians=True)
+    for body in parts["bodies"]:
+        body.set_alpha(0.2)
+        body.set_facecolor("gray")
+    rng = np.random.default_rng(0)
+    for i, (pos, values) in enumerate(zip(positions, series)):
+        is_min = sizes[i] == mins
+        is_max = sizes[i] == maxs
+        colors = np.where(is_min, "#2ca02c", np.where(is_max, "#d62728", "#7f7f7f"))
+        jitter = rng.uniform(-0.08, 0.08, size=len(values))
+        ax.scatter(pos + jitter, values, s=14, alpha=0.55, c=colors, linewidths=0)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=15, ha="right")
+    fig.tight_layout()
+    if show:
+        plt.show()
+    else:
+        plt.savefig(out_path)
+    plt.close(fig)
+
+
 def analyze(show: bool = False):
     results = []
     root = Path(__file__).parent
@@ -125,6 +171,18 @@ def analyze(show: bool = False):
         alt_df,
         "Query Timing (alternatives)",
         root / f"{fingerprint}-tcp-ds-perf-alt.png",
+        show,
+    )
+    plot_sizes(
+        main_df,
+        "Query Size by Source",
+        root / "tcp-ds-size.png",
+        show,
+    )
+    plot_sizes(
+        alt_df,
+        "Query Size by Source (alternatives)",
+        root / "tcp-ds-size-alt.png",
         show,
     )
 

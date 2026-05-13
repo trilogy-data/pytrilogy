@@ -13,6 +13,11 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import (
+    append_condition,
+    condition_contains_atom,
+    rebuild_and_condition,
+)
 from trilogy.core.processing.condition_utility import (
     condition_value_implies,
     conditions_mutually_exclusive,
@@ -22,14 +27,7 @@ from trilogy.utility import unique
 
 
 def is_child_of(a, comparison):
-    base = comparison == a
-    if base:
-        return True
-    if isinstance(comparison, BuildConditional):
-        return (
-            is_child_of(a, comparison.left) or is_child_of(a, comparison.right)
-        ) and comparison.operator == BooleanOperator.AND
-    return base
+    return condition_contains_atom(a, comparison)
 
 
 def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bool:
@@ -218,11 +216,7 @@ class PredicatePushdown(OptimizationRule):
             if branch.condition is None:
                 branch.condition = candidate
             else:
-                branch.condition = BuildConditional(
-                    left=branch.condition,
-                    operator=BooleanOperator.AND,
-                    right=candidate,
-                )
+                branch.condition = append_condition(branch.condition, candidate)
             for x in existence_extras:
                 if x in branch.source_map or x in branch.existence_source_map:
                     continue
@@ -368,10 +362,8 @@ class PredicatePushdown(OptimizationRule):
                     self.log("Parent condition is not scalar, not safe to push up")
                     return False
                 if parent_cte.condition:
-                    parent_cte.condition = BuildConditional(
-                        left=parent_cte.condition,
-                        operator=BooleanOperator.AND,
-                        right=candidate,
+                    parent_cte.condition = append_condition(
+                        parent_cte.condition, candidate
                     )
                 else:
                     parent_cte.condition = candidate
@@ -623,14 +615,7 @@ class PredicatePushdownRemove(OptimizationRule):
             removed += 1
         if removed:
             if surviving:
-                new_condition = surviving[0]
-                for atom in surviving[1:]:
-                    new_condition = BuildConditional(
-                        left=new_condition,
-                        operator=BooleanOperator.AND,
-                        right=atom,
-                    )
-                cte.condition = new_condition
+                cte.condition = rebuild_and_condition(surviving)
             else:
                 cte.condition = None
             return True, None

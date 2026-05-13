@@ -1,5 +1,7 @@
 query_id = "14"
 gen_length = 8213
+preql_size = 2876
+comp_size = 4229
 generated_sql = """
 
 WITH 

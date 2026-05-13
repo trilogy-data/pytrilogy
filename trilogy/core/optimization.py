@@ -219,6 +219,43 @@ def pass_up_metadata(downstream: CTE | UnionCTE, upstream: CTE | UnionCTE):
             upstream.condition = downstream.condition
 
 
+def registered_optimization_rules() -> list["OptimizationRule"]:
+    rules: list["OptimizationRule"] = []
+
+    if CONFIG.optimizations.merge_aggregate:
+        rules.append(CollapseSingleParent())
+    if CONFIG.optimizations.merge_irrelevant_group_by:
+        rules.append(MergeIrrelevantGroupBy())
+    # JoinHoist runs before InlineDatasource so the moved join is still in
+    # non-inlined form; the subsequent inlining pass folds the parent's
+    # extended FROM into a flat table reference like any other dim join.
+    if CONFIG.optimizations.join_hoist:
+        rules.append(JoinHoist())
+    if CONFIG.optimizations.datasource_inlining:
+        rules.append(InlineDatasource())
+    if CONFIG.optimizations.predicate_pushdown:
+        rules.append(PredicatePushdown())
+    # Early BaseJoin-only upgrade pass so dim joins become INNER before
+    # UnionDimPushdown, which only matches INNER joins.
+    if CONFIG.optimizations.upgrade_condition_joins:
+        rules.append(UpgradeJoinOnGuards(base_join_only=True))
+    # UnionDimPushdown after PredicatePushdown so consumer WHEREs have settled
+    # before we match identical atoms across consumers.
+    if CONFIG.optimizations.union_dim_pushdown:
+        rules.append(UnionDimPushdown())
+    # Second PredicatePushdown pass: UnionDimPushdown may have added dim
+    # concepts to branch source_maps that PredicatePushdown couldn't see the
+    # first time around.
+    if CONFIG.optimizations.predicate_pushdown:
+        rules.append(PredicatePushdown())
+        rules.append(PredicatePushdownRemove())
+    if CONFIG.optimizations.upgrade_condition_joins:
+        rules.append(UpgradeJoinOnGuards())
+    if CONFIG.optimizations.hide_unused_concepts:
+        rules.append(HideUnusedConcepts())
+    return rules
+
+
 def optimize_ctes(
     input: list[CTE | UnionCTE],
     root_cte: CTE | UnionCTE,
@@ -233,50 +270,10 @@ def optimize_ctes(
 
         sort_select_output(root_cte, select)
 
-    REGISTERED_RULES: list["OptimizationRule"] = []
-
-    if CONFIG.optimizations.merge_aggregate:
-        REGISTERED_RULES.append(CollapseSingleParent())
-    if CONFIG.optimizations.merge_irrelevant_group_by:
-        REGISTERED_RULES.append(MergeIrrelevantGroupBy())
-    # JoinHoist runs before InlineDatasource so the moved join is still in
-    # non-inlined form; the subsequent inlining pass folds the parent's
-    # extended FROM into a flat table reference like any other dim join.
-    if CONFIG.optimizations.join_hoist:
-        REGISTERED_RULES.append(JoinHoist())
-    if CONFIG.optimizations.datasource_inlining:
-        REGISTERED_RULES.append(InlineDatasource())
-    if CONFIG.optimizations.predicate_pushdown:
-        REGISTERED_RULES.append(PredicatePushdown())
-    # Early BaseJoin-only upgrade pass so dim joins (e.g. q66's
-    # date_dim/time_dim/ship_mode) become INNER before UnionDimPushdown,
-    # which only matches INNER joins.
-    if CONFIG.optimizations.upgrade_condition_joins:
-        REGISTERED_RULES.append(UpgradeJoinOnGuards(base_join_only=True))
-    # UnionDimPushdown after PredicatePushdown so consumer WHEREs have
-    # settled before we match identical atoms across consumers.
-    if CONFIG.optimizations.union_dim_pushdown:
-        REGISTERED_RULES.append(UnionDimPushdown())
-    # Second PredicatePushdown pass: UnionDimPushdown may have added dim
-    # concepts to branch source_maps that PredicatePushdown couldn't see
-    # the first time around (e.g. q2's D_WEEK_SEQ filter only becomes
-    # branch-pushable after the date dim moves into each branch).
-    if CONFIG.optimizations.predicate_pushdown:
-        REGISTERED_RULES.append(PredicatePushdown())
-    if CONFIG.optimizations.predicate_pushdown:
-        REGISTERED_RULES.append(PredicatePushdownRemove())
-    if CONFIG.optimizations.upgrade_condition_joins:
-        # runs after pushdown so guards moved into the joining CTE are visible
-        REGISTERED_RULES.append(UpgradeJoinOnGuards())
-    if CONFIG.optimizations.hide_unused_concepts:
-        REGISTERED_RULES.append(HideUnusedConcepts())
-
-    # Track all merged CTEs across rules: old_name -> new_name
-    all_merged: dict[str, str] = {}
     cte_lookup: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
     cte_lookup[root_cte.name] = root_cte
 
-    for rule in REGISTERED_RULES:
+    for rule in registered_optimization_rules():
         loops = 0
         complete = False
         while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
@@ -288,7 +285,6 @@ def optimize_ctes(
                 opt, merged = rule.optimize(cte, inverse_map)
                 actions_taken = actions_taken or opt
                 if merged:
-                    all_merged.update(merged)
                     cte_lookup.update({c.name: c for c in input})
                     cte_lookup[root_cte.name] = root_cte
                     # Remap root_cte if it was merged

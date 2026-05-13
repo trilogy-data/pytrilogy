@@ -1,5 +1,7 @@
 query_id = "93"
 gen_length = 919
+preql_size = 411
+comp_size = 671
 generated_sql = """
 SELECT
     \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_sk\",

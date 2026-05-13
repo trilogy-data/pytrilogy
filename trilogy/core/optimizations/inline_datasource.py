@@ -29,7 +29,6 @@ class InlineDatasource(OptimizationRule):
             f"Checking {cte.name} for consolidating inline tables with {len(cte.parent_ctes)} parents"
         )
         to_inline: list[CTE] = []
-        force_group = False
         for parent_cte in cte.parent_ctes:
             if isinstance(parent_cte, UnionCTE):
                 continue
@@ -92,12 +91,7 @@ class InlineDatasource(OptimizationRule):
                 continue
             replaceable_base = replaceable.source.base_datasource
             assert replaceable_base is not None  # checked above
-            if not replaceable_base.grain.issubset(replaceable.grain):
-                self.log(
-                    f"Forcing group ({parent_cte.grain} being replaced by inlined source {root.grain})"
-                )
-                force_group = True
-            result = cte.inline_parent_datasource(replaceable, force_group=force_group)
+            result = cte.inline_parent_datasource(replaceable, force_group=False)
             if result:
                 self.log(
                     f"Inlined parent {replaceable.name} with {replaceable.source.safe_identifier}"

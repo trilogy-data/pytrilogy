@@ -1,5 +1,7 @@
 query_id = "13"
 gen_length = 3152
+preql_size = 1709
+comp_size = 2434
 generated_sql = """
 SELECT
     avg(\"store_sales_store_sales\".\"SS_QUANTITY\") as \"avg1\",

@@ -1,5 +1,7 @@
 query_id = "15"
 gen_length = 1372
+preql_size = 883
+comp_size = 813
 generated_sql = """
 SELECT
     \"catalog_sales_bill_customer_address_customer_address\".\"CA_ZIP\" as \"catalog_sales_bill_customer_address_zip\",

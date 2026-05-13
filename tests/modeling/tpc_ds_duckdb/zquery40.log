@@ -1,5 +1,7 @@
 query_id = "40"
 gen_length = 1904
+preql_size = 1004
+comp_size = 1048
 generated_sql = """
 SELECT
     \"catalog_sales_warehouse_warehouse\".\"w_state\" as \"catalog_sales_warehouse_state\",
