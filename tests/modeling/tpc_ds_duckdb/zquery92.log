@@ -1,14 +1,12 @@
 query_id = "92"
-gen_length = 1649
+gen_length = 1387
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
     \"ws_item_items\".\"I_ITEM_SK\" as \"ws_item_id\",
-    \"ws_item_items\".\"I_MANUFACT_ID\" as \"ws_item_manufacturer_id\",
-    \"ws_web_sales\".\"WS_EXT_DISCOUNT_AMT\" as \"ws_ext_discount_amount\",
-    cast(\"ws_date_date\".\"D_DATE\" as date) as \"ws_date_date\"
+    \"ws_web_sales\".\"WS_EXT_DISCOUNT_AMT\" as \"ws_ext_discount_amount\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
@@ -34,7 +32,7 @@ FROM
     \"thoughtful\"
     INNER JOIN \"cheerful\" on \"thoughtful\".\"ws_item_id\" = \"cheerful\".\"ws_item_id\"
 WHERE
-    \"cheerful\".\"ws_item_manufacturer_id\" = 350 and \"cheerful\".\"ws_date_date\" >= :start_date and \"cheerful\".\"ws_date_date\" <= :end_date and \"cheerful\".\"ws_ext_discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_85246949879440\"
+    \"cheerful\".\"ws_ext_discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_85246949879440\"
 
 ORDER BY 
     \"excess_discount_amount\" asc nulls first

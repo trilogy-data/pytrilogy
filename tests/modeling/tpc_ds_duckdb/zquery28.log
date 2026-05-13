@@ -1,5 +1,5 @@
 query_id = "28"
-gen_length = 9438
+gen_length = 9544
 generated_sql = """
 SELECT
     avg(CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 0 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 5 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" >= 8 and \"store_sales_store_sales\".\"SS_LIST_PRICE\" <= 18 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" >= 459 and \"store_sales_store_sales\".\"SS_COUPON_AMT\" <= 1459 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" >= 57 and \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" <= 77 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\" ELSE NULL END) as \"B1_LP\",
@@ -22,4 +22,7 @@ SELECT
     count(distinct CASE WHEN \"store_sales_store_sales\".\"SS_QUANTITY\" >= 26 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 30 and ( \"store_sales_store_sales\".\"SS_LIST_PRICE\" >= 154 and \"store_sales_store_sales\".\"SS_LIST_PRICE\" <= 164 or \"store_sales_store_sales\".\"SS_COUPON_AMT\" >= 7326 and \"store_sales_store_sales\".\"SS_COUPON_AMT\" <= 8326 or \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" >= 7 and \"store_sales_store_sales\".\"SS_WHOLESALE_COST\" <= 27 ) THEN \"store_sales_store_sales\".\"SS_LIST_PRICE\" ELSE NULL END) as \"B6_CNTD\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+WHERE
+    \"store_sales_store_sales\".\"SS_QUANTITY\" >= 0 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 30
+
 LIMIT (100)"""

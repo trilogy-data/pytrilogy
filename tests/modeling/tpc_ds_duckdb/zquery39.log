@@ -1,5 +1,5 @@
 query_id = "39"
-gen_length = 4120
+gen_length = 3994
 generated_sql = """
 
 WITH 
@@ -40,7 +40,7 @@ FROM
     \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
     INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"inventory_warehouse_inventory\".\"inv_date_sk\" = \"inventory_date_date\".\"D_DATE_SK\"
 WHERE
-    \"inventory_date_date\".\"D_YEAR\" = 2001 and \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" is not null
+    \"inventory_date_date\".\"D_YEAR\" = 2001 and \"inventory_date_date\".\"D_MOY\" in (1,2) and \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" is not null
 
 GROUP BY
     1,
@@ -49,13 +49,12 @@ GROUP BY
     4),
 questionable as (
 SELECT
-    \"cooperative\".\"inventory_warehouse_id\" as \"inventory_warehouse_id\",
-    \"inventory_date_date\".\"D_YEAR\" as \"inventory_date_year\"
+    \"cooperative\".\"inventory_warehouse_id\" as \"inventory_warehouse_id\"
 FROM
     \"cooperative\"
     INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"cooperative\".\"inventory_date_id\" = \"inventory_date_date\".\"D_DATE_SK\"
 WHERE
-    \"inventory_date_date\".\"D_YEAR\" = 2001 and \"cooperative\".\"inventory_warehouse_id\" is not null
+    \"inventory_date_date\".\"D_YEAR\" = 2001 and \"inventory_date_date\".\"D_MOY\" in (1,2)
 ),
 yummy as (
 SELECT
@@ -64,7 +63,7 @@ FROM
     \"questionable\"
     LEFT OUTER JOIN \"abundant\" on 1=1
 WHERE
-    \"questionable\".\"inventory_date_year\" = 2001 and \"questionable\".\"inventory_warehouse_id\" is not null
+    \"questionable\".\"inventory_warehouse_id\" is not null
 
 GROUP BY
     1),
@@ -75,7 +74,7 @@ FROM
     \"questionable\"
     LEFT OUTER JOIN \"abundant\" on 1=1
 WHERE
-    \"questionable\".\"inventory_date_year\" = 2001 and \"questionable\".\"inventory_warehouse_id\" is not null
+    \"questionable\".\"inventory_warehouse_id\" is not null
 
 GROUP BY
     1),

@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 4215
+gen_length = 4017
 generated_sql = """
 
 WITH 
@@ -36,7 +36,7 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"cheerful\".\"sales_item_id\" is not null and \"cheerful\".\"sales_sales_channel\" in ('WEB','STORE')
+    \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
 
 GROUP BY
     1,
@@ -52,7 +52,7 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"cheerful\".\"sales_item_id\" is not null and \"cheerful\".\"sales_sales_channel\" in ('WEB','STORE')
+    \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
 
 GROUP BY
     1,

@@ -30,6 +30,7 @@ def b_cntd(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> count_distin
         )
 );
 
+WHERE store_sales.quantity between 0 and 30
 SELECT
     @b_avg(0, 5, 8, 18, 459, 1459, 57, 77) as B1_LP,
     @b_cnt(0, 5, 8, 18, 459, 1459, 57, 77) as B1_CNT,

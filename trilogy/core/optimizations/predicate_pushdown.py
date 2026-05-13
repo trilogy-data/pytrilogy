@@ -430,6 +430,41 @@ class PredicatePushdownRemove(OptimizationRule):
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
 
+    def _atom_sourced_only_from_parents(
+        self, atom, cte: CTE
+    ) -> bool:
+        """True if every concept referenced by `atom` is materialized in `cte`
+        via a parent CTE rather than via one of `cte`'s own joined base
+        datasources. Atoms that reference inline-join columns must stay in
+        `cte` because no upstream filter constrains those columns."""
+        if not isinstance(atom, BuildConceptArgs):
+            return False
+        parent_names = {p.name for p in cte.parent_ctes}
+        for c in atom.row_arguments:
+            sources = cte.source_map.get(c.address)
+            if not sources:
+                return False
+            if not all(s in parent_names for s in sources):
+                return False
+        return True
+
+    def _atom_covered_by_applicable_parents(
+        self, atom, cte: CTE, existence_only: set[str]
+    ) -> bool:
+        """True if every non-existence parent that exposes `atom`'s row
+        arguments already enforces `atom`. Parents that don't expose those
+        concepts are irrelevant — they can't filter on them."""
+        atom_args = {c.address for c in atom.row_arguments}
+        relevant_parents = [
+            p
+            for p in cte.parent_ctes
+            if p.name not in existence_only
+            and atom_args.issubset({x.address for x in p.output_columns})
+        ]
+        if not relevant_parents:
+            return False
+        return all(_parent_covers_condition(p, atom) for p in relevant_parents)
+
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
@@ -482,6 +517,44 @@ class PredicatePushdownRemove(OptimizationRule):
                 self.log(
                     f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
                 )
+            return True, None
+
+        # Per-conjunct removal: even when the full condition isn't covered (e.g.
+        # cte joins dim tables inline that contribute their own filter atoms),
+        # individual atoms whose row_arguments are sourced entirely from parent
+        # CTEs and which are covered by every parent that exposes those concepts
+        # are still redundant — predicate-pushdown already arranged for them to
+        # be enforced upstream.
+        existence_set = set(existence_only)
+        if isinstance(cte.condition, BuildConditional) and cte.condition.operator == BooleanOperator.AND:
+            atoms = cte.condition.decompose()
+        else:
+            atoms = [cte.condition]
+        if len(atoms) <= 1:
+            self.complete[cte.name] = True
+            return optimized, None
+        surviving: list = []
+        removed = 0
+        for atom in atoms:
+            if (
+                self._atom_sourced_only_from_parents(atom, cte)
+                and self._atom_covered_by_applicable_parents(atom, cte, existence_set)
+            ):
+                self.log(
+                    f"Removing redundant atom {atom} from {cte.name}: covered by parent CTE(s) and sourced only from parents"
+                )
+                removed += 1
+            else:
+                surviving.append(atom)
+        if removed and surviving:
+            new_condition = surviving[0]
+            for atom in surviving[1:]:
+                new_condition = BuildConditional(
+                    left=new_condition,
+                    operator=BooleanOperator.AND,
+                    right=atom,
+                )
+            cte.condition = new_condition
             return True, None
 
         self.complete[cte.name] = True

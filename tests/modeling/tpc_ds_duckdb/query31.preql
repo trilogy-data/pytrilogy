@@ -18,6 +18,8 @@ auto store_q2_q3_increase <- ss_q3 / ss_q2;
 
 WHERE
     sales.date.year = 2000
+    and sales.sales_channel in ('STORE', 'WEB')
+    and sales.date.quarter in (1, 2, 3)
 SELECT
     sales.bill_address.county,
     sales.date.year,

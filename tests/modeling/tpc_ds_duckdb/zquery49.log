@@ -1,5 +1,5 @@
 query_id = "49"
-gen_length = 11300
+gen_length = 10746
 generated_sql = """
 
 WITH 
@@ -181,12 +181,6 @@ macho as (
 SELECT
     \"late\".\"return_qty\" as \"return_qty\",
     \"late\".\"sale_qty\" as \"sale_qty\",
-    \"late\".\"sales_date_month_of_year\" as \"sales_date_month_of_year\",
-    \"late\".\"sales_date_year\" as \"sales_date_year\",
-    \"late\".\"sales_net_paid\" as \"sales_net_paid\",
-    \"late\".\"sales_net_profit\" as \"sales_net_profit\",
-    \"late\".\"sales_quantity\" as \"sales_quantity\",
-    \"late\".\"sales_return_amount\" as \"sales_return_amount\",
     \"sparkling\".\"return_rank\" as \"return_rank\",
     coalesce(\"late\".\"sales_item_id\",\"sparkling\".\"sales_item_id\") as \"sales_item_id\",
     coalesce(\"late\".\"sales_sales_channel\",\"sparkling\".\"sales_sales_channel\") as \"sales_sales_channel\"
@@ -211,7 +205,7 @@ FROM
     \"macho\"
     LEFT OUTER JOIN \"concerned\" on \"macho\".\"sales_item_id\" = \"concerned\".\"sales_item_id\" AND \"macho\".\"sales_sales_channel\" = \"concerned\".\"sales_sales_channel\"
 WHERE
-    \"macho\".\"sales_return_amount\" > 10000 and \"macho\".\"sales_net_profit\" > 1 and \"macho\".\"sales_net_paid\" > 0 and \"macho\".\"sales_quantity\" > 0 and \"macho\".\"sales_date_year\" = 2001 and \"macho\".\"sales_date_month_of_year\" = 12 and ( \"macho\".\"return_rank\" <= 10 or \"concerned\".\"currency_rank\" <= 10 )
+    ( \"macho\".\"return_rank\" <= 10 or \"concerned\".\"currency_rank\" <= 10 )
 
 GROUP BY
     1,

@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 5074
+gen_length = 4933
 generated_sql = """
 
 WITH 
@@ -44,15 +44,14 @@ GROUP BY
 thoughtful as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"cheerful\".\"sales_date_id\" as \"sales_date_id\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"cheerful\".\"sales_date_id\" as \"sales_date_id\"
 FROM
     \"cheerful\"
 GROUP BY
     1,
     2,
-    3,
-    \"cheerful\".\"sales_item_id\"),
+    \"cheerful\".\"sales_item_id\",
+    \"cheerful\".\"sales_sales_channel\"),
 abundant as (
 SELECT
     \"thoughtful\".\"sales_customer_id\" as \"my_customers_my_cust_id\"
@@ -60,7 +59,7 @@ FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"thoughtful\".\"sales_sales_channel\" in ('CATALOG','WEB') and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 12 and \"thoughtful\".\"sales_customer_id\" is not null
+    \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 12
 
 GROUP BY
     1),

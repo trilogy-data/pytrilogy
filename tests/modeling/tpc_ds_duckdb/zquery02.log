@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 5464
+gen_length = 5406
 generated_sql = """
 
 WITH 
@@ -51,7 +51,7 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('WEB','CATALOG') and \"sales_date_date\".\"D_WEEK_SEQ\" in (select cooperative.\"relevent_week_seq\" from cooperative where cooperative.\"relevent_week_seq\" is not null)
+    \"sales_date_date\".\"D_WEEK_SEQ\" in (select cooperative.\"relevent_week_seq\" from cooperative where cooperative.\"relevent_week_seq\" is not null)
 
 GROUP BY
     1),

@@ -1,5 +1,5 @@
 query_id = "44"
-gen_length = 4262
+gen_length = 4026
 generated_sql = """
 
 WITH 
@@ -56,8 +56,7 @@ GROUP BY
 yummy as (
 SELECT
     \"cooperative\".\"threshold\" as \"threshold\",
-    \"wakeful\".\"ss_item_id\" as \"ss_item_id\",
-    coalesce(\"cooperative\".\"ss_store_id\",\"wakeful\".\"ss_store_id\") as \"ss_store_id\"
+    \"wakeful\".\"ss_item_id\" as \"ss_item_id\"
 FROM
     \"cooperative\"
     FULL JOIN \"wakeful\" on \"cooperative\".\"ss_store_id\" is not distinct from \"wakeful\".\"ss_store_id\"),
@@ -65,8 +64,7 @@ questionable as (
 SELECT
     \"cheerful\".\"ss_item_id\" as \"ss_item_id\",
     \"cheerful\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"cooperative\".\"threshold\" as \"threshold\",
-    coalesce(\"cheerful\".\"ss_store_id\",\"cooperative\".\"ss_store_id\") as \"ss_store_id\"
+    \"cooperative\".\"threshold\" as \"threshold\"
 FROM
     \"cheerful\"
     FULL JOIN \"cooperative\" on \"cheerful\".\"ss_store_id\" is not distinct from \"cooperative\".\"ss_store_id\"),
@@ -78,7 +76,7 @@ FROM
     \"yummy\"
     INNER JOIN \"abundant\" on \"yummy\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
 WHERE
-    \"yummy\".\"ss_store_id\" = 4 and \"abundant\".\"item_avg_profit\" > 0.9 * \"yummy\".\"threshold\"
+    \"abundant\".\"item_avg_profit\" > 0.9 * \"yummy\".\"threshold\"
 
 GROUP BY
     1,
@@ -91,7 +89,7 @@ FROM
     \"questionable\"
     INNER JOIN \"abundant\" on \"questionable\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
 WHERE
-    \"questionable\".\"ss_store_id\" = 4 and \"abundant\".\"item_avg_profit\" > 0.9 * \"questionable\".\"threshold\"
+    \"abundant\".\"item_avg_profit\" > 0.9 * \"questionable\".\"threshold\"
 
 GROUP BY
     1,

@@ -1,14 +1,12 @@
 query_id = "32"
-gen_length = 1578
+gen_length = 1317
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
     \"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\" as \"discount_amount\",
-    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
-    \"item_items\".\"I_MANUFACT_ID\" as \"item_manufacturer_id\",
-    cast(\"sold_date_date\".\"D_DATE\" as date) as \"sold_date_date\"
+    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
     INNER JOIN \"memory\".\"item\" as \"item_items\" on \"catalog_sales\".\"CS_ITEM_SK\" = \"item_items\".\"I_ITEM_SK\"
@@ -34,6 +32,6 @@ FROM
     \"thoughtful\"
     INNER JOIN \"cheerful\" on \"thoughtful\".\"item_id\" = \"cheerful\".\"item_id\"
 WHERE
-    \"cheerful\".\"item_manufacturer_id\" = 977 and \"cheerful\".\"sold_date_date\" >= :start_date and \"cheerful\".\"sold_date_date\" <= :end_date and \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_721736882945984\"
+    \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_721736882945984\"
 
 LIMIT (100)"""

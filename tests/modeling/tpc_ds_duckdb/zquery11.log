@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 5098
+gen_length = 4682
 generated_sql = """
 
 WITH 
@@ -53,7 +53,7 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"cheerful\".\"sales_customer_id\" is not null
+    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 
 GROUP BY
     1),
@@ -63,15 +63,13 @@ SELECT
     \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
     \"sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_customer_preferred_cust_flag\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\"
 FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB') and \"sales_date_date\".\"D_YEAR\" in (2001,2002) and \"thoughtful\".\"sales_customer_id\" is not null
+    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 
 GROUP BY
     1,
@@ -79,8 +77,8 @@ GROUP BY
     3,
     4,
     5,
-    6,
-    7)
+    \"sales_date_date\".\"D_YEAR\",
+    \"thoughtful\".\"sales_sales_channel\")
 SELECT
     \"abundant\".\"sales_customer_text_id\" as \"sales_customer_text_id\",
     \"abundant\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
@@ -90,7 +88,7 @@ FROM
     \"abundant\"
     INNER JOIN \"uneven\" on \"abundant\".\"sales_customer_id\" is not distinct from \"uneven\".\"sales_customer_id\"
 WHERE
-    \"abundant\".\"sales_sales_channel\" in ('STORE','WEB') and \"abundant\".\"sales_date_year\" in (2001,2002) and \"abundant\".\"sales_customer_id\" is not null and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
+    \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
 	WHEN \"uneven\".\"web_first_year\" > 0 THEN (\"uneven\".\"web_second_year\" * 1.0) / \"uneven\".\"web_first_year\"
 	ELSE 0.0
 	END ) > ( CASE

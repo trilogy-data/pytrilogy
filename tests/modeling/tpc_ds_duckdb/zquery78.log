@@ -1,5 +1,5 @@
 query_id = "78"
-gen_length = 6706
+gen_length = 6659
 generated_sql = """
 
 WITH 
@@ -91,7 +91,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
 WHERE
-    \"cheerful\".\"sales_is_returned\" is null and \"sales_date_date\".\"D_YEAR\" = 2000 and \"abundant\".\"sales_customer_id\" is not null
+    \"cheerful\".\"sales_is_returned\" is null and \"sales_date_date\".\"D_YEAR\" = 2000
 
 GROUP BY
     1,

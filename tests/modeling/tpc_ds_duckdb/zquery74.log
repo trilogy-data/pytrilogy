@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3882
+gen_length = 3706
 generated_sql = """
 
 WITH 
@@ -58,8 +58,7 @@ SELECT
     \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
     \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
-    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\"
 FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
@@ -74,7 +73,7 @@ FROM
     \"uneven\"
     INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
 WHERE
-    \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"questionable\".\"sales_customer_id\" is not null and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
+    \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
 	WHEN \"uneven\".\"web_first_year\" > 0 THEN \"uneven\".\"web_second_year\" / \"uneven\".\"web_first_year\"
 	ELSE null
 	END ) > ( CASE
