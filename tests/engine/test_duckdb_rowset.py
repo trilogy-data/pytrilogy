@@ -1,5 +1,3 @@
-
-
 from logging import INFO
 
 from trilogy import Dialects

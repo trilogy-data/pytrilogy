@@ -1,0 +1,216 @@
+query_id = "77"
+gen_length = 8682
+generated_sql = """
+
+WITH 
+protective as (
+SELECT
+    \"wr_web_returns\".\"WR_WEB_PAGE_SK\" as \"wr_grouped_wr_wp_id\",
+    sum(\"wr_web_returns\".\"WR_NET_LOSS\") as \"wr_grouped_wr_loss\",
+    sum(\"wr_web_returns\".\"WR_RETURN_AMT\") as \"wr_grouped_wr_returns\"
+FROM
+    \"memory\".\"web_returns\" as \"wr_web_returns\"
+    INNER JOIN \"memory\".\"date_dim\" as \"wr_return_date_date\" on \"wr_web_returns\".\"WR_RETURNED_DATE_SK\" = \"wr_return_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"wr_return_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"wr_return_date_date\".\"D_DATE\" as date) <= date '2000-09-22'
+
+GROUP BY
+    1),
+rambunctious as (
+SELECT
+    \"ws_web_sales\".\"WS_WEB_PAGE_SK\" as \"ws_grouped_ws_wp_id\",
+    sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"ws_grouped_ws_sales\",
+    sum(\"ws_web_sales\".\"WS_NET_PROFIT\") as \"ws_grouped_ws_profit\"
+FROM
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"ws_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"ws_date_date\".\"D_DATE\" as date) <= date '2000-09-22'
+
+GROUP BY
+    1),
+abhorrent as (
+SELECT
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_grouped_ss_store_id\",
+    sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"ss_grouped_ss_sales\",
+    sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"ss_grouped_ss_profit\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"ss_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"ss_date_date\".\"D_DATE\" as date) <= date '2000-09-22'
+
+GROUP BY
+    1),
+scrawny as (
+SELECT
+    \"ss_store_returns\".\"SR_STORE_SK\" as \"sr_grouped_sr_store_id\",
+    sum(\"ss_store_returns\".\"SR_NET_LOSS\") as \"sr_grouped_sr_loss\",
+    sum(\"ss_store_returns\".\"SR_RETURN_AMT\") as \"sr_grouped_sr_returns\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"ss_return_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"ss_return_date_date\".\"D_DATE\" as date) <= date '2000-09-22'
+
+GROUP BY
+    1),
+wakeful as (
+SELECT
+    coalesce(\"cr_catalog_returns\".\"CR_CALL_CENTER_SK\",-1) as \"cr_grouped_cr_cc_key\",
+    sum(\"cr_catalog_returns\".\"CR_NET_LOSS\") as \"cr_grouped_cr_loss_per_cc\",
+    sum(\"cr_catalog_returns\".\"CR_RETURN_AMOUNT\") as \"cr_grouped_cr_returns_per_cc\"
+FROM
+    \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"cr_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"cr_date_date\".\"D_DATE\" as date) <= date '2000-09-22'
+
+GROUP BY
+    1),
+vacuous as (
+SELECT
+    :u_channel_c as \"u_channel_c\",
+    :u_channel_s as \"u_channel_s\",
+    :u_channel_w as \"u_channel_w\"
+),
+uneven as (
+SELECT
+    \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
+    sum(\"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\") as \"_virt_agg_sum_6520591768854391\",
+    sum(\"cs_catalog_sales\".\"CS_NET_PROFIT\") as \"_virt_agg_sum_6226990944561419\"
+FROM
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"cs_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"cs_date_date\".\"D_DATE\" as date) <= date '2000-09-22'
+
+GROUP BY
+    1),
+hard as (
+SELECT
+    \"rambunctious\".\"ws_grouped_ws_wp_id\" as \"u_id_w\",
+    cast(\"rambunctious\".\"ws_grouped_ws_profit\" - coalesce(\"protective\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"u_profit_w\",
+    cast(\"rambunctious\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"u_sales_w\",
+    cast(coalesce(\"protective\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"u_returns_w\"
+FROM
+    \"protective\"
+    INNER JOIN \"rambunctious\" on \"protective\".\"wr_grouped_wr_wp_id\" = \"rambunctious\".\"ws_grouped_ws_wp_id\"),
+kaput as (
+SELECT
+    \"abhorrent\".\"ss_grouped_ss_store_id\" as \"u_id_s\",
+    cast(\"abhorrent\".\"ss_grouped_ss_profit\" - coalesce(\"scrawny\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"u_profit_s\",
+    cast(\"abhorrent\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"u_sales_s\",
+    cast(coalesce(\"scrawny\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"u_returns_s\"
+FROM
+    \"scrawny\"
+    INNER JOIN \"abhorrent\" on \"scrawny\".\"sr_grouped_sr_store_id\" = \"abhorrent\".\"ss_grouped_ss_store_id\"),
+thoughtful as (
+SELECT
+    count(\"wakeful\".\"cr_grouped_cr_cc_key\") as \"cr_n_groups\",
+    sum(\"wakeful\".\"cr_grouped_cr_loss_per_cc\") as \"cr_total_loss\",
+    sum(\"wakeful\".\"cr_grouped_cr_returns_per_cc\") as \"cr_total_returns\"
+FROM
+    \"wakeful\"),
+sedate as (
+SELECT
+    \"hard\".\"u_id_w\" as \"u_id\",
+    \"hard\".\"u_profit_w\" as \"u_profit\",
+    \"hard\".\"u_returns_w\" as \"u_returns\",
+    \"hard\".\"u_sales_w\" as \"u_sales\",
+    \"vacuous\".\"u_channel_w\" as \"u_channel\"
+FROM
+    \"vacuous\"
+    FULL JOIN \"hard\" on 1=1
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5),
+divergent as (
+SELECT
+    \"kaput\".\"u_id_s\" as \"u_id\",
+    \"kaput\".\"u_profit_s\" as \"u_profit\",
+    \"kaput\".\"u_returns_s\" as \"u_returns\",
+    \"kaput\".\"u_sales_s\" as \"u_sales\",
+    \"vacuous\".\"u_channel_s\" as \"u_channel\"
+FROM
+    \"vacuous\"
+    FULL JOIN \"kaput\" on 1=1
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5),
+cooperative as (
+SELECT
+    \"thoughtful\".\"cr_n_groups\" as \"cr_totals_cr_n_groups\",
+    \"thoughtful\".\"cr_total_loss\" as \"cr_totals_cr_total_loss\",
+    cast(\"thoughtful\".\"cr_total_returns\" as numeric(15,2)) as \"u_returns_c\"
+FROM
+    \"thoughtful\"),
+juicy as (
+SELECT
+    \"uneven\".\"cs_call_center_id\" as \"u_id_c\",
+    cast(\"uneven\".\"_virt_agg_sum_6520591768854391\" * \"cooperative\".\"cr_totals_cr_n_groups\" as numeric(15,2)) as \"u_sales_c\",
+    cast(( \"uneven\".\"_virt_agg_sum_6226990944561419\" * \"cooperative\".\"cr_totals_cr_n_groups\" ) - \"cooperative\".\"cr_totals_cr_total_loss\" as numeric(15,2)) as \"u_profit_c\"
+FROM
+    \"cooperative\"
+    FULL JOIN \"uneven\" on 1=1),
+concerned as (
+SELECT
+    \"cooperative\".\"u_returns_c\" as \"u_returns\",
+    \"juicy\".\"u_id_c\" as \"u_id\",
+    \"juicy\".\"u_profit_c\" as \"u_profit\",
+    \"juicy\".\"u_sales_c\" as \"u_sales\",
+    \"vacuous\".\"u_channel_c\" as \"u_channel\"
+FROM
+    \"juicy\"
+    FULL JOIN \"vacuous\" on 1=1
+    FULL JOIN \"cooperative\" on 1=1),
+yellow as (
+SELECT
+    coalesce(\"concerned\".\"u_channel\",\"divergent\".\"u_channel\",\"sedate\".\"u_channel\") as \"u_channel\",
+    coalesce(\"concerned\".\"u_id\",\"divergent\".\"u_id\",\"sedate\".\"u_id\") as \"u_id\",
+    coalesce(\"concerned\".\"u_profit\",\"divergent\".\"u_profit\",\"sedate\".\"u_profit\") as \"u_profit\",
+    coalesce(\"concerned\".\"u_returns\",\"divergent\".\"u_returns\",\"sedate\".\"u_returns\") as \"u_returns\",
+    coalesce(\"concerned\".\"u_sales\",\"divergent\".\"u_sales\",\"sedate\".\"u_sales\") as \"u_sales\"
+FROM
+    \"concerned\"
+    FULL JOIN \"divergent\" on \"concerned\".\"u_channel\" is not distinct from \"divergent\".\"u_channel\" AND \"concerned\".\"u_id\" is not distinct from \"divergent\".\"u_id\" AND \"concerned\".\"u_profit\" is not distinct from \"divergent\".\"u_profit\" AND \"concerned\".\"u_returns\" is not distinct from \"divergent\".\"u_returns\" AND \"concerned\".\"u_sales\" is not distinct from \"divergent\".\"u_sales\"
+    FULL JOIN \"sedate\" on coalesce(\"concerned\".\"u_channel\", \"divergent\".\"u_channel\") = \"sedate\".\"u_channel\" AND coalesce(\"concerned\".\"u_id\", \"divergent\".\"u_id\") = \"sedate\".\"u_id\" AND coalesce(\"concerned\".\"u_profit\", \"divergent\".\"u_profit\") = \"sedate\".\"u_profit\" AND coalesce(\"concerned\".\"u_returns\", \"divergent\".\"u_returns\") = \"sedate\".\"u_returns\" AND coalesce(\"concerned\".\"u_sales\", \"divergent\".\"u_sales\") = \"sedate\".\"u_sales\"),
+resonant as (
+SELECT
+    \"yellow\".\"u_channel\" as \"l0_union_u_channel\",
+    \"yellow\".\"u_id\" as \"l0_union_u_id\",
+    \"yellow\".\"u_profit\" as \"l0_union_u_profit\",
+    \"yellow\".\"u_returns\" as \"l0_union_u_returns\",
+    \"yellow\".\"u_sales\" as \"l0_union_u_sales\"
+FROM
+    \"yellow\"
+    FULL JOIN \"vacuous\" on 1=1
+    FULL JOIN \"cooperative\" on 1=1
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5)
+SELECT
+    \"resonant\".\"l0_union_u_channel\" as \"channel\",
+    \"resonant\".\"l0_union_u_id\" as \"id\",
+    sum(\"resonant\".\"l0_union_u_sales\") as \"sales\",
+    sum(\"resonant\".\"l0_union_u_returns\") as \"returns_\",
+    sum(\"resonant\".\"l0_union_u_profit\") as \"profit\"
+FROM
+    \"resonant\"
+GROUP BY
+    ROLLUP (1, 2)
+ORDER BY 
+    \"channel\" asc nulls first,
+    \"id\" asc nulls first,
+    \"returns_\" desc
+LIMIT (100)"""

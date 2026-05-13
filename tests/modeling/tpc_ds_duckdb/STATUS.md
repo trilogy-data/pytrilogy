@@ -9,77 +9,53 @@ gaps, and known framework limitations encountered while authoring tests in
 
 | State | Count | Queries |
 |---|---|---|
-| Passing | 96 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
+| Passing | 98 | 1, 2 (+02-one, 02-two), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97 (+97-one, 97-two), 98, 99 |
 | XFAIL (committed broken for experimentation) | 1 | 14 |
-| Missing (no preql / no test) | 2 | 75, 77 |
+| Missing (no preql / no test) | 0 | — |
 
 (2-one / 2-two / 97-one / 97-two are alternative phrasings of the same query
 exercising different planner paths — they share an SQL reference.)
 
-## Recent Query Additions (q54)
+## Recent Query Additions (q77)
 
-- **q54** — customer set built from catalog/web Women/maternity buyers in
-  Dec 1998, then per-customer revenue against store_sales over a 3-month
-  window joined to stores via county/state. Two rowsets keyed by
-  `(county, state)` get merged: `cust_ss` per-customer ss revenue at
-  customer.id grain, and `stores_cs` count of stores per (county, state).
-  Final revenue = `ss_revenue * scs_count` materialized in a third rowset
-  `my_revenue`, then `cast(round(revenue/50) as int)` bucket + count.
-  - **The reference q54 does an INNER cross-join**, not a constrained
-    fact↔dim join. `customer_address.ca_county = store.s_county AND
-    ca_state = s_state` is a cardinality multiplier (per customer, ss rows
-    are duplicated by N_stores in their county/state). Pin this with two
-    keyed rowsets + merge as above, NOT with `ss.customer.address.county =
-    ss.store.county` (that filter constrains the ss row's natural store,
-    giving you ~1/12th the result).
-  - **Materializing the final per-customer revenue in a separate rowset is
-    required** for the outer `count()` to reflect post-merge cardinality.
-    Without it, `count(cust_ss.ss_cust_id)` sourced from `cust_ss` alone
-    (pre-merge) counts all customers with any ss in the window — not just
-    those whose county/state has matching stores.
+- **q77** — store/catalog/web rollup with per-channel dims that differ
+  from q5/q80 (store→s_store_sk, catalog→cs_call_center_sk,
+  web→wp_web_page_sk), so unified_sales doesn't fit. Hand-shaped using
+  the raw fact imports (catalog_sales, catalog_returns, store_sales,
+  web_sales, web_returns) per channel.
+  - **Catalog branch CROSS-JOIN broadcast.** The reference does
+    `FROM cs , cr` (no join key), so per-id sales/profit get fanned
+    out by N_cr_groups and per-id returns/loss broadcast as the cr
+    total. Compute cr per call_center (NULL group preserved via
+    `coalesce(cr.call_center.id, -1)` sentinel), fold to a single-row
+    `cr_totals` rowset with `count(cr_grouped.cr_cc_key) as cr_n_groups`
+    + sum totals, then in the cs SELECT do
+    `sum(cs.ext_sales_price) * cr_totals.cr_n_groups` and broadcast
+    `cr_totals.cr_total_returns` directly. The cs WHERE filter restricts
+    only the cs side; the cross-join with the scalar rowset is what
+    inflates the per-id values.
+  - **Inlining branches into the multi-select is required.** Wrapping
+    the catalog branch in its own `with catalog_branch as …` rowset
+    and then MERGEing rowsets in the multi-select hits "can only merge
+    two datasources if the force_group flag is the same" during merge
+    resolution — the catalog rowset's cross-join with `cr_totals` sets
+    a different force_group than the store/web rowsets' plain
+    aggregations. Inlining the SELECTs directly inside the multi-select
+    avoids this.
+  - **`numeric(15,2)` casts on every branch's metric columns.**
+    `store_sales.preql` declares `ext_sales_price numeric(15,2)` while
+    catalog/web use `float`, and `align` requires matching datatypes
+    across branches. Cast all sales/returns/profit expressions to
+    `numeric(15,2)` so align doesn't reject the merge.
+  - **Final ROLLUP via `by rollup channel, id` on the L0 union.**
+    The L0 union (3-branch multi-select with align) is wrapped in
+    `with l0_union as …`, then the final SELECT does
+    `sum(...) by rollup l0_union.u_channel, l0_union.u_id` for each
+    metric, with `ORDER BY channel asc nulls first, id asc nulls first,
+    returns_ desc`.
 
-## Recent Query Conversions (q29)
 
-- **q29** — previously skipped for "FULL JOIN of store + return + catalog
-  produces extra rows" — but the root cause is the same as q50: trilogy's
-  store_sales↔store_returns join is on the loose `~ticket_number,~item.id`
-  mapping, leaving `ss_customer_sk = sr_customer_sk` unenforced. Adding
-  `store_sales.customer.id = store_sales.return_customer.id` to WHERE
-  matches the reference and trims the 3-row trilogy result to the 1-row
-  reference. Same workaround documented for q50.
 
-## Recent Query Additions (q64)
-
-- **q64** — 16+ table self-join shape with a `cs_ui` filter (items where
-  catalog sale > 2× refund). Tested at sf=0.01 via `engine_sf001` fixture
-  with `sql_override=True`. Both reference and trilogy return 0 rows at
-  sf=0.01, so the test verifies the query parses, plans, and executes
-  end-to-end (sf=1 reference PRAGMA OOMs / times out; sf=0.1 reference
-  exceeds 5min). Two parallel `cross_99` / `cross_00` rowsets aggregate
-  ss + ad1 + ad2 + cd1 + cd2 + hd1 + hd2 + ib1 + ib2 + d1 + d2 + d3 +
-  store + item + promotion + cs_ui per (item, store, addr1, addr2,
-  year-triple), then merge on `(item_sk, store_name, store_zip)` with
-  `cnt_00 <= cnt_99`.
-
-  Model extensions:
-  - `customer.preql` — added `first_sales_date` / `first_shipto_date`
-    (date imports; `C_FIRST_SALES_DATE_SK` / `C_FIRST_SHIPTO_DATE_SK`).
-    Both nullable.
-  - `catalog_returns.preql` — added `reversed_charge` /
-    `store_credit` (`CR_REVERSED_CHARGE` / `CR_STORE_CREDIT`).
-  - `catalog_sales.preql` — added `ext_list_price` (`CS_EXT_LIST_PRICE`).
-
-  Key shape detail:
-  - The `cs_ui` filter is expressed via `merge cs.order_number into
-    cr.order_number; merge cs.item.id into cr.item.id;` joining
-    catalog_sales to catalog_returns (INNER on the loose merge), then
-    `auto cs_ui_sale <- sum(cs.ext_list_price) by cs.item.id;` /
-    `auto cs_ui_refund <- sum(cs.item.cs_ui_refund_amt) by cs.item.id;`.
-    The refund expression is hoisted into a property on `cs.item.id`
-    (per the q80 inline-`?`-filter caveat — `coalesce(x,0)+coalesce(y,0)`
-    needs to be a property before being summed).
-  - `ORDER BY` references *aliased* names (`s11`, `s12`) not the
-    rowset-qualified ones — the q73 ORDER BY restriction applies.
 
 ## Pre-existing Model Bugs Not Yet Fixed
 
@@ -230,12 +206,10 @@ falls on the query writer.
 
 ## Suggested Next Batch (by complexity)
 
-These look tractable without further framework work:
+(q72 was the last item here; now passing at sf=0.01 via `engine_sf001` —
+see `test_seventy_two`. q75 was the other; now passing as a deduped
+rowset shape with per-(brand,class,cat,manufact) curr/prev aggregates.)
 
-- **q72** — model extensions are now done (catalog_sales has
-  `bill_household_demographic`), but the inventory + sales + returns
-  triple-join blows up to OOM during planning. Needs filter pushdown
-  improvements or a smaller, more targeted query shape.
 
 ## Backport Candidates (use unified_sales)
 
@@ -256,30 +230,22 @@ These need framework work first:
   items present in all 3 channels, plus a 4-level rollup over (channel,
   brand, class, category) and an `avg_sales` HAVING threshold. **XFAIL**
   — `query14.preql` is committed with the in_cross_items-chain shape and
-  `test_fourteen` has `@pytest.mark.xfail(strict=True)`. See "Recent
-  Query Additions (q14 — XFAIL, blocked)" above for the two attempted
-  shapes and the underlying planner bugs.
-- **q77** — same store/catalog/web rollup as q5 in structure, but each
-  channel uses a different dim than q5/q80: **store** uses `s_store_sk`
-  (same), **catalog** uses `cs_call_center_sk` (q5 uses
-  `cp_catalog_page_sk`), **web** uses `wp_web_page_sk` (q5 uses
-  `web_site_sk`). The q5 fix to unified_sales (separate `channel_dim_id`
-  and `return_channel_dim_id`) doesn't help here because the dim sources
-  themselves differ per channel. Worse, q77's catalog branch does a
-  CROSS JOIN of cs and cr (no key match), inflating subtotal returns by
-  `N_cs`. Would need either: (a) a parallel `channel_dim_id_alt` /
-  `return_channel_dim_id_alt` concept set in unified_sales mapping
-  store/call_center/web_page, plus cross-join semantics for the catalog
-  branch; or (b) a 6-rowset hand-written shape outside unified_sales.
-  Both are significant work. Defer.
-- **q72** — listed above; OOM on planning.
-- **q75** — UNION DISTINCT of three per-channel `(year, brand, class, cat,
-  manufact, qty_per_row, amt_per_row)` row sets. The DISTINCT collapses
-  ~1500 cross-channel duplicate tuples on sf=1 (480396 vs 478874 rows).
-  Trilogy's `unified_sales` aggregates after summing per-channel; expressing
-  "dedup by exact value tuple before sum" needs a primitive we don't have.
-  Without dedup, summed counts diverge by ~16 per affected (brand, class,
-  cat, manufact) group.
+  `test_fourteen` has `@pytest.mark.xfail(strict=True)`.
+  - Shape C tried (third attempt, also blocked): cross_items rowset
+    keyed on a `concat(brand|class|cat)` tuple_key with
+    `count_distinct(sales_channel) = 3` HAVING; avg_sales materialized
+    as its own rowset so it isn't inlined; l0_filtered rowset applies
+    HAVING `bucket_sum > avg_sales`; then 5-rowset merge over
+    l0_filtered for rollup. cross_items + avg_sales + l0_filtered all
+    work correctly. The blocker is the merge branches — expressions
+    like `sum(l0_filtered.bucket_sum_l0) by l0_filtered.channel_l0,
+    l0_filtered.brand_id_l0, l0_filtered.class_id_l0` compile to
+    `SELECT bucket_sum_l0, bucket_cnt_l0 FROM busy GROUP BY 1, 2` —
+    the SUM is dropped and the aggregation collapses to DISTINCT on
+    the bucket values. Higher rollup levels then equal L0 instead of
+    summing across L0 rows. Filing under planner-bug; same family as
+    the original Shape A/B issues.
+
 
 ## Test Infra Notes
 
