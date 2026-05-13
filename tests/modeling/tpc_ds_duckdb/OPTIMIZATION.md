@@ -248,3 +248,6 @@ Relevant generated shape:
 
 query67.preql - let a bare rank/rollup inherit the grain dimensions from the 
 select, same as a bare aggregate. saves redefining those.
+
+
+##   q09, q77, q83

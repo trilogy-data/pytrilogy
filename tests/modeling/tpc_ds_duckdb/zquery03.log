@@ -1,7 +1,7 @@
 query_id = "03"
-gen_length = 893
-preql_size = 501
-comp_size = 448
+gen_length = 891
+preql_size = 366
+comp_size = 446
 generated_sql = """
 SELECT
     \"store_sales_date_date\".\"D_YEAR\" as \"store_sales_date_year\",

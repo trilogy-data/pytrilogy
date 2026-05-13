@@ -1,7 +1,7 @@
 query_id = "21"
-gen_length = 2524
-preql_size = 817
-comp_size = 1245
+gen_length = 2521
+preql_size = 810
+comp_size = 1014
 generated_sql = """
 SELECT
     \"inventory_warehouse_warehouse\".\"w_warehouse_name\" as \"inventory_warehouse_name\",

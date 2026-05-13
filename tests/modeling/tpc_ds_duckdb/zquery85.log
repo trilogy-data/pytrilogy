@@ -1,7 +1,7 @@
 query_id = "85"
-gen_length = 4027
-preql_size = 2002
-comp_size = 2167
+gen_length = 4025
+preql_size = 2000
+comp_size = 2166
 generated_sql = """
 SELECT
     SUBSTRING(\"wr_reason_reason\".\"R_REASON_DESC\",1,20) as \"reason_desc\",

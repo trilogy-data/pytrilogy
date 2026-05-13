@@ -2,13 +2,7 @@ import unified_sales as sales;
 
 # Per-(channel, item) ratios. Filter requires a returns row with return_amount > 10000
 # (acts as INNER on LEFT JOIN to returns), and Dec 2001.
-def in_window(metric) -> sum(metric ?
-    sales.return_amount > 10000
-    and sales.net_profit > 1
-    and sales.net_paid > 0
-    and sales.quantity > 0
-    and sales.date.year = 2001
-    and sales.date.month_of_year = 12
+def in_window(metric) -> sum(metric 
 ) by sales.sales_channel, sales.item.id;
 
 auto return_qty <- @in_window(sales.return_quantity);
@@ -29,13 +23,14 @@ END;
 
 WHERE
     sales.return_amount > 10000 and sales.net_profit > 1 and sales.net_paid > 0 and sales.quantity > 0 and sales.date.year = 2001 and sales.date.month_of_year = 12
-    and (return_rank <= 10 or currency_rank <= 10)
 SELECT
     channel_label as channel,
     sales.item.id as item,
     return_ratio,
     return_rank,
     currency_rank,
+HAVING
+    return_rank <= 10 or currency_rank <= 10
 ORDER BY
     channel asc nulls first,
     return_rank asc nulls first,

@@ -6,6 +6,7 @@ from pathlib import Path
 import tomli_w
 import tomllib
 
+from tests.modeling.tpc_ds_duckdb.query_size import query_size
 from trilogy import Executor
 from trilogy.core.models.environment import Environment
 
@@ -48,7 +49,7 @@ def run_query(
     query_label = label or f"{idx:02d}"
     with open(working_path / filename) as f:
         text = f.read()
-    preql_size = len(text)
+    preql_size = query_size(text, "preql")
 
     # fetch our results
     parse_start = datetime.now()
@@ -73,7 +74,8 @@ def run_query(
     # Always prefer the on-disk reference SQL for size comparison when available,
     # so the PRAGMA-driven runs still report a meaningful comp_size.
     sql_path = working_path / f"query{idx:02d}.sql"
-    comp_size = len(sql_path.read_text()) if sql_path.exists() else len(rquery)
+    comp_source = sql_path.read_text() if sql_path.exists() else rquery
+    comp_size = query_size(comp_source, "sql")
 
     if len(base_results) > 0:
         assert len(comp_results) > 0, "No results returned"
@@ -93,7 +95,7 @@ def run_query(
             tomli_w.dumps(
                 {
                     "query_id": query_label,
-                    "gen_length": len(query),
+                    "gen_length": query_size(query, "sql"),
                     "preql_size": preql_size,
                     "comp_size": comp_size,
                     "generated_sql": query,

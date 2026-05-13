@@ -10,7 +10,37 @@ import pandas as pd
 import tomllib
 from matplotlib.ticker import StrMethodFormatter
 
+from tests.modeling.tpc_ds_duckdb.query_size import query_size
 from tests.modeling.tpc_ds_duckdb.summarize_test_results import write_summary
+
+_ALT_PREQL_NAMES: dict[str, str] = {
+    "2.1": "query02-one.preql",
+    "2.2": "query02-two.preql",
+    "97.1": "query97-one.preql",
+    "97.2": "query97-two.preql",
+}
+
+
+def _source_paths(query_id: str, root: Path) -> tuple[Path, Path]:
+    preql_name = _ALT_PREQL_NAMES.get(query_id, f"query{query_id}.preql")
+    base = query_id.split(".", 1)[0]
+    sql_name = f"query{base}.sql"
+    return root / preql_name, root / sql_name
+
+
+def _recompute_sizes(record: dict, root: Path) -> None:
+    qid = str(record.get("query_id", ""))
+    if not qid:
+        return
+    preql_path, sql_path = _source_paths(qid, root)
+    if preql_path.exists():
+        record["preql_size"] = query_size(preql_path.read_text(), "preql")
+    if sql_path.exists():
+        record["comp_size"] = query_size(sql_path.read_text(), "sql")
+    generated = record.get("generated_sql")
+    if isinstance(generated, str):
+        record["gen_length"] = query_size(generated, "sql")
+
 
 # Get aggregate info
 machine = platform.machine()
@@ -133,6 +163,7 @@ def analyze(show: bool = False):
                 except tomllib.TOMLDecodeError:
                     print(f"Error loading {filename}")
                     continue
+                _recompute_sizes(loaded, root)
                 results.append(loaded)
     timing_path = Path(root / f"zquery_timing_{fingerprint}.log")
     with open(timing_path, "r") as f:
