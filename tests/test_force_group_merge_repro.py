@@ -1,31 +1,22 @@
-"""Minimal reproduction of "can only merge two datasources if the force_group
-flag is the same" error during multi-select merge resolution.
+"""Regression: multi-select MERGE of rowsets whose branches mix a scalar
+cross-join with plain per-key aggregation. Discovery splits the rowset's
+single-row constant from its keyed columns into two separate stack nodes;
+both resolve to QueryDatasources with the same identifier (same datasources
+and grain, same group_required) but different `force_group` hints. The old
+strict equality check in `QueryDatasource.__add__` rejected the merge with
+"can only merge two datasources if the force_group flag is the same" even
+though both branches render identical SQL.
 
-Hit by q77 when wrapping the catalog branch in its own `with … as` rowset.
-The catalog branch cross-joins a scalar rowset (cr_totals) to broadcast a
-count + totals, which sets force_group differently from the plain per-store
-aggregation rowsets. Trying to MERGE the two rowsets in a multi-select with
-`align` fails in merge_node._resolve at:
-
-    merged[source.identifier] = merged[source.identifier] + source
-
-raising SyntaxError("can only merge two datasources if the force_group flag
-is the same") from BuildDatasource.__add__.
-
-Workaround used in query77.preql: inline the SELECTs directly inside the
-multi-select branches rather than wrapping each branch in `with … as`.
+Originally hit by q77 when wrapping the catalog branch in its own
+`with … as` rowset; the workaround was inlining the SELECT.
 """
 
 from textwrap import dedent
 
-import pytest
-
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 
-
-REPRO_PREQL = dedent(
-    """
+REPRO_PREQL = dedent("""
     key fact_id int;
     properties <fact_id> (
         grp int?,
@@ -82,17 +73,9 @@ REPRO_PREQL = dedent(
         AND u_grp: u_grp_a, u_grp_b
         AND u_val: u_val_a, u_val_b
     ;
-    """
-).strip()
+    """).strip()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Planner bug: multi-select MERGE of two rowsets with mismatched "
-    "force_group flags raises 'can only merge two datasources if the "
-    "force_group flag is the same' during BuildDatasource.__add__. See q77 "
-    "workaround in tests/modeling/tpc_ds_duckdb/query77.preql.",
-)
 def test_force_group_merge_bug():
     env = Environment()
     engine = Dialects.DUCK_DB.default_executor(environment=env)

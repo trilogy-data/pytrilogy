@@ -800,10 +800,6 @@ class QueryDatasource:
             raise SyntaxError(
                 "can only merge two datasources if the join derived concepts are the same"
             )
-        if not self.force_group == other.force_group:
-            raise SyntaxError(
-                "can only merge two datasources if the force_group flag is the same"
-            )
         logger.debug(
             f"[Query Datasource] merging {self.name} with"
             f" {[c.address for c in self.output_concepts]} concepts and"
