@@ -1,5 +1,5 @@
 query_id = "66"
-gen_length = 24719
+gen_length = 25029
 generated_sql = """
 
 WITH 
@@ -17,10 +17,11 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"sales_catalog_sales_unified\".\"CS_SHIP_MODE_SK\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
     INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638
+    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638
 
 UNION ALL
 SELECT
@@ -36,10 +37,11 @@ SELECT
     \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" as \"sales_warehouse_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"sales_web_sales_unified\".\"WS_SHIP_MODE_SK\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
     INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638
+    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN') and \"sales_time_time\".\"T_TIME\" >= 30838 and \"sales_time_time\".\"T_TIME\" <= 59638
 ),
 quizzical as (
 SELECT
@@ -113,10 +115,7 @@ SELECT
     sum(\"thoughtful\".\"sales_sales_price\" * CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 9 THEN \"thoughtful\".\"sales_quantity\" ELSE NULL END) as \"cs_sep_sales\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001
-
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 GROUP BY
     1,
     2),

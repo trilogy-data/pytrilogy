@@ -294,12 +294,9 @@ class UpgradeJoinOnGuards(OptimizationRule):
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE) or not cte.condition:
             return False, None
-        has_outer_cte_join = (
-            not self.base_join_only
-            and any(
-                isinstance(j, Join) and j.jointype in _OUTER_JOIN_TYPES
-                for j in (cte.joins or [])
-            )
+        has_outer_cte_join = not self.base_join_only and any(
+            isinstance(j, Join) and j.jointype in _OUTER_JOIN_TYPES
+            for j in (cte.joins or [])
         )
         has_outer_base_join = any(
             isinstance(j, BaseJoin) and j.join_type in _OUTER_JOIN_TYPES

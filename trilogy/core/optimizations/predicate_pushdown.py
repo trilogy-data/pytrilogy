@@ -458,9 +458,7 @@ class PredicatePushdownRemove(OptimizationRule):
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
 
-    def _atom_sourced_only_from_parents(
-        self, atom, cte: CTE
-    ) -> bool:
+    def _atom_sourced_only_from_parents(self, atom, cte: CTE) -> bool:
         """True if every concept referenced by `atom` is materialized in `cte`
         via a parent CTE rather than via one of `cte`'s own joined base
         datasources. Atoms that reference inline-join columns must stay in
@@ -493,9 +491,7 @@ class PredicatePushdownRemove(OptimizationRule):
             return False
         return all(_parent_covers_condition(p, atom) for p in relevant_parents)
 
-    def _parent_is_nullable_in_cte(
-        self, cte: CTE, parent_name: str
-    ) -> bool:
+    def _parent_is_nullable_in_cte(self, cte: CTE, parent_name: str) -> bool:
         """True if ``parent_name`` is on the nullable side of any outer join
         on ``cte``. A nullable parent can be NULL-padded by the join, and
         rows whose filter column is NULL pass through a removed predicate
@@ -507,7 +503,10 @@ class PredicatePushdownRemove(OptimizationRule):
                 continue
             # right side is nullable on FULL/LEFT_OUTER
             if j.jointype in (JoinType.FULL, JoinType.LEFT_OUTER):
-                if isinstance(j.right_cte, (CTE, UnionCTE)) and j.right_cte.name == parent_name:
+                if (
+                    isinstance(j.right_cte, (CTE, UnionCTE))
+                    and j.right_cte.name == parent_name
+                ):
                     return True
             # left side is nullable on FULL/RIGHT_OUTER
             if j.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER):
@@ -589,7 +588,10 @@ class PredicatePushdownRemove(OptimizationRule):
         # of an outer join in `cte` can't be removed (NULL-padding bypasses
         # the parent's filter).
         existence_set = set(existence_only)
-        if isinstance(cte.condition, BuildConditional) and cte.condition.operator == BooleanOperator.AND:
+        if (
+            isinstance(cte.condition, BuildConditional)
+            and cte.condition.operator == BooleanOperator.AND
+        ):
             atoms = cte.condition.decompose()
         else:
             atoms = [cte.condition]
@@ -612,9 +614,7 @@ class PredicatePushdownRemove(OptimizationRule):
             if isinstance(atom, BuildConceptArgs):
                 for c in atom.row_arguments:
                     atom_sources.update(cte.source_map.get(c.address, []) or [])
-            if any(
-                self._parent_is_nullable_in_cte(cte, src) for src in atom_sources
-            ):
+            if any(self._parent_is_nullable_in_cte(cte, src) for src in atom_sources):
                 surviving.append(atom)
                 continue
             self.log(
