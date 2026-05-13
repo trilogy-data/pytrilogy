@@ -1,9 +1,9 @@
 import store_sales as store_sales;
 
-def bucket_count(low, high) -> sum(store_sales.row_counter ? store_sales.quantity between low and high);
+def bucket_count(low, high) -> sum(case when store_sales.quantity between low and high then 1 else 0 end);
 def bucket_pick(cnt, threshold, low, high) -> case when cnt > threshold
-    then avg(store_sales.ext_discount_amount ? store_sales.quantity between low and high)
-    else avg(store_sales.net_paid ? store_sales.quantity between low and high) end;
+    then avg(case when store_sales.quantity between low and high then store_sales.ext_discount_amount else null end)
+    else avg(case when store_sales.quantity between low and high then store_sales.net_paid else null end) end;
 
 auto count1 <- @bucket_count(1, 20);
 auto count2 <- @bucket_count(21, 40);

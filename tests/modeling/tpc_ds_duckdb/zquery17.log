@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 8799
+gen_length = 8693
 preql_size = 1553
 comp_size = 1764
 generated_sql = """
@@ -32,7 +32,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"store_sales_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"catalog_sales_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    \"store_sales_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"store_sales_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"catalog_sales_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,
@@ -58,7 +58,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"highfalutin\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"highfalutin\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"store_sales_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"catalog_sales_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    \"store_sales_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"store_sales_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"catalog_sales_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,

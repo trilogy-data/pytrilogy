@@ -1,5 +1,5 @@
 query_id = "25"
-gen_length = 7877
+gen_length = 7771
 preql_size = 1000
 comp_size = 1067
 generated_sql = """
@@ -33,7 +33,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_date_date\".\"D_MOY\" = 4 and \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" >= 4 and \"store_sales_return_date_date\".\"D_MOY\" <= 10 and \"catalog_sales_date_date\".\"D_YEAR\" = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 10 and \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_date_date\".\"D_MOY\" = 4 and \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" >= 4 and \"store_sales_return_date_date\".\"D_MOY\" <= 10 and \"catalog_sales_date_date\".\"D_YEAR\" = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 10 and \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,
@@ -61,7 +61,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"highfalutin\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_date_date\".\"D_MOY\" = 4 and \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" >= 4 and \"store_sales_return_date_date\".\"D_MOY\" <= 10 and \"catalog_sales_date_date\".\"D_YEAR\" = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 10 and \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = coalesce(\"highfalutin\".\"store_sales_customer_id\",\"store_sales_store_sales\".\"SS_CUSTOMER_SK\") and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    \"store_sales_date_date\".\"D_YEAR\" = 2001 and \"store_sales_date_date\".\"D_MOY\" = 4 and \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" >= 4 and \"store_sales_return_date_date\".\"D_MOY\" <= 10 and \"catalog_sales_date_date\".\"D_YEAR\" = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 10 and \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = coalesce(\"highfalutin\".\"store_sales_customer_id\",\"store_sales_store_sales\".\"SS_CUSTOMER_SK\") and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,
