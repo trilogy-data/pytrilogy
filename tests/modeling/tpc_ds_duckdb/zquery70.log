@@ -1,6 +1,6 @@
 query_id = "70"
-gen_length = 2786
-preql_size = 2038
+gen_length = 2706
+preql_size = 2142
 comp_size = 1259
 generated_sql = """
 
@@ -39,12 +39,12 @@ SELECT
     CASE
 	WHEN \"ss_store_store\".\"S_COUNTY\" is not null THEN \"ss_store_store\".\"S_STATE\"
 	ELSE null
-	END as \"_virt_func_case_1856097115431918\",
+	END as \"partition_state\",
     CASE
 	WHEN \"ss_store_store\".\"S_COUNTY\" is not null THEN 0
 	WHEN \"ss_store_store\".\"S_STATE\" is not null THEN 1
 	ELSE 2
-	END as \"_virt_func_case_2737614828591950\",
+	END as \"loc_level\",
     sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"q70_rolled_total_sum\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
@@ -64,7 +64,7 @@ SELECT
 	WHEN \"abundant\".\"q70_rolled_r_state\" is not null THEN 1
 	ELSE 2
 	END as \"lochierarchy\",
-    rank() over (partition by \"abundant\".\"_virt_func_case_2737614828591950\",\"abundant\".\"_virt_func_case_1856097115431918\" order by \"abundant\".\"q70_rolled_total_sum\" desc ) as \"rank_within_parent\"
+    rank() over (partition by \"abundant\".\"loc_level\",\"abundant\".\"partition_state\" order by \"abundant\".\"q70_rolled_total_sum\" desc ) as \"rank_within_parent\"
 FROM
     \"abundant\"
 ORDER BY 

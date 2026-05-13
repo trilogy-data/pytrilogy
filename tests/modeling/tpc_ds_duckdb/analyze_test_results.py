@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tomllib
+from matplotlib.ticker import StrMethodFormatter
+
+from tests.modeling.tpc_ds_duckdb.summarize_test_results import write_summary
 
 # Get aggregate info
 machine = platform.machine()
@@ -87,11 +90,12 @@ def plot_sizes(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> N
         total = int(sizes[i].sum())
         labels.append(f"{name} ({smallest} smallest, {largest} largest, {total} chars)")
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(9, 5))
     ax.set_title(title)
     ax.set_xlabel("Source")
-    ax.set_ylabel("Size (chars, log scale)")
-    ax.set_yscale("log")
+    ax.set_ylabel("Size (chars, symlog scale)")
+    ax.set_yscale("symlog", linthresh=1000)
+    ax.yaxis.set_major_formatter(StrMethodFormatter("{x:,.0f}"))
     positions = list(range(1, len(series) + 1))
     parts = ax.violinplot(series, positions=positions, showmedians=True)
     for body in parts["bodies"]:
@@ -104,6 +108,7 @@ def plot_sizes(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> N
         colors = np.where(is_min, "#2ca02c", np.where(is_max, "#d62728", "#7f7f7f"))
         jitter = rng.uniform(-0.08, 0.08, size=len(values))
         ax.scatter(pos + jitter, values, s=14, alpha=0.55, c=colors, linewidths=0)
+    ax.set_ylim(0, float(sizes.max()) * 1.08)
     ax.set_xticks(positions)
     ax.set_xticklabels(labels, rotation=15, ha="right")
     fig.tight_layout()
@@ -184,6 +189,12 @@ def analyze(show: bool = False):
         "Query Size by Source (alternatives)",
         root / "tcp-ds-size-alt.png",
         show,
+    )
+    write_summary(
+        main_df,
+        alt_df,
+        root / "tcp-ds-summary.md",
+        fingerprint,
     )
 
     fig, ax = plt.subplots()
