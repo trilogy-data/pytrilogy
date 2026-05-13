@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from dataclasses import dataclass
+
 from trilogy.constants import CONFIG, logger
 from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.models.build import (
@@ -21,6 +24,18 @@ from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.utility import unique
 
 MAX_OPTIMIZATION_LOOPS = 100
+
+
+@dataclass(frozen=True)
+class OptimizationRulePlan:
+    name: str
+    rule_factory: Callable[[], OptimizationRule]
+    depends_on: tuple[str, ...] = ()
+    refires_after: tuple[str, ...] = ()
+    reason: str = ""
+
+    def make_rule(self) -> OptimizationRule:
+        return self.rule_factory()
 
 
 # other optimizations may make a CTE a pure passthrough
@@ -219,41 +234,147 @@ def pass_up_metadata(downstream: CTE | UnionCTE, upstream: CTE | UnionCTE):
             upstream.condition = downstream.condition
 
 
-def registered_optimization_rules() -> list["OptimizationRule"]:
-    rules: list["OptimizationRule"] = []
+def _enabled_dependencies(*names: tuple[str, bool]) -> tuple[str, ...]:
+    return tuple(name for name, enabled in names if enabled)
 
-    if CONFIG.optimizations.merge_aggregate:
-        rules.append(CollapseSingleParent())
-    if CONFIG.optimizations.merge_irrelevant_group_by:
-        rules.append(MergeIrrelevantGroupBy())
-    # JoinHoist runs before InlineDatasource so the moved join is still in
-    # non-inlined form; the subsequent inlining pass folds the parent's
-    # extended FROM into a flat table reference like any other dim join.
-    if CONFIG.optimizations.join_hoist:
-        rules.append(JoinHoist())
-    if CONFIG.optimizations.datasource_inlining:
-        rules.append(InlineDatasource())
-    if CONFIG.optimizations.predicate_pushdown:
-        rules.append(PredicatePushdown())
-    # Early BaseJoin-only upgrade pass so dim joins become INNER before
-    # UnionDimPushdown, which only matches INNER joins.
-    if CONFIG.optimizations.upgrade_condition_joins:
-        rules.append(UpgradeJoinOnGuards(base_join_only=True))
-    # UnionDimPushdown after PredicatePushdown so consumer WHEREs have settled
-    # before we match identical atoms across consumers.
-    if CONFIG.optimizations.union_dim_pushdown:
-        rules.append(UnionDimPushdown())
-    # Second PredicatePushdown pass: UnionDimPushdown may have added dim
-    # concepts to branch source_maps that PredicatePushdown couldn't see the
-    # first time around.
-    if CONFIG.optimizations.predicate_pushdown:
-        rules.append(PredicatePushdown())
-        rules.append(PredicatePushdownRemove())
-    if CONFIG.optimizations.upgrade_condition_joins:
-        rules.append(UpgradeJoinOnGuards())
-    if CONFIG.optimizations.hide_unused_concepts:
-        rules.append(HideUnusedConcepts())
-    return rules
+
+def build_optimization_rule_plan() -> list[OptimizationRulePlan]:
+    opts = CONFIG.optimizations
+    plan: list[OptimizationRulePlan] = []
+
+    if opts.merge_aggregate:
+        plan.append(
+            OptimizationRulePlan(
+                name="collapse_single_parent",
+                rule_factory=CollapseSingleParent,
+            )
+        )
+    if opts.merge_irrelevant_group_by:
+        plan.append(
+            OptimizationRulePlan(
+                name="merge_irrelevant_group_by",
+                rule_factory=MergeIrrelevantGroupBy,
+            )
+        )
+    if opts.join_hoist:
+        plan.append(
+            OptimizationRulePlan(
+                name="join_hoist",
+                rule_factory=JoinHoist,
+                reason=(
+                    "runs before datasource inlining so moved joins remain "
+                    "visible as CTE joins"
+                ),
+            )
+        )
+    if opts.datasource_inlining:
+        plan.append(
+            OptimizationRulePlan(
+                name="inline_datasource",
+                rule_factory=InlineDatasource,
+                depends_on=_enabled_dependencies(("join_hoist", opts.join_hoist)),
+            )
+        )
+    if opts.predicate_pushdown:
+        plan.append(
+            OptimizationRulePlan(
+                name="predicate_pushdown.initial",
+                rule_factory=PredicatePushdown,
+            )
+        )
+    if opts.upgrade_condition_joins:
+        plan.append(
+            OptimizationRulePlan(
+                name="upgrade_join_on_guards.base_join_only",
+                rule_factory=lambda: UpgradeJoinOnGuards(base_join_only=True),
+                depends_on=_enabled_dependencies(
+                    ("predicate_pushdown.initial", opts.predicate_pushdown)
+                ),
+                reason=(
+                    "makes guarded dim BaseJoins INNER before union dim pushdown "
+                    "tries to match them"
+                ),
+            )
+        )
+    if opts.union_dim_pushdown:
+        plan.append(
+            OptimizationRulePlan(
+                name="union_dim_pushdown",
+                rule_factory=UnionDimPushdown,
+                depends_on=_enabled_dependencies(
+                    ("predicate_pushdown.initial", opts.predicate_pushdown),
+                    (
+                        "upgrade_join_on_guards.base_join_only",
+                        opts.upgrade_condition_joins,
+                    ),
+                ),
+                reason="matches settled consumer predicates and INNER dim joins",
+            )
+        )
+    if opts.predicate_pushdown and opts.union_dim_pushdown:
+        plan.append(
+            OptimizationRulePlan(
+                name="predicate_pushdown.after_union_dim",
+                rule_factory=PredicatePushdown,
+                depends_on=("union_dim_pushdown",),
+                refires_after=("union_dim_pushdown",),
+                reason=(
+                    "only refires when union_dim_pushdown adds branch-visible "
+                    "dim concepts"
+                ),
+            )
+        )
+    if opts.predicate_pushdown:
+        plan.append(
+            OptimizationRulePlan(
+                name="predicate_pushdown.remove",
+                rule_factory=PredicatePushdownRemove,
+                depends_on=_enabled_dependencies(
+                    (
+                        "predicate_pushdown.after_union_dim",
+                        opts.union_dim_pushdown,
+                    ),
+                    (
+                        "predicate_pushdown.initial",
+                        not opts.union_dim_pushdown,
+                    ),
+                ),
+            )
+        )
+    if opts.upgrade_condition_joins:
+        plan.append(
+            OptimizationRulePlan(
+                name="upgrade_join_on_guards.final",
+                rule_factory=UpgradeJoinOnGuards,
+                depends_on=_enabled_dependencies(
+                    ("predicate_pushdown.remove", opts.predicate_pushdown)
+                ),
+                reason="uses guards moved onto joining CTEs by predicate pushdown",
+            )
+        )
+    if opts.hide_unused_concepts:
+        plan.append(
+            OptimizationRulePlan(
+                name="hide_unused_concepts",
+                rule_factory=HideUnusedConcepts,
+            )
+        )
+    return plan
+
+
+def log_optimization_rule_plan(plan: list[OptimizationRulePlan]) -> None:
+    if not plan:
+        logger.info("[Optimization] Rule plan is empty")
+        return
+    lines = ["[Optimization] Rule plan:"]
+    for idx, phase in enumerate(plan, start=1):
+        deps = f" after={list(phase.depends_on)}" if phase.depends_on else ""
+        refires = (
+            f" refires_after={list(phase.refires_after)}" if phase.refires_after else ""
+        )
+        reason = f" ({phase.reason})" if phase.reason else ""
+        lines.append(f"  {idx}. {phase.name}{deps}{refires}{reason}")
+    logger.info("\n".join(lines))
 
 
 def optimize_ctes(
@@ -273,9 +394,23 @@ def optimize_ctes(
     cte_lookup: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
     cte_lookup[root_cte.name] = root_cte
 
-    for rule in registered_optimization_rules():
+    phase_actions: dict[str, bool] = {}
+    rule_plan = build_optimization_rule_plan()
+    log_optimization_rule_plan(rule_plan)
+    for phase in rule_plan:
+        if phase.refires_after and not any(
+            phase_actions.get(name, False) for name in phase.refires_after
+        ):
+            logger.info(
+                f"[Optimization] Skipping {phase.name}; refire triggers "
+                f"{list(phase.refires_after)} made no changes"
+            )
+            phase_actions[phase.name] = False
+            continue
+        rule = phase.make_rule()
         loops = 0
         complete = False
+        phase_changed = False
         while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
             actions_taken = False
             # assume we go through all CTEs once
@@ -301,10 +436,13 @@ def optimize_ctes(
                     # Filter out merged CTEs from input
                     input = [c for c in input if c.name not in merged]
             complete = not actions_taken
+            phase_changed = phase_changed or actions_taken
             loops += 1
         input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+        phase_actions[phase.name] = phase_changed
         logger.info(
-            f"[Optimization] Finished checking for {type(rule).__name__} after {loops} loop(s)"
+            f"[Optimization] Finished {phase.name} ({type(rule).__name__}) "
+            f"after {loops} loop(s); changed={phase_changed}"
         )
 
     return reorder_ctes(filter_irrelevant_ctes(input, root_cte))
