@@ -1,5 +1,5 @@
 query_id = "78"
-gen_length = 6659
+gen_length = 7189
 generated_sql = """
 
 WITH 
@@ -36,11 +36,13 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
      'CATALOG'  as \"sales_sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_SALES_PRICE\" as \"sales_sales_price\",
-    \"sales_catalog_sales_unified\".\"CS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+    \"sales_catalog_sales_unified\".\"CS_WHOLESALE_COST\" as \"sales_wholesale_cost\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2000
 
 UNION ALL
 SELECT
@@ -51,11 +53,13 @@ SELECT
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
      'STORE'  as \"sales_sales_channel\",
     \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\",
-    \"sales_store_sales_unified\".\"SS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+    \"sales_store_sales_unified\".\"SS_WHOLESALE_COST\" as \"sales_wholesale_cost\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2000
 
 UNION ALL
 SELECT
@@ -66,17 +70,19 @@ SELECT
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
      'WEB'  as \"sales_sales_channel\",
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\",
-    \"sales_web_sales_unified\".\"WS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+    \"sales_web_sales_unified\".\"WS_WHOLESALE_COST\" as \"sales_wholesale_cost\",
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2000
 ),
 yummy as (
 SELECT
     \"abundant\".\"sales_customer_id\" as \"ss_customer_sk\",
+    \"abundant\".\"sales_date_year\" as \"ss_sold_year\",
     \"abundant\".\"sales_item_id\" as \"ss_item_sk\",
-    \"sales_date_date\".\"D_YEAR\" as \"ss_sold_year\",
     coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as \"other_chan_qty\",
     coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END),0) + coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END),0) as \"other_chan_sales_price\",
     coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END),0) + coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END),0) as \"other_chan_wholesale_cost\",
@@ -88,10 +94,9 @@ SELECT
     sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"ws_qty\"
 FROM
     \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
 WHERE
-    \"cheerful\".\"sales_is_returned\" is null and \"sales_date_date\".\"D_YEAR\" = 2000
+    \"cheerful\".\"sales_is_returned\" is null
 
 GROUP BY
     1,

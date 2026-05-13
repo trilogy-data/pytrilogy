@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 10470
+gen_length = 11433
 generated_sql = """
 
 WITH 
@@ -32,9 +32,15 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_NET_PROFIT\" as \"sales_net_profit\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
-     'CATALOG'  as \"sales_sales_channel\"
+     'CATALOG'  as \"sales_sales_channel\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_STORE_SK\" as \"sales_channel_dim_id\",
@@ -43,9 +49,15 @@ SELECT
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_NET_PROFIT\" as \"sales_net_profit\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-     'STORE'  as \"sales_sales_channel\"
+     'STORE'  as \"sales_sales_channel\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_WEB_SITE_SK\" as \"sales_channel_dim_id\",
@@ -54,9 +66,15 @@ SELECT
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_NET_PROFIT\" as \"sales_net_profit\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
-     'WEB'  as \"sales_sales_channel\"
+     'WEB'  as \"sales_sales_channel\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\"
 FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+),
 cheerful as (
 SELECT
     \"sales_catalog_dim_return_unified\".\"CP_CATALOG_PAGE_SK\" as \"sales_return_channel_dim_id\",
@@ -150,10 +168,9 @@ SELECT
 	END as \"sales_id_label\"
 FROM
     \"scrawny\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"scrawny\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"sweltering\" on \"scrawny\".\"sales_channel_dim_id\" = \"sweltering\".\"sales_channel_dim_id\" AND \"scrawny\".\"sales_sales_channel\" = \"sweltering\".\"sales_sales_channel\"
 WHERE
-    \"sweltering\".\"sales_channel_dim_text_id\" is not null and cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+    \"sweltering\".\"sales_channel_dim_text_id\" is not null
 ),
 vacuous as (
 SELECT

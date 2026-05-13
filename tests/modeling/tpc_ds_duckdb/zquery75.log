@@ -1,5 +1,5 @@
 query_id = "75"
-gen_length = 11431
+gen_length = 10631
 generated_sql = """
 
 WITH 
@@ -38,16 +38,12 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
      'CATALOG'  as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
-    \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\",
-    \"sales_item_items\".\"I_CATEGORY\" as \"sales_item_category\",
-    \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
-    \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\"
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books'
+    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 
 UNION ALL
 SELECT
@@ -57,16 +53,12 @@ SELECT
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
      'STORE'  as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
-    \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\",
-    \"sales_item_items\".\"I_CATEGORY\" as \"sales_item_category\",
-    \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
-    \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\"
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books'
+    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 
 UNION ALL
 SELECT
@@ -76,16 +68,12 @@ SELECT
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
      'WEB'  as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
-    \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\",
-    \"sales_item_items\".\"I_CATEGORY\" as \"sales_item_category\",
-    \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
-    \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\"
+    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books'
+    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
 ),
 quizzical as (
 SELECT
@@ -94,19 +82,19 @@ SELECT
 ),
 vacuous as (
 SELECT
-    \"sales_date_date\".\"D_YEAR\" as \"deduped_sales_date_year\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"deduped_sales_item_brand_id\",
+    \"sales_item_items\".\"I_CATEGORY_ID\" as \"deduped_sales_item_category_id\",
+    \"sales_item_items\".\"I_CLASS_ID\" as \"deduped_sales_item_class_id\",
+    \"sales_item_items\".\"I_MANUFACT_ID\" as \"deduped_sales_item_manufacturer_id\",
+    \"uneven\".\"sales_date_year\" as \"deduped_sales_date_year\",
     \"uneven\".\"sales_ext_sales_price\" - coalesce(\"thoughtful\".\"sales_return_amount\",0.0) as \"deduped_amt_per_row\",
-    \"uneven\".\"sales_item_brand_id\" as \"deduped_sales_item_brand_id\",
-    \"uneven\".\"sales_item_category_id\" as \"deduped_sales_item_category_id\",
-    \"uneven\".\"sales_item_class_id\" as \"deduped_sales_item_class_id\",
-    \"uneven\".\"sales_item_manufacturer_id\" as \"deduped_sales_item_manufacturer_id\",
     \"uneven\".\"sales_quantity\" - coalesce(\"thoughtful\".\"sales_return_quantity\",0) as \"deduped_cnt_per_row\"
 FROM
     \"uneven\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"uneven\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"thoughtful\" on \"uneven\".\"sales_item_id\" = \"thoughtful\".\"sales_item_id\" AND \"uneven\".\"sales_order_id\" = \"thoughtful\".\"sales_order_id\" AND \"uneven\".\"sales_sales_channel\" = \"thoughtful\".\"sales_sales_channel\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"uneven\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" in (2001,2002)
+    \"sales_item_items\".\"I_CATEGORY\" = 'Books'
 
 GROUP BY
     1,

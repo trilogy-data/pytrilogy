@@ -19,7 +19,7 @@ consumer level, and before any rule that flattens / inlines the UnionCTE.
 
 from typing import cast
 
-from trilogy.core.enums import BooleanOperator, JoinType
+from trilogy.core.enums import BooleanOperator, JoinType, SourceType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -170,6 +170,54 @@ class UnionDimPushdown(OptimizationRule):
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
 
+    def _is_pass_through(self, cte: CTE) -> bool:
+        """True if ``cte`` is a single-source projection or dedup of its
+        UnionCTE parent — no joins of any kind, no extra datasources. A
+        ``condition`` is permitted; predicate pushdown can leave channel /
+        FK filters on a dedup CTE (e.g. q66's ``cooperative`` carries
+        ``channel in (WEB,CATALOG)`` and ``warehouse_id is not null``
+        pushed up from young), and those are orthogonal to a dim being
+        pushed into the union branches.
+        """
+        if cte.joins:
+            return False
+        if any(isinstance(j, BaseJoin) for j in cte.source.joins):
+            return False
+        if len(cte.source.datasources) > 1:
+            return False
+        return True
+
+    def _expand_pass_through_consumers(
+        self,
+        consumers: list[CTE],
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+    ) -> list[CTE] | None:
+        """Expand pass-through CTE consumers transitively into their
+        downstream consumers so the dim-shape check sees the *effective*
+        end-consumers. Pass-throughs themselves stay in the original
+        ``consumers`` set (we still need to bookkeep them for the push, but
+        we won't strip them — they don't carry the dim join). Returns None
+        if any non-CTE turns up or a pass-through has no downstream.
+        """
+        result: list[CTE] = []
+        seen: set[str] = set()
+        stack: list[CTE | UnionCTE] = list(consumers)
+        while stack:
+            c = stack.pop()
+            if not isinstance(c, CTE):
+                return None
+            if c.name in seen:
+                continue
+            seen.add(c.name)
+            if self._is_pass_through(c):
+                downstream = inverse_map.get(c.name, [])
+                if not downstream:
+                    return None
+                stack.extend(downstream)
+            else:
+                result.append(c)
+        return result
+
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
@@ -186,18 +234,37 @@ class UnionDimPushdown(OptimizationRule):
             self.complete[cte.name] = True
             return False, None
 
-        descriptors = self._find_shared_dims(cte, consumers)
+        # Look through pass-through CTEs (dedup / pure projection) to the real
+        # dim-joining consumers. Direct consumers that ARE pass-throughs stay
+        # available, but for shape-matching we use the effective set.
+        effective = self._expand_pass_through_consumers(consumers, inverse_map)
+        if not effective:
+            self.complete[cte.name] = True
+            return False, None
+        descriptors = self._find_shared_dims(cte, effective)
         if not descriptors:
             self.complete[cte.name] = True
             return False, None
 
+        # Strip is only safe from direct consumers (those that actually own the
+        # dim join). Pass-throughs carry no join; non-direct consumers (reached
+        # via pass-through) hold their own join + filter and must keep them —
+        # the source_map redirect to the UnionCTE can't navigate through the
+        # intermediate pass-through CTE.
+        direct_with_dim = [
+            c
+            for c in consumers
+            if c in effective  # not a pass-through
+        ]
         actions = False
         for d in descriptors:
-            if self._apply(cte, consumers, d):
+            if self._apply(cte, direct_with_dim, d):
                 actions = True
                 self.log(
-                    f"Pushed dim {d.dim_qds.identifier} into {len(cte.internal_ctes)} "
-                    f"branch(es) of {cte.name}; stripped from {len(consumers)} consumer(s)"
+                    f"Pushed dim {d.dim_qds.identifier} into "
+                    f"{len(cte.internal_ctes)} branch(es) of {cte.name}; "
+                    f"stripped from {len(direct_with_dim)} direct consumer(s) "
+                    f"(effective consumer set: {len(effective)})"
                 )
         self.complete[cte.name] = True
         return actions, None
@@ -232,6 +299,14 @@ class UnionDimPushdown(OptimizationRule):
             join_qds = j.right_datasource
             if join_qds.identifier == consumer.source.identifier:
                 continue
+            # Skip dims that are themselves UnionCTEs — pushing a union-shaped
+            # dim into another union's branches mangles the alias mapping
+            # (the long QDS identifier ends up in the WHERE while the join
+            # renders with the dim CTE's short alias). q5's
+            # return_channel_dim (a UNION of catalog/store/web dim variants)
+            # is the canonical example.
+            if getattr(join_qds, "source_type", None) == SourceType.UNION:
+                continue
             # Resolve to the underlying BD if the consumer carries one.
             if isinstance(join_qds, BuildDatasource):
                 dim_ds: BuildDatasource | QueryDatasource = join_qds
@@ -264,6 +339,25 @@ class UnionDimPushdown(OptimizationRule):
                 for atom in decompose_condition(consumer.condition):
                     if hasattr(atom, "concept_arguments"):
                         consumer_uses |= {c.address for c in atom.concept_arguments}
+            # Filter-only check: stripping this dim from the consumer is only
+            # safe when every non-FK dim concept it uses is referenced solely
+            # in WHERE atoms (which we'll relocate to the branches). A dim
+            # concept used in a SELECT/CASE projection can't be rerouted
+            # through the union output_columns by the strip step because the
+            # rendering layer still references the original dim alias —
+            # q66's young uses ``date.month_of_year`` inside the per-month
+            # CASE, so date_dim is not safe to push for young.
+            fk_addrs = {p.left.address for p in j.concept_pairs} | {
+                p.right.address for p in j.concept_pairs
+            }
+            where_atom_concepts: set[str] = set()
+            for atom in where_atoms:
+                where_atom_concepts |= {c.address for c in atom.row_arguments}
+            non_fk_dim_uses = {
+                c.address for c in dim_ds.output_concepts if c.address in consumer_uses
+            } - fk_addrs
+            if non_fk_dim_uses - where_atom_concepts:
+                continue
             dim_concepts = [
                 c for c in dim_ds.output_concepts if c.address in consumer_uses
             ]

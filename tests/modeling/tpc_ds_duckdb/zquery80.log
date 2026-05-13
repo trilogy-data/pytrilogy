@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 6994
+gen_length = 8603
 generated_sql = """
 
 WITH 
@@ -61,12 +61,17 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_PROMO_SK\" as \"sales_promotion_id\",
      'CATALOG'  as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_CURRENT_PRICE\" as \"sales_item_current_price\"
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\",
+    \"sales_item_items\".\"I_CURRENT_PRICE\" as \"sales_item_current_price\",
+    \"sales_promotion_promotion\".\"P_CHANNEL_TV\" as \"sales_promotion_channel_tv\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_catalog_sales_unified\".\"CS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    \"sales_item_items\".\"I_CURRENT_PRICE\" > 50
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 
 UNION ALL
 SELECT
@@ -78,12 +83,17 @@ SELECT
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_PROMO_SK\" as \"sales_promotion_id\",
      'STORE'  as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_CURRENT_PRICE\" as \"sales_item_current_price\"
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\",
+    \"sales_item_items\".\"I_CURRENT_PRICE\" as \"sales_item_current_price\",
+    \"sales_promotion_promotion\".\"P_CHANNEL_TV\" as \"sales_promotion_channel_tv\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_store_sales_unified\".\"SS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    \"sales_item_items\".\"I_CURRENT_PRICE\" > 50
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 
 UNION ALL
 SELECT
@@ -95,12 +105,17 @@ SELECT
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_PROMO_SK\" as \"sales_promotion_id\",
      'WEB'  as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_CURRENT_PRICE\" as \"sales_item_current_price\"
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
+    \"sales_date_date\".\"D_DATE\" as \"sales_date__date_string\",
+    \"sales_item_items\".\"I_CURRENT_PRICE\" as \"sales_item_current_price\",
+    \"sales_promotion_promotion\".\"P_CHANNEL_TV\" as \"sales_promotion_channel_tv\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_web_sales_unified\".\"WS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    \"sales_item_items\".\"I_CURRENT_PRICE\" > 50
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 ),
 abhorrent as (
 SELECT
@@ -121,12 +136,10 @@ SELECT
 	END as \"id_label\"
 FROM
     \"vacuous\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"vacuous\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\" AND \"vacuous\".\"sales_sales_channel\" = \"abundant\".\"sales_sales_channel\"
-    INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"vacuous\".\"sales_promotion_id\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
     INNER JOIN \"cheerful\" on \"vacuous\".\"sales_channel_dim_id\" = \"cheerful\".\"sales_channel_dim_id\" AND \"vacuous\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
 WHERE
-    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N' and \"cheerful\".\"sales_channel_dim_text_id\" is not null
+    \"cheerful\".\"sales_channel_dim_text_id\" is not null
 )
 SELECT
     \"abhorrent\".\"channel_label\" as \"q80_results_channel\",

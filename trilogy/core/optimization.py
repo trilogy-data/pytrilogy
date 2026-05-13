@@ -248,6 +248,11 @@ def optimize_ctes(
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
+    # Early BaseJoin-only upgrade pass so dim joins (e.g. q66's
+    # date_dim/time_dim/ship_mode) become INNER before UnionDimPushdown,
+    # which only matches INNER joins.
+    if CONFIG.optimizations.upgrade_condition_joins:
+        REGISTERED_RULES.append(UpgradeJoinOnGuards(base_join_only=True))
     # UnionDimPushdown after PredicatePushdown so consumer WHEREs have
     # settled before we match identical atoms across consumers.
     if CONFIG.optimizations.union_dim_pushdown:
