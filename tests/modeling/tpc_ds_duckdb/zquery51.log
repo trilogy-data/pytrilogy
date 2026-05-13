@@ -1,5 +1,7 @@
 query_id = "51"
-gen_length = 4215
+gen_length = 4075
+preql_size = 1282
+comp_size = 1999
 generated_sql = """
 
 WITH 
@@ -7,25 +9,25 @@ cheerful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
      'STORE'  as \"sales_sales_channel\",
     \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and  'STORE'  in ('WEB','STORE')
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
 
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
      'WEB'  as \"sales_sales_channel\",
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null and  'WEB'  in ('WEB','STORE')
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
 ),
 yummy as (
 SELECT
@@ -34,10 +36,7 @@ SELECT
     cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"cheerful\".\"sales_item_id\" is not null and \"cheerful\".\"sales_sales_channel\" in ('WEB','STORE')
-
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 GROUP BY
     1,
     2,
@@ -50,10 +49,7 @@ SELECT
     sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' THEN \"cheerful\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"cheerful\".\"sales_item_id\" is not null and \"cheerful\".\"sales_sales_channel\" in ('WEB','STORE')
-
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 GROUP BY
     1,
     2),

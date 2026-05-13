@@ -1,4 +1,16 @@
-from trilogy.core.models.execute import CTE, Join, UnionCTE
+from typing import cast
+
+from trilogy.core.enums import BooleanOperator
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConditional,
+    BuildDatasource,
+    BuildParenthetical,
+)
+from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
+from trilogy.utility import unique
+
+ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
 
 
 def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:
@@ -46,6 +58,86 @@ def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE) -> None:
                     pair.cte = new
         if join.right_cte.safe_identifier == old.safe_identifier:
             join.right_cte = new
+
+
+def condition_contains_atom(atom: object, condition: object | None) -> bool:
+    if condition is None:
+        return False
+    if condition == atom:
+        return True
+    if (
+        isinstance(condition, BuildConditional)
+        and condition.operator == BooleanOperator.AND
+    ):
+        return condition_contains_atom(atom, condition.left) or condition_contains_atom(
+            atom, condition.right
+        )
+    return False
+
+
+def strip_condition_atom(
+    condition: ConditionExpression | None,
+    atom: object,
+) -> ConditionExpression | None:
+    if condition is None or condition == atom:
+        return None
+    if not (
+        isinstance(condition, BuildConditional)
+        and condition.operator == BooleanOperator.AND
+    ):
+        return condition
+    left = strip_condition_atom(cast(ConditionExpression | None, condition.left), atom)
+    right = strip_condition_atom(
+        cast(ConditionExpression | None, condition.right), atom
+    )
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return BuildConditional(left=left, operator=BooleanOperator.AND, right=right)
+
+
+def append_condition(
+    condition: ConditionExpression | None,
+    atom: ConditionExpression,
+) -> ConditionExpression:
+    if condition is None:
+        return atom
+    return BuildConditional(
+        left=condition,
+        operator=BooleanOperator.AND,
+        right=atom,
+    )
+
+
+def rebuild_and_condition(
+    atoms: list[ConditionExpression],
+) -> ConditionExpression | None:
+    if not atoms:
+        return None
+    condition = atoms[0]
+    for atom in atoms[1:]:
+        condition = BuildConditional(
+            left=condition,
+            operator=BooleanOperator.AND,
+            right=atom,
+        )
+    return condition
+
+
+def add_datasource_sorted(
+    cte: CTE, datasource: BuildDatasource | QueryDatasource
+) -> None:
+    if datasource in cte.source.datasources:
+        return
+    cte.source.datasources = sorted(
+        cte.source.datasources + [datasource],
+        key=lambda x: x.identifier,
+    )
+
+
+def add_parent_cte(cte: CTE | UnionCTE, parent: CTE | UnionCTE) -> None:
+    cte.parent_ctes = unique(cte.parent_ctes + [parent], "name")
 
 
 def is_sole_consumer(

@@ -3,10 +3,10 @@ import platform
 from datetime import datetime
 from pathlib import Path
 
-import pytest
 import tomli_w
 import tomllib
 
+from tests.modeling.tpc_ds_duckdb.query_size import query_size
 from trilogy import Executor
 from trilogy.core.models.environment import Environment
 
@@ -49,6 +49,7 @@ def run_query(
     query_label = label or f"{idx:02d}"
     with open(working_path / filename) as f:
         text = f.read()
+    preql_size = query_size(text, "preql")
 
     # fetch our results
     parse_start = datetime.now()
@@ -70,6 +71,12 @@ def run_query(
     base_results = list(base.fetchall())
     comp_time = datetime.now() - comp_start
 
+    # Always prefer the on-disk reference SQL for size comparison when available,
+    # so the PRAGMA-driven runs still report a meaningful comp_size.
+    sql_path = working_path / f"query{idx:02d}.sql"
+    comp_source = sql_path.read_text() if sql_path.exists() else rquery
+    comp_size = query_size(comp_source, "sql")
+
     if len(base_results) > 0:
         assert len(comp_results) > 0, "No results returned"
 
@@ -88,7 +95,9 @@ def run_query(
             tomli_w.dumps(
                 {
                     "query_id": query_label,
-                    "gen_length": len(query),
+                    "gen_length": query_size(query, "sql"),
+                    "preql_size": preql_size,
+                    "comp_size": comp_size,
                     "generated_sql": query,
                 },
                 multiline_strings=True,
@@ -242,15 +251,6 @@ def test_thirteen(engine):
     assert len(query) < 5500, query
 
 
-@pytest.mark.xfail(
-    reason="Trilogy planner re-derives the in_cross_items presence autos inside "
-    "each merge branch's bucket_sum > avg_sales filtered scope, so the cross-"
-    "channel flag collapses to 'in all 3 channels among rows that passed HAVING' "
-    "instead of 'in all 3 channels overall'. Undercounts by ~6.6% on sf=1. "
-    "Alternate rowset+IN shape ran into a separate bug where bucket_sum sourced "
-    "from unfiltered partials. See STATUS.md 'Open trilogy issues exposed by q14'.",
-    strict=True,
-)
 def test_fourteen(engine):
     run_query(engine, 14)
 

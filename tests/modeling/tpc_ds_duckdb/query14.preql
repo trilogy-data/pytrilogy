@@ -1,112 +1,87 @@
-# XFAIL — see STATUS.md "Open trilogy issues exposed by q14".
-#
-# Two shapes attempted; both blocked.
-#
-# Shape A (this file, in_cross_items chain): defines presence flags per
-# (brand_id, class_id, category_id) for each channel, an in_cross_items
-# combo, and a bucket_sum that case-when-filters on it. The planner re-
-# derives the presence flags inside each merge branch's filtered scope
-# (where bucket_sum > avg_sales is applied), so in_cross_items collapses
-# to "in all 3 channels among rows that passed HAVING" — undercounts
-# results by ~6.6% on sf=1.
-#
-# Shape B (rowset + IN): pulls the cross_items membership into a rowset
-# `with cross_items_set as ...` and uses `sales.item.id in
-# cross_items_set.ci_item_id` in WHERE. Bypasses the re-derivation, but
-# `auto bucket_sum <- sum(sales.quantity * sales.list_price) by sales.sales_channel,
-# sales.item.brand_id, sales.item.class_id, sales.item.category_id`
-# then sources from the unfiltered partial-datasource union (no Nov-2001
-# date filter applied, no IN cross_items applied), so bucket_sum ends up
-# at all-time totals; the multi-branch FULL JOIN with item also routes
-# through the returns partial for count, giving spectacular over-counts.
-
 import unified_sales as sales;
 
+# Composite key for (brand_id, class_id, category_id) tuples — encoded so a
+# single-column `in` filter can carry membership downstream.
+auto tuple_key <- concat(
+    cast(sales.item.brand_id as string), '|',
+    cast(sales.item.class_id as string), '|',
+    cast(sales.item.category_id as string)
+);
 
-auto eligible_brands <- sales.item.brand_id ? count(sales.sales_channel ? sales.date.year between 1999 and 2001) by sales.item.brand_id;
-auto eligible_classes <- sales.item.class_id ? count(sales.sales_channel ? sales.date.year between 1999 and 2001) by sales.item.class_id;
-auto eligible_categories <- sales.item.category_id ? count(sales.sales_channel ? sales.date.year between 1999 and 2001) by sales.item.category_id;
+auto cross_channel_count <- count_distinct(sales.sales_channel) by tuple_key;
 
-
-auto eligible_items <- sales.item.id ? sales.item.brand_id in eligible_brands
-    and sales.item.class_id in eligible_classes
-    and sales.item.category_id in eligible_categories;
-# avg_sales: avg(quantity*list_price) over all 3 channels in 1999..2001 (single scalar)
-auto avg_sales <- avg(sales.quantity * sales.list_price ? sales.date.year between 1999 and 2001);
-
-auto bucket_sum <- avg(sales.quantity*sales.list_price);
-auto bucket_count <- sum(count(sales.item.id) by sales.order_id);
-
-with q14_results as
-# L0: detail (channel, brand_id, class_id, category_id)
-WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
+# cross_tuples: tuples sold in all 3 channels during 1999-2001. Equivalent to
+# the reference's 3-way INTERSECT on (i_brand_id, i_class_id, i_category_id)
+# across store/catalog/web sales.
+with cross_tuples as
+WHERE
+    sales.date.year between 1999 and 2001
 SELECT
-    cast(sales.sales_channel as string) as channel_a,
-    sales.item.brand_id as brand_a,
-    sales.item.class_id as class_a,
-    sales.item.category_id as category_a,
-    bucket_sum as sum_a,
-    bucket_count as cnt_a,
-MERGE
-# L1: (channel, brand_id, class_id), null category
-WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
-SELECT
-    cast(sales.sales_channel as string) as channel_b,
-    sales.item.brand_id as brand_b,
-    sales.item.class_id as class_b,
-    cast(null as int) as null_cat_b,
-    sum(bucket_sum) as sum_b,
-    sum(bucket_count) as cnt_b,
-MERGE
-# L2: (channel, brand_id), null class+cat
-WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
-SELECT
-    cast(sales.sales_channel as string) as channel_c,
-    sales.item.brand_id as brand_c,
-    cast(null as int) as null_class_c,
-    cast(null as int) as null_cat_c,
-    sum(bucket_sum) as sum_c,
-    sum(bucket_count) as cnt_c,
-MERGE
-# L3: (channel), null brand+class+cat
-WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
-SELECT
-    cast(sales.sales_channel as string) as channel_d,
-    cast(null as int) as null_brand_d,
-    cast(null as int) as null_class_d,
-    cast(null as int) as null_cat_d,
-    sum(bucket_sum) as sum_d,
-    sum(bucket_count) as cnt_d,
-MERGE
-# L4: grand total
-WHERE bucket_sum > avg_sales and sales.item.id in eligible_items
-SELECT
-    cast(null as string) as null_channel_e,
-    cast(null as int) as null_brand_e,
-    cast(null as int) as null_class_e,
-    cast(null as int) as null_cat_e,
-    sum(bucket_sum) as sum_e,
-    sum(bucket_count) as cnt_e,
-align
-    channel: channel_a, channel_b, channel_c, channel_d, null_channel_e
-    AND brand_id: brand_a, brand_b, brand_c, null_brand_d, null_brand_e
-    AND class_id: class_a, class_b, null_class_c, null_class_d, null_class_e
-    AND category_id: category_a, null_cat_b, null_cat_c, null_cat_d, null_cat_e
-derive
-    coalesce(q14_results.sum_a, q14_results.sum_b, q14_results.sum_c, q14_results.sum_d, q14_results.sum_e) -> sum_total,
-    coalesce(q14_results.cnt_a, q14_results.cnt_b, q14_results.cnt_c, q14_results.cnt_d, q14_results.cnt_e) -> cnt_total
+    tuple_key as ci_tuple_key,
+    --cross_channel_count,
+HAVING
+    cross_channel_count = 3
 ;
 
+# avg_sales: scalar avg(quantity * list_price) over all 3 channels for 1999-2001.
+with avg_sales as
+WHERE
+    sales.date.year between 1999 and 2001
 SELECT
-    q14_results.channel,
-    q14_results.brand_id,
-    q14_results.class_id,
-    q14_results.category_id,
-    q14_results.sum_total as sum_sales,
-    q14_results.cnt_total as sum_number_sales,
+    avg(sales.quantity * sales.list_price) as average_sales,
+;
+
+# One per fact row (unified_sales grain is (sales_channel, order_id, item.id)).
+auto fact_row_one <- count(sales.order_id) by sales.sales_channel, sales.order_id, sales.item.id;
+
+# Map unified_sales' uppercase channel codes to the reference's lowercase labels.
+auto channel_label <- CASE
+    WHEN sales.sales_channel = 'STORE' THEN 'store'
+    WHEN sales.sales_channel = 'CATALOG' THEN 'catalog'
+    WHEN sales.sales_channel = 'WEB' THEN 'web'
+    ELSE null
+END;
+
+# Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items in
+# cross_tuples, HAVING sum(quantity*list_price) > avg_sales.
+with l0_filtered as
+WHERE
+    sales.date.year = 2001
+    and sales.date.month_of_year = 11
+    and tuple_key in cross_tuples.ci_tuple_key
+SELECT
+    channel_label as channel_l0,
+    sales.item.brand_id as brand_l0,
+    sales.item.class_id as class_l0,
+    sales.item.category_id as category_l0,
+    sum(sales.quantity * sales.list_price) as bucket_sum_l0,
+    sum(fact_row_one) as bucket_count_l0,
+    --avg_sales.average_sales,
+HAVING
+    bucket_sum_l0 > avg_sales.average_sales
+;
+
+# Final ROLLUP(channel, brand_id, class_id, category_id) over the per-channel L0.
+SELECT
+    l0_filtered.channel_l0 as channel,
+    l0_filtered.brand_l0 as i_brand_id,
+    l0_filtered.class_l0 as i_class_id,
+    l0_filtered.category_l0 as i_category_id,
+    sum(l0_filtered.bucket_sum_l0) by rollup
+        l0_filtered.channel_l0,
+        l0_filtered.brand_l0,
+        l0_filtered.class_l0,
+        l0_filtered.category_l0
+        as sum_sales,
+    sum(l0_filtered.bucket_count_l0) by rollup
+        l0_filtered.channel_l0,
+        l0_filtered.brand_l0,
+        l0_filtered.class_l0,
+        l0_filtered.category_l0
+        as sum_number_sales,
 ORDER BY
-    q14_results.channel asc nulls first,
-    q14_results.brand_id asc nulls first,
-    q14_results.class_id asc nulls first,
-    q14_results.category_id asc nulls first
+    channel asc nulls first,
+    i_brand_id asc nulls first,
+    i_class_id asc nulls first,
+    i_category_id asc nulls first
 LIMIT 100;

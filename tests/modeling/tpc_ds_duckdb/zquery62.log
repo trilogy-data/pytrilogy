@@ -1,5 +1,7 @@
 query_id = "62"
-gen_length = 2134
+gen_length = 2132
+preql_size = 890
+comp_size = 1421
 generated_sql = """
 SELECT
     SUBSTRING(\"ws_warehouse_warehouse\".\"w_warehouse_name\",1,20) as \"w_substr\",

@@ -1,4 +1,8 @@
 from trilogy import Dialects
+from trilogy.constants import CONFIG
+from trilogy.core.models.build import BuildGrain
+from trilogy.core.models.execute import CTE, QueryDatasource
+from trilogy.core.optimizations.inline_datasource import InlineDatasource
 
 
 def test_safe_cases():
@@ -72,3 +76,37 @@ select 'def' raw, 'ant' "right"
 
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_query(raw)
+
+
+def test_inline_datasource_respects_cutoff(test_environment):
+    env = test_environment.materialize_for_select()
+    datasource = env.datasources["products"]
+    product_id = env.concepts["product_id"]
+    parent = CTE.from_datasource(datasource)
+    parent.name = "parent_products"
+    child = CTE(
+        name="child",
+        source=QueryDatasource(
+            input_concepts=[product_id],
+            output_concepts=[product_id],
+            datasources=[parent.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={product_id.address: {parent.source}},
+        ),
+        output_columns=[product_id],
+        parent_ctes=[parent],
+        grain=BuildGrain(),
+        source_map={product_id.address: [parent.name]},
+        existence_source_map={},
+    )
+
+    original = CONFIG.optimizations.constant_inline_cutoff
+    CONFIG.optimizations.constant_inline_cutoff = 0
+    try:
+        rule = InlineDatasource()
+        assert rule.optimize(child, {"parent_products": [child]})[0] is True
+        assert rule.optimize(child, {"parent_products": [child]})[0] is False
+        assert child.parent_ctes == [parent]
+    finally:
+        CONFIG.optimizations.constant_inline_cutoff = original

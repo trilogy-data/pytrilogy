@@ -13,6 +13,7 @@ auto cov2 <- CASE WHEN mean2 = 0 THEN NULL ELSE stdev2 / mean2 END;
 
 WHERE
     inventory.date.year = 2001
+    and inventory.date.month_of_year in (1, 2)
     and inventory.warehouse.id is not null
 SELECT
     inventory.warehouse.id as wsk1,

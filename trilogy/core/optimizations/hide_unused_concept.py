@@ -10,6 +10,45 @@ class HideUnusedConcepts(OptimizationRule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+    def _hide_branch_only_outputs(self, cte: UnionCTE) -> bool:
+        """Hide any concept that appears in a branch's ``output_columns`` but
+        not in the union's ``output_columns`` — those columns are projected
+        by the branch SELECT yet aren't reachable from any consumer (the
+        union doesn't expose them). E.g. ``UnionDimPushdown`` filter-only
+        mode adds a dim's projected concepts to each branch for the WHERE
+        atom to render, but consumers keep their own dim join so the union
+        never advertises them.
+        """
+        union_addrs = {c.address for c in cte.output_columns}
+        changed = False
+        for branch in cte.internal_ctes:
+            if not isinstance(branch, CTE):
+                continue
+            to_hide = {
+                c.address
+                for c in branch.output_columns
+                if c.address not in union_addrs
+                and c.address not in branch.hidden_concepts
+            }
+            if not to_hide:
+                continue
+            visible = [
+                c.address
+                for c in branch.output_columns
+                if c.address not in branch.hidden_concepts
+            ]
+            if len(visible) - len(to_hide) < 1:
+                # Always leave at least one projected column so the branch
+                # SELECT renders.
+                continue
+            branch.hidden_concepts |= to_hide
+            self.log(
+                f"Hiding branch-only outputs {sorted(to_hide)} from {branch.name} "
+                f"(union {cte.name} doesn't expose them)"
+            )
+            changed = True
+        return changed
+
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
@@ -32,8 +71,11 @@ class HideUnusedConcepts(OptimizationRule):
         non_hidden = [
             x for x in cte.output_columns if x.address not in cte.hidden_concepts
         ]
+        branch_only_hidden = False
+        if isinstance(cte, UnionCTE):
+            branch_only_hidden = self._hide_branch_only_outputs(cte)
         if not newly_hidden or len(non_hidden) <= 1:
-            return False, None
+            return branch_only_hidden, None
         self.log(
             f"Hiding unused concepts {[x.address for x in add_to_hidden]} from {cte.name} (used: {used}, all: {[x.address for x in cte.output_columns]})"
         )
@@ -52,6 +94,20 @@ class HideUnusedConcepts(OptimizationRule):
             )
             candidates = [x for x in candidates if x != keep_address]
         if not candidates:
-            return False, None
+            return branch_only_hidden, None
         cte.hidden_concepts = set(candidates)
+        # UnionCTE rendering joins the per-branch CTEs with UNION ALL; each
+        # branch's SELECT list is filtered by *that branch's* hidden_concepts,
+        # not the union's. Propagate the hide so the branches also drop the
+        # unused columns from their projections (e.g. q66's pushed-up
+        # ``sales.ship_mode.carrier`` / ``sales.time.time`` that no consumer
+        # references after stripping).
+        if isinstance(cte, UnionCTE):
+            for branch in cte.internal_ctes:
+                if not isinstance(branch, CTE):
+                    continue
+                branch_outputs = {c.address for c in branch.output_columns}
+                branch.hidden_concepts |= {
+                    addr for addr in candidates if addr in branch_outputs
+                }
         return True, None

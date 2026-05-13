@@ -17,9 +17,10 @@ Runs after ``PredicatePushdown`` so consumer WHEREs have settled at the
 consumer level, and before any rule that flattens / inlines the UnionCTE.
 """
 
-from typing import cast
+from dataclasses import dataclass
+from typing import Any, cast
 
-from trilogy.core.enums import BooleanOperator, JoinType
+from trilogy.core.enums import JoinType, SourceType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -40,6 +41,13 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
+)
+from trilogy.core.optimizations.utils import (
+    add_datasource_sorted,
+    add_parent_cte,
+    append_condition,
+    condition_contains_atom,
+    strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
     decompose_condition,
@@ -111,13 +119,15 @@ def _dim_local_atoms(
     cte: CTE,
     dim_qds: BuildDatasource | QueryDatasource,
 ) -> list[ConditionExpression]:
-    """WHERE atoms on ``cte.condition`` that reference *only* ``dim_qds``'s
-    output concepts. Atoms touching other datasources can't be pushed verbatim.
+    """WHERE atoms on ``cte.condition`` whose ``row_arguments`` reference
+    *only* ``dim_qds``'s output concepts. Atoms touching other datasources
+    can't be pushed verbatim.
 
-    Mirroring ``JoinHoist``: reject atoms whose ``existence_arguments`` carry
-    concepts (subselect references that need the source CTE to remain visible).
-    Literal IN-lists are fine — those have empty existence_arguments at the
-    concept level.
+    Existence (subselect) atoms — ``D_WEEK_SEQ IN (SELECT … FROM cooperative)``
+    — are included as long as their row_arguments are dim-local. The
+    subselect's source CTE must be propagated to each branch via
+    ``_push_into_branch``; literal IN-lists carry empty existence concepts
+    and need no propagation.
     """
     if not cte.condition:
         return []
@@ -126,8 +136,6 @@ def _dim_local_atoms(
     seen: set[str] = set()
     for atom in decompose_condition(cte.condition):
         if not is_scalar_condition(atom):
-            continue
-        if any(arg for tup in getattr(atom, "existence_arguments", ()) for arg in tup):
             continue
         atom_addrs = {x.address for x in atom.row_arguments}
         if not atom_addrs or not atom_addrs.issubset(dim_outs):
@@ -143,6 +151,13 @@ def _dim_local_atoms(
 class _DimDescriptor:
     """One pushable dim shared by every consumer."""
 
+    dim_qds: BuildDatasource | QueryDatasource
+    join_qds_id: str
+    key_pairs: list[ConceptPair]
+    dim_concepts: list[BuildConcept]
+    where_atoms: list[ConditionExpression]
+    strip_safe: bool
+
     def __init__(
         self,
         dim_qds: BuildDatasource | QueryDatasource,
@@ -150,6 +165,7 @@ class _DimDescriptor:
         key_pairs: list[ConceptPair],
         dim_concepts: list[BuildConcept],
         where_atoms: list[ConditionExpression],
+        strip_safe: bool,
     ) -> None:
         self.dim_qds = dim_qds
         # Original join right_datasource identifier — used to disambiguate
@@ -159,16 +175,90 @@ class _DimDescriptor:
         self.key_pairs = key_pairs
         self.dim_concepts = dim_concepts
         self.where_atoms = where_atoms
+        # ``strip_safe`` is True when every non-FK dim concept the consumer
+        # references appears in a ``where_atom`` (no SELECT/CASE projection
+        # references). When False we still push the dim+filter into each
+        # branch for early filtering, but the consumer keeps its own dim join
+        # (no strip, no union output exposure).
+        self.strip_safe = strip_safe
 
     @property
     def fk_left_addrs(self) -> set[str]:
         return {p.left.address for p in self.key_pairs}
 
 
+_DimKey = tuple[str, frozenset[tuple[str, str]]]
+
+
+@dataclass
+class _ConsumerDimCandidate:
+    dim_qds: BuildDatasource | QueryDatasource
+    join_qds_id: str
+    key_pairs: list[ConceptPair]
+    dim_concepts: list[BuildConcept]
+    where_atoms: list[ConditionExpression]
+    strip_safe: bool
+
+
+@dataclass
+class _PushContext:
+    dim_cte: CTE | UnionCTE
+    source_consumer: CTE | None
+    inlined_entry: Any | None
+
+
 class UnionDimPushdown(OptimizationRule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
+
+    def _is_pass_through(self, cte: CTE) -> bool:
+        """True if ``cte`` is a single-source projection or dedup of its
+        UnionCTE parent — no joins of any kind, no extra datasources. A
+        ``condition`` is permitted; predicate pushdown can leave channel /
+        FK filters on a dedup CTE (e.g. q66's ``cooperative`` carries
+        ``channel in (WEB,CATALOG)`` and ``warehouse_id is not null``
+        pushed up from young), and those are orthogonal to a dim being
+        pushed into the union branches.
+        """
+        if cte.joins:
+            return False
+        if any(isinstance(j, BaseJoin) for j in cte.source.joins):
+            return False
+        if len(cte.source.datasources) > 1:
+            return False
+        return True
+
+    def _expand_pass_through_consumers(
+        self,
+        consumers: list[CTE],
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+    ) -> list[CTE] | None:
+        """Expand pass-through CTE consumers transitively into their
+        downstream consumers so the dim-shape check sees the *effective*
+        end-consumers. Pass-throughs themselves stay in the original
+        ``consumers`` set (we still need to bookkeep them for the push, but
+        we won't strip them — they don't carry the dim join). Returns None
+        if any non-CTE turns up or a pass-through has no downstream.
+        """
+        result: list[CTE] = []
+        seen: set[str] = set()
+        stack: list[CTE | UnionCTE] = list(consumers)
+        while stack:
+            c = stack.pop()
+            if not isinstance(c, CTE):
+                return None
+            if c.name in seen:
+                continue
+            seen.add(c.name)
+            if self._is_pass_through(c):
+                downstream = inverse_map.get(c.name, [])
+                if not downstream:
+                    return None
+                stack.extend(downstream)
+            else:
+                result.append(c)
+        return result
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -186,18 +276,33 @@ class UnionDimPushdown(OptimizationRule):
             self.complete[cte.name] = True
             return False, None
 
-        descriptors = self._find_shared_dims(cte, consumers)
+        # Look through pass-through CTEs (dedup / pure projection) to the real
+        # dim-joining consumers. Direct consumers that ARE pass-throughs stay
+        # available, but for shape-matching we use the effective set.
+        effective = self._expand_pass_through_consumers(consumers, inverse_map)
+        if not effective:
+            self.complete[cte.name] = True
+            return False, None
+        descriptors = self._find_shared_dims(cte, effective)
         if not descriptors:
             self.complete[cte.name] = True
             return False, None
 
+        # Strip is only safe from direct consumers (those that actually own the
+        # dim join). Pass-throughs carry no join; non-direct consumers (reached
+        # via pass-through) hold their own join + filter and must keep them —
+        # the source_map redirect to the UnionCTE can't navigate through the
+        # intermediate pass-through CTE.
+        direct_with_dim = [c for c in consumers if c in effective]  # not a pass-through
         actions = False
         for d in descriptors:
-            if self._apply(cte, consumers, d):
+            if self._apply(cte, direct_with_dim, d):
                 actions = True
                 self.log(
-                    f"Pushed dim {d.dim_qds.identifier} into {len(cte.internal_ctes)} "
-                    f"branch(es) of {cte.name}; stripped from {len(consumers)} consumer(s)"
+                    f"Pushed dim {d.dim_qds.identifier} into "
+                    f"{len(cte.internal_ctes)} branch(es) of {cte.name}; "
+                    f"stripped from {len(direct_with_dim)} direct consumer(s) "
+                    f"(effective consumer set: {len(effective)})"
                 )
         self.complete[cte.name] = True
         return actions, None
@@ -206,7 +311,7 @@ class UnionDimPushdown(OptimizationRule):
 
     def _consumer_dim_map(
         self, consumer: CTE, union_outputs: set[str]
-    ) -> dict[tuple[str, frozenset[tuple[str, str]]], dict]:
+    ) -> dict[_DimKey, _ConsumerDimCandidate]:
         """Map each pushable INNER dim join on this consumer to its descriptor
         bits. Key: (dim_id, frozenset of (left_addr, right_addr) pairs).
 
@@ -221,7 +326,7 @@ class UnionDimPushdown(OptimizationRule):
             for ds in consumer.source.datasources
             if isinstance(ds, BuildDatasource)
         }
-        result: dict[tuple[str, frozenset[tuple[str, str]]], dict] = {}
+        result: dict[_DimKey, _ConsumerDimCandidate] = {}
         for j in consumer.source.joins:
             if not isinstance(j, BaseJoin):
                 continue
@@ -231,6 +336,14 @@ class UnionDimPushdown(OptimizationRule):
                 continue
             join_qds = j.right_datasource
             if join_qds.identifier == consumer.source.identifier:
+                continue
+            # Skip dims that are themselves UnionCTEs — pushing a union-shaped
+            # dim into another union's branches mangles the alias mapping
+            # (the long QDS identifier ends up in the WHERE while the join
+            # renders with the dim CTE's short alias). q5's
+            # return_channel_dim (a UNION of catalog/store/web dim variants)
+            # is the canonical example.
+            if getattr(join_qds, "source_type", None) == SourceType.UNION:
                 continue
             # Resolve to the underlying BD if the consumer carries one.
             if isinstance(join_qds, BuildDatasource):
@@ -264,6 +377,28 @@ class UnionDimPushdown(OptimizationRule):
                 for atom in decompose_condition(consumer.condition):
                     if hasattr(atom, "concept_arguments"):
                         consumer_uses |= {c.address for c in atom.concept_arguments}
+            # Strip safety: stripping this dim from the consumer is only safe
+            # when every non-FK dim concept it uses is referenced solely in
+            # WHERE atoms (which we relocate to the branches). A dim concept
+            # used in a SELECT/CASE projection can't be rerouted through the
+            # union output_columns by the strip step because the rendering
+            # layer still references the original dim alias — q66's young
+            # uses ``date.month_of_year`` inside the per-month CASE, so
+            # date_dim is not strip-safe for young.
+            #
+            # When ``strip_safe`` is False we still push the dim + filter
+            # into each union branch for early filtering, but the consumer
+            # keeps its own dim join (no strip, no union output exposure).
+            fk_addrs = {p.left.address for p in j.concept_pairs} | {
+                p.right.address for p in j.concept_pairs
+            }
+            where_atom_concepts: set[str] = set()
+            for atom in where_atoms:
+                where_atom_concepts |= {c.address for c in atom.row_arguments}
+            non_fk_dim_uses = {
+                c.address for c in dim_ds.output_concepts if c.address in consumer_uses
+            } - fk_addrs
+            strip_safe = not (non_fk_dim_uses - where_atom_concepts)
             dim_concepts = [
                 c for c in dim_ds.output_concepts if c.address in consumer_uses
             ]
@@ -277,14 +412,14 @@ class UnionDimPushdown(OptimizationRule):
                 dim_concepts,
                 dim_ds,
             )
-            result[key] = {
-                "base_join": j,
-                "dim_qds": dim_ds,
-                "join_qds_id": join_qds.identifier,
-                "key_pairs": list(j.concept_pairs),
-                "dim_concepts": dim_concepts,
-                "where_atoms": where_atoms,
-            }
+            result[key] = _ConsumerDimCandidate(
+                dim_qds=dim_ds,
+                join_qds_id=join_qds.identifier,
+                key_pairs=list(j.concept_pairs),
+                dim_concepts=dim_concepts,
+                where_atoms=where_atoms,
+                strip_safe=strip_safe,
+            )
         return result
 
     def _find_shared_dims(
@@ -302,57 +437,128 @@ class UnionDimPushdown(OptimizationRule):
         out: list[_DimDescriptor] = []
         for key in sorted(common_keys, key=lambda k: k[0]):
             atom_strs = [
-                frozenset(str(a) for a in m[key]["where_atoms"]) for m in per_consumer
+                frozenset(str(a) for a in m[key].where_atoms) for m in per_consumer
             ]
             if len(set(atom_strs)) != 1:
                 continue
             first = per_consumer[0][key]
+            # strip_safe is consensual: only strip when every consumer can
+            # safely have the dim removed. If any consumer projects a dim
+            # concept outside the WHERE atoms we keep the dim on all
+            # consumers and just push for early filtering.
+            strip_safe = all(m[key].strip_safe for m in per_consumer)
             out.append(
                 _DimDescriptor(
-                    dim_qds=first["dim_qds"],
-                    join_qds_id=first["join_qds_id"],
-                    key_pairs=first["key_pairs"],
-                    dim_concepts=first["dim_concepts"],
-                    where_atoms=list(first["where_atoms"]),
+                    dim_qds=first.dim_qds,
+                    join_qds_id=first.join_qds_id,
+                    key_pairs=first.key_pairs,
+                    dim_concepts=first.dim_concepts,
+                    where_atoms=list(first.where_atoms),
+                    strip_safe=strip_safe,
                 )
             )
         return out
 
     # ---- transform ----
 
-    def _apply(self, union: UnionCTE, consumers: list[CTE], d: _DimDescriptor) -> bool:
-        # Locate the dim CTE on each consumer so we can re-target into branches.
-        dim_cte: CTE | UnionCTE | None = None
-        inlined_entry = None
+    def _resolve_push_context(
+        self, consumers: list[CTE], d: _DimDescriptor
+    ) -> _PushContext | None:
         for c in consumers:
             found = _find_dim_cte_for_qds(c, d.join_qds_id)
             if found is not None:
-                dim_cte = found
+                inlined_entry = None
                 # ``CTE.inlined_ctes`` is keyed by ``new_alias``, not by the
                 # original CTE name. Scan values to recover the entry.
                 for e in c.inlined_ctes.values():
                     if e.original_alias == found.name:
                         inlined_entry = e
                         break
-                break
-        if dim_cte is None:
+                return _PushContext(
+                    dim_cte=found,
+                    source_consumer=c,
+                    inlined_entry=inlined_entry,
+                )
+        return None
+
+    def _can_push_into_branch(self, branch: CTE, d: _DimDescriptor) -> bool:
+        if any(
+            isinstance(j, BaseJoin)
+            and j.right_datasource.identifier == d.dim_qds.identifier
+            for j in branch.source.joins
+        ):
+            return True
+        branch_out_addrs = {c.address for c in branch.output_columns}
+        return (
+            d.fk_left_addrs.issubset(branch_out_addrs)
+            and self._branch_left_datasource(branch, d.fk_left_addrs) is not None
+        )
+
+    def _apply(self, union: UnionCTE, consumers: list[CTE], d: _DimDescriptor) -> bool:
+        # Filter-only mode without a filter is pure waste: the dim ends up
+        # joined inside each branch *and* on the consumer for no row
+        # reduction (INNER on a grain-bounded FK doesn't drop rows). Bail
+        # so q75's item-style dims that no consumer filters on aren't
+        # duplicated into every union branch.
+        if not d.strip_safe and not d.where_atoms:
             return False
 
+        context = self._resolve_push_context(consumers, d)
+        if context is None:
+            return False
+
+        branches: list[CTE] = []
         for branch in union.internal_ctes:
             if not isinstance(branch, CTE):
                 return False
-            if not self._push_into_branch(branch, dim_cte, d, inlined_entry):
+            branches.append(branch)
+        if not all(self._can_push_into_branch(branch, d) for branch in branches):
+            return False
+
+        for branch in branches:
+            if not self._push_into_branch(
+                branch,
+                context.dim_cte,
+                d,
+                context.inlined_entry,
+                context.source_consumer,
+            ):
                 return False
 
-        # Expose dim concepts on UnionCTE outputs.
-        existing = {col.address for col in union.output_columns}
-        for concept in d.dim_concepts:
-            if concept.address not in existing:
-                union.output_columns.append(concept)
-                existing.add(concept.address)
+        if d.strip_safe:
+            # Expose dim concepts on UnionCTE outputs (consumers will now
+            # resolve them through the union after the strip).
+            existing = {col.address for col in union.output_columns}
+            for concept in d.dim_concepts:
+                if concept.address not in existing:
+                    union.output_columns.append(concept)
+                    existing.add(concept.address)
 
-        for consumer in consumers:
-            self._strip_from_consumer(consumer, dim_cte, d, union)
+            for consumer in consumers:
+                self._strip_from_consumer(consumer, context.dim_cte, d, union)
+        else:
+            # Filter-only mode: the consumer keeps its dim join (some dim
+            # column is referenced in SELECT/CASE) but the WHERE atoms we
+            # pushed into each union branch are now redundant on the
+            # consumer — every row coming through the union already passes
+            # them, and the consumer's own INNER dim join is grain-bounded
+            # to the same dim row. Strip the duplicate filter.
+            for consumer in consumers:
+                for atom in d.where_atoms:
+                    consumer.condition = strip_condition_atom(consumer.condition, atom)
+
+        # If any pushed atom had concept-bearing existence_arguments, the
+        # branches may have gained a new parent CTE (the subselect source).
+        # Re-derive union.parent_ctes so the CTE reorder pass sees the edge.
+        has_existence = any(
+            any(arg for tup in getattr(a, "existence_arguments", ()) for arg in tup)
+            for a in d.where_atoms
+        )
+        if has_existence:
+            union.parent_ctes = unique(
+                [p for branch in union.internal_ctes for p in branch.parent_ctes],
+                "name",
+            )
         return True
 
     def _push_into_branch(
@@ -361,6 +567,7 @@ class UnionDimPushdown(OptimizationRule):
         dim_cte: CTE | UnionCTE,
         d: _DimDescriptor,
         inlined_entry=None,
+        source_consumer: CTE | None = None,
     ) -> bool:
         # already there? (idempotency)
         if any(
@@ -392,11 +599,7 @@ class UnionDimPushdown(OptimizationRule):
                 concept_pairs=new_pairs,
             )
         )
-        if d.dim_qds not in branch.source.datasources:
-            branch.source.datasources = sorted(
-                branch.source.datasources + [d.dim_qds],
-                key=lambda x: x.identifier,
-            )
+        add_datasource_sorted(branch, d.dim_qds)
         existing_input = {c.address for c in branch.source.input_concepts}
         existing_qds_out = {c.address for c in branch.source.output_concepts}
         for c in d.dim_concepts:
@@ -439,7 +642,7 @@ class UnionDimPushdown(OptimizationRule):
                 new_join.inline_cte(dim_cte, dim_base)
             branch.inlined_ctes[inlined_entry.new_alias] = inlined_entry
         else:
-            branch.parent_ctes = unique(branch.parent_ctes + [dim_cte], "name")
+            add_parent_cte(branch, dim_cte)
         branch.joins.append(new_join)
         existing_out = {c.address for c in branch.output_columns}
         # FK concepts already resolve via the branch's fact ds. Only the
@@ -467,15 +670,44 @@ class UnionDimPushdown(OptimizationRule):
             if dim_source_key not in branch.source_map[c.address]:
                 branch.source_map[c.address].append(dim_source_key)
         for atom in d.where_atoms:
-            if branch.condition is None:
-                branch.condition = atom
-            elif not self._atom_in(atom, branch.condition):
-                branch.condition = BuildConditional(
-                    left=branch.condition,
-                    operator=BooleanOperator.AND,
-                    right=cast(ConditionExpression, atom),
+            if not condition_contains_atom(atom, branch.condition):
+                branch.condition = append_condition(
+                    branch.condition, cast(ConditionExpression, atom)
                 )
+            # For subselect atoms (``D_WEEK_SEQ IN (SELECT … FROM cooperative)``)
+            # the inner reference renders against the branch's
+            # source_map/existence_source_map; copy the consumer's entry and
+            # add the subselect source CTE to branch.parent_ctes.
+            if source_consumer is not None:
+                self._propagate_existence_sources(branch, source_consumer, atom)
         return True
+
+    def _propagate_existence_sources(
+        self,
+        branch: CTE,
+        source_consumer: CTE,
+        atom: ConditionExpression,
+    ) -> None:
+        existence_addrs: set[str] = set()
+        for tup in getattr(atom, "existence_arguments", ()):
+            for arg in tup:
+                if hasattr(arg, "address"):
+                    existence_addrs.add(arg.address)
+        if not existence_addrs:
+            return
+        for x in existence_addrs:
+            if x in branch.source_map or x in branch.existence_source_map:
+                continue
+            if x in source_consumer.source_map:
+                origin = list(source_consumer.source_map[x])
+                branch.source_map[x] = origin
+            elif x in source_consumer.existence_source_map:
+                origin = list(source_consumer.existence_source_map[x])
+                branch.existence_source_map[x] = origin
+            else:
+                continue
+            sources = [p for p in source_consumer.parent_ctes if p.name in origin]
+            branch.parent_ctes = unique(branch.parent_ctes + sources, "name")
 
     def _branch_left_datasource(
         self, branch: CTE, fk_left_addrs: set[str]
@@ -568,36 +800,4 @@ class UnionDimPushdown(OptimizationRule):
                     consumer.source_map[addr].append(union.name)
         # Strip pushed WHERE atoms from consumer.condition.
         for atom in d.where_atoms:
-            consumer.condition = self._strip_atom(consumer.condition, atom)
-
-    # ---- atom helpers ----
-
-    def _atom_in(self, atom, condition) -> bool:
-        if condition is None:
-            return False
-        if condition == atom:
-            return True
-        if (
-            isinstance(condition, BuildConditional)
-            and condition.operator == BooleanOperator.AND
-        ):
-            return self._atom_in(atom, condition.left) or self._atom_in(
-                atom, condition.right
-            )
-        return False
-
-    def _strip_atom(self, condition, atom):
-        if condition is None or condition == atom:
-            return None
-        if not (
-            isinstance(condition, BuildConditional)
-            and condition.operator == BooleanOperator.AND
-        ):
-            return condition
-        left = self._strip_atom(condition.left, atom)
-        right = self._strip_atom(condition.right, atom)
-        if left is None:
-            return right
-        if right is None:
-            return left
-        return BuildConditional(left=left, operator=BooleanOperator.AND, right=right)
+            consumer.condition = strip_condition_atom(consumer.condition, atom)

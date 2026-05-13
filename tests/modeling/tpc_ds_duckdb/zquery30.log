@@ -1,5 +1,7 @@
 query_id = "30"
-gen_length = 8210
+gen_length = 7998
+preql_size = 1729
+comp_size = 1507
 generated_sql = """
 
 WITH 
@@ -79,7 +81,6 @@ GROUP BY
 juicy as (
 SELECT
     \"abundant\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
-    \"cooperative\".\"web_returns_customer_address_state\" as \"web_returns_customer_address_state\",
     \"cooperative\".\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
     \"cooperative\".\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
     \"cooperative\".\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
@@ -116,9 +117,9 @@ SELECT
     \"juicy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"juicy\"
-    INNER JOIN \"vacuous\" on \"juicy\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
+    LEFT OUTER JOIN \"vacuous\" on \"juicy\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
 WHERE
-    \"juicy\".\"customer_state_returns_2002\" > 1.2 * \"vacuous\".\"_virt_agg_avg_3885168128306444\" and \"juicy\".\"web_returns_customer_address_state\" = 'GA' and \"juicy\".\"web_returns_return_address_state\" is not null
+    \"juicy\".\"customer_state_returns_2002\" > 1.2 * \"vacuous\".\"_virt_agg_avg_3885168128306444\"
 
 GROUP BY
     1,

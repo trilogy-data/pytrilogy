@@ -1,4 +1,8 @@
 from trilogy import Dialects
+from trilogy.core.enums import ComparisonOperator, JoinType
+from trilogy.core.models.build import BuildComparison, BuildGrain
+from trilogy.core.models.execute import CTE, CTEConceptPair, Join, QueryDatasource
+from trilogy.core.optimizations.join_hoist import JoinHoist
 
 
 def _hoist_setup(executor):
@@ -61,3 +65,82 @@ def test_hoist_preserves_concepts_referenced_via_output_lineage():
     assert rows[0].day == 1
     assert rows[0].web_c == 10
     assert rows[0].store_c == 5
+
+
+def _simple_cte(name: str, datasource, columns) -> CTE:
+    return CTE(
+        name=name,
+        source=QueryDatasource(
+            input_concepts=list(columns),
+            output_concepts=list(columns),
+            datasources=[datasource],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={c.address: {datasource} for c in columns},
+            base_datasource=datasource,
+        ),
+        output_columns=list(columns),
+        parent_ctes=[],
+        grain=BuildGrain(),
+        source_map={c.address: [datasource.name] for c in columns},
+        existence_source_map={},
+    )
+
+
+def test_join_hoist_rejects_outer_join(test_environment):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+    product_id = env.concepts["product_id"]
+    parent = _simple_cte("parent", products, [product_id, category_id])
+    dim = _simple_cte("category_dim", category, [category_id, category_name])
+    child = CTE(
+        name="child",
+        source=QueryDatasource(
+            input_concepts=[product_id, category_id, category_name],
+            output_concepts=[product_id],
+            datasources=[parent.source, dim.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={
+                product_id.address: {parent.source},
+                category_id.address: {parent.source, dim.source},
+                category_name.address: {dim.source},
+            },
+        ),
+        output_columns=[product_id],
+        parent_ctes=[parent, dim],
+        condition=BuildComparison(
+            left=category_name,
+            right="special",
+            operator=ComparisonOperator.EQ,
+        ),
+        grain=BuildGrain(),
+        source_map={
+            product_id.address: [parent.name],
+            category_id.address: [parent.name, dim.name],
+            category_name.address: [dim.name],
+        },
+        existence_source_map={},
+        joins=[
+            Join(
+                right_cte=dim,
+                jointype=JoinType.LEFT_OUTER,
+                left_cte=parent,
+                joinkey_pairs=[
+                    CTEConceptPair(
+                        left=category_id,
+                        right=category_id,
+                        existing_datasource=parent.source,
+                        cte=parent,
+                    )
+                ],
+            )
+        ],
+    )
+
+    plan = JoinHoist()._join_hoist_plan(child, parent, {parent.name: [child]})
+
+    assert plan is None

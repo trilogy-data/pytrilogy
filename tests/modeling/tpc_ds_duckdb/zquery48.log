@@ -1,5 +1,7 @@
 query_id = "48"
-gen_length = 2527
+gen_length = 2526
+preql_size = 1402
+comp_size = 1425
 generated_sql = """
 SELECT
     sum(\"store_sales_store_sales\".\"SS_QUANTITY\") as \"total_quantity\"

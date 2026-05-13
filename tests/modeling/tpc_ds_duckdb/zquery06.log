@@ -1,5 +1,7 @@
 query_id = "06"
-gen_length = 2904
+gen_length = 2237
+preql_size = 669
+comp_size = 654
 generated_sql = """
 
 WITH 
@@ -15,13 +17,8 @@ abundant as (
 SELECT
     \"item_items\".\"I_CATEGORY\" as \"item_category\",
     \"item_items\".\"I_ITEM_SK\" as \"item_id\",
-    \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\" as \"store_sales_customer_address_id\",
     \"store_sales_customer_address_customer_address\".\"CA_STATE\" as \"store_sales_customer_address_state\",
-    \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
-    \"store_sales_date_date\".\"D_YEAR\" as \"store_sales_date_year\",
-    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
@@ -40,7 +37,7 @@ FROM
     \"abundant\"
     INNER JOIN \"highfalutin\" on \"abundant\".\"item_category\" is not distinct from \"highfalutin\".\"item_category\"
 WHERE
-    \"abundant\".\"store_sales_date_year\" = 2001 and \"abundant\".\"store_sales_item_category\" is not null and \"abundant\".\"store_sales_date_month_of_year\" = 1 and \"abundant\".\"store_sales_item_current_price\" > 1.2 * \"highfalutin\".\"_virt_agg_avg_5942253052406187\" and \"abundant\".\"store_sales_customer_id\" is not null and \"abundant\".\"store_sales_customer_address_id\" is not null
+    \"abundant\".\"store_sales_item_current_price\" > 1.2 * \"highfalutin\".\"_virt_agg_avg_5942253052406187\"
 
 GROUP BY
     1

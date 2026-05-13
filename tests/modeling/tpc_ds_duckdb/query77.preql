@@ -4,6 +4,9 @@ import store_sales as ss;
 import web_sales as ws;
 import web_returns as wr;
 
+const period_start <- cast('2000-08-23' as date);
+const period_end <- cast('2000-09-22' as date);
+
 # Catalog returns aggregated per call_center (NULL group included via
 # coalesce sentinel), then folded to a 1-row scalar so the catalog branch
 # can broadcast: per-id sales/profit get multiplied by N_cr_groups, per-id
@@ -11,7 +14,7 @@ import web_returns as wr;
 # `FROM cs , cr` (CROSS JOIN with no key) catalog branch.
 with cr_grouped as
 WHERE
-    cr.date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+    cr.date.date between period_start and period_end
 SELECT
     coalesce(cr.call_center.id, -1) as cr_cc_key,
     sum(cr.return_amount) as cr_returns_per_cc,
@@ -28,7 +31,7 @@ SELECT
 # Store-side per-store_sk aggregations.
 with ss_grouped as
 WHERE
-    ss.date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+    ss.date.date between period_start and period_end
 SELECT
     ss.store.id as ss_store_id,
     sum(ss.ext_sales_price) as ss_sales,
@@ -37,7 +40,7 @@ SELECT
 
 with sr_grouped as
 WHERE
-    ss.return_date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+    ss.return_date.date between period_start and period_end
 SELECT
     ss.return_store.id as sr_store_id,
     sum(ss.return_amount) as sr_returns,
@@ -48,7 +51,7 @@ merge sr_grouped.sr_store_id into ss_grouped.ss_store_id;
 # Web-side per-web_page_sk aggregations.
 with ws_grouped as
 WHERE
-    ws.date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+    ws.date.date between period_start and period_end
 SELECT
     ws.web_page.id as ws_wp_id,
     sum(ws.ext_sales_price) as ws_sales,
@@ -57,7 +60,7 @@ SELECT
 
 with wr_grouped as
 WHERE
-    wr.return_date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+    wr.return_date.date between period_start and period_end
 SELECT
     wr.web_page.id as wr_wp_id,
     sum(wr.return_amount) as wr_returns,
@@ -71,7 +74,7 @@ merge wr_grouped.wr_wp_id into ws_grouped.ws_wp_id;
 # in a rowset hits "can only merge two datasources if the force_group
 # flag is the same" during planning.
 with l0_union as
-WHERE cs.date.date between cast('2000-08-23' as date) and cast('2000-09-22' as date)
+WHERE cs.date.date between period_start and period_end
 SELECT
     'catalog channel' as u_channel_c,
     cs.call_center.id as u_id_c,

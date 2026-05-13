@@ -1,5 +1,7 @@
 query_id = "95"
-gen_length = 4987
+gen_length = 4687
+preql_size = 713
+comp_size = 1010
 generated_sql = """
 
 WITH 
@@ -73,7 +75,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_ship_date_date\" on \"cooperative\".\"web_sales_ship_date_id\" = \"web_sales_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"cooperative\".\"web_sales_ship_address_id\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"cooperative\".\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"cooperative\".\"web_sales_order_number\" in (select thoughtful.\"returned_orders\" from thoughtful where thoughtful.\"returned_orders\" is not null)
+    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri'
 
 GROUP BY
     1),

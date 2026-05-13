@@ -1,5 +1,7 @@
 query_id = "96"
-gen_length = 998
+gen_length = 996
+preql_size = 357
+comp_size = 382
 generated_sql = """
 SELECT
     count((cast(\"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as string) || '-' || cast(\"store_sales_store_sales\".\"SS_ITEM_SK\" as string))) as \"ct\"

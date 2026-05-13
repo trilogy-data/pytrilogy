@@ -13,7 +13,13 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import (
+    append_condition,
+    condition_contains_atom,
+    rebuild_and_condition,
+)
 from trilogy.core.processing.condition_utility import (
+    condition_value_implies,
     conditions_mutually_exclusive,
     is_scalar_condition,
 )
@@ -21,14 +27,7 @@ from trilogy.utility import unique
 
 
 def is_child_of(a, comparison):
-    base = comparison == a
-    if base:
-        return True
-    if isinstance(comparison, BuildConditional):
-        return (
-            is_child_of(a, comparison.left) or is_child_of(a, comparison.right)
-        ) and comparison.operator == BooleanOperator.AND
-    return base
+    return condition_contains_atom(a, comparison)
 
 
 def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bool:
@@ -51,19 +50,39 @@ def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bo
     return False
 
 
+def _branch_constraint_implies(branch: CTE | UnionCTE, condition) -> bool:
+    """True if the branch's base_datasource ``non_partial_for`` constraint
+    value-implies the condition (so the condition is tautologically true on
+    rows from this branch). Handles the partial-datasource case where a
+    branch is bounded to a literal — e.g. ``complete where channel='CATALOG'``
+    makes any pushed ``channel in ('WEB','CATALOG')`` redundant on that
+    branch."""
+    if not isinstance(branch, CTE):
+        return False
+    base = branch.source.base_datasource
+    if not isinstance(base, BuildDatasource) or base.non_partial_for is None:
+        return False
+    return condition_value_implies(base.non_partial_for.conditional, condition)
+
+
 def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
     """True if the consumer's ``condition`` is implied by ``parent``.
 
     For a plain CTE that's just ``is_child_of(condition, parent.condition)``.
     For a UnionCTE, the parent has no top-level condition — we check that
     every branch's condition covers the consumer atom (so the post-union
-    rows are already filtered).
+    rows are already filtered). A branch can also cover via its base
+    datasource's ``non_partial_for`` constraint (e.g. a partial datasource
+    bounded to ``channel='CATALOG'`` covers any pushed
+    ``channel in ('WEB','CATALOG')`` predicate).
     """
     if isinstance(parent, UnionCTE):
         if not parent.internal_ctes:
             return False
         return all(
-            is_child_of(condition, branch.condition) for branch in parent.internal_ctes
+            is_child_of(condition, branch.condition)
+            or _branch_constraint_implies(branch, condition)
+            for branch in parent.internal_ctes
         )
     return is_child_of(condition, parent.condition)
 
@@ -138,6 +157,13 @@ class PredicatePushdown(OptimizationRule):
                 candidate, branch.condition
             ):
                 continue
+            # Branch's partial-datasource constraint may already value-imply
+            # the candidate (e.g. branch is fixed to ``channel='CATALOG'`` and
+            # candidate is ``channel in ('WEB','CATALOG')``). No need to push
+            # the tautology in — the rendered SQL would just carry
+            # ``'CATALOG' in ('WEB','CATALOG')``.
+            if _branch_constraint_implies(branch, candidate):
+                continue
             if branch.condition is not None and not is_scalar_condition(
                 branch.condition
             ):
@@ -190,11 +216,7 @@ class PredicatePushdown(OptimizationRule):
             if branch.condition is None:
                 branch.condition = candidate
             else:
-                branch.condition = BuildConditional(
-                    left=branch.condition,
-                    operator=BooleanOperator.AND,
-                    right=candidate,
-                )
+                branch.condition = append_condition(branch.condition, candidate)
             for x in existence_extras:
                 if x in branch.source_map or x in branch.existence_source_map:
                     continue
@@ -340,10 +362,8 @@ class PredicatePushdown(OptimizationRule):
                     self.log("Parent condition is not scalar, not safe to push up")
                     return False
                 if parent_cte.condition:
-                    parent_cte.condition = BuildConditional(
-                        left=parent_cte.condition,
-                        operator=BooleanOperator.AND,
-                        right=candidate,
+                    parent_cte.condition = append_condition(
+                        parent_cte.condition, candidate
                     )
                 else:
                     parent_cte.condition = candidate
@@ -430,6 +450,72 @@ class PredicatePushdownRemove(OptimizationRule):
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
 
+    def _atom_sourced_only_from_parents(self, atom, cte: CTE) -> bool:
+        """True if every concept referenced by `atom` is materialized in `cte`
+        via a parent CTE rather than via one of `cte`'s own joined base
+        datasources. Atoms that reference inline-join columns must stay in
+        `cte` because no upstream filter constrains those columns."""
+        if not isinstance(atom, BuildConceptArgs):
+            return False
+        parent_names = {p.name for p in cte.parent_ctes}
+        for c in atom.row_arguments:
+            sources = cte.source_map.get(c.address)
+            if not sources:
+                return False
+            if not all(s in parent_names for s in sources):
+                return False
+        return True
+
+    def _atom_covered_by_applicable_parents(
+        self, atom, cte: CTE, existence_only: set[str]
+    ) -> bool:
+        """True if every non-existence parent that exposes `atom`'s row
+        arguments already enforces `atom`. Parents that don't expose those
+        concepts are irrelevant — they can't filter on them."""
+        atom_args = {c.address for c in atom.row_arguments}
+        relevant_parents = [
+            p
+            for p in cte.parent_ctes
+            if p.name not in existence_only
+            and atom_args.issubset({x.address for x in p.output_columns})
+        ]
+        if not relevant_parents:
+            return False
+        return all(_parent_covers_condition(p, atom) for p in relevant_parents)
+
+    def _parent_is_nullable_in_cte(self, cte: CTE, parent_name: str) -> bool:
+        """True if ``parent_name`` is on the nullable side of any outer join
+        on ``cte``. A nullable parent can be NULL-padded by the join, and
+        rows whose filter column is NULL pass through a removed predicate
+        but would have failed the original WHERE."""
+        for j in cte.joins or []:
+            if not isinstance(j, Join):
+                continue
+            if j.jointype == JoinType.INNER:
+                continue
+            # right side is nullable on FULL/LEFT_OUTER
+            if j.jointype in (JoinType.FULL, JoinType.LEFT_OUTER):
+                if (
+                    isinstance(j.right_cte, (CTE, UnionCTE))
+                    and j.right_cte.name == parent_name
+                ):
+                    return True
+            # left side is nullable on FULL/RIGHT_OUTER
+            if j.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER):
+                if (
+                    isinstance(j.left_cte, (CTE, UnionCTE))
+                    and j.left_cte.name == parent_name
+                ):
+                    return True
+                # implicit left from joinkey_pairs.cte (inlined left case)
+                for pair in j.joinkey_pairs or []:
+                    cte_ref = getattr(pair, "cte", None)
+                    if cte_ref is not None and cte_ref.name == parent_name:
+                        return True
+        # BaseJoins on cte.source.joins target datasources, not CTEs by
+        # name, so they can't render a parent_name CTE nullable.
+        return False
+
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
@@ -482,6 +568,56 @@ class PredicatePushdownRemove(OptimizationRule):
                 self.log(
                     f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
                 )
+            return True, None
+
+        # Per-conjunct removal: even when the full condition isn't covered (e.g.
+        # cte joins dim tables inline that contribute their own filter atoms),
+        # individual atoms whose row_arguments are sourced entirely from parent
+        # CTEs and which are covered by every parent that exposes those concepts
+        # are still redundant — predicate-pushdown already arranged for them to
+        # be enforced upstream. The per-atom outer-join safety check happens
+        # inside the loop: an atom whose source parent is on the nullable side
+        # of an outer join in `cte` can't be removed (NULL-padding bypasses
+        # the parent's filter).
+        existence_set = set(existence_only)
+        if (
+            isinstance(cte.condition, BuildConditional)
+            and cte.condition.operator == BooleanOperator.AND
+        ):
+            atoms = cte.condition.decompose()
+        else:
+            atoms = [cte.condition]
+        if len(atoms) <= 1:
+            self.complete[cte.name] = True
+            return optimized, None
+        surviving: list = []
+        removed = 0
+        for atom in atoms:
+            if not (
+                self._atom_sourced_only_from_parents(atom, cte)
+                and self._atom_covered_by_applicable_parents(atom, cte, existence_set)
+            ):
+                surviving.append(atom)
+                continue
+            # Per-atom outer-join safety: if any source parent for this atom
+            # is on the nullable side of an outer join in cte, NULL-padded
+            # rows could bypass the predicate. Keep the atom in that case.
+            atom_sources: set[str] = set()
+            if isinstance(atom, BuildConceptArgs):
+                for c in atom.row_arguments:
+                    atom_sources.update(cte.source_map.get(c.address, []) or [])
+            if any(self._parent_is_nullable_in_cte(cte, src) for src in atom_sources):
+                surviving.append(atom)
+                continue
+            self.log(
+                f"Removing redundant atom {atom} from {cte.name}: covered by parent CTE(s) and sourced only from parents"
+            )
+            removed += 1
+        if removed:
+            if surviving:
+                cte.condition = rebuild_and_condition(surviving)
+            else:
+                cte.condition = None
             return True, None
 
         self.complete[cte.name] = True

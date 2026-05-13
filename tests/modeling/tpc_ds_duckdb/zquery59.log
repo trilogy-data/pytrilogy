@@ -1,5 +1,7 @@
 query_id = "59"
-gen_length = 10835
+gen_length = 10358
+preql_size = 2180
+comp_size = 2234
 generated_sql = """
 
 WITH 
@@ -48,7 +50,7 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cheerful\".\"ss_store_id\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+    \"ss_date_date\".\"D_WEEK_SEQ\" is not null
 
 GROUP BY
     1,
@@ -61,9 +63,9 @@ SELECT
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"cheerful\".\"ss_store_id\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+    \"ss_date_date\".\"D_WEEK_SEQ\" is not null
 
 GROUP BY
     1,
@@ -78,9 +80,9 @@ SELECT
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"cheerful\".\"ss_store_id\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+    \"ss_date_date\".\"D_WEEK_SEQ\" is not null
 
 GROUP BY
     1,
@@ -100,9 +102,9 @@ SELECT
     sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Wednesday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"wed_sales\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"juicy\" on \"thoughtful\".\"ss_date_week_seq\" is not distinct from \"juicy\".\"ss_date_week_seq\" AND \"thoughtful\".\"ss_store_id\" is not distinct from \"juicy\".\"ss_store_id\"
+    LEFT OUTER JOIN \"juicy\" on \"thoughtful\".\"ss_date_week_seq\" is not distinct from \"juicy\".\"ss_date_week_seq\" AND \"thoughtful\".\"ss_store_id\" is not distinct from \"juicy\".\"ss_store_id\"
 WHERE
-    \"thoughtful\".\"in_year2\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
+    \"thoughtful\".\"in_year2\" = 1
 
 GROUP BY
     1,
@@ -114,7 +116,7 @@ FROM
     \"thoughtful\"
     LEFT OUTER JOIN \"quizzical\" on 1=1
 WHERE
-    \"thoughtful\".\"in_year2\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
+    \"thoughtful\".\"in_year2\" = 1
 ),
 vacuous as (
 SELECT
@@ -129,9 +131,9 @@ SELECT
     sum(CASE WHEN \"juicy\".\"ss_date_day_name\" = 'Wednesday' THEN \"juicy\".\"ss_sales_price\" ELSE NULL END) as \"wed_sales\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"juicy\" on \"thoughtful\".\"ss_date_week_seq\" is not distinct from \"juicy\".\"ss_date_week_seq\" AND \"thoughtful\".\"ss_store_id\" is not distinct from \"juicy\".\"ss_store_id\"
+    LEFT OUTER JOIN \"juicy\" on \"thoughtful\".\"ss_date_week_seq\" is not distinct from \"juicy\".\"ss_date_week_seq\" AND \"thoughtful\".\"ss_store_id\" is not distinct from \"juicy\".\"ss_store_id\"
 WHERE
-    \"thoughtful\".\"in_year1\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
+    \"thoughtful\".\"in_year1\" = 1
 
 GROUP BY
     1,
@@ -143,7 +145,7 @@ FROM
     \"thoughtful\"
     LEFT OUTER JOIN \"quizzical\" on 1=1
 WHERE
-    \"thoughtful\".\"in_year1\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
+    \"thoughtful\".\"in_year1\" = 1
 ),
 macho as (
 SELECT

@@ -8,6 +8,39 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tomllib
+from matplotlib.ticker import StrMethodFormatter
+
+from tests.modeling.tpc_ds_duckdb.query_size import query_size
+from tests.modeling.tpc_ds_duckdb.summarize_test_results import write_summary
+
+_ALT_PREQL_NAMES: dict[str, str] = {
+    "2.1": "query02-one.preql",
+    "2.2": "query02-two.preql",
+    "97.1": "query97-one.preql",
+    "97.2": "query97-two.preql",
+}
+
+
+def _source_paths(query_id: str, root: Path) -> tuple[Path, Path]:
+    preql_name = _ALT_PREQL_NAMES.get(query_id, f"query{query_id}.preql")
+    base = query_id.split(".", 1)[0]
+    sql_name = f"query{base}.sql"
+    return root / preql_name, root / sql_name
+
+
+def _recompute_sizes(record: dict, root: Path) -> None:
+    qid = str(record.get("query_id", ""))
+    if not qid:
+        return
+    preql_path, sql_path = _source_paths(qid, root)
+    if preql_path.exists():
+        record["preql_size"] = query_size(preql_path.read_text(), "preql")
+    if sql_path.exists():
+        record["comp_size"] = query_size(sql_path.read_text(), "sql")
+    generated = record.get("generated_sql")
+    if isinstance(generated, str):
+        record["gen_length"] = query_size(generated, "sql")
+
 
 # Get aggregate info
 machine = platform.machine()
@@ -68,6 +101,54 @@ def plot_perf(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> No
     plt.close(fig)
 
 
+def plot_sizes(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> None:
+    needed = ["preql_size", "gen_length", "comp_size"]
+    if frame.empty or not all(c in frame.columns for c in needed):
+        return
+    sub = frame.dropna(subset=needed)
+    if sub.empty:
+        return
+    sizes = np.vstack([sub[c].to_numpy(dtype=float) for c in needed])
+    mins = sizes.min(axis=0)
+    maxs = sizes.max(axis=0)
+    series = [sizes[i] for i in range(len(needed))]
+    pretty = ["PreQL", "Generated SQL", "Reference SQL"]
+    labels = []
+    for i, name in enumerate(pretty):
+        smallest = int((sizes[i] == mins).sum())
+        largest = int((sizes[i] == maxs).sum())
+        total = int(sizes[i].sum())
+        labels.append(f"{name} ({smallest} smallest, {largest} largest, {total} chars)")
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.set_title(title)
+    ax.set_xlabel("Source")
+    ax.set_ylabel("Size (chars, symlog scale)")
+    ax.set_yscale("symlog", linthresh=1000)
+    ax.yaxis.set_major_formatter(StrMethodFormatter("{x:,.0f}"))
+    positions = list(range(1, len(series) + 1))
+    parts = ax.violinplot(series, positions=positions, showmedians=True)
+    for body in parts["bodies"]:
+        body.set_alpha(0.2)
+        body.set_facecolor("gray")
+    rng = np.random.default_rng(0)
+    for i, (pos, values) in enumerate(zip(positions, series)):
+        is_min = sizes[i] == mins
+        is_max = sizes[i] == maxs
+        colors = np.where(is_min, "#2ca02c", np.where(is_max, "#d62728", "#7f7f7f"))
+        jitter = rng.uniform(-0.08, 0.08, size=len(values))
+        ax.scatter(pos + jitter, values, s=14, alpha=0.55, c=colors, linewidths=0)
+    ax.set_ylim(0, float(sizes.max()) * 1.08)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=15, ha="right")
+    fig.tight_layout()
+    if show:
+        plt.show()
+    else:
+        plt.savefig(out_path)
+    plt.close(fig)
+
+
 def analyze(show: bool = False):
     results = []
     root = Path(__file__).parent
@@ -82,6 +163,7 @@ def analyze(show: bool = False):
                 except tomllib.TOMLDecodeError:
                     print(f"Error loading {filename}")
                     continue
+                _recompute_sizes(loaded, root)
                 results.append(loaded)
     timing_path = Path(root / f"zquery_timing_{fingerprint}.log")
     with open(timing_path, "r") as f:
@@ -126,6 +208,24 @@ def analyze(show: bool = False):
         "Query Timing (alternatives)",
         root / f"{fingerprint}-tcp-ds-perf-alt.png",
         show,
+    )
+    plot_sizes(
+        main_df,
+        "Query Size by Source",
+        root / "tcp-ds-size.png",
+        show,
+    )
+    plot_sizes(
+        alt_df,
+        "Query Size by Source (alternatives)",
+        root / "tcp-ds-size-alt.png",
+        show,
+    )
+    write_summary(
+        main_df,
+        alt_df,
+        root / "tcp-ds-summary.md",
+        fingerprint,
     )
 
     fig, ax = plt.subplots()

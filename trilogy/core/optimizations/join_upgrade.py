@@ -36,7 +36,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildParenthetical,
 )
-from trilogy.core.models.execute import CTE, CTEConceptPair, Join, UnionCTE
+from trilogy.core.models.execute import CTE, BaseJoin, CTEConceptPair, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
@@ -226,19 +226,83 @@ def _downgrade(
     return None
 
 
+def _downgrade_base_join(
+    cte: CTE,
+    base_join: BaseJoin,
+    proofs: set[str],
+) -> JoinType | None:
+    """Mirror of ``_downgrade`` for BaseJoins on ``cte.source.joins``, but
+    restricted to LEFT_OUTER→INNER. The right side is a datasource (BD or
+    QDS) and ``left_all`` (everything other than the right) tends to
+    over-include concepts from inline-joined dims that aren't really on the
+    "left" of this specific join — which is fine for proving the right side
+    non-null (LEFT_OUTER→INNER) but risks false-positive ``left_forced``
+    for the FULL→INNER path. Conservative: only handle the LEFT_OUTER case.
+
+    ``BaseJoin.right_datasource`` is typically a QDS wrapper over the
+    underlying BD; the same BD is usually also registered directly on
+    ``cte.source.datasources``. Treat the wrapper and its base as the same
+    logical right side so the BD's dim attrs don't leak into ``left_all``
+    and erase the ``right_only`` we need for the proof check.
+    """
+    current = base_join.join_type
+    if current != JoinType.LEFT_OUTER:
+        return None
+
+    right_ds = base_join.right_datasource
+    right_base = getattr(right_ds, "base_datasource", None)
+    right_all = {c.address for c in right_ds.output_concepts}
+    if right_base is not None:
+        right_all |= {c.address for c in right_base.output_concepts}
+    left_all: set[str] = set()
+    for ds in cte.source.datasources:
+        if ds is right_ds or ds is right_base:
+            continue
+        left_all |= {c.address for c in ds.output_concepts}
+    right_only = right_all - left_all
+
+    pairs = base_join.concept_pairs or []
+    right_keys = {p.right.address for p in pairs}
+
+    right_forced = bool(proofs & right_only) or (
+        bool(right_keys) and right_keys.issubset(proofs)
+    )
+    # NULL-padding lives on the right side; right_forced removes the padded
+    # rows, leaving only matched rows → INNER.
+    if right_forced:
+        return JoinType.INNER
+    return None
+
+
 class UpgradeJoinOnGuards(OptimizationRule):
     """Upgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
     enclosing WHERE rejects the unmatched rows the OUTER join was preserving.
+
+    ``base_join_only=True`` restricts the rule to BaseJoins on
+    ``cte.source.joins``; intended for an early pass before UnionDimPushdown
+    so dim joins become INNER without disturbing CTE-to-CTE joins (which
+    other optimizations like CollapseSingleParent may have moved into
+    structures that change row visibility under upgrade).
     """
+
+    def __init__(self, base_join_only: bool = False) -> None:
+        super().__init__()
+        self.base_join_only = base_join_only
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
-        if not isinstance(cte, CTE) or not cte.condition or not cte.joins:
+        if not isinstance(cte, CTE) or not cte.condition:
             return False, None
-        if not any(
-            isinstance(j, Join) and j.jointype in _OUTER_JOIN_TYPES for j in cte.joins
-        ):
+        has_outer_cte_join = not self.base_join_only and any(
+            isinstance(j, Join) and j.jointype in _OUTER_JOIN_TYPES
+            for j in (cte.joins or [])
+        )
+        has_outer_base_join = any(
+            isinstance(j, BaseJoin) and j.join_type in _OUTER_JOIN_TYPES
+            for j in (cte.source.joins or [])
+        )
+        if not has_outer_cte_join and not has_outer_base_join:
             return False, None
 
         proofs = _gather_proofs(cte.condition)
@@ -246,11 +310,37 @@ class UpgradeJoinOnGuards(OptimizationRule):
             return False, None
 
         changed = False
-        for idx, join in enumerate(cte.joins):
-            if not isinstance(join, Join) or join.jointype not in _OUTER_JOIN_TYPES:
+        if not self.base_join_only:
+            for idx, join in enumerate(cte.joins or []):
+                if not isinstance(join, Join) or join.jointype not in _OUTER_JOIN_TYPES:
+                    continue
+                target = _downgrade(cte, idx, join, proofs)
+                if target is None or target == join.jointype:
+                    continue
+                dropped = {
+                    JoinType.INNER: "unmatched",
+                    JoinType.LEFT_OUTER: "right-unmatched",
+                    JoinType.RIGHT_OUTER: "left-unmatched",
+                }[target]
+                self.log(
+                    f"{join.jointype.value}→{target.value} on {cte.name} for join with"
+                    f" {join.right_cte.name}: WHERE filters out"
+                    f" {dropped} rows that the OUTER join was preserving"
+                )
+                join.jointype = target
+                changed = True
+
+        # Mirror the upgrade onto BaseJoins so dim joins (e.g. q66's
+        # date_dim/time_dim/ship_mode) become INNER and downstream rules like
+        # UnionDimPushdown can match them.
+        for base_join in cte.source.joins or []:
+            if (
+                not isinstance(base_join, BaseJoin)
+                or base_join.join_type not in _OUTER_JOIN_TYPES
+            ):
                 continue
-            target = _downgrade(cte, idx, join, proofs)
-            if target is None or target == join.jointype:
+            target = _downgrade_base_join(cte, base_join, proofs)
+            if target is None or target == base_join.join_type:
                 continue
             dropped = {
                 JoinType.INNER: "unmatched",
@@ -258,10 +348,10 @@ class UpgradeJoinOnGuards(OptimizationRule):
                 JoinType.RIGHT_OUTER: "left-unmatched",
             }[target]
             self.log(
-                f"{join.jointype.value}→{target.value} on {cte.name} for join with"
-                f" {join.right_cte.name}: WHERE filters out"
-                f" {dropped} rows that the OUTER join was preserving"
+                f"{base_join.join_type.value}→{target.value} on {cte.name} for "
+                f"base join with {base_join.right_datasource.identifier}: WHERE "
+                f"filters out {dropped} rows that the OUTER join was preserving"
             )
-            join.jointype = target
+            base_join.join_type = target
             changed = True
         return changed, None

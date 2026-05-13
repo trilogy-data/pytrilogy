@@ -20,10 +20,13 @@ where date_trunc(local.dep_time, month) between '2001-12-31'::date and '2002-03-
 select
     count(carrier.name) as carrier_count;
     """)[-1]
-    # if we don't have this group by, we will get the wrong result
-    assert """GROUP BY
-    1,
-    2""" in sql
+    # if we don't have this group by, we will get the wrong result. The
+    # second key may render as positional (`2`) or as a qualified column
+    # name depending on whether HideUnusedConcepts left the grain column
+    # in the SELECT list — accept either form.
+    import re
+
+    assert re.search(r"GROUP BY\s+1,\s+(2|\"[^\"]+\"\.\"[^\"]+\")", sql), sql
 
 
 def test_helpful_error():

@@ -1,23 +1,16 @@
 query_id = "36"
-gen_length = 7972
+gen_length = 2551
+preql_size = 1258
+comp_size = 1844
 generated_sql = """
 
 WITH 
 thoughtful as (
 SELECT
-    \"ss_store_sales\".\"SS_SOLD_DATE_SK\" as \"ss_date_id\",
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-GROUP BY
-    1,
-    2),
-uneven as (
-SELECT
     \"ss_item_items\".\"I_CATEGORY\" as \"ss_item_category\",
     \"ss_item_items\".\"I_CLASS\" as \"ss_item_class\",
-    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"_virt_filter_ext_sales_price_2129231884164397\",
-    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"_virt_filter_net_profit_2712442945174069\"
+    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\",
+    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -26,207 +19,37 @@ FROM
 WHERE
     \"ss_date_date\".\"D_YEAR\" = 2001 and \"ss_store_store\".\"S_STATE\" = 'TN'
 ),
-quizzical as (
-SELECT
-    0 as \"lochierarchy_a\",
-    1 as \"lochierarchy_b\",
-    1 as \"rank_c\",
-    2 as \"lochierarchy_c\",
-    cast(null as string) as \"null_category_c\",
-    cast(null as string) as \"null_class_b\",
-    cast(null as string) as \"null_class_c\"
-),
-kaput as (
-SELECT
-    cast(sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as numeric(15,4)) / cast(sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as numeric(15,4)) as \"gm_c\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
-WHERE
-    \"ss_date_date\".\"D_YEAR\" = 2001 and \"ss_store_store\".\"S_STATE\" = 'TN'
-),
-protective as (
-SELECT
-    cast(sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as numeric(15,4)) / cast(sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as numeric(15,4)) as \"gm_c\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"),
 cooperative as (
 SELECT
-    \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
-    \"ss_store_store\".\"S_STATE\" as \"ss_store_state\"
+    \"thoughtful\".\"ss_item_category\" as \"q36_rolled_r_category\",
+    \"thoughtful\".\"ss_item_class\" as \"q36_rolled_r_class\",
+    CASE
+	WHEN grouping(\"thoughtful\".\"ss_item_class\") = 0 THEN \"thoughtful\".\"ss_item_category\"
+	ELSE null
+	END as \"q36_rolled_partition_cat\",
+    cast(sum(\"thoughtful\".\"ss_net_profit\") as numeric(15,4)) / cast(sum(\"thoughtful\".\"ss_ext_sales_price\") as numeric(15,4)) as \"q36_rolled_gross_margin\",
+    grouping(\"thoughtful\".\"ss_item_category\") + grouping(\"thoughtful\".\"ss_item_class\") as \"q36_rolled_lochierarchy\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"thoughtful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"thoughtful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
-WHERE
-    \"ss_date_date\".\"D_YEAR\" = 2001 and \"ss_store_store\".\"S_STATE\" = 'TN'
-),
-sparkling as (
-SELECT
-    \"uneven\".\"ss_item_category\" as \"ss_item_category\",
-    cast(sum(\"uneven\".\"_virt_filter_net_profit_2712442945174069\") as numeric(15,4)) / cast(sum(\"uneven\".\"_virt_filter_ext_sales_price_2129231884164397\") as numeric(15,4)) as \"category_gross_margin\"
-FROM
-    \"uneven\"
 GROUP BY
-    1),
-yummy as (
-SELECT
-    \"uneven\".\"ss_item_category\" as \"ss_item_category\",
-    \"uneven\".\"ss_item_class\" as \"ss_item_class\",
-    cast(sum(\"uneven\".\"_virt_filter_net_profit_2712442945174069\") as numeric(15,4)) / cast(sum(\"uneven\".\"_virt_filter_ext_sales_price_2129231884164397\") as numeric(15,4)) as \"class_gross_margin\"
-FROM
-    \"uneven\"
-GROUP BY
-    1,
-    2),
-friendly as (
-SELECT
-    \"quizzical\".\"rank_c\" as \"rank_c\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"cooperative\" on 1=1
-WHERE
-    \"cooperative\".\"ss_date_year\" = 2001 and \"cooperative\".\"ss_store_state\" = 'TN'
-
-GROUP BY
-    1),
-scrawny as (
-SELECT
-    \"quizzical\".\"null_class_c\" as \"null_class_c\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"cooperative\" on 1=1
-WHERE
-    \"cooperative\".\"ss_date_year\" = 2001 and \"cooperative\".\"ss_store_state\" = 'TN'
-
-GROUP BY
-    1),
-macho as (
-SELECT
-    \"quizzical\".\"null_category_c\" as \"null_category_c\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"cooperative\" on 1=1
-WHERE
-    \"cooperative\".\"ss_date_year\" = 2001 and \"cooperative\".\"ss_store_state\" = 'TN'
-
-GROUP BY
-    1),
-late as (
-SELECT
-    \"quizzical\".\"lochierarchy_c\" as \"lochierarchy_c\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"cooperative\" on 1=1
-WHERE
-    \"cooperative\".\"ss_date_year\" = 2001 and \"cooperative\".\"ss_store_state\" = 'TN'
-
-GROUP BY
-    1),
-young as (
-SELECT
-    \"quizzical\".\"null_class_b\" as \"null_class_b\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"cooperative\" on 1=1
-WHERE
-    \"cooperative\".\"ss_date_year\" = 2001 and \"cooperative\".\"ss_store_state\" = 'TN'
-
-GROUP BY
-    1),
-concerned as (
-SELECT
-    \"quizzical\".\"lochierarchy_b\" as \"lochierarchy_b\"
-FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"cooperative\" on 1=1
-WHERE
-    \"cooperative\".\"ss_date_year\" = 2001 and \"cooperative\".\"ss_store_state\" = 'TN'
-
-GROUP BY
-    1),
+    ROLLUP (1, 2)),
 questionable as (
 SELECT
-    \"quizzical\".\"lochierarchy_a\" as \"lochierarchy_a\"
+    \"cooperative\".\"q36_rolled_gross_margin\" as \"q36_rolled_gross_margin\",
+    \"cooperative\".\"q36_rolled_lochierarchy\" as \"q36_rolled_lochierarchy\",
+    \"cooperative\".\"q36_rolled_r_category\" as \"q36_rolled_r_category\",
+    \"cooperative\".\"q36_rolled_r_class\" as \"q36_rolled_r_class\",
+    rank() over (partition by \"cooperative\".\"q36_rolled_lochierarchy\",\"cooperative\".\"q36_rolled_partition_cat\" order by \"cooperative\".\"q36_rolled_gross_margin\" asc ) as \"rank_within_parent\"
 FROM
-    \"quizzical\"
-    RIGHT OUTER JOIN \"cooperative\" on 1=1
-WHERE
-    \"cooperative\".\"ss_date_year\" = 2001 and \"cooperative\".\"ss_store_state\" = 'TN'
-
-GROUP BY
-    1),
-abhorrent as (
+    \"cooperative\")
 SELECT
-    \"sparkling\".\"category_gross_margin\" as \"gm_b\",
-    \"sparkling\".\"ss_item_category\" as \"category_b\",
-    rank() over (order by \"sparkling\".\"category_gross_margin\" asc ) as \"rank_b\"
+    \"questionable\".\"q36_rolled_gross_margin\" as \"q36_rolled_gross_margin\",
+    \"questionable\".\"q36_rolled_r_category\" as \"i_category\",
+    \"questionable\".\"q36_rolled_r_class\" as \"i_class\",
+    \"questionable\".\"q36_rolled_lochierarchy\" as \"q36_rolled_lochierarchy\",
+    \"questionable\".\"rank_within_parent\" as \"rank_within_parent\"
 FROM
-    \"sparkling\"),
-juicy as (
-SELECT
-    \"yummy\".\"class_gross_margin\" as \"gm_a\",
-    \"yummy\".\"ss_item_category\" as \"category_a\",
-    \"yummy\".\"ss_item_class\" as \"class_a\",
-    rank() over (partition by \"yummy\".\"ss_item_category\" order by \"yummy\".\"class_gross_margin\" asc ) as \"rank_a\"
-FROM
-    \"yummy\"),
-busy as (
-SELECT
-    \"friendly\".\"rank_c\" as \"rank_c\",
-    \"kaput\".\"gm_c\" as \"gm_c\",
-    \"late\".\"lochierarchy_c\" as \"lochierarchy\",
-    \"macho\".\"null_category_c\" as \"i_category\",
-    \"scrawny\".\"null_class_c\" as \"i_class\"
-FROM
-    \"late\"
-    FULL JOIN \"macho\" on 1=1
-    FULL JOIN \"scrawny\" on 1=1
-    FULL JOIN \"friendly\" on 1=1
-    FULL JOIN \"kaput\" on 1=1),
-sweltering as (
-SELECT
-    \"abhorrent\".\"category_b\" as \"i_category\",
-    \"abhorrent\".\"gm_b\" as \"gm_b\",
-    \"abhorrent\".\"rank_b\" as \"rank_b\",
-    \"concerned\".\"lochierarchy_b\" as \"lochierarchy\",
-    \"young\".\"null_class_b\" as \"i_class\"
-FROM
-    \"abhorrent\"
-    FULL JOIN \"concerned\" on 1=1
-    FULL JOIN \"young\" on 1=1),
-vacuous as (
-SELECT
-    \"juicy\".\"category_a\" as \"i_category\",
-    \"juicy\".\"class_a\" as \"i_class\",
-    \"juicy\".\"gm_a\" as \"gm_a\",
-    \"juicy\".\"rank_a\" as \"rank_a\",
-    \"questionable\".\"lochierarchy_a\" as \"lochierarchy\"
-FROM
-    \"juicy\"
-    FULL JOIN \"questionable\" on 1=1),
-charming as (
-SELECT
-    coalesce(\"busy\".\"i_category\",\"sweltering\".\"i_category\",\"vacuous\".\"i_category\") as \"i_category\",
-    coalesce(\"busy\".\"i_class\",\"sweltering\".\"i_class\",\"vacuous\".\"i_class\") as \"i_class\",
-    coalesce(\"busy\".\"lochierarchy\",\"sweltering\".\"lochierarchy\",\"vacuous\".\"lochierarchy\") as \"lochierarchy\",
-    coalesce(\"vacuous\".\"gm_a\",\"sweltering\".\"gm_b\",\"busy\".\"gm_c\") as \"gross_margin\",
-    coalesce(\"vacuous\".\"rank_a\",\"sweltering\".\"rank_b\",\"busy\".\"rank_c\") as \"rank_within_parent\"
-FROM
-    \"vacuous\"
-    FULL JOIN \"sweltering\" on \"vacuous\".\"i_category\" is not distinct from \"sweltering\".\"i_category\" AND \"vacuous\".\"i_class\" is not distinct from \"sweltering\".\"i_class\" AND \"vacuous\".\"lochierarchy\" is not distinct from \"sweltering\".\"lochierarchy\"
-    FULL JOIN \"busy\" on coalesce(\"vacuous\".\"i_category\", \"sweltering\".\"i_category\") = \"busy\".\"i_category\" AND coalesce(\"vacuous\".\"i_class\", \"sweltering\".\"i_class\") = \"busy\".\"i_class\" AND coalesce(\"vacuous\".\"lochierarchy\", \"sweltering\".\"lochierarchy\") = \"busy\".\"lochierarchy\")
-SELECT
-    \"charming\".\"gross_margin\" as \"q36_results_gross_margin\",
-    \"charming\".\"i_category\" as \"q36_results_i_category\",
-    \"charming\".\"i_class\" as \"q36_results_i_class\",
-    \"charming\".\"lochierarchy\" as \"q36_results_lochierarchy\",
-    \"charming\".\"rank_within_parent\" as \"q36_results_rank_within_parent\"
-FROM
-    \"charming\"
-    FULL JOIN \"protective\" on 1=1
-    FULL JOIN \"quizzical\" on 1=1
+    \"questionable\"
 GROUP BY
     1,
     2,
@@ -234,10 +57,10 @@ GROUP BY
     4,
     5
 ORDER BY 
-    \"q36_results_lochierarchy\" desc nulls first,
+    \"questionable\".\"q36_rolled_lochierarchy\" desc nulls first,
     CASE
-	WHEN \"charming\".\"lochierarchy\" = 0 THEN \"charming\".\"i_category\"
+	WHEN \"questionable\".\"q36_rolled_lochierarchy\" = 0 THEN \"questionable\".\"q36_rolled_r_category\"
 	ELSE null
 	END asc nulls first,
-    \"q36_results_rank_within_parent\" asc nulls first
+    \"questionable\".\"rank_within_parent\" asc nulls first
 LIMIT (100)"""

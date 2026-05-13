@@ -1,5 +1,7 @@
 query_id = "37"
-gen_length = 1743
+gen_length = 1890
+preql_size = 573
+comp_size = 592
 generated_sql = """
 
 WITH 
@@ -27,12 +29,12 @@ WHERE
 ),
 questionable as (
 SELECT
-    \"thoughtful\".\"inv_item_id\" as \"inv_item_ids\"
+    CASE WHEN cast(\"inv_date_date\".\"D_DATE\" as date) >= date '2000-02-01' and cast(\"inv_date_date\".\"D_DATE\" as date) <= date '2000-04-01' and \"thoughtful\".\"inv_quantity_on_hand\" >= 100 and \"thoughtful\".\"inv_quantity_on_hand\" <= 500 THEN \"thoughtful\".\"inv_item_id\" ELSE NULL END as \"inv_item_ids\"
 FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"date_dim\" as \"inv_date_date\" on \"thoughtful\".\"inv_date_id\" = \"inv_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"inv_date_date\".\"D_DATE\" as date) >= date '2000-02-01' and cast(\"inv_date_date\".\"D_DATE\" as date) <= date '2000-04-01' and \"thoughtful\".\"inv_quantity_on_hand\" >= 100 and \"thoughtful\".\"inv_quantity_on_hand\" <= 500
+    cast(\"inv_date_date\".\"D_DATE\" as date) >= date '2000-02-01' and cast(\"inv_date_date\".\"D_DATE\" as date) <= date '2000-04-01'
 
 GROUP BY
     1)

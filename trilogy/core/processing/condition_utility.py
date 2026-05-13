@@ -483,6 +483,50 @@ def conditions_mutually_exclusive(
     )
 
 
+def condition_value_implies(
+    constraint: BuildComparison | BuildConditional | BuildParenthetical,
+    candidate: BuildComparison | BuildConditional | BuildParenthetical,
+) -> bool:
+    """True if ``constraint`` value-wise guarantees ``candidate`` is true.
+
+    Every per-column allowed value-set from ``constraint`` must be a subset
+    of ``candidate``'s allowed set for the same column, AND every atom of
+    ``candidate`` must be a literal EQ/IS/IN against a concept (so its allowed
+    set is computable). For mixed/unsupported operators we return False —
+    we can't prove implication without value semantics.
+
+    Use case: a partial datasource bounded ``complete where channel='CATALOG'``
+    value-implies a pushed predicate ``channel in ('WEB','CATALOG')`` — the
+    pushed atom is tautological on that branch and adding it just bloats the
+    rendered SQL.
+    """
+    cand_atoms = decompose_condition(candidate)
+    if not cand_atoms:
+        return False
+    cand_allowed = _build_allowed_map(cand_atoms)
+    for atom in cand_atoms:
+        if not isinstance(atom, BuildComparison):
+            return False
+        left = atom.left
+        right = atom.right
+        if isinstance(left, BuildConcept) and not isinstance(right, BuildConcept):
+            target_addr = left.address
+        elif isinstance(right, BuildConcept) and not isinstance(left, BuildConcept):
+            target_addr = right.address
+        else:
+            return False
+        if target_addr not in cand_allowed:
+            return False
+    constraint_allowed = _build_allowed_map(decompose_condition(constraint))
+    for addr, cand_values in cand_allowed.items():
+        constraint_values = constraint_allowed.get(addr)
+        if constraint_values is None:
+            return False
+        if not constraint_values.issubset(cand_values):
+            return False
+    return True
+
+
 def _build_from_atoms(
     atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
 ) -> BuildComparison | BuildConditional | BuildParenthetical | None:

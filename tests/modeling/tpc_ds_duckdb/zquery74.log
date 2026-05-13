@@ -1,5 +1,7 @@
 query_id = "74"
-gen_length = 3882
+gen_length = 3117
+preql_size = 1041
+comp_size = 2151
 generated_sql = """
 
 WITH 
@@ -7,37 +9,32 @@ cheerful as (
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
      'STORE'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 WHERE
-     'STORE'  in ('STORE','WEB') and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
      'WEB'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
 WHERE
-     'WEB'  in ('STORE','WEB') and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 ),
 thoughtful as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\"
 FROM
     \"cheerful\"
 GROUP BY
     1,
-    2),
+    \"cheerful\".\"sales_sales_channel\"),
 uneven as (
 SELECT
     \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
@@ -48,9 +45,6 @@ SELECT
 FROM
     \"cheerful\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"cheerful\".\"sales_sales_channel\" in ('STORE','WEB') and \"cheerful\".\"sales_customer_id\" is not null
-
 GROUP BY
     1),
 questionable as (
@@ -58,14 +52,10 @@ SELECT
     \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
     \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
     \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
-    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\"
-WHERE
-    \"thoughtful\".\"sales_sales_channel\" in ('STORE','WEB') and \"thoughtful\".\"sales_customer_id\" is not null
-)
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\")
 SELECT
     \"questionable\".\"sales_customer_text_id\" as \"customer_id\",
     \"questionable\".\"sales_customer_first_name\" as \"customer_first_name\",
@@ -74,7 +64,7 @@ FROM
     \"uneven\"
     INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
 WHERE
-    \"questionable\".\"sales_sales_channel\" in ('STORE','WEB') and \"questionable\".\"sales_customer_id\" is not null and \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
+    \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
 	WHEN \"uneven\".\"web_first_year\" > 0 THEN \"uneven\".\"web_second_year\" / \"uneven\".\"web_first_year\"
 	ELSE null
 	END ) > ( CASE
