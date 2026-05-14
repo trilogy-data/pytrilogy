@@ -31,6 +31,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     CreateMode,
     DatePart,
+    Derivation,
     FunctionType,
     GroupMode,
     Modifier,
@@ -443,6 +444,7 @@ FUNCTION_MAP = {
     # constant types
     FunctionType.CURRENT_DATE: lambda x, types: "current_date()",
     FunctionType.CURRENT_DATETIME: lambda x, types: "current_datetime()",
+    FunctionType.CURRENT_TIMESTAMP: lambda x, types: "current_timestamp()",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -1391,6 +1393,13 @@ class BaseDialect:
         if grouping_mode is not None:
             return grouping_mode
 
+        # Dedupe to one row when group_to_grain is set but every output is a
+        # plain constant (nothing to group on) and there's a real source below
+        # — e.g. `where cond select 1 as test` over a multi-row table.
+        all_constant_outputs = bool(cte.output_columns) and all(
+            c.derivation == Derivation.CONSTANT for c in cte.output_columns
+        )
+
         if self.GROUP_MODE == GroupMode.AUTO:
             base = set(
                 [
@@ -1398,7 +1407,15 @@ class BaseDialect:
                     for c in cte.group_concepts
                 ]
             )
-            return sorted(list(base))
+            result = sorted(list(base))
+            if (
+                not result
+                and all_constant_outputs
+                and isinstance(cte, CTE)
+                and cte.render_from_clause
+            ):
+                return ["1"]
+            return result
 
         else:
             # Build reverse map from rendered SQL to index for resolving
@@ -1428,7 +1445,15 @@ class BaseDialect:
                             indices.append(existing_idx)
                     else:
                         fallbacks.append(sql)
-            return [str(i) for i in sorted(indices)] + sorted(fallbacks)
+            rendered = [str(i) for i in sorted(indices)] + sorted(fallbacks)
+            if (
+                not rendered
+                and all_constant_outputs
+                and isinstance(cte, CTE)
+                and cte.render_from_clause
+            ):
+                return ["1"]
+            return rendered
 
     def safe_quote(self, name: str) -> str:
         return safe_quote(name, self.QUOTE_CHARACTER)

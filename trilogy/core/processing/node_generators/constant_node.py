@@ -21,14 +21,23 @@ def gen_constant_node(
 ):
     """our only goal here is to generate a row if conditions exist, or none if they do not"""
 
+    local_addrs = {c.address for c in local_optional}
+    condition_addrs: set[str] = set()
+    if conditions:
+        condition_addrs = {c.address for c in conditions.row_arguments}
+    # If conditions reference concepts not in local_optional, the discovery
+    # loop needs the constant `concept` in targets so the connectedness check
+    # ties the constant projection to the filter source (otherwise the source
+    # for the filter concept never makes it into the rendered FROM clause).
+    keep_concept = bool(condition_addrs - local_addrs)
     targets = [*local_optional]
     if conditions:
         targets += conditions.row_arguments
-    targets = [
-        target
-        for target in unique(targets, "address")
-        if target.address != concept.address
-    ]
+    if keep_concept:
+        targets = [concept] + targets
+    targets = list(unique(targets, "address"))
+    if not keep_concept:
+        targets = [t for t in targets if t.address != concept.address]
     if not targets:
         targets = [concept]
     parent_node: StrategyNode | None = source_concepts(
