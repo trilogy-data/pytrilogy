@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import List
 
 from trilogy.constants import logger
@@ -8,6 +9,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildWhereClause,
+    resolve_concepts_with_equivalents,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import is_scalar_condition
@@ -27,6 +29,66 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
 FILTER_TYPES = (BuildFilterItem,)
+
+
+@dataclass
+class FilterParentPlan:
+    parent_row_concepts: list[BuildConcept]
+    parent_existence_concepts: list[tuple[BuildConcept, ...]]
+    same_filter_optional: list[BuildConcept]
+    row_output_concepts: list[BuildConcept]
+    optimized_pushdown: bool
+    global_filter_is_local_filter: bool
+
+
+def _concept_addresses(concepts: list[BuildConcept]) -> set[str]:
+    return {concept.address for concept in concepts}
+
+
+def _concepts_cover_optional(
+    output_concepts: list[BuildConcept], local_optional: list[BuildConcept]
+) -> bool:
+    output_addresses = _concept_addresses(output_concepts)
+    return all(x.address in output_addresses for x in local_optional)
+
+
+def _optional_outputs(
+    output_concepts: list[BuildConcept], local_optional: list[BuildConcept]
+) -> list[BuildConcept]:
+    optional_addresses = _concept_addresses(local_optional)
+    return [x for x in output_concepts if x.address in optional_addresses]
+
+
+def _missing_optional(
+    output_concepts: list[BuildConcept], local_optional: list[BuildConcept]
+) -> list[BuildConcept]:
+    output_addresses = _concept_addresses(output_concepts)
+    return [x for x in local_optional if x.address not in output_addresses]
+
+
+def _same_concepts(left: list[BuildConcept], right: list[BuildConcept]) -> bool:
+    return _concept_addresses(left) == _concept_addresses(right)
+
+
+def _resolve_parent_row_outputs(
+    parent_row_concepts: list[BuildConcept],
+    local_optional: list[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+) -> list[BuildConcept]:
+    resolved = resolve_concepts_with_equivalents(
+        [x.address for x in parent_row_concepts],
+        environment,
+        local_optional,
+    )
+    for parent, output in zip(parent_row_concepts, resolved):
+        if parent.address == output.address:
+            continue
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} found equivalent row optional "
+            f"{output.address} for filter parent {parent.address}"
+        )
+    return unique(parent_row_concepts + resolved, "address")
 
 
 def _filter_content_has_sibling_filters(
@@ -118,7 +180,7 @@ def pushdown_filter_to_parent(
             f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
         )
         optimized_pushdown = True
-    elif same_filter_optional == local_optional:
+    elif _same_concepts(same_filter_optional, local_optional):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
         )
@@ -138,9 +200,7 @@ def pushdown_filter_to_parent(
         # (e.g. q02's seven `price ? day_of_week = N`): the planner fuses
         # those into one CTE with N CASE WHEN aggregates, and pushing each
         # individually splits that into N separate scans.
-        filter_concept_addrs = {
-            c.address for c in filter_where.concept_arguments
-        }
+        filter_concept_addrs = {c.address for c in filter_where.concept_arguments}
         local_optional_addrs = {c.address for c in local_optional}
         # Spine-like concepts (UNNEST date series, ROWSET, RECURSIVE) carry
         # their own row identity independent of the filter content's source.
@@ -153,9 +213,7 @@ def pushdown_filter_to_parent(
             Derivation.RECURSIVE,
             Derivation.ROWSET,
         }
-        has_spine_local = any(
-            x.derivation in SPINE_DERIVATIONS for x in local_optional
-        )
+        has_spine_local = any(x.derivation in SPINE_DERIVATIONS for x in local_optional)
         if (
             filter_concept_addrs
             and filter_concept_addrs.isdisjoint(local_optional_addrs)
@@ -179,13 +237,7 @@ def build_parent_concepts(
     local_optional: List[BuildConcept],
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
-) -> tuple[
-    list[BuildConcept],
-    list[tuple[BuildConcept, ...]],
-    list[BuildConcept],
-    bool,
-    bool,
-]:
+) -> FilterParentPlan:
     parent_row_concepts, parent_existence_concepts = resolve_filter_parent_concepts(
         concept, environment
     )
@@ -226,8 +278,9 @@ def build_parent_concepts(
     # in case it is, prep our list
     extra_row_level_optional: list[BuildConcept] = []
 
+    same_filter_optional_addresses = _concept_addresses(same_filter_optional)
     for x in local_optional:
-        if x.address in same_filter_optional:
+        if x.address in same_filter_optional_addresses:
             continue
         extra_row_level_optional.append(x)
     is_optimized_pushdown = exact_partial_matches and pushdown_filter_to_parent(
@@ -251,12 +304,19 @@ def build_parent_concepts(
             if x.address not in seen:
                 parent_row_concepts.append(x)
                 seen.add(x.address)
-    return (
+    row_output_concepts = _resolve_parent_row_outputs(
         parent_row_concepts,
-        parent_existence_concepts,
-        same_filter_optional,
-        is_optimized_pushdown,
-        global_filter_is_local_filter,
+        local_optional,
+        environment,
+        depth,
+    )
+    return FilterParentPlan(
+        parent_row_concepts=parent_row_concepts,
+        parent_existence_concepts=parent_existence_concepts,
+        same_filter_optional=same_filter_optional,
+        row_output_concepts=row_output_concepts,
+        optimized_pushdown=is_optimized_pushdown,
+        global_filter_is_local_filter=global_filter_is_local_filter,
     )
 
 
@@ -304,19 +364,19 @@ def gen_filter_node(
         raise SyntaxError('Filter node must have a filter type lineage"')
     where = concept.lineage.where
 
-    (
-        parent_row_concepts,
-        parent_existence_concepts,
-        same_filter_optional,
-        optimized_pushdown,
-        global_filter_is_local_filter,
-    ) = build_parent_concepts(
+    parent_plan = build_parent_concepts(
         concept,
         environment=environment,
         local_optional=local_optional,
         conditions=conditions,
         depth=depth,
     )
+    parent_row_concepts = parent_plan.parent_row_concepts
+    parent_existence_concepts = parent_plan.parent_existence_concepts
+    same_filter_optional = parent_plan.same_filter_optional
+    row_output_concepts = parent_plan.row_output_concepts
+    optimized_pushdown = parent_plan.optimized_pushdown
+    global_filter_is_local_filter = parent_plan.global_filter_is_local_filter
 
     row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
@@ -369,6 +429,7 @@ def gen_filter_node(
                 input_concepts=row_parent.output_concepts,
                 output_concepts=[concept]
                 + same_filter_optional
+                + row_output_concepts
                 + row_parent.output_concepts,
                 environment=row_parent.environment,
                 parents=[row_parent],
@@ -378,7 +439,9 @@ def gen_filter_node(
             )
         else:
             parent = row_parent
-            parent.add_output_concepts([concept] + same_filter_optional)
+            parent.add_output_concepts(
+                [concept] + same_filter_optional + row_output_concepts
+            )
         parent.add_parents(core_parent_nodes)
         if not parent.preexisting_conditions == where.conditional:
             # add_condition appends ``where.conditional`` to the parent's
@@ -405,18 +468,18 @@ def gen_filter_node(
                 parent_row_concepts + flattened_existence,
                 "address",
             ),
-            output_concepts=[concept] + same_filter_optional + parent_row_concepts,
+            output_concepts=[concept] + same_filter_optional + row_output_concepts,
             environment=environment,
             parents=core_parent_nodes,
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 
-    if not local_optional or all(
-        [x.address in filter_node.output_concepts for x in local_optional]
+    if not local_optional or _concepts_cover_optional(
+        filter_node.output_concepts, local_optional
     ):
-        optional_outputs = [
-            x for x in filter_node.output_concepts if x.address in local_optional
-        ]
+        optional_outputs = _optional_outputs(
+            filter_node.output_concepts, local_optional
+        )
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
         )
@@ -427,13 +490,13 @@ def gen_filter_node(
             + optional_outputs
         )
         return filter_node
+    missing_optional = _missing_optional(filter_node.output_concepts, local_optional)
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} need to enrich filter node with additional concepts {[x.address for x in local_optional if x.address not in filter_node.output_concepts]}"
+        f"{padding(depth)}{LOGGER_PREFIX} need to enrich filter node with additional concepts {[x.address for x in missing_optional]}"
     )
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
-        mandatory_list=parent_row_concepts
-        + [x for x in local_optional if x.address not in filter_node.output_concepts],
+        mandatory_list=parent_row_concepts + missing_optional,
         environment=environment,
         g=g,
         depth=depth + 1,
