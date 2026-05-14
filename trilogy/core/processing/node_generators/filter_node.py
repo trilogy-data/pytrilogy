@@ -1,9 +1,12 @@
 from typing import List
 
 from trilogy.constants import logger
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildConcept,
     BuildFilterItem,
+    BuildFunction,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -26,7 +29,79 @@ LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 FILTER_TYPES = (BuildFilterItem,)
 
 
+def _filter_content_has_sibling_filters(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+) -> bool:
+    """True if another concept in the environment is a filter on the same
+    content as ``concept`` but with a different ``where``.
+
+    Signals that the trilogy planner is likely to co-aggregate the sibling
+    filters in a single CTE using CASE WHEN per filter — pushing each into
+    its own source CTE would force N separate scans instead of one. Suppress
+    the broader pushdown in that case so the original single-CTE shape wins.
+    """
+    if not isinstance(concept.lineage, FILTER_TYPES):
+        return False
+    content = concept.lineage.content
+    if not isinstance(content, BuildConcept):
+        return False
+    target_where = concept.lineage.where
+    for other in environment.concepts.values():
+        if other.address == concept.address:
+            continue
+        other_lineage = other.lineage
+        if not isinstance(other_lineage, FILTER_TYPES):
+            continue
+        other_content = other_lineage.content
+        if not isinstance(other_content, BuildConcept):
+            continue
+        if other_content.address != content.address:
+            continue
+        if other_lineage.where == target_where:
+            continue
+        return True
+    return False
+
+
+def _filter_content_has_unfiltered_aggregate(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+) -> bool:
+    """True if another concept in the environment aggregates the filter's
+    content directly (without going through this — or any — filter).
+
+    Example (q61): ``promotional_sales = sum(price ? channel = Y)`` and
+    ``total = sum(price)`` both share ``price`` as content. Pushing the
+    channel predicate into the source CTE filters the rows feeding ``total``
+    too — wrong result. Detect this and keep the per-row CASE WHEN.
+    """
+    if not isinstance(concept.lineage, FILTER_TYPES):
+        return False
+    content = concept.lineage.content
+    if not isinstance(content, BuildConcept):
+        return False
+    for other in environment.concepts.values():
+        if other.address == concept.address:
+            continue
+        other_lineage = other.lineage
+        if not isinstance(other_lineage, BuildAggregateWrapper):
+            continue
+        # Inspect the aggregate's args: a direct concept argument matching
+        # the filter content means the aggregate sees raw (unfiltered) rows
+        # of that column.
+        func = other_lineage.function
+        if not isinstance(func, BuildFunction):
+            continue
+        for arg in func.arguments:
+            if isinstance(arg, BuildConcept) and arg.address == content.address:
+                return True
+    return False
+
+
 def pushdown_filter_to_parent(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
     local_optional: List[BuildConcept],
     conditions: BuildWhereClause | None,
     filter_where: BuildWhereClause,
@@ -48,6 +123,52 @@ def pushdown_filter_to_parent(
             f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
         )
         optimized_pushdown = True
+    else:
+        # Filter predicate references no concept also in local_optional —
+        # surviving rows still carry valid values for every grain key, so
+        # pushing the predicate to source is safe. The filtered concept now
+        # lives on rows that all satisfy the condition (raw content, no
+        # CASE WHEN), and downstream aggregates over the smaller relation
+        # produce the same per-group result. Groups with *no* qualifying
+        # rows simply don't appear instead of appearing with NULL — same
+        # outcome for any consumer that doesn't treat NULL aggregates
+        # specially.
+        #
+        # Suppress this when sibling filter items on the same content exist
+        # (e.g. q02's seven `price ? day_of_week = N`): the planner fuses
+        # those into one CTE with N CASE WHEN aggregates, and pushing each
+        # individually splits that into N separate scans.
+        filter_concept_addrs = {
+            c.address for c in filter_where.concept_arguments
+        }
+        local_optional_addrs = {c.address for c in local_optional}
+        # Spine-like concepts (UNNEST date series, ROWSET, RECURSIVE) carry
+        # their own row identity independent of the filter content's source.
+        # An INNER JOIN against a pre-filtered source erases spine rows that
+        # have no match, but the consumer expects every spine row to appear
+        # (with NULL/0 aggregates for the missing ones). Block pushdown in
+        # that case.
+        SPINE_DERIVATIONS = {
+            Derivation.UNNEST,
+            Derivation.RECURSIVE,
+            Derivation.ROWSET,
+        }
+        has_spine_local = any(
+            x.derivation in SPINE_DERIVATIONS for x in local_optional
+        )
+        if (
+            filter_concept_addrs
+            and filter_concept_addrs.isdisjoint(local_optional_addrs)
+            and not has_spine_local
+            and not _filter_content_has_sibling_filters(concept, environment)
+            and not _filter_content_has_unfiltered_aggregate(concept, environment)
+        ):
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} filter predicate disjoint "
+                f"from local_optional ({filter_concept_addrs} vs "
+                f"{local_optional_addrs}); pushing predicate to parent"
+            )
+            optimized_pushdown = True
 
     return optimized_pushdown
 
@@ -110,10 +231,26 @@ def build_parent_concepts(
             continue
         extra_row_level_optional.append(x)
     is_optimized_pushdown = exact_partial_matches and pushdown_filter_to_parent(
-        local_optional, conditions, filter_where, same_filter_optional, depth
+        concept,
+        environment,
+        local_optional,
+        conditions,
+        filter_where,
+        same_filter_optional,
+        depth,
     )
     if not is_optimized_pushdown:
         parent_row_concepts += extra_row_level_optional
+    else:
+        # New "disjoint" pushdown branch can leave behind grain-key concepts
+        # that weren't pulled in by same_filter_optional's content scan. The
+        # parent CTE will carry the pushed WHERE and must still project them,
+        # so include them as row-level parents to fetch alongside the source.
+        seen = {c.address for c in parent_row_concepts}
+        for x in extra_row_level_optional:
+            if x.address not in seen:
+                parent_row_concepts.append(x)
+                seen.add(x.address)
     return (
         parent_row_concepts,
         parent_existence_concepts,
@@ -244,7 +381,16 @@ def gen_filter_node(
             parent.add_output_concepts([concept] + same_filter_optional)
         parent.add_parents(core_parent_nodes)
         if not parent.preexisting_conditions == where.conditional:
+            # add_condition appends ``where.conditional`` to the parent's
+            # ``conditions`` (correct), but also resets ``preexisting_conditions``
+            # to just the filter's where — clobbering any global query
+            # conditions previously injected upstream. Downstream condition
+            # validation requires the global to still be visible as
+            # preexisting on this node, so restore it after appending.
+            prior_pre = parent.preexisting_conditions
             parent.add_condition(where.conditional)
+            if prior_pre is not None:
+                parent.set_preexisting_conditions(prior_pre)
         parent.add_existence_concepts(flattened_existence, False)
         # parent.grain = BuildGrain.from_concepts(
         #     parent.output_concepts,

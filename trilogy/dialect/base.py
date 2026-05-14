@@ -81,6 +81,7 @@ from trilogy.core.models.datasource import Address, Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE, CompiledCTE, RecursiveCTE, UnionCTE
 from trilogy.core.processing.condition_utility import (
+    condition_implies,
     decompose_condition,
     is_scalar_condition,
 )
@@ -815,8 +816,14 @@ class BaseDialect:
                         c.lineage.offset,
                     )
             elif isinstance(c.lineage, FILTER_ITEMS):
-                # for cases when we've optimized this
-                if cte.condition == c.lineage.where.conditional:
+                # When the CTE's WHERE already restricts rows to those satisfying
+                # the filter's predicate (either exact match or a superset that
+                # implies it), the per-row CASE WHEN is redundant — emit just
+                # the content.
+                if cte.condition is not None and (
+                    cte.condition == c.lineage.where.conditional
+                    or condition_implies(cte.condition, c.lineage.where.conditional)
+                ):
                     rval = self.render_expr(
                         c.lineage.content, cte=cte, raise_invalid=raise_invalid
                     )
