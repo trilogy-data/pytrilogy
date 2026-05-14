@@ -1,4 +1,5 @@
 from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.author import AggregateWrapper, Function
 from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.core import DataType
@@ -184,6 +185,55 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
     )
     assert isinstance(gnode, (GroupNode, MergeNode))
     assert {x.address for x in gnode.output_concepts} == {prod_r.address, prod.address}
+
+
+def test_gen_group_node_includes_compatible_optional_aggregate():
+    env = Environment()
+    env.parse("""
+key row_id int;
+property row_id.group_key int;
+property row_id.val1 int;
+property row_id.val2 int;
+
+datasource src (
+    row_id,
+    group_key,
+    val1,
+    val2,
+)
+grain (row_id)
+query '''select 1 as row_id, 1 as group_key, 10 as val1, 20 as val2''';
+
+auto v1_total <- sum(val1) by group_key;
+auto v2_total <- sum(val2) by group_key;
+
+SELECT
+    group_key,
+    v1_total,
+    v2_total,
+;
+""")
+    build_env = env.materialize_for_select()
+    gnode = gen_group_node(
+        concept=build_env.concepts["local.v1_total"],
+        local_optional=[
+            build_env.concepts["local.group_key"],
+            build_env.concepts["local.v2_total"],
+        ],
+        environment=build_env,
+        g=generate_graph(build_env),
+        depth=0,
+        source_concepts=search_concepts,
+        history=History(base_environment=env),
+    )
+
+    assert isinstance(gnode, GroupNode)
+    assert [x.address for x in gnode.output_concepts] == [
+        "local.v1_total",
+        "local.group_key",
+        "local.v2_total",
+    ]
+    assert len({x.address for x in gnode.input_concepts}) == len(gnode.input_concepts)
 
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
