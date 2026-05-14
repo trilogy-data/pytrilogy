@@ -1,6 +1,6 @@
 query_id = "73"
-gen_length = 7192
-preql_size = 1144
+gen_length = 6966
+preql_size = 1161
 comp_size = 1437
 generated_sql = """
 
@@ -84,20 +84,11 @@ GROUP BY
     6),
 juicy as (
 SELECT
-    \"abundant\".\"_virt_agg_count_1184189444640575\" as \"_virt_agg_count_1184189444640575\",
-    \"yummy\".\"store_sales_customer_id\" as \"store_sales_customer_id\"
+    \"yummy\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    sum(\"abundant\".\"_virt_agg_count_1184189444640575\") as \"cnt\"
 FROM
     \"yummy\"
     INNER JOIN \"abundant\" on \"yummy\".\"store_sales_ticket_number\" = \"abundant\".\"store_sales_ticket_number\"
-GROUP BY
-    1,
-    2),
-vacuous as (
-SELECT
-    \"juicy\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    sum(\"juicy\".\"_virt_agg_count_1184189444640575\") as \"cnt\"
-FROM
-    \"juicy\"
 GROUP BY
     1)
 SELECT
@@ -106,14 +97,14 @@ SELECT
     \"questionable\".\"store_sales_customer_salutation\" as \"store_sales_customer_salutation\",
     \"questionable\".\"store_sales_customer_preferred_cust_flag\" as \"store_sales_customer_preferred_cust_flag\",
     \"questionable\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    \"vacuous\".\"cnt\" as \"cnt\"
+    \"juicy\".\"cnt\" as \"cnt\"
 FROM
-    \"vacuous\"
-    LEFT OUTER JOIN \"questionable\" on \"vacuous\".\"store_sales_customer_id\" is not distinct from \"questionable\".\"store_sales_customer_id\"
+    \"juicy\"
+    LEFT OUTER JOIN \"questionable\" on \"juicy\".\"store_sales_customer_id\" is not distinct from \"questionable\".\"store_sales_customer_id\"
 WHERE
-    \"vacuous\".\"cnt\" >= 1 and \"vacuous\".\"cnt\" <= 5
+    \"juicy\".\"cnt\" >= 1 and \"juicy\".\"cnt\" <= 5
 
 ORDER BY 
-    \"vacuous\".\"cnt\" desc,
+    \"juicy\".\"cnt\" desc,
     \"questionable\".\"store_sales_customer_last_name\" asc,
     \"questionable\".\"store_sales_ticket_number\" asc"""
