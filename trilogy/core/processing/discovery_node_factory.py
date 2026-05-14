@@ -188,6 +188,7 @@ def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         if not (
             x.granularity == Granularity.SINGLE_ROW
             and x.derivation != Derivation.AGGREGATE
+            and x.derivation != Derivation.CONSTANT
         )
     ]
 

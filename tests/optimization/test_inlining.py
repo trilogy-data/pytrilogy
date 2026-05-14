@@ -133,3 +133,29 @@ select
     assert query.count(":label") == 1
     assert 'SELECT\n    :label as "label"\n)' not in query
     assert '    :label as "label"' in query
+
+
+def test_select_literal_is_rendered_with_aggregate_projection():
+    raw = """
+key x int;
+
+datasource nums (
+    x:x
+)
+grain (x)
+query '''select 1 as x union all select 2 as x''';
+
+auto n <- count(x);
+
+where x is not null
+select
+    'abc' as label,
+    n;
+"""
+    executor = Dialects.DUCK_DB.default_executor()
+    query = executor.generate_sql(raw)[-1]
+
+    assert query.count(":label") == 1
+    assert "FULL JOIN" not in query
+    assert '    :label as "label"' in query
+    assert '    count("nums"."x") as "n"' in query

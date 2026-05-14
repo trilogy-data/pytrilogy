@@ -112,6 +112,7 @@ class SelectNode(StrategyNode):
                 Derivation.ROWSET,
                 Derivation.BASIC,
                 Derivation.UNION,
+                Derivation.CONSTANT,
             ):
                 source_map[x.address] = set()
 

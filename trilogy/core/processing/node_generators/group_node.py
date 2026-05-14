@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import AggregateGroupingMode, FunctionType
+from trilogy.core.enums import AggregateGroupingMode, Derivation, FunctionType
 from trilogy.core.internal import ALL_ROWS_CONCEPT
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -249,6 +249,11 @@ def _plan_group_outputs(
             depth=depth,
             concrete_grain=False,
         )
+    output_concepts = unique(
+        output_concepts
+        + [c for c in local_optional if c.derivation == Derivation.CONSTANT],
+        "address",
+    )
     return GroupOutputPlan(
         parent_concepts=parent_concepts,
         output_concepts=output_concepts,
