@@ -3,6 +3,7 @@ from typing import List
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_CONSTANT_NODE]"
 
@@ -20,9 +21,16 @@ def gen_constant_node(
 ):
     """our only goal here is to generate a row if conditions exist, or none if they do not"""
 
-    targets = [concept] + local_optional
+    targets = [*local_optional]
     if conditions:
         targets += conditions.row_arguments
+    targets = [
+        target
+        for target in unique(targets, "address")
+        if target.address != concept.address
+    ]
+    if not targets:
+        targets = [concept]
     parent_node: StrategyNode | None = source_concepts(
         mandatory_list=targets,
         environment=environment,

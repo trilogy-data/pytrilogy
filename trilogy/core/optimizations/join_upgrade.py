@@ -335,6 +335,7 @@ class UpgradeJoinOnGuards(OptimizationRule):
 
         def _safe_proof_add(address: str) -> bool:
             return address_source_count.get(address, 0) <= 2
+
         changed = False
         while True:
             iter_changed = False

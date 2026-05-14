@@ -390,20 +390,6 @@ def gen_select_merge_node(
             logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
             return None
 
-    if constants:
-        parents.append(
-            ConstantNode(
-                output_concepts=constants,
-                input_concepts=[],
-                environment=environment,
-                parents=[],
-                depth=depth,
-                partial_concepts=[],
-                force_group=False,
-                preexisting_conditions=conditions.conditional if conditions else None,
-            )
-        )
-
     for p in abstract_props:
         abstract_nodes = _source_concepts_via_graph(
             [p], g, environment, depth + 1, accept_partial, conditions
@@ -415,7 +401,7 @@ def gen_select_merge_node(
             return None
         parents.extend(abstract_nodes)
 
-    if len(parents) == 1:
+    if len(parents) == 1 and not constants:
         candidate: StrategyNode = parents[0]
     else:
         logger.info(

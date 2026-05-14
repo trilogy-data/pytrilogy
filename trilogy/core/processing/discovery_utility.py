@@ -358,7 +358,10 @@ def generate_candidates_restrictive(
         x
         for x in unselected_candidates
         if x.address not in exhausted
-        and x.granularity != Granularity.SINGLE_ROW
+        and (
+            x.granularity != Granularity.SINGLE_ROW
+            or x.derivation == Derivation.CONSTANT
+        )
         and x.address not in priority_concept.pseudonyms
         and priority_concept.address not in x.pseudonyms
     ]
@@ -422,7 +425,6 @@ def get_priority_concept(
         + [c for c in pass_one if c.derivation == Derivation.UNNEST]
         + [c for c in pass_one if c.derivation == Derivation.RECURSIVE]
         + [c for c in pass_one if c.derivation == Derivation.GROUP_TO]
-        + [c for c in pass_one if c.derivation == Derivation.CONSTANT]
         + [c for c in pass_one if c.derivation == Derivation.SUBSELECT]
         # roots that are abstract
         + [
@@ -438,6 +440,7 @@ def get_priority_concept(
             if c.derivation == Derivation.ROOT
             and c.granularity != Granularity.SINGLE_ROW
         ]  # and any non-single row constants
+        + [c for c in pass_one if c.derivation == Derivation.CONSTANT]
     )
 
     priority += [c for c in pass_one if c.address not in [x.address for x in priority]]

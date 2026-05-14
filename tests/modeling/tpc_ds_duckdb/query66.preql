@@ -94,7 +94,6 @@ auto oct_net <- @channel_total(ws_oct_net, cs_oct_net);
 auto nov_net <- @channel_total(ws_nov_net, cs_nov_net);
 auto dec_net <- @channel_total(ws_dec_net, cs_dec_net);
 
-
 WHERE
     sales.sales_channel in ('WEB', 'CATALOG')
     and sales.date.year = 2001
