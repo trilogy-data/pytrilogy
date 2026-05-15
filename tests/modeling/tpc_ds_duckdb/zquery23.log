@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 7640
+gen_length = 7634
 preql_size = 1608
 comp_size = 2441
 generated_sql = """
@@ -71,7 +71,7 @@ FROM
     \"young\"),
 yummy as (
 SELECT
-    \"uneven\".\"sales_item_id\" as \"frequent_item_id\",
+    \"uneven\".\"sales_item_id\" as \"sales_item_id\",
     \"uneven\".\"ss_combo_count\" as \"ss_combo_count\"
 FROM
     \"uneven\"
@@ -88,7 +88,7 @@ FROM
     FULL JOIN \"abhorrent\" on 1=1),
 juicy as (
 SELECT
-    \"yummy\".\"frequent_item_id\" as \"frequent_items_frequent_item_id\"
+    \"yummy\".\"sales_item_id\" as \"frequent_items_frequent_item_id\"
 FROM
     \"yummy\"
 WHERE
