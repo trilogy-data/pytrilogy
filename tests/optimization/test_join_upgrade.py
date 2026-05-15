@@ -21,6 +21,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import (
     CTE,
+    BaseJoin,
     ConceptPair,
     CTEConceptPair,
     InstantiatedUnnestJoin,
@@ -473,6 +474,69 @@ def test_nullable_inner_join_key_does_not_prove_non_null():
     assert changed
     assert cte.joins[0].jointype == JoinType.LEFT_OUTER
     assert cte.joins[1].jointype == JoinType.INNER
+
+
+def test_existing_inner_base_join_proves_nullable_source_present():
+    """A downstream INNER dim join can prove an upstream LEFT-joined source
+    is present without pretending the source's original join keys were proven."""
+    fact_item = _build_concept("ITEM")
+    fact_ticket = _build_concept("TICKET")
+    return_item = _build_concept("ITEM")
+    return_ticket = _build_concept("TICKET")
+    return_reason = _build_concept("REASON")
+    reason_id = _build_concept("REASON")
+    reason_desc = _build_concept("REASON_DESC")
+
+    fact_cte = _build_cte("fact", [fact_item, fact_ticket])
+    returns_cte = _build_cte("returns", [return_item, return_ticket, return_reason])
+    reason_cte = _build_cte("reason", [reason_id, reason_desc])
+    fact_ds = fact_cte.source.base_datasource
+    returns_ds = returns_cte.source.base_datasource
+    reason_ds = reason_cte.source.base_datasource
+    assert fact_ds is not None
+    assert returns_ds is not None
+    assert reason_ds is not None
+
+    root = _build_cte("root", [fact_item, fact_ticket, return_reason, reason_desc])
+    root.condition = _condition_for(reason_desc)
+    root.source.datasources = [fact_ds, returns_ds, reason_ds]
+    root.source.joins = [
+        BaseJoin(
+            left_datasource=fact_ds,
+            right_datasource=returns_ds,
+            join_type=JoinType.LEFT_OUTER,
+            concept_pairs=[
+                ConceptPair(
+                    left=fact_item,
+                    right=return_item,
+                    existing_datasource=fact_ds,
+                ),
+                ConceptPair(
+                    left=fact_ticket,
+                    right=return_ticket,
+                    existing_datasource=fact_ds,
+                ),
+            ],
+        ),
+        BaseJoin(
+            left_datasource=returns_ds,
+            right_datasource=reason_ds,
+            join_type=JoinType.INNER,
+            concept_pairs=[
+                ConceptPair(
+                    left=return_reason,
+                    right=reason_id,
+                    existing_datasource=returns_ds,
+                )
+            ],
+        ),
+    ]
+
+    changed, _ = UpgradeJoinOnGuards(base_join_only=True).optimize(root, {})
+
+    assert changed
+    assert root.source.joins[0].join_type == JoinType.INNER
+    assert root.source.joins[1].join_type == JoinType.INNER
 
 
 def test_seed_addresses_inlined_left_via_joinkey_pair():

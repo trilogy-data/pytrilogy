@@ -15,13 +15,13 @@ PreQL is shorter than the reference SQL for 81/99 queries. Total PreQL length is
 | PreQL - Reference SQL chars | -1,257 | -261 | +131 |
 | PreQL vs Reference SQL | -57.6% | -19.2% | +9.3% |
 
-Trilogy execution is faster than the reference SQL for 40/99 queries. Total Trilogy execution time is 14.478s vs 62.280s reference SQL time.
+Trilogy execution is faster than the reference SQL for 40/99 queries. Total Trilogy execution time is 14.213s vs 61.112s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | -0.133s | +0.003s | +0.101s |
-| Trilogy vs Reference SQL | -53.7% | +9.3% | +201.9% |
-| Trilogy / Reference SQL | 0.46x | 1.09x | 3.02x |
+| Trilogy - Reference SQL seconds | -0.133s | +0.003s | +0.097s |
+| Trilogy vs Reference SQL | -53.7% | +9.3% | +180.6% |
+| Trilogy / Reference SQL | 0.46x | 1.09x | 2.81x |
 
 ## Alternative Queries
 

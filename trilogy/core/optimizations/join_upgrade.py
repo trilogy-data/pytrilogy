@@ -85,7 +85,9 @@ class _ProofState:
         addresses: set[str],
     ) -> bool:
         identifier = getattr(datasource, "identifier")
-        return any((identifier, address) in self.datasource_keys for address in addresses)
+        return any(
+            (identifier, address) in self.datasource_keys for address in addresses
+        )
 
     def add_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
         key = (cte.name, address)
@@ -202,6 +204,27 @@ def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
     return set()
 
 
+def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
+    if not isinstance(cte, CTE) or not cte.joins:
+        return []
+    first = cte.joins[0]
+    if not isinstance(first, Join):
+        return []
+    if first.left_cte is not None:
+        return [first.left_cte]
+    right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
+    for parent in cte.parent_ctes:
+        if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
+            return [parent]
+    for j in cte.joins:
+        if not isinstance(j, Join):
+            continue
+        for pair in j.joinkey_pairs or []:
+            if isinstance(pair, CTEConceptPair) and pair.cte.name not in right_names:
+                return [pair.cte]
+    return []
+
+
 def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:
     """Columns visible on the LEFT side of join ``idx`` — the accumulated FROM.
 
@@ -223,6 +246,30 @@ def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:
             continue
         addrs |= _cte_addresses(prior.right_cte)
     return addrs
+
+
+def _accumulated_left_ctes(cte: CTE | UnionCTE, idx: int) -> list[CTE | UnionCTE]:
+    left_ctes: list[CTE | UnionCTE] = []
+    names: set[str] = set()
+
+    def add_left_cte(left_cte: CTE | UnionCTE) -> None:
+        if left_cte.name in names:
+            return
+        names.add(left_cte.name)
+        left_ctes.append(left_cte)
+
+    if not isinstance(cte, CTE):
+        return left_ctes
+    join = cte.joins[idx] if idx < len(cte.joins) else None
+    if isinstance(join, Join) and join.left_cte is not None:
+        add_left_cte(join.left_cte)
+    for seed_cte in _seed_ctes(cte):
+        add_left_cte(seed_cte)
+    for prior_idx in range(idx):
+        prior = cte.joins[prior_idx]
+        if isinstance(prior, Join):
+            add_left_cte(prior.right_cte)
+    return left_ctes
 
 
 def _side_addresses(
@@ -249,6 +296,7 @@ def _downgrade(
         return None
 
     pairs = join.joinkey_pairs or []
+    left_ctes = _accumulated_left_ctes(cte, idx)
     right_all = _cte_addresses(join.right_cte)
     left_only, right_only = _side_addresses(cte, idx, join)
 
@@ -257,8 +305,16 @@ def _downgrade(
     # non-null for the specific CTE that supplies it. Either case rules out
     # unmatched rows whose left columns were filled with NULL. Mirror for the
     # right side.
-    left_forced = proofs.direct_intersects(left_only) or (
-        bool(pairs) and all(proofs.proves_cte_key(p.cte, p.left.address) for p in pairs)
+    left_forced = (
+        proofs.direct_intersects(left_only)
+        or any(
+            proofs.proves_cte_present(left_cte, _cte_addresses(left_cte))
+            for left_cte in left_ctes
+        )
+        or (
+            bool(pairs)
+            and all(proofs.proves_cte_key(p.cte, p.left.address) for p in pairs)
+        )
     )
     right_forced = (
         proofs.direct_intersects(right_only)
@@ -367,7 +423,9 @@ def _add_inner_join_key_proofs(join: Join, proofs: _ProofState) -> bool:
         if len(left_ctes) > 1:
             # Renderer uses COALESCE(left1, left2, ...) = right here. That
             # proves the right key, but not any individual left input key.
-            changed = proofs.add_cte_key(join.right_cte, pairs[0].right.address) or changed
+            changed = (
+                proofs.add_cte_key(join.right_cte, pairs[0].right.address) or changed
+            )
             continue
 
         pair = pairs[0]
@@ -392,8 +450,8 @@ def _add_inner_base_join_key_proofs(
         if len(left_sources) > 1:
             changed = (
                 proofs.add_datasource_key(
-                base_join.right_datasource, pairs[0].right.address
-            )
+                    base_join.right_datasource, pairs[0].right.address
+                )
                 or changed
             )
             continue
@@ -401,8 +459,14 @@ def _add_inner_base_join_key_proofs(
         pair = pairs[0]
         if _pair_can_match_nulls(pair, base_join.modifiers):
             continue
-        changed = proofs.add_datasource_key(pair.existing_datasource, pair.left.address) or changed
-        changed = proofs.add_datasource_key(base_join.right_datasource, pair.right.address) or changed
+        changed = (
+            proofs.add_datasource_key(pair.existing_datasource, pair.left.address)
+            or changed
+        )
+        changed = (
+            proofs.add_datasource_key(base_join.right_datasource, pair.right.address)
+            or changed
+        )
     return changed
 
 
