@@ -1,5 +1,5 @@
 query_id = "10"
-gen_length = 4835
+gen_length = 4841
 preql_size = 1828
 comp_size = 1858
 generated_sql = """
@@ -40,7 +40,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"yummy\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
     FULL JOIN \"quizzical\" on \"yummy\".\"customer_id\" is not distinct from \"quizzical\".\"customer_id\"
     RIGHT OUTER JOIN \"questionable\" on coalesce(\"quizzical\".\"customer_id\", \"yummy\".\"customer_id\") = \"questionable\".\"customer_id\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"quizzical\".\"customer_id\", \"questionable\".\"customer_id\", \"yummy\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
+    RIGHT OUTER JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"quizzical\".\"customer_id\", \"questionable\".\"customer_id\", \"yummy\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"questionable\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
