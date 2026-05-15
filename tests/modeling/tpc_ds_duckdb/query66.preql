@@ -101,6 +101,7 @@ WHERE
     and sales.ship_mode.carrier in ('DHL', 'BARIAN')
     and sales.warehouse.id is not null
 SELECT
+    --sales.warehouse.id,
     sales.warehouse.name as w_warehouse_name,
     sales.warehouse.square_feet as w_warehouse_sq_ft,
     sales.warehouse.city as w_city,

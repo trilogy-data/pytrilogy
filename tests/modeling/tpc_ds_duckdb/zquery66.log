@@ -1,6 +1,6 @@
 query_id = "66"
-gen_length = 19739
-preql_size = 6642
+gen_length = 19395
+preql_size = 6668
 comp_size = 7431
 generated_sql = """
 
@@ -191,50 +191,6 @@ SELECT
 FROM
     \"yummy\"
     FULL JOIN \"juicy\" on \"yummy\".\"sales_warehouse_id\" is not distinct from \"juicy\".\"sales_warehouse_id\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
-    24,
-    25,
-    26,
-    27,
-    28,
-    29,
-    30,
-    31,
-    32,
-    33,
-    34,
-    35,
-    36,
-    37,
-    38,
-    39,
-    40,
-    41,
-    42,
-    43,
-    44
 ORDER BY 
     \"w_warehouse_name\" asc nulls first,
     \"year_\" asc nulls first
