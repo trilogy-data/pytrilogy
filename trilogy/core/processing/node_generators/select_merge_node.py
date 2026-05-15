@@ -151,7 +151,6 @@ def create_pruned_concept_graph(
     }
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     partial = get_graph_partial_nodes(g, conditions)
-
     if criteria == SearchCriteria.FULL_ONLY:
         datasource_map = orig_g.datasources
         to_remove = [
@@ -166,7 +165,7 @@ def create_pruned_concept_graph(
     relevant_datasets = [
         n for n in g.datasources if any((n, x) in g_edges for x in relevant_concepts)
     ]
-    logger.info(f"Relevant datasets after pruning: {relevant_datasets}")
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} Relevant datasets after pruning: {relevant_datasets}")
 
     relevant_datasets = deduplicate_datasources(
         relevant_datasets, relevant_concepts, g_edges, g.datasources, depth, partial

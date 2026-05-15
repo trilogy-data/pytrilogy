@@ -527,7 +527,7 @@ def reinject_common_join_keys_v2(
             final.add_edge(ds1, cnode)
             final.add_edge(ds2, cnode)
 
-            logger.info(
+            logger.debug(
                 f"{LOGGER_PREFIX} reinjecting common join key {cnode} "
                 f"between {ds1} and {ds2}, existing {existing}"
             )

@@ -57,10 +57,10 @@ class HideUnusedConcepts(OptimizationRule):
             return False, None
         used: set[str] = set()
         for v in children:
-            self.log(f"Analyzing usage of {cte.name} in {v.name}")
+            self.debug(f"Analyzing usage of {cte.name} in {v.name}")
             child_used_map = render_cte_used_map(v)
             used.update(child_used_map.get(cte.name, set()))
-        self.log(f"Used concepts for {cte.name}: {used}")
+        self.debug(f"Used concepts for {cte.name}: {used}")
         add_to_hidden: list[BuildConcept] = []
         for concept in cte.output_columns:
             if concept.address not in used:

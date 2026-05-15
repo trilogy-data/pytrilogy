@@ -1,6 +1,6 @@
 query_id = "97"
-gen_length = 2501
-preql_size = 793
+gen_length = 2343
+preql_size = 912
 comp_size = 1159
 generated_sql = """
 
@@ -8,80 +8,54 @@ WITH
 cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
      'CATALOG'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" is not null
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
      'STORE'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 ),
-thoughtful as (
+cooperative as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"cheerful\".\"sales_date_id\" as \"sales_date_id\",
-    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
-    \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\"
+    max(CASE
+	WHEN \"cheerful\".\"sales_sales_channel\" = 'CATALOG' THEN \"cheerful\".\"sales_order_id\"
+	ELSE 0
+	END) as \"pair_presence_catalog_present\",
+    max(CASE
+	WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_order_id\"
+	ELSE 0
+	END) as \"pair_presence_store_present\"
 FROM
     \"cheerful\"
 GROUP BY
-    1,
-    2,
-    3,
-    4),
-questionable as (
-SELECT
-    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"thoughtful\".\"sales_item_id\" as \"sales_item_id\",
-    \"thoughtful\".\"sales_sales_channel\" as \"sales_sales_channel\"
-FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
-
-GROUP BY
-    1,
-    2,
-    3),
-abundant as (
+    \"cheerful\".\"sales_customer_id\",
+    \"cheerful\".\"sales_item_id\")
 SELECT
     sum(CASE
-	WHEN \"questionable\".\"sales_sales_channel\" = 'CATALOG' THEN 1
-	ELSE 0
-	END) as \"catalog_in_window\",
-    sum(CASE
-	WHEN \"questionable\".\"sales_sales_channel\" = 'STORE' THEN 1
-	ELSE 0
-	END) as \"store_in_window\"
-FROM
-    \"questionable\"
-GROUP BY
-    \"questionable\".\"sales_customer_id\",
-    \"questionable\".\"sales_item_id\")
-SELECT
-    sum(CASE
-	WHEN \"abundant\".\"store_in_window\" > 0 and \"abundant\".\"catalog_in_window\" = 0 THEN 1
+	WHEN \"cooperative\".\"pair_presence_store_present\" >= 1 and \"cooperative\".\"pair_presence_catalog_present\" = 0 THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"abundant\".\"store_in_window\" = 0 and \"abundant\".\"catalog_in_window\" > 0 THEN 1
+	WHEN \"cooperative\".\"pair_presence_store_present\" = 0 and \"cooperative\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"abundant\".\"store_in_window\" > 0 and \"abundant\".\"catalog_in_window\" > 0 THEN 1
+	WHEN \"cooperative\".\"pair_presence_store_present\" >= 1 and \"cooperative\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"abundant\""""
+    \"cooperative\""""

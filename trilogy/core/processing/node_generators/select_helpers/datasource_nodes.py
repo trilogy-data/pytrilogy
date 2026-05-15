@@ -59,6 +59,7 @@ def finalize_select_node(
     depth: int,
     defer_group: bool = False,
 ) -> StrategyNode:
+    
     if candidate.force_group is True and not defer_group:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
@@ -372,7 +373,7 @@ def create_union_datasource_candidate(
         parents.append(subnode)
         force_group = force_group or fg
         if fg:
-            group_source_count += 1
+            group_source_count = max(group_source_count, 1)
     # Intrinsic column-level partials (``~col``, captured at parse time) carry
     # over by default — the column is missing values relative to its universe
     # and the union doesn't necessarily repair that. Two cases DO repair it:

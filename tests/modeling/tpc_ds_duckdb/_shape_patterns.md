@@ -67,6 +67,7 @@ revert; do not chase this further.
 | q17 | ~0.150s | ~0.051s | ~+0.099 | trilogy exec dropped 0.172 → ~0.150 (~22ms) via new `catalog_store_returns` model — modest, near-tie variance |
 | q25 | ~0.111s | ~0.114s | ~+0.00 (tie/win) | trilogy exec dropped 0.166 → ~0.111 (~55ms) — flipped from clean loss to tie/occasional win via the model |
 | q44 | ~0.076s | ~0.079s | ~+0.00 (tie/win) | trilogy exec dropped 0.103 → ~0.076 (~27ms) — flipped from +0.070 loss via `with addr_null_threshold` block (P2 CASE-WHEN → WHERE) |
+| q97 | 0.089s | 0.134s | **-0.046 (WIN)** | flipped from +0.174 loss via QA1 — `with pair_presence` rowset using `max(CASE channel=K THEN sales.order_id ELSE 0)`. Source PK in projection makes target_grain ⊇ source_grain so source-layer force_group never fires; the (customer, item, channel) dedup CTE disappears and date filter pushes cleanly into the union branches. Swing ~+0.22s. |
 
 ### Refreshed headline-loss table (main only, >40ms loss)
 
@@ -76,7 +77,7 @@ Need 9 more wins on top of 41 to hit 50/99. The reachable wedges:
 |---|---|---|---|---|
 | 28 | 0.257s | 0.048s | +0.210 | P2 (UNION variant) — *regressed since audit* |
 | 59 | 0.406s | 0.230s | +0.176 | not investigated (new entry in loss bucket) |
-| 97 | 0.255s | 0.081s | +0.174 | P1 + P4 |
+| ~~97~~ | 0.089s | 0.134s | **-0.046 (WIN)** | **landed via QA1** (2026-05-15) |
 | 65 | 0.313s | 0.150s | +0.163 | P3 — generator-side, preql rewrite alone did not help |
 | 16 | 0.149s | 0.020s | +0.129 | P3 + P10 |
 | 67 | 1.106s | 0.984s | +0.122 | P9 (modest) |
@@ -110,6 +111,67 @@ Need 9 more wins on top of 41 to hit 50/99. The reachable wedges:
    pattern; q25's trilogy exec drops 0.166s → ~0.111s. Generalizable to other
    cross-channel merges if their customer constraints are coarse enough
    (q17/q25 yes; q29 no — needs SS_CUST = SR_CUST which conflation kills).
+
+---
+
+## QA1 — Pull a source primary key into a duplicate-invariant aggregate to bypass source-layer force_group
+
+Status: **LANDED** (q97).
+
+The source layer wraps a SelectNode in a GroupNode whenever the datasource grain
+isn't a subset of target_grain (see
+`trilogy/core/processing/node_generators/select_helpers/datasource_nodes.py`,
+`create_datasource_node`). For UnionDatasources this fires almost always —
+because the union's children's grains (e.g. `(cs_order_number, cs_item)`) are
+finer than what the query asks for (e.g. `(customer_id, item_id, sales_channel)`).
+That produces the wasted dedup CTE seen in q97's `cooperative`.
+
+When the downstream aggregate is **duplicate-invariant** (`max`, `min`,
+`bool_or`, `count(distinct …)`), the dedup is mathematically redundant — but
+the source layer can't see that today.
+
+**Query-author workaround:** pull the source's natural key into the aggregate's
+projection so target_grain is forced to a superset of source_grain. Then
+force_group can't fire by definition.
+
+q97 before:
+
+```preql
+auto store_in_window <- sum(
+    CASE WHEN sales.sales_channel = 'STORE' THEN 1 ELSE 0 END
+) by sales.customer.id, sales.item.id;
+```
+
+q97 after:
+
+```preql
+with pair_presence as
+where ...
+SELECT
+    sales.customer.id, sales.item.id,
+    max(CASE WHEN sales.sales_channel = 'STORE'  THEN sales.order_id ELSE 0 END) as store_present,
+    max(CASE WHEN sales.sales_channel = 'CATALOG' THEN sales.order_id ELSE 0 END) as catalog_present,
+;
+```
+
+`max(... order_id ...)` is duplicate-invariant; the outer predicate flips from
+`> 0` to `>= 1`, semantically identical (any matching row → store_present is a
+positive order_id → ≥ 1; no matching row → max is 0).
+
+**When this is applicable:**
+- The aggregate must be naturally duplicate-invariant (max/min/bool_or, or
+  count(distinct)).
+- The source must expose a non-null primary key concept (order_id, ticket_id,
+  …) so we can pull it through the projection.
+- The downstream predicate must only care about presence (`> 0`, `>= 1`,
+  `is not null`) — anything that reads the literal magnitude breaks.
+
+**Related but unsolved:** the generator-side version of this would be safer
+(no need for the user to think about source keys) — see the
+"defer_group on duplicate-invariant rowset aggregates" sketch in the 2026-05-15
+spike. The rowset boundary is the natural place to add it: aggregates inside
+the rowset are statically enumerable, and idempotency is a static property of
+the function operator.
 
 ---
 
