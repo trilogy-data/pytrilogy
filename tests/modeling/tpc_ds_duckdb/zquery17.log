@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 8799
+gen_length = 8683
 preql_size = 1553
 comp_size = 1764
 generated_sql = """
@@ -26,13 +26,13 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"store_sales_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"catalog_sales_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    \"store_sales_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"store_sales_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"catalog_sales_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,
@@ -52,13 +52,13 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"highfalutin\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" is not distinct from \"highfalutin\".\"store_sales_return_customer_id\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"highfalutin\".\"store_sales_item_id\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"highfalutin\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"highfalutin\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"store_sales_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"catalog_sales_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    \"store_sales_date_date\".\"D_QUARTER_NAME\" = '2001Q1' and \"store_sales_return_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and \"catalog_sales_date_date\".\"D_QUARTER_NAME\" in ('2001Q1','2001Q2','2001Q3') and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,

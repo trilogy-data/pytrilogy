@@ -1,6 +1,6 @@
 query_id = "81"
-gen_length = 10007
-preql_size = 2232
+gen_length = 9713
+preql_size = 2306
 comp_size = 1459
 generated_sql = """
 
@@ -18,13 +18,13 @@ abundant as (
 SELECT
     \"catalog_returns_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"catalog_returns_customer_id\",
     \"catalog_returns_return_address_customer_address\".\"CA_STATE\" as \"catalog_returns_return_address_state\",
-    sum(CASE WHEN \"catalog_returns_date_date\".\"D_YEAR\" = 2000 THEN \"catalog_returns_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\" ELSE NULL END) as \"customer_state_returns_2000\"
+    sum(\"catalog_returns_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\") as \"customer_state_returns_2000\"
 FROM
     \"memory\".\"catalog_returns\" as \"catalog_returns_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_returns_date_date\" on \"catalog_returns_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"catalog_returns_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"catalog_returns_return_address_customer_address\" on \"catalog_returns_catalog_returns\".\"CR_RETURNING_ADDR_SK\" = \"catalog_returns_return_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"catalog_returns_return_address_customer_address\".\"CA_STATE\" is not null
+    \"catalog_returns_date_date\".\"D_YEAR\" = 2000 and \"catalog_returns_return_address_customer_address\".\"CA_STATE\" is not null
 
 GROUP BY
     1,
@@ -74,7 +74,7 @@ GROUP BY
     15,
     16,
     17),
-vacuous as (
+juicy as (
 SELECT
     \"abundant\".\"catalog_returns_return_address_state\" as \"catalog_returns_return_address_state\",
     avg(\"abundant\".\"customer_state_returns_2000\") as \"_virt_agg_avg_8563408282113983\"
@@ -82,7 +82,7 @@ FROM
     \"abundant\"
 GROUP BY
     1),
-juicy as (
+yummy as (
 SELECT
     \"abundant\".\"customer_state_returns_2000\" as \"customer_state_returns_2000\",
     \"cooperative\".\"catalog_returns_customer_address_city\" as \"catalog_returns_customer_address_city\",
@@ -106,80 +106,45 @@ FROM
     LEFT OUTER JOIN \"abundant\" on \"cooperative\".\"catalog_returns_customer_id\" = \"abundant\".\"catalog_returns_customer_id\" AND \"cooperative\".\"catalog_returns_return_address_state\" is not distinct from \"abundant\".\"catalog_returns_return_address_state\"
 WHERE
     \"cooperative\".\"catalog_returns_customer_address_state\" = 'GA' and coalesce(\"abundant\".\"catalog_returns_return_address_state\",\"cooperative\".\"catalog_returns_return_address_state\") is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17)
+)
 SELECT
-    \"juicy\".\"catalog_returns_customer_text_id\" as \"catalog_returns_customer_text_id\",
-    \"juicy\".\"catalog_returns_customer_salutation\" as \"catalog_returns_customer_salutation\",
-    \"juicy\".\"catalog_returns_customer_first_name\" as \"catalog_returns_customer_first_name\",
-    \"juicy\".\"catalog_returns_customer_last_name\" as \"catalog_returns_customer_last_name\",
-    \"juicy\".\"catalog_returns_customer_address_street_number\" as \"catalog_returns_customer_address_street_number\",
-    \"juicy\".\"catalog_returns_customer_address_street_name\" as \"catalog_returns_customer_address_street_name\",
-    \"juicy\".\"catalog_returns_customer_address_street_type\" as \"catalog_returns_customer_address_street_type\",
-    \"juicy\".\"catalog_returns_customer_address_suite_number\" as \"catalog_returns_customer_address_suite_number\",
-    \"juicy\".\"catalog_returns_customer_address_city\" as \"catalog_returns_customer_address_city\",
-    \"juicy\".\"catalog_returns_customer_address_county\" as \"catalog_returns_customer_address_county\",
-    \"juicy\".\"catalog_returns_customer_address_state\" as \"catalog_returns_customer_address_state\",
-    \"juicy\".\"catalog_returns_customer_address_zip\" as \"catalog_returns_customer_address_zip\",
-    \"juicy\".\"catalog_returns_customer_address_country\" as \"catalog_returns_customer_address_country\",
-    \"juicy\".\"catalog_returns_customer_address_gmt_offset\" as \"catalog_returns_customer_address_gmt_offset\",
-    \"juicy\".\"catalog_returns_customer_address_location_type\" as \"catalog_returns_customer_address_location_type\",
-    \"juicy\".\"customer_state_returns_2000\" as \"customer_state_returns_2000\"
+    \"yummy\".\"catalog_returns_customer_text_id\" as \"catalog_returns_customer_text_id\",
+    \"yummy\".\"catalog_returns_customer_salutation\" as \"catalog_returns_customer_salutation\",
+    \"yummy\".\"catalog_returns_customer_first_name\" as \"catalog_returns_customer_first_name\",
+    \"yummy\".\"catalog_returns_customer_last_name\" as \"catalog_returns_customer_last_name\",
+    \"yummy\".\"catalog_returns_customer_address_street_number\" as \"catalog_returns_customer_address_street_number\",
+    \"yummy\".\"catalog_returns_customer_address_street_name\" as \"catalog_returns_customer_address_street_name\",
+    \"yummy\".\"catalog_returns_customer_address_street_type\" as \"catalog_returns_customer_address_street_type\",
+    \"yummy\".\"catalog_returns_customer_address_suite_number\" as \"catalog_returns_customer_address_suite_number\",
+    \"yummy\".\"catalog_returns_customer_address_city\" as \"catalog_returns_customer_address_city\",
+    \"yummy\".\"catalog_returns_customer_address_county\" as \"catalog_returns_customer_address_county\",
+    \"yummy\".\"catalog_returns_customer_address_state\" as \"catalog_returns_customer_address_state\",
+    \"yummy\".\"catalog_returns_customer_address_zip\" as \"catalog_returns_customer_address_zip\",
+    \"yummy\".\"catalog_returns_customer_address_country\" as \"catalog_returns_customer_address_country\",
+    \"yummy\".\"catalog_returns_customer_address_gmt_offset\" as \"catalog_returns_customer_address_gmt_offset\",
+    \"yummy\".\"catalog_returns_customer_address_location_type\" as \"catalog_returns_customer_address_location_type\",
+    \"yummy\".\"customer_state_returns_2000\" as \"customer_state_returns_2000\"
 FROM
-    \"juicy\"
-    LEFT OUTER JOIN \"vacuous\" on \"juicy\".\"catalog_returns_return_address_state\" is not distinct from \"vacuous\".\"catalog_returns_return_address_state\"
+    \"yummy\"
+    LEFT OUTER JOIN \"juicy\" on \"yummy\".\"catalog_returns_return_address_state\" is not distinct from \"juicy\".\"catalog_returns_return_address_state\"
 WHERE
-    \"juicy\".\"customer_state_returns_2000\" > 1.2 * \"vacuous\".\"_virt_agg_avg_8563408282113983\"
+    \"yummy\".\"customer_state_returns_2000\" > 1.2 * \"juicy\".\"_virt_agg_avg_8563408282113983\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16
 ORDER BY 
-    \"juicy\".\"catalog_returns_customer_text_id\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_salutation\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_first_name\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_last_name\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_street_number\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_street_name\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_street_type\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_suite_number\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_city\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_county\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_state\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_zip\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_country\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_gmt_offset\" asc nulls first,
-    \"juicy\".\"catalog_returns_customer_address_location_type\" asc nulls first,
-    \"juicy\".\"customer_state_returns_2000\" asc nulls first
+    \"yummy\".\"catalog_returns_customer_text_id\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_salutation\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_first_name\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_last_name\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_street_number\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_street_name\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_street_type\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_suite_number\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_city\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_county\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_state\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_zip\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_country\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_gmt_offset\" asc nulls first,
+    \"yummy\".\"catalog_returns_customer_address_location_type\" asc nulls first,
+    \"yummy\".\"customer_state_returns_2000\" asc nulls first
 LIMIT (100)"""

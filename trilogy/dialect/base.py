@@ -31,6 +31,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     CreateMode,
     DatePart,
+    Derivation,
     FunctionType,
     GroupMode,
     Modifier,
@@ -81,6 +82,7 @@ from trilogy.core.models.datasource import Address, Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE, CompiledCTE, RecursiveCTE, UnionCTE
 from trilogy.core.processing.condition_utility import (
+    condition_implies,
     decompose_condition,
     is_scalar_condition,
 )
@@ -442,6 +444,7 @@ FUNCTION_MAP = {
     # constant types
     FunctionType.CURRENT_DATE: lambda x, types: "current_date()",
     FunctionType.CURRENT_DATETIME: lambda x, types: "current_datetime()",
+    FunctionType.CURRENT_TIMESTAMP: lambda x, types: "current_timestamp()",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -815,8 +818,14 @@ class BaseDialect:
                         c.lineage.offset,
                     )
             elif isinstance(c.lineage, FILTER_ITEMS):
-                # for cases when we've optimized this
-                if cte.condition == c.lineage.where.conditional:
+                # When the CTE's WHERE already restricts rows to those satisfying
+                # the filter's predicate (either exact match or a superset that
+                # implies it), the per-row CASE WHEN is redundant — emit just
+                # the content.
+                if cte.condition is not None and (
+                    cte.condition == c.lineage.where.conditional
+                    or condition_implies(cte.condition, c.lineage.where.conditional)
+                ):
                     rval = self.render_expr(
                         c.lineage.content, cte=cte, raise_invalid=raise_invalid
                     )
@@ -1335,6 +1344,19 @@ class BaseDialect:
             return str(existing_idx)
         return sql
 
+    def _rendered_select_index(
+        self, cte: CTE | UnionCTE, select_index: dict[str, int]
+    ) -> dict[str, int]:
+        rendered_to_index: dict[str, int] = {}
+        output_by_address = {c.address: c for c in cte.output_columns}
+        for addr, idx in select_index.items():
+            concept = output_by_address.get(addr)
+            if concept is None:
+                continue
+            sql = self.render_concept_sql(concept, cte, alias=False)
+            rendered_to_index[sql] = idx
+        return rendered_to_index
+
     def _render_grouping_mode(
         self,
         cte: CTE | UnionCTE,
@@ -1348,13 +1370,7 @@ class BaseDialect:
                 f"{self.__class__.__name__} does not support aggregate grouping mode {mode.value}"
             )
 
-        rendered_to_index: dict[str, int] = {}
-        for addr, idx in select_index.items():
-            for c in cte.output_columns:
-                if c.address == addr:
-                    sql = self.render_concept_sql(c, cte, alias=False)
-                    rendered_to_index[sql] = idx
-                    break
+        rendered_to_index = self._rendered_select_index(cte, select_index)
 
         def render_concepts(concepts: list[BuildConcept]) -> str:
             return ", ".join(
@@ -1373,6 +1389,19 @@ class BaseDialect:
             return [f"GROUPING SETS ({', '.join(rendered_sets)})"]
         raise ValueError(f"Unsupported aggregate grouping mode {mode}")
 
+    @staticmethod
+    def _constant_output_group_by_fallback(cte: CTE | UnionCTE) -> list[str]:
+        # Dedupe to one row when group_to_grain is set but every output is a
+        # plain constant and there is a real source below, e.g.
+        # `where cond select 1 as test` over a multi-row table.
+        if not isinstance(cte, CTE) or not cte.render_from_clause:
+            return []
+        if not cte.output_columns:
+            return []
+        if all(c.derivation == Derivation.CONSTANT for c in cte.output_columns):
+            return ["1"]
+        return []
+
     def render_cte_group_by(
         self, cte: CTE | UnionCTE, select_index: dict[str, int]
     ) -> Optional[list[str]]:
@@ -1384,44 +1413,44 @@ class BaseDialect:
         if grouping_mode is not None:
             return grouping_mode
 
+        constant_output_fallback = self._constant_output_group_by_fallback(cte)
+
         if self.GROUP_MODE == GroupMode.AUTO:
-            base = set(
-                [
+            result = sorted(
+                {
                     self.render_concept_sql(c, cte, alias=False)
                     for c in cte.group_concepts
-                ]
+                }
             )
-            return sorted(list(base))
+            if not result:
+                return constant_output_fallback
+            return result
 
-        else:
-            # Build reverse map from rendered SQL to index for resolving
-            # hidden concepts that render identically to visible ones
-            rendered_to_index: dict[str, int] = {}
-            for addr, idx in select_index.items():
-                for c in cte.output_columns:
-                    if c.address == addr:
-                        sql = self.render_concept_sql(c, cte, alias=False)
-                        rendered_to_index[sql] = idx
-                        break
-            seen: set[int] = set()
-            indices: list[int] = []
-            fallbacks: list[str] = []
-            for c in cte.group_concepts:
-                if c.address in select_index:
-                    idx = select_index[c.address]
-                    if idx not in seen:
-                        seen.add(idx)
-                        indices.append(idx)
+        # Build reverse map from rendered SQL to index for resolving
+        # hidden concepts that render identically to visible ones
+        rendered_to_index = self._rendered_select_index(cte, select_index)
+        seen: set[int] = set()
+        indices: list[int] = []
+        fallbacks: list[str] = []
+        for c in cte.group_concepts:
+            if c.address in select_index:
+                idx = select_index[c.address]
+                if idx not in seen:
+                    seen.add(idx)
+                    indices.append(idx)
+            else:
+                sql = self.render_concept_sql(c, cte, alias=False)
+                existing_idx = rendered_to_index.get(sql)
+                if existing_idx is not None:
+                    if existing_idx not in seen:
+                        seen.add(existing_idx)
+                        indices.append(existing_idx)
                 else:
-                    sql = self.render_concept_sql(c, cte, alias=False)
-                    existing_idx = rendered_to_index.get(sql)
-                    if existing_idx is not None:
-                        if existing_idx not in seen:
-                            seen.add(existing_idx)
-                            indices.append(existing_idx)
-                    else:
-                        fallbacks.append(sql)
-            return [str(i) for i in sorted(indices)] + sorted(fallbacks)
+                    fallbacks.append(sql)
+        rendered = [str(i) for i in sorted(indices)] + sorted(fallbacks)
+        if not rendered:
+            return constant_output_fallback
+        return rendered
 
     def safe_quote(self, name: str) -> str:
         return safe_quote(name, self.QUOTE_CHARACTER)
@@ -1447,6 +1476,7 @@ class BaseDialect:
                 [self.render_cte(child, False).statement for child in cte.internal_ctes]
             )
             return CompiledCTE(name=cte.name, statement=base_statement)
+        join_derived_addresses = {c.address for c in cte.join_derived_concepts}
         if self.UNNEST_MODE in (
             UnnestMode.CROSS_APPLY,
             UnnestMode.CROSS_JOIN,
@@ -1459,7 +1489,7 @@ class BaseDialect:
                 **{
                     c.address: self.render_concept_sql(c, cte)
                     for c in cte.output_columns
-                    if c.address not in [y.address for y in cte.join_derived_concepts]
+                    if c.address not in join_derived_addresses
                     and c.address not in cte.hidden_concepts
                 },
                 **{
@@ -1473,7 +1503,7 @@ class BaseDialect:
                 **{
                     c.address: self.render_concept_sql(c, cte)
                     for c in cte.output_columns
-                    if c.address not in [y.address for y in cte.join_derived_concepts]
+                    if c.address not in join_derived_addresses
                     and c.address not in cte.hidden_concepts
                 },
                 **{

@@ -14,6 +14,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import condition_implies
 from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 from trilogy.core.processing.discovery_node_factory import generate_node
 from trilogy.core.processing.discovery_utility import (
@@ -281,6 +282,12 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
     elif all(
         [
             x.preexisting_conditions == context.conditions.conditional
+            or (
+                x.preexisting_conditions is not None
+                and condition_implies(
+                    x.preexisting_conditions, context.conditions.conditional
+                )
+            )
             or _is_scalar_only(x)
             for x in context.stack
         ]

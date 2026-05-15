@@ -40,7 +40,9 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_injection
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_datasource_node,
     create_select_node,
+    create_select_node_candidate,
     create_union_datasource,
+    finalize_select_node,
 )
 from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
     deduplicate_datasources,
@@ -258,21 +260,38 @@ def _source_concepts_via_graph(
         break
     if not pruned:
         return []
-    return [
-        node
-        for k, subgraph in sub_nodes.items()
-        if (
-            node := create_select_node(
-                k,
-                subgraph,
-                g=pruned,
-                accept_partial=accept_partial,
-                environment=environment,
-                depth=depth,
-                conditions=select_conditions,
-            )
+    candidates = [
+        create_select_node_candidate(
+            k,
+            subgraph,
+            g=pruned,
+            accept_partial=accept_partial,
+            environment=environment,
+            depth=depth,
+            conditions=select_conditions,
         )
-        is not None
+        for k, subgraph in sub_nodes.items()
+    ]
+    group_source_count = sum(c.group_source_count for c in candidates)
+    grouped_condition_deferred = any(
+        c.force_group and c.conditions_deferred for c in candidates
+    )
+    defer_group = (
+        len(candidates) > 1 and group_source_count == 1 and grouped_condition_deferred
+    )
+    if len(candidates) > 1 and group_source_count > 1:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} keeping source groups before merge; "
+            f"{group_source_count} grouped source branches would be joined."
+        )
+    return [
+        finalize_select_node(
+            candidate,
+            environment=environment,
+            depth=depth,
+            defer_group=defer_group,
+        )
+        for candidate in candidates
     ]
 
 
@@ -390,20 +409,6 @@ def gen_select_merge_node(
             logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
             return None
 
-    if constants:
-        parents.append(
-            ConstantNode(
-                output_concepts=constants,
-                input_concepts=[],
-                environment=environment,
-                parents=[],
-                depth=depth,
-                partial_concepts=[],
-                force_group=False,
-                preexisting_conditions=conditions.conditional if conditions else None,
-            )
-        )
-
     for p in abstract_props:
         abstract_nodes = _source_concepts_via_graph(
             [p], g, environment, depth + 1, accept_partial, conditions
@@ -415,7 +420,7 @@ def gen_select_merge_node(
             return None
         parents.extend(abstract_nodes)
 
-    if len(parents) == 1:
+    if len(parents) == 1 and not constants:
         candidate: StrategyNode = parents[0]
     else:
         logger.info(

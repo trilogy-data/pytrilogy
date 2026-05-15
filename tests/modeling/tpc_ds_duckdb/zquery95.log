@@ -1,5 +1,5 @@
 query_id = "95"
-gen_length = 4687
+gen_length = 4594
 preql_size = 713
 comp_size = 1010
 generated_sql = """
@@ -29,7 +29,7 @@ FROM
     \"abundant\"),
 thoughtful as (
 SELECT
-    CASE WHEN CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True THEN \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" ELSE NULL END as \"returned_orders\"
+    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"returned_orders\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
     INNER JOIN \"memory\".\"web_returns\" as \"web_sales_web_returns\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_web_returns\".\"WR_ITEM_SK\" AND \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" = \"web_sales_web_returns\".\"WR_ORDER_NUMBER\"

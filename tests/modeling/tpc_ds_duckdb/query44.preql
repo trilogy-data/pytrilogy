@@ -1,10 +1,10 @@
 import store_sales as ss;
 
 # Threshold: avg net_profit for store 4 where address is null, per store
-auto threshold <- avg(ss.net_profit ? ss.store.id = 4 and ss.sale_address.id is null) by ss.store.id;
+auto threshold <- avg(ss.net_profit ? ss.sale_address.id is null) by ss.store.id;
 
 # Per-item avg profit at store 4
-auto item_avg_profit <- avg(ss.net_profit ? ss.store.id = 4) by ss.item.id;
+auto item_avg_profit <- avg(ss.net_profit) by ss.item.id;
 
 with ascending as
 WHERE
@@ -27,11 +27,13 @@ SELECT
 merge ascending.rnk_a into descending.rnk_d;
 
 WHERE
-    ascending.rnk_a < 11
+    ss.store.id = 4
 SELECT
     ascending.rnk_a as rnk,
     ascending.best_performing,
     descending.worst_performing,
+HAVING
+    rnk < 11
 ORDER BY
     rnk asc nulls first,
     ascending.best_performing desc nulls first,

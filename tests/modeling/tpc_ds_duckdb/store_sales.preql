@@ -79,8 +79,11 @@ datasource store_returns(
     SR_STORE_SK: return_store.id,
     SR_REASON_SK: return_reason.id,
     SR_NET_LOSS: return_net_loss,
-    # capture if there's a row in this table
-    bool(return_time.id): is_returned,
+    # capture if there's a row in this table — IS NOT NULL is a null-rejecting
+    # predicate that lets DuckDB drop the matching outer joins when this is
+    # filtered TRUE, whereas a `bool(SR_RETURN_TIME_SK)` cast rendered as
+    # `CASE WHEN ... THEN TRUE ELSE FALSE END` is opaque to that analysis.
+    raw('''SR_RETURN_TIME_SK IS NOT NULL'''): is_returned,
 )
 grain (ticket_number, item.id)
 address memory.store_returns;

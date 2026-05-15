@@ -3,6 +3,7 @@ import date as date;
 import date as return_date;
 import time as time;
 import customer as customer;
+import customer as ship_customer;
 import promotion as promotion;
 import address as bill_address;
 import warehouse as warehouse;
@@ -52,6 +53,7 @@ partial datasource web_sales_unified (
     WS_SOLD_DATE_SK: ?date.id,
     WS_SOLD_TIME_SK: ?time.id,
     WS_BILL_CUSTOMER_SK: ?customer.id,
+    WS_SHIP_CUSTOMER_SK: ?ship_customer.id,
     WS_BILL_ADDR_SK: ?bill_address.id,
     WS_PROMO_SK: ?promotion.id,
     WS_WEB_SITE_SK: ?channel_dim_id,
@@ -82,6 +84,7 @@ partial datasource catalog_sales_unified (
     CS_SOLD_DATE_SK: ?date.id,
     CS_SOLD_TIME_SK: ?time.id,
     CS_BILL_CUSTOMER_SK: ?customer.id,
+    CS_SHIP_CUSTOMER_SK: ?ship_customer.id,
     CS_BILL_ADDR_SK: ?bill_address.id,
     CS_PROMO_SK: ?promotion.id,
     CS_CATALOG_PAGE_SK: ?channel_dim_id,
@@ -111,6 +114,7 @@ partial datasource store_sales_unified (
     SS_SOLD_DATE_SK: ?date.id,
     SS_SOLD_TIME_SK: ?time.id,
     SS_CUSTOMER_SK: ?customer.id,
+    SS_CUSTOMER_SK: ?ship_customer.id,
     SS_ADDR_SK: ?bill_address.id,
     SS_PROMO_SK: ?promotion.id,
     SS_STORE_SK: ?channel_dim_id,

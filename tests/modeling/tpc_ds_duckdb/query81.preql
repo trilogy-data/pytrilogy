@@ -10,6 +10,7 @@ WHERE
     and catalog_returns.customer.address.state = 'GA'
     and catalog_returns.return_address.state is not null
 SELECT
+    --catalog_returns.customer.id,
     catalog_returns.customer.text_id,
     catalog_returns.customer.salutation,
     catalog_returns.customer.first_name,
@@ -26,6 +27,7 @@ SELECT
     catalog_returns.customer.address.gmt_offset,
     catalog_returns.customer.address.location_type,
     customer_state_returns_2000,
+    --catalog_returns.return_address.state
 ORDER BY
     catalog_returns.customer.text_id asc NULLS FIRST,
     catalog_returns.customer.salutation asc NULLS FIRST,

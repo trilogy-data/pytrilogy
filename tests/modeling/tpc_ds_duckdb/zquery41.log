@@ -1,5 +1,5 @@
 query_id = "41"
-gen_length = 2444
+gen_length = 2406
 preql_size = 1587
 comp_size = 2745
 generated_sql = """
@@ -8,17 +8,23 @@ WITH
 highfalutin as (
 SELECT
     \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
-    count(CASE WHEN ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('powder','khaki') and \"item_items\".\"I_UNITS\" in ('Ounce','Oz') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('brown','honeydew') and \"item_items\".\"I_UNITS\" in ('Bunch','Ton') and \"item_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('floral','deep') and \"item_items\".\"I_UNITS\" in ('N/A','Dozen') and \"item_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('light','cornflower') and \"item_items\".\"I_UNITS\" in ('Box','Pound') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('midnight','snow') and \"item_items\".\"I_UNITS\" in ('Pallet','Gross') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('cyan','papaya') and \"item_items\".\"I_UNITS\" in ('Cup','Dram') and \"item_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('orange','frosted') and \"item_items\".\"I_UNITS\" in ('Each','Tbl') and \"item_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('forest','ghost') and \"item_items\".\"I_UNITS\" in ('Lb','Bundle') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) THEN \"item_items\".\"I_ITEM_SK\" ELSE NULL END) as \"manufact_matches\"
+    count(\"item_items\".\"I_ITEM_SK\") as \"manufact_matches\"
 FROM
     \"memory\".\"item\" as \"item_items\"
+WHERE
+    ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('powder','khaki') and \"item_items\".\"I_UNITS\" in ('Ounce','Oz') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('brown','honeydew') and \"item_items\".\"I_UNITS\" in ('Bunch','Ton') and \"item_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('floral','deep') and \"item_items\".\"I_UNITS\" in ('N/A','Dozen') and \"item_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('light','cornflower') and \"item_items\".\"I_UNITS\" in ('Box','Pound') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('midnight','snow') and \"item_items\".\"I_UNITS\" in ('Pallet','Gross') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('cyan','papaya') and \"item_items\".\"I_UNITS\" in ('Cup','Dram') and \"item_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('orange','frosted') and \"item_items\".\"I_UNITS\" in ('Each','Tbl') and \"item_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('forest','ghost') and \"item_items\".\"I_UNITS\" in ('Lb','Bundle') and \"item_items\".\"I_SIZE\" in ('medium','extra large') )
+
 GROUP BY
     1),
 cheerful as (
 SELECT
     \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
-    CASE WHEN \"item_items\".\"I_MANUFACT_ID\" >= 738 and \"item_items\".\"I_MANUFACT_ID\" <= 778 THEN \"item_items\".\"I_PRODUCT_NAME\" ELSE NULL END as \"filtered_product_name\"
+    \"item_items\".\"I_PRODUCT_NAME\" as \"filtered_product_name\"
 FROM
     \"memory\".\"item\" as \"item_items\"
+WHERE
+    \"item_items\".\"I_MANUFACT_ID\" >= 738 and \"item_items\".\"I_MANUFACT_ID\" <= 778
+
 GROUP BY
     1,
     2)

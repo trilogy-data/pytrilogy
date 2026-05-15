@@ -1,6 +1,6 @@
 query_id = "09"
-gen_length = 5468
-preql_size = 902
+gen_length = 3523
+preql_size = 958
 comp_size = 2446
 generated_sql = """
 
@@ -9,81 +9,106 @@ quizzical as (
 SELECT
     \"store_sales_store_sales\".\"SS_EXT_DISCOUNT_AMT\" as \"store_sales_ext_discount_amount\",
     \"store_sales_store_sales\".\"SS_NET_PAID\" as \"store_sales_net_paid\",
-    \"store_sales_store_sales\".\"SS_QUANTITY\" as \"store_sales_quantity\",
-    1 as \"store_sales_row_counter\"
+    \"store_sales_store_sales\".\"SS_QUANTITY\" as \"store_sales_quantity\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
 WHERE
     \"store_sales_store_sales\".\"SS_QUANTITY\" >= 1 and \"store_sales_store_sales\".\"SS_QUANTITY\" <= 100
 ),
-highfalutin as (
-SELECT
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 1 and \"quizzical\".\"store_sales_quantity\" <= 20 THEN \"quizzical\".\"store_sales_ext_discount_amount\" ELSE NULL END as \"_virt_filter_ext_discount_amount_5905610532902140\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 1 and \"quizzical\".\"store_sales_quantity\" <= 20 THEN \"quizzical\".\"store_sales_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_7407057966980625\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 1 and \"quizzical\".\"store_sales_quantity\" <= 20 THEN \"quizzical\".\"store_sales_row_counter\" ELSE NULL END as \"_virt_filter_row_counter_5155492132824176\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 21 and \"quizzical\".\"store_sales_quantity\" <= 40 THEN \"quizzical\".\"store_sales_ext_discount_amount\" ELSE NULL END as \"_virt_filter_ext_discount_amount_2819408677976636\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 21 and \"quizzical\".\"store_sales_quantity\" <= 40 THEN \"quizzical\".\"store_sales_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_5066659620696229\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 21 and \"quizzical\".\"store_sales_quantity\" <= 40 THEN \"quizzical\".\"store_sales_row_counter\" ELSE NULL END as \"_virt_filter_row_counter_4159620329795001\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 41 and \"quizzical\".\"store_sales_quantity\" <= 60 THEN \"quizzical\".\"store_sales_ext_discount_amount\" ELSE NULL END as \"_virt_filter_ext_discount_amount_9833685969883417\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 41 and \"quizzical\".\"store_sales_quantity\" <= 60 THEN \"quizzical\".\"store_sales_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_2187808203461145\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 41 and \"quizzical\".\"store_sales_quantity\" <= 60 THEN \"quizzical\".\"store_sales_row_counter\" ELSE NULL END as \"_virt_filter_row_counter_3897263975415295\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 61 and \"quizzical\".\"store_sales_quantity\" <= 80 THEN \"quizzical\".\"store_sales_ext_discount_amount\" ELSE NULL END as \"_virt_filter_ext_discount_amount_3997533417426548\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 61 and \"quizzical\".\"store_sales_quantity\" <= 80 THEN \"quizzical\".\"store_sales_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_4603151467588703\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 61 and \"quizzical\".\"store_sales_quantity\" <= 80 THEN \"quizzical\".\"store_sales_row_counter\" ELSE NULL END as \"_virt_filter_row_counter_7553269770734707\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 81 and \"quizzical\".\"store_sales_quantity\" <= 100 THEN \"quizzical\".\"store_sales_ext_discount_amount\" ELSE NULL END as \"_virt_filter_ext_discount_amount_3471207149742892\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 81 and \"quizzical\".\"store_sales_quantity\" <= 100 THEN \"quizzical\".\"store_sales_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_8732042418969600\",
-    CASE WHEN \"quizzical\".\"store_sales_quantity\" >= 81 and \"quizzical\".\"store_sales_quantity\" <= 100 THEN \"quizzical\".\"store_sales_row_counter\" ELSE NULL END as \"_virt_filter_row_counter_5304721498382572\"
-FROM
-    \"quizzical\"),
-questionable as (
-SELECT
-    CASE
-	WHEN sum(\"highfalutin\".\"_virt_filter_row_counter_5304721498382572\") > 165306 THEN avg(\"highfalutin\".\"_virt_filter_ext_discount_amount_3471207149742892\")
-	ELSE avg(\"highfalutin\".\"_virt_filter_net_paid_8732042418969600\")
-	END as \"bucket5\"
-FROM
-    \"highfalutin\"),
 cooperative as (
 SELECT
     CASE
-	WHEN sum(\"highfalutin\".\"_virt_filter_row_counter_7553269770734707\") > 10097 THEN avg(\"highfalutin\".\"_virt_filter_ext_discount_amount_3997533417426548\")
-	ELSE avg(\"highfalutin\".\"_virt_filter_net_paid_4603151467588703\")
-	END as \"bucket4\"
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 81 and \"quizzical\".\"store_sales_quantity\" <= 100 THEN 1
+	ELSE 0
+	END) > 165306 THEN avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 81 and \"quizzical\".\"store_sales_quantity\" <= 100 THEN \"quizzical\".\"store_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 81 and \"quizzical\".\"store_sales_quantity\" <= 100 THEN \"quizzical\".\"store_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket5\"
 FROM
-    \"highfalutin\"),
+    \"quizzical\"),
 thoughtful as (
 SELECT
     CASE
-	WHEN sum(\"highfalutin\".\"_virt_filter_row_counter_3897263975415295\") > 56580 THEN avg(\"highfalutin\".\"_virt_filter_ext_discount_amount_9833685969883417\")
-	ELSE avg(\"highfalutin\".\"_virt_filter_net_paid_2187808203461145\")
-	END as \"bucket3\"
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 61 and \"quizzical\".\"store_sales_quantity\" <= 80 THEN 1
+	ELSE 0
+	END) > 10097 THEN avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 61 and \"quizzical\".\"store_sales_quantity\" <= 80 THEN \"quizzical\".\"store_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 61 and \"quizzical\".\"store_sales_quantity\" <= 80 THEN \"quizzical\".\"store_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket4\"
 FROM
-    \"highfalutin\"),
+    \"quizzical\"),
 cheerful as (
 SELECT
     CASE
-	WHEN sum(\"highfalutin\".\"_virt_filter_row_counter_4159620329795001\") > 122840 THEN avg(\"highfalutin\".\"_virt_filter_ext_discount_amount_2819408677976636\")
-	ELSE avg(\"highfalutin\".\"_virt_filter_net_paid_5066659620696229\")
-	END as \"bucket2\"
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 41 and \"quizzical\".\"store_sales_quantity\" <= 60 THEN 1
+	ELSE 0
+	END) > 56580 THEN avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 41 and \"quizzical\".\"store_sales_quantity\" <= 60 THEN \"quizzical\".\"store_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 41 and \"quizzical\".\"store_sales_quantity\" <= 60 THEN \"quizzical\".\"store_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket3\"
 FROM
-    \"highfalutin\"),
+    \"quizzical\"),
 wakeful as (
 SELECT
     CASE
-	WHEN sum(\"highfalutin\".\"_virt_filter_row_counter_5155492132824176\") > 74129 THEN avg(\"highfalutin\".\"_virt_filter_ext_discount_amount_5905610532902140\")
-	ELSE avg(\"highfalutin\".\"_virt_filter_net_paid_7407057966980625\")
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 21 and \"quizzical\".\"store_sales_quantity\" <= 40 THEN 1
+	ELSE 0
+	END) > 122840 THEN avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 21 and \"quizzical\".\"store_sales_quantity\" <= 40 THEN \"quizzical\".\"store_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 21 and \"quizzical\".\"store_sales_quantity\" <= 40 THEN \"quizzical\".\"store_sales_net_paid\"
+	ELSE null
+	END)
+	END as \"bucket2\"
+FROM
+    \"quizzical\"),
+highfalutin as (
+SELECT
+    CASE
+	WHEN sum(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 1 and \"quizzical\".\"store_sales_quantity\" <= 20 THEN 1
+	ELSE 0
+	END) > 74129 THEN avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 1 and \"quizzical\".\"store_sales_quantity\" <= 20 THEN \"quizzical\".\"store_sales_ext_discount_amount\"
+	ELSE null
+	END)
+	ELSE avg(CASE
+	WHEN \"quizzical\".\"store_sales_quantity\" >= 1 and \"quizzical\".\"store_sales_quantity\" <= 20 THEN \"quizzical\".\"store_sales_net_paid\"
+	ELSE null
+	END)
 	END as \"bucket1\"
 FROM
-    \"highfalutin\")
+    \"quizzical\")
 SELECT
-    \"wakeful\".\"bucket1\" as \"bucket1\",
-    \"cheerful\".\"bucket2\" as \"bucket2\",
-    \"thoughtful\".\"bucket3\" as \"bucket3\",
-    \"cooperative\".\"bucket4\" as \"bucket4\",
-    \"questionable\".\"bucket5\" as \"bucket5\"
+    \"highfalutin\".\"bucket1\" as \"bucket1\",
+    \"wakeful\".\"bucket2\" as \"bucket2\",
+    \"cheerful\".\"bucket3\" as \"bucket3\",
+    \"thoughtful\".\"bucket4\" as \"bucket4\",
+    \"cooperative\".\"bucket5\" as \"bucket5\"
 FROM
-    \"wakeful\"
+    \"highfalutin\"
+    FULL JOIN \"wakeful\" on 1=1
     FULL JOIN \"cheerful\" on 1=1
     FULL JOIN \"thoughtful\" on 1=1
-    FULL JOIN \"cooperative\" on 1=1
-    FULL JOIN \"questionable\" on 1=1"""
+    FULL JOIN \"cooperative\" on 1=1"""

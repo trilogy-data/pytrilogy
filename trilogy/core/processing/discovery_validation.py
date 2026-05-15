@@ -8,6 +8,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import condition_implies
 from trilogy.core.processing.nodes import (
     StrategyNode,
 )
@@ -145,6 +146,12 @@ def validate_stack(
         conditions_met = all(
             [
                 node.preexisting_conditions == conditions.conditional
+                or (
+                    node.preexisting_conditions is not None
+                    and condition_implies(
+                        node.preexisting_conditions, conditions.conditional
+                    )
+                )
                 or _is_scalar_only(node)
                 for node in stack
             ]

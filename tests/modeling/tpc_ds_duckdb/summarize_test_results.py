@@ -18,7 +18,7 @@ def _numeric_frame(frame: pd.DataFrame) -> pd.DataFrame:
 def _stats(series: pd.Series) -> tuple[float, float, float]:
     clean = series.dropna()
     return (
-        float(clean.mean()),
+        float(clean.quantile(0.1)),
         float(clean.quantile(0.5)),
         float(clean.quantile(0.9)),
     )
@@ -41,8 +41,8 @@ def _fmt_ratio(value: float) -> str:
 
 
 def _row(label: str, values: tuple[float, float, float], formatter) -> str:
-    avg, p50, p90 = values
-    return f"| {label} | {formatter(avg)} | {formatter(p50)} | {formatter(p90)} |"
+    p10, p50, p90 = values
+    return f"| {label} | {formatter(p10)} | {formatter(p50)} | {formatter(p90)} |"
 
 
 def _section(title: str, frame: pd.DataFrame) -> list[str]:
@@ -74,14 +74,14 @@ def _section(title: str, frame: pd.DataFrame) -> list[str]:
         "",
         f"PreQL is shorter than the reference SQL for {length_wins}/{total} queries. Total PreQL length is {preql_total:,} chars vs {reference_total:,} reference SQL chars.",
         "",
-        "| Length metric | Avg | P50 | P90 |",
+        "| Length metric | P10 | P50 | P90 |",
         "| --- | ---: | ---: | ---: |",
         _row("PreQL - Reference SQL chars", _stats(length_delta), _fmt_chars),
         _row("PreQL vs Reference SQL", _stats(length_pct_delta), _fmt_percent),
         "",
         f"Trilogy execution is faster than the reference SQL for {exec_wins}/{total} queries. Total Trilogy execution time is {trilogy_total:.3f}s vs {reference_exec_total:.3f}s reference SQL time.",
         "",
-        "| Performance metric | Avg | P50 | P90 |",
+        "| Performance metric | P10 | P50 | P90 |",
         "| --- | ---: | ---: | ---: |",
         _row("Trilogy - Reference SQL seconds", _stats(exec_delta), _fmt_seconds),
         _row("Trilogy vs Reference SQL", _stats(exec_pct_delta), _fmt_percent),
