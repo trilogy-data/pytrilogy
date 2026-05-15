@@ -236,6 +236,67 @@ enumerable, and idempotency is a static property of the function operator.
 
 ---
 
+## QA1 — Pull a source primary key into a duplicate-invariant aggregate to bypass source-layer force_group
+
+Status: **LANDED** (q97).
+
+The source layer wraps a SelectNode in a GroupNode whenever the datasource grain
+isn't a subset of target_grain (see
+`trilogy/core/processing/node_generators/select_helpers/datasource_nodes.py`,
+`create_datasource_node`). For UnionDatasources this fires almost always —
+because the union's children's grains (e.g. `(cs_order_number, cs_item)`) are
+finer than what the query asks for (e.g. `(customer_id, item_id, sales_channel)`).
+That produces the wasted dedup CTE seen in q97's `cooperative`.
+
+When the downstream aggregate is **duplicate-invariant** (`max`, `min`,
+`bool_or`, `count(distinct …)`), the dedup is mathematically redundant — but
+the source layer can't see that today.
+
+**Query-author workaround:** pull the source's natural key into the aggregate's
+projection so target_grain is forced to a superset of source_grain. Then
+force_group can't fire by definition.
+
+q97 before:
+
+```preql
+auto store_in_window <- sum(
+    CASE WHEN sales.sales_channel = 'STORE' THEN 1 ELSE 0 END
+) by sales.customer.id, sales.item.id;
+```
+
+q97 after:
+
+```preql
+with pair_presence as
+where ...
+SELECT
+    sales.customer.id, sales.item.id,
+    max(CASE WHEN sales.sales_channel = 'STORE'  THEN sales.order_id ELSE 0 END) as store_present,
+    max(CASE WHEN sales.sales_channel = 'CATALOG' THEN sales.order_id ELSE 0 END) as catalog_present,
+;
+```
+
+`max(... order_id ...)` is duplicate-invariant; the outer predicate flips from
+`> 0` to `>= 1`, semantically identical (any matching row → store_present is a
+positive order_id → ≥ 1; no matching row → max is 0).
+
+**When this is applicable:**
+- The aggregate must be naturally duplicate-invariant (max/min/bool_or, or
+  count(distinct)).
+- The source must expose a non-null primary key concept (order_id, ticket_id,
+  …) so we can pull it through the projection.
+- The downstream predicate must only care about presence (`> 0`, `>= 1`,
+  `is not null`) — anything that reads the literal magnitude breaks.
+
+**Related but unsolved:** the generator-side version of this would be safer
+(no need for the user to think about source keys) — see the
+"defer_group on duplicate-invariant rowset aggregates" sketch in the 2026-05-15
+spike. The rowset boundary is the natural place to add it: aggregates inside
+the rowset are statically enumerable, and idempotency is a static property of
+the function operator.
+
+---
+
 ## P1 — Push dimension filters into the source CTE (eliminate post-aggregation filtering)
 
 Status: **PARTIAL — q81 structurally landed but a measured loss.** The
