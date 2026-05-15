@@ -222,11 +222,13 @@ class TestValidateStackScalarConditions:
         )
         assert result == ValidationResult.COMPLETE
 
-    def test_multi_row_with_stricter_preexisting_does_not_pass(self):
-        """Regression guard: the scalar exemption must not extend to multi-row
-        nodes. A row-level node with a stricter pre-filter has *fewer* rows
-        than the outer WHERE would produce, so we cannot accept it as
-        already-satisfied."""
+    def test_multi_row_with_stricter_preexisting_passes(self):
+        """A node whose preexisting AND-conjuncts are a superset of the outer
+        WHERE is accepted: the data is filtered at least as strictly as the
+        outer query asks, so applying the outer WHERE on top is a no-op. This
+        is the q44/rowset case — the rowset's intrinsic WHERE bubbles up and
+        contains additional atoms (e.g. `item_avg_profit > 0.9 * threshold`)
+        that aren't in the outer WHERE."""
         cmax = _concept("cmax")  # NOT single-row
         customer_id = _concept("customer_id")
         sales_channel = _concept("sales_channel")
@@ -239,7 +241,9 @@ class TestValidateStackScalarConditions:
             _eq(sales_channel, "STORE"),
             _eq(_concept("year"), "2000"),
         )
-        node_a = _StackNode([cmax], preexisting_conditions=stricter, label="multi_a")
+        node_a = _StackNode(
+            [cmax, customer_id], preexisting_conditions=stricter, label="multi_a"
+        )
         node_b = _StackNode(
             [customer_id],
             preexisting_conditions=target_conditional,
@@ -253,7 +257,7 @@ class TestValidateStackScalarConditions:
             conditions=BuildWhereClause(conditional=target_conditional),
             accept_partial=False,
         )
-        assert result == ValidationResult.INCOMPLETE_CONDITION
+        assert result == ValidationResult.COMPLETE
 
     def test_row_args_present_still_passes(self):
         """Existing fallback path: when condition row args are accessible at

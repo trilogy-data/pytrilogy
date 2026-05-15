@@ -5,6 +5,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
     JoinType,
+    Modifier,
     Purpose,
 )
 from trilogy.core.models.build import (
@@ -26,6 +27,7 @@ from trilogy.core.models.execute import (
     Join,
 )
 from trilogy.core.optimizations.join_upgrade import (
+    UpgradeJoinOnGuards,
     _accumulated_left_addresses,
     _cte_addresses,
     _gather_proofs,
@@ -314,6 +316,163 @@ def _build_cte(name: str, columns):
     cte = CTE.from_datasource(ds)
     cte.name = name
     return cte
+
+
+def _condition_for(*concepts: BuildConcept):
+    condition = BuildComparison(
+        left=concepts[0], right=1, operator=ComparisonOperator.GT
+    )
+    for concept in concepts[1:]:
+        condition += BuildComparison(
+            left=concept, right=1, operator=ComparisonOperator.GT
+        )
+    return condition
+
+
+def test_inner_join_key_proofs_are_source_bound():
+    """A key address appearing on several sources is still safe to propagate
+    when a null-rejecting INNER join proves one specific source's key."""
+    key = _build_concept("KEY")
+    a_marker = _build_concept("A_MARKER")
+    dim_attr = _build_concept("DIM_ATTR")
+
+    a_cte = _build_cte("a_source", [key, a_marker])
+    b_cte = _build_cte("b_source", [key])
+    dim_cte = _build_cte("dim_source", [key, dim_attr])
+    cte = _build_cte("root", [key, a_marker, dim_attr])
+    cte.parent_ctes = [a_cte, b_cte, dim_cte]
+    cte.condition = _condition_for(a_marker, dim_attr)
+    cte.joins = [
+        Join(
+            jointype=JoinType.FULL,
+            right_cte=b_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=a_cte.source,
+                    cte=a_cte,
+                )
+            ],
+        ),
+        Join(
+            jointype=JoinType.LEFT_OUTER,
+            right_cte=dim_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=b_cte.source,
+                    cte=b_cte,
+                )
+            ],
+        ),
+    ]
+
+    changed, _ = UpgradeJoinOnGuards().optimize(cte, {})
+
+    assert changed
+    assert cte.joins[0].jointype == JoinType.INNER
+    assert cte.joins[1].jointype == JoinType.INNER
+
+
+def test_coalesced_left_key_does_not_prove_each_branch():
+    """COALESCE(a.key, b.key) = dim.key proves the dim key, not each branch key."""
+    key = _build_concept("KEY")
+    a_marker = _build_concept("A_MARKER")
+    dim_attr = _build_concept("DIM_ATTR")
+
+    a_cte = _build_cte("a_source", [key, a_marker])
+    b_cte = _build_cte("b_source", [key])
+    dim_cte = _build_cte("dim_source", [key, dim_attr])
+    cte = _build_cte("root", [key, a_marker, dim_attr])
+    cte.parent_ctes = [a_cte, b_cte, dim_cte]
+    cte.condition = _condition_for(a_marker, dim_attr)
+    cte.joins = [
+        Join(
+            jointype=JoinType.FULL,
+            right_cte=b_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=a_cte.source,
+                    cte=a_cte,
+                )
+            ],
+        ),
+        Join(
+            jointype=JoinType.FULL,
+            right_cte=dim_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=a_cte.source,
+                    cte=a_cte,
+                ),
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=b_cte.source,
+                    cte=b_cte,
+                ),
+            ],
+        ),
+    ]
+
+    changed, _ = UpgradeJoinOnGuards().optimize(cte, {})
+
+    assert changed
+    assert cte.joins[0].jointype == JoinType.LEFT_OUTER
+    assert cte.joins[1].jointype == JoinType.INNER
+
+
+def test_nullable_inner_join_key_does_not_prove_non_null():
+    """An INNER join rendered as IS NOT DISTINCT FROM can still match NULL keys."""
+    key = _build_concept("KEY")
+    a_marker = _build_concept("A_MARKER")
+    dim_attr = _build_concept("DIM_ATTR")
+
+    a_cte = _build_cte("a_source", [key, a_marker])
+    b_cte = _build_cte("b_source", [key])
+    dim_cte = _build_cte("dim_source", [key, dim_attr])
+    cte = _build_cte("root", [key, a_marker, dim_attr])
+    cte.parent_ctes = [a_cte, b_cte, dim_cte]
+    cte.condition = _condition_for(a_marker, dim_attr)
+    cte.joins = [
+        Join(
+            jointype=JoinType.FULL,
+            right_cte=b_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=a_cte.source,
+                    cte=a_cte,
+                )
+            ],
+        ),
+        Join(
+            jointype=JoinType.LEFT_OUTER,
+            right_cte=dim_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=b_cte.source,
+                    cte=b_cte,
+                    modifiers=[Modifier.NULLABLE],
+                )
+            ],
+        ),
+    ]
+
+    changed, _ = UpgradeJoinOnGuards().optimize(cte, {})
+
+    assert changed
+    assert cte.joins[0].jointype == JoinType.LEFT_OUTER
+    assert cte.joins[1].jointype == JoinType.INNER
 
 
 def test_seed_addresses_inlined_left_via_joinkey_pair():

@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 10420
+gen_length = 10432
 preql_size = 2305
 comp_size = 4238
 generated_sql = """
@@ -177,8 +177,8 @@ SELECT
 	END as \"return_id_label\"
 FROM
     \"abundant\"
-    INNER JOIN \"yummy\" on \"abundant\".\"sales_item_id\" = \"yummy\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"yummy\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"yummy\".\"sales_sales_channel\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"abundant\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    RIGHT OUTER JOIN \"yummy\" on \"abundant\".\"sales_item_id\" = \"yummy\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"yummy\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"yummy\".\"sales_sales_channel\"
+    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"abundant\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"cheerful\" on \"yummy\".\"sales_return_channel_dim_id\" = \"cheerful\".\"sales_return_channel_dim_id\" AND coalesce(\"yummy\".\"sales_sales_channel\", \"abundant\".\"sales_sales_channel\") = \"cheerful\".\"sales_sales_channel\"
 WHERE
     \"cheerful\".\"sales_return_channel_dim_text_id\" is not null and cast(\"sales_return_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_return_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
