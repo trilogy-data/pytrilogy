@@ -68,7 +68,7 @@ revert; do not chase this further.
 | q25 | ~0.111s | ~0.114s | ~+0.00 (tie/win) | trilogy exec dropped 0.166 → ~0.111 (~55ms) — flipped from clean loss to tie/occasional win via the model |
 | q44 | ~0.076s | ~0.079s | ~+0.00 (tie/win) | trilogy exec dropped 0.103 → ~0.076 (~27ms) — flipped from +0.070 loss via `with addr_null_threshold` block (P2 CASE-WHEN → WHERE) |
 | q97 | 0.089s | 0.134s | **-0.046 (WIN)** | flipped from +0.174 loss via QA1 — `with pair_presence` rowset using `max(CASE channel=K THEN sales.order_id ELSE 0)`. Source PK in projection makes target_grain ⊇ source_grain so source-layer force_group never fires; the (customer, item, channel) dedup CTE disappears and date filter pushes cleanly into the union branches. Swing ~+0.22s. |
-| q59 | 0.248s | 0.231s | **+0.017 (near-tie / occasional win)** | flipped from +0.176 loss via P12-style shared `with wss as` rowset bundling the 7 day-name sums + 2 in_year flags into one pass over store_sales+date_dim. Previously the generator emitted two separate 7-day-sum CTEs (`abhorrent` + `yummy` — same shape, different WHERE filter); now both year1 and year2 derive from the single `abundant` CTE. 11 CTEs → 6 CTEs, SQL length 8.9k → 6.1k chars. Swing ~+0.16s. |
+| q59 | 0.163s | 0.183s | **-0.020 (WIN)** | flipped from +0.176 loss via shared `with wss as` rowset + lag-with-normalized-week. Pivotal piece: `partition by store_id, (week_seq - 52*in_year2_flag) order by in_year2_flag` lines year1 row up with its matching year2 row via lead-1. Unlocked by a generator fix in `window_node.py` that fuses multiple window functions sharing the same OVER clause into a single projection instead of cascading LEFT JOINs per column. Swing ~+0.20s. |
 
 ### Refreshed headline-loss table (main only, >40ms loss)
 

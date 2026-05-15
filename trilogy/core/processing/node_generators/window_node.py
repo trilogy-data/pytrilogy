@@ -32,7 +32,7 @@ def resolve_window_parent_concepts(
 ) -> List[BuildConcept]:
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
-    base = concept.lineage.concept_arguments
+    base = list(concept.lineage.concept_arguments)
     if concept.grain:
         for gitem in concept.grain.components:
             logger.info(
@@ -43,7 +43,21 @@ def resolve_window_parent_concepts(
         for item in concept.keys:
             logger.info(f"{padding(depth)}{LOGGER_PREFIX} appending key {item} to base")
             base.append(environment.concepts[item])
-    return unique(base, "address")
+    return base
+
+
+def equivalent_window_parent_grain(
+    candidate: list[BuildConcept],
+    base_grain: BuildGrain,
+    environment: BuildEnvironment,
+) -> bool:
+    return (
+        BuildGrain.from_concepts(
+            concepts=candidate,
+            environment=environment,
+        )
+        == base_grain
+    )
 
 
 def gen_window_node(
@@ -57,26 +71,39 @@ def gen_window_node(
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     parent_concepts = resolve_window_parent_concepts(concept, environment, depth)
+    parent_addresses = {p.address for p in parent_concepts}
+    parent_grain = BuildGrain.from_concepts(
+        concepts=parent_concepts,
+        environment=environment,
+    )
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {[x.address for x in parent_concepts]} and optional {local_optional}"
     )
 
     additional_outputs = []
+    additional_parent_concepts: list[BuildConcept] = []
     for x in local_optional:
         if not isinstance(x.lineage, WINDOW_TYPES):
             continue
         assert isinstance(x.lineage, WINDOW_TYPES)
         parents = resolve_window_parent_concepts(x, environment, depth)
 
-        matched = set([p.address for p in parents]) == set(
-            [p.address for p in parent_concepts]
+        matched = {
+            p.address for p in parents
+        } == parent_addresses or equivalent_window_parent_grain(
+            parents,
+            parent_grain,
+            environment,
         )
         if matched:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with parents {parents}"
             )
             additional_outputs.append(x)
+            additional_parent_concepts += parents
+            parent_addresses.update(p.address for p in parents)
 
+    parent_concepts = unique(parent_concepts + additional_parent_concepts, "address")
     output_targets = parent_concepts + additional_outputs + [concept]
     # finally, the ones we'll need to enrich
     non_equivalent_optional = [

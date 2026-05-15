@@ -1,5 +1,5 @@
 query_id = "49"
-gen_length = 7293
+gen_length = 6306
 preql_size = 1345
 comp_size = 4352
 generated_sql = """
@@ -85,22 +85,10 @@ FROM
 WHERE
     \"cheerful\".\"sales_return_amount\" > 10000
 ),
-sparkling as (
-SELECT
-    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
-    \"yummy\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    sum(\"yummy\".\"sales_quantity\") as \"sale_qty\",
-    sum(\"yummy\".\"sales_return_quantity\") as \"return_qty\"
-FROM
-    \"yummy\"
-GROUP BY
-    1,
-    2),
 concerned as (
 SELECT
     \"yummy\".\"sales_item_id\" as \"sales_item_id\",
-    \"yummy\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    cast(sum(\"yummy\".\"sales_return_quantity\") as numeric(15,4)) / cast(sum(\"yummy\".\"sales_quantity\") as numeric(15,4)) as \"return_ratio\"
+    \"yummy\".\"sales_sales_channel\" as \"sales_sales_channel\"
 FROM
     \"yummy\"
 GROUP BY
@@ -110,52 +98,38 @@ juicy as (
 SELECT
     \"yummy\".\"sales_item_id\" as \"sales_item_id\",
     \"yummy\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    cast(sum(\"yummy\".\"sales_return_amount\") as numeric(15,4)) / cast(sum(\"yummy\".\"sales_net_paid\") as numeric(15,4)) as \"currency_ratio\"
+    cast(sum(\"yummy\".\"sales_return_amount\") as numeric(15,4)) / cast(sum(\"yummy\".\"sales_net_paid\") as numeric(15,4)) as \"currency_ratio\",
+    cast(sum(\"yummy\".\"sales_return_quantity\") as numeric(15,4)) / cast(sum(\"yummy\".\"sales_quantity\") as numeric(15,4)) as \"return_ratio\"
 FROM
     \"yummy\"
 GROUP BY
     1,
     2),
-young as (
-SELECT
-    \"concerned\".\"sales_item_id\" as \"sales_item_id\",
-    \"concerned\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    rank() over (partition by \"concerned\".\"sales_sales_channel\" order by \"concerned\".\"return_ratio\" asc ) as \"return_rank\"
-FROM
-    \"concerned\"),
 vacuous as (
 SELECT
+    \"juicy\".\"return_ratio\" as \"return_ratio\",
     \"juicy\".\"sales_item_id\" as \"sales_item_id\",
     \"juicy\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    rank() over (partition by \"juicy\".\"sales_sales_channel\" order by \"juicy\".\"currency_ratio\" asc ) as \"currency_rank\"
+    rank() over (partition by \"juicy\".\"sales_sales_channel\" order by \"juicy\".\"currency_ratio\" asc ) as \"currency_rank\",
+    rank() over (partition by \"juicy\".\"sales_sales_channel\" order by \"juicy\".\"return_ratio\" asc ) as \"return_rank\"
 FROM
-    \"juicy\"),
-abhorrent as (
-SELECT
-    \"sparkling\".\"return_qty\" as \"return_qty\",
-    \"sparkling\".\"sale_qty\" as \"sale_qty\",
-    \"young\".\"return_rank\" as \"return_rank\",
-    coalesce(\"sparkling\".\"sales_item_id\",\"young\".\"sales_item_id\") as \"sales_item_id\",
-    coalesce(\"sparkling\".\"sales_sales_channel\",\"young\".\"sales_sales_channel\") as \"sales_sales_channel\"
-FROM
-    \"young\"
-    FULL JOIN \"sparkling\" on \"young\".\"sales_item_id\" = \"sparkling\".\"sales_item_id\" AND \"young\".\"sales_sales_channel\" = \"sparkling\".\"sales_sales_channel\")
+    \"juicy\")
 SELECT
     CASE
-	WHEN coalesce(\"abhorrent\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'WEB' THEN 'web'
-	WHEN coalesce(\"abhorrent\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'CATALOG' THEN 'catalog'
-	WHEN coalesce(\"abhorrent\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'STORE' THEN 'store'
+	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'WEB' THEN 'web'
+	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'CATALOG' THEN 'catalog'
+	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'STORE' THEN 'store'
 	ELSE null
 	END as \"channel\",
-    coalesce(\"abhorrent\".\"sales_item_id\",\"vacuous\".\"sales_item_id\") as \"item\",
-    cast(\"abhorrent\".\"return_qty\" as numeric(15,4)) / cast(\"abhorrent\".\"sale_qty\" as numeric(15,4)) as \"return_ratio\",
-    \"abhorrent\".\"return_rank\" as \"return_rank\",
+    coalesce(\"concerned\".\"sales_item_id\",\"vacuous\".\"sales_item_id\") as \"item\",
+    \"vacuous\".\"return_ratio\" as \"return_ratio\",
+    \"vacuous\".\"return_rank\" as \"return_rank\",
     \"vacuous\".\"currency_rank\" as \"currency_rank\"
 FROM
-    \"abhorrent\"
-    FULL JOIN \"vacuous\" on \"abhorrent\".\"sales_item_id\" = \"vacuous\".\"sales_item_id\" AND \"abhorrent\".\"sales_sales_channel\" = \"vacuous\".\"sales_sales_channel\"
+    \"vacuous\"
+    FULL JOIN \"concerned\" on \"vacuous\".\"sales_item_id\" = \"concerned\".\"sales_item_id\" AND \"vacuous\".\"sales_sales_channel\" = \"concerned\".\"sales_sales_channel\"
 WHERE
-    \"abhorrent\".\"return_rank\" <= 10 or \"vacuous\".\"currency_rank\" <= 10
+    \"vacuous\".\"return_rank\" <= 10 or \"vacuous\".\"currency_rank\" <= 10
 
 GROUP BY
     1,
@@ -165,7 +139,7 @@ GROUP BY
     5
 ORDER BY 
     \"channel\" asc nulls first,
-    \"abhorrent\".\"return_rank\" asc nulls first,
+    \"vacuous\".\"return_rank\" asc nulls first,
     \"vacuous\".\"currency_rank\" asc nulls first,
     \"item\" asc nulls first
 LIMIT (100)"""
