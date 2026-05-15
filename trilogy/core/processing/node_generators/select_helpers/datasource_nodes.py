@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from trilogy.constants import logger
@@ -40,11 +41,48 @@ if TYPE_CHECKING:
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 
 
+@dataclass
+class SourceNodeCandidate:
+    node: StrategyNode
+    force_group: bool
+    group_source_count: int
+    conditions_deferred: bool
+
+
 def extract_address(node: str) -> str:
     return node.split("~")[1].split("@")[0]
 
 
-def create_select_node(
+def finalize_select_node(
+    candidate: SourceNodeCandidate,
+    environment: BuildEnvironment,
+    depth: int,
+    defer_group: bool = False,
+) -> StrategyNode:
+    if candidate.force_group is True and not defer_group:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
+        )
+        return GroupNode(
+            output_concepts=candidate.node.output_concepts,
+            input_concepts=candidate.node.output_concepts,
+            environment=environment,
+            parents=[candidate.node],
+            depth=depth + 1,
+            partial_concepts=candidate.node.partial_concepts,
+            nullable_concepts=candidate.node.nullable_concepts,
+            preexisting_conditions=candidate.node.preexisting_conditions,
+            force_group=candidate.force_group,
+        )
+    if candidate.force_group is True and defer_group:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} deferring source group until "
+            "single grouped source merge can resolve grain."
+        )
+    return candidate.node
+
+
+def create_select_node_candidate(
     ds_name: str,
     subgraph: list[str],
     accept_partial: bool,
@@ -52,7 +90,7 @@ def create_select_node(
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
-) -> StrategyNode:
+) -> SourceNodeCandidate:
     all_concepts = [
         environment.canonical_concepts[extract_address(c)]
         for c in subgraph
@@ -63,15 +101,20 @@ def create_select_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
         )
-        return ConstantNode(
-            output_concepts=all_concepts,
-            input_concepts=[],
-            environment=environment,
-            parents=[],
-            depth=depth,
-            partial_concepts=[],
+        return SourceNodeCandidate(
+            node=ConstantNode(
+                output_concepts=all_concepts,
+                input_concepts=[],
+                environment=environment,
+                parents=[],
+                depth=depth,
+                partial_concepts=[],
+                force_group=False,
+                preexisting_conditions=conditions.conditional if conditions else None,
+            ),
             force_group=False,
-            preexisting_conditions=conditions.conditional if conditions else None,
+            group_source_count=0,
+            conditions_deferred=False,
         )
 
     datasource: BuildDatasource | BuildUnionDatasource = g.datasources[ds_name]
@@ -85,8 +128,20 @@ def create_select_node(
             depth,
             conditions=conditions,
         )
+        return SourceNodeCandidate(
+            node=bcandidate,
+            force_group=force_group,
+            group_source_count=1 if force_group else 0,
+            conditions_deferred=conditions is not None
+            and (
+                bcandidate.preexisting_conditions is None
+                or not condition_implies(
+                    bcandidate.preexisting_conditions, conditions.conditional
+                )
+            ),
+        )
     elif isinstance(datasource, BuildUnionDatasource):
-        bcandidate, force_group = create_union_datasource(
+        bcandidate, force_group, group_source_count = create_union_datasource_candidate(
             datasource,
             all_concepts,
             accept_partial,
@@ -94,28 +149,42 @@ def create_select_node(
             depth,
             conditions=conditions,
         )
+        return SourceNodeCandidate(
+            node=bcandidate,
+            force_group=force_group,
+            group_source_count=group_source_count,
+            conditions_deferred=conditions is not None
+            and (
+                bcandidate.preexisting_conditions is None
+                or not condition_implies(
+                    bcandidate.preexisting_conditions, conditions.conditional
+                )
+            ),
+        )
     else:
         raise ValueError(f"Unknown datasource type {datasource}")
 
-    if force_group is True:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
-        )
-        candidate: StrategyNode = GroupNode(
-            output_concepts=all_concepts,
-            input_concepts=all_concepts,
-            environment=environment,
-            parents=[bcandidate],
-            depth=depth + 1,
-            partial_concepts=bcandidate.partial_concepts,
-            nullable_concepts=bcandidate.nullable_concepts,
-            preexisting_conditions=bcandidate.preexisting_conditions,
-            force_group=force_group,
-        )
-    else:
-        candidate = bcandidate
 
-    return candidate
+def create_select_node(
+    ds_name: str,
+    subgraph: list[str],
+    accept_partial: bool,
+    g: ReferenceGraph,
+    environment: BuildEnvironment,
+    depth: int,
+    conditions: BuildWhereClause | None = None,
+    defer_group: bool = False,
+) -> StrategyNode:
+    candidate = create_select_node_candidate(
+        ds_name,
+        subgraph,
+        accept_partial,
+        g,
+        environment,
+        depth,
+        conditions,
+    )
+    return finalize_select_node(candidate, environment, depth, defer_group)
 
 
 def create_datasource_node(
@@ -248,14 +317,14 @@ def create_datasource_node(
     return rval, force_group
 
 
-def create_union_datasource(
+def create_union_datasource_candidate(
     datasource: BuildUnionDatasource,
     all_concepts: list[BuildConcept],
     accept_partial: bool,
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
-) -> tuple["UnionNode", bool]:
+) -> tuple["UnionNode", bool, int]:
     from trilogy.core.processing.nodes.union_node import UnionNode
 
     logger.info(
@@ -289,6 +358,7 @@ def create_union_datasource(
         effective = [(child, None) for child in datasource.children]
 
     force_group = False
+    group_source_count = 0
     parents = []
     for child, injected_cond in effective:
         subnode, fg = create_datasource_node(
@@ -301,6 +371,8 @@ def create_union_datasource(
         )
         parents.append(subnode)
         force_group = force_group or fg
+        if fg:
+            group_source_count += 1
     # Intrinsic column-level partials (``~col``, captured at parse time) carry
     # over by default — the column is missing values relative to its universe
     # and the union doesn't necessarily repair that. Two cases DO repair it:
@@ -361,4 +433,24 @@ def create_union_datasource(
             preexisting_conditions=conditions.conditional if conditions else None,
         ),
         force_group,
+        group_source_count,
     )
+
+
+def create_union_datasource(
+    datasource: BuildUnionDatasource,
+    all_concepts: list[BuildConcept],
+    accept_partial: bool,
+    environment: BuildEnvironment,
+    depth: int,
+    conditions: BuildWhereClause | None = None,
+) -> tuple["UnionNode", bool]:
+    node, force_group, _ = create_union_datasource_candidate(
+        datasource,
+        all_concepts,
+        accept_partial,
+        environment,
+        depth,
+        conditions,
+    )
+    return node, force_group
