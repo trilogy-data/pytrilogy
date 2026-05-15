@@ -464,14 +464,14 @@ exec_time = 0.067952
 comp_time = 0.053834
 
 [query_92]
-parse_time = 0.111792
-exec_time = 0.020894
-comp_time = 0.017143
+parse_time = 0.14506
+exec_time = 0.018763
+comp_time = 0.017838
 
 [query_93]
-parse_time = 0.084119
-exec_time = 0.119158
-comp_time = 0.098421
+parse_time = 0.092117
+exec_time = 0.129386
+comp_time = 0.141714
 
 [query_94]
 parse_time = 0.420028
