@@ -175,11 +175,12 @@ def _needs_arithmetic_parentheses(
         return False
     if isinstance(expr, BuildFunction):
         return expr.operator in ARITHMETIC_OPERATORS
+    if isinstance(expr, BuildRowsetItem):
+        return _needs_arithmetic_parentheses(expr.content)
     return (
         isinstance(expr, BuildConcept)
         and expr.lineage is not None
-        and isinstance(expr.lineage, BuildFunction)
-        and expr.lineage.operator in ARITHMETIC_OPERATORS
+        and _needs_arithmetic_parentheses(expr.lineage)
     )
 
 
