@@ -20,6 +20,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
@@ -480,30 +481,53 @@ class HavingClause(WhereClause):
 class Grain(Namespaced):
     components: set[str] = dc_field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
+    component_order: list[str] = dc_field(default_factory=list)
     _str: Optional[str] = dc_field(default=None, init=False, repr=False, compare=False)
     _abstract: bool = dc_field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         if isinstance(self.components, (list, tuple)):
             output = set()
+            ordered = []
             for vc in self.components:
                 if isinstance(vc, Addressable):
-                    output.add(vc._address)
+                    address = vc._address
                 else:
-                    output.add(vc)
+                    address = vc
+                output.add(address)
+                if address not in ordered:
+                    ordered.append(address)
             self.components = output
+            if not self.component_order:
+                self.component_order = ordered
+        elif not self.component_order:
+            self.component_order = list(self.components)
+        else:
+            self.component_order = [
+                item for item in self.component_order if item in self.components
+            ]
+            self.component_order.extend(
+                item for item in self.components if item not in self.component_order
+            )
 
     def without_condition(self):
-        return Grain(components=self.components)
+        return Grain(
+            components=self.components,
+            component_order=self.component_order,
+        )
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         new_components = set()
-        for c in self.components:
+        new_order = []
+        for c in self.component_order:
             if c == source.address:
-                new_components.add(target.address)
+                address = target.address
             else:
-                new_components.add(c)
-        return Grain(components=new_components)
+                address = c
+            new_components.add(address)
+            if address not in new_order:
+                new_order.append(address)
+        return Grain(components=new_components, component_order=new_order)
 
     @classmethod
     def from_concepts(
@@ -513,18 +537,23 @@ class Grain(Namespaced):
         where_clause: WhereClause | None = None,
         local_concepts: Mapping[str, Concept] | None = None,
     ) -> Grain:
-        from trilogy.parsing.common import concepts_to_grain_concepts
+        from trilogy.parsing.common import concepts_to_grain_concepts_ordered
+
+        ordered = concepts_to_grain_concepts_ordered(
+            concepts, environment=environment, local_concepts=local_concepts
+        )
 
         return Grain(
-            components=concepts_to_grain_concepts(
-                concepts, environment=environment, local_concepts=local_concepts
-            ),
+            components=set(ordered),
+            component_order=ordered,
             where_clause=where_clause,
         )
 
     def with_namespace(self, namespace: str) -> "Grain":
+        order = [address_with_namespace(c, namespace) for c in self.component_order]
         return Grain(
-            components={address_with_namespace(c, namespace) for c in self.components},
+            components=set(order),
+            component_order=order,
             where_clause=(
                 self.where_clause.with_namespace(namespace)
                 if self.where_clause
@@ -547,14 +576,22 @@ class Grain(Namespaced):
                         operator=BooleanOperator.AND,
                     )
                 )
+        order = self.component_order + [
+            item for item in other.component_order if item not in self.components
+        ]
         return Grain(
-            components=self.components.union(other.components), where_clause=where
+            components=self.components.union(other.components),
+            where_clause=where,
+            component_order=order,
         )
 
     def __sub__(self, other: "Grain") -> "Grain":
         return Grain(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
+            component_order=[
+                item for item in self.component_order if item not in other.components
+            ],
         )
 
     def _gen_abstract(self) -> bool:
@@ -587,14 +624,26 @@ class Grain(Namespaced):
 
     def union(self, other: "Grain"):
         addresses = self.components.union(other.components)
-        return Grain(components=addresses, where_clause=self.where_clause)
+        order = self.component_order + [
+            item for item in other.component_order if item not in self.components
+        ]
+        return Grain(
+            components=addresses,
+            where_clause=self.where_clause,
+            component_order=order,
+        )
 
     def isdisjoint(self, other: "Grain"):
         return self.components.isdisjoint(other.components)
 
     def intersection(self, other: "Grain") -> "Grain":
         intersection = self.components.intersection(other.components)
-        return Grain(components=intersection)
+        return Grain(
+            components=intersection,
+            component_order=[
+                item for item in self.component_order if item in intersection
+            ],
+        )
 
     def _gen_str(self) -> str:
         if self.abstract:
@@ -1061,24 +1110,36 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             return new_lineage, final_grain, keys
 
         if grain.components and isinstance(new_lineage, Function) and self.is_aggregate:
-            grain_components: list[ConceptRef | Concept] = [
-                environment.concepts[c].reference for c in grain.components
-            ]
-            new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
+            aggregate_grain_components = cast(
+                List[ConceptRef | Concept], _grain_concept_refs(grain, environment)
+            )
+            new_lineage = AggregateWrapper(
+                function=new_lineage, by=aggregate_grain_components
+            )
             final_grain = grain
             keys = set(grain.components)
         elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by:
-            grain_components = [
-                environment.concepts[c].reference for c in grain.components
-            ]
+            wrapper_grain_components = cast(
+                List[ConceptRef | Concept], _grain_concept_refs(grain, environment)
+            )
             new_lineage = AggregateWrapper(
                 function=new_lineage.function,
-                by=grain_components,
+                by=wrapper_grain_components,
                 grouping=new_lineage.grouping,
                 grouping_sets=new_lineage.grouping_sets,
             )
             final_grain = grain
             keys = set([x.address for x in new_lineage.by])
+        elif isinstance(new_lineage, NumberingWindowItem) and not new_lineage.arguments:
+            window_grain_components = _grain_concept_refs(grain, environment)
+            new_lineage = NumberingWindowItem(
+                type=new_lineage.type,
+                arguments=window_grain_components,
+                over=new_lineage.over,
+                order_by=new_lineage.order_by,
+            )
+            final_grain = grain
+            keys = set(grain.components)
         elif self.derivation == Derivation.BASIC:
 
             pkeys: set[str] = set()
@@ -2110,6 +2171,10 @@ def _concept_to_ref(item: ConceptRef | Concept) -> ConceptRef:
     if isinstance(item, Concept):
         return item.reference
     return item
+
+
+def _grain_concept_refs(grain: "Grain", environment: Environment) -> list[ConceptRef]:
+    return [environment.concepts[c].reference for c in grain.component_order]
 
 
 @dataclass

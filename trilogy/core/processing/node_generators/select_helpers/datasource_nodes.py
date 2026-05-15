@@ -59,7 +59,7 @@ def finalize_select_node(
     depth: int,
     defer_group: bool = False,
 ) -> StrategyNode:
-    
+
     if candidate.force_group is True and not defer_group:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."

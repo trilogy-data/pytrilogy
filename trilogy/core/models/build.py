@@ -2397,7 +2397,7 @@ class Factory:
         if not base.by:
             by = [
                 self._build_concept(self.environment.concepts[c])
-                for c in self.grain.components
+                for c in self.grain.component_order
             ]
         else:
             by = [self.build(x) for x in base.by]

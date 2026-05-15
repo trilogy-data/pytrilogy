@@ -1,6 +1,6 @@
 query_id = "73"
-gen_length = 5002
-preql_size = 1098
+gen_length = 5019
+preql_size = 1136
 comp_size = 1437
 generated_sql = """
 
@@ -23,7 +23,7 @@ GROUP BY
 abundant as (
 SELECT
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    count(\"store_sales_store_sales\".\"SS_ITEM_SK\") as \"cnt\"
+    count(\"store_sales_store_sales\".\"SS_ITEM_SK\") as \"ticket_cnt\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
@@ -68,14 +68,14 @@ SELECT
     \"questionable\".\"store_sales_customer_salutation\" as \"store_sales_customer_salutation\",
     \"questionable\".\"store_sales_customer_preferred_cust_flag\" as \"store_sales_customer_preferred_cust_flag\",
     \"questionable\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    \"abundant\".\"cnt\" as \"cnt\"
+    \"abundant\".\"ticket_cnt\" as \"cnt\"
 FROM
     \"questionable\"
     INNER JOIN \"abundant\" on \"questionable\".\"store_sales_ticket_number\" = \"abundant\".\"store_sales_ticket_number\"
 WHERE
-    \"abundant\".\"cnt\" >= 1 and \"abundant\".\"cnt\" <= 5
+    \"abundant\".\"ticket_cnt\" >= 1 and \"abundant\".\"ticket_cnt\" <= 5
 
 ORDER BY 
-    \"abundant\".\"cnt\" desc,
+    \"cnt\" desc,
     \"questionable\".\"store_sales_customer_last_name\" asc,
     \"questionable\".\"store_sales_ticket_number\" asc"""

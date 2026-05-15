@@ -411,11 +411,11 @@ def concept_is_relevant(
     return True
 
 
-def concepts_to_grain_concepts(
+def concepts_to_grain_concepts_ordered(
     concepts: Iterable[Concept | ConceptRef | str],
     environment: Environment | None,
     local_concepts: Mapping[str, Concept] | None = None,
-) -> set[str]:
+) -> list[str]:
     raw: list[Concept] = []
     for c in concepts:
         if isinstance(c, Concept):
@@ -452,6 +452,7 @@ def concepts_to_grain_concepts(
         else:
             preconcepts.append(x)
     seen: set[str] = set()
+    output: list[str] = []
     for sub in preconcepts:
         if seen & sub.equivalent_addresses:
             continue
@@ -459,8 +460,21 @@ def concepts_to_grain_concepts(
 
             continue
         seen.add(sub.address)
+        output.append(sub.address)
 
-    return seen
+    return output
+
+
+def concepts_to_grain_concepts(
+    concepts: Iterable[Concept | ConceptRef | str],
+    environment: Environment | None,
+    local_concepts: Mapping[str, Concept] | None = None,
+) -> set[str]:
+    return set(
+        concepts_to_grain_concepts_ordered(
+            concepts, environment=environment, local_concepts=local_concepts
+        )
+    )
 
 
 def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
@@ -739,26 +753,31 @@ def _numbering_window_to_concept(
     environment: Environment,
     metadata: Metadata,
 ) -> Concept:
-    if not parent.arguments:
-        raise SyntaxError("Numbering window function requires at least one argument")
-    anchor = environment.concepts[parent.arguments[0].address]
-    if isinstance(anchor, UndefinedConcept):
-        return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
+    anchor: Concept | None = None
+    if parent.arguments:
+        anchor = environment.concepts[parent.arguments[0].address]
+        if isinstance(anchor, UndefinedConcept):
+            return UndefinedConcept(address=f"{namespace}.{name}", metadata=metadata)
     arg_addresses = [a.address for a in parent.arguments]
     over_refs = _window_over_refs(list(parent.over))
     over_addresses = [y.address for y in over_refs]
-    keys = (
-        Grain.from_concepts(arg_addresses + over_addresses, environment).components
-        or set()
-    )
-    keys = set(keys) | set(arg_addresses)
+    if arg_addresses:
+        keys = (
+            Grain.from_concepts(arg_addresses + over_addresses, environment).components
+            or set()
+        )
+        keys = set(keys) | set(arg_addresses)
+    else:
+        keys = {f"{namespace}.{name}"}
 
     grain_components: list = list(over_refs) + list(parent.arguments)
     if parent.order_by:
         for item in parent.order_by:
             relevant, _ = get_relevant_parent_concepts(item.expr)
             grain_components += relevant
-    final_grain = Grain.from_concepts(grain_components, environment)
+    final_grain = (
+        Grain.from_concepts(grain_components, environment) if arg_addresses else Grain()
+    )
 
     modifiers = get_upstream_modifiers(parent.concept_arguments, environment)
     if parent.type in (WindowType.RANK, WindowType.DENSE_RANK):
@@ -778,7 +797,7 @@ def _numbering_window_to_concept(
         keys=keys,
         modifiers=modifiers,
         derivation=Derivation.WINDOW,
-        granularity=anchor.granularity,
+        granularity=anchor.granularity if anchor else Granularity.MULTI_ROW,
     )
 
 

@@ -239,8 +239,9 @@
     window_item_legacy: WINDOW_TYPE_LEGACY int_lit? expr window_item_over? window_item_order?
 
     // SQL-like numbering: rank(a, b, c) over (partition by x order by y)
-    // All comma-separated fields are equal-status grain keys.
-    window_item_sql_numbering: WINDOW_TYPE_SQL_NUMBERING expr ("," expr)* ")" window_sql_over?
+    // All comma-separated fields are equal-status grain keys. Empty args
+    // inherit the surrounding SELECT grain during select finalization.
+    window_item_sql_numbering: WINDOW_TYPE_SQL_NUMBERING (expr ("," expr)*)? ")" window_sql_over?
     // SQL-like navigation: lag(field) or lag(field, 2) over (...)
     window_item_sql_navigation: WINDOW_TYPE_SQL_NAVIGATION expr ("," int_lit)? ")" window_sql_over?
 
@@ -534,7 +535,7 @@
 
     //aggregates can force a grain
     aggregate_all: "*"
-    aggregate_rollup: "ROLLUP"i over_list
+    aggregate_rollup: "ROLLUP"i ("(" ")" | over_list)
     aggregate_cube: "CUBE"i over_list
     grouping_set: "(" expr_over_list? ")"
     aggregate_grouping_sets: "GROUPING"i "SETS"i grouping_set ("," grouping_set)*
