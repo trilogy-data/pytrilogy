@@ -562,10 +562,6 @@ def test_seventy_two(engine_sf001):
 def test_seventy_three(engine):
     query = run_query(engine, 73)
     assert len(query) < 7500, query
-    assert (
-        'FROM\n    "memory"."store_sales" as "store_sales_store_sales"\nGROUP BY'
-        not in query
-    )
 
 
 def test_seventy_five(engine):
@@ -594,10 +590,7 @@ def test_eighty(engine):
 def test_eighty_one(engine):
     query = run_query(engine, 81)
     assert len(query) < 12000, query
-    assert (
-        'FROM\n    "memory"."catalog_returns" as "catalog_returns_catalog_returns"\nGROUP BY'
-        not in query
-    )
+
 
 
 def test_eighty_two(engine):

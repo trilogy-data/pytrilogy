@@ -1,6 +1,6 @@
 query_id = "81"
-gen_length = 9974
-preql_size = 2232
+gen_length = 9713
+preql_size = 2306
 comp_size = 1459
 generated_sql = """
 
@@ -106,25 +106,7 @@ FROM
     LEFT OUTER JOIN \"abundant\" on \"cooperative\".\"catalog_returns_customer_id\" = \"abundant\".\"catalog_returns_customer_id\" AND \"cooperative\".\"catalog_returns_return_address_state\" is not distinct from \"abundant\".\"catalog_returns_return_address_state\"
 WHERE
     \"cooperative\".\"catalog_returns_customer_address_state\" = 'GA' and coalesce(\"abundant\".\"catalog_returns_return_address_state\",\"cooperative\".\"catalog_returns_return_address_state\") is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17)
+)
 SELECT
     \"yummy\".\"catalog_returns_customer_text_id\" as \"catalog_returns_customer_text_id\",
     \"yummy\".\"catalog_returns_customer_salutation\" as \"catalog_returns_customer_salutation\",
@@ -148,23 +130,6 @@ FROM
 WHERE
     \"yummy\".\"customer_state_returns_2000\" > 1.2 * \"juicy\".\"_virt_agg_avg_8563408282113983\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16
 ORDER BY 
     \"yummy\".\"catalog_returns_customer_text_id\" asc nulls first,
     \"yummy\".\"catalog_returns_customer_salutation\" asc nulls first,

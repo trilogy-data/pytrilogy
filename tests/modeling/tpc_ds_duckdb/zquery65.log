@@ -1,10 +1,24 @@
 query_id = "65"
-gen_length = 4959
-preql_size = 1063
+gen_length = 4616
+preql_size = 674
 comp_size = 1062
 generated_sql = """
 
 WITH 
+uneven as (
+SELECT
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
+    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"item_revenue\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
+
+GROUP BY
+    1,
+    2),
 questionable as (
 SELECT
     \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
@@ -30,20 +44,14 @@ GROUP BY
     1,
     2,
     \"store_sales_store_sales\".\"SS_STORE_SK\"),
-uneven as (
+vacuous as (
 SELECT
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
-    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"item_revenue\"
+    \"uneven\".\"store_sales_store_id\" as \"store_sales_store_id\",
+    avg(\"uneven\".\"item_revenue\") as \"store_avg_revenue\"
 FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
-
+    \"uneven\"
 GROUP BY
-    1,
-    2),
+    1),
 abundant as (
 SELECT
     \"questionable\".\"store_sales_store_id\" as \"store_sales_store_id\",
@@ -80,39 +88,47 @@ GROUP BY
     5),
 juicy as (
 SELECT
-    \"abundant\".\"store_sales_store_name\" as \"store_item_revenue_store_sales_store_name\",
-    \"thoughtful\".\"store_sales_item_brand_name\" as \"store_item_revenue_store_sales_item_brand_name\",
-    \"thoughtful\".\"store_sales_item_current_price\" as \"store_item_revenue_store_sales_item_current_price\",
-    \"thoughtful\".\"store_sales_item_desc\" as \"store_item_revenue_store_sales_item_desc\",
-    \"thoughtful\".\"store_sales_item_wholesale_cost\" as \"store_item_revenue_store_sales_item_wholesale_cost\",
-    \"uneven\".\"item_revenue\" as \"store_item_revenue_item_revenue\",
-    coalesce(\"abundant\".\"store_sales_store_id\",\"uneven\".\"store_sales_store_id\") as \"store_item_revenue_store_sales_store_id\"
+    \"abundant\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"thoughtful\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    \"thoughtful\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"thoughtful\".\"store_sales_item_wholesale_cost\" as \"store_sales_item_wholesale_cost\",
+    \"uneven\".\"item_revenue\" as \"item_revenue\",
+    coalesce(\"abundant\".\"store_sales_store_id\",\"uneven\".\"store_sales_store_id\") as \"store_sales_store_id\"
 FROM
     \"thoughtful\"
     INNER JOIN \"uneven\" on \"thoughtful\".\"store_sales_item_id\" = \"uneven\".\"store_sales_item_id\"
-    FULL JOIN \"abundant\" on \"uneven\".\"store_sales_store_id\" is not distinct from \"abundant\".\"store_sales_store_id\"),
-vacuous as (
+    FULL JOIN \"abundant\" on \"uneven\".\"store_sales_store_id\" is not distinct from \"abundant\".\"store_sales_store_id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7)
 SELECT
-    \"juicy\".\"store_item_revenue_store_sales_store_id\" as \"store_item_revenue_store_sales_store_id\",
-    avg(\"juicy\".\"store_item_revenue_item_revenue\") as \"store_avg_revenue\"
+    \"juicy\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"juicy\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"juicy\".\"item_revenue\" as \"revenue\",
+    \"juicy\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    \"juicy\".\"store_sales_item_wholesale_cost\" as \"store_sales_item_wholesale_cost\",
+    \"juicy\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\"
 FROM
     \"juicy\"
-GROUP BY
-    1)
-SELECT
-    \"juicy\".\"store_item_revenue_store_sales_store_name\" as \"store_item_revenue_store_sales_store_name\",
-    \"juicy\".\"store_item_revenue_store_sales_item_desc\" as \"store_item_revenue_store_sales_item_desc\",
-    \"juicy\".\"store_item_revenue_item_revenue\" as \"revenue\",
-    \"juicy\".\"store_item_revenue_store_sales_item_current_price\" as \"store_item_revenue_store_sales_item_current_price\",
-    \"juicy\".\"store_item_revenue_store_sales_item_wholesale_cost\" as \"store_item_revenue_store_sales_item_wholesale_cost\",
-    \"juicy\".\"store_item_revenue_store_sales_item_brand_name\" as \"store_item_revenue_store_sales_item_brand_name\"
-FROM
-    \"vacuous\"
-    INNER JOIN \"juicy\" on \"vacuous\".\"store_item_revenue_store_sales_store_id\" is not distinct from \"juicy\".\"store_item_revenue_store_sales_store_id\"
+    RIGHT OUTER JOIN \"vacuous\" on \"juicy\".\"store_sales_store_id\" is not distinct from \"vacuous\".\"store_sales_store_id\"
 WHERE
-    \"juicy\".\"store_item_revenue_item_revenue\" <= 0.1 * \"vacuous\".\"store_avg_revenue\"
+    \"juicy\".\"item_revenue\" <= 0.1 * \"vacuous\".\"store_avg_revenue\"
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"vacuous\".\"store_avg_revenue\"
 ORDER BY 
-    \"juicy\".\"store_item_revenue_store_sales_store_name\" asc nulls first,
-    \"juicy\".\"store_item_revenue_store_sales_item_desc\" asc nulls first
+    \"juicy\".\"store_sales_store_name\" asc nulls first,
+    \"juicy\".\"store_sales_item_desc\" asc nulls first
 LIMIT (100)"""
