@@ -1,6 +1,6 @@
 query_id = "59"
-gen_length = 8931
-preql_size = 2180
+gen_length = 6626
+preql_size = 2498
 comp_size = 2234
 generated_sql = """
 
@@ -19,20 +19,43 @@ GROUP BY
     2),
 uneven as (
 SELECT
-    \"ss_date_date\".\"D_DAY_NAME\" as \"ss_date_day_name\",
     \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
-    \"ss_store_sales\".\"SS_SALES_PRICE\" as \"ss_sales_price\",
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\"
+    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Friday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"fri_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Monday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"mon_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Saturday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"sat_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Sunday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"sun_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Thursday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"thu_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Tuesday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"tue_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Wednesday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"wed_sales\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
 WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
-),
-cooperative as (
+    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235 and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+
+GROUP BY
+    1,
+    2),
+questionable as (
+SELECT
+    \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
+    \"ss_store_store\".\"S_STORE_NAME\" as \"ss_store_name\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
+WHERE
+    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235 and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+
+GROUP BY
+    1,
+    2),
+thoughtful as (
 SELECT
     \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
     \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
+    \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_text_id\",
     max(CASE
 	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1212 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1223 THEN 1
 	ELSE 0
@@ -44,124 +67,43 @@ SELECT
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
-WHERE
-    \"ss_date_date\".\"D_WEEK_SEQ\" is not null
-
-GROUP BY
-    1,
-    2),
-young as (
-SELECT
-    \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
-    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
-    \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_text_id\"
-FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"ss_date_date\".\"D_WEEK_SEQ\" is not null
+    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235 and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
 
 GROUP BY
     1,
     2,
     3),
-thoughtful as (
-SELECT
-    \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
-    \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
-    \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_text_id\",
-    \"ss_store_store\".\"S_STORE_NAME\" as \"ss_store_name\"
-FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"cheerful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
-WHERE
-    \"ss_date_date\".\"D_WEEK_SEQ\" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-abhorrent as (
-SELECT
-    \"cooperative\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
-    \"cooperative\".\"ss_store_id\" as \"ss_store_id\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Friday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"fri_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Monday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"mon_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Saturday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"sat_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Sunday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"sun_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Thursday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"thu_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Tuesday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"tue_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Wednesday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"wed_sales\"
-FROM
-    \"cooperative\"
-    LEFT OUTER JOIN \"uneven\" on \"cooperative\".\"ss_date_week_seq\" is not distinct from \"uneven\".\"ss_date_week_seq\" AND \"cooperative\".\"ss_store_id\" is not distinct from \"uneven\".\"ss_store_id\"
-WHERE
-    \"cooperative\".\"in_year2\" = 1
-
-GROUP BY
-    1,
-    2),
-yummy as (
-SELECT
-    \"cooperative\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
-    \"cooperative\".\"ss_store_id\" as \"ss_store_id\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Friday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"fri_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Monday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"mon_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Saturday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"sat_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Sunday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"sun_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Thursday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"thu_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Tuesday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"tue_sales\",
-    sum(CASE WHEN \"uneven\".\"ss_date_day_name\" = 'Wednesday' THEN \"uneven\".\"ss_sales_price\" ELSE NULL END) as \"wed_sales\"
-FROM
-    \"cooperative\"
-    LEFT OUTER JOIN \"uneven\" on \"cooperative\".\"ss_date_week_seq\" is not distinct from \"uneven\".\"ss_date_week_seq\" AND \"cooperative\".\"ss_store_id\" is not distinct from \"uneven\".\"ss_store_id\"
-WHERE
-    \"cooperative\".\"in_year1\" = 1
-
-GROUP BY
-    1,
-    2),
-sparkling as (
-SELECT
-    \"young\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
-    \"young\".\"ss_store_id\" as \"ss_store_id\",
-    \"young\".\"ss_store_text_id\" as \"ss_store_text_id\"
-FROM
-    \"young\"
-    INNER JOIN \"cooperative\" on \"young\".\"ss_date_week_seq\" is not distinct from \"cooperative\".\"ss_date_week_seq\" AND \"young\".\"ss_store_id\" is not distinct from \"cooperative\".\"ss_store_id\"
-WHERE
-    \"cooperative\".\"in_year2\" = 1 and \"young\".\"ss_store_id\" is not null and \"young\".\"ss_date_week_seq\" is not null
-),
 abundant as (
 SELECT
+    \"questionable\".\"ss_store_name\" as \"ss_store_name\",
+    \"thoughtful\".\"in_year1\" as \"in_year1\",
+    \"thoughtful\".\"in_year2\" as \"in_year2\",
     \"thoughtful\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
-    \"thoughtful\".\"ss_store_id\" as \"ss_store_id\",
-    \"thoughtful\".\"ss_store_name\" as \"ss_store_name\",
-    \"thoughtful\".\"ss_store_text_id\" as \"ss_store_text_id\"
+    \"thoughtful\".\"ss_store_text_id\" as \"ss_store_text_id\",
+    coalesce(\"questionable\".\"ss_store_id\",\"thoughtful\".\"ss_store_id\") as \"ss_store_id\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"cooperative\" on \"thoughtful\".\"ss_date_week_seq\" is not distinct from \"cooperative\".\"ss_date_week_seq\" AND \"thoughtful\".\"ss_store_id\" is not distinct from \"cooperative\".\"ss_store_id\"
-WHERE
-    \"cooperative\".\"in_year1\" = 1 and \"thoughtful\".\"ss_store_id\" is not null and \"thoughtful\".\"ss_date_week_seq\" is not null
-),
-macho as (
+    FULL JOIN \"questionable\" on \"thoughtful\".\"ss_store_id\" is not distinct from \"questionable\".\"ss_store_id\"),
+concerned as (
 SELECT
-    \"abhorrent\".\"fri_sales\" as \"year2_fri2\",
-    \"abhorrent\".\"mon_sales\" as \"year2_mon2\",
-    \"abhorrent\".\"sat_sales\" as \"year2_sat2\",
-    \"abhorrent\".\"sun_sales\" as \"year2_sun2\",
-    \"abhorrent\".\"thu_sales\" as \"year2_thu2\",
-    \"abhorrent\".\"tue_sales\" as \"year2_tue2\",
-    \"abhorrent\".\"wed_sales\" as \"year2_wed2\",
-    \"sparkling\".\"ss_store_text_id\" as \"year2_store_text_id_2\",
-    1 as \"year2_year2_present\",
-    coalesce(\"abhorrent\".\"ss_date_week_seq\",\"sparkling\".\"ss_date_week_seq\") as \"year2_week_seq_2\"
+    \"abundant\".\"ss_store_text_id\" as \"year2_y2_store_text_id\",
+    \"uneven\".\"fri_sales\" as \"year2_y2_fri\",
+    \"uneven\".\"mon_sales\" as \"year2_y2_mon\",
+    \"uneven\".\"sat_sales\" as \"year2_y2_sat\",
+    \"uneven\".\"sun_sales\" as \"year2_y2_sun\",
+    \"uneven\".\"thu_sales\" as \"year2_y2_thu\",
+    \"uneven\".\"tue_sales\" as \"year2_y2_tue\",
+    \"uneven\".\"wed_sales\" as \"year2_y2_wed\",
+    1 as \"year2_y2_present\",
+    coalesce(\"abundant\".\"ss_date_week_seq\",\"uneven\".\"ss_date_week_seq\") as \"year2_y2_week_seq\"
 FROM
-    \"sparkling\"
-    FULL JOIN \"abhorrent\" on \"sparkling\".\"ss_date_week_seq\" = \"abhorrent\".\"ss_date_week_seq\" AND \"sparkling\".\"ss_store_id\" is not distinct from \"abhorrent\".\"ss_store_id\"
+    \"abundant\"
+    FULL JOIN \"uneven\" on \"abundant\".\"ss_date_week_seq\" = \"uneven\".\"ss_date_week_seq\" AND \"abundant\".\"ss_store_id\" is not distinct from \"uneven\".\"ss_store_id\"
+WHERE
+    \"abundant\".\"in_year2\" = 1
+
 GROUP BY
     1,
     2,
@@ -171,24 +113,28 @@ GROUP BY
     6,
     7,
     8,
-    10),
-concerned as (
+    10,
+    coalesce(\"abundant\".\"ss_store_id\",\"uneven\".\"ss_store_id\")),
+vacuous as (
 SELECT
-    \"abundant\".\"ss_store_name\" as \"year1_store_name_1\",
-    \"abundant\".\"ss_store_text_id\" as \"year1_store_text_id_1\",
-    \"yummy\".\"fri_sales\" as \"year1_fri1\",
-    \"yummy\".\"mon_sales\" as \"year1_mon1\",
-    \"yummy\".\"sat_sales\" as \"year1_sat1\",
-    \"yummy\".\"sun_sales\" as \"year1_sun1\",
-    \"yummy\".\"thu_sales\" as \"year1_thu1\",
-    \"yummy\".\"tue_sales\" as \"year1_tue1\",
-    \"yummy\".\"wed_sales\" as \"year1_wed1\",
-    1 as \"year1_year1_present\",
-    coalesce(\"abundant\".\"ss_date_week_seq\",\"yummy\".\"ss_date_week_seq\") + 52 as \"year1_join_week\",
-    coalesce(\"abundant\".\"ss_date_week_seq\",\"yummy\".\"ss_date_week_seq\") as \"year1_week_seq_1\"
+    \"abundant\".\"ss_store_name\" as \"year1_y1_store_name\",
+    \"abundant\".\"ss_store_text_id\" as \"year1_y1_store_text_id\",
+    \"uneven\".\"fri_sales\" as \"year1_y1_fri\",
+    \"uneven\".\"mon_sales\" as \"year1_y1_mon\",
+    \"uneven\".\"sat_sales\" as \"year1_y1_sat\",
+    \"uneven\".\"sun_sales\" as \"year1_y1_sun\",
+    \"uneven\".\"thu_sales\" as \"year1_y1_thu\",
+    \"uneven\".\"tue_sales\" as \"year1_y1_tue\",
+    \"uneven\".\"wed_sales\" as \"year1_y1_wed\",
+    1 as \"year1_y1_present\",
+    coalesce(\"abundant\".\"ss_date_week_seq\",\"uneven\".\"ss_date_week_seq\") + 52 as \"year1_y1_join_week\",
+    coalesce(\"abundant\".\"ss_date_week_seq\",\"uneven\".\"ss_date_week_seq\") as \"year1_y1_week_seq\"
 FROM
     \"abundant\"
-    FULL JOIN \"yummy\" on \"abundant\".\"ss_date_week_seq\" = \"yummy\".\"ss_date_week_seq\" AND \"abundant\".\"ss_store_id\" is not distinct from \"yummy\".\"ss_store_id\"
+    FULL JOIN \"uneven\" on \"abundant\".\"ss_date_week_seq\" = \"uneven\".\"ss_date_week_seq\" AND \"abundant\".\"ss_store_id\" is not distinct from \"uneven\".\"ss_store_id\"
+WHERE
+    \"abundant\".\"in_year1\" = 1
+
 GROUP BY
     1,
     2,
@@ -200,35 +146,25 @@ GROUP BY
     8,
     9,
     11,
-    12)
+    12,
+    coalesce(\"abundant\".\"ss_store_id\",\"uneven\".\"ss_store_id\"))
 SELECT
-    \"concerned\".\"year1_store_name_1\" as \"s_store_name1\",
-    \"macho\".\"year2_store_text_id_2\" as \"s_store_id1\",
-    \"concerned\".\"year1_week_seq_1\" as \"d_week_seq1\",
-    \"concerned\".\"year1_sun1\" / \"macho\".\"year2_sun2\" as \"sun_sales_ratio\",
-    \"concerned\".\"year1_mon1\" / \"macho\".\"year2_mon2\" as \"mon_sales_ratio\",
-    \"concerned\".\"year1_tue1\" / \"macho\".\"year2_tue2\" as \"tue_sales_ratio\",
-    \"concerned\".\"year1_wed1\" / \"macho\".\"year2_wed2\" as \"wed_sales_ratio\",
-    \"concerned\".\"year1_thu1\" / \"macho\".\"year2_thu2\" as \"thu_sales_ratio\",
-    \"concerned\".\"year1_fri1\" / \"macho\".\"year2_fri2\" as \"fri_sales_ratio\",
-    \"concerned\".\"year1_sat1\" / \"macho\".\"year2_sat2\" as \"sat_sales_ratio\"
+    \"vacuous\".\"year1_y1_store_name\" as \"s_store_name1\",
+    \"concerned\".\"year2_y2_store_text_id\" as \"s_store_id1\",
+    \"vacuous\".\"year1_y1_week_seq\" as \"d_week_seq1\",
+    \"vacuous\".\"year1_y1_sun\" / \"concerned\".\"year2_y2_sun\" as \"sun_sales_ratio\",
+    \"vacuous\".\"year1_y1_mon\" / \"concerned\".\"year2_y2_mon\" as \"mon_sales_ratio\",
+    \"vacuous\".\"year1_y1_tue\" / \"concerned\".\"year2_y2_tue\" as \"tue_sales_ratio\",
+    \"vacuous\".\"year1_y1_wed\" / \"concerned\".\"year2_y2_wed\" as \"wed_sales_ratio\",
+    \"vacuous\".\"year1_y1_thu\" / \"concerned\".\"year2_y2_thu\" as \"thu_sales_ratio\",
+    \"vacuous\".\"year1_y1_fri\" / \"concerned\".\"year2_y2_fri\" as \"fri_sales_ratio\",
+    \"vacuous\".\"year1_y1_sat\" / \"concerned\".\"year2_y2_sat\" as \"sat_sales_ratio\"
 FROM
-    \"concerned\"
-    INNER JOIN \"macho\" on \"concerned\".\"year1_join_week\" is not distinct from \"macho\".\"year2_week_seq_2\" AND \"concerned\".\"year1_store_text_id_1\" is not distinct from \"macho\".\"year2_store_text_id_2\"
+    \"vacuous\"
+    INNER JOIN \"concerned\" on \"vacuous\".\"year1_y1_join_week\" is not distinct from \"concerned\".\"year2_y2_week_seq\" AND \"vacuous\".\"year1_y1_store_text_id\" is not distinct from \"concerned\".\"year2_y2_store_text_id\"
 WHERE
-    \"concerned\".\"year1_year1_present\" = 1 and \"macho\".\"year2_year2_present\" = 1
+    \"vacuous\".\"year1_y1_present\" = 1 and \"concerned\".\"year2_y2_present\" = 1
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10
 ORDER BY 
     \"s_store_name1\" asc nulls first,
     \"s_store_id1\" asc nulls first,
