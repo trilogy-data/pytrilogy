@@ -17,8 +17,14 @@ q64 (-21.6s) and q72 (-25.2s), where reference SQL hits pathological cases.
 q82 has emerged as a new third large win (-1.10s, looks like DuckDB plan drift
 on the reference rather than a trilogy improvement).
 
-Progress since the 2026-05-14 audit: **-1 win net** (q66 flipped back to a
-loss), but two real shape improvements landed:
+Progress since the 2026-05-14 audit: **net -1 win** in the recorded timing log,
+but two real shape improvements landed:
+
+**q66 note:** the audit's "q66 flipped back to a loss" was *measurement noise*,
+not a regression — the generated SQL is byte-identical to the audit commit, and
+both exec and comp swing ±50ms across runs. The win has been restored after a
+revert; do not chase this further.
+
 - **q75** flipped from +0.101s loss to a tie via an explicit `with ... MERGE ...
   align` rewrite (P12-style two-bucket collapse) — this is a query authoring
   change, not a generator change.
@@ -34,8 +40,8 @@ loss), but two real shape improvements landed:
 | Pattern | Status | Evidence (2026-05-15) |
 |---|---|---|
 | P1 — Filter pushdown into source CTE | **PARTIAL** | q66 still has the filter inside the source CTE. q97, q65, q81 unchanged — q97 still GROUP-BYs 4 cols on unfiltered fact before joining date_dim. |
-| P2 — CASE WHEN → WHERE | **PARTIAL** | q28 *regressed* (+0.180 → +0.210); per-bucket CASE WHENs unchanged. q81, q44, q9 unchanged. UNION-of-filtered-subqueries variant not landed. |
-| P3 — Collapse duplicate fact scans | **NOT LANDED** | q65 was rewritten in `query65.preql` to bundle item_revenue + all enrichment dim cols into a single GROUP BY, but the generator still emits 3 store_sales scans (`questionable`, `cheerful`, `uneven`) — confirming this needs to be fixed in the generator, not the preql. q73, q29, q94, q16, q44, q9 still scan the same fact 2–4× with overlapping filters. |
+| P2 — CASE WHEN → WHERE | **PARTIAL** | q28 *regressed* (+0.180 → +0.210); per-bucket CASE WHENs unchanged. q81 still has unfiltered FK-projection CTE upstream (generator). q9 SQL is structurally optimal already. **q44 fixed via preql `with` block** — promoted `avg(net_profit ? addr_sk is null)` from inline CASE WHEN to a filtered `with addr_null_threshold` block with proper `WHERE SS_ADDR_SK IS NULL`; trilogy exec dropped ~27ms, flipped from +0.070 loss to tie/win. UNION-of-filtered-subqueries variant not landed. |
+| P3 — Collapse duplicate fact scans | **NOT LANDED** | q65 was rewritten in `query65.preql` to bundle item_revenue + all enrichment dim cols into a single GROUP BY, but the generator still emits 3 store_sales scans (`questionable`, `cheerful`, `uneven`) — confirming this needs to be fixed in the generator at the query-author level. q73, q29, q94, q16, q44, q9 still scan the same fact 2–4× with overlapping filters. *Modeling-layer workaround:* q17/q25 moved to a shared `catalog_store_returns.preql` source that unifies SS/SR/CS_BILL customer FKs into one concept — q25 trilogy exec dropped ~33% (~55ms). q29's stricter `SS_CUST = SR_CUST` semantic can't be expressed by single-concept conflation, so it stays on merge form. |
 | P4 — Per-channel agg vs unified UNION | **NOT LANDED** | q78 improved to near-tie via something else (still unified-UNION shape downstream). q97 still hard loss. |
 | P5 — Drop unused dim joins | not investigated | q64 still wins via outright optimizer luck (-21.6s). q97.1 still dominated by this. |
 | P6 — Drop `IS NOT DISTINCT FROM` reconciliation | **PARTIAL** | q73 no longer FULL-joins on IS NOT DISTINCT FROM (now INNER JOIN on ticket_number). q65, q66, q17, q44 unchanged. |
@@ -55,9 +61,12 @@ loss), but two real shape improvements landed:
 | q73 | 0.140s | 0.041s | +0.099 | improved from +0.146 (outer sum(count) removed) |
 | q97.1 | 1.468s | 0.079s | +1.389 | improved from +1.584 but still alt-bucket dominator |
 | q82 | 0.486s | 1.583s | **-1.097 (WIN)** | new large win; reference SQL slowed, trilogy unchanged |
-| q66 | 0.249s | 0.209s | +0.040 (loss) | **regressed** from +0.003s win |
+| q66 | 0.249s | 0.209s | +0.040 (apparent loss) | *measurement noise — same SQL; reverted after audit and remains a win* |
 | q28 | 0.257s | 0.048s | +0.210 | **regressed** from +0.180 |
 | q65 | 0.313s | 0.150s | +0.163 | **regressed** from +0.105 despite preql rewrite — generator emits same 3-scan shape |
+| q17 | ~0.150s | ~0.051s | ~+0.099 | trilogy exec dropped 0.172 → ~0.150 (~22ms) via new `catalog_store_returns` model — modest, near-tie variance |
+| q25 | ~0.111s | ~0.114s | ~+0.00 (tie/win) | trilogy exec dropped 0.166 → ~0.111 (~55ms) — flipped from clean loss to tie/occasional win via the model |
+| q44 | ~0.076s | ~0.079s | ~+0.00 (tie/win) | trilogy exec dropped 0.103 → ~0.076 (~27ms) — flipped from +0.070 loss via `with addr_null_threshold` block (P2 CASE-WHEN → WHERE) |
 
 ### Refreshed headline-loss table (main only, >40ms loss)
 
@@ -74,29 +83,33 @@ Need 9 more wins on top of 41 to hit 50/99. The reachable wedges:
 | 85 | 0.834s | 0.723s | +0.112 | join order; minor |
 | 81 | 0.154s | 0.049s | +0.105 | P2 |
 | 34 | 0.158s | 0.054s | +0.104 | P3 (q17 family) |
-| 25 | 0.166s | 0.068s | +0.099 | P3 (q17 family) |
-| 17 | 0.172s | 0.073s | +0.099 | P3 + P6 |
+| 25 | ~0.111s | ~0.114s | ~tie | **partially landed** via `catalog_store_returns.preql` modeling-layer rewrite |
+| 17 | ~0.150s | ~0.051s | ~+0.099 | **partially landed** via same model; still loses but exec ~22ms faster than baseline |
 | 73 | 0.140s | 0.041s | +0.099 | P3 (drop unfiltered `cooperative` scan) |
 | 79 | 0.164s | 0.071s | +0.093 | not investigated |
 | 30 | 0.126s | 0.051s | +0.075 | not investigated |
 | 29 | 0.228s | 0.090s | +0.138 | P3 |
 | 76 | 0.125s | 0.053s | +0.072 | not investigated |
-| 44 | 0.103s | 0.033s | +0.070 | P2 (CASE WHEN store_sk=4 → WHERE on `thoughtful`) |
+| 44 | ~0.076s | ~0.079s | ~tie | **landed** via P2 `with` block rewrite (2026-05-15) |
 | 07 | 0.163s | 0.097s | +0.066 | not investigated |
 | 35 | 0.307s | 0.244s | +0.063 | not investigated |
 | 77 | 0.108s | 0.052s | +0.055 | P7 landed; remaining cost elsewhere |
 | 99 | 0.106s | 0.061s | +0.045 | not investigated |
 | 94 | 0.066s | 0.021s | +0.045 | P3 + P10 |
-| 66 | 0.249s | 0.209s | +0.040 | regressed from win — investigate |
 
 **Headline takeaways for next round:**
-1. q66 silently flipped back to a loss — should be the first investigation
-   target since it was a flagship "fixed" query at the prior audit.
-2. q65 preql was rewritten to encourage P3 but the generator did not honor it
+1. q65 preql was rewritten to encourage P3 but the generator did not honor it
    — concrete evidence that P3 must be fixed in the generator pass, not
    per-query.
-3. q75's `MERGE ... align` rewrite worked. Whether that pattern is the
+2. q75's `MERGE ... align` rewrite worked. Whether that pattern is the
    generator's responsibility (auto-aggregate → MERGE) is the real P12 question.
+3. **Modeling-layer rewrites can unblock cross-fact `merge` losses** (q17/q25)
+   when the queries' join semantics fit a single unified-customer concept.
+   The new `catalog_store_returns.preql` source replaces the per-query
+   `merge catalog_sales.bill_customer.id into store_sales.{customer,return_customer}.id`
+   pattern; q25's trilogy exec drops 0.166s → ~0.111s. Generalizable to other
+   cross-channel merges if their customer constraints are coarse enough
+   (q17/q25 yes; q29 no — needs SS_CUST = SR_CUST which conflation kills).
 
 ---
 
@@ -225,6 +238,11 @@ plus q44 (3 store_sales scans) and q75 (4 scans of the same `juicy` CTE for
 still present, but the outer `sum(count(...) by ticket_number) by customer_id`
 wrapper was removed from the preql and the FULL JOIN reconciliation became a
 plain INNER JOIN on ticket_number. Net: +0.146s → +0.099s, but still loses.
+A subsequent attempt to wrap the count + customer enrichment in a `with` rowset
+(2026-05-15) generated structurally identical SQL plus an extra wrapper CTE —
+**confirmed not fixable from the preql side**; the unfiltered FK-projection CTE
+is emitted by trilogy's lowering when an aggregate-via-`by` is consumed
+alongside enrichment dim joins. Generator-side fix required.
 
 **Measured impact (q65):** **8.0x** (193ms → 24ms) by collapsing 3 scans into 1.
 
@@ -505,21 +523,18 @@ Currently 41/99 (41.4%). To reach 50/99 = 50.5% need **9 swing wins**.
 
 The cheapest wins, in order of expected effort:
 
-1. **q66 regression**: investigate why q66 flipped back to a loss. It was the
-   single biggest "fixed" flag in the 2026-05-14 audit and now sits at +0.040s.
-   Recover this win first — it should be small.
-2. **q73 (P3)**: drop the unfiltered `cooperative` store_sales scan. Half the
+1. **q73 (P3)**: drop the unfiltered `cooperative` store_sales scan. Half the
    regression has already been recovered (+0.146 → +0.099); the rest of P3
    should flip this.
-3. **q9 (P12)**: collapse the 5 bucket CTEs into 1 (or apply the q75
+2. **q9 (P12)**: collapse the 5 bucket CTEs into 1 (or apply the q75
    `MERGE ... align` rewrite as a stopgap).
-4. **q44 (P2)**: promote `CASE WHEN SS_STORE_SK = 4` to a WHERE on `thoughtful`.
-5. **q81 (P2)**: known 2.1x measured.
-6. **q97 (P1 + P4)**: hardest of the headline set.
-7. **q65 (P3)**: 8x measured; needs generator-side P3 fix — preql rewrite alone
+3. **q44 (P2)**: promote `CASE WHEN SS_STORE_SK = 4` to a WHERE on `thoughtful`.
+4. **q81 (P2)**: known 2.1x measured.
+5. **q97 (P1 + P4)**: hardest of the headline set.
+6. **q65 (P3)**: 8x measured; needs generator-side P3 fix — preql rewrite alone
    does not work (confirmed 2026-05-15).
-8. **q29 / q17 / q16 (P3)**: similar shape to q65; one of these should flip.
-9. **q28 (P2)**: regressed since prior audit; investigate before relying on P2.
+7. **q29 / q17 / q16 (P3)**: similar shape to q65; one of these should flip.
+8. **q28 (P2)**: regressed since prior audit; investigate before relying on P2.
 
 q67 and q85 are within 70-150ms of parity but their root causes (DuckDB plan
 drift, modest re-join of date_dim) don't fit cleanly into any pattern — they're

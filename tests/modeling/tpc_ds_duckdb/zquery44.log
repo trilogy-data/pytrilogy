@@ -19,17 +19,6 @@ GROUP BY
     2),
 thoughtful as (
 SELECT
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
-    avg(CASE WHEN \"ss_store_sales\".\"SS_ADDR_SK\" is null THEN \"ss_store_sales\".\"SS_NET_PROFIT\" ELSE NULL END) as \"threshold\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" = 4
-
-GROUP BY
-    1),
-abundant as (
-SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
     avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"item_avg_profit\"
 FROM
@@ -39,11 +28,18 @@ WHERE
 
 GROUP BY
     1),
+questionable as (
+SELECT
+    avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"addr_null_threshold_threshold\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" = 4 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
+),
 cheerful as (
 SELECT
     \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ss_item_product_name\",
-    \"wakeful\".\"ss_store_id\" as \"ss_store_id\"
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ss_item_product_name\"
 FROM
     \"wakeful\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"wakeful\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
@@ -52,41 +48,41 @@ WHERE
 ),
 yummy as (
 SELECT
-    \"thoughtful\".\"threshold\" as \"threshold\",
-    \"wakeful\".\"ss_item_id\" as \"ss_item_id\"
+    \"thoughtful\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"thoughtful\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"thoughtful\"
-    FULL JOIN \"wakeful\" on \"thoughtful\".\"ss_store_id\" is not distinct from \"wakeful\".\"ss_store_id\"),
-questionable as (
+    \"wakeful\"
+    INNER JOIN \"thoughtful\" on \"wakeful\".\"ss_item_id\" = \"thoughtful\".\"ss_item_id\"),
+cooperative as (
 SELECT
     \"cheerful\".\"ss_item_id\" as \"ss_item_id\",
     \"cheerful\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"thoughtful\".\"threshold\" as \"threshold\"
+    \"thoughtful\".\"item_avg_profit\" as \"item_avg_profit\"
 FROM
     \"cheerful\"
-    FULL JOIN \"thoughtful\" on \"cheerful\".\"ss_store_id\" is not distinct from \"thoughtful\".\"ss_store_id\"),
+    INNER JOIN \"thoughtful\" on \"cheerful\".\"ss_item_id\" = \"thoughtful\".\"ss_item_id\"),
 juicy as (
 SELECT
-    \"abundant\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"yummy\".\"item_avg_profit\" as \"item_avg_profit\",
     \"yummy\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"yummy\"
-    INNER JOIN \"abundant\" on \"yummy\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
+    \"questionable\"
+    INNER JOIN \"yummy\" on 1=1
 WHERE
-    \"abundant\".\"item_avg_profit\" > 0.9 * \"yummy\".\"threshold\"
+    \"yummy\".\"item_avg_profit\" > 0.9 * \"questionable\".\"addr_null_threshold_threshold\"
 
 GROUP BY
     1,
     2),
 uneven as (
 SELECT
-    \"questionable\".\"ss_item_id\" as \"ss_item_id\",
-    \"questionable\".\"ss_item_product_name\" as \"ss_item_product_name\"
+    \"cooperative\".\"ss_item_id\" as \"ss_item_id\",
+    \"cooperative\".\"ss_item_product_name\" as \"ss_item_product_name\"
 FROM
     \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
+    INNER JOIN \"cooperative\" on 1=1
 WHERE
-    \"abundant\".\"item_avg_profit\" > 0.9 * \"questionable\".\"threshold\"
+    \"cooperative\".\"item_avg_profit\" > 0.9 * \"questionable\".\"addr_null_threshold_threshold\"
 
 GROUP BY
     1,
