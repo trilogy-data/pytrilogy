@@ -1,5 +1,5 @@
 query_id = "39"
-gen_length = 2503
+gen_length = 2489
 preql_size = 1121
 comp_size = 1546
 generated_sql = """
@@ -30,9 +30,7 @@ WHERE
     \"inventory_date_date\".\"D_YEAR\" = 2001 and \"inventory_date_date\".\"D_MOY\" in (1,2) and \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" is not null
 
 GROUP BY
-    1,
     2,
-    3,
     4)
 SELECT
     \"wakeful\".\"wsk1\" as \"wsk1\",

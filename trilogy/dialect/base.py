@@ -1431,16 +1431,24 @@ class BaseDialect:
         # hidden concepts that render identically to visible ones
         rendered_to_index = self._rendered_select_index(cte, select_index)
         seen: set[int] = set()
+        seen_sql: set[str] = set()
         indices: list[int] = []
         fallbacks: list[str] = []
         for c in cte.group_concepts:
+            sql = self.render_concept_sql(c, cte, alias=False)
+            # two group keys that resolve to the same source expression are
+            # redundant: grouping by (x, x) == grouping by (x). Distinct
+            # aliases over one column (e.g. q39's isk1/isk2 -> inv_item_sk)
+            # otherwise emit GROUP BY 1,2,3,4 instead of 1,3.
+            if sql in seen_sql:
+                continue
+            seen_sql.add(sql)
             if c.address in select_index:
                 idx = select_index[c.address]
                 if idx not in seen:
                     seen.add(idx)
                     indices.append(idx)
             else:
-                sql = self.render_concept_sql(c, cte, alias=False)
                 existing_idx = rendered_to_index.get(sql)
                 if existing_idx is not None:
                     if existing_idx not in seen:

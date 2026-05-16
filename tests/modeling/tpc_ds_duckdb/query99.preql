@@ -6,13 +6,12 @@ import catalog_sales;
 
 auto warehouse_short_name <- substring(warehouse.name, 1, 20);
 
-property <order_number, item.id>.catalog_pk <- order_number::string || item.id::string;
 
 # we can statically evaluate the case statement to prune to 
 def catalog_in_range(start, end) -> CASE 
-    WHEN start IS NULL THEN COUNT(catalog_pk ? days_to_ship <= end)
-    WHEN end IS NOT NULL THEN COUNT(catalog_pk ? days_to_ship> start AND days_to_ship <= end)  
-    ELSE COUNT(catalog_pk ? days_to_ship > start) 
+    WHEN start IS NULL THEN COUNT(row_counter ? days_to_ship <= end)
+    WHEN end IS NOT NULL THEN COUNT(row_counter ? days_to_ship> start AND days_to_ship <= end)  
+    ELSE COUNT(row_counter ? days_to_ship > start) 
     END;
 
 WHERE ship_date.month_seq BETWEEN 1200 and 1211 and order_number is not null 

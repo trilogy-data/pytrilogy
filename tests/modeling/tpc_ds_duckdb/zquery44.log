@@ -72,8 +72,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
-    2,
-    3),
+    2),
 yummy as (
 SELECT
     \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ascending_best_performing\",

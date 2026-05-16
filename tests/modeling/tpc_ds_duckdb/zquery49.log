@@ -1,5 +1,5 @@
 query_id = "49"
-gen_length = 6306
+gen_length = 6312
 preql_size = 1345
 comp_size = 4352
 generated_sql = """
@@ -127,7 +127,7 @@ SELECT
     \"vacuous\".\"currency_rank\" as \"currency_rank\"
 FROM
     \"vacuous\"
-    FULL JOIN \"concerned\" on \"vacuous\".\"sales_item_id\" = \"concerned\".\"sales_item_id\" AND \"vacuous\".\"sales_sales_channel\" = \"concerned\".\"sales_sales_channel\"
+    LEFT OUTER JOIN \"concerned\" on \"vacuous\".\"sales_item_id\" = \"concerned\".\"sales_item_id\" AND \"vacuous\".\"sales_sales_channel\" = \"concerned\".\"sales_sales_channel\"
 WHERE
     \"vacuous\".\"return_rank\" <= 10 or \"vacuous\".\"currency_rank\" <= 10
 

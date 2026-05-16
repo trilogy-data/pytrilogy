@@ -34,6 +34,7 @@ properties <order_number,item.id> (
     coupon_amt float,
     return_amount float?,
     return_quantity int?,
+    row_counter int,
 );
 
 
@@ -43,6 +44,7 @@ property <order_number, item.id>.days_to_ship <- date_diff(sold_date.date, ship_
 
 
 datasource catalog_sales (
+    raw('''1'''): row_counter,
     CS_SOLD_DATE_SK: ?date.id,
     CS_SOLD_DATE_SK: ?sold_date.id,
     CS_SOLD_TIME_SK: ?time.id,

@@ -1,17 +1,17 @@
 query_id = "99"
-gen_length = 3114
-preql_size = 1111
+gen_length = 2624
+preql_size = 1026
 comp_size = 1484
 generated_sql = """
 SELECT
     SUBSTRING(\"warehouse_warehouse\".\"w_warehouse_name\",1,20) as \"warehouse_short_name\",
     \"ship_mode_ship_mode\".\"SM_TYPE\" as \"ship_mode_type\",
     LOWER(\"call_center_call_center\".\"CC_NAME\")  as \"cc_name_lower\",
-    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) <= 30 THEN (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)) ELSE NULL END) as \"less_than_30_days\",
-    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) > 30 and date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) <= 60 THEN (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)) ELSE NULL END) as \"between_31_and_60_days\",
-    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) > 60 and date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) <= 90 THEN (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)) ELSE NULL END) as \"between_61_and_90_days\",
-    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) > 90 and date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) <= 120 THEN (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)) ELSE NULL END) as \"between_91_and_120_days\",
-    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) > 120 THEN (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)) ELSE NULL END) as \"over_120_days\"
+    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) <= 30 THEN 1 ELSE NULL END) as \"less_than_30_days\",
+    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) > 30 and date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) <= 60 THEN 1 ELSE NULL END) as \"between_31_and_60_days\",
+    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) > 60 and date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) <= 90 THEN 1 ELSE NULL END) as \"between_61_and_90_days\",
+    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) > 90 and date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) <= 120 THEN 1 ELSE NULL END) as \"between_91_and_120_days\",
+    count(CASE WHEN date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) > 120 THEN 1 ELSE NULL END) as \"over_120_days\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ship_date_date\" on \"catalog_sales\".\"CS_SHIP_DATE_SK\" = \"ship_date_date\".\"D_DATE_SK\"

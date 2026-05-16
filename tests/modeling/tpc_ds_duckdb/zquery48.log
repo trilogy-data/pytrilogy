@@ -1,5 +1,5 @@
 query_id = "48"
-gen_length = 2526
+gen_length = 2516
 preql_size = 1402
 comp_size = 1425
 generated_sql = """
@@ -8,8 +8,8 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer_address\" as \"store_sales_sale_address_customer_address\" on \"store_sales_store_sales\".\"SS_ADDR_SK\" = \"store_sales_sale_address_customer_address\".\"CA_ADDRESS_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"store_sales_sale_address_customer_address\" on \"store_sales_store_sales\".\"SS_ADDR_SK\" = \"store_sales_sale_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"store_sales_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
     \"store_sales_date_date\".\"D_YEAR\" = 2000 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null and ( ( \"store_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"store_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = '4 yr Degree' and \"store_sales_store_sales\".\"SS_SALES_PRICE\" >= 100.0 and \"store_sales_store_sales\".\"SS_SALES_PRICE\" <= 150.0 ) or ( \"store_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"store_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = '2 yr Degree' and \"store_sales_store_sales\".\"SS_SALES_PRICE\" >= 50.0 and \"store_sales_store_sales\".\"SS_SALES_PRICE\" <= 100.0 ) or ( \"store_sales_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"store_sales_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"store_sales_store_sales\".\"SS_SALES_PRICE\" >= 150.0 and \"store_sales_store_sales\".\"SS_SALES_PRICE\" <= 200.0 ) ) and ( ( \"store_sales_sale_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"store_sales_sale_address_customer_address\".\"CA_STATE\" in ('CO','OH','TX') and \"store_sales_store_sales\".\"SS_NET_PROFIT\" >= 0 and \"store_sales_store_sales\".\"SS_NET_PROFIT\" <= 2000 ) or ( \"store_sales_sale_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"store_sales_sale_address_customer_address\".\"CA_STATE\" in ('OR','MN','KY') and \"store_sales_store_sales\".\"SS_NET_PROFIT\" >= 150 and \"store_sales_store_sales\".\"SS_NET_PROFIT\" <= 3000 ) or ( \"store_sales_sale_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"store_sales_sale_address_customer_address\".\"CA_STATE\" in ('VA','CA','MS') and \"store_sales_store_sales\".\"SS_NET_PROFIT\" >= 50 and \"store_sales_store_sales\".\"SS_NET_PROFIT\" <= 25000 ) )
 """
