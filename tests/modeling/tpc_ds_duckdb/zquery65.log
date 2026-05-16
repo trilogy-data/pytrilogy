@@ -5,7 +5,16 @@ comp_size = 1062
 generated_sql = """
 
 WITH 
-uneven as (
+questionable as (
+SELECT
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\"
+FROM
+    \"memory\".\"store\" as \"store_sales_store_store\"
+WHERE
+    \"store_sales_store_store\".\"S_STORE_SK\" is not null
+),
+wakeful as (
 SELECT
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
