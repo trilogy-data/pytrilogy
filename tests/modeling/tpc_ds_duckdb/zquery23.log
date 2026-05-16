@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 7736
+gen_length = 7932
 preql_size = 1608
 comp_size = 2441
 generated_sql = """
@@ -28,7 +28,7 @@ WHERE
 ),
 late as (
 SELECT
-    \"young\".\"sales_customer_id\" as \"best_customer_id\",
+    \"young\".\"sales_customer_id\" as \"_best_customers_best_customer_id\",
     sum(\"young\".\"sales_quantity\" * \"young\".\"sales_sales_price\") as \"customer_total_overall\"
 FROM
     \"young\"
@@ -65,14 +65,13 @@ GROUP BY
     4),
 sweltering as (
 SELECT
-    \"concerned\".\"sales_customer_id\" as \"_best_customers_best_customer_id\",
-    sum(\"concerned\".\"sales_quantity\" * \"concerned\".\"sales_sales_price\") as \"customer_total_overall\"
+    max(\"sparkling\".\"customer_total_in_window\") as \"max_total_cmax\"
 FROM
     \"sparkling\"),
 yummy as (
 SELECT
-    \"uneven\".\"sales_item_id\" as \"_frequent_items_frequent_item_id\",
-    \"uneven\".\"ss_combo_count\" as \"ss_combo_count\"
+    \"uneven\".\"sales_item_id\" as \"sales_item_id\",
+    count(\"uneven\".\"sales_order_id\") as \"ss_combo_count\"
 FROM
     \"uneven\"
 GROUP BY
@@ -84,15 +83,15 @@ HAVING
 ),
 macho as (
 SELECT
-    \"abhorrent\".\"max_total_cmax\" as \"max_total_cmax\",
-    \"sweltering\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\",
-    \"sweltering\".\"customer_total_overall\" as \"customer_total_overall\"
+    \"late\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\",
+    \"late\".\"customer_total_overall\" as \"customer_total_overall\",
+    \"sweltering\".\"max_total_cmax\" as \"max_total_cmax\"
 FROM
     \"late\"
     FULL JOIN \"sweltering\" on 1=1),
 juicy as (
 SELECT
-    \"yummy\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
+    \"yummy\".\"sales_item_id\" as \"_frequent_items_frequent_item_id\"
 FROM
     \"yummy\"
 GROUP BY
@@ -100,7 +99,7 @@ GROUP BY
     \"yummy\".\"ss_combo_count\"),
 scrawny as (
 SELECT
-    \"macho\".\"best_customer_id\" as \"best_customers_best_customer_id\"
+    \"macho\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
 FROM
     \"macho\"
 WHERE
@@ -108,19 +107,11 @@ WHERE
 ),
 vacuous as (
 SELECT
-    \"juicy\".\"frequent_item_id\" as \"frequent_items_frequent_item_id\"
+    \"juicy\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
 FROM
     \"juicy\"
 GROUP BY
     1),
-macho as (
-SELECT
-    \"late\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
-FROM
-    \"late\"
-WHERE
-    \"late\".\"customer_total_overall\" > 0.5 * \"late\".\"max_total_cmax\"
-),
 cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",

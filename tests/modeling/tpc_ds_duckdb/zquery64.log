@@ -1,5 +1,5 @@
 query_id = "64"
-gen_length = 14471
+gen_length = 12824
 preql_size = 3012
 comp_size = 3783
 generated_sql = """
@@ -186,7 +186,6 @@ GROUP BY
     \"scrawny\".\"ss_customer_first_shipto_date_year\"),
 divergent as (
 SELECT
-    \"friendly\".\"_q64_results_cnt_99\" as \"_q64_results_cnt_99\",
     \"friendly\".\"_q64_results_s1_99\" as \"_q64_results_s1_99\",
     \"friendly\".\"_q64_results_s2_99\" as \"_q64_results_s2_99\",
     \"friendly\".\"_q64_results_s3_99\" as \"_q64_results_s3_99\",
@@ -201,8 +200,9 @@ SELECT
     \"friendly\".\"ss_sale_address_zip\" as \"_q64_results_b_zip_99\",
     \"friendly\".\"ss_store_name\" as \"s_name\",
     \"friendly\".\"ss_store_zip\" as \"s_zip\",
+    \"kaput\".\"ss_item_id\" as \"item_sk\",
     \"kaput\".\"ss_item_product_name\" as \"_q64_results_p_name_99\",
-    coalesce(\"friendly\".\"ss_item_id\",\"kaput\".\"ss_item_id\") as \"item_sk\"
+    coalesce(\"friendly\".\"_q64_results_cnt_99\",0) as \"_q64_results_cnt_99\"
 FROM
     \"kaput\"
     LEFT OUTER JOIN \"friendly\" on \"kaput\".\"ss_item_id\" = \"friendly\".\"ss_item_id\")

@@ -1,6 +1,6 @@
 query_id = "44"
-gen_length = 3883
-preql_size = 886
+gen_length = 2856
+preql_size = 979
 comp_size = 1462
 generated_sql = """
 
@@ -58,15 +58,15 @@ GROUP BY
 uneven as (
 SELECT
     \"abundant\".\"ss_item_id\" as \"ss_item_id\",
-    rank() over (order by \"abundant\".\"item_avg_profit\" asc ) as \"rnk_a\",
-    rank() over (order by \"abundant\".\"item_avg_profit\" desc ) as \"rnk_d\"
+    rank() over (order by \"abundant\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
+    rank() over (order by \"abundant\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
 FROM
     \"abundant\"),
 juicy as (
 SELECT
     \"ss_item_items\".\"I_PRODUCT_NAME\" as \"descending_worst_performing\",
-    \"uneven\".\"rnk_d\" as \"descending_rnk_d\",
-    \"uneven\".\"rnk_d\" as \"rnk\"
+    \"uneven\".\"_descending_rnk_d\" as \"descending_rnk_d\",
+    \"uneven\".\"_descending_rnk_d\" as \"rnk\"
 FROM
     \"uneven\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
@@ -76,7 +76,7 @@ GROUP BY
 yummy as (
 SELECT
     \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ascending_best_performing\",
-    \"uneven\".\"rnk_a\" as \"ascending_rnk_a\"
+    \"uneven\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
 FROM
     \"uneven\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
@@ -85,41 +85,12 @@ GROUP BY
     2),
 vacuous as (
 SELECT
-    \"juicy\".\"ss_item_id\" as \"ss_item_id\",
-    rank() over (order by \"juicy\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
-    rank() over (order by \"juicy\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
+    \"juicy\".\"descending_worst_performing\" as \"descending_worst_performing\",
+    \"juicy\".\"rnk\" as \"rnk\",
+    \"yummy\".\"ascending_best_performing\" as \"ascending_best_performing\"
 FROM
-    \"juicy\"),
-young as (
-SELECT
-    \"uneven\".\"ss_item_product_name\" as \"descending_worst_performing\",
-    \"vacuous\".\"_descending_rnk_d\" as \"descending_rnk_d\",
-    \"vacuous\".\"_descending_rnk_d\" as \"rnk\"
-FROM
-    \"uneven\"
-    INNER JOIN \"vacuous\" on \"uneven\".\"ss_item_id\" = \"vacuous\".\"ss_item_id\"
-GROUP BY
-    1,
-    2,
-    3),
-concerned as (
-SELECT
-    \"uneven\".\"ss_item_product_name\" as \"ascending_best_performing\",
-    \"vacuous\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
-FROM
-    \"uneven\"
-    INNER JOIN \"vacuous\" on \"uneven\".\"ss_item_id\" = \"vacuous\".\"ss_item_id\"
-GROUP BY
-    1,
-    2),
-sparkling as (
-SELECT
-    \"concerned\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"young\".\"descending_worst_performing\" as \"descending_worst_performing\",
-    \"young\".\"rnk\" as \"rnk\"
-FROM
-    \"young\"
-    INNER JOIN \"concerned\" on \"young\".\"descending_rnk_d\" = \"concerned\".\"ascending_rnk_a\"
+    \"juicy\"
+    INNER JOIN \"yummy\" on \"juicy\".\"descending_rnk_d\" = \"yummy\".\"ascending_rnk_a\"
 WHERE
     \"juicy\".\"rnk\" < 11
 )

@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 7724
+gen_length = 7839
 preql_size = 2275
 comp_size = 2234
 generated_sql = """
@@ -27,13 +27,13 @@ uneven as (
 SELECT
     \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
     \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
-    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Friday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"fri_sales\",
-    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Monday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"mon_sales\",
-    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Saturday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"sat_sales\",
-    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Sunday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"sun_sales\",
-    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Thursday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"thu_sales\",
-    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Tuesday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"tue_sales\",
-    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Wednesday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"wed_sales\"
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Friday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"_wss_fri_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Monday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"_wss_mon_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Saturday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"_wss_sat_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Sunday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"_wss_sun_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Thursday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"_wss_thu_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Tuesday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"_wss_tue_sales\",
+    sum(CASE WHEN \"ss_date_date\".\"D_DAY_NAME\" = 'Wednesday' THEN \"ss_store_sales\".\"SS_SALES_PRICE\" ELSE NULL END) as \"_wss_wed_sales\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -51,11 +51,11 @@ SELECT
     max(CASE
 	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1212 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1223 THEN 1
 	ELSE 0
-	END) as \"in_year1\",
+	END) as \"_wss_in_year1\",
     max(CASE
 	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1224 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235 THEN 1
 	ELSE 0
-	END) as \"in_year2\"
+	END) as \"_wss_in_year2\"
 FROM
     \"wakeful\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"wakeful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -69,8 +69,8 @@ GROUP BY
     3),
 questionable as (
 SELECT
-    \"cheerful\".\"in_year1\" as \"in_year1\",
-    \"cheerful\".\"in_year2\" as \"in_year2\",
+    \"cheerful\".\"_wss_in_year1\" as \"_wss_in_year1\",
+    \"cheerful\".\"_wss_in_year2\" as \"_wss_in_year2\",
     \"cheerful\".\"ss_date_week_seq\" as \"ss_date_week_seq\",
     \"cheerful\".\"ss_store_id\" as \"ss_store_id\",
     \"cheerful\".\"ss_store_text_id\" as \"ss_store_text_id\",
@@ -80,19 +80,19 @@ FROM
     LEFT OUTER JOIN \"cooperative\" on \"cheerful\".\"ss_store_id\" = \"cooperative\".\"ss_store_id\"),
 vacuous as (
 SELECT
-    \"questionable\".\"in_year1\" as \"wss_in_year1\",
-    \"questionable\".\"in_year2\" as \"wss_in_year2\",
+    \"questionable\".\"_wss_in_year1\" as \"wss_in_year1\",
+    \"questionable\".\"_wss_in_year2\" as \"wss_in_year2\",
     \"questionable\".\"ss_store_name\" as \"wss_store_name\",
     \"questionable\".\"ss_store_text_id\" as \"wss_store_text_id\",
-    \"uneven\".\"fri_sales\" as \"wss_fri_sales\",
-    \"uneven\".\"mon_sales\" as \"wss_mon_sales\",
-    \"uneven\".\"sat_sales\" as \"wss_sat_sales\",
-    \"uneven\".\"sun_sales\" as \"wss_sun_sales\",
-    \"uneven\".\"thu_sales\" as \"wss_thu_sales\",
-    \"uneven\".\"tue_sales\" as \"wss_tue_sales\",
-    \"uneven\".\"wed_sales\" as \"wss_wed_sales\",
+    \"uneven\".\"_wss_fri_sales\" as \"wss_fri_sales\",
+    \"uneven\".\"_wss_mon_sales\" as \"wss_mon_sales\",
+    \"uneven\".\"_wss_sat_sales\" as \"wss_sat_sales\",
+    \"uneven\".\"_wss_sun_sales\" as \"wss_sun_sales\",
+    \"uneven\".\"_wss_thu_sales\" as \"wss_thu_sales\",
+    \"uneven\".\"_wss_tue_sales\" as \"wss_tue_sales\",
+    \"uneven\".\"_wss_wed_sales\" as \"wss_wed_sales\",
     coalesce(\"questionable\".\"ss_date_week_seq\",\"uneven\".\"ss_date_week_seq\") - (CASE
-	WHEN \"questionable\".\"in_year2\" = 1 THEN 52
+	WHEN \"questionable\".\"_wss_in_year2\" = 1 THEN 52
 	ELSE 0
 	END) as \"normalized_week\",
     coalesce(\"questionable\".\"ss_date_week_seq\",\"uneven\".\"ss_date_week_seq\") as \"wss_week_seq\",
