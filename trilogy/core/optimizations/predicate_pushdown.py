@@ -386,6 +386,70 @@ class PredicatePushdown(OptimizationRule):
         )
         return False
 
+    def _push_having_into_group_parent(
+        self,
+        cte: CTE | UnionCTE,
+        parent_cte: CTE | UnionCTE,
+        candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+    ) -> bool:
+        """Push a non-scalar (aggregate-result) predicate into a single group
+        parent so it renders as HAVING instead of an outer WHERE wrapper.
+
+        Limited, provably-safe case: the predicate filters on aggregate columns
+        produced by ``parent_cte`` itself (a real GROUP BY), so moving the
+        filter into that group's HAVING is identical to filtering its output
+        downstream. The renderer already splits a group CTE's condition into
+        WHERE (scalar atoms) and HAVING (non-scalar atoms), so we only have to
+        relocate the atom; appending it is safe even if the parent already
+        carries a scalar WHERE.
+        """
+        if not isinstance(parent_cte, CTE):
+            return False
+        # Only relocate when the consumer is a pure passthrough of the group,
+        # so PredicatePushdownRemove strips its now-redundant condition and the
+        # HAVING *replaces* the filter. A consumer that also joins base tables
+        # (its source carries a BuildDatasource) keeps its WHERE, so pushing
+        # would just duplicate the (inlined) aggregate predicate.
+        if not isinstance(cte, CTE) or cte.joins:
+            return False
+        if any(isinstance(d, BuildDatasource) for d in cte.source.datasources):
+            return False
+        # A HAVING is only valid where a GROUP BY is emitted.
+        if not parent_cte.group_to_grain:
+            return False
+        if not isinstance(candidate, BuildConceptArgs):
+            return False
+        # existence/subselect predicates are out of scope for this case
+        if any(arg for group in candidate.existence_arguments for arg in group):
+            return False
+        row_conditions = {x.address for x in candidate.row_arguments}
+        if not row_conditions:
+            return False
+        # the filtered columns must be produced by this group so HAVING can
+        # reference them (and so we aren't pushing a row filter past the group)
+        output_addresses = {x.address for x in parent_cte.output_columns}
+        if not row_conditions.issubset(output_addresses):
+            return False
+        if is_child_of(candidate, parent_cte.condition):
+            return False
+        # every consumer of the group must already carry this atom, otherwise
+        # filtering inside the group changes results for the other consumers
+        children = inverse_map.get(parent_cte.name, [])
+        if not children or not all(
+            is_child_of(candidate, child.condition) for child in children
+        ):
+            return False
+        if parent_cte.condition:
+            parent_cte.condition = append_condition(parent_cte.condition, candidate)
+        else:
+            parent_cte.condition = candidate
+        self.log(
+            f"Pushed aggregate predicate {candidate} into group parent "
+            f"{parent_cte.name} as HAVING"
+        )
+        return True
+
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
@@ -417,11 +481,40 @@ class PredicatePushdown(OptimizationRule):
             f"Have {len(candidates)} candidates to try to push down from parent {type(cte.condition)}"
         )
         optimized = False
+        # HAVING inlines the aggregate expression (no SELECT-alias reference in
+        # portable SQL), so relocating a predicate that names the same concept
+        # repeatedly duplicates a potentially huge expression. Only attempt the
+        # HAVING pushdown when every concept in the relocated predicate is
+        # referenced once (q39: cov1/cov2 once each -> push; q58: sums named
+        # across 6 BETWEENs -> keep the compact outer-WHERE-by-alias form).
+        nonscalar_refs: dict[str, int] = {}
+        for cand in candidates:
+            if is_scalar_condition(cand) or not isinstance(cand, BuildConceptArgs):
+                continue
+            for arg in cand.row_arguments:
+                nonscalar_refs[arg.address] = nonscalar_refs.get(arg.address, 0) + 1
+        having_pushdown_safe = all(v <= 1 for v in nonscalar_refs.values())
         for candidate in candidates:
             if not is_scalar_condition(candidate):
+                if not having_pushdown_safe:
+                    self.debug(
+                        f"Skipping non-scalar {candidate}; relocating would "
+                        "duplicate an inlined aggregate expression"
+                    )
+                    continue
                 self.debug(
-                    f"Skipping {candidate} as not a basic [no aggregate, etc] condition"
+                    f"Non-scalar {candidate}; trying group-parent HAVING pushdown"
                 )
+                for parent_cte in cte.parent_ctes:
+                    local = self._push_having_into_group_parent(
+                        cte=cte,
+                        parent_cte=parent_cte,
+                        candidate=candidate,
+                        inverse_map=inverse_map,
+                    )
+                    optimized = optimized or local
+                    if local:
+                        self.complete[parent_cte.name] = False
                 continue
             self.debug(
                 f"Checking candidate {candidate}, {type(candidate)}, scalar: {is_scalar_condition(candidate)}"

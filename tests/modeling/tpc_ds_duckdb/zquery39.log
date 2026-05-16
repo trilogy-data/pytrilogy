@@ -1,5 +1,5 @@
 query_id = "39"
-gen_length = 2489
+gen_length = 3287
 preql_size = 1121
 comp_size = 1546
 generated_sql = """
@@ -31,7 +31,16 @@ WHERE
 
 GROUP BY
     2,
-    4)
+    4
+HAVING
+    CASE
+	WHEN avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 1 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) = 0 THEN null
+	ELSE stddev_samp(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 1 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) / avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 1 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END)
+	END > 1 and CASE
+	WHEN avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 2 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) = 0 THEN null
+	ELSE stddev_samp(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 2 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END) / avg(CASE WHEN \"inventory_date_date\".\"D_MOY\" = 2 THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" ELSE NULL END)
+	END > 1
+)
 SELECT
     \"wakeful\".\"wsk1\" as \"wsk1\",
     \"wakeful\".\"isk1\" as \"isk1\",
@@ -45,9 +54,6 @@ SELECT
     \"wakeful\".\"cov2\" as \"cov2\"
 FROM
     \"wakeful\"
-WHERE
-    \"wakeful\".\"cov1\" > 1 and \"wakeful\".\"cov2\" > 1
-
 ORDER BY 
     \"wakeful\".\"wsk1\" asc nulls first,
     \"wakeful\".\"isk1\" asc nulls first,

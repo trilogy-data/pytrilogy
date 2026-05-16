@@ -1,5 +1,5 @@
 query_id = "78"
-gen_length = 6972
+gen_length = 6991
 preql_size = 1890
 comp_size = 2512
 generated_sql = """
@@ -86,11 +86,9 @@ SELECT
     coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END),0) + coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END),0) as \"other_chan_sales_price\",
     coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END),0) + coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END),0) as \"other_chan_wholesale_cost\",
     round(cast(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as numeric(7,2)) / cast(coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as numeric(7,2)),2) as \"ratio\",
-    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"cs_qty\",
     sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"store_qty\",
     sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END) as \"store_sales_price\",
-    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END) as \"store_wholesale_cost\",
-    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"ws_qty\"
+    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END) as \"store_wholesale_cost\"
 FROM
     \"abundant\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
@@ -100,7 +98,10 @@ WHERE
 GROUP BY
     1,
     2,
-    3)
+    3
+HAVING
+    sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) > 0 and ( coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) > 0 or coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) > 0 )
+)
 SELECT
     \"yummy\".\"ss_sold_year\" as \"ss_sold_year\",
     \"yummy\".\"ss_item_sk\" as \"ss_item_sk\",
@@ -114,9 +115,6 @@ SELECT
     \"yummy\".\"other_chan_sales_price\" as \"other_chan_sales_price\"
 FROM
     \"yummy\"
-WHERE
-    \"yummy\".\"store_qty\" > 0 and ( coalesce(\"yummy\".\"ws_qty\",0) > 0 or coalesce(\"yummy\".\"cs_qty\",0) > 0 )
-
 ORDER BY 
     \"yummy\".\"ss_sold_year\" asc nulls first,
     \"yummy\".\"ss_item_sk\" asc nulls first,
