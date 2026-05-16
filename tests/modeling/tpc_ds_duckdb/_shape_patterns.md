@@ -238,7 +238,7 @@ enumerable, and idempotency is a static property of the function operator.
 
 ## QA1 — Pull a source primary key into a duplicate-invariant aggregate to bypass source-layer force_group
 
-Status: **LANDED** (q97).
+Status: **LANDED** (q97). Holds at +0.003s near-tie; trilogy exec ~0.104s flat.
 
 The source layer wraps a SelectNode in a GroupNode whenever the datasource grain
 isn't a subset of target_grain (see
@@ -289,11 +289,9 @@ positive order_id → ≥ 1; no matching row → max is 0).
   `is not null`) — anything that reads the literal magnitude breaks.
 
 **Related but unsolved:** the generator-side version of this would be safer
-(no need for the user to think about source keys) — see the
-"defer_group on duplicate-invariant rowset aggregates" sketch in the 2026-05-15
-spike. The rowset boundary is the natural place to add it: aggregates inside
-the rowset are statically enumerable, and idempotency is a static property of
-the function operator.
+(no need for the user to think about source keys). The rowset boundary is the
+natural place to add it: aggregates inside the rowset are statically
+enumerable, and idempotency is a static property of the function operator.
 
 ---
 
