@@ -1,5 +1,5 @@
 query_id = "58"
-gen_length = 5881
+gen_length = 5332
 preql_size = 1256
 comp_size = 2250
 generated_sql = """
@@ -61,36 +61,24 @@ GROUP BY
     2,
     3,
     \"questionable\".\"sales_item_id\",
-    \"questionable\".\"sales_order_id\"),
-juicy as (
+    \"questionable\".\"sales_order_id\")
 SELECT
     \"yummy\".\"sales_item_name\" as \"item_id\",
-    ( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"cs_dev\",
-    ( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ss_dev\",
-    ( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ws_dev\",
-    (( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 as \"avg_rev\",
-    sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"cs_item_rev\",
     sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ss_item_rev\",
-    sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ws_item_rev\"
+    ( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ss_dev\",
+    sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"cs_item_rev\",
+    ( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"cs_dev\",
+    sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ws_item_rev\",
+    ( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ws_dev\",
+    (( sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 as \"avg_rev\"
 FROM
     \"yummy\"
 GROUP BY
-    1)
-SELECT
-    \"juicy\".\"item_id\" as \"item_id\",
-    \"juicy\".\"ss_item_rev\" as \"ss_item_rev\",
-    \"juicy\".\"ss_dev\" as \"ss_dev\",
-    \"juicy\".\"cs_item_rev\" as \"cs_item_rev\",
-    \"juicy\".\"cs_dev\" as \"cs_dev\",
-    \"juicy\".\"ws_item_rev\" as \"ws_item_rev\",
-    \"juicy\".\"ws_dev\" as \"ws_dev\",
-    \"juicy\".\"avg_rev\" as \"avg_rev\"
-FROM
-    \"juicy\"
-WHERE
-    \"juicy\".\"ss_item_rev\" >= 0.9 * \"juicy\".\"cs_item_rev\" and \"juicy\".\"ss_item_rev\" <= 1.1 * \"juicy\".\"cs_item_rev\" and \"juicy\".\"ss_item_rev\" >= 0.9 * \"juicy\".\"ws_item_rev\" and \"juicy\".\"ss_item_rev\" <= 1.1 * \"juicy\".\"ws_item_rev\" and \"juicy\".\"cs_item_rev\" >= 0.9 * \"juicy\".\"ss_item_rev\" and \"juicy\".\"cs_item_rev\" <= 1.1 * \"juicy\".\"ss_item_rev\" and \"juicy\".\"cs_item_rev\" >= 0.9 * \"juicy\".\"ws_item_rev\" and \"juicy\".\"cs_item_rev\" <= 1.1 * \"juicy\".\"ws_item_rev\" and \"juicy\".\"ws_item_rev\" >= 0.9 * \"juicy\".\"ss_item_rev\" and \"juicy\".\"ws_item_rev\" <= 1.1 * \"juicy\".\"ss_item_rev\" and \"juicy\".\"ws_item_rev\" >= 0.9 * \"juicy\".\"cs_item_rev\" and \"juicy\".\"ws_item_rev\" <= 1.1 * \"juicy\".\"cs_item_rev\"
+    1
+HAVING
+    \"ss_item_rev\" >= 0.9 * \"cs_item_rev\" and \"ss_item_rev\" <= 1.1 * \"cs_item_rev\" and \"ss_item_rev\" >= 0.9 * \"ws_item_rev\" and \"ss_item_rev\" <= 1.1 * \"ws_item_rev\" and \"cs_item_rev\" >= 0.9 * \"ss_item_rev\" and \"cs_item_rev\" <= 1.1 * \"ss_item_rev\" and \"cs_item_rev\" >= 0.9 * \"ws_item_rev\" and \"cs_item_rev\" <= 1.1 * \"ws_item_rev\" and \"ws_item_rev\" >= 0.9 * \"ss_item_rev\" and \"ws_item_rev\" <= 1.1 * \"ss_item_rev\" and \"ws_item_rev\" >= 0.9 * \"cs_item_rev\" and \"ws_item_rev\" <= 1.1 * \"cs_item_rev\"
 
 ORDER BY 
-    \"juicy\".\"item_id\" asc nulls first,
-    \"juicy\".\"ss_item_rev\" asc nulls first
+    \"item_id\" asc nulls first,
+    \"ss_item_rev\" asc nulls first
 LIMIT (100)"""

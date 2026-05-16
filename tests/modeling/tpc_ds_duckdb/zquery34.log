@@ -1,5 +1,5 @@
 query_id = "34"
-gen_length = 3448
+gen_length = 3422
 preql_size = 1430
 comp_size = 1449
 generated_sql = """
@@ -35,7 +35,10 @@ WHERE
 
 GROUP BY
     1,
-    2)
+    2
+HAVING
+    \"cnt\" >= 15 and \"cnt\" <= 20
+)
 SELECT
     \"quizzical\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
     \"quizzical\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
@@ -46,9 +49,6 @@ SELECT
 FROM
     \"cooperative\"
     LEFT OUTER JOIN \"quizzical\" on \"cooperative\".\"store_sales_customer_id\" = \"quizzical\".\"store_sales_customer_id\"
-WHERE
-    \"cooperative\".\"cnt\" >= 15 and \"cooperative\".\"cnt\" <= 20
-
 ORDER BY 
     \"quizzical\".\"store_sales_customer_last_name\" asc nulls first,
     \"quizzical\".\"store_sales_customer_first_name\" asc nulls first,

@@ -725,6 +725,7 @@ def process_query(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: List[BaseHook] | None = None,
+    having_alias: bool = False,
 ) -> ProcessedQuery:
     hooks = hooks or []
 
@@ -755,7 +756,9 @@ def process_query(
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
-    final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
+    final_ctes = optimize_ctes(
+        deduped_ctes, root_cte, statement, having_alias=having_alias
+    )
 
     return ProcessedQuery(
         order_by=root_cte.order_by,

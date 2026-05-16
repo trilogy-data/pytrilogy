@@ -357,6 +357,7 @@ class DuckDBDialect(BaseDialect):
     UNNEST_MODE = UnnestMode.DIRECT
     GROUP_MODE = GroupMode.BY_INDEX
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
+    SUPPORTS_ALIAS_IN_HAVING = True
     NULL_WRAPPER = staticmethod(null_wrapper)
     TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
     HTTP_NOT_FOUND_PATTERN = "404 (Not Found)"

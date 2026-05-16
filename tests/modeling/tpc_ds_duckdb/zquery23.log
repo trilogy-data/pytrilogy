@@ -80,7 +80,7 @@ GROUP BY
     \"uneven\".\"sales_date_date\",
     \"uneven\".\"sales_item_desc_truncated\"
 HAVING
-    count(\"uneven\".\"sales_order_id\") > 4
+    \"ss_combo_count\" > 4
 ),
 macho as (
 SELECT
@@ -184,11 +184,10 @@ GROUP BY
     3,
     4,
     \"cheerful\".\"sales_item_id\",
-    \"cheerful\".\"sales_order_id\"),
-kaput as (
+    \"cheerful\".\"sales_order_id\")
 SELECT
-    \"friendly\".\"sales_customer_first_name\" as \"c_first_name\",
     \"friendly\".\"sales_customer_last_name\" as \"c_last_name\",
+    \"friendly\".\"sales_customer_first_name\" as \"c_first_name\",
     sum(CASE WHEN \"friendly\".\"sales_sales_channel\" in ('WEB','CATALOG') THEN \"friendly\".\"_virt_func_multiply_8507033399516423\" ELSE NULL END) as \"sales_total\"
 FROM
     \"friendly\"
@@ -196,16 +195,10 @@ GROUP BY
     1,
     2
 HAVING
-    sum(CASE WHEN \"friendly\".\"sales_sales_channel\" in ('WEB','CATALOG') THEN \"friendly\".\"_virt_func_multiply_8507033399516423\" ELSE NULL END) > 0
-)
-SELECT
-    \"kaput\".\"c_last_name\" as \"c_last_name\",
-    \"kaput\".\"c_first_name\" as \"c_first_name\",
-    \"kaput\".\"sales_total\" as \"sales_total\"
-FROM
-    \"kaput\"
+    \"sales_total\" > 0
+
 ORDER BY 
-    \"kaput\".\"c_last_name\" asc nulls first,
-    \"kaput\".\"c_first_name\" asc nulls first,
-    \"kaput\".\"sales_total\" asc nulls first
+    \"c_last_name\" asc nulls first,
+    \"c_first_name\" asc nulls first,
+    \"sales_total\" asc nulls first
 LIMIT (100)"""

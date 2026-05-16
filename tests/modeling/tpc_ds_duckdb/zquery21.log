@@ -1,5 +1,5 @@
 query_id = "21"
-gen_length = 2521
+gen_length = 1671
 preql_size = 810
 comp_size = 1014
 generated_sql = """
@@ -27,28 +27,10 @@ GROUP BY
     2
 HAVING
     CASE
-	WHEN sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
-	ELSE 0
-	END) > 0 THEN (sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
-	ELSE 0
-	END) * 1.0) / sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
-	ELSE 0
-	END)
+	WHEN \"inv_before\" > 0 THEN (\"inv_after\" * 1.0) / \"inv_before\"
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
-	WHEN sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
-	ELSE 0
-	END) > 0 THEN (sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
-	ELSE 0
-	END) * 1.0) / sum(CASE
-	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
-	ELSE 0
-	END)
+	WHEN \"inv_before\" > 0 THEN (\"inv_after\" * 1.0) / \"inv_before\"
 	ELSE null
 	END <= 3.0 / 2.0
 

@@ -567,6 +567,11 @@ class BaseDialect:
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
     SUPPORTS_AGGREGATE_GROUPING_MODES = False
+    # Whether HAVING can reference a SELECT-list output alias. True for
+    # DuckDB/BigQuery/Snowflake/MySQL; false for standard SQL (Postgres, MSSQL).
+    # Gates the aggregate-predicate -> HAVING pushdown and lets that HAVING
+    # render by alias instead of re-inlining the aggregate expression.
+    SUPPORTS_ALIAS_IN_HAVING = False
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
@@ -597,6 +602,10 @@ class BaseDialect:
         self.rendering = rendering or CONFIG.rendering
         self.config = config
         self.used_map: dict[str, set[str]] = defaultdict(set)
+        # When rendering a group CTE's HAVING on an alias-capable dialect,
+        # holds the set of SELECT-output addresses so concept references emit
+        # the alias instead of re-inlining the aggregate expression.
+        self._having_alias_addresses: set[str] | None = None
 
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.QUERY:
@@ -1232,6 +1241,13 @@ class BaseDialect:
                 and e.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
             ):
                 return f":{e.safe_address}"
+            if (
+                self._having_alias_addresses is not None
+                and e.address in self._having_alias_addresses
+            ):
+                # rendering a HAVING on an alias-capable dialect: the SELECT
+                # already computes this expression under e.safe_address
+                return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             if cte:
                 return self.render_concept_sql(
                     e,
@@ -1598,6 +1614,17 @@ class BaseDialect:
                     else:
                         having = having + x if having else x
 
+        rendered_where = self.render_expr(where, cte) if where else None
+        if having is not None and self.SUPPORTS_ALIAS_IN_HAVING:
+            # reference the SELECT alias rather than re-inlining the aggregate
+            self._having_alias_addresses = set(select_columns.keys())
+            try:
+                rendered_having: str | None = self.render_expr(having, cte)
+            finally:
+                self._having_alias_addresses = None
+        else:
+            rendered_having = self.render_expr(having, cte) if having else None
+
         logger.info(f"{LOGGER_PREFIX} {len(final_joins)} joins for cte {cte.name}")
         return CompiledCTE(
             name=cte.name,
@@ -1624,8 +1651,8 @@ class BaseDialect:
                     ]
                     if j
                 ],
-                where=(self.render_expr(where, cte) if where else None),
-                having=(self.render_expr(having, cte) if having else None),
+                where=rendered_where,
+                having=rendered_having,
                 order_by=(
                     [self.render_order_item(i, cte) for i in cte.order_by.items]
                     if cte.order_by
@@ -1737,12 +1764,26 @@ class BaseDialect:
                 if hooks:
                     for hook in hooks:
                         hook.process_select_info(statement)
-                output.append(process_query(environment, statement, hooks=hooks))
+                output.append(
+                    process_query(
+                        environment,
+                        statement,
+                        hooks=hooks,
+                        having_alias=self.SUPPORTS_ALIAS_IN_HAVING,
+                    )
+                )
             elif isinstance(statement, MultiSelectStatement):
                 if hooks:
                     for hook in hooks:
                         hook.process_multiselect_info(statement)
-                output.append(process_query(environment, statement, hooks=hooks))
+                output.append(
+                    process_query(
+                        environment,
+                        statement,
+                        hooks=hooks,
+                        having_alias=self.SUPPORTS_ALIAS_IN_HAVING,
+                    )
+                )
             elif isinstance(statement, RowsetDerivationStatement):
                 if hooks:
                     for hook in hooks:

@@ -17,6 +17,7 @@ from trilogy.core.optimizations.utils import (
     append_condition,
     condition_contains_atom,
     rebuild_and_condition,
+    strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
     condition_value_implies,
@@ -87,10 +88,42 @@ def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
     return is_child_of(condition, parent.condition)
 
 
+def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
+    """True if ``parent_name`` is on the nullable side of any outer join on
+    ``cte``. A nullable parent can be NULL-padded by the join, so rows whose
+    filter column is NULL slip through a removed predicate but would have
+    failed the original WHERE."""
+    for j in cte.joins or []:
+        if not isinstance(j, Join):
+            continue
+        if j.jointype == JoinType.INNER:
+            continue
+        if j.jointype in (JoinType.FULL, JoinType.LEFT_OUTER):
+            if (
+                isinstance(j.right_cte, (CTE, UnionCTE))
+                and j.right_cte.name == parent_name
+            ):
+                return True
+        if j.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER):
+            if (
+                isinstance(j.left_cte, (CTE, UnionCTE))
+                and j.left_cte.name == parent_name
+            ):
+                return True
+            for pair in j.joinkey_pairs or []:
+                cte_ref = getattr(pair, "cte", None)
+                if cte_ref is not None and cte_ref.name == parent_name:
+                    return True
+    return False
+
+
 class PredicatePushdown(OptimizationRule):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, having_alias: bool = False) -> None:
+        super().__init__()
         self.complete: dict[str, bool] = {}
+        # only relocate aggregate predicates into a group HAVING when the
+        # target dialect can reference SELECT aliases there
+        self.having_alias = having_alias
 
     def _push_into_union_branches(
         self,
@@ -393,27 +426,24 @@ class PredicatePushdown(OptimizationRule):
         candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
         inverse_map: dict[str, list[CTE | UnionCTE]],
     ) -> bool:
-        """Push a non-scalar (aggregate-result) predicate into a single group
-        parent so it renders as HAVING instead of an outer WHERE wrapper.
+        """Relocate a non-scalar (aggregate-result) predicate into a group
+        parent's HAVING and strip the now-redundant copy from every consumer.
 
-        Limited, provably-safe case: the predicate filters on aggregate columns
-        produced by ``parent_cte`` itself (a real GROUP BY), so moving the
-        filter into that group's HAVING is identical to filtering its output
-        downstream. The renderer already splits a group CTE's condition into
-        WHERE (scalar atoms) and HAVING (non-scalar atoms), so we only have to
-        relocate the atom; appending it is safe even if the parent already
-        carries a scalar WHERE.
+        Filtering inside the group is identical to filtering its output
+        downstream, and pushing it *before* the consumers' joins/aggregations
+        prunes rows early (e.g. usa_names: filter names in the by-name group so
+        the join back to the base table sees only qualifying names). The
+        renderer splits a group CTE's condition into WHERE (scalar atoms) and
+        HAVING (non-scalar atoms) and emits the HAVING by alias, so the
+        relocation neither changes results nor bloats the SQL.
+
+        Safe because: the predicate's columns are produced by ``parent_cte``
+        (a real GROUP BY); every consumer already AND-carries the atom; and no
+        consumer leaves ``parent_cte`` on the nullable side of an outer join,
+        so each consumer row maps to a surviving HAVING-passed group row and
+        the consumer copy is genuinely redundant.
         """
         if not isinstance(parent_cte, CTE):
-            return False
-        # Only relocate when the consumer is a pure passthrough of the group,
-        # so PredicatePushdownRemove strips its now-redundant condition and the
-        # HAVING *replaces* the filter. A consumer that also joins base tables
-        # (its source carries a BuildDatasource) keeps its WHERE, so pushing
-        # would just duplicate the (inlined) aggregate predicate.
-        if not isinstance(cte, CTE) or cte.joins:
-            return False
-        if any(isinstance(d, BuildDatasource) for d in cte.source.datasources):
             return False
         # A HAVING is only valid where a GROUP BY is emitted.
         if not parent_cte.group_to_grain:
@@ -433,20 +463,34 @@ class PredicatePushdown(OptimizationRule):
             return False
         if is_child_of(candidate, parent_cte.condition):
             return False
-        # every consumer of the group must already carry this atom, otherwise
-        # filtering inside the group changes results for the other consumers
         children = inverse_map.get(parent_cte.name, [])
-        if not children or not all(
-            is_child_of(candidate, child.condition) for child in children
-        ):
+        if not children:
             return False
+        for child in children:
+            # every consumer must AND-carry the atom (else filtering in the
+            # group changes its result) and source the filtered columns from
+            # this group, with the group non-nullable in the child (else a
+            # NULL-padded row would bypass the now-removed predicate)
+            if not isinstance(child, CTE):
+                return False
+            if not is_child_of(candidate, child.condition):
+                return False
+            if _parent_nullable_in_cte(child, parent_cte.name):
+                return False
+            for addr in row_conditions:
+                if parent_cte.name not in (child.source_map.get(addr) or []):
+                    return False
         if parent_cte.condition:
             parent_cte.condition = append_condition(parent_cte.condition, candidate)
         else:
             parent_cte.condition = candidate
+        for child in children:
+            assert isinstance(child, CTE)
+            child.condition = strip_condition_atom(child.condition, candidate)
         self.log(
-            f"Pushed aggregate predicate {candidate} into group parent "
-            f"{parent_cte.name} as HAVING"
+            f"Relocated aggregate predicate {candidate} into group parent "
+            f"{parent_cte.name} as HAVING; stripped redundant copy from "
+            f"{[c.name for c in children]}"
         )
         return True
 
@@ -481,25 +525,15 @@ class PredicatePushdown(OptimizationRule):
             f"Have {len(candidates)} candidates to try to push down from parent {type(cte.condition)}"
         )
         optimized = False
-        # HAVING inlines the aggregate expression (no SELECT-alias reference in
-        # portable SQL), so relocating a predicate that names the same concept
-        # repeatedly duplicates a potentially huge expression. Only attempt the
-        # HAVING pushdown when every concept in the relocated predicate is
-        # referenced once (q39: cov1/cov2 once each -> push; q58: sums named
-        # across 6 BETWEENs -> keep the compact outer-WHERE-by-alias form).
-        nonscalar_refs: dict[str, int] = {}
-        for cand in candidates:
-            if is_scalar_condition(cand) or not isinstance(cand, BuildConceptArgs):
-                continue
-            for arg in cand.row_arguments:
-                nonscalar_refs[arg.address] = nonscalar_refs.get(arg.address, 0) + 1
-        having_pushdown_safe = all(v <= 1 for v in nonscalar_refs.values())
         for candidate in candidates:
             if not is_scalar_condition(candidate):
-                if not having_pushdown_safe:
+                # Aggregate-result predicate: can't push as WHERE, but a group
+                # parent can carry it as HAVING (alias-rendered, so no size
+                # blowup). Gated on the dialect supporting HAVING-by-alias.
+                if not self.having_alias:
                     self.debug(
-                        f"Skipping non-scalar {candidate}; relocating would "
-                        "duplicate an inlined aggregate expression"
+                        f"Skipping non-scalar {candidate}; dialect has no "
+                        "HAVING-by-alias support"
                     )
                     continue
                 self.debug(
@@ -577,37 +611,7 @@ class PredicatePushdownRemove(OptimizationRule):
         return all(_parent_covers_condition(p, atom) for p in relevant_parents)
 
     def _parent_is_nullable_in_cte(self, cte: CTE, parent_name: str) -> bool:
-        """True if ``parent_name`` is on the nullable side of any outer join
-        on ``cte``. A nullable parent can be NULL-padded by the join, and
-        rows whose filter column is NULL pass through a removed predicate
-        but would have failed the original WHERE."""
-        for j in cte.joins or []:
-            if not isinstance(j, Join):
-                continue
-            if j.jointype == JoinType.INNER:
-                continue
-            # right side is nullable on FULL/LEFT_OUTER
-            if j.jointype in (JoinType.FULL, JoinType.LEFT_OUTER):
-                if (
-                    isinstance(j.right_cte, (CTE, UnionCTE))
-                    and j.right_cte.name == parent_name
-                ):
-                    return True
-            # left side is nullable on FULL/RIGHT_OUTER
-            if j.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER):
-                if (
-                    isinstance(j.left_cte, (CTE, UnionCTE))
-                    and j.left_cte.name == parent_name
-                ):
-                    return True
-                # implicit left from joinkey_pairs.cte (inlined left case)
-                for pair in j.joinkey_pairs or []:
-                    cte_ref = getattr(pair, "cte", None)
-                    if cte_ref is not None and cte_ref.name == parent_name:
-                        return True
-        # BaseJoins on cte.source.joins target datasources, not CTEs by
-        # name, so they can't render a parent_name CTE nullable.
-        return False
+        return _parent_nullable_in_cte(cte, parent_name)
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
