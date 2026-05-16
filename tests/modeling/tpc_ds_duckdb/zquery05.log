@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 10420
+gen_length = 10516
 preql_size = 2305
 comp_size = 4238
 generated_sql = """
@@ -187,8 +187,8 @@ divergent as (
 SELECT
     \"kaput\".\"channel_label\" as \"channel\",
     \"kaput\".\"sales_id_label\" as \"id\",
-    sum(\"kaput\".\"sales_ext_sales_price\") as \"sales_total_a\",
-    sum(\"kaput\".\"sales_net_profit\") as \"profit_only_a\"
+    sum(\"kaput\".\"sales_ext_sales_price\") as \"_q5_results_sales_total_a\",
+    sum(\"kaput\".\"sales_net_profit\") as \"_q5_results_profit_only_a\"
 FROM
     \"kaput\"
 GROUP BY
@@ -197,8 +197,8 @@ concerned as (
 SELECT
     \"vacuous\".\"channel_label\" as \"channel\",
     \"vacuous\".\"return_id_label\" as \"id\",
-    sum(coalesce(\"vacuous\".\"sales_return_amount\",0)) as \"returns_total_b\",
-    sum(coalesce(\"vacuous\".\"sales_return_net_loss\",0)) as \"loss_only_b\"
+    sum(coalesce(\"vacuous\".\"sales_return_amount\",0)) as \"_q5_results_returns_total_b\",
+    sum(coalesce(\"vacuous\".\"sales_return_net_loss\",0)) as \"_q5_results_loss_only_b\"
 FROM
     \"vacuous\"
 GROUP BY
@@ -206,9 +206,9 @@ GROUP BY
 SELECT
     coalesce(\"concerned\".\"channel\",\"divergent\".\"channel\") as \"q5_results_channel\",
     coalesce(\"concerned\".\"id\",\"divergent\".\"id\") as \"q5_results_id\",
-    coalesce(\"divergent\".\"sales_total_a\",0.0) as \"sales\",
-    coalesce(\"concerned\".\"returns_total_b\",0.0) as \"returns_\",
-    coalesce(\"divergent\".\"profit_only_a\",0.0) - coalesce(\"concerned\".\"loss_only_b\",0.0) as \"profit\"
+    coalesce(\"divergent\".\"_q5_results_sales_total_a\",0.0) as \"sales\",
+    coalesce(\"concerned\".\"_q5_results_returns_total_b\",0.0) as \"returns_\",
+    coalesce(\"divergent\".\"_q5_results_profit_only_a\",0.0) - coalesce(\"concerned\".\"_q5_results_loss_only_b\",0.0) as \"profit\"
 FROM
     \"divergent\"
     FULL JOIN \"concerned\" on \"divergent\".\"channel\" is not distinct from \"concerned\".\"channel\" AND \"divergent\".\"id\" is not distinct from \"concerned\".\"id\"

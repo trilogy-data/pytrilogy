@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 7640
+gen_length = 7736
 preql_size = 1608
 comp_size = 2441
 generated_sql = """
@@ -37,7 +37,7 @@ GROUP BY
     4),
 sweltering as (
 SELECT
-    \"concerned\".\"sales_customer_id\" as \"best_customer_id\",
+    \"concerned\".\"sales_customer_id\" as \"_best_customers_best_customer_id\",
     sum(\"concerned\".\"sales_quantity\" * \"concerned\".\"sales_sales_price\") as \"customer_total_overall\"
 FROM
     \"concerned\"
@@ -71,7 +71,7 @@ FROM
     \"young\"),
 yummy as (
 SELECT
-    \"uneven\".\"sales_item_id\" as \"frequent_item_id\",
+    \"uneven\".\"sales_item_id\" as \"_frequent_items_frequent_item_id\",
     \"uneven\".\"ss_combo_count\" as \"ss_combo_count\"
 FROM
     \"uneven\"
@@ -81,14 +81,14 @@ GROUP BY
 late as (
 SELECT
     \"abhorrent\".\"max_total_cmax\" as \"max_total_cmax\",
-    \"sweltering\".\"best_customer_id\" as \"best_customer_id\",
+    \"sweltering\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\",
     \"sweltering\".\"customer_total_overall\" as \"customer_total_overall\"
 FROM
     \"sweltering\"
     FULL JOIN \"abhorrent\" on 1=1),
 juicy as (
 SELECT
-    \"yummy\".\"frequent_item_id\" as \"frequent_items_frequent_item_id\"
+    \"yummy\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
 FROM
     \"yummy\"
 WHERE
@@ -98,7 +98,7 @@ GROUP BY
     1),
 macho as (
 SELECT
-    \"late\".\"best_customer_id\" as \"best_customers_best_customer_id\"
+    \"late\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
 FROM
     \"late\"
 WHERE

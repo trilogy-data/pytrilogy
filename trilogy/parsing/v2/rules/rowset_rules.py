@@ -8,7 +8,6 @@ from trilogy.parsing.v2.rules_context import (
     NodeHydrator,
     RuleContext,
     core_meta,
-    hydrated_children,
 )
 from trilogy.parsing.v2.select_finalize import finalize_select_tree
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
@@ -19,11 +18,17 @@ def rowset_derivation_statement(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> RowsetDerivationStatement:
-    args = hydrated_children(node, hydrate)
-    name = str(args[0])
-    select = args[1]
+    children = list(node.children)
+    # Hydrate the rowset name first so the scope is active before the
+    # SELECT body is hydrated: SELECT aliases declared inside the body
+    # must be namespaced to this rowset (see SemanticState.rowset_alias_scope).
+    name = str(hydrate(children[0]))
+    with context.semantic_state.rowset_alias_scope(name):
+        rest = [hydrate(child) for child in children[1:]]
+    select = rest[0]
     # rowset_to_concepts_v2 relies on as_lineage, which needs the inner
-    # select(s) finalized before lineage conversion.
+    # select(s) finalized before lineage conversion. finalize runs outside
+    # the scope intentionally — it operates on already-resolved addresses.
     finalize_select_tree(select, context)
     output = RowsetDerivationStatement(
         name=name,

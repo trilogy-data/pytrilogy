@@ -1185,9 +1185,9 @@ class BaseDialect:
                 return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e.content])} )"
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} )"
         elif isinstance(e, CASE_WHEN_ITEMS):
-            return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
+            return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
         elif isinstance(e, BuildCaseSimpleWhen):
-            return f"{self.render_expr(e.value_expr, cte=cte, cte_map=cte_map)} THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            return f"{self.render_expr(e.value_expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, CASE_ELSE_ITEMS):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
         elif isinstance(e, FUNCTION_ITEMS):

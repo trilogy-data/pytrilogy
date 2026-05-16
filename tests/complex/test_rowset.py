@@ -111,3 +111,158 @@ select
 ;
     """
     env, parsed = parse(declarations)
+
+
+def test_rowset_alias_name_collision() -> None:
+    # Two rowsets aliasing different source concepts to the SAME output name
+    # ("cust_id") must produce independent results: buyers_a.cust_id should
+    # project bill, buyers_b.cust_id should project ship. The shared `id`
+    # key in both rowsets gives discovery a join target so the outer SELECT
+    # is resolvable; the alias collision is the part this test exercises.
+    declarations = """
+key id int;
+key bill_id int;
+key ship_id int;
+
+datasource orders (
+    id: id,
+    bill: bill_id,
+    ship: ship_id,
+)
+grain (id)
+address orders;
+
+with buyers_a as
+SELECT
+    id,
+    bill_id as cust_id
+;
+
+with buyers_b as
+SELECT
+    id,
+    ship_id as cust_id
+;
+
+SELECT
+    id,
+    buyers_a.cust_id as a_cust,
+    buyers_b.cust_id as b_cust,
+;
+"""
+    from trilogy import Dialects
+    from trilogy.dialect.config import DuckDBConfig
+
+    env = Environment()
+    engine = Dialects.DUCK_DB.default_executor(environment=env, conf=DuckDBConfig())
+    sql = engine.generate_sql(declarations)[-1]
+    assert (
+        '"orders"."bill" as "buyers_a_cust_id"' in sql
+    ), f"buyers_a.cust_id should project bill, sql was:\n{sql}"
+    assert (
+        '"orders"."ship" as "buyers_b_cust_id"' in sql
+    ), f"buyers_b.cust_id should project ship, sql was:\n{sql}"
+
+
+def test_rowset_alias_name_collision_lineage() -> None:
+    declarations = """
+key id int;
+key bill_id int;
+key ship_id int;
+
+datasource orders (
+    id: id,
+    bill: bill_id,
+    ship: ship_id,
+)
+grain (id)
+address orders;
+
+with buyers_a as
+SELECT
+    bill_id as cust_id
+;
+
+with buyers_b as
+SELECT
+    ship_id as cust_id
+;
+"""
+    env = Environment()
+    env.parse(declarations)
+
+    def trace_to_root(c):
+        seen = []
+        while c is not None and getattr(c, "lineage", None) is not None:
+            seen.append(c.address)
+            lineage = c.lineage
+            inner = None
+            if hasattr(lineage, "content"):
+                inner = env.concepts.get(lineage.content.address)
+            elif hasattr(lineage, "arguments") and lineage.arguments:
+                arg = lineage.arguments[0]
+                if hasattr(arg, "address"):
+                    inner = env.concepts.get(arg.address)
+            c = inner
+        if c is not None:
+            seen.append(c.address)
+        return seen
+
+    a_chain = trace_to_root(env.concepts["buyers_a.cust_id"])
+    b_chain = trace_to_root(env.concepts["buyers_b.cust_id"])
+    assert (
+        a_chain[-1] == "local.bill_id"
+    ), f"buyers_a.cust_id should resolve to local.bill_id but chain is {a_chain}"
+    assert (
+        b_chain[-1] == "local.ship_id"
+    ), f"buyers_b.cust_id should resolve to local.ship_id but chain is {b_chain}"
+
+
+def test_rowset_alias_collision_distinct_aggregates() -> None:
+    # Two rowsets aliasing *different aggregates* to the same name `total`.
+    # Each alias is private to its rowset, so rs_a.total must aggregate
+    # count(x) and rs_b.total must aggregate sum(y) with no cross-talk and
+    # no INVALID_REFERENCE_BUG. Invariant guard for the per-rowset alias
+    # namespacing (complements the column-alias collision tests above).
+    declarations = """
+key id int;
+property id.x int;
+property id.y int;
+property id.grp_key int;
+
+datasource facts (
+    id: id,
+    x: x,
+    y: y,
+    grp: grp_key,
+)
+grain (id)
+address facts;
+
+with rs_a as
+SELECT
+    grp_key,
+    count(x) -> total
+;
+
+with rs_b as
+SELECT
+    grp_key,
+    sum(y) -> total
+;
+
+SELECT
+    grp_key,
+    rs_a.total as a,
+    rs_b.total as b,
+;
+"""
+    from trilogy import Dialects
+    from trilogy.dialect.config import DuckDBConfig
+
+    env = Environment()
+    engine = Dialects.DUCK_DB.default_executor(environment=env, conf=DuckDBConfig())
+    sql = engine.generate_sql(declarations)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql, sql
+    assert 'count("facts"."x")' in sql, f"rs_a.total should be count(x):\n{sql}"
+    assert 'sum("facts"."y")' in sql, f"rs_b.total should be sum(y):\n{sql}"
