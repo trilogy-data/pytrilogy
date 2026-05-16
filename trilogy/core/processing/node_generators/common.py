@@ -4,7 +4,7 @@ from typing import Callable, Dict, Iterable, List, Set, Tuple, cast
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import BooleanOperator, Derivation, Purpose
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -23,7 +23,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
     condition_implies,
+    condition_required_addresses,
     decompose_condition,
 )
 from trilogy.core.processing.nodes import (
@@ -72,25 +74,7 @@ def _condition_available_from_parents(
         for parent in parents
         for concept in parent.usable_outputs
     }
-    required = {
-        concept.canonical_address
-        for concept in condition.row_arguments
-        if concept.derivation != Derivation.CONSTANT
-    }
-    return required.issubset(available)
-
-
-def _condition_from_atoms(
-    atoms: list[ConditionExpression],
-) -> ConditionExpression | None:
-    if not atoms:
-        return None
-    condition = atoms[0]
-    for atom in atoms[1:]:
-        condition = BuildConditional(
-            left=condition, right=atom, operator=BooleanOperator.AND
-        )
-    return condition
+    return condition_required_addresses(condition).issubset(available)
 
 
 def _local_property_conditions(
@@ -132,7 +116,7 @@ def _local_property_conditions(
             atoms.append(atom)
             condition_concepts.extend(extra_concepts + lineage_concepts)
             available.update(extra_addresses | lineage_addresses)
-    condition = _condition_from_atoms(atoms)
+    condition = combine_condition_atoms(atoms)
     if condition is None:
         return None, []
     return BuildWhereClause(conditional=condition), unique(

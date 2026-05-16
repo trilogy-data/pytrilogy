@@ -1,7 +1,6 @@
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
-    BooleanOperator,
     Derivation,
     Granularity,
     JoinType,
@@ -16,7 +15,6 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildGrain,
     BuildUnionDatasource,
@@ -28,6 +26,8 @@ from trilogy.core.processing.aggregate_rollup import (
     get_additive_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
+    condition_required_addresses,
     decompose_condition,
     is_scalar_condition,
     merge_conditions,
@@ -293,6 +293,10 @@ def _source_concepts_via_graph(
             break
         if not pruned:
             continue
+        # On the augmented attempt the concept set was widened with filter-only
+        # columns; the originally requested concepts still define grain so a
+        # finer source gets regrouped instead of fanning the request out.
+        requested_concepts = orig_concepts if concepts is not orig_concepts else None
         candidates = [
             create_select_node_candidate(
                 k,
@@ -346,7 +350,7 @@ def _source_concepts_via_graph(
                         for filtered, unfiltered in zip(candidates, trial, strict=True)
                     ]
                     pushed = _condition_atoms_applied_by_candidates(grouped_candidates)
-                    remaining = _condition_from_atoms(
+                    remaining = combine_condition_atoms(
                         [
                             atom
                             for atom in decompose_condition(conditions.conditional)
@@ -388,6 +392,7 @@ def _source_concepts_via_graph(
                 environment=environment,
                 depth=depth,
                 defer_group=defer_group,
+                requested_concepts=requested_concepts,
             )
             for candidate in candidates
         ]
@@ -431,12 +436,7 @@ def _sourceable_condition_atoms(
             continue
         if not is_scalar_condition(atom):
             continue
-        atom_addresses = {
-            c.canonical_address
-            for c in atom.row_arguments
-            if c.derivation != Derivation.CONSTANT
-        }
-        if atom_addresses.issubset(available):
+        if condition_required_addresses(atom).issubset(available):
             sourceable.append(atom)
     return sourceable
 
@@ -473,35 +473,16 @@ def _condition_source_concepts(
     return concepts
 
 
-def _condition_from_atoms(
-    atoms: list[ConditionExpression],
-) -> ConditionExpression | None:
-    if not atoms:
-        return None
-    condition = atoms[0]
-    for atom in atoms[1:]:
-        condition = BuildConditional(
-            left=condition, right=atom, operator=BooleanOperator.AND
-        )
-    return condition
-
-
-def _condition_atoms_applied_by_candidates(
-    candidates: list[SourceNodeCandidate],
-) -> list[ConditionExpression]:
+def _node_condition_atoms(node: StrategyNode) -> list[ConditionExpression]:
     atoms: list[ConditionExpression] = []
-    for candidate in candidates:
-        for expr in (
-            candidate.node.conditions,
-            candidate.node.preexisting_conditions,
-        ):
-            if expr is not None:
-                atoms.extend(decompose_condition(expr))
+    for expr in (node.conditions, node.preexisting_conditions):
+        if expr is not None:
+            atoms.extend(decompose_condition(expr))
     return atoms
 
 
-def _condition_can_apply_after_merge(
-    candidates: list[SourceNodeCandidate],
+def _condition_can_apply_after_node_merge(
+    nodes: list[StrategyNode],
     condition: ConditionExpression,
 ) -> bool:
     if not is_scalar_condition(condition):
@@ -513,17 +494,23 @@ def _condition_can_apply_after_merge(
         for arg in group
     ):
         return False
-    available = {
-        c.canonical_address
-        for candidate in candidates
-        for c in candidate.node.usable_outputs
-    }
-    required = {
-        c.canonical_address
-        for c in condition.row_arguments
-        if c.derivation != Derivation.CONSTANT
-    }
-    return required.issubset(available)
+    available = {c.canonical_address for node in nodes for c in node.usable_outputs}
+    return condition_required_addresses(condition).issubset(available)
+
+
+def _condition_atoms_applied_by_candidates(
+    candidates: list[SourceNodeCandidate],
+) -> list[ConditionExpression]:
+    return [a for c in candidates for a in _node_condition_atoms(c.node)]
+
+
+def _condition_can_apply_after_merge(
+    candidates: list[SourceNodeCandidate],
+    condition: ConditionExpression,
+) -> bool:
+    return _condition_can_apply_after_node_merge(
+        [c.node for c in candidates], condition
+    )
 
 
 def _candidates_route_conditions(
@@ -531,7 +518,7 @@ def _candidates_route_conditions(
     conditions: BuildWhereClause,
 ) -> bool:
     pushed = _condition_atoms_applied_by_candidates(candidates)
-    remaining = _condition_from_atoms(
+    remaining = combine_condition_atoms(
         [
             atom
             for atom in decompose_condition(conditions.conditional)
@@ -545,15 +532,9 @@ def _parents_apply_condition_atoms(
     parents: list[StrategyNode],
     conditions: BuildWhereClause,
 ) -> bool:
-    parent_atoms: list[list[ConditionExpression]] = []
-    for parent in parents:
-        atoms = []
-        for expr in (parent.conditions, parent.preexisting_conditions):
-            if expr is not None:
-                atoms.extend(decompose_condition(expr))
-        parent_atoms.append(atoms)
-    if not parent_atoms:
+    if not parents:
         return False
+    parent_atoms = [_node_condition_atoms(parent) for parent in parents]
     for atom in decompose_condition(conditions.conditional):
         if any(arg for group in atom.existence_arguments for arg in group):
             return False
@@ -566,12 +547,8 @@ def _condition_remaining_after_parents(
     parents: list[StrategyNode],
     conditions: BuildWhereClause,
 ) -> ConditionExpression | None:
-    parent_atoms = []
-    for parent in parents:
-        for expr in (parent.conditions, parent.preexisting_conditions):
-            if expr is not None:
-                parent_atoms.extend(decompose_condition(expr))
-    return _condition_from_atoms(
+    parent_atoms = [a for parent in parents for a in _node_condition_atoms(parent)]
+    return combine_condition_atoms(
         [
             atom
             for atom in decompose_condition(conditions.conditional)
@@ -584,24 +561,7 @@ def _condition_can_apply_after_parent_merge(
     parents: list[StrategyNode],
     condition: ConditionExpression,
 ) -> bool:
-    if not is_scalar_condition(condition):
-        return False
-    if any(
-        arg
-        for atom in decompose_condition(condition)
-        for group in atom.existence_arguments
-        for arg in group
-    ):
-        return False
-    available = {
-        c.canonical_address for parent in parents for c in parent.usable_outputs
-    }
-    required = {
-        c.canonical_address
-        for c in condition.row_arguments
-        if c.derivation != Derivation.CONSTANT
-    }
-    return required.issubset(available)
+    return _condition_can_apply_after_node_merge(parents, condition)
 
 
 def gen_select_merge_node(
