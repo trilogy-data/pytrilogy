@@ -1,5 +1,5 @@
 query_id = "68"
-gen_length = 3026
+gen_length = 3050
 preql_size = 1179
 comp_size = 1453
 generated_sql = """
@@ -19,9 +19,9 @@ SELECT
     \"store_sales_sale_address_customer_address\".\"CA_CITY\" as \"store_sales_sale_address_city\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"list_price\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"extended_price\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_TAX\") as \"extended_tax\"
+    sum(\"store_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"_dn_list_price\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"_dn_extended_price\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_TAX\") as \"_dn_extended_tax\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
@@ -41,9 +41,9 @@ SELECT
     \"wakeful\".\"customer_address_city\" as \"dn_customer_address_city\",
     \"uneven\".\"store_sales_sale_address_city\" as \"dn_store_sales_sale_address_city\",
     \"uneven\".\"store_sales_ticket_number\" as \"dn_store_sales_ticket_number\",
-    \"uneven\".\"extended_price\" as \"dn_extended_price\",
-    \"uneven\".\"extended_tax\" as \"dn_extended_tax\",
-    \"uneven\".\"list_price\" as \"dn_list_price\"
+    \"uneven\".\"_dn_extended_price\" as \"dn_extended_price\",
+    \"uneven\".\"_dn_extended_tax\" as \"dn_extended_tax\",
+    \"uneven\".\"_dn_list_price\" as \"dn_list_price\"
 FROM
     \"uneven\"
     INNER JOIN \"wakeful\" on \"uneven\".\"customer_id\" is not distinct from \"wakeful\".\"customer_id\"

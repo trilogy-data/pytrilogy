@@ -53,7 +53,22 @@ class AliasUpdate:
 class RowsetConceptResult:
     concepts: list[Concept]
     alias_updates: list[AliasUpdate] = field(default_factory=list)
-    private_concepts: list[Concept] = field(default_factory=list)
+
+
+def _unmangle_alias_name(name: str, rowset_name: str) -> str:
+    """Recover the user-facing alias name from its hidden per-rowset name.
+
+    SELECT aliases declared inside a rowset are stored under the hidden
+    name ``_{rowset_name}_{name}`` (see
+    ``SemanticState.mangle_rowset_alias``). The rowset *output* concept
+    must carry the user-facing name (``cust_id``, not
+    ``_buyers_a_cust_id``). ``rowset_name`` is exact here, so stripping
+    the precise prefix is unambiguous even when names contain underscores.
+    """
+    prefix = f"_{rowset_name}_"
+    if name.startswith(prefix):
+        return name[len(prefix) :]
+    return name
 
 
 def rowset_output_namespace(
@@ -82,16 +97,18 @@ def _rowset_concept(
     orig: dict[str, Concept],
     orig_map: dict[str, Concept],
     alias_updates: list[AliasUpdate],
-    private_concepts: list[Concept],
 ) -> None:
     orig_concept = context.concepts.require(orig_address.address)
-    name = orig_concept.name
+    name = _unmangle_alias_name(orig_concept.name, rowset.name)
     if isinstance(orig_concept.lineage, FilterItem):
         lineage = orig_concept.lineage
         if lineage.where == rowset.select.where_clause and isinstance(
             lineage.content, (ConceptRef, Concept)
         ):
-            name = context.concepts.require(lineage.content.address).name
+            name = _unmangle_alias_name(
+                context.concepts.require(lineage.content.address).name,
+                rowset.name,
+            )
     base_namespace = rowset_output_namespace(
         rowset.name, rowset.namespace, orig_concept.namespace
     )
@@ -126,37 +143,7 @@ def _rowset_concept(
         )
     for equivalent_address in orig_concept.equivalent_addresses:
         orig[equivalent_address] = new_concept
-    # SELECT alias concepts (`expr as cust_id`) share a single
-    # `local.cust_id` address across rowsets; the next rowset's SELECT
-    # clobbers the prior one and breaks RowsetItem.content resolution at
-    # render time. Snapshot the alias source into a rowset-private
-    # address so each rowset has stable lineage. The snapshot keeps the
-    # original SELECT-alias address as a pseudonym so render-time CTE
-    # column lookup falls back to the inner CTE's projection.
-    lineage_source = orig_concept
-    if (
-        orig_concept.metadata
-        and orig_concept.metadata.concept_source == ConceptSource.SELECT
-    ):
-        snapshot_pseudonyms = set(orig_concept.pseudonyms)
-        snapshot_pseudonyms.add(orig_concept.address)
-        snapshot = Concept(
-            name=f"_alias_{orig_concept.name}",
-            datatype=orig_concept.datatype,
-            purpose=orig_concept.purpose,
-            derivation=orig_concept.derivation,
-            granularity=orig_concept.granularity,
-            metadata=Metadata(concept_source=ConceptSource.CTE),
-            lineage=orig_concept.lineage,
-            namespace=rowset.name,
-            keys=set(orig_concept.keys) if orig_concept.keys else None,
-            grain=orig_concept.grain,
-            modifiers=list(orig_concept.modifiers),
-            pseudonyms=snapshot_pseudonyms,
-        )
-        private_concepts.append(snapshot)
-        lineage_source = snapshot
-    orig_map[new_concept.address] = lineage_source
+    orig_map[new_concept.address] = orig_concept
     pre_output.append(new_concept)
 
 
@@ -175,7 +162,6 @@ def rowset_to_concepts_v2(
     orig: dict[str, Concept] = {}
     orig_map: dict[str, Concept] = {}
     alias_updates: list[AliasUpdate] = []
-    private_concepts: list[Concept] = []
     for orig_address in rowset.select.output_components:
         _rowset_concept(
             orig_address,
@@ -185,7 +171,6 @@ def rowset_to_concepts_v2(
             orig,
             orig_map,
             alias_updates,
-            private_concepts,
         )
     select_lineage = rowset.select.as_lineage(context.environment)
     for x in pre_output:
@@ -211,7 +196,6 @@ def rowset_to_concepts_v2(
     return RowsetConceptResult(
         concepts=pre_output,
         alias_updates=alias_updates,
-        private_concepts=private_concepts,
     )
 
 

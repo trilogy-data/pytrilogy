@@ -1,5 +1,5 @@
 query_id = "70"
-gen_length = 2701
+gen_length = 2725
 preql_size = 1517
 comp_size = 1258
 generated_sql = """
@@ -20,13 +20,13 @@ GROUP BY
     1),
 cooperative as (
 SELECT
-    \"cheerful\".\"ss_store_state\" as \"ts_state\",
+    \"cheerful\".\"ss_store_state\" as \"_top_states_ts_state\",
     rank() over (order by \"cheerful\".\"state_total\" desc ) as \"state_rnk\"
 FROM
     \"cheerful\"),
 questionable as (
 SELECT
-    \"cooperative\".\"ts_state\" as \"top_states_ts_state\"
+    \"cooperative\".\"_top_states_ts_state\" as \"top_states_ts_state\"
 FROM
     \"cooperative\"
 WHERE

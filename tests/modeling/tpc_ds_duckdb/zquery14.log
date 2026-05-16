@@ -1,5 +1,5 @@
 query_id = "14"
-gen_length = 6441
+gen_length = 6794
 preql_size = 2071
 comp_size = 4229
 generated_sql = """
@@ -60,7 +60,7 @@ GROUP BY
     2),
 abundant as (
 SELECT
-    \"questionable\".\"tuple_key\" as \"ci_tuple_key\",
+    \"questionable\".\"tuple_key\" as \"_cross_tuples_ci_tuple_key\",
     count(distinct \"questionable\".\"sales_sales_channel\") as \"cross_channel_count\"
 FROM
     \"questionable\"
@@ -68,7 +68,7 @@ GROUP BY
     1),
 uneven as (
 SELECT
-    \"abundant\".\"ci_tuple_key\" as \"cross_tuples_ci_tuple_key\"
+    \"abundant\".\"_cross_tuples_ci_tuple_key\" as \"cross_tuples_ci_tuple_key\"
 FROM
     \"abundant\"
 WHERE
@@ -110,17 +110,17 @@ FROM
     \"yummy\"),
 vacuous as (
 SELECT
-    \"yummy\".\"sales_item_brand_id\" as \"brand_l0\",
-    \"yummy\".\"sales_item_category_id\" as \"category_l0\",
-    \"yummy\".\"sales_item_class_id\" as \"class_l0\",
+    \"yummy\".\"sales_item_brand_id\" as \"_l0_filtered_brand_l0\",
+    \"yummy\".\"sales_item_category_id\" as \"_l0_filtered_category_l0\",
+    \"yummy\".\"sales_item_class_id\" as \"_l0_filtered_class_l0\",
     CASE
 	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 'store'
 	WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
 	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 'web'
 	ELSE null
-	END as \"channel_l0\",
-    sum(\"juicy\".\"fact_row_one\") as \"bucket_count_l0\",
-    sum(\"yummy\".\"sales_quantity\" * \"yummy\".\"sales_list_price\") as \"bucket_sum_l0\"
+	END as \"_l0_filtered_channel_l0\",
+    sum(\"juicy\".\"fact_row_one\") as \"_l0_filtered_bucket_count_l0\",
+    sum(\"yummy\".\"sales_quantity\" * \"yummy\".\"sales_list_price\") as \"_l0_filtered_bucket_sum_l0\"
 FROM
     \"juicy\"
     INNER JOIN \"yummy\" on \"juicy\".\"sales_item_id\" = \"yummy\".\"sales_item_id\" AND \"juicy\".\"sales_order_id\" = \"yummy\".\"sales_order_id\" AND \"juicy\".\"sales_sales_channel\" = \"yummy\".\"sales_sales_channel\"
@@ -131,28 +131,28 @@ GROUP BY
     4),
 abhorrent as (
 SELECT
-    \"vacuous\".\"brand_l0\" as \"brand_l0\",
-    \"vacuous\".\"bucket_count_l0\" as \"bucket_count_l0\",
-    \"vacuous\".\"bucket_sum_l0\" as \"bucket_sum_l0\",
-    \"vacuous\".\"category_l0\" as \"category_l0\",
-    \"vacuous\".\"channel_l0\" as \"channel_l0\",
-    \"vacuous\".\"class_l0\" as \"class_l0\",
+    \"vacuous\".\"_l0_filtered_brand_l0\" as \"_l0_filtered_brand_l0\",
+    \"vacuous\".\"_l0_filtered_bucket_count_l0\" as \"_l0_filtered_bucket_count_l0\",
+    \"vacuous\".\"_l0_filtered_bucket_sum_l0\" as \"_l0_filtered_bucket_sum_l0\",
+    \"vacuous\".\"_l0_filtered_category_l0\" as \"_l0_filtered_category_l0\",
+    \"vacuous\".\"_l0_filtered_channel_l0\" as \"_l0_filtered_channel_l0\",
+    \"vacuous\".\"_l0_filtered_class_l0\" as \"_l0_filtered_class_l0\",
     \"young\".\"avg_sales_average_sales\" as \"avg_sales_average_sales\"
 FROM
     \"young\"
     FULL JOIN \"vacuous\" on 1=1),
 sweltering as (
 SELECT
-    \"abhorrent\".\"brand_l0\" as \"l0_filtered_brand_l0\",
-    \"abhorrent\".\"bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
-    \"abhorrent\".\"bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
-    \"abhorrent\".\"category_l0\" as \"l0_filtered_category_l0\",
-    \"abhorrent\".\"channel_l0\" as \"l0_filtered_channel_l0\",
-    \"abhorrent\".\"class_l0\" as \"l0_filtered_class_l0\"
+    \"abhorrent\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
+    \"abhorrent\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
+    \"abhorrent\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
+    \"abhorrent\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
+    \"abhorrent\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
+    \"abhorrent\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
 FROM
     \"abhorrent\"
 WHERE
-    \"abhorrent\".\"bucket_sum_l0\" > \"abhorrent\".\"avg_sales_average_sales\"
+    \"abhorrent\".\"_l0_filtered_bucket_sum_l0\" > \"abhorrent\".\"avg_sales_average_sales\"
 )
 SELECT
     \"sweltering\".\"l0_filtered_channel_l0\" as \"channel\",

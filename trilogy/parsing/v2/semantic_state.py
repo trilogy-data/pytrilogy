@@ -108,6 +108,42 @@ class SemanticState:
     # store. ``add`` clears the entry when a real concept later resolves
     # to the same address.
     _placeholder_addresses: set[str] = field(default_factory=set)
+    # Names of rowsets whose SELECT body is currently being hydrated. A
+    # SELECT alias (`expr -> name`) declared inside `with X as ...` must be
+    # scoped to that rowset, not shared in the global `local` namespace —
+    # otherwise two rowsets aliasing different expressions to the same name
+    # clobber each other. While this stack is non-empty, the alias is
+    # created (and resolved) under a hidden per-rowset name. A stack (not a
+    # single value) because a rowset's MERGE body spans multiple SELECTs.
+    _rowset_name_stack: list[str] = field(default_factory=list)
+
+    @contextmanager
+    def rowset_alias_scope(self, rowset_name: str) -> Iterator[None]:
+        """Mark the enclosed hydration as being inside rowset ``rowset_name``.
+
+        SELECT aliases hydrated within this scope are namespaced to the
+        rowset (see :meth:`mangle_rowset_alias`) so they cannot collide
+        with another rowset's identically-named alias.
+        """
+        self._rowset_name_stack.append(rowset_name)
+        try:
+            yield
+        finally:
+            self._rowset_name_stack.pop()
+
+    @property
+    def current_rowset_name(self) -> str | None:
+        return self._rowset_name_stack[-1] if self._rowset_name_stack else None
+
+    @staticmethod
+    def mangle_rowset_alias(rowset_name: str, name: str) -> str:
+        """Hidden, per-rowset bare name for a rowset SELECT alias.
+
+        Single source of truth for the scheme; ``_rowset_concept`` strips
+        the exact ``_{rowset_name}_`` prefix to recover the user-facing
+        rowset-output name.
+        """
+        return f"_{rowset_name}_{name}"
 
     def add(
         self,
@@ -335,8 +371,25 @@ class ConceptLookup:
     def _candidate_addresses(self, address: str) -> list[str]:
         # Mirror EnvironmentConceptDict.__getitem__ fallback: exact, strip
         # leading ``local.``, or qualify unnamespaced keys with ``local.``.
-        candidates = [address]
         prefix = f"{DEFAULT_NAMESPACE}."
+        candidates: list[str] = []
+        # Inside a rowset body, a default-namespace name (bare, or
+        # ``local.x``) must prefer that rowset's hidden alias if one
+        # exists — so HAVING/WHERE/ORDER BY/window references bind to the
+        # same per-rowset concept the SELECT created, not a same-named
+        # concept in the shared default namespace. The mangled name is
+        # unique per rowset, so trying it first is safe: it only resolves
+        # when this rowset actually declared that alias; otherwise
+        # ``_existing_concept`` skips it and normal resolution proceeds
+        # (so dotted refs and genuine top-level concepts are unaffected).
+        rowset_name = self._state.current_rowset_name
+        if rowset_name is not None:
+            bare = address[len(prefix) :] if address.startswith(prefix) else address
+            if "." not in bare:
+                mangled = self._state.mangle_rowset_alias(rowset_name, bare)
+                candidates.append(f"{prefix}{mangled}")
+                candidates.append(mangled)
+        candidates.append(address)
         if address.startswith(prefix):
             candidates.append(address[len(prefix) :])
         else:

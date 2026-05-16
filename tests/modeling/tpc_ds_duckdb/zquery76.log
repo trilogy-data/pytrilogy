@@ -1,5 +1,5 @@
 query_id = "76"
-gen_length = 7754
+gen_length = 7988
 preql_size = 2275
 comp_size = 1708
 generated_sql = """
@@ -115,10 +115,10 @@ SELECT
     \"scrawny\".\"ws_date_quarter\" as \"d_qoy\",
     \"scrawny\".\"ws_date_year\" as \"d_year\",
     \"scrawny\".\"ws_item_category\" as \"i_category\",
-    :channel_b as \"channel\",
-    :col_name_b as \"col_name\",
-    sum(\"kaput\".\"ws_row_flag\") as \"cnt_b\",
-    sum(\"scrawny\".\"ws_ext_sales_price\") as \"amt_b\"
+    :_q76_results_channel_b as \"channel\",
+    :_q76_results_col_name_b as \"col_name\",
+    sum(\"kaput\".\"ws_row_flag\") as \"_q76_results_cnt_b\",
+    sum(\"scrawny\".\"ws_ext_sales_price\") as \"_q76_results_amt_b\"
 FROM
     \"scrawny\"
     INNER JOIN \"kaput\" on \"scrawny\".\"ws_item_id\" = \"kaput\".\"ws_item_id\" AND \"scrawny\".\"ws_order_number\" = \"kaput\".\"ws_order_number\"
@@ -133,10 +133,10 @@ SELECT
     \"vacuous\".\"ss_date_quarter\" as \"d_qoy\",
     \"vacuous\".\"ss_date_year\" as \"d_year\",
     \"vacuous\".\"ss_item_category\" as \"i_category\",
-    :channel_a as \"channel\",
-    :col_name_a as \"col_name\",
-    sum(\"vacuous\".\"ss_ext_sales_price\") as \"amt_a\",
-    sum(\"young\".\"ss_row_flag\") as \"cnt_a\"
+    :_q76_results_channel_a as \"channel\",
+    :_q76_results_col_name_a as \"col_name\",
+    sum(\"vacuous\".\"ss_ext_sales_price\") as \"_q76_results_amt_a\",
+    sum(\"young\".\"ss_row_flag\") as \"_q76_results_cnt_a\"
 FROM
     \"vacuous\"
     INNER JOIN \"young\" on \"vacuous\".\"ss_item_id\" = \"young\".\"ss_item_id\" AND \"vacuous\".\"ss_ticket_number\" = \"young\".\"ss_ticket_number\"
@@ -151,10 +151,10 @@ SELECT
     \"cooperative\".\"cs_date_quarter\" as \"d_qoy\",
     \"cooperative\".\"cs_date_year\" as \"d_year\",
     \"cooperative\".\"cs_item_category\" as \"i_category\",
-    :channel_c as \"channel\",
-    :col_name_c as \"col_name\",
-    sum(\"cooperative\".\"cs_ext_sales_price\") as \"amt_c\",
-    sum(\"highfalutin\".\"cs_row_flag\") as \"cnt_c\"
+    :_q76_results_channel_c as \"channel\",
+    :_q76_results_col_name_c as \"col_name\",
+    sum(\"cooperative\".\"cs_ext_sales_price\") as \"_q76_results_amt_c\",
+    sum(\"highfalutin\".\"cs_row_flag\") as \"_q76_results_cnt_c\"
 FROM
     \"cooperative\"
     INNER JOIN \"highfalutin\" on \"cooperative\".\"cs_item_id\" = \"highfalutin\".\"cs_item_id\" AND \"cooperative\".\"cs_order_number\" = \"highfalutin\".\"cs_order_number\"
@@ -170,8 +170,8 @@ SELECT
     coalesce(\"divergent\".\"d_year\",\"questionable\".\"d_year\",\"sparkling\".\"d_year\") as \"q76_results_d_year\",
     coalesce(\"divergent\".\"d_qoy\",\"questionable\".\"d_qoy\",\"sparkling\".\"d_qoy\") as \"q76_results_d_qoy\",
     coalesce(\"divergent\".\"i_category\",\"questionable\".\"i_category\",\"sparkling\".\"i_category\") as \"q76_results_i_category\",
-    coalesce(\"sparkling\".\"cnt_a\",\"divergent\".\"cnt_b\",\"questionable\".\"cnt_c\") as \"q76_results_sales_cnt\",
-    coalesce(\"sparkling\".\"amt_a\",\"divergent\".\"amt_b\",\"questionable\".\"amt_c\") as \"q76_results_sales_amt\"
+    coalesce(\"sparkling\".\"_q76_results_cnt_a\",\"divergent\".\"_q76_results_cnt_b\",\"questionable\".\"_q76_results_cnt_c\") as \"q76_results_sales_cnt\",
+    coalesce(\"sparkling\".\"_q76_results_amt_a\",\"divergent\".\"_q76_results_amt_b\",\"questionable\".\"_q76_results_amt_c\") as \"q76_results_sales_amt\"
 FROM
     \"sparkling\"
     FULL JOIN \"divergent\" on \"sparkling\".\"channel\" is not distinct from \"divergent\".\"channel\" AND \"sparkling\".\"col_name\" is not distinct from \"divergent\".\"col_name\" AND \"sparkling\".\"d_qoy\" is not distinct from \"divergent\".\"d_qoy\" AND \"sparkling\".\"d_year\" is not distinct from \"divergent\".\"d_year\" AND \"sparkling\".\"i_category\" is not distinct from \"divergent\".\"i_category\"

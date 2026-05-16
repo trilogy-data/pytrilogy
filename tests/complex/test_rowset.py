@@ -216,3 +216,53 @@ SELECT
     assert (
         b_chain[-1] == "local.ship_id"
     ), f"buyers_b.cust_id should resolve to local.ship_id but chain is {b_chain}"
+
+
+def test_rowset_alias_collision_distinct_aggregates() -> None:
+    # Two rowsets aliasing *different aggregates* to the same name `total`.
+    # Each alias is private to its rowset, so rs_a.total must aggregate
+    # count(x) and rs_b.total must aggregate sum(y) with no cross-talk and
+    # no INVALID_REFERENCE_BUG. Invariant guard for the per-rowset alias
+    # namespacing (complements the column-alias collision tests above).
+    declarations = """
+key id int;
+property id.x int;
+property id.y int;
+property id.grp_key int;
+
+datasource facts (
+    id: id,
+    x: x,
+    y: y,
+    grp: grp_key,
+)
+grain (id)
+address facts;
+
+with rs_a as
+SELECT
+    grp_key,
+    count(x) -> total
+;
+
+with rs_b as
+SELECT
+    grp_key,
+    sum(y) -> total
+;
+
+SELECT
+    grp_key,
+    rs_a.total as a,
+    rs_b.total as b,
+;
+"""
+    from trilogy import Dialects
+    from trilogy.dialect.config import DuckDBConfig
+
+    env = Environment()
+    engine = Dialects.DUCK_DB.default_executor(environment=env, conf=DuckDBConfig())
+    sql = engine.generate_sql(declarations)[-1]
+    assert "INVALID_REFERENCE_BUG" not in sql, sql
+    assert 'count("facts"."x")' in sql, f"rs_a.total should be count(x):\n{sql}"
+    assert 'sum("facts"."y")' in sql, f"rs_b.total should be sum(y):\n{sql}"

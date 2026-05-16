@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, Modifier
 from trilogy.core.models.author import (
     Concept,
@@ -118,6 +119,19 @@ def select_transform(
     _, namespace, output_name, _ = parse_concept_reference(
         output_name, context.environment
     )
+    # A SELECT alias declared inside a rowset body is private to that
+    # rowset. Give it a hidden, per-rowset name so two rowsets aliasing
+    # different expressions to the same user-facing name don't collide in
+    # the shared default namespace. Only mangle when the alias landed in
+    # the default namespace (an explicit `expr -> other.foo` keeps its
+    # namespace untouched). `_rowset_concept` strips this prefix to
+    # recover the user-facing rowset-output name.
+    rowset_name = context.semantic_state.current_rowset_name
+    default_ns = context.environment.namespace or DEFAULT_NAMESPACE
+    if rowset_name is not None and namespace == default_ns:
+        output_name = context.semantic_state.mangle_rowset_alias(
+            rowset_name, output_name
+        )
     meta = metadata_from_meta(node.meta, concept_source=ConceptSource.SELECT)
     if metadata:
         meta = metadata

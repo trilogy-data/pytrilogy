@@ -1,5 +1,5 @@
 query_id = "75"
-gen_length = 8318
+gen_length = 8428
 preql_size = 1928
 comp_size = 2939
 generated_sql = """
@@ -128,8 +128,8 @@ SELECT
     \"concerned\".\"deduped_sales_item_category_id\" as \"i_category_id\",
     \"concerned\".\"deduped_sales_item_class_id\" as \"i_class_id\",
     \"concerned\".\"deduped_sales_item_manufacturer_id\" as \"i_manufact_id\",
-    sum(\"concerned\".\"deduped_amt_per_row\") as \"curr_amt\",
-    sum(\"concerned\".\"deduped_cnt_per_row\") as \"curr_cnt\"
+    sum(\"concerned\".\"deduped_amt_per_row\") as \"_year_pair_curr_amt\",
+    sum(\"concerned\".\"deduped_cnt_per_row\") as \"_year_pair_curr_cnt\"
 FROM
     \"concerned\"
 GROUP BY
@@ -143,8 +143,8 @@ SELECT
     \"juicy\".\"deduped_sales_item_category_id\" as \"i_category_id\",
     \"juicy\".\"deduped_sales_item_class_id\" as \"i_class_id\",
     \"juicy\".\"deduped_sales_item_manufacturer_id\" as \"i_manufact_id\",
-    sum(\"juicy\".\"deduped_amt_per_row\") as \"prev_amt\",
-    sum(\"juicy\".\"deduped_cnt_per_row\") as \"prev_cnt\"
+    sum(\"juicy\".\"deduped_amt_per_row\") as \"_year_pair_prev_amt\",
+    sum(\"juicy\".\"deduped_cnt_per_row\") as \"_year_pair_prev_cnt\"
 FROM
     \"juicy\"
 GROUP BY
@@ -154,10 +154,10 @@ GROUP BY
     4),
 sparkling as (
 SELECT
-    \"vacuous\".\"prev_cnt\" as \"prev_yr_cnt\",
-    \"young\".\"curr_amt\" - \"vacuous\".\"prev_amt\" as \"sales_amt_diff\",
-    \"young\".\"curr_cnt\" - \"vacuous\".\"prev_cnt\" as \"sales_cnt_diff\",
-    \"young\".\"curr_cnt\" as \"curr_yr_cnt\",
+    \"vacuous\".\"_year_pair_prev_cnt\" as \"prev_yr_cnt\",
+    \"young\".\"_year_pair_curr_amt\" - \"vacuous\".\"_year_pair_prev_amt\" as \"sales_amt_diff\",
+    \"young\".\"_year_pair_curr_cnt\" - \"vacuous\".\"_year_pair_prev_cnt\" as \"sales_cnt_diff\",
+    \"young\".\"_year_pair_curr_cnt\" as \"curr_yr_cnt\",
     2001 as \"prev_year\",
     2002 as \"year_\",
     coalesce(\"vacuous\".\"i_brand_id\",\"young\".\"i_brand_id\") as \"year_pair_i_brand_id\",

@@ -1,5 +1,5 @@
 query_id = "44"
-gen_length = 3825
+gen_length = 3883
 preql_size = 886
 comp_size = 1462
 generated_sql = """
@@ -94,15 +94,15 @@ GROUP BY
 vacuous as (
 SELECT
     \"juicy\".\"ss_item_id\" as \"ss_item_id\",
-    rank() over (order by \"juicy\".\"item_avg_profit\" asc ) as \"rnk_a\",
-    rank() over (order by \"juicy\".\"item_avg_profit\" desc ) as \"rnk_d\"
+    rank() over (order by \"juicy\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
+    rank() over (order by \"juicy\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
 FROM
     \"juicy\"),
 young as (
 SELECT
     \"uneven\".\"ss_item_product_name\" as \"descending_worst_performing\",
-    \"vacuous\".\"rnk_d\" as \"descending_rnk_d\",
-    \"vacuous\".\"rnk_d\" as \"rnk\"
+    \"vacuous\".\"_descending_rnk_d\" as \"descending_rnk_d\",
+    \"vacuous\".\"_descending_rnk_d\" as \"rnk\"
 FROM
     \"uneven\"
     INNER JOIN \"vacuous\" on \"uneven\".\"ss_item_id\" = \"vacuous\".\"ss_item_id\"
@@ -113,7 +113,7 @@ GROUP BY
 concerned as (
 SELECT
     \"uneven\".\"ss_item_product_name\" as \"ascending_best_performing\",
-    \"vacuous\".\"rnk_a\" as \"ascending_rnk_a\"
+    \"vacuous\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
 FROM
     \"uneven\"
     INNER JOIN \"vacuous\" on \"uneven\".\"ss_item_id\" = \"vacuous\".\"ss_item_id\"

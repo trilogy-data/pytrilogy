@@ -592,7 +592,6 @@ def test_eighty_one(engine):
     assert len(query) < 12000, query
 
 
-
 def test_eighty_two(engine):
     query = run_query(engine, 82, sql_override=True)
     assert len(query) < 4000, query
