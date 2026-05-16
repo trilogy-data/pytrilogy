@@ -1,48 +1,48 @@
-import catalog_returns as catalog_returns;
+import catalog_returns as cr;
 
 
-auto customer_state_returns_2000 <- sum( catalog_returns.return_amt_inc_tax ? catalog_returns.date.year = 2000) by catalog_returns.return_address.state, catalog_returns.customer.id ;
-auto scaled_state_returns_2000 <- 1.2 * avg(customer_state_returns_2000) by catalog_returns.return_address.state;
+auto customer_state_returns_2000 <- sum( cr.return_amt_inc_tax ? cr.date.year = 2000) by cr.return_address.state, cr.customer.id ;
+auto scaled_state_returns_2000 <- 1.2 * avg(customer_state_returns_2000) by cr.return_address.state;
 
 
 WHERE
     customer_state_returns_2000 > scaled_state_returns_2000
-    and catalog_returns.customer.address.state = 'GA'
-    and catalog_returns.return_address.state is not null
+    and cr.customer.address.state = 'GA'
+    and cr.return_address.state is not null
 SELECT
-    --catalog_returns.customer.id,
-    catalog_returns.customer.text_id,
-    catalog_returns.customer.salutation,
-    catalog_returns.customer.first_name,
-    catalog_returns.customer.last_name,
-    catalog_returns.customer.address.street_number,
-    catalog_returns.customer.address.street_name,
-    catalog_returns.customer.address.street_type,
-    catalog_returns.customer.address.suite_number,
-    catalog_returns.customer.address.city,
-    catalog_returns.customer.address.county,
-    catalog_returns.customer.address.state,
-    catalog_returns.customer.address.zip,
-    catalog_returns.customer.address.country,
-    catalog_returns.customer.address.gmt_offset,
-    catalog_returns.customer.address.location_type,
+    --cr.customer.id,
+    cr.customer.text_id,
+    cr.customer.salutation,
+    cr.customer.first_name,
+    cr.customer.last_name,
+    cr.customer.address.street_number,
+    cr.customer.address.street_name,
+    cr.customer.address.street_type,
+    cr.customer.address.suite_number,
+    cr.customer.address.city,
+    cr.customer.address.county,
+    cr.customer.address.state,
+    cr.customer.address.zip,
+    cr.customer.address.country,
+    cr.customer.address.gmt_offset,
+    cr.customer.address.location_type,
     customer_state_returns_2000,
-    --catalog_returns.return_address.state
+    --cr.return_address.state
 ORDER BY
-    catalog_returns.customer.text_id asc NULLS FIRST,
-    catalog_returns.customer.salutation asc NULLS FIRST,
-    catalog_returns.customer.first_name asc NULLS FIRST,
-    catalog_returns.customer.last_name asc NULLS FIRST,
-    catalog_returns.customer.address.street_number asc NULLS FIRST,
-    catalog_returns.customer.address.street_name asc NULLS FIRST,
-    catalog_returns.customer.address.street_type asc NULLS FIRST,
-    catalog_returns.customer.address.suite_number asc NULLS FIRST,
-    catalog_returns.customer.address.city asc NULLS FIRST,
-    catalog_returns.customer.address.county asc NULLS FIRST,
-    catalog_returns.customer.address.state asc NULLS FIRST,
-    catalog_returns.customer.address.zip asc NULLS FIRST,
-    catalog_returns.customer.address.country asc NULLS FIRST,
-    catalog_returns.customer.address.gmt_offset asc NULLS FIRST,
-    catalog_returns.customer.address.location_type asc NULLS FIRST,
+    cr.customer.text_id asc NULLS FIRST,
+    cr.customer.salutation asc NULLS FIRST,
+    cr.customer.first_name asc NULLS FIRST,
+    cr.customer.last_name asc NULLS FIRST,
+    cr.customer.address.street_number asc NULLS FIRST,
+    cr.customer.address.street_name asc NULLS FIRST,
+    cr.customer.address.street_type asc NULLS FIRST,
+    cr.customer.address.suite_number asc NULLS FIRST,
+    cr.customer.address.city asc NULLS FIRST,
+    cr.customer.address.county asc NULLS FIRST,
+    cr.customer.address.state asc NULLS FIRST,
+    cr.customer.address.zip asc NULLS FIRST,
+    cr.customer.address.country asc NULLS FIRST,
+    cr.customer.address.gmt_offset asc NULLS FIRST,
+    cr.customer.address.location_type asc NULLS FIRST,
     customer_state_returns_2000 asc NULLS FIRST
 LIMIT 100;

@@ -7,6 +7,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.node_generators.common import _local_property_conditions
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     covered_conditions,
@@ -365,3 +366,63 @@ property date_id.month_seq int;
     assert store_conditions is not None
     assert store_conditions.conditional == store_cond
     assert store_condition_concepts == []
+
+
+def test_property_enrichment_keeps_lineage_relevant_condition_atoms():
+    env = Environment()
+    env.parse(
+        """
+key item_id int;
+key date_id int;
+key sales_channel string;
+key order_id int;
+property date_id.date date;
+property date_id.month_seq int;
+property <item_id, order_id, sales_channel>.sales_price float;
+auto store_daily <- sum(sales_price ? sales_channel = 'STORE') by item_id, date;
+auto store_cume <- sum store_daily over item_id order by date asc;
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    month_cond = _condition(
+        build_env.concepts["month_seq"], 1200, ComparisonOperator.GTE
+    )
+    item_cond = _condition(build_env.concepts["item_id"], 0, ComparisonOperator.GT)
+    channel_cond = BuildSubselectComparison(
+        left=build_env.concepts["sales_channel"],
+        right=("WEB", "STORE"),
+        operator=ComparisonOperator.IN,
+    )
+    full = BuildWhereClause(
+        conditional=BuildConditional(
+            left=BuildConditional(
+                left=month_cond,
+                right=item_cond,
+                operator=BooleanOperator.AND,
+            ),
+            right=channel_cond,
+            operator=BooleanOperator.AND,
+        )
+    )
+
+    local_conditions, condition_concepts = _local_property_conditions(
+        full,
+        [
+            build_env.concepts["item_id"],
+            build_env.concepts["date"],
+            build_env.concepts["store_cume"],
+        ],
+        {"item_id", "date", "date_id"},
+    )
+
+    assert local_conditions is not None
+    assert decompose_condition(local_conditions.conditional) == [
+        month_cond,
+        item_cond,
+        channel_cond,
+    ]
+    assert {c.address for c in condition_concepts} == {
+        "local.month_seq",
+        "local.sales_channel",
+    }

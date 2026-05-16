@@ -17,6 +17,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
+    ConditionExpression,
+    _condition_available_from_parents,
+    _preexisting_conditions_from_parents,
     gen_enrichment_node,
     resolve_function_parent_concepts,
 )
@@ -306,6 +309,7 @@ def _can_try_wide_parent(
         and conditions is not None
         and all(
             not isinstance(x.lineage, BuildFilterItem)
+            and x.derivation != Derivation.WINDOW
             and not concept_is_relevant(x, parent_input_concepts)
             for x in remaining_optional
         )
@@ -442,7 +446,10 @@ def _resolve_parent_sources(
                 environment=environment,
                 parents=[parent_source],
                 depth=depth,
-                preexisting_conditions=(conditions.conditional if conditions else None),
+                conditions=_group_conditions_to_apply([parent_source], conditions),
+                preexisting_conditions=_preexisting_conditions_from_parents(
+                    [parent_source], conditions
+                ),
             )
         else:
             logger.info(
@@ -473,6 +480,19 @@ def _empty_parent_resolution() -> ParentResolution:
         parent_output_addr=set(),
         can_reuse_parent_for_enrichment=False,
     )
+
+
+def _group_conditions_to_apply(
+    parents: List[StrategyNode],
+    conditions: BuildWhereClause | None,
+) -> ConditionExpression | None:
+    if conditions is None:
+        return None
+    if _preexisting_conditions_from_parents(parents, conditions):
+        return None
+    if _condition_available_from_parents(parents, conditions.conditional):
+        return conditions.conditional
+    return None
 
 
 def _build_group_node(
@@ -539,7 +559,10 @@ def _reuse_wide_parent_for_enrichment(
             environment=environment,
             parents=[parent_source],
             depth=depth,
-            preexisting_conditions=(conditions.conditional if conditions else None),
+            conditions=_group_conditions_to_apply([parent_source], conditions),
+            preexisting_conditions=_preexisting_conditions_from_parents(
+                [parent_source], conditions
+            ),
         )
     else:
         enrichment_node = parent_source
@@ -554,7 +577,9 @@ def _reuse_wide_parent_for_enrichment(
         environment=environment,
         parents=[group_node, enrichment_node],
         depth=depth,
-        preexisting_conditions=(conditions.conditional if conditions else None),
+        preexisting_conditions=_preexisting_conditions_from_parents(
+            [group_node, enrichment_node], conditions
+        ),
     )
 
 

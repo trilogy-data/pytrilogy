@@ -545,17 +545,19 @@ def _parents_apply_condition_atoms(
     parents: list[StrategyNode],
     conditions: BuildWhereClause,
 ) -> bool:
-    parent_atoms = []
+    parent_atoms: list[list[ConditionExpression]] = []
     for parent in parents:
+        atoms = []
         for expr in (parent.conditions, parent.preexisting_conditions):
             if expr is not None:
-                parent_atoms.extend(decompose_condition(expr))
+                atoms.extend(decompose_condition(expr))
+        parent_atoms.append(atoms)
     if not parent_atoms:
         return False
     for atom in decompose_condition(conditions.conditional):
         if any(arg for group in atom.existence_arguments for arg in group):
             return False
-        if atom not in parent_atoms:
+        if not all(atom in atoms for atoms in parent_atoms):
             return False
     return True
 

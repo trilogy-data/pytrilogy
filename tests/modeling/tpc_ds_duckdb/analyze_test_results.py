@@ -149,9 +149,8 @@ def plot_sizes(frame: pd.DataFrame, title: str, out_path: Path, show: bool) -> N
     plt.close(fig)
 
 
-def analyze(show: bool = False):
+def load_frames(root: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     results = []
-    root = Path(__file__).parent
     for filename in os.listdir(root):
         if filename.endswith(".log"):
             with open(root / filename, "r") as f:
@@ -189,13 +188,18 @@ def analyze(show: bool = False):
         final_results.append({**x, **time_info})
 
     df = pd.DataFrame.from_records(final_results)
-
-    print(df)
-
     df["query_id"] = df["query_id"].astype(str)
     is_alt = df["query_id"].str.contains(".", regex=False)
     main_df = df[~is_alt].sort_values("query_id")
     alt_df = df[is_alt].sort_values("query_id")
+    return df, main_df, alt_df
+
+
+def analyze(show: bool = False):
+    root = Path(__file__).parent
+    df, main_df, alt_df = load_frames(root)
+
+    print(df)
 
     plot_perf(
         main_df,
