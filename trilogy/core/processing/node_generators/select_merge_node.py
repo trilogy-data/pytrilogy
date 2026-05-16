@@ -1,7 +1,6 @@
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
-    BooleanOperator,
     Derivation,
     Granularity,
     JoinType,
@@ -16,7 +15,6 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildGrain,
     BuildUnionDatasource,
