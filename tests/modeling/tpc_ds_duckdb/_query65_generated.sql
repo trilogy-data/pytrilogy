@@ -1,0 +1,79 @@
+
+WITH 
+questionable as (
+SELECT
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
+    "store_sales_store_store"."S_STORE_SK" as "store_sales_store_id"
+FROM
+    "memory"."store" as "store_sales_store_store"
+WHERE
+    "store_sales_store_store"."S_STORE_SK" is not null
+),
+wakeful as (
+SELECT
+    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
+    "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id",
+    sum("store_sales_store_sales"."SS_SALES_PRICE") as "item_revenue"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
+WHERE
+    "store_sales_date_date"."D_MONTH_SEQ" >= 1176 and "store_sales_date_date"."D_MONTH_SEQ" <= 1187 and "store_sales_store_sales"."SS_STORE_SK" is not null
+
+GROUP BY
+    1,
+    2),
+abundant as (
+SELECT
+    "questionable"."store_sales_store_name" as "store_sales_store_name",
+    "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
+    "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
+    "store_sales_item_items"."I_ITEM_DESC" as "store_sales_item_desc",
+    "store_sales_item_items"."I_WHOLESALE_COST" as "store_sales_item_wholesale_cost",
+    "wakeful"."item_revenue" as "item_revenue",
+    "wakeful"."store_sales_store_id" as "store_sales_store_id"
+FROM
+    "wakeful"
+    INNER JOIN "memory"."item" as "store_sales_item_items" on "wakeful"."store_sales_item_id" = "store_sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "questionable" on "wakeful"."store_sales_store_id" = "questionable"."store_sales_store_id"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7),
+thoughtful as (
+SELECT
+    "wakeful"."store_sales_store_id" as "store_sales_store_id",
+    avg("wakeful"."item_revenue") as "store_avg_revenue"
+FROM
+    "wakeful"
+GROUP BY
+    1)
+SELECT
+    "abundant"."store_sales_store_name" as "store_sales_store_name",
+    "abundant"."store_sales_item_desc" as "store_sales_item_desc",
+    "abundant"."item_revenue" as "revenue",
+    "abundant"."store_sales_item_current_price" as "store_sales_item_current_price",
+    "abundant"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
+    "abundant"."store_sales_item_brand_name" as "store_sales_item_brand_name"
+FROM
+    "abundant"
+    RIGHT OUTER JOIN "thoughtful" on "abundant"."store_sales_store_id" is not distinct from "thoughtful"."store_sales_store_id"
+WHERE
+    "abundant"."item_revenue" <= 0.1 * "thoughtful"."store_avg_revenue"
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "thoughtful"."store_avg_revenue"
+ORDER BY 
+    "abundant"."store_sales_store_name" asc nulls first,
+    "abundant"."store_sales_item_desc" asc nulls first
+LIMIT (100)

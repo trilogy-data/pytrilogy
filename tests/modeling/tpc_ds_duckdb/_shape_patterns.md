@@ -1,7 +1,13 @@
 # Improved-shape patterns from TPC-DS query analysis
 
-Baseline (main queries only, excluding alt `.1`/`.2` variants which are
-expected-loss test cases): ~33 wins / 55 losses / 8 ties out of 96 queries
+**Scope: main queries only.** The alt `.1` / `.2` variants (q2.1, q2.2, q97.1,
+q97.2) intentionally exercise non-performant alternative query paths — they
+are **out of scope** for shape optimization and should be **ignored** when
+ranking targets. Do not chase q97.1 (P11) or the other alt-bucket entries
+even though they have the largest ratios in raw timing dumps. The alt-bucket
+summary table in `tcp-ds-summary.md` is informational only.
+
+Baseline (main queries only): ~33 wins / 55 losses / 8 ties out of 96 queries
 (~**38%** win rate). Target 50%.
 
 Each pattern below is grounded in a measured speedup against the parquet dataset
@@ -9,48 +15,81 @@ Each pattern below is grounded in a measured speedup against the parquet dataset
 
 ---
 
-## Audit — 2026-05-15
+## Audit — 2026-05-15 (refreshed PM after re-run)
 
-Current state: **41 wins / 58 losses / 0 ties out of 99 main queries** (~41.4%).
-Total exec_time 13.53s vs reference 61.77s — wins are still dominated by
-q64 (-21.6s) and q72 (-25.2s), where reference SQL hits pathological cases.
-q82 has emerged as a new third large win (-1.10s, looks like DuckDB plan drift
-on the reference rather than a trilogy improvement).
+Current state: **38 wins / 57 losses / 4 ties out of 99 main queries**
+(~38.4%; summarizer counts 39 wins under strict `<0`). Total exec_time
+**11.783s vs reference 57.647s** — trilogy's total dropped ~18% from the
+morning audit (14.34s) while reference SQL also got faster (60.10s → 57.65s).
+The headline wins are unchanged: q64 (-20.82s) and q72 (-24.10s) — both
+pathological reference-SQL cases — plus q82 (-0.66s) where DuckDB plan drift
+on the reference still favors trilogy.
 
-Progress since the 2026-05-14 audit: **net -1 win** in the recorded timing log,
-but two real shape improvements landed:
+The morning audit reported 41 wins; this refreshed timing log loses 3 main
+wins and both alt wins. **None of the losses look like trilogy regressions**:
+trilogy's exec time is the same or faster on every flipped query. The
+reference SQL ran faster on DuckDB this round (a recurring property of
+queries with q97-style "tight UNION of CASE-WHEN counts" shapes — DuckDB's
+plan choice for those queries swings ±50–100ms run to run, sometimes ±0.5s).
 
-**q66 note:** the audit's "q66 flipped back to a loss" was *measurement noise*,
-not a regression — the generated SQL is byte-identical to the audit commit, and
-both exec and comp swing ±50ms across runs. The win has been restored after a
-revert; do not chase this further.
+### What flipped since the morning audit (intra-day, same SHA)
 
-- **q75** flipped from +0.101s loss to a tie via an explicit `with ... MERGE ...
-  align` rewrite (P12-style two-bucket collapse) — this is a query authoring
-  change, not a generator change.
-- **q73** improved from +0.146s → +0.099s after dropping the outer
+| Query | trilogy exec | ref exec | delta | vs morning audit |
+|---|---|---|---|---|
+| q97 | 0.082s | 0.074s | **+0.007 (near tie loss)** | morning showed -0.046 WIN at ref 0.134s — ref ran ~60ms faster this round; QA1 rewrite still in place. Treat the audit "WIN" as measurement noise. |
+| q44 | 0.062s | 0.025s | **+0.037 (loss)** | morning ~tie at ref 0.079s — ref ran ~54ms faster; `with addr_null_threshold` rewrite (P2) still in place. |
+| q78 | 0.286s | 0.197s | **+0.089 (loss)** | morning +0.010 near-tie at ref 0.404s — ref ran ~207ms faster; structural shape unchanged. |
+| q82 | 0.487s | 1.145s | -0.658 WIN | morning -1.097 (ref was 1.583s). Still the third-largest win. |
+| q59 | 0.136s | 0.185s | -0.049 WIN | morning -0.020. Larger margin now. |
+| q73 | 0.124s | 0.036s | +0.089 (loss) | morning +0.099. Roughly stable. |
+| q65 | 0.193s | 0.089s | +0.104 (loss) | morning +0.163. Trilogy got ~120ms faster (313ms → 193ms). |
+| q28 | 0.212s | 0.045s | +0.166 (loss) | morning +0.210. Trilogy got ~45ms faster. |
+| q66 | 0.193s | 0.154s | +0.040 (loss) | morning recorded +0.040 with caveat — same range, still noise-band. |
+| ~~q97.1~~ | 1.307s | 0.069s | (out of scope — alt bucket) | alt-variant, intentionally non-performant; ignore |
+| ~~q97.2~~ | 0.138s | 0.073s | (out of scope — alt bucket) | alt-variant; ignore |
+| ~~q2.1~~ | 0.104s | 0.084s | (out of scope — alt bucket) | alt-variant; ignore |
+| ~~q2.2~~ | 0.106s | 0.098s | (out of scope — alt bucket) | alt-variant; ignore |
+
+**Reading this:** the morning audit was over-optimistic about q97 and the alt
+bucket. The real, sticky shape changes are q82, q59, q73 (P3-partial), q75 (P12
+preql workaround), q65 trilogy-side improvement, and the q97 QA1 rewrite —
+even though q97's exec-delta is now +0.007s, the dedup CTE is gone and trilogy
+exec is 0.082s flat. That structural win is durable; the comparison-side gain
+is what's volatile.
+
+### Earlier morning audit notes (preserved)
+
+The morning pass reported two real shape improvements that remain valid:
+
+- **q75** flipped from +0.101s loss to a tie/near-tie via an explicit
+  `with ... MERGE ... align` rewrite (P12-style two-bucket collapse) — query
+  authoring change, not a generator change. Now +0.006s (near tie).
+- **q73** improved from +0.146s → +0.099s → +0.089s after dropping the outer
   `sum(count(...))` wrapper. The unfiltered `cooperative` store_sales scan is
   still present (P3 still applies), but the inner-join now collapses to a clean
   ticket-number join (P6 progress for q73 specifically).
-- **q78** dropped from +0.154s → +0.010s (near tie) — generator change, no
-  preql edit.
+- **q66 note:** the morning audit's "q66 flipped back to a loss" was
+  *measurement noise* — the generated SQL is byte-identical to the audit
+  commit, and both exec and comp swing ±50ms across runs. Current +0.040 is
+  consistent with that noise band; do not chase further.
 
 ### Pattern status
 
-| Pattern | Status | Evidence (2026-05-15) |
+| Pattern | Status | Evidence (2026-05-15 PM) |
 |---|---|---|
-| P1 — Filter pushdown into source CTE | **PARTIAL** | q66 still has the filter inside the source CTE. q97, q65, q81 unchanged — q97 still GROUP-BYs 4 cols on unfiltered fact before joining date_dim. |
-| P2 — CASE WHEN → WHERE | **PARTIAL** | q28 *regressed* (+0.180 → +0.210); per-bucket CASE WHENs unchanged. q81 still has unfiltered FK-projection CTE upstream (generator). q9 SQL is structurally optimal already. **q44 fixed via preql `with` block** — promoted `avg(net_profit ? addr_sk is null)` from inline CASE WHEN to a filtered `with addr_null_threshold` block with proper `WHERE SS_ADDR_SK IS NULL`; trilogy exec dropped ~27ms, flipped from +0.070 loss to tie/win. UNION-of-filtered-subqueries variant not landed. |
-| P3 — Collapse duplicate fact scans | **NOT LANDED** | q65 was rewritten in `query65.preql` to bundle item_revenue + all enrichment dim cols into a single GROUP BY, but the generator still emits 3 store_sales scans (`questionable`, `cheerful`, `uneven`) — confirming this needs to be fixed in the generator at the query-author level. q73, q29, q94, q16, q44, q9 still scan the same fact 2–4× with overlapping filters. *Modeling-layer workaround:* q17/q25 moved to a shared `catalog_store_returns.preql` source that unifies SS/SR/CS_BILL customer FKs into one concept — q25 trilogy exec dropped ~33% (~55ms). q29's stricter `SS_CUST = SR_CUST` semantic can't be expressed by single-concept conflation, so it stays on merge form. |
-| P4 — Per-channel agg vs unified UNION | **NOT LANDED** | q78 improved to near-tie via something else (still unified-UNION shape downstream). q97 still hard loss. |
-| P5 — Drop unused dim joins | not investigated | q64 still wins via outright optimizer luck (-21.6s). q97.1 still dominated by this. |
-| P6 — Drop `IS NOT DISTINCT FROM` reconciliation | **PARTIAL** | q73 no longer FULL-joins on IS NOT DISTINCT FROM (now INNER JOIN on ticket_number). q65, q66, q17, q44 unchanged. |
+| P1 — Filter pushdown into source CTE | **PARTIAL** | q66 still has the filter inside the source CTE. q97, q65, q81 unchanged. q97's source CTE now has the date_dim filter inlined (see `zquery97.log` line 18: `D_MONTH_SEQ BETWEEN 1200 AND 1211`) but the dedup CTE elimination — not the filter pushdown — is what made it a near-tie. |
+| P2 — CASE WHEN → WHERE | **PARTIAL** | q28 improved (+0.210 → +0.166), still a loss. **q44 `with addr_null_threshold` block still in place** (see `zquery44.log` `questionable` CTE — `WHERE SS_STORE_SK = 4 AND SS_ADDR_SK IS NULL`), but reference SQL got faster this round so q44 sits at +0.037 loss. q81 still has unfiltered FK-projection CTE upstream (generator). UNION-of-filtered-subqueries variant not landed. |
+| P3 — Collapse duplicate fact scans | **NOT LANDED** | q65 was rewritten in `query65.preql` to bundle item_revenue + all enrichment dim cols into a single GROUP BY, but the generator still emits 3 store_sales scans (`questionable`, `cheerful`, `uneven`) — confirming this needs to be fixed in the generator at the query-author level. q73, q29, q94, q16, q44, q9 still scan the same fact 2–4× with overlapping filters. *Modeling-layer workaround:* q17/q25 moved to a shared `catalog_store_returns.preql` source that unifies SS/SR/CS_BILL customer FKs into one concept — q25 trilogy exec ~0.102s. q29's stricter `SS_CUST = SR_CUST` semantic can't be expressed by single-concept conflation, so it stays on merge form. |
+| P4 — Per-channel agg vs unified UNION | **NOT LANDED** | q78 has regressed from near-tie (+0.010) to +0.089 — ref SQL ran faster this round; trilogy exec is unchanged in shape but jumped slightly (0.414s → 0.286s? — actually faster). q97 sits at +0.007 near-tie via QA1, not via per-channel restructuring. |
+| P5 — Drop unused dim joins | not investigated | q64 still wins via outright optimizer luck (-20.82s). (q97.1 also dominated by this, but alt bucket is out of scope.) |
+| P6 — Drop `IS NOT DISTINCT FROM` reconciliation | **PARTIAL** | q73 no longer FULL-joins on IS NOT DISTINCT FROM (now INNER JOIN on ticket_number — see `zquery73.log` line 74). q65, q66, q17, q44 unchanged. |
 | P7 — Inline constants | **LANDED** | q66, q77 emit constants directly in final SELECT. The single-row constant CTE + cross-join pattern is gone. |
-| P8 — Eliminate dead GROUP BY | **NOT LANDED** | q97 still GROUPs on already-deduped channel-marker data. q73's unfiltered `cooperative` GROUP BY on 5 store_sales cols is still there. |
-| P9 — Reuse upstream dim columns | **PARTIAL** | q66's `juicy` still re-joins date_dim; q67 unchanged. |
-| P10 — IN subquery → EXISTS/SEMI | not investigated | q16 unchanged — still two materialized-CTE IN probes. |
-| P11 — Suppress unused customer×item dim FULL JOINs (q97.1) | **NOT LANDED** | q97.1 slightly improved (+1.584 → +1.389) but still 18x reference SQL — dominates the alt-bucket total. |
-| P12 — Collapse per-bucket aggregations on same CTE | **PARTIAL** (preql workaround) | q75 was rewritten to use `with year_pair as ... MERGE ... align` to express the two filtered aggregates as one preql statement. Generator still doesn't synthesize this from the auto-aggregate form; q9's 5-bucket case unchanged. |
+| P8 — Eliminate dead GROUP BY | **NOT LANDED** | q97 still has a `cooperative` GROUP BY but it's now load-bearing (groups the unioned per-row marker data for the dedup-bypass max — see `zquery97.log` line 44). q73's unfiltered `cooperative` GROUP BY on 5 store_sales cols is still there. |
+| P9 — Reuse upstream dim columns | **PARTIAL** | q66's `juicy` still re-joins date_dim; q67 unchanged (+0.105 loss, in noise band). |
+| P10 — IN subquery → EXISTS/SEMI | not investigated | q16 unchanged — still +0.087 loss with materialized-CTE IN probes. |
+| ~~P11 — Suppress unused customer×item dim FULL JOINs (q97.1)~~ | **OUT OF SCOPE** | Only affects q97.1, which is an alt-bucket variant. Not a main-bucket target. |
+| P12 — Collapse per-bucket aggregations on same CTE | **PARTIAL** (preql workaround) | q75 was rewritten to use `with year_pair as ... MERGE ... align` (see `zquery75.log`) and sits at +0.006s near-tie. Generator still doesn't synthesize this from the auto-aggregate form; q9's 5-bucket case unchanged (+0.026 loss). |
+| QA1 — Pull source PK into duplicate-invariant aggregate | **LANDED** (q97) | `zquery97.log` shows the `max(CASE … THEN order_id ELSE 0 END)` rewrite intact. Trilogy exec 0.082s flat regardless of ref-side variance. |
 
 ### What flipped since the prior audit
 
@@ -70,48 +109,65 @@ revert; do not chase this further.
 | q97 | 0.089s | 0.134s | **-0.046 (WIN)** | flipped from +0.174 loss via QA1 — `with pair_presence` rowset using `max(CASE channel=K THEN sales.order_id ELSE 0)`. Source PK in projection makes target_grain ⊇ source_grain so source-layer force_group never fires; the (customer, item, channel) dedup CTE disappears and date filter pushes cleanly into the union branches. Swing ~+0.22s. |
 | q59 | 0.163s | 0.183s | **-0.020 (WIN)** | flipped from +0.176 loss via shared `with wss as` rowset + lag-with-normalized-week. Pivotal piece: `partition by store_id, (week_seq - 52*in_year2_flag) order by in_year2_flag` lines year1 row up with its matching year2 row via lead-1. Unlocked by a generator fix in `window_node.py` that fuses multiple window functions sharing the same OVER clause into a single projection instead of cascading LEFT JOINs per column. Swing ~+0.20s. |
 
-### Refreshed headline-loss table (main only, >40ms loss)
+### Refreshed headline-loss table (main only, 2026-05-15 PM)
 
-Need 9 more wins on top of 41 to hit 50/99. The reachable wedges:
+Alt variants (q97.1, q97.2, q2.1, q2.2) are excluded — they exercise
+non-performant alternative paths and are not optimization targets.
 
-| Query | exec_time | comp_time | loss | covered by |
-|---|---|---|---|---|
-| 28 | 0.257s | 0.048s | +0.210 | P2 (UNION variant) — *regressed since audit* |
-| ~~59~~ | 0.248s | 0.231s | **+0.017 (near-tie)** | **landed via shared wss-rowset (P12 collapse)** (2026-05-15) |
-| ~~97~~ | 0.089s | 0.134s | **-0.046 (WIN)** | **landed via QA1** (2026-05-15) |
-| 65 | 0.313s | 0.150s | +0.163 | P3 — generator-side, preql rewrite alone did not help |
-| 16 | 0.149s | 0.020s | +0.129 | P3 + P10 |
-| 67 | 1.106s | 0.984s | +0.122 | P9 (modest) |
-| 85 | 0.834s | 0.723s | +0.112 | join order; minor |
-| 81 | 0.154s | 0.049s | +0.105 | P2 |
-| 34 | 0.158s | 0.054s | +0.104 | P3 (q17 family) |
-| 25 | ~0.111s | ~0.114s | ~tie | **partially landed** via `catalog_store_returns.preql` modeling-layer rewrite |
-| 17 | ~0.150s | ~0.051s | ~+0.099 | **partially landed** via same model; still loses but exec ~22ms faster than baseline |
-| 73 | 0.140s | 0.041s | +0.099 | P3 (drop unfiltered `cooperative` scan) |
-| 79 | 0.164s | 0.071s | +0.093 | not investigated |
-| 30 | 0.126s | 0.051s | +0.075 | not investigated |
-| 29 | 0.228s | 0.090s | +0.138 | P3 |
-| 76 | 0.125s | 0.053s | +0.072 | not investigated |
-| 44 | ~0.076s | ~0.079s | ~tie | **landed** via P2 `with` block rewrite (2026-05-15) |
-| 07 | 0.163s | 0.097s | +0.066 | not investigated |
-| 35 | 0.307s | 0.244s | +0.063 | not investigated |
-| 77 | 0.108s | 0.052s | +0.055 | P7 landed; remaining cost elsewhere |
-| 99 | 0.106s | 0.061s | +0.045 | not investigated |
-| 94 | 0.066s | 0.021s | +0.045 | P3 + P10 |
+Need 12 more wins on top of 38 to hit 50/99 main. Sorted by ratio (highest %
+worst first) — the largest *relative* gaps are the highest-leverage targets:
 
-**Headline takeaways for next round:**
-1. q65 preql was rewritten to encourage P3 but the generator did not honor it
-   — concrete evidence that P3 must be fixed in the generator pass, not
-   per-query.
-2. q75's `MERGE ... align` rewrite worked. Whether that pattern is the
-   generator's responsibility (auto-aggregate → MERGE) is the real P12 question.
-3. **Modeling-layer rewrites can unblock cross-fact `merge` losses** (q17/q25)
-   when the queries' join semantics fit a single unified-customer concept.
-   The new `catalog_store_returns.preql` source replaces the per-query
-   `merge catalog_sales.bill_customer.id into store_sales.{customer,return_customer}.id`
-   pattern; q25's trilogy exec drops 0.166s → ~0.111s. Generalizable to other
-   cross-channel merges if their customer constraints are coarse enough
-   (q17/q25 yes; q29 no — needs SS_CUST = SR_CUST which conflation kills).
+| Query | trilogy | ref | loss | ratio | covered by |
+|---|---:|---:|---:|---:|---|
+| 16 | 0.101s | 0.014s | +0.087 | **7.28x** | P3 + P10 |
+| 90 | 0.045s | 0.008s | +0.037 | **5.94x** | P2 (mutually-exclusive bucket variant) — **fresh, not previously audited** |
+| 28 | 0.212s | 0.045s | +0.166 | **4.66x** | P2 (UNION variant) |
+| 81 | 0.129s | 0.033s | +0.096 | **3.90x** | P2 |
+| 73 | 0.124s | 0.036s | +0.089 | **3.49x** | P3 (drop unfiltered `cooperative` scan) |
+| 94 | 0.057s | 0.019s | +0.037 | **2.92x** | P3 + P10 |
+| 17 | 0.135s | 0.049s | +0.086 | **2.76x** | partial — `catalog_store_returns.preql` model landed |
+| 77 | 0.106s | 0.040s | +0.066 | **2.67x** | P7 landed; remaining cost elsewhere |
+| 34 | 0.114s | 0.043s | +0.071 | **2.65x** | P3 (q17 family) |
+| 25 | 0.102s | 0.040s | +0.062 | **2.54x** | partial — modeling-layer rewrite landed, trilogy still slow |
+| 44 | 0.062s | 0.025s | +0.037 | **2.50x** | P2 `with` block landed, ref ran faster this round |
+| 68 | 0.171s | 0.070s | +0.102 | **2.46x** | **fresh, not previously audited** |
+| 30 | 0.074s | 0.031s | +0.044 | **2.43x** | not investigated |
+| 29 | 0.174s | 0.077s | +0.097 | **2.27x** | P3 |
+| 65 | 0.193s | 0.089s | +0.104 | **2.17x** | P3 — generator-side, preql rewrite alone did not help |
+| 05 | 0.138s | 0.070s | +0.068 | **1.97x** | not investigated |
+| 79 | 0.115s | 0.059s | +0.057 | **1.97x** | not investigated |
+| 71 | 0.064s | 0.033s | +0.031 | **1.94x** | not investigated |
+| 99 | 0.102s | 0.056s | +0.047 | **1.83x** | not investigated |
+| 76 | 0.088s | 0.048s | +0.040 | **1.83x** | not investigated |
+| 63 | 0.181s | 0.103s | +0.079 | **1.76x** | not investigated |
+| 78 | 0.286s | 0.197s | +0.089 | **1.45x** | regressed via ref variance |
+| 67 | 0.890s | 0.785s | +0.105 | 1.13x | P9 (modest) |
+| 85 | 0.642s | 0.596s | +0.046 | 1.08x | join order; minor |
+
+**Headline takeaways for next round (main only, sorted by ratio, biggest % gap first):**
+1. **q16 (7.28x)** is the biggest main-bucket ratio gap. P3 + P10 combined are
+   the wedge — collapsing the two materialized-CTE `IN (SELECT…)` probes into
+   an EXISTS, and de-duplicating the catalog_sales scans behind them.
+2. **q90 (5.94x)** — fresh entry, not previously audited. P2 (mutually-exclusive
+   bucket variant) is the candidate wedge; needs investigation.
+3. **q28 (4.66x)** improved 21% trilogy-side but reference SQL got faster too.
+   P2 UNION-of-filtered-subqueries variant is the listed wedge.
+4. **q81 (3.90x), q73 (3.49x), q94 (2.92x)** — all P2/P3 family. Similar
+   shapes; a generator-side P3 (collapse same-fact CTEs with overlapping
+   filters) would touch all three plus q65/q29/q17/q34.
+5. **q68 (2.46x)** — fresh entry, not previously audited. Worth a first look.
+6. q65's preql rewrite (P3) still doesn't flow through. Generator pass remains
+   the only path. q75's `MERGE ... align` succeeded because it's honored by
+   lowering; the bundling syntax used in q65 is not.
+7. **Modeling-layer rewrites unblock cross-fact `merge` losses** (q17/q25) when
+   the queries' join semantics fit a single unified-customer concept. The new
+   `catalog_store_returns.preql` source replaces the per-query merge pattern;
+   trilogy exec drops materially. Generalizable to other cross-channel merges
+   if their customer constraints are coarse enough (q17/q25 yes; q29 no —
+   needs SS_CUST = SR_CUST which conflation kills).
+
+(Alt-variant rankings, e.g. q97.1 at 18.8x, are intentionally excluded — see
+the scope note at the top of this file.)
 
 ---
 
@@ -376,8 +432,9 @@ Detect: a dim table joined on a single equi-predicate `fact.fk = dim.pk` where
 only `dim.pk` (or columns coalesce-equivalent to the FK) is consumed downstream.
 
 **Affected queries:** q64 (FULL-joins customer + item + coalesce dance — already
-wins on exec_time but this pattern still bloats the query and slows parse),
-q97.1 (see P11 — this is the primary driver of the 1.6s alt-variant regression).
+wins on exec_time but this pattern still bloats the query and slows parse).
+(q97.1 also exhibits this shape, but the alt bucket is out of scope; see top
+of file.)
 
 ---
 
@@ -485,8 +542,9 @@ twice.
 
 ## P11 — Suppress full-outer customer×item Cartesian when grouping a unified per-customer-per-item count
 
-Status: NEW — surfaced as the largest single regression in the audit (q97.1,
-+1.58s vs reference's 0.107s).
+Status: **OUT OF SCOPE** — this pattern only affects q97.1, which is an
+alt-bucket variant exercising a non-performant alternative path. Documented
+here for completeness only; do not prioritize.
 
 q97.1 (alt variant of q97) emits this shape:
 
@@ -518,8 +576,8 @@ Root cause is **P5** (unused dim joins) plus a misclassification of the FULL JOI
 key direction: trilogy decides it needs to merge customer/item from the dim
 tables when neither side projects anything but the FK.
 
-This is a single alt variant but it dominates the alt-bucket total (2.0s vs
-ref 0.36s); flipping it would push the alt win rate from 0/4 to 1/4.
+This is a single alt variant; flipping it would not affect the main-bucket
+win rate, which is the only metric we track.
 
 ---
 
@@ -577,35 +635,51 @@ between consumers is a single predicate constant.
 | P8 — Eliminate dead GROUP BY | not landed | 94, 97, 73, many | small per-query | low |
 | P9 — Reuse upstream dim columns | partial | 66, 67 | small | medium |
 | P10 — IN subquery → EXISTS | not landed | 16, 94 | medium | low |
-| P11 — Suppress unused customer×item dim FULL JOINs | not landed | 97.1 | 15x (alt) | medium |
+| ~~P11 — Suppress unused customer×item dim FULL JOINs~~ | **OUT OF SCOPE** | 97.1 (alt-only) | (n/a) | (n/a) |
 | P12 — Collapse per-bucket aggregations on same CTE | partial (preql) | 9, (75 fixed by rewrite) | 2-4x | medium |
 
-## Win-rate projection (revised 2026-05-15)
+## Win-rate projection (revised 2026-05-15 PM, main bucket only)
 
-Currently 41/99 (41.4%). To reach 50/99 = 50.5% need **9 swing wins**.
+Currently 38/99 main (38.4%) — summarizer counts 39 via strict `<0`. To
+reach 50/99 need **11-12 swing wins**.
 
-The cheapest wins, in order of expected effort:
+The cheapest wins, ranked by **gap ratio** (highest leverage first — these
+are main-bucket queries where trilogy is multiples slower, not just dozens
+of ms behind):
 
-1. **q73 (P3)**: drop the unfiltered `cooperative` store_sales scan. Half the
-   regression has already been recovered (+0.146 → +0.099); the rest of P3
-   should flip this.
-2. **q9 (P12)**: collapse the 5 bucket CTEs into 1 (or apply the q75
-   `MERGE ... align` rewrite as a stopgap).
-3. **q44 (P2)**: promote `CASE WHEN SS_STORE_SK = 4` to a WHERE on `thoughtful`.
-4. **q81 (P2)**: known 2.1x measured.
-5. **q97 (P1 + P4)**: hardest of the headline set.
-6. **q65 (P3)**: 8x measured; needs generator-side P3 fix — preql rewrite alone
-   does not work (confirmed 2026-05-15).
-7. **q29 / q17 / q16 (P3)**: similar shape to q65; one of these should flip.
-8. **q28 (P2)**: regressed since prior audit; investigate before relying on P2.
+1. **q16 (7.28x, +0.087s)** — P3 + P10. Two materialized-CTE `IN` probes
+   re-executed against two upstream catalog_sales scans.
+2. **q90 (5.94x, +0.037s)** — fresh; P2 (mutually-exclusive bucket variant)
+   is the candidate wedge.
+3. **q28 (4.66x, +0.166s)** — P2 (UNION-of-filtered-subqueries). Trilogy
+   already improved 21%; the wedge is mutually-exclusive CASE WHEN → UNION.
+4. **q81 (3.90x, +0.096s)** — P2 (single `D_YEAR=2000` predicate inside
+   CASE WHEN). Known 2.1x measured speedup if promoted to WHERE.
+5. **q73 (3.49x, +0.089s)** — P3. Drop the unfiltered `cooperative`
+   store_sales scan. Generator-side fix confirmed required (preql rewrites
+   exhausted).
+6. **q94 (2.92x, +0.037s)** — P3 + P10. Same family as q16.
+7. **q34 (2.65x, +0.071s) / q17 (2.76x, +0.086s) / q25 (2.54x, +0.062s)** —
+   q17 family. P3 generator fix would touch all three.
+8. **q44 (2.50x, +0.037s)** — `with addr_null_threshold` rewrite has landed;
+   ref-side variance is what's keeping it as a loss. Likely to flip on a
+   re-run without further work.
+9. **q68 (2.46x, +0.102s)** — fresh; needs investigation.
+10. **q65 (2.17x, +0.104s)** — P3 generator-side (confirmed 2026-05-15).
+11. **q29 (2.27x, +0.097s)** — P3 (same-fact CTE collapse).
 
-q67 and q85 are within 70-150ms of parity but their root causes (DuckDB plan
-drift, modest re-join of date_dim) don't fit cleanly into any pattern — they're
-the "earn-it-the-hard-way" tail.
+q67 and q85 are within 50-150ms of parity but only 1.08-1.13x — the
+"earn-it-the-hard-way" tail; not worth chasing for win rate.
 
-The headline lesson from this audit: **q65's preql-level rewrite did not change
-the generated SQL shape** (still 3 store_sales scans, still FULL JOIN with
-coalesce keying). The same lesson applies to q75 in reverse — the rewrite there
-*did* work because `MERGE ... align` is honored by the lowering pass, while the
-bundling syntax used in q65 is not. P3 specifically needs to be addressed in
-trilogy's lowering layer, not at the query-author level.
+The headline lesson from this audit: **trilogy exec time dropped ~18%
+(14.34s → 11.78s) and the structural wins from the morning (QA1 on q97,
+P2 on q44, P12 on q75) all held — but the win *count* dropped because the
+reference SQL's plan choices swing run-to-run, especially on the
+small-result UNION-of-CASE-WHEN-count queries**. The percentage gap is the
+more stable metric. By that measure, the highest-leverage main-bucket
+target is P3 — it covers eight queries in the headline table (q73, q16,
+q94, q17, q34, q25, q65, q29).
+
+(The alt bucket is not a target; see scope note at the top of this file.
+q97.1 at 18.8x is the worst raw ratio but is alt-only and is intentionally
+ignored.)

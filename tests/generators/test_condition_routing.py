@@ -7,11 +7,18 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing.node_generators.common import _local_property_conditions
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     covered_conditions,
     datasource_conditions,
     preexisting_conditions,
 )
+from trilogy.core.processing.node_generators.select_merge_node import (
+    _condition_can_apply_after_parent_merge,
+    _condition_remaining_after_parents,
+    _conditions_can_be_sourced_by_components,
+)
+from trilogy.core.processing.nodes import StrategyNode
 
 
 def _build_sales_environment():
@@ -226,3 +233,135 @@ def test_covered_conditions_handles_parenthetical_atoms():
 
     assert covered is not None
     assert covered.conditional == year_cond
+
+
+def test_flat_component_condition_can_span_datasources():
+    env = Environment()
+    env.parse(
+        """
+key customer_id int;
+key product_id int;
+property customer_id.region string;
+property product_id.category string;
+
+datasource customers (
+    customer_id: customer_id,
+    region: region,
+)
+grain (customer_id)
+address customers;
+
+datasource products (
+    product_id: product_id,
+    category: category,
+)
+grain (product_id)
+address products;
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    condition = BuildWhereClause(
+        conditional=_condition(
+            build_env.concepts["region"], build_env.concepts["category"]
+        )
+    )
+
+    assert _conditions_can_be_sourced_by_components([], condition, build_env)
+
+
+def test_progressive_remaining_condition_after_grouped_parent():
+    env = Environment()
+    env.parse(
+        """
+key customer_id int;
+key product_id int;
+key order_date date;
+property customer_id.region string;
+property product_id.category string;
+auto order_count <- count(customer_id);
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    date_cond = _condition(
+        build_env.concepts["order_date"], "2024-01-16", ComparisonOperator.GTE
+    )
+    flat_cond = _condition(build_env.concepts["region"], build_env.concepts["category"])
+    full = BuildWhereClause(
+        conditional=BuildConditional(
+            left=date_cond,
+            right=flat_cond,
+            operator=BooleanOperator.AND,
+        )
+    )
+    grouped = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["order_count"]],
+        environment=build_env,
+        preexisting_conditions=date_cond,
+    )
+    region = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["region"]],
+        environment=build_env,
+    )
+    category = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["category"]],
+        environment=build_env,
+    )
+
+    remaining = _condition_remaining_after_parents([grouped, region, category], full)
+
+    assert remaining == flat_cond
+    assert not _condition_can_apply_after_parent_merge(
+        [grouped, region, category], full.conditional
+    )
+    assert _condition_can_apply_after_parent_merge(
+        [grouped, region, category], remaining
+    )
+
+
+def test_property_enrichment_keeps_only_local_condition_atoms():
+    env = Environment()
+    env.parse(
+        """
+key item_id int;
+key store_id int;
+key date_id int;
+property item_id.item_desc string;
+property store_id.store_name string;
+property date_id.month_seq int;
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    date_cond = _condition(
+        build_env.concepts["month_seq"], 1176, ComparisonOperator.GTE
+    )
+    store_cond = _condition(build_env.concepts["store_id"], 0, ComparisonOperator.GT)
+    full = BuildWhereClause(
+        conditional=BuildConditional(
+            left=date_cond,
+            right=store_cond,
+            operator=BooleanOperator.AND,
+        )
+    )
+
+    item_conditions, item_condition_concepts = _local_property_conditions(
+        full,
+        [build_env.concepts["item_id"], build_env.concepts["item_desc"]],
+        {"local.item_id"},
+    )
+    store_conditions, store_condition_concepts = _local_property_conditions(
+        full,
+        [build_env.concepts["store_id"], build_env.concepts["store_name"]],
+        {"local.store_id"},
+    )
+
+    assert item_conditions is None
+    assert item_condition_concepts == []
+    assert store_conditions is not None
+    assert store_conditions.conditional == store_cond
+    assert store_condition_concepts == []

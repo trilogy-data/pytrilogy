@@ -13,6 +13,7 @@ WHERE
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.county = 'Williamson County'
     and store_sales.customer.id is not null
+    and store_sales.ticket_number is not null
 SELECT
     --store_sales.customer.id,
     store_sales.customer.last_name,
@@ -20,7 +21,7 @@ SELECT
     store_sales.customer.salutation,
     store_sales.customer.preferred_cust_flag,
     store_sales.ticket_number,
-    count(concat(cast(store_sales.ticket_number as string), '-', cast(store_sales.item.id as string))) by store_sales.customer.id, store_sales.ticket_number as cnt
+    sum(store_sales.row_counter) by store_sales.customer.id, store_sales.ticket_number as cnt
 having
     cnt between 15 and 20 
 ORDER BY

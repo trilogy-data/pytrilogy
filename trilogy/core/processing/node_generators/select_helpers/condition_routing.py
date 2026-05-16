@@ -51,7 +51,7 @@ def datasource_conditions(
     for atom in decompose_condition(conditions.conditional):
         if (
             str(atom) in covered_atoms
-            or atom.existence_arguments
+            or any(arg for group in atom.existence_arguments for arg in group)
             or not is_scalar_condition(atom)
         ):
             continue

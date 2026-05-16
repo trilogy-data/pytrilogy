@@ -4,21 +4,24 @@ from typing import Callable, Dict, Iterable, List, Set, Tuple, cast
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import BooleanOperator, Derivation, Purpose
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
+    BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
     LooseBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,
@@ -29,6 +32,55 @@ from trilogy.utility import unique
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 FUNCTION_TYPES = (BuildFunction,)
+ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+
+
+def _condition_from_atoms(
+    atoms: list[ConditionExpression],
+) -> ConditionExpression | None:
+    if not atoms:
+        return None
+    condition = atoms[0]
+    for atom in atoms[1:]:
+        condition = BuildConditional(
+            left=condition, right=atom, operator=BooleanOperator.AND
+        )
+    return condition
+
+
+def _local_property_conditions(
+    conditions: BuildWhereClause | None,
+    required: list[BuildConcept],
+    key_addresses: set[str],
+) -> tuple[BuildWhereClause | None, list[BuildConcept]]:
+    if conditions is None:
+        return None, []
+    available = {c.canonical_address for c in required}
+    condition_concepts: list[BuildConcept] = []
+    atoms: list[ConditionExpression] = []
+    for atom in decompose_condition(conditions.conditional):
+        atom_concepts = [
+            c for c in atom.row_arguments if c.derivation != Derivation.CONSTANT
+        ]
+        extra_concepts = [
+            c
+            for c in atom_concepts
+            if c.canonical_address not in available
+            and c.keys
+            and c.keys.issubset(key_addresses)
+        ]
+        atom_addresses = {c.canonical_address for c in atom_concepts}
+        extra_addresses = {c.canonical_address for c in extra_concepts}
+        if atom_addresses.issubset(available | extra_addresses):
+            atoms.append(atom)
+            condition_concepts.extend(extra_concepts)
+            available.update(extra_addresses)
+    condition = _condition_from_atoms(atoms)
+    if condition is None:
+        return None, []
+    return BuildWhereClause(conditional=condition), unique(
+        condition_concepts, "address"
+    )
 
 
 def _walk_aggregate_grain_inputs(
@@ -186,14 +238,21 @@ def gen_property_enrichment_node(
     for _k, vs in required_keys.items():
         log_lambda(f"Generating enrichment node for {_k} with {vs}")
         ks = _k.split("-")
+        required = [environment.concepts[k] for k in ks] + [
+            environment.concepts[v] for v in vs
+        ]
+        local_conditions, local_condition_concepts = _local_property_conditions(
+            conditions,
+            required,
+            set(ks),
+        )
         enrich_node: StrategyNode = source_concepts(
-            mandatory_list=[environment.concepts[k] for k in ks]
-            + [environment.concepts[v] for v in vs],
+            mandatory_list=unique(required + local_condition_concepts, "address"),
             environment=environment,
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=conditions,
+            conditions=local_conditions,
         )
         if not enrich_node:
             return None

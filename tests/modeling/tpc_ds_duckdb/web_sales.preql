@@ -32,10 +32,12 @@ properties <order_number,item.id> (
     return_amount float,
     return_quantity int?,
     is_returned bool,
+        row_counter int
 );
 
 
 datasource web_sales (
+    raw('''1'''): row_counter,
     WS_SOLD_DATE_SK: ?date.id,
     WS_SOLD_TIME_SK: ?time.id,
     WS_SHIP_DATE_SK: ?ship_date.id,

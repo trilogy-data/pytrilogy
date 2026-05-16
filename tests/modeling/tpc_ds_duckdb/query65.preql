@@ -7,6 +7,7 @@ WHERE
     store_sales.date.month_seq between 1176 and 1187
     and store_sales.store.id is not null
 SELECT
+
     store_sales.store.name,
     store_sales.item.desc,
     item_revenue as revenue,
