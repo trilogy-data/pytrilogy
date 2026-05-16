@@ -1,5 +1,5 @@
 query_id = "26"
-gen_length = 1397
+gen_length = 1392
 preql_size = 508
 comp_size = 583
 generated_sql = """
@@ -13,7 +13,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"promotion\" as \"cs_promotion_promotion\" on \"cs_catalog_sales\".\"CS_PROMO_SK\" = \"cs_promotion_promotion\".\"P_PROMO_SK\"
+    INNER JOIN \"memory\".\"promotion\" as \"cs_promotion_promotion\" on \"cs_catalog_sales\".\"CS_PROMO_SK\" = \"cs_promotion_promotion\".\"P_PROMO_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
     \"cs_bill_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and ( \"cs_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'N' or \"cs_promotion_promotion\".\"P_CHANNEL_EVENT\" = 'N' ) and \"cs_date_date\".\"D_YEAR\" = 2000
