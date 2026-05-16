@@ -23,14 +23,14 @@ GROUP BY
     2,
     3,
     4),
-abundant as (
+thoughtful as (
 SELECT
+    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\",
     \"store_sales_store_store\".\"S_CITY\" as \"store_sales_store_city\",
     \"store_sales_store_store\".\"S_COMPANY_ID\" as \"store_sales_store_company_id\",
     \"store_sales_store_store\".\"S_COUNTY\" as \"store_sales_store_county\",
     \"store_sales_store_store\".\"S_STATE\" as \"store_sales_store_state\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
     \"store_sales_store_store\".\"S_STREET_NAME\" as \"store_sales_store_street_name\",
     \"store_sales_store_store\".\"S_STREET_NUMBER\" as \"store_sales_store_street_number\",
     \"store_sales_store_store\".\"S_STREET_TYPE\" as \"store_sales_store_street_type\",
@@ -120,14 +120,14 @@ GROUP BY
     15,
     \"thoughtful\".\"store_sales_store_id\"
 ORDER BY 
-    \"abundant\".\"store_sales_store_name\" asc nulls first,
-    \"abundant\".\"store_sales_store_company_id\" asc nulls first,
-    \"abundant\".\"store_sales_store_street_number\" asc nulls first,
-    \"abundant\".\"store_sales_store_street_name\" asc nulls first,
-    \"abundant\".\"store_sales_store_street_type\" asc nulls first,
-    \"abundant\".\"store_sales_store_suite_number\" asc nulls first,
-    \"abundant\".\"store_sales_store_city\" asc nulls first,
-    \"abundant\".\"store_sales_store_county\" asc nulls first,
-    \"abundant\".\"store_sales_store_state\" asc nulls first,
-    \"abundant\".\"store_sales_store_zip\" asc nulls first
+    \"thoughtful\".\"store_sales_store_name\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_company_id\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_number\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_name\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_street_type\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_suite_number\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_city\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_county\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_state\" asc nulls first,
+    \"thoughtful\".\"store_sales_store_zip\" asc nulls first
 LIMIT (100)"""
