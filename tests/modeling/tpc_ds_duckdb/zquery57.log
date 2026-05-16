@@ -15,7 +15,7 @@ SELECT
     sum(\"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\") as \"sum_sales\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"catalog_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"catalog_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"call_center\" as \"catalog_sales_call_center_call_center\" on \"catalog_sales_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"catalog_sales_call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
