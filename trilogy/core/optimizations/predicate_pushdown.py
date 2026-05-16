@@ -525,19 +525,6 @@ class PredicatePushdown(OptimizationRule):
             f"Have {len(candidates)} candidates to try to push down from parent {type(cte.condition)}"
         )
         optimized = False
-        # HAVING inlines the aggregate expression (no SELECT-alias reference in
-        # portable SQL), so relocating a predicate that names the same concept
-        # repeatedly duplicates a potentially huge expression. Only attempt the
-        # HAVING pushdown when every concept in the relocated predicate is
-        # referenced once (q39: cov1/cov2 once each -> push; q58: sums named
-        # across 6 BETWEENs -> keep the compact outer-WHERE-by-alias form).
-        nonscalar_refs: dict[str, int] = {}
-        for cand in candidates:
-            if is_scalar_condition(cand) or not isinstance(cand, BuildConceptArgs):
-                continue
-            for arg in cand.row_arguments:
-                nonscalar_refs[arg.address] = nonscalar_refs.get(arg.address, 0) + 1
-        having_pushdown_safe = all(v <= 1 for v in nonscalar_refs.values())
         for candidate in candidates:
             if not is_scalar_condition(candidate):
                 # Aggregate-result predicate: can't push as WHERE, but a group
