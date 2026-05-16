@@ -1,5 +1,5 @@
 query_id = "47"
-gen_length = 5740
+gen_length = 5746
 preql_size = 2082
 comp_size = 2473
 generated_sql = """
@@ -16,11 +16,11 @@ SELECT
     sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"sum_sales\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"store_sales_store_store\".\"S_STORE_SK\" is not null and ( \"store_sales_date_date\".\"D_YEAR\" = 1999 or ( \"store_sales_date_date\".\"D_YEAR\" = 1998 and \"store_sales_date_date\".\"D_MOY\" = 12 ) or ( \"store_sales_date_date\".\"D_YEAR\" = 2000 and \"store_sales_date_date\".\"D_MOY\" = 1 ) )
+    \"store_sales_store_sales\".\"SS_STORE_SK\" is not null and ( \"store_sales_date_date\".\"D_YEAR\" = 1999 or ( \"store_sales_date_date\".\"D_YEAR\" = 1998 and \"store_sales_date_date\".\"D_MOY\" = 12 ) or ( \"store_sales_date_date\".\"D_YEAR\" = 2000 and \"store_sales_date_date\".\"D_MOY\" = 1 ) )
 
 GROUP BY
     1,

@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 7725
+gen_length = 7724
 preql_size = 2275
 comp_size = 2234
 generated_sql = """
@@ -47,7 +47,7 @@ cheerful as (
 SELECT
     \"ss_date_date\".\"D_WEEK_SEQ\" as \"ss_date_week_seq\",
     \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_text_id\",
-    \"ss_store_store\".\"S_STORE_SK\" as \"ss_store_id\",
+    \"wakeful\".\"ss_store_id\" as \"ss_store_id\",
     max(CASE
 	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1212 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1223 THEN 1
 	ELSE 0
@@ -59,7 +59,7 @@ SELECT
 FROM
     \"wakeful\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"wakeful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"wakeful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"wakeful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" >= 1212 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235 and \"ss_date_date\".\"D_WEEK_SEQ\" is not null
 

@@ -1,5 +1,5 @@
 query_id = "67"
-gen_length = 3657
+gen_length = 3658
 preql_size = 848
 comp_size = 1224
 generated_sql = """
@@ -23,7 +23,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STORE_SK\" is not null
+    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_sales\".\"SS_STORE_SK\" is not null
 ),
 cooperative as (
 SELECT

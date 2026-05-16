@@ -741,7 +741,12 @@ def gen_select_merge_node(
             if _condition_can_apply_after_parent_merge(parents, remaining_conditions):
                 preexisting_conditions = conditions.conditional
                 merge_conditions = remaining_conditions
-                force_join_type = JoinType.INNER
+                # Don't force INNER: the merge WHERE runs after the join, so a
+                # nullable-key OUTER row the filter keeps (e.g. NULL join key
+                # whose filtered column is non-null) must survive. Leave the
+                # join type to resolution + UpgradeJoinOnGuards, which only
+                # downgrades to INNER when the WHERE provably rejects both
+                # unmatched sides.
         elif conditions and (
             _conditions_deferrable_to_merge(normals, conditions, environment)
             and all(
