@@ -29,14 +29,13 @@ start with checking types and asking agents questions; end with a more efficient
 Headline features:
 
 - No manual joins; no from clause
-- Reusable models, types, and functions
+- Reusable models, calculations, and functions
 - Safe refactoring across queries
-- Supports all standard engines: BigQuery, DuckDB, Snowflake, Presto
+- Works where analytics lives: BigQuery, DuckDB, Snowflake, Presto
 - Easy to write - for humans and AI
 - Built-in semantic layer without boilerplate or YAML
 
-This repo contains [pytrilogy](https://github.com/trilogy-data/pytrilogy), the reference implementation of the core language and CLI.
-
+This repo contains [pytrilogy](https://github.com/trilogy-data/pytrilogy), the reference implementation of the core language and cli.
 
 **Install**
 To try it out, include both the CLI and serve dependencies.
@@ -49,7 +48,7 @@ or
 uv tool install "pytrilogy[cli,serve]"
 ```
 
-## Docs and Website
+## Docs and Web
 
 > [!TIP]
 > **Try it now:** [Open-source studio](https://trilogydata.dev/trilogy-studio-core/) | [Interactive demo](https://trilogydata.dev/demo/) | [Documentation](https://trilogydata.dev/)
@@ -112,6 +111,30 @@ Browse other available models with `trilogy public list` (filter with
 is pullable.
 
 
+
+### Key Features
+
+Trilogy supports reusable functions.
+Where clauses are automatically pushed down inside aggregates;
+having filters the otuside.
+```sql
+const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
+
+def cube_plus_one(x) -> (x * x * x + 1);
+def sum_plus_one(val)-> sum(val)+1;
+
+WHERE 
+   (prime+1) % 4 = 0
+SELECT
+    @sum_plus_one(@cube_plus_one(prime)) as prime_cubed_plus_one_sum_plus_one
+LIMIT 10;
+```
+
+**Run it in DuckDB**
+```bash
+trilogy run hello.preql duckdb
+```
+
 ## Principles
 
 Versus SQL, Trilogy aims to: 
@@ -129,6 +152,8 @@ Versus SQL, Trilogy aims to:
 **Maintain:**
 - Acceptable performance
 
+(we shoot for <~100-300ms of overhead for queyr planning, and optimized SQL generation)
+
 ## Backend Support
 
 | Backend | Status | Notes |
@@ -140,9 +165,9 @@ Versus SQL, Trilogy aims to:
 | **SQL Server** | Experimental | Limited testing |
 | **Presto** | Experimental | Limited testing |
 
-## Syntax Overview
+## Semantic Layer Intro
 
-### Trilogy `preql` models are compositions of types, keys, and properties
+### Semantic models are compositions of types, keys, and properties
 
 Save the following code in a file named `hello.preql`
 
@@ -421,6 +446,26 @@ or need to process/transform parsed code in more complicated ways.
 ```python
 from pytrilogy.authoring import Concept, Function, ...
 ```
+
+### Other Imports
+
+Are likely to be unstable. Open an issue if you need to take dependencies on other modules outside those two paths. 
+
+## MCP/Server
+
+Trilogy is straightforward to run as a server/MCP server; the former to generate SQL on demand and integrate into other tools, and MCP
+for full interactive query loops.
+
+This makes it easy to integrate Trilogy into existing tools or workflows.
+
+You can see examples of both use cases in the trilogy-studio codebase [here](https://github.com/trilogy-data/trilogy-studio-core)
+and install and run an MCP server directly with that codebase.
+
+If you're interested in a more fleshed out standalone server or MCP server, please open an issue and we'll prioritize it!
+
+## Trilogy Syntax Reference 
+
+See [documentation](https://trilogydata.dev/) for more details.
 
 ## Contributing
 
