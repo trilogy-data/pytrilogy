@@ -238,7 +238,9 @@ enumerable, and idempotency is a static property of the function operator.
 
 ## QA1 — Pull a source primary key into a duplicate-invariant aggregate to bypass source-layer force_group
 
-Status: **LANDED** (q97). Holds at +0.003s near-tie; trilogy exec ~0.104s flat.
+Status: **LANDED** (q97). PM re-run: stable near-tie **+0.005s (1.07x)**,
+trilogy exec ~0.083s — unaffected by the reference-side variance that flipped
+q81/q75 this run.
 
 The source layer wraps a SelectNode in a GroupNode whenever the datasource grain
 isn't a subset of target_grain (see
