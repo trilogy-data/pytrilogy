@@ -150,6 +150,7 @@ def test_grain(test_environment):
 
     assert x.intersection(y) == Grain(components=[pid])
     assert x.union(y) == Grain(components=[oid, pid, cid])
+    assert x.without_condition().component_order == [oid.address, pid.address]
 
     assert z.isdisjoint(x)
     assert z.issubset(y)

@@ -564,6 +564,44 @@ def _condition_can_apply_after_parent_merge(
     return _condition_can_apply_after_node_merge(parents, condition)
 
 
+def _merge_condition_routing(
+    parents: list[StrategyNode],
+    output_concepts: list[BuildConcept],
+    conditions: BuildWhereClause | None,
+) -> tuple[ConditionExpression | None, ConditionExpression | None, JoinType | None]:
+    if conditions is None:
+        return None, None, None
+    condition = conditions.conditional
+    if all(
+        x.preexisting_conditions and x.preexisting_conditions == condition
+        for x in parents
+    ):
+        return condition, None, None
+    if _parents_apply_condition_atoms(parents, conditions):
+        merge_condition = (
+            condition
+            if _condition_can_apply_after_parent_merge(parents, condition)
+            else None
+        )
+        return condition, merge_condition, None
+    remaining_conditions = _condition_remaining_after_parents(parents, conditions)
+    if remaining_conditions and _condition_can_apply_after_parent_merge(
+        parents, remaining_conditions
+    ):
+        return condition, remaining_conditions, None
+
+    # Filter applied at one parent (e.g. a partial-aggregate rollup) plus pure
+    # enumerator joins: the conditioned parent already carries the merge output
+    # set, so unmatched enumerator rows should not leak into the result.
+    output_addrs = {c.address for c in output_concepts}
+    for parent in parents:
+        if parent.preexisting_conditions == condition and output_addrs.issubset(
+            {c.address for c in parent.usable_outputs}
+        ):
+            return condition, None, JoinType.INNER
+    return None, None, None
+
+
 def gen_select_merge_node(
     all_concepts: list[BuildConcept],
     g: ReferenceGraph,
@@ -722,60 +760,9 @@ def gen_select_merge_node(
         preexisting_conditions = None
         force_join_type: JoinType | None = None
         merge_conditions = None
-        if conditions and all(
-            x.preexisting_conditions
-            and x.preexisting_conditions == conditions.conditional
-            for x in parents
-        ):
-            preexisting_conditions = conditions.conditional
-        elif conditions and _parents_apply_condition_atoms(parents, conditions):
-            preexisting_conditions = conditions.conditional
-            force_join_type = JoinType.INNER
-            if _condition_can_apply_after_parent_merge(parents, conditions.conditional):
-                merge_conditions = conditions.conditional
-        elif conditions and (
-            remaining_conditions := _condition_remaining_after_parents(
-                parents, conditions
-            )
-        ):
-            if _condition_can_apply_after_parent_merge(parents, remaining_conditions):
-                preexisting_conditions = conditions.conditional
-                merge_conditions = remaining_conditions
-                # Don't force INNER: the merge WHERE runs after the join, so a
-                # nullable-key OUTER row the filter keeps (e.g. NULL join key
-                # whose filtered column is non-null) must survive. Leave the
-                # join type to resolution + UpgradeJoinOnGuards, which only
-                # downgrades to INNER when the WHERE provably rejects both
-                # unmatched sides.
-        elif conditions and (
-            _conditions_deferrable_to_merge(normals, conditions, environment)
-            and all(
-                p.conditions is None and p.preexisting_conditions is None
-                for p in parents
-            )
-        ):
-            preexisting_conditions = conditions.conditional
-            merge_conditions = conditions.conditional
-            force_join_type = JoinType.INNER
-        elif conditions:
-            # Filter applied at one parent (e.g. a partial-aggregate rollup)
-            # plus pure-enumerator joins (single-key dimension tables added by
-            # prune_sources_for_aggregates upgrade): the conditioned parent
-            # already carries the merge's full output set, so the merge
-            # inherits its conditions. Force INNER joins so unmatched
-            # enumerator rows (which never went through the WHERE) don't leak
-            # NULL-filter rows into the result.
-            output_addrs = {c.address for c in all_concepts}
-            for parent in parents:
-                if (
-                    parent.preexisting_conditions == conditions.conditional
-                    and output_addrs.issubset(
-                        {c.address for c in parent.usable_outputs}
-                    )
-                ):
-                    preexisting_conditions = conditions.conditional
-                    force_join_type = JoinType.INNER
-                    break
+        preexisting_conditions, merge_conditions, force_join_type = (
+            _merge_condition_routing(parents, all_concepts, conditions)
+        )
 
         # When the merge's joined grain (e.g. customer_id from agg + dim) is
         # finer than the outer target's grain (e.g. region) — and the target

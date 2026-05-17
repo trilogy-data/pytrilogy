@@ -6,13 +6,20 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.constants import CONFIG, ParserBackend
-from trilogy.core.enums import AggregateGroupingMode, DatasourceState
+from trilogy.core.enums import AggregateGroupingMode, DatasourceState, WindowType
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
+from trilogy.core.models.author import (
+    ConceptRef,
+    Metadata,
+    NumberingWindowItem,
+    UndefinedConcept,
+)
 from trilogy.core.models.environment import (
     DictImportResolver,
     Environment,
     EnvironmentConfig,
 )
+from trilogy.parsing.common import _numbering_window_to_concept
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
 
@@ -446,6 +453,27 @@ select
             sql = Dialects.DUCK_DB.default_executor().generate_sql(query)[-1]
         assert "ROLLUP" in sql
         assert "rank() over" in sql
+
+
+def test_numbering_window_returns_undefined_for_undefined_anchor() -> None:
+    env = Environment()
+    env.concepts["local.missing"] = UndefinedConcept(address="local.missing")
+    item = NumberingWindowItem(
+        type=WindowType.RANK,
+        arguments=[ConceptRef(address="local.missing")],
+        over=[],
+        order_by=[],
+    )
+
+    concept = _numbering_window_to_concept(
+        item,
+        name="rk",
+        namespace="local",
+        environment=env,
+        metadata=Metadata(),
+    )
+
+    assert isinstance(concept, UndefinedConcept)
 
 
 def test_lark_parse_error_keeps_rich_error_codes() -> None:

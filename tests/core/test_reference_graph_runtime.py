@@ -1,10 +1,18 @@
-from trilogy.core.enums import Purpose
+from trilogy.core.enums import ComparisonOperator, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
+    SearchCriteria,
     concept_to_node,
     datasource_to_node,
+    get_graph_exact_match,
 )
-from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildGrain
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildDatasource,
+    BuildGrain,
+    BuildWhereClause,
+)
 from trilogy.core.models.core import DataType
 
 
@@ -119,3 +127,45 @@ def test_reference_graph_remove_nodes_from_preserves_metadata_contract():
     assert concept_nodes[0] not in graph.nodes
     assert datasource_nodes[0] in graph.datasources
     assert concept_nodes[0] in graph.concepts
+
+
+def test_collective_condition_match_handles_empty_datasource_graph():
+    condition = BuildWhereClause(
+        conditional=BuildComparison(
+            left=1,
+            right=1,
+            operator=ComparisonOperator.EQ,
+        )
+    )
+
+    assert (
+        get_graph_exact_match(
+            ReferenceGraph(),
+            SearchCriteria.FULL_ONLY,
+            condition,
+            relevant_concepts={"test.order_total"},
+        )
+        == set()
+    )
+
+
+def test_collective_condition_match_ignores_constant_only_atoms():
+    graph, concept_nodes, datasource_nodes = build_reference_graph()
+    condition = BuildWhereClause(
+        conditional=BuildComparison(
+            left=1,
+            right=1,
+            operator=ComparisonOperator.EQ,
+        )
+    )
+    relevant = {graph.concepts[concept_nodes[0]].canonical_address}
+
+    matches = get_graph_exact_match(
+        graph,
+        SearchCriteria.FULL_ONLY,
+        condition,
+        allow_filter_application=False,
+        relevant_concepts=relevant,
+    )
+
+    assert matches == {datasource_nodes[0]}

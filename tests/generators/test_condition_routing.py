@@ -1,4 +1,4 @@
-from trilogy.core.enums import BooleanOperator, ComparisonOperator
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
@@ -8,7 +8,14 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.condition_utility import decompose_condition
-from trilogy.core.processing.node_generators.common import _local_property_conditions
+from trilogy.core.processing.node_generators.common import (
+    _condition_available_from_parents,
+    _local_property_conditions,
+    _preexisting_conditions_from_parents,
+)
+from trilogy.core.processing.node_generators.group_node import (
+    _group_conditions_to_apply,
+)
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     covered_conditions,
     datasource_conditions,
@@ -17,7 +24,10 @@ from trilogy.core.processing.node_generators.select_helpers.condition_routing im
 from trilogy.core.processing.node_generators.select_merge_node import (
     _condition_can_apply_after_parent_merge,
     _condition_remaining_after_parents,
+    _condition_source_concepts,
     _conditions_can_be_sourced_by_components,
+    _merge_condition_routing,
+    _parents_apply_condition_atoms,
 )
 from trilogy.core.processing.nodes import StrategyNode
 
@@ -426,3 +436,131 @@ auto store_cume <- sum store_daily over item_id order by date asc;
         "local.month_seq",
         "local.sales_channel",
     }
+
+
+def test_parent_condition_helpers_cover_available_and_missing_conditions():
+    build_env = _build_sales_environment()
+    price_cond = _condition(
+        build_env.concepts["item_price"], 100, ComparisonOperator.GT
+    )
+    where = BuildWhereClause(conditional=price_cond)
+    empty_parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[],
+        environment=build_env,
+    )
+    price_parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["item_price"]],
+        environment=build_env,
+    )
+    filtered_parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["item_price"]],
+        environment=build_env,
+        preexisting_conditions=price_cond,
+    )
+
+    assert _preexisting_conditions_from_parents([], where) is None
+    assert _preexisting_conditions_from_parents([price_parent], where) is None
+    assert _condition_available_from_parents([price_parent], price_cond)
+    assert not _condition_available_from_parents([empty_parent], price_cond)
+    assert _group_conditions_to_apply([price_parent], None) is None
+    assert _group_conditions_to_apply([filtered_parent], where) is None
+    assert _group_conditions_to_apply([price_parent], where) == price_cond
+    assert _group_conditions_to_apply([empty_parent], where) is None
+
+
+def test_merge_condition_routing_does_not_force_inner_for_filtered_parents():
+    build_env = _build_sales_environment()
+    price_cond = _condition(
+        build_env.concepts["item_price"], 100, ComparisonOperator.GT
+    )
+    where = BuildWhereClause(conditional=price_cond)
+    left = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["item_id"]],
+        environment=build_env,
+        preexisting_conditions=price_cond,
+    )
+    right = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["item_price"]],
+        environment=build_env,
+        preexisting_conditions=price_cond,
+    )
+
+    preexisting, merge_condition, join_type = _merge_condition_routing(
+        [left, right],
+        [build_env.concepts["item_id"], build_env.concepts["item_price"]],
+        where,
+    )
+
+    assert _parents_apply_condition_atoms([left, right], where)
+    assert preexisting == price_cond
+    assert merge_condition is None
+    assert join_type is None
+
+
+def test_merge_condition_routing_forces_inner_only_when_one_parent_is_complete():
+    build_env = _build_sales_environment()
+    price_cond = _condition(
+        build_env.concepts["item_price"], 100, ComparisonOperator.GT
+    )
+    where = BuildWhereClause(conditional=price_cond)
+    filtered_parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[
+            build_env.concepts["item_id"],
+            build_env.concepts["item_price"],
+        ],
+        environment=build_env,
+        preexisting_conditions=price_cond,
+    )
+    enumerator_parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["item_id"]],
+        environment=build_env,
+    )
+
+    preexisting, merge_condition, join_type = _merge_condition_routing(
+        [filtered_parent, enumerator_parent],
+        [build_env.concepts["item_id"], build_env.concepts["item_price"]],
+        where,
+    )
+
+    assert preexisting == price_cond
+    assert merge_condition is None
+    assert join_type == JoinType.INNER
+
+
+def test_condition_source_concepts_skips_missing_key_references():
+    build_env = _build_sales_environment()
+    item_price = build_env.concepts["item_price"]
+    item_price.keys = {"local.missing_key"}
+    price_cond = _condition(item_price, 100, ComparisonOperator.GT)
+
+    sourced = _condition_source_concepts([price_cond], build_env)
+
+    assert sourced == [item_price]
+
+
+def test_parents_apply_condition_atoms_rejects_empty_and_existence_conditions():
+    build_env = _build_sales_environment()
+    item_id = build_env.concepts["item_id"]
+    item_price = build_env.concepts["item_price"]
+    existence_cond = BuildSubselectComparison(
+        left=item_id,
+        right=item_price,
+        operator=ComparisonOperator.IN,
+    )
+    where = BuildWhereClause(conditional=existence_cond)
+    parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[item_id, item_price],
+        environment=build_env,
+        preexisting_conditions=existence_cond,
+    )
+
+    assert not _parents_apply_condition_atoms([], where)
+    assert not _parents_apply_condition_atoms([parent], where)
