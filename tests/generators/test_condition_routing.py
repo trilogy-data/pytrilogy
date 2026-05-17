@@ -531,6 +531,8 @@ def test_merge_condition_routing_reapplies_parent_conditions_when_available():
         environment=build_env,
         conditions=price_cond,
     )
+    left.preexisting_conditions = None
+    right.preexisting_conditions = None
 
     preexisting, merge_condition, join_type = _merge_condition_routing(
         [left, right],
