@@ -1,13 +1,21 @@
-from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    Granularity,
+    JoinType,
+)
+from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
+    BuildGrain,
     BuildParenthetical,
     BuildSubselectComparison,
     BuildWhereClause,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.condition_utility import decompose_condition
+from trilogy.core.processing.node_generators import select_merge_node
 from trilogy.core.processing.node_generators.common import (
     _condition_available_from_parents,
     _local_property_conditions,
@@ -502,6 +510,39 @@ def test_merge_condition_routing_does_not_force_inner_for_filtered_parents():
     assert join_type is None
 
 
+def test_merge_condition_routing_reapplies_parent_conditions_when_available():
+    build_env = _build_sales_environment()
+    price_cond = _condition(
+        build_env.concepts["item_price"], 100, ComparisonOperator.GT
+    )
+    where = BuildWhereClause(conditional=price_cond)
+    left = StrategyNode(
+        input_concepts=[],
+        output_concepts=[
+            build_env.concepts["item_id"],
+            build_env.concepts["item_price"],
+        ],
+        environment=build_env,
+        conditions=price_cond,
+    )
+    right = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["item_price"]],
+        environment=build_env,
+        conditions=price_cond,
+    )
+
+    preexisting, merge_condition, join_type = _merge_condition_routing(
+        [left, right],
+        [build_env.concepts["item_id"], build_env.concepts["item_price"]],
+        where,
+    )
+
+    assert preexisting == price_cond
+    assert merge_condition == price_cond
+    assert join_type is None
+
+
 def test_merge_condition_routing_forces_inner_only_when_one_parent_is_complete():
     build_env = _build_sales_environment()
     price_cond = _condition(
@@ -564,3 +605,38 @@ def test_parents_apply_condition_atoms_rejects_empty_and_existence_conditions():
 
     assert not _parents_apply_condition_atoms([], where)
     assert not _parents_apply_condition_atoms([parent], where)
+
+
+def test_missing_abstract_property_source_fails_after_normal_parent(monkeypatch):
+    build_env = _build_sales_environment()
+    normal = build_env.concepts["item_id"]
+    abstract = build_env.concepts["item_price"].with_grain(BuildGrain())
+    abstract.granularity = Granularity.SINGLE_ROW
+    build_env.materialized_concepts.add(abstract.address)
+
+    def source_stub(concepts, *args, **kwargs):
+        if concepts == [normal]:
+            return [
+                StrategyNode(
+                    input_concepts=[],
+                    output_concepts=[normal],
+                    environment=build_env,
+                )
+            ]
+        return []
+
+    monkeypatch.setattr(
+        select_merge_node,
+        "_source_concepts_via_graph",
+        source_stub,
+    )
+
+    assert (
+        select_merge_node.gen_select_merge_node(
+            [normal, abstract],
+            ReferenceGraph(),
+            build_env,
+            depth=0,
+        )
+        is None
+    )
