@@ -44,29 +44,29 @@ exec_time = 0.05929899984039366
 comp_time = 0.0358712999150157
 
 [query_10]
-parse_time = 0.770999
-exec_time = 0.091479
-comp_time = 0.246143
+parse_time = 1.0673690000548959
+exec_time = 0.16170930000953376
+comp_time = 0.35720209986902773
 
 [query_11]
-parse_time = 0.43108
-exec_time = 0.159141
-comp_time = 0.269182
+parse_time = 0.5743684999179095
+exec_time = 0.19195410003885627
+comp_time = 0.3117722000461072
 
 [query_12]
-parse_time = 0.110049
-exec_time = 0.020487
-comp_time = 0.100836
+parse_time = 0.09689150005578995
+exec_time = 0.024434899911284447
+comp_time = 0.08234589989297092
 
 [query_13]
-parse_time = 0.266085
-exec_time = 0.119133
-comp_time = 0.197365
+parse_time = 0.12133460002951324
+exec_time = 0.1159221997950226
+comp_time = 0.1684880000539124
 
 [query_14]
-parse_time = 0.656322
-exec_time = 0.211084
-comp_time = 0.369376
+parse_time = 0.6810401000548154
+exec_time = 0.2174673001281917
+comp_time = 0.39893299993127584
 
 [query_15]
 parse_time = 0.121525
