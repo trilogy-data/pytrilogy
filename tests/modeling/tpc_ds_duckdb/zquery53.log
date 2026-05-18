@@ -1,5 +1,5 @@
 query_id = "53"
-gen_length = 2558
+gen_length = 2521
 preql_size = 1387
 comp_size = 1808
 generated_sql = """
@@ -7,7 +7,6 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"store_sales_date_date\".\"D_QOY\" as \"store_sales_date_quarter\",
     \"store_sales_item_items\".\"I_MANUFACT_ID\" as \"store_sales_item_manufacturer_id\",
     sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"sum_sales\"
 FROM
@@ -19,7 +18,7 @@ WHERE
 
 GROUP BY
     1,
-    2),
+    \"store_sales_date_date\".\"D_QOY\"),
 cooperative as (
 SELECT
     \"cheerful\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",

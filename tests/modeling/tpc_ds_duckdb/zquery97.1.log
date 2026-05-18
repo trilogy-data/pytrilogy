@@ -1,5 +1,5 @@
 query_id = "97.1"
-gen_length = 3071
+gen_length = 3027
 preql_size = 904
 comp_size = 1159
 generated_sql = """
@@ -49,8 +49,6 @@ GROUP BY
     5),
 yummy as (
 SELECT
-    \"uneven\".\"customer_id\" as \"customer_id\",
-    \"uneven\".\"item_id\" as \"item_id\",
     CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" >= 1200 and \"uneven\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"catalog_sales\",
     CASE WHEN \"uneven\".\"store_sales_date_month_seq\" >= 1200 and \"uneven\".\"store_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"store_sales\"
 FROM
@@ -58,8 +56,8 @@ FROM
 GROUP BY
     1,
     2,
-    3,
-    4)
+    \"uneven\".\"customer_id\",
+    \"uneven\".\"item_id\")
 SELECT
     sum(CASE
 	WHEN \"yummy\".\"store_sales\" is not null and \"yummy\".\"catalog_sales\" is null THEN 1

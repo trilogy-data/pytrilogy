@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 8804
+gen_length = 8051
 preql_size = 3293
 comp_size = 3129
 generated_sql = """
@@ -86,44 +86,36 @@ GROUP BY
     1),
 rambunctious as (
 SELECT
-    \"puzzled\".\"ws_grouped_ws_wp_id\" as \"_l0_union_u_id_w\",
     \"puzzled\".\"ws_grouped_ws_wp_id\" as \"u_id\",
     :_l0_union_u_channel_w as \"u_channel\",
-    cast(\"puzzled\".\"ws_grouped_ws_profit\" - coalesce(\"busy\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"_l0_union_u_profit_w\",
     cast(\"puzzled\".\"ws_grouped_ws_profit\" - coalesce(\"busy\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"u_profit\",
-    cast(\"puzzled\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"_l0_union_u_sales_w\",
     cast(\"puzzled\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"u_sales\",
-    cast(coalesce(\"busy\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"_l0_union_u_returns_w\",
     cast(coalesce(\"busy\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"u_returns\"
 FROM
     \"busy\"
     INNER JOIN \"puzzled\" on \"busy\".\"wr_grouped_wr_wp_id\" = \"puzzled\".\"ws_grouped_ws_wp_id\"
 GROUP BY
     1,
+    2,
     3,
     4,
-    6,
-    8),
+    5),
 friendly as (
 SELECT
-    \"sparkling\".\"ss_grouped_ss_store_id\" as \"_l0_union_u_id_s\",
     \"sparkling\".\"ss_grouped_ss_store_id\" as \"u_id\",
     :_l0_union_u_channel_s as \"u_channel\",
-    cast(\"sparkling\".\"ss_grouped_ss_profit\" - coalesce(\"macho\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"_l0_union_u_profit_s\",
     cast(\"sparkling\".\"ss_grouped_ss_profit\" - coalesce(\"macho\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"u_profit\",
-    cast(\"sparkling\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"_l0_union_u_sales_s\",
     cast(\"sparkling\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"u_sales\",
-    cast(coalesce(\"macho\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"_l0_union_u_returns_s\",
     cast(coalesce(\"macho\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"u_returns\"
 FROM
     \"macho\"
     INNER JOIN \"sparkling\" on \"macho\".\"sr_grouped_sr_store_id\" = \"sparkling\".\"ss_grouped_ss_store_id\"
 GROUP BY
     1,
+    2,
     3,
     4,
-    6,
-    8),
+    5),
 thoughtful as (
 SELECT
     count(\"wakeful\".\"cr_grouped_cr_cc_key\") as \"_cr_totals_cr_n_groups\",
