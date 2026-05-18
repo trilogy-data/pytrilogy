@@ -15,163 +15,131 @@ summarized in `tcp-ds-summary.md` via `summarize_test_results.py`. Win =
 
 ---
 
-## Audit — 2026-05-16 (PM re-run, 13:01)
+## Clean-sheet audit — 2026-05-17 (best-of-5)
 
-Current state: **41 wins / 58 losses / 0 ties out of 99 main queries**
-(~**41.4%**). Total trilogy exec **17.422s vs reference 96.899s**.
-Target 50/99 — **need 9 swing wins** (was "only 4" in the AM audit; we moved
-*away* from target).
+**Methodology.** This section is a from-scratch re-analysis. The P1–P12
+priority framing was discarded and every target re-diagnosed purely from the
+committed generated SQL (`zqueryNN.log`) vs reference (`queryNN.sql`) — five
+independent clean-room SQL diffs with no access to this doc. The P1–P12
+sections below are **retained only as a SQL-shape reference** (the concrete
+before/after sketches are still correct); the **root-cause (RC) model here
+supersedes their Status / priority lines**, which still reflect the old
+2026-05-16 framing. Each RC points to the P-section with its sketch.
 
-This is a **same-day, same-fingerprint re-run** of the AM (09:26) audit —
-`amd64-intel64_family_6_model_183_stepping_1_genuineintel-16`, regenerated
-13:01. **No code changed between the two runs** (HEAD still `3ec6dc57`); the
-46 → 41 swing is **pure run-to-run variance plus reference-SQL plan
-pathology**, not a structural regression. Verified against the regenerated
-`zquery*.log` (same 13:01 run): every pattern's structural state is
-**unchanged** from the AM audit (see Pattern status below).
+### Current state (best-of-5 run)
 
-### The headline: q81 reverted exactly as the AM audit predicted
+**37 wins / 62 losses out of 99 main queries** (~37%). Trilogy total
+14.725s vs reference 60.940s — but ~45s of the reference total is the
+q64/q72 PRAGMA plan-blowups, so **totals are not an optimization signal**.
+Target 50/99 → **need +13 swing wins**.
 
-| Query | AM (09:26) | PM (13:01) | what actually happened |
+37/99 is a *worse* best-of-5 sample than the 42/99 seen earlier the same
+day (run-to-run variance in the win count and absolute deltas). The **ratio
+ranking is stable run-to-run and is the durable target list** — not the
+count. Best-of-5 = one untimed warmup + 5 timed iterations, minimum recorded
+(`test_queries.py:_best_time`, `TPCDS_TIMING_RUNS=5`); queries whose first
+probe exceeds 1.0s keep a single sample.
+
+### Root-cause model (replaces the P1–P12 priority framing)
+
+The clean-room diffs collapsed the 12-pattern taxonomy into **six root
+causes — and the two highest-leverage ones are the same defect**:
+
+| RC | Defect (one line) | Queries | Shape ref |
 |---|---|---|---|
-| q81 | **-1.127 WIN** | **+0.189 LOSS (5.25x)** | **Not a regression.** `zquery81.log:27` still shows `D_YEAR = 2000` pushed into the source CTE and **0 CASE WHEN** — P1+P2 are still structurally landed. The AM "win" was entirely a reference-side plan blowup (ref 1.338s → **0.045s** at steady state); trilogy exec barely moved (0.211s → 0.234s). The AM audit explicitly flagged this: *"magnitude amplified by a reference-side plan blowup … like q82."* It was. q81 is a durable structural improvement that **remains a measured loss** at normal reference timing. |
-| q75 | -0.004 tie/WIN | **+0.033 loss (1.18x)** | P12 preql workaround structurally unchanged; another variance flip the wrong way. |
+| **RC-A** | Shared-grain multi-metric query split into per-metric / per-source join pipelines that each re-scan the big fact tables, then re-merged with `FULL JOIN … IS NOT DISTINCT FROM` on the group keys | q17, q25, q29, q50, q05 (+ partial q77) | P3, P6, P4 |
+| **RC-B** | Leading unfiltered key-extraction CTE (`SELECT <fks> FROM fact GROUP BY <all keys>`, no filter pushed in) + a third CTE that re-scans/re-joins the fact to attach enrichment columns | q73, q81, q30, q76 | P1, P3, P8 |
+| **RC-C** | Aggregate-membership `IN/NOT IN` lowered to a materialized CTE + `IN (SELECT … WHERE … IS NOT NULL)` probed 2×, `count>1` filter as a CASE→NULL projection over the full grain instead of `HAVING` | q16, q94 | P10 |
+| **RC-D** | Channel-marked `UNION ALL` + `CASE WHEN channel=` pivot instead of per-channel pre-aggregate-then-join | q78, q05 | P4 |
+| **RC-E** | Disjoint constant buckets lowered to CASE-WHEN over one loose scan; the `count(DISTINCT)`s run over the loose superset instead of a tight per-bucket WHERE | q28 | P2 |
+| **RC-F** | `UNION ALL` lowered to a FULL-JOIN-on-all-output-columns tower (multi-select MERGE/align); scalar branch cross-joined N× | q77, q76 | P12, P7 |
 
-### Headline wins (PM)
+**RC-A and RC-B are the same disease** — "re-scan / re-derive instead of
+carrying columns through one join graph, then reconcile with a null-safe
+FULL JOIN." Counting partial-overlap queries, **one generator-side fix here
+touches ~9 queries** (q17, q25, q29, q50, q73, q81, q30 directly; q05, q76,
+q77 partially). The old doc fragmented this exact fix across P3/P6/P9/P1 as
+four separate "partial/not-landed" rows — which is why it read as
+intractable. Consolidated, it is the single highest-leverage lever in the
+suite and by itself clears the +13 to 50/99.
 
-| Query | trilogy | ref | delta | note |
-|---|---:|---:|---:|---|
-| q72 | 0.087s | 45.755s | **-45.67s** | pathological reference SQL — *grew* vs AM (26.3s) |
-| q64 | 0.050s | 31.862s | **-31.81s** | pathological reference SQL — *grew* vs AM (22.9s) |
-| q82 | 0.488s | 1.397s | **-0.91s** | reference plan blowup; trilogy shape unchanged |
-| q37 | 0.317s | 1.000s | **-0.68s** | win *grew* (ref 0.639s → 1.000s) |
-| q95 | 0.109s | 0.485s | -0.38s | |
-| q88 | 0.043s | 0.247s | -0.20s | |
-| q98 | 0.034s | 0.185s | -0.15s | |
-| q22 | 0.795s | 0.920s | -0.12s | |
-| q59 | 0.234s | 0.323s | -0.089s | shared `with wss` rowset + fused-window; stable WIN |
+### Target table (best-of-5, main only, ref ≥ 15ms, by ratio)
 
-q72/q64/q82/q37 alone account for ~80s of the 96.9s reference total — the
-reference-SQL pathology that inflates the totals got *larger* this run, not
-smaller. **The total-time numbers are not an optimization signal; the
-per-query percentage gap on the remaining losses is.**
+| Query | trilogy | ref | Δ | ratio | RC | locus |
+|---|---:|---:|---:|---:|---|---|
+| 16 | 0.140s | 0.018s | +0.122 | **7.75x** | RC-C | gen |
+| 28 | 0.234s | 0.048s | +0.186 | **4.88x** | RC-E | gen |
+| 73 | 0.154s | 0.039s | +0.115 | **3.97x** | RC-B | gen |
+| 94 | 0.080s | 0.023s | +0.058 | **3.52x** | RC-C | gen |
+| 81 | 0.160s | 0.052s | +0.108 | **3.07x** | RC-B | gen |
+| 17 | 0.164s | 0.054s | +0.109 | **3.01x** | RC-A | gen |
+| 30 | 0.115s | 0.039s | +0.076 | **2.95x** | RC-B | gen |
+| 25 | 0.127s | 0.045s | +0.082 | **2.81x** | RC-A | gen |
+| 76 | 0.131s | 0.047s | +0.083 | **2.77x** | RC-B/F | gen |
+| 77 | 0.143s | 0.052s | +0.091 | **2.77x** | RC-F/B | gen |
+| 29 | 0.219s | 0.096s | +0.122 | **2.27x** | RC-A | gen |
+| 44 | 0.065s | 0.030s | +0.035 | 2.19x | *unassigned* | ? |
+| 68 | 0.182s | 0.087s | +0.095 | 2.09x | *unassigned* | ? |
+| 50 | 0.411s | 0.198s | +0.213 | 2.07x | RC-A | gen |
+| 78 | 0.398s | 0.250s | +0.149 | 1.60x | RC-D | gen |
+| 05 | 0.140s | 0.107s | +0.034 | 1.32x | RC-A/D | gen |
+| 90 | 0.044s | 0.009s | +0.035 | 4.86x | RC-E | floor — skip |
 
-### The near-tie thesis did not hold
+q28 is the **largest absolute loss** (+0.186); q16 the **worst ratio**
+(7.75x). q67 (1.22x, +0.214) and q22 (1.17x, +0.141) are the
+high-cost / low-ratio tail — large absolute, near-parity ratio, not
+structurally flippable; **exclude from win-rate targeting**.
 
-The AM audit's #1 "cheapest path to +4" was the noise-band near-ties flipping
-our way with no work. They did not — the band is **symmetric noise**, as
-likely to swing against us as for us:
+### Corrections to the prior (2026-05-16) audit
 
-| Query | AM | PM | direction |
-|---|---|---|---|
-| q68 | +0.025 (1.32x) | **+0.173 (2.34x)** | swung hard *against* — exec 0.104s → 0.303s |
-| q44 | +0.014 (1.36x) | +0.036 (1.60x) | drifted further from a flip |
-| q65 | +0.032 (1.33x) | +0.041 (1.24x) | ~same, still near-tie |
-| q34 | +0.001 (1.02x) | +0.012 (1.15x) | ~same, still near-tie |
-| q97 | +0.003 (1.02x) | +0.005 (1.07x) | stable near-tie; QA1 holds |
+1. **q81 is NOT "structurally landed (P1+P2)."** That was inferred from a
+   WHERE-clause / 0-CASE-WHEN check. The actual SQL still has **3
+   `catalog_returns` scans + an unfiltered `highfalutin` dedup CTE** —
+   identical RC-B defect to q73. q81 is a live target, not a closed one;
+   the "structural landing ≠ win, don't bank it" framing solved the wrong
+   problem.
+2. **q28 is the highest-confidence flip, not low-value.** Old doc: "P2 fix
+   modest because count(DISTINCT) dominates (1.1x)." Inverted —
+   count(DISTINCT) dominating is *why* WHERE-pushdown wins: it shrinks each
+   distinct's input from the whole `0–30` band to one tight bucket. Largest
+   absolute loss, isolated, clean generator fix.
+3. **q90 is measurement-floor — drop it.** 9 ms reference, +0.035s;
+   trilogy's single-scan plan is already algorithmically better than the
+   reference's two cross-joined subqueries. The ratio (4.86x) is real but
+   the absolute is noise; not a target.
+4. **The near-tie band is not a planning input.** The old doc spent most of
+   its length on it. Every genuine target is a solid 2–7.75x structural
+   loss; none is a near-tie. Best-of-5 already removes most of the jitter
+   that motivated the discussion — ignore the band entirely.
 
-**None flipped to a win; q68 became a substantial loss.** Counting on the
-near-tie band for +4 is not a reliable plan — the only durable lever is
-closing real structural gaps.
+### Priority order
 
-### Other notable moves vs AM
+1. **RC-A + RC-B unified generator fix** — carry the shared join graph
+   once, single GROUP BY, no `FULL JOIN … IS NOT DISTINCT FROM` re-merge, no
+   unfiltered key-dedup re-scan. Flips q17, q25, q29, q50, q73, q81, q30 and
+   assists q05/q76/q77. Clears 50/99 on its own. Locus: the select-merge /
+   key-projection node generator
+   (`trilogy/core/processing/node_generators/select_merge_node.py`, already
+   open on this branch). Before/after sketches: P1, P3, P6.
+2. **q28 (RC-E)** — disjoint buckets → WHERE-filtered subqueries (the
+   reference shape). Biggest single absolute win, isolated, high
+   confidence, pure generator fix. Sketch: P2.
+3. **q16 + q94 (RC-C)** — `filter where count(...) by … > N` → `HAVING`
+   semi-join + single filtered scan; `IN (SELECT … IS NOT NULL)` →
+   semi/anti-join. Best ratio in the suite (7.75x); two wins from one
+   lowering change. Sketch: P10.
 
-| Query | AM | PM | note |
-|---|---|---|---|
-| q28 | +0.176 (4.22x) | **+0.266 (3.33x)** | still 18 CASE WHEN (`zquery28.log` `avg/count/count distinct CASE` ×6 buckets); still the **largest-delta main loss**; P2 mutex variant still not landed |
-| q50 | +0.128 (1.64x) | **+0.201 (1.60x)** | worsened; 2nd-largest delta; still not investigated |
-| q78 | +0.110 (1.50x) | **+0.187 (1.49x)** | regressed; P4 still not landed |
-| q29 | +0.101 (2.22x) | **+0.170 (2.21x)** | regressed; q17-family P3 |
-| q66 | +0.073 (1.42x) | **+0.152 (1.65x)** | regressed; P9 (re-joins date_dim) |
-| q63 | (not audited) | **+0.107 (1.61x)** | **new prominent loss** — not previously audited |
-| q67 | +0.101 (1.11x) | +0.115 (1.07x) | high-cost low-ratio tail; trilogy 1.68s |
-| q73 | +0.110 (3.89x) | +0.152 (2.29x) | ~same/worse; P3 (still 2 ss scans) |
-| q85 | +0.153 (1.23x) | +0.030 (1.05x) | improved this run — itself a variance swing, not a fix |
-| q5  | +0.106 (2.52x) | +0.057 (1.77x) | improved this run (variance) |
+Secondary (real, lower-confidence, partly absorbed once RC-A/B lands):
+q77/q76 (RC-F), q78/q05 (RC-D). Needing a first SQL diff:
+**q68 (2.09x, +0.095), q44 (2.19x, +0.035)** — unassigned, likely the same
+re-scan/enrichment family as RC-A/B but not yet verified.
 
-### Pattern status (2026-05-16 PM — structurally unchanged from AM)
+All fixes are **generator-side**; the `.preql` intent files already express
+the reference-equivalent single-scan / UNION / HAVING semantics — the
+generator is over-materializing. No preql rewrites required.
 
-Scan counts below are from the regenerated `zquery*.log` (fixed-string match on
-`<fact>" as "<alias>`), CASE-WHEN status from the SQL bodies.
-
-| Pattern | Status | Evidence (PM, verified) |
-|---|---|---|
-| P1 — Filter pushdown into source CTE | **PARTIAL** (structurally landed for q81) | `zquery81.log:27` still has `D_YEAR = 2000` in the source-CTE WHERE, 0 CASE WHEN. q66 still pushed. q65's cost is P3-dominated, not P1. **Timing reverted to loss — structural landing ≠ measured win.** |
-| P2 — CASE WHEN → WHERE | **PARTIAL** (q81 structurally landed) | q81 still 0 CASE WHEN. q44 `with addr_null_threshold` holds. **q28 still 18 CASE WHEN, q90 still 3 CASE-WHEN buckets — mutually-exclusive UNION variant NOT landed.** |
-| P3 — Collapse duplicate fact scans | **PARTIAL** | Verified scan counts: q65=1 ss, q34=1 ss (**still collapsed**); q73=2 ss, q16=3 cs, q94=3 ws, q29=2 ss+2 cs+2 sr, q17=2 cs+2 sr, q25=2 cs+2 sr (**still multi-scan**). Highest remaining leverage; no change vs AM. |
-| P4 — Per-channel agg vs unified UNION | **NOT LANDED** | q78 regressed to +0.187. q97 sits at +0.005 via QA1, not per-channel restructuring. |
-| P5 — Drop unused dim joins | not investigated | q64 still wins via optimizer luck (-31.81s). |
-| P6 — Drop `IS NOT DISTINCT FROM` reconciliation | **PARTIAL** | No `IS NOT DISTINCT FROM` in q73/q16/q65/q44. q66, q17 unchanged. |
-| P7 — Inline constants | **LANDED** | q66, q77 emit constants directly; constant-CTE+cross-join gone. |
-| P8 — Eliminate dead GROUP BY | **NOT LANDED** | q97 `cooperative` GROUP BY load-bearing for dedup-bypass; q73 unfiltered GROUP BY persists. |
-| P9 — Reuse upstream dim columns | **PARTIAL** | q66 regressed to +0.152 (re-joins date_dim); q67 +0.115 (1.07x). |
-| P10 — IN subquery → EXISTS/SEMI | not landed | q16 still has the materialized-CTE `IN (SELECT…)` probes over 3 catalog_sales scans. |
-| ~~P11 — q97.1 customer×item FULL JOINs~~ | **OUT OF SCOPE** | alt-bucket only. |
-| P12 — Collapse per-bucket aggregations | **PARTIAL** (preql workaround) | **q75 flipped to +0.033 loss** (variance, not a structural change). q9 unchanged (+0.025, 1.56x). Generator still doesn't synthesize it. |
-| QA1 — Pull source PK into duplicate-invariant aggregate | **LANDED** (q97) | q97 stable near-tie +0.005 (1.07x) regardless of ref variance. |
-
-### Refreshed headline-loss table (main only, sorted by ratio, ref ≥ 5ms)
-
-The largest *relative* gaps are the highest-leverage targets. Need **9 more
-wins** on top of 41 to hit 50/99.
-
-| Query | trilogy | ref | loss | ratio | covered by |
-|---|---:|---:|---:|---:|---|
-| 16 | 0.118s | 0.018s | +0.100 | **6.65x** | P3 + P10 |
-| 81 | 0.234s | 0.045s | +0.189 | **5.25x** | P1+P2 structurally landed; loss is steady-state ref |
-| 90 | 0.042s | 0.009s | +0.034 | **4.75x** | P2 (mutually-exclusive bucket variant) |
-| 28 | 0.380s | 0.114s | +0.266 | **3.33x** | P2 (UNION variant); **largest-delta main loss** |
-| 94 | 0.063s | 0.020s | +0.043 | **3.11x** | P3 + P10 (3 ws scans) |
-| 77 | 0.123s | 0.044s | +0.080 | **2.83x** | P7 landed; remaining cost elsewhere |
-| 25 | 0.116s | 0.043s | +0.073 | **2.69x** | P3 (q17 family) |
-| 17 | 0.148s | 0.058s | +0.090 | **2.54x** | P3 (q17 family) |
-| 68 | 0.303s | 0.130s | +0.173 | **2.34x** | regressed from near-tie; not investigated |
-| 73 | 0.271s | 0.118s | +0.152 | **2.29x** | P3 (drop unfiltered scan; 2 ss) |
-| 29 | 0.311s | 0.140s | +0.170 | **2.21x** | P3 (q17 family, stricter SS=SR semantics) |
-| 76 | 0.135s | 0.066s | +0.069 | **2.06x** | not investigated |
-| 83 | 0.053s | 0.030s | +0.023 | **1.77x** | not investigated |
-| 05 | 0.132s | 0.075s | +0.057 | **1.77x** | improved vs AM (variance); not investigated |
-| 66 | 0.384s | 0.233s | +0.152 | **1.65x** | P9 (re-joins date_dim) |
-| 63 | 0.285s | 0.177s | +0.107 | **1.61x** | **new, not previously audited** |
-| 44 | 0.095s | 0.059s | +0.036 | **1.60x** | P2 landed; drifted off near-tie |
-| 50 | 0.537s | 0.335s | +0.201 | **1.60x** | worsened; not investigated |
-| 99 | 0.097s | 0.062s | +0.035 | **1.57x** | not investigated |
-| 09 | 0.070s | 0.045s | +0.025 | **1.56x** | P12 (5-bucket) |
-| 30 | 0.086s | 0.057s | +0.029 | **1.51x** | not investigated |
-| 78 | 0.566s | 0.380s | +0.187 | **1.49x** | P4 |
-| 65 | 0.210s | 0.169s | +0.041 | **1.24x** | P3 landed; near-tie |
-| 34 | 0.092s | 0.080s | +0.012 | **1.15x** | P3 landed; near-tie |
-| 67 | 1.676s | 1.561s | +0.115 | **1.07x** | P9 (modest); high-cost tail |
-| 97 | 0.083s | 0.077s | +0.005 | **1.07x** | QA1 holds; stable near-tie |
-| 85 | 0.680s | 0.649s | +0.030 | **1.05x** | improved vs AM (variance) |
-
-**Takeaways for next round (main only):**
-1. **Stop banking on near-tie variance.** The AM "+4 from near-ties" plan was
-   falsified this run (q68 swung +0.025 → +0.173). The near-tie band is
-   symmetric noise. The only durable path to 50/99 is closing structural gaps.
-2. **q16 (6.65x)** remains the biggest main-bucket ratio gap. P3 + P10
-   combined are the wedge — collapse the 3 catalog_sales scans behind the
-   materialized-CTE `IN (SELECT…)` probes and convert them to EXISTS.
-3. **q28 (3.33x, +0.266) / q90 (4.75x)** — P2 mutually-exclusive UNION variant
-   still does not synthesize (18 / 3 CASE WHEN). q81 proves the
-   single-shared-predicate case lands structurally; the multi-bucket case is
-   the remaining P2 gap. q28 is the single largest-delta main loss.
-4. **q73 (2.29x), q25/q17/q29 (2.2–2.7x), q94 (3.11x)** — the P3 family the
-   q65/q34 fix did *not* reach. One generalized generator-side P3 (collapse
-   same-fact CTEs with overlapping filters, incl. the cross-fact SS/CS/SR
-   q17-family) would touch all of these. q29's stricter `SS_CUST = SR_CUST`
-   still blocks single-concept conflation.
-5. **q81 is structurally done but a steady-state loss (5.25x).** Don't count
-   it as landed for win-rate purposes. The remaining trilogy-side cost
-   (0.234s vs 0.045s ref) is the real target, separate from P1/P2.
-6. **q68 (+0.173, regressed), q50 (+0.201), q63 (+0.107, new)** all need a
-   first look — none has an assigned pattern.
-7. q67 / q85 are the high-cost low-ratio tail (1.05–1.07x) — not worth
-   chasing for win rate.
-
-(Alt-variant rankings — q97.1 at ~16.7x, +1.194s — are intentionally
-excluded; see the scope note at the top of this file. Alt bucket: 0/4 wins,
-unchanged.)
+(Alt bucket out of scope per the top scope note; q97.1 ~16x is alt-only and
+ignored. Alt: 0/4 wins.)
 
 ---
 
@@ -649,40 +617,12 @@ split. q75 fixed by preql rewrite.
 | P12 — Collapse per-bucket aggregations | partial (preql) | 9, (75 fixed) | 2-4x | medium |
 | QA1 — Source PK into dup-invariant aggregate | **LANDED** | (97) | ~0.22s swing | done |
 
-## Win-rate projection (2026-05-16 PM, main bucket only)
+## Win-rate projection
 
-Currently **41/99 main (41.4%)** — *down* from the AM run's 46/99 with no code
-change. To reach 50/99 needs **9 swing wins**. The AM "closest it's ever been"
-framing was an artifact of variance, not progress.
-
-Path, ranked by durability (not by run-to-run luck):
-
-1. **q16 (6.65x, +0.100)** — P3 + P10. Highest-leverage structural target;
-   unchanged across both runs.
-2. **q28 (3.33x, +0.266) / q90 (4.75x)** — P2 mutually-exclusive UNION variant
-   (the remaining P2 gap; single-shared-predicate case lands structurally via
-   q81). q28 is the single largest-delta main loss.
-3. **q73 (2.29x, +0.152), q17/q25/q29 (2.2–2.7x), q94 (3.11x)** — the P3
-   family the q65/q34 fix did not reach; one generalized generator-side P3
-   touches all of these.
-4. **q81 (5.25x, +0.189)** — structurally done (P1+P2) but a steady-state
-   loss; the residual 0.234s trilogy-side cost is a separate target. Do *not*
-   bank it as a win.
-5. **Investigate the un-patterned losses:** q68 (+0.173, regressed from
-   near-tie), q50 (+0.201), q63 (+0.107, new), q76 (2.06x), q05/q83 (1.77x).
-
-**Do NOT plan around the near-tie band.** The AM audit's top recommendation
-("near-ties flip our way → +4 cheaply") was directly falsified by this
-re-run: q68 swung +0.025 → +0.173 *against* us, and no near-tie flipped to a
-win. The band is symmetric noise.
-
-The headline lesson from this audit: **structural landings (q81 P1+P2, q65/q34
-P3) are durable; the win *count* attached to them is not.** The largest-
-magnitude wins (q72/q64/q82/q37) are reference-SQL plan pathology that *grew*
-this run and inflate the totals without being optimization signal. The
-percentage-gap ranking on the remaining losses is the only stable target list,
-and P3 still covers the most of it (q16, q73, q94, q17, q25, q29).
-
-(The alt bucket is not a target; see the scope note at the top. q97.1 at
-~16.7x is the worst raw ratio but is alt-only and intentionally ignored.
-Alt bucket: 0/4 wins, unchanged.)
+**Superseded.** See **Clean-sheet audit — 2026-05-17 (best-of-5)** at the top
+of this file for current state (37/99, +13 to target), the root-cause (RC)
+model, the ratio-ranked target table, and the priority order. The P1–P12
+sections above are retained only as SQL-shape reference (before/after
+sketches); their individual "Status / priority" lines reflect the old
+2026-05-16 framing and are **not** the current plan. RC→P map: RC-A→P3/P6/P4,
+RC-B→P1/P3/P8, RC-C→P10, RC-D→P4, RC-E→P2, RC-F→P12/P7.
