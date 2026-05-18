@@ -15,12 +15,9 @@
   <br/>
 </p>
 
-<p align="center">
 [![Website](https://img.shields.io/badge/INTRO-WEB-orange?)](https://trilogydata.dev/)
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 [![PyPI version](https://badge.fury.io/py/pytrilogy.svg)](https://badge.fury.io/py/pytrilogy)
-</p>
-
 
 ## Why Trilogy
 
