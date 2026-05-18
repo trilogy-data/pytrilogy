@@ -19,23 +19,6 @@ WHERE
 GROUP BY
     1,
     2),
-questionable as (
-SELECT
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\"
-FROM
-    \"memory\".\"store\" as \"store_sales_store_store\"
-WHERE
-    \"store_sales_store_store\".\"S_STORE_SK\" is not null
-),
-wakeful as (
-SELECT
-    \"uneven\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    avg(\"uneven\".\"item_revenue\") as \"store_avg_revenue\"
-FROM
-    \"uneven\"
-GROUP BY
-    1),
 abundant as (
 SELECT
     \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
