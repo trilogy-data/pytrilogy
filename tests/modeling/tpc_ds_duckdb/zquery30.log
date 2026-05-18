@@ -77,29 +77,49 @@ SELECT
     \"wakeful\".\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
     \"wakeful\".\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
     \"wakeful\".\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
-    \"wakeful\".\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
-    \"wakeful\".\"web_returns_customer_login\" as \"web_returns_customer_login\",
     \"wakeful\".\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
+    \"wakeful\".\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
+    \"wakeful\".\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
     \"wakeful\".\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
-    \"yummy\".\"returns_2002_customer_state_returns_2002\" as \"returns_2002_customer_state_returns_2002\"
+    \"wakeful\".\"web_returns_customer_login\" as \"web_returns_customer_login\",
+    \"wakeful\".\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
+    \"wakeful\".\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
+    \"wakeful\".\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\"
+FROM
+    \"questionable\"
+    INNER JOIN \"wakeful\" on \"questionable\".\"web_returns_customer_id\" = \"wakeful\".\"web_returns_customer_id\")
+SELECT
+    \"yummy\".\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
+    \"yummy\".\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
+    \"yummy\".\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
+    \"yummy\".\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
+    \"yummy\".\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
+    \"yummy\".\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
+    \"yummy\".\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
+    \"yummy\".\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
+    \"yummy\".\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
+    \"yummy\".\"web_returns_customer_login\" as \"web_returns_customer_login\",
+    \"yummy\".\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
+    \"yummy\".\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
+    \"yummy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"yummy\"
-    INNER JOIN \"wakeful\" on \"yummy\".\"web_returns_customer_id\" = \"wakeful\".\"web_returns_customer_id\"
+    LEFT OUTER JOIN \"juicy\" on \"yummy\".\"web_returns_return_address_state\" is not distinct from \"juicy\".\"web_returns_return_address_state\"
 WHERE
-    \"yummy\".\"returns_2002_customer_state_returns_2002\" > \"yummy\".\"returns_2002_scaled_state_returns_2002\"
+    \"yummy\".\"customer_state_returns_2002\" > 1.2 * \"juicy\".\"_virt_agg_avg_3885168128306444\"
 
 ORDER BY 
-    \"wakeful\".\"web_returns_customer_text_id\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_salutation\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_first_name\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_last_name\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_preferred_cust_flag\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_birth_day\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_birth_month\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_birth_year\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_birth_country\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_login\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_email_address\" asc nulls first,
-    \"wakeful\".\"web_returns_customer_last_review_date\" asc nulls first,
-    \"yummy\".\"returns_2002_customer_state_returns_2002\" asc nulls first
+    \"yummy\".\"web_returns_customer_text_id\" asc nulls first,
+    \"yummy\".\"web_returns_customer_salutation\" asc nulls first,
+    \"yummy\".\"web_returns_customer_first_name\" asc nulls first,
+    \"yummy\".\"web_returns_customer_last_name\" asc nulls first,
+    \"yummy\".\"web_returns_customer_preferred_cust_flag\" asc nulls first,
+    \"yummy\".\"web_returns_customer_birth_day\" asc nulls first,
+    \"yummy\".\"web_returns_customer_birth_month\" asc nulls first,
+    \"yummy\".\"web_returns_customer_birth_year\" asc nulls first,
+    \"yummy\".\"web_returns_customer_birth_country\" asc nulls first,
+    \"yummy\".\"web_returns_customer_login\" asc nulls first,
+    \"yummy\".\"web_returns_customer_email_address\" asc nulls first,
+    \"yummy\".\"web_returns_customer_last_review_date\" asc nulls first,
+    \"yummy\".\"customer_state_returns_2002\" asc nulls first
 LIMIT (100)"""

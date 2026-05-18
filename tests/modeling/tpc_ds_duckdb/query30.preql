@@ -25,7 +25,7 @@ SELECT
     web_returns.customer.login,
     web_returns.customer.email_address,
     web_returns.customer.last_review_date,
-    returns_2002.customer_state_returns_2002,
+    customer_state_returns_2002,
 ORDER BY
     web_returns.customer.text_id asc NULLS FIRST,
     web_returns.customer.salutation asc NULLS FIRST,
