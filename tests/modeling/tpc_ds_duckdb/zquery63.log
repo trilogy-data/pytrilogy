@@ -1,5 +1,5 @@
 query_id = "63"
-gen_length = 2348
+gen_length = 2524
 preql_size = 1361
 comp_size = 1795
 generated_sql = """
@@ -26,26 +26,29 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    1)
+    1),
+questionable as (
 SELECT
-    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
-    \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
+    \"cooperative\".\"avg_monthly_sales\" as \"avg_monthly_sales\",
+    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\"
 FROM
     \"cooperative\"
-    FULL JOIN \"cheerful\" on \"cooperative\".\"store_sales_item_manager_id\" is not distinct from \"cheerful\".\"store_sales_item_manager_id\"
+    FULL JOIN \"cheerful\" on \"cooperative\".\"store_sales_item_manager_id\" is not distinct from \"cheerful\".\"store_sales_item_manager_id\")
+SELECT
+    \"questionable\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
+    \"questionable\".\"sum_sales\" as \"sum_sales\",
+    \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
+FROM
+    \"questionable\"
 WHERE
     CASE
-	WHEN \"cooperative\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_monthly_sales\") / \"cooperative\".\"avg_monthly_sales\"
+	WHEN \"questionable\".\"avg_monthly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\") / \"questionable\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
 
-GROUP BY
-    1,
-    2,
-    3
 ORDER BY 
-    coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") asc,
-    \"cooperative\".\"avg_monthly_sales\" asc,
-    \"cheerful\".\"sum_sales\" asc
+    \"questionable\".\"store_sales_item_manager_id\" asc,
+    \"questionable\".\"avg_monthly_sales\" asc,
+    \"questionable\".\"sum_sales\" asc
 LIMIT (100)"""

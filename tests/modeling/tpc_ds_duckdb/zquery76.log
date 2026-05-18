@@ -1,5 +1,5 @@
 query_id = "76"
-gen_length = 7988
+gen_length = 7761
 preql_size = 2275
 comp_size = 1708
 generated_sql = """
@@ -35,48 +35,42 @@ FROM
 WHERE
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
 ),
-scrawny as (
+macho as (
 SELECT
     \"ws_date_date\".\"D_QOY\" as \"ws_date_quarter\",
     \"ws_date_date\".\"D_YEAR\" as \"ws_date_year\",
-    \"ws_item_items\".\"I_CATEGORY\" as \"ws_item_category\",
-    \"ws_item_items\".\"I_ITEM_SK\" as \"ws_item_id\",
     \"ws_web_sales\".\"WS_EXT_SALES_PRICE\" as \"ws_ext_sales_price\",
+    \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_id\",
     \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
 WHERE
     \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
 ),
-vacuous as (
+juicy as (
 SELECT
     \"ss_date_date\".\"D_QOY\" as \"ss_date_quarter\",
     \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
-    \"ss_item_items\".\"I_CATEGORY\" as \"ss_item_category\",
-    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\",
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
     \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
 WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
 ),
-cooperative as (
+thoughtful as (
 SELECT
     \"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\" as \"cs_ext_sales_price\",
     \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_date_date\".\"D_QOY\" as \"cs_date_quarter\",
-    \"cs_date_date\".\"D_YEAR\" as \"cs_date_year\",
-    \"cs_item_items\".\"I_CATEGORY\" as \"cs_item_category\"
+    \"cs_date_date\".\"D_YEAR\" as \"cs_date_year\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
 WHERE
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
 ),
@@ -112,16 +106,17 @@ FROM
     \"quizzical\"),
 divergent as (
 SELECT
-    \"scrawny\".\"ws_date_quarter\" as \"d_qoy\",
-    \"scrawny\".\"ws_date_year\" as \"d_year\",
-    \"scrawny\".\"ws_item_category\" as \"i_category\",
+    \"macho\".\"ws_date_quarter\" as \"d_qoy\",
+    \"macho\".\"ws_date_year\" as \"d_year\",
+    \"ws_item_items\".\"I_CATEGORY\" as \"i_category\",
     :_q76_results_channel_b as \"channel\",
     :_q76_results_col_name_b as \"col_name\",
     sum(\"kaput\".\"ws_row_flag\") as \"_q76_results_cnt_b\",
-    sum(\"scrawny\".\"ws_ext_sales_price\") as \"_q76_results_amt_b\"
+    sum(\"macho\".\"ws_ext_sales_price\") as \"_q76_results_amt_b\"
 FROM
-    \"scrawny\"
-    INNER JOIN \"kaput\" on \"scrawny\".\"ws_item_id\" = \"kaput\".\"ws_item_id\" AND \"scrawny\".\"ws_order_number\" = \"kaput\".\"ws_order_number\"
+    \"macho\"
+    INNER JOIN \"kaput\" on \"macho\".\"ws_item_id\" = \"kaput\".\"ws_item_id\" AND \"macho\".\"ws_order_number\" = \"kaput\".\"ws_order_number\"
+    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"macho\".\"ws_item_id\" = \"ws_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,
@@ -130,16 +125,17 @@ GROUP BY
     5),
 sparkling as (
 SELECT
-    \"vacuous\".\"ss_date_quarter\" as \"d_qoy\",
-    \"vacuous\".\"ss_date_year\" as \"d_year\",
-    \"vacuous\".\"ss_item_category\" as \"i_category\",
+    \"juicy\".\"ss_date_quarter\" as \"d_qoy\",
+    \"juicy\".\"ss_date_year\" as \"d_year\",
+    \"ss_item_items\".\"I_CATEGORY\" as \"i_category\",
     :_q76_results_channel_a as \"channel\",
     :_q76_results_col_name_a as \"col_name\",
-    sum(\"vacuous\".\"ss_ext_sales_price\") as \"_q76_results_amt_a\",
+    sum(\"juicy\".\"ss_ext_sales_price\") as \"_q76_results_amt_a\",
     sum(\"young\".\"ss_row_flag\") as \"_q76_results_cnt_a\"
 FROM
-    \"vacuous\"
-    INNER JOIN \"young\" on \"vacuous\".\"ss_item_id\" = \"young\".\"ss_item_id\" AND \"vacuous\".\"ss_ticket_number\" = \"young\".\"ss_ticket_number\"
+    \"juicy\"
+    INNER JOIN \"young\" on \"juicy\".\"ss_item_id\" = \"young\".\"ss_item_id\" AND \"juicy\".\"ss_ticket_number\" = \"young\".\"ss_ticket_number\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"juicy\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,
@@ -148,16 +144,17 @@ GROUP BY
     5),
 questionable as (
 SELECT
-    \"cooperative\".\"cs_date_quarter\" as \"d_qoy\",
-    \"cooperative\".\"cs_date_year\" as \"d_year\",
-    \"cooperative\".\"cs_item_category\" as \"i_category\",
+    \"cs_item_items\".\"I_CATEGORY\" as \"i_category\",
+    \"thoughtful\".\"cs_date_quarter\" as \"d_qoy\",
+    \"thoughtful\".\"cs_date_year\" as \"d_year\",
     :_q76_results_channel_c as \"channel\",
     :_q76_results_col_name_c as \"col_name\",
-    sum(\"cooperative\".\"cs_ext_sales_price\") as \"_q76_results_amt_c\",
-    sum(\"highfalutin\".\"cs_row_flag\") as \"_q76_results_cnt_c\"
+    sum(\"highfalutin\".\"cs_row_flag\") as \"_q76_results_cnt_c\",
+    sum(\"thoughtful\".\"cs_ext_sales_price\") as \"_q76_results_amt_c\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"highfalutin\" on \"cooperative\".\"cs_item_id\" = \"highfalutin\".\"cs_item_id\" AND \"cooperative\".\"cs_order_number\" = \"highfalutin\".\"cs_order_number\"
+    \"thoughtful\"
+    INNER JOIN \"highfalutin\" on \"thoughtful\".\"cs_item_id\" = \"highfalutin\".\"cs_item_id\" AND \"thoughtful\".\"cs_order_number\" = \"highfalutin\".\"cs_order_number\"
+    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"thoughtful\".\"cs_item_id\" = \"cs_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,

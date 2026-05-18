@@ -1,23 +1,12 @@
 query_id = "79"
-gen_length = 2870
+gen_length = 2373
 preql_size = 1070
 comp_size = 1188
 generated_sql = """
 
 WITH 
-quizzical as (
-SELECT
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
-    \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\"
-FROM
-    \"memory\".\"customer\" as \"store_sales_customer_customers\"
-WHERE
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" is not null
-),
 cooperative as (
 SELECT
-    \"store_sales_store_sales\".\"SS_ADDR_SK\" as \"store_sales_sale_address_id\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_CITY\" as \"store_sales_store_city\",
@@ -35,28 +24,20 @@ GROUP BY
     1,
     2,
     3,
-    4)
+    \"store_sales_store_sales\".\"SS_ADDR_SK\")
 SELECT
-    \"quizzical\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"quizzical\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     SUBSTRING(\"cooperative\".\"store_sales_store_city\",1,30) as \"city_short\",
     \"cooperative\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
     \"cooperative\".\"amt\" as \"amt\",
     \"cooperative\".\"profit\" as \"profit\"
 FROM
     \"cooperative\"
-    LEFT OUTER JOIN \"quizzical\" on \"cooperative\".\"store_sales_customer_id\" = \"quizzical\".\"store_sales_customer_id\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"cooperative\".\"store_sales_sale_address_id\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_id\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
 ORDER BY 
-    \"quizzical\".\"store_sales_customer_last_name\" asc nulls first,
-    \"quizzical\".\"store_sales_customer_first_name\" asc nulls first,
+    \"store_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
     \"city_short\" asc nulls first,
     \"cooperative\".\"profit\" asc nulls first,
     \"cooperative\".\"store_sales_ticket_number\" asc

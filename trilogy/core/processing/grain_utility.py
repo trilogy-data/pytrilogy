@@ -80,6 +80,8 @@ def _concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
 
 def _concept_coverage_addresses(concept: BuildConcept) -> set[str]:
     addresses = set(concept.equivalent_addresses)
+    if concept.is_aggregate and concept.grain and not concept.grain.abstract:
+        addresses.update(concept.grain.components)
     if concept.derivation == Derivation.MULTISELECT and concept.keys:
         addresses.update(concept.keys)
     return addresses
