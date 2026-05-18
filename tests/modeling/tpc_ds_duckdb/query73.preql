@@ -1,12 +1,8 @@
 import store_sales as store_sales;
-
 # Force the count to a strict per-ticket grain via the `by` clause; the rest of
 # the ticket-level customer enrichment now derives from the same filtered rowset
 # rather than going through an unfiltered cooperative dedup of all store_sales.
-auto ticket_cnt <- count(store_sales.item.id) by store_sales.ticket_number;
-
-WHERE
-    store_sales.date.day_of_month >= 1
+auto ticket_cnt <- count(store_sales.item.id ?     store_sales.date.day_of_month >= 1
     and store_sales.date.day_of_month <= 2
     and (store_sales.household_demographic.buy_potential = '>10000' or store_sales.household_demographic.buy_potential = 'Unknown')
     and store_sales.household_demographic.vehicle_count > 0
@@ -15,19 +11,24 @@ WHERE
             ELSE null
         END) > 1
     and store_sales.date.year in (1999, 2000, 2001)
-    and store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')
+    and store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')) by store_sales.ticket_number, store_sales.customer.id;
+
+
+WHERE store_sales.customer.id is not null
 SELECT
+    --store_sales.customer.id,
     store_sales.customer.last_name,
     store_sales.customer.first_name,
     store_sales.customer.salutation,
     store_sales.customer.preferred_cust_flag,
     store_sales.ticket_number,
-    ticket_cnt -> cnt,
+    ticket_cnt
 HAVING
-    cnt >= 1 and cnt <= 5
+    ticket_cnt >= 1 and ticket_cnt <= 5 
 
 ORDER BY
-    cnt desc,
+    ticket_cnt desc,
     store_sales.customer.last_name asc,
-    store_sales.ticket_number asc
+    store_sales.ticket_number asc,
+   store_sales.customer.id asc
 ;

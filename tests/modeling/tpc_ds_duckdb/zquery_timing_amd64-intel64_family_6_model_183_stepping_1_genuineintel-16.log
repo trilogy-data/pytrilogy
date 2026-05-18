@@ -154,9 +154,14 @@ exec_time = 0.21851
 comp_time = 0.096198
 
 [query_30]
-parse_time = 0.662509
-exec_time = 0.114759
-comp_time = 0.038953
+parse_time = 0.404263
+exec_time = 0.030419
+comp_time = 0.098629
+
+["query_30.alt"]
+parse_time = 0.447344
+exec_time = 0.103566
+comp_time = 0.097567
 
 [query_31]
 parse_time = 0.482648
@@ -369,9 +374,9 @@ exec_time = 0.072897
 comp_time = 23.091453
 
 [query_73]
-parse_time = 0.524315
-exec_time = 0.153545
-comp_time = 0.038636
+parse_time = 0.890162
+exec_time = 0.04568
+comp_time = 0.089551
 
 [query_74]
 parse_time = 0.455277
@@ -409,9 +414,9 @@ exec_time = 0.092194
 comp_time = 0.09679
 
 [query_81]
-parse_time = 0.539035
-exec_time = 0.159997
-comp_time = 0.052065
+parse_time = 0.374543
+exec_time = 0.036747
+comp_time = 0.100657
 
 [query_82]
 parse_time = 0.283674

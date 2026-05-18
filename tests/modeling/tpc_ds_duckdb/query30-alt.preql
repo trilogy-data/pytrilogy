@@ -1,19 +1,16 @@
 import web_returns as web_returns;
 
-rowset returns_2002 <- WHERE
-   web_returns.return_date.year = 2002 and web_returns.return_address.state is not null
-SELECT
-    web_returns.customer.id,
-    web_returns.return_address.state,
-    sum(web_returns.return_amount) -> customer_state_returns_2002,
-    1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state -> scaled_state_returns_2002,
-;
-
-MERGE returns_2002.web_returns.customer.id into web_returns.customer.id;
+# Non-rowset equivalent of query30 (rowset form): the key-join shape achieved by
+# grouping the aggregate to (return_address.state, customer.id). The year/state
+# filter is bound *inside* the conditional sum because a plain sum + a row-grain
+# WHERE year=2002 loses the filter from the customer-grain aggregate.
+auto customer_state_returns_2002 <- sum(web_returns.return_amount ? web_returns.return_date.year = 2002 and web_returns.return_address.state is not null) by web_returns.return_address.state, web_returns.customer.id;
+auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;
 
 WHERE
-    returns_2002.customer_state_returns_2002 > returns_2002.scaled_state_returns_2002
+    customer_state_returns_2002 > scaled_state_returns_2002
     and web_returns.customer.address.state = 'GA'
+    and web_returns.return_address.state is not null
 SELECT
     -- web_returns.customer.id, # avoid deduplication
     web_returns.customer.text_id,
@@ -28,7 +25,7 @@ SELECT
     web_returns.customer.login,
     web_returns.customer.email_address,
     web_returns.customer.last_review_date,
-    returns_2002.customer_state_returns_2002,
+    customer_state_returns_2002,
 ORDER BY
     web_returns.customer.text_id asc NULLS FIRST,
     web_returns.customer.salutation asc NULLS FIRST,
@@ -42,5 +39,5 @@ ORDER BY
     web_returns.customer.login asc NULLS FIRST,
     web_returns.customer.email_address asc NULLS FIRST,
     web_returns.customer.last_review_date asc NULLS FIRST,
-    returns_2002.customer_state_returns_2002 asc NULLS FIRST
+    customer_state_returns_2002 asc NULLS FIRST
 LIMIT 100;

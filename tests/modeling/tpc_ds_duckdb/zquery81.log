@@ -1,24 +1,15 @@
 query_id = "81"
-gen_length = 7724
-preql_size = 1790
+gen_length = 5549
+preql_size = 1810
 comp_size = 1459
 generated_sql = """
 
 WITH 
-highfalutin as (
-SELECT
-    \"cr_catalog_returns\".\"CR_RETURNING_ADDR_SK\" as \"cr_return_address_id\",
-    \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_customer_id\"
-FROM
-    \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
-GROUP BY
-    1,
-    2),
-abundant as (
+cheerful as (
 SELECT
     \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_customer_id\",
     \"cr_return_address_customer_address\".\"CA_STATE\" as \"cr_return_address_state\",
-    sum(\"cr_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\") as \"customer_state_returns_2000\"
+    sum(\"cr_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\") as \"_returns_2000_customer_state\"
 FROM
     \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
@@ -29,7 +20,7 @@ WHERE
 GROUP BY
     1,
     2),
-cooperative as (
+yummy as (
 SELECT
     \"cr_customer_address_customer_address\".\"CA_CITY\" as \"cr_customer_address_city\",
     \"cr_customer_address_customer_address\".\"CA_COUNTRY\" as \"cr_customer_address_country\",
@@ -43,70 +34,33 @@ SELECT
     \"cr_customer_address_customer_address\".\"CA_SUITE_NUMBER\" as \"cr_customer_address_suite_number\",
     \"cr_customer_address_customer_address\".\"CA_ZIP\" as \"cr_customer_address_zip\",
     \"cr_customer_customers\".\"C_CUSTOMER_ID\" as \"cr_customer_text_id\",
+    \"cr_customer_customers\".\"C_CUSTOMER_SK\" as \"cr_customer_id\",
     \"cr_customer_customers\".\"C_FIRST_NAME\" as \"cr_customer_first_name\",
     \"cr_customer_customers\".\"C_LAST_NAME\" as \"cr_customer_last_name\",
-    \"cr_customer_customers\".\"C_SALUTATION\" as \"cr_customer_salutation\",
-    \"cr_return_address_customer_address\".\"CA_STATE\" as \"cr_return_address_state\",
-    \"highfalutin\".\"cr_customer_id\" as \"cr_customer_id\"
+    \"cr_customer_customers\".\"C_SALUTATION\" as \"cr_customer_salutation\"
 FROM
-    \"highfalutin\"
-    INNER JOIN \"memory\".\"customer\" as \"cr_customer_customers\" on \"highfalutin\".\"cr_customer_id\" = \"cr_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cr_return_address_customer_address\" on \"highfalutin\".\"cr_return_address_id\" = \"cr_return_address_customer_address\".\"CA_ADDRESS_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cr_customer_address_customer_address\" on \"cr_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cr_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"memory\".\"customer_address\" as \"cr_customer_address_customer_address\"
+    INNER JOIN \"memory\".\"customer\" as \"cr_customer_customers\" on \"cr_customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"cr_customer_customers\".\"C_CURRENT_ADDR_SK\"
 WHERE
-    \"cr_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cr_return_address_customer_address\".\"CA_STATE\" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17),
-juicy as (
+    \"cr_customer_address_customer_address\".\"CA_STATE\" = 'GA'
+),
+cooperative as (
 SELECT
-    \"abundant\".\"cr_return_address_state\" as \"cr_return_address_state\",
-    avg(\"abundant\".\"customer_state_returns_2000\") as \"_virt_agg_avg_8091657782197259\"
+    \"cheerful\".\"cr_return_address_state\" as \"cr_return_address_state\",
+    avg(\"cheerful\".\"_returns_2000_customer_state\") as \"_virt_agg_avg_7337605889132590\"
 FROM
-    \"abundant\"
+    \"cheerful\"
 GROUP BY
     1),
-yummy as (
+questionable as (
 SELECT
-    \"abundant\".\"customer_state_returns_2000\" as \"customer_state_returns_2000\",
-    \"cooperative\".\"cr_customer_address_city\" as \"cr_customer_address_city\",
-    \"cooperative\".\"cr_customer_address_country\" as \"cr_customer_address_country\",
-    \"cooperative\".\"cr_customer_address_county\" as \"cr_customer_address_county\",
-    \"cooperative\".\"cr_customer_address_gmt_offset\" as \"cr_customer_address_gmt_offset\",
-    \"cooperative\".\"cr_customer_address_location_type\" as \"cr_customer_address_location_type\",
-    \"cooperative\".\"cr_customer_address_state\" as \"cr_customer_address_state\",
-    \"cooperative\".\"cr_customer_address_street_name\" as \"cr_customer_address_street_name\",
-    \"cooperative\".\"cr_customer_address_street_number\" as \"cr_customer_address_street_number\",
-    \"cooperative\".\"cr_customer_address_street_type\" as \"cr_customer_address_street_type\",
-    \"cooperative\".\"cr_customer_address_suite_number\" as \"cr_customer_address_suite_number\",
-    \"cooperative\".\"cr_customer_address_zip\" as \"cr_customer_address_zip\",
-    \"cooperative\".\"cr_customer_first_name\" as \"cr_customer_first_name\",
-    \"cooperative\".\"cr_customer_last_name\" as \"cr_customer_last_name\",
-    \"cooperative\".\"cr_customer_salutation\" as \"cr_customer_salutation\",
-    \"cooperative\".\"cr_customer_text_id\" as \"cr_customer_text_id\",
-    coalesce(\"abundant\".\"cr_return_address_state\",\"cooperative\".\"cr_return_address_state\") as \"cr_return_address_state\"
+    \"cheerful\".\"_returns_2000_customer_state\" as \"returns_2000_customer_state\",
+    \"cheerful\".\"cr_customer_id\" as \"cr_customer_id\",
+    \"cheerful\".\"cr_customer_id\" as \"returns_2000_cr_customer_id\",
+    1.2 * \"cooperative\".\"_virt_agg_avg_7337605889132590\" as \"returns_2000_scaled_state\"
 FROM
     \"cooperative\"
-    LEFT OUTER JOIN \"abundant\" on \"cooperative\".\"cr_customer_id\" = \"abundant\".\"cr_customer_id\" AND \"cooperative\".\"cr_return_address_state\" is not distinct from \"abundant\".\"cr_return_address_state\"
-WHERE
-    \"cooperative\".\"cr_customer_address_state\" = 'GA' and coalesce(\"abundant\".\"cr_return_address_state\",\"cooperative\".\"cr_return_address_state\") is not null
-)
+    FULL JOIN \"cheerful\" on \"cooperative\".\"cr_return_address_state\" is not distinct from \"cheerful\".\"cr_return_address_state\")
 SELECT
     \"yummy\".\"cr_customer_text_id\" as \"cr_customer_text_id\",
     \"yummy\".\"cr_customer_salutation\" as \"cr_customer_salutation\",
@@ -123,12 +77,12 @@ SELECT
     \"yummy\".\"cr_customer_address_country\" as \"cr_customer_address_country\",
     \"yummy\".\"cr_customer_address_gmt_offset\" as \"cr_customer_address_gmt_offset\",
     \"yummy\".\"cr_customer_address_location_type\" as \"cr_customer_address_location_type\",
-    \"yummy\".\"customer_state_returns_2000\" as \"customer_state_returns_2000\"
+    \"questionable\".\"returns_2000_customer_state\" as \"returns_2000_customer_state\"
 FROM
-    \"yummy\"
-    LEFT OUTER JOIN \"juicy\" on \"yummy\".\"cr_return_address_state\" is not distinct from \"juicy\".\"cr_return_address_state\"
+    \"questionable\"
+    INNER JOIN \"yummy\" on \"questionable\".\"cr_customer_id\" = \"yummy\".\"cr_customer_id\"
 WHERE
-    \"yummy\".\"customer_state_returns_2000\" > 1.2 * \"juicy\".\"_virt_agg_avg_8091657782197259\"
+    \"questionable\".\"returns_2000_customer_state\" > \"questionable\".\"returns_2000_scaled_state\"
 
 ORDER BY 
     \"yummy\".\"cr_customer_text_id\" asc nulls first,
@@ -146,5 +100,5 @@ ORDER BY
     \"yummy\".\"cr_customer_address_country\" asc nulls first,
     \"yummy\".\"cr_customer_address_gmt_offset\" asc nulls first,
     \"yummy\".\"cr_customer_address_location_type\" asc nulls first,
-    \"yummy\".\"customer_state_returns_2000\" asc nulls first
+    \"questionable\".\"returns_2000_customer_state\" asc nulls first
 LIMIT (100)"""

@@ -119,7 +119,7 @@ class CTE:
     @property
     def comment(self) -> str:
         base = f"Target: {str(self.grain)}. Group: {self.group_to_grain}"
-        base += f" Source: {self.source.source_type}."
+        base += f" Source: {self.source.source_type}. Grains: {[str(ds.grain) for ds in self.parent_ctes]}"
         if self.parent_ctes:
             base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
         if self.joins and CONFIG.comments.joins:

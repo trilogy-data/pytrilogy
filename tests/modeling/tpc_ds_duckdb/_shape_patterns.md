@@ -48,7 +48,7 @@ causes — and the two highest-leverage ones are the same defect**:
 | RC | Defect (one line) | Queries | Shape ref |
 |---|---|---|---|
 | **RC-A** | Shared-grain multi-metric query split into per-metric / per-source join pipelines that each re-scan the big fact tables, then re-merged with `FULL JOIN … IS NOT DISTINCT FROM` on the group keys | q17, q25, q29, q50, q05 (+ partial q77) | P3, P6, P4 |
-| **RC-B** | Leading unfiltered key-extraction CTE (`SELECT <fks> FROM fact GROUP BY <all keys>`, no filter pushed in) + a third CTE that re-scans/re-joins the fact to attach enrichment columns | q73, q81, q30, q76 | P1, P3, P8 |
+| **RC-B** | Leading unfiltered key-extraction CTE (`SELECT <fks> FROM fact GROUP BY <all keys>`, no filter pushed in) + a third CTE that re-scans/re-joins the fact to attach enrichment columns |  q30, q76 | P1, P3, P8 |
 | **RC-C** | Aggregate-membership `IN/NOT IN` lowered to a materialized CTE + `IN (SELECT … WHERE … IS NOT NULL)` probed 2×, `count>1` filter as a CASE→NULL projection over the full grain instead of `HAVING` | q16, q94 | P10 |
 | **RC-D** | Channel-marked `UNION ALL` + `CASE WHEN channel=` pivot instead of per-channel pre-aggregate-then-join | q78, q05 | P4 |
 | **RC-E** | Disjoint constant buckets lowered to CASE-WHEN over one loose scan; the `count(DISTINCT)`s run over the loose superset instead of a tight per-bucket WHERE | q28 | P2 |
