@@ -1625,7 +1625,7 @@ class BaseDialect:
         else:
             rendered_having = self.render_expr(having, cte) if having else None
 
-        logger.info(f"{LOGGER_PREFIX} {len(final_joins)} joins for cte {cte.name}")
+        logger.debug(f"{LOGGER_PREFIX} {len(final_joins)} joins for cte {cte.name}")
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(

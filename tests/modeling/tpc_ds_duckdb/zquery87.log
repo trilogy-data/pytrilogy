@@ -1,5 +1,5 @@
 query_id = "87"
-gen_length = 2542
+gen_length = 2645
 preql_size = 1113
 comp_size = 1163
 generated_sql = """
@@ -39,6 +39,9 @@ GROUP BY
     3),
 abundant as (
 SELECT
+    \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
+    \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\",
     sum(CASE
 	WHEN \"thoughtful\".\"sales_sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11 and \"thoughtful\".\"sales_customer_id\" is not null THEN 1
 	ELSE 0
@@ -59,9 +62,9 @@ WHERE
     \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 GROUP BY
-    \"sales_customer_customers\".\"C_FIRST_NAME\",
-    \"sales_customer_customers\".\"C_LAST_NAME\",
-    cast(\"sales_date_date\".\"D_DATE\" as date))
+    1,
+    2,
+    3)
 SELECT
     sum(CASE
 	WHEN \"abundant\".\"store_in_window\" > 0 and \"abundant\".\"catalog_in_window\" = 0 and \"abundant\".\"web_in_window\" = 0 THEN 1

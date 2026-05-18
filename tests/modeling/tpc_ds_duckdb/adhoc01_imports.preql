@@ -15,7 +15,7 @@ property p_cust_zip <- filter customer.address.zip where zip_p_count > 10;
 property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);
 
 WHERE
-    store_sales.date.quarter = 2 and (store_sales.date.year = 1998 and substring(store_sales.store.zip,1,2) in final_zips)
+    store_sales.date.quarter = 2 and store_sales.date.year = 1998 and substring(store_sales.store.zip,1,2) in final_zips
 SELECT
     store_sales.store.name,
     sum(store_sales.net_profit) -> store_net_profit,
@@ -50,7 +50,7 @@ PERSIST default.ds919671dbbd0d5a7992b04850b050127c7d4747da70dbf3c68a3149050f06d6
 ;
 
 PERSIST default.dse88a2d960609f6f0eafa587b8ddffedd5456b4c892a59675a930b4fad8963029_filtered_on_quarter_year_zip_final_zips INTO dse88a2d960609f6f0eafa587b8ddffedd5456b4c892a59675a930b4fad8963029_filtered_on_quarter_year_zip_final_zips FROM WHERE
-    store_sales.date.quarter = 2 and (store_sales.date.year = 1998 and substring(store_sales.store.zip,1,2) in final_zips)
+    store_sales.date.quarter = 2 and store_sales.date.year = 1998 and substring(store_sales.store.zip,1,2) in final_zips
 SELECT
     store_sales.item.id,
     store_sales.net_profit,

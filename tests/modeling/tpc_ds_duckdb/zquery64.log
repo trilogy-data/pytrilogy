@@ -1,5 +1,5 @@
 query_id = "64"
-gen_length = 12824
+gen_length = 13262
 preql_size = 3012
 comp_size = 3783
 generated_sql = """
@@ -135,9 +135,16 @@ GROUP BY
 charming as (
 SELECT
     \"busy\".\"ss_date_year\" as \"_q64_results_syear_00\",
+    \"busy\".\"ss_date_year\" as \"ss_date_year\",
+    \"busy\".\"ss_item_id\" as \"_q64_results_item_sk_00\",
     \"busy\".\"ss_item_id\" as \"item_sk\",
+    \"busy\".\"ss_item_id\" as \"ss_item_id\",
+    \"busy\".\"ss_store_name\" as \"_q64_results_s_name_00\",
     \"busy\".\"ss_store_name\" as \"s_name\",
+    \"busy\".\"ss_store_name\" as \"ss_store_name\",
+    \"busy\".\"ss_store_zip\" as \"_q64_results_s_zip_00\",
     \"busy\".\"ss_store_zip\" as \"s_zip\",
+    \"busy\".\"ss_store_zip\" as \"ss_store_zip\",
     count(\"busy\".\"ss_ticket_number\") as \"_q64_results_cnt_00\",
     sum(\"busy\".\"ss_coupon_amt\") as \"_q64_results_s3_00\",
     sum(\"busy\".\"ss_list_price\") as \"_q64_results_s2_00\",
@@ -145,16 +152,18 @@ SELECT
 FROM
     \"busy\"
 GROUP BY
-    1,
     2,
-    3,
-    4),
+    5,
+    8,
+    11),
 friendly as (
 SELECT
     \"scrawny\".\"ss_customer_address_city\" as \"ss_customer_address_city\",
     \"scrawny\".\"ss_customer_address_street_name\" as \"ss_customer_address_street_name\",
     \"scrawny\".\"ss_customer_address_street_number\" as \"ss_customer_address_street_number\",
     \"scrawny\".\"ss_customer_address_zip\" as \"ss_customer_address_zip\",
+    \"scrawny\".\"ss_customer_first_sales_date_year\" as \"ss_customer_first_sales_date_year\",
+    \"scrawny\".\"ss_customer_first_shipto_date_year\" as \"ss_customer_first_shipto_date_year\",
     \"scrawny\".\"ss_date_year\" as \"ss_date_year\",
     \"scrawny\".\"ss_item_id\" as \"ss_item_id\",
     \"scrawny\".\"ss_sale_address_city\" as \"ss_sale_address_city\",
@@ -182,8 +191,8 @@ GROUP BY
     10,
     11,
     12,
-    \"scrawny\".\"ss_customer_first_sales_date_year\",
-    \"scrawny\".\"ss_customer_first_shipto_date_year\"),
+    13,
+    14),
 divergent as (
 SELECT
     \"friendly\".\"_q64_results_s1_99\" as \"_q64_results_s1_99\",

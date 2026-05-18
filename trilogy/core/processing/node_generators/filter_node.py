@@ -253,15 +253,40 @@ def pushdown_filter_to_parent(
 
 
 def _can_pushdown_as_grouped_filter(
+    concept: BuildConcept,
     local_optional: list[BuildConcept],
     parent_existence_concepts: list[tuple[BuildConcept, ...]],
     filter_where: BuildWhereClause,
 ) -> bool:
-    return (
-        not local_optional
-        and not parent_existence_concepts
-        and not is_scalar_condition(filter_where.conditional)
-    )
+    if (
+        local_optional
+        or parent_existence_concepts
+        or is_scalar_condition(filter_where.conditional)
+    ):
+        return False
+    # Grouped pushdown collapses the filter and its aggregate predicate into a
+    # single GroupNode whose only output is `concept`, with the predicate moved
+    # to HAVING and the content rendered as the group key. That is only sound
+    # when the content's own grain matches the predicate's grouping grain — i.e.
+    # the content *is* the group key. `filter order_id where count(x) by
+    # order_id > 1` qualifies (content `order_id` grain == agg by-grain). But
+    # `filter customer.address.zip where zip_p_count > 10` does not: zip is a
+    # property at `customer.address.id` grain while `zip_p_count` groups by
+    # `customer.address.zip`, so there is no real group key to render — the
+    # collapsed CTE would group by the content expression with the aggregate
+    # inlined as a CASE WHEN, producing an invalid `GROUP BY count(...)`. Keep
+    # filter and group separate there so the aggregate's by-grain survives.
+    assert isinstance(concept.lineage, FILTER_TYPES)
+    content = concept.lineage.content
+    if isinstance(content, BuildConcept):
+        agg_args = [
+            r
+            for r in filter_where.row_arguments
+            if r.derivation == Derivation.AGGREGATE
+        ]
+        if any(a.grain != content.grain for a in agg_args):
+            return False
+    return True
 
 
 def build_parent_concepts(
@@ -317,6 +342,7 @@ def build_parent_concepts(
             continue
         extra_row_level_optional.append(x)
     grouped_pushdown = _can_pushdown_as_grouped_filter(
+        concept,
         local_optional,
         parent_existence_concepts,
         filter_where,
