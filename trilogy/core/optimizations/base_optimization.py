@@ -7,6 +7,15 @@ from trilogy.core.models.execute import CTE, UnionCTE
 MergedCTEMap = dict[str, str]
 
 
+def optimization_log(component: str, message: str) -> str:
+    """Standard prefix for every optimizer log line.
+
+    Format: ``[Optimization][Component] message``. Component is a PascalCase
+    identifier (a rule class name, or a driver phase like ``Driver``).
+    """
+    return f"[Optimization][{component}] {message}"
+
+
 class OptimizationRule(ABC):
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -19,7 +28,7 @@ class OptimizationRule(ABC):
         raise NotImplementedError
 
     def log(self, message: str):
-        logger.info(f"[Optimization][{self.__class__.__name__}] {message}")
+        logger.info(optimization_log(self.__class__.__name__, message))
 
     def debug(self, message: str):
-        logger.debug(f"[Optimization][{self.__class__.__name__}] {message}")
+        logger.debug(optimization_log(self.__class__.__name__, message))

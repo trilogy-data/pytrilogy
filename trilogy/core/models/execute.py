@@ -119,7 +119,7 @@ class CTE:
     @property
     def comment(self) -> str:
         base = f"Target: {str(self.grain)}. Group: {self.group_to_grain}"
-        base += f" Source: {self.source.source_type}."
+        base += f" Source: {self.source.source_type}. Grains: {[str(ds.grain) for ds in self.parent_ctes]}"
         if self.parent_ctes:
             base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
         if self.joins and CONFIG.comments.joins:
@@ -405,6 +405,7 @@ class CTE:
             if c.derivation == Derivation.ROWSET:
                 assert isinstance(c.lineage, BuildRowsetItem)
                 return check_is_not_in_group(c.lineage.content)
+
             if c.derivation == Derivation.CONSTANT:
                 return True
             if (
@@ -414,7 +415,7 @@ class CTE:
             ):
                 return True
 
-            if c.derivation == Derivation.BASIC and c.lineage:
+            if c.derivation in (Derivation.BASIC, Derivation.FILTER) and c.lineage:
                 if all(
                     [
                         check_is_not_in_group(x)

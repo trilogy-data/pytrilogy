@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
 
 from trilogy.constants import MagicConstants
@@ -17,6 +18,9 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
+    CaseElse,
+    CaseSimpleWhen,
+    CaseWhen,
     Concept,
     ConceptRef,
     Conditional,
@@ -36,6 +40,7 @@ from trilogy.core.models.core import (
     StructType,
     TraitDataType,
     arg_to_datatype,
+    is_compatible_datatype,
     merge_datatypes,
 )
 from trilogy.core.models.environment import Environment
@@ -130,43 +135,77 @@ def get_output_type_at_index(args, index: int):
     return arg_to_datatype(args[index])
 
 
-def validate_simple_case_output(args: list[Any]) -> DataType:
-    datatypes = set()
-    mapz = dict()
-    for arg in args[1:]:
+LITERAL_CONSTANT_TYPES = (bool, int, float, str, bytes, Decimal, date, datetime)
 
-        output_datatype = arg_to_datatype(arg.expr)
-        if output_datatype != DataType.NULL:
-            datatypes.add(output_datatype.data_type)
-        mapz[str(arg.expr)] = output_datatype
-    known = [x for x in datatypes if x != DataType.UNKNOWN]
-    if len(known) == 0:
-        return DataType.UNKNOWN
-    if not len(known) == 1:
-        raise SyntaxError(
-            f"All case expressions must have the same output datatype, got {datatypes} from {mapz}"
+
+def _is_literal_constant(expr: Any) -> bool:
+    return isinstance(expr, LITERAL_CONSTANT_TYPES)
+
+
+def _representative_types(types: list[CONCRETE_TYPES]) -> list[CONCRETE_TYPES]:
+    """One representative per distinct base DataType, preferring richer
+    (parameterized) types like NumericType over their bare DataType enum."""
+    by_base: dict[DataType, CONCRETE_TYPES] = {}
+    for t in types:
+        existing = by_base.get(t.data_type)
+        if existing is None or (
+            isinstance(existing, DataType) and not isinstance(t, DataType)
+        ):
+            by_base[t.data_type] = t
+    return list(by_base.values())
+
+
+def _resolve_case_output(branches: list[Any]) -> CONCRETE_TYPES:
+    """Compute a CASE's output type.
+
+    Non-constant branches stay strict (differing column types are a likely
+    modeling error). A literal-constant branch whose type is compatible with
+    the non-constant branch is widened into it, so e.g. ``ELSE 0.0`` inherits
+    the ``NumericType`` of the ``THEN`` column instead of forcing a cast.
+    """
+    non_constant: list[CONCRETE_TYPES] = []
+    constant: list[CONCRETE_TYPES] = []
+    mapz: dict[str, CONCRETE_TYPES] = {}
+    for branch in branches:
+        dt = arg_to_datatype(branch.expr)
+        mapz[str(branch.expr)] = dt
+        if dt == DataType.NULL or dt.data_type == DataType.UNKNOWN:
+            continue
+        (constant if _is_literal_constant(branch.expr) else non_constant).append(dt)
+
+    def _fail() -> None:
+        seen = {t.data_type for t in non_constant + constant}
+        raise InvalidSyntaxException(
+            f"All case expressions must have the same output datatype, got {seen} from {mapz}"
         )
-    return known.pop()
 
+    nc = _representative_types(non_constant)
+    if len(nc) > 1:
+        _fail()
 
-def validate_case_output(
-    args: list[Any],
-) -> DataType:
-    datatypes = set()
-    mapz = dict()
-    for arg in args:
-        output_datatype = arg_to_datatype(arg.expr)
-        if output_datatype != DataType.NULL:
-            datatypes.add(output_datatype.data_type)
-        mapz[str(arg.expr)] = output_datatype
-    known = [x for x in datatypes if x != DataType.UNKNOWN]
-    if len(known) == 0:
+    if nc:
+        target = nc[0]
+        if any(not is_compatible_datatype(target, c) for c in constant):
+            _fail()
+        return merge_datatypes([target, *constant]) if constant else target
+
+    cc = _representative_types(constant)
+    if not cc:
         return DataType.UNKNOWN
-    if not len(known) == 1:
-        raise SyntaxError(
-            f"All case expressions must have the same output datatype, got {datatypes} from {mapz}"
-        )
-    return known.pop()
+    if len(cc) == 1:
+        return cc[0]
+    for i, a in enumerate(cc):
+        if any(not is_compatible_datatype(a, b) for b in cc[i + 1 :]):
+            _fail()
+    return merge_datatypes(cc)
+
+
+def validate_simple_case_output(args: list[Any]) -> CONCRETE_TYPES:
+    return _resolve_case_output(args[1:])
+
+
+def validate_case_output(args: list[Any]) -> CONCRETE_TYPES:
+    return _resolve_case_output(args)
 
 
 def create_struct_output(
@@ -1236,6 +1275,9 @@ class FunctionFactory:
                 ],
             )
 
+        if operator in (FunctionType.CASE, FunctionType.SIMPLE_CASE):
+            self._coerce_case_constant_branches(full_args, final_output_type)
+
         if not output_purpose:
             if operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                 output_purpose = Purpose.METRIC
@@ -1252,6 +1294,24 @@ class FunctionFactory:
         )
         func.validate_arguments()
         return func
+
+    def _coerce_case_constant_branches(
+        self, branches: list[Any], target: CONCRETE_TYPES
+    ) -> None:
+        """Wrap literal-constant branch results that were widened to ``target``
+        in an explicit CAST, so generated SQL forces the engine type rather
+        than relying on implicit coercion of the bare literal."""
+        if target.data_type == DataType.UNKNOWN:
+            return
+        for branch in branches:
+            if not isinstance(branch, (CaseWhen, CaseElse, CaseSimpleWhen)):
+                continue
+            if not _is_literal_constant(branch.expr):
+                continue
+            current = arg_to_datatype(branch.expr)
+            if current == DataType.NULL or current.data_type == target.data_type:
+                continue
+            branch.expr = self.create_function([branch.expr, target], FunctionType.CAST)
 
 
 def create_function_derived_concept(

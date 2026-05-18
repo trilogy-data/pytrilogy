@@ -65,3 +65,28 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
     assert by_name["predicate_pushdown.remove"].depends_on == (
         "predicate_pushdown.after_union_dim",
     )
+
+
+def test_pipeline_refires_group_merge_after_shape_cleanup():
+    with _optimization_flags(
+        merge_irrelevant_group_by=True,
+        join_hoist=True,
+        predicate_pushdown=True,
+    ):
+        plan = build_optimization_rule_plan()
+
+    by_name = {phase.name: phase for phase in plan}
+    assert list(by_name) == [
+        "merge_irrelevant_group_by",
+        "join_hoist",
+        "merge_irrelevant_group_by.after_join_hoist",
+        "predicate_pushdown.initial",
+        "predicate_pushdown.remove",
+        "merge_irrelevant_group_by.after_predicate_remove",
+    ]
+    assert by_name["merge_irrelevant_group_by.after_join_hoist"].refires_after == (
+        "join_hoist",
+    )
+    assert by_name[
+        "merge_irrelevant_group_by.after_predicate_remove"
+    ].refires_after == ("predicate_pushdown.remove",)

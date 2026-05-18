@@ -1,3 +1,4 @@
+from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -151,6 +152,42 @@ def test_datasource_conditions_pushes_scalar_condition_on_output():
     )
 
     assert routed == price_cond
+
+
+def test_datasource_conditions_drops_non_nullable_is_not_null_atom():
+    build_env = _build_sales_environment()
+    ds = build_env.datasources["items"]
+    non_null_cond = _condition(
+        build_env.concepts["item_price"],
+        MagicConstants.NULL,
+        ComparisonOperator.IS_NOT,
+    )
+    price_cond = _condition(
+        build_env.concepts["item_price"], 100, ComparisonOperator.GT
+    )
+    conditions = BuildWhereClause(
+        conditional=BuildConditional(
+            left=non_null_cond, right=price_cond, operator=BooleanOperator.AND
+        )
+    )
+
+    routed = datasource_conditions(ds, conditions, None, partial_is_full=False)
+
+    assert routed == price_cond
+
+
+def test_datasource_conditions_keeps_non_nullable_is_null_atom():
+    build_env = _build_sales_environment()
+    ds = build_env.datasources["items"]
+    is_null_cond = _condition(
+        build_env.concepts["item_price"], MagicConstants.NULL, ComparisonOperator.IS
+    )
+
+    routed = datasource_conditions(
+        ds, BuildWhereClause(conditional=is_null_cond), None, partial_is_full=False
+    )
+
+    assert routed == is_null_cond
 
 
 def test_datasource_conditions_ignores_existence_condition():

@@ -76,9 +76,6 @@ class HideUnusedConcepts(OptimizationRule):
             branch_only_hidden = self._hide_branch_only_outputs(cte)
         if not newly_hidden or len(non_hidden) <= 1:
             return branch_only_hidden, None
-        self.log(
-            f"Hiding unused concepts {[x.address for x in add_to_hidden]} from {cte.name} (used: {used}, all: {[x.address for x in cte.output_columns]})"
-        )
         candidates = [x.address for x in cte.output_columns if x.address not in used]
         visible_addresses = {
             x.address
@@ -95,19 +92,33 @@ class HideUnusedConcepts(OptimizationRule):
             candidates = [x for x in candidates if x != keep_address]
         if not candidates:
             return branch_only_hidden, None
-        cte.hidden_concepts = set(candidates)
+        new_hidden = set(candidates)
+        changed = new_hidden != cte.hidden_concepts
+        if changed:
+            self.log(
+                f"Hiding unused concepts {candidates} from {cte.name} "
+                f"(used: {used}, all: {[x.address for x in cte.output_columns]})"
+            )
+            cte.hidden_concepts = new_hidden
         # UnionCTE rendering joins the per-branch CTEs with UNION ALL; each
         # branch's SELECT list is filtered by *that branch's* hidden_concepts,
         # not the union's. Propagate the hide so the branches also drop the
         # unused columns from their projections (e.g. q66's pushed-up
         # ``sales.ship_mode.carrier`` / ``sales.time.time`` that no consumer
-        # references after stripping).
+        # references after stripping). Re-checked every loop: a branch may only
+        # gain the column on a later pass.
         if isinstance(cte, UnionCTE):
             for branch in cte.internal_ctes:
                 if not isinstance(branch, CTE):
                     continue
                 branch_outputs = {c.address for c in branch.output_columns}
-                branch.hidden_concepts |= {
+                to_hide = {
                     addr for addr in candidates if addr in branch_outputs
-                }
-        return True, None
+                } - branch.hidden_concepts
+                if to_hide:
+                    branch.hidden_concepts |= to_hide
+                    changed = True
+        # Report True only on a real change: returning True on a no-op (the set
+        # is already applied) keeps the driver re-running this phase until
+        # MAX_OPTIMIZATION_LOOPS, spamming the log every loop.
+        return changed or branch_only_hidden, None

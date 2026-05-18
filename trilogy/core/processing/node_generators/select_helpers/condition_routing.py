@@ -1,5 +1,9 @@
+from enum import Enum, auto
+
+from trilogy.core.enums import ComparisonOperator
 from trilogy.core.models.build import (
     BuildComparison,
+    BuildConcept,
     BuildConditional,
     BuildDatasource,
     BuildParenthetical,
@@ -12,11 +16,49 @@ from trilogy.core.processing.condition_utility import (
     condition_required_addresses,
     decompose_condition,
     flatten_conditions,
+    is_null_literal,
     is_scalar_condition,
     merge_conditions_and_dedup,
 )
 
 ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+
+
+class DatasourceConditionAtomState(Enum):
+    KEEP = auto()
+    ALWAYS_TRUE = auto()
+    ALWAYS_FALSE = auto()
+
+
+def datasource_condition_atom_state(
+    datasource: BuildDatasource,
+    atom: ConditionExpression,
+) -> DatasourceConditionAtomState:
+    if not isinstance(atom, BuildComparison):
+        return DatasourceConditionAtomState.KEEP
+    if atom.operator not in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
+        return DatasourceConditionAtomState.KEEP
+    if isinstance(atom.left, BuildConcept) and is_null_literal(atom.right):
+        concept = atom.left
+    elif isinstance(atom.right, BuildConcept) and is_null_literal(atom.left):
+        concept = atom.right
+    else:
+        return DatasourceConditionAtomState.KEEP
+
+    non_nullable = {
+        address
+        for column in datasource.columns
+        if not column.is_nullable
+        for address in (column.concept.address, column.concept.canonical_address)
+    }
+    if (
+        concept.address not in non_nullable
+        and concept.canonical_address not in non_nullable
+    ):
+        return DatasourceConditionAtomState.KEEP
+    if atom.operator == ComparisonOperator.IS_NOT:
+        return DatasourceConditionAtomState.ALWAYS_TRUE
+    return DatasourceConditionAtomState.ALWAYS_FALSE
 
 
 def datasource_conditions(
@@ -42,6 +84,9 @@ def datasource_conditions(
             for atom in decompose_condition(datasource.non_partial_for.conditional)
         }
     for atom in decompose_condition(conditions.conditional):
+        atom_state = datasource_condition_atom_state(datasource, atom)
+        if atom_state == DatasourceConditionAtomState.ALWAYS_TRUE:
+            continue
         if (
             str(atom) in covered_atoms
             or any(arg for group in atom.existence_arguments for arg in group)

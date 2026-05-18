@@ -1,7 +1,8 @@
 import os
 import platform
-from datetime import datetime
+import time
 from pathlib import Path
+from typing import Callable, TypeVar
 
 import tomli_w
 import tomllib
@@ -20,6 +21,24 @@ fingerprint = (
 )
 
 working_path = Path(__file__).parent
+
+# Sub-cutoff timings are dominated by scheduler/timer jitter rather than real
+# query cost, so a single sample is not reproducible. When any stage lands
+# under the cutoff we re-run it REPEAT_COUNT extra times (trilogy/reference
+# interleaved so cache warmth stays symmetric) and keep the minimum -- noise
+# only ever adds time, so the min is the most faithful estimate of true cost.
+REPEAT_TIME_CUTOFF = 0.15
+REPEAT_COUNT = 3
+
+T = TypeVar("T")
+
+
+def _time(fn: Callable[[], T]) -> tuple[float, T]:
+    """Monotonic, high-resolution elapsed time around fn (perf_counter, not
+    datetime.now, which is wall-clock and ~15ms-quantized on Windows)."""
+    start = time.perf_counter()
+    value = fn()
+    return time.perf_counter() - start, value
 
 
 def _load_toml_mapping(path: Path) -> dict[str, object]:
@@ -51,25 +70,30 @@ def run_query(
         text = f.read()
     preql_size = query_size(text, "preql")
 
-    # fetch our results
-    parse_start = datetime.now()
-    query = engine.generate_sql(text)[-1]
-    parse_time = datetime.now() - parse_start
-    exec_start = datetime.now()
-    results = engine.execute_raw_sql(query)
-    exec_time = datetime.now() - exec_start
-    # assert results == ''
-    comp_results = list(results.fetchall())
-    # run the built-in comp
-    comp_start = datetime.now()
+    # Resolve the reference SQL up front so file IO never lands inside a
+    # timing window.
     if sql_override:
-        with open(working_path / f"query{idx:02d}.sql") as f:
-            rquery = f.read()
+        rquery = (working_path / f"query{idx:02d}.sql").read_text()
     else:
         rquery = f"PRAGMA tpcds({idx});"
-    base = engine.execute_raw_sql(rquery)
-    base_results = list(base.fetchall())
-    comp_time = datetime.now() - comp_start
+
+    # Time exec *including* fetch on both sides -- DuckDB materializes lazily,
+    # so excluding fetch on one side only would bias the comparison.
+    def _exec_trilogy() -> list:
+        return list(engine.execute_raw_sql(query).fetchall())
+
+    def _exec_reference() -> list:
+        return list(engine.execute_raw_sql(rquery).fetchall())
+
+    parse_time, query = _time(lambda: engine.generate_sql(text)[-1])
+    exec_time, comp_results = _time(_exec_trilogy)
+    comp_time, base_results = _time(_exec_reference)
+
+    if min(exec_time, comp_time) < REPEAT_TIME_CUTOFF:
+        for _ in range(REPEAT_COUNT):
+            parse_time = min(parse_time, _time(lambda: engine.generate_sql(text))[0])
+            exec_time = min(exec_time, _time(_exec_trilogy)[0])
+            comp_time = min(comp_time, _time(_exec_reference)[0])
 
     # Always prefer the on-disk reference SQL for size comparison when available,
     # so the PRAGMA-driven runs still report a meaningful comp_size.
@@ -107,9 +131,9 @@ def run_query(
     timing = Path(working_path / f"zquery_timing_{fingerprint}.log")
     current = _load_toml_mapping(timing)
     current[f"query_{query_label}"] = {
-        "parse_time": parse_time.total_seconds(),
-        "exec_time": exec_time.total_seconds(),
-        "comp_time": comp_time.total_seconds(),
+        "parse_time": parse_time,
+        "exec_time": exec_time,
+        "comp_time": comp_time,
     }
     final = {x: current[x] for x in sorted(current.keys())}
     temp_timing = timing.with_suffix(f"{timing.suffix}.tmp")
@@ -133,6 +157,7 @@ def test_adhoc_one(engine: Executor):
         text2 = f.read()
         engine.execute_text(text2, non_interactive=True)
     query = engine.generate_sql(text)[-1]
+
 
     engine.execute_raw_sql(query)
 
@@ -266,11 +291,6 @@ def test_sixteen(engine):
     assert len(query) < 5500, query
 
 
-def test_nineteen(engine):
-    query = run_query(engine, 19, sql_override=True)
-    assert len(query) < 4000, query
-
-
 def test_seventeen(engine):
     query = run_query(engine, 17, sql_override=True)
     assert len(query) < 12000, query
@@ -278,6 +298,11 @@ def test_seventeen(engine):
 
 def test_eighteen(engine):
     _ = run_query(engine, 18)
+
+
+def test_nineteen(engine):
+    query = run_query(engine, 19, sql_override=True)
+    assert len(query) < 4000, query
 
 
 def test_twenty(engine):
@@ -313,65 +338,6 @@ def test_twenty_five(engine):
     assert len(query) < 8500, query
 
 
-def test_thirty_five(engine):
-    query = run_query(engine, 35)
-    assert len(query) < 11000, query
-
-
-def test_thirty_eight(engine):
-    _ = run_query(engine, 38)
-
-
-def test_thirty_six(engine):
-    query = run_query(engine, 36)
-    assert len(query) < 8500, query
-
-
-def test_thirty_seven(engine):
-    query = run_query(engine, 37)
-    assert len(query) < 2200, query
-
-
-def test_thirty_nine(engine):
-    query = run_query(engine, 39)
-    assert len(query) < 4500, query
-
-
-def test_forty(engine):
-    query = run_query(engine, 40, sql_override=True)
-    assert len(query) < 8000, query
-
-
-def test_forty_two(engine):
-    _ = run_query(engine, 42)
-
-
-def test_forty_one(engine):
-    query = run_query(engine, 41)
-    assert len(query) < 8000, query
-
-
-def test_forty_three(engine):
-    query = run_query(engine, 43)
-    assert len(query) < 5000, query
-
-
-def test_forty_five(engine):
-    query = run_query(engine, 45)
-    assert len(query) < 6000, query
-
-
-def test_forty_six(engine):
-    query = run_query(engine, 46)
-    assert len(query) < 8000, query
-    assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
-    assert query.count("GROUP BY") == 1, query
-
-
-def test_forty_four(engine):
-    _ = run_query(engine, 44)
-
-
 def test_twenty_six(engine):
     _ = run_query(engine, 26)
     # size gating
@@ -387,14 +353,6 @@ def test_twenty_eight(engine):
     _ = run_query(engine, 28)
 
 
-def test_seventy_four(engine):
-    _ = run_query(engine, 74)
-
-
-def test_seventy_eight(engine):
-    _ = run_query(engine, 78)
-
-
 def test_twenty_nine(engine):
     query = run_query(engine, 29)
     assert len(query) < 12000, query
@@ -406,10 +364,27 @@ def test_thirty(engine):
     assert len(query) < 12000, query
 
 
+def test_thirty_alt(engine):
+    # Non-rowset conditional-aggregate form; equivalent to PRAGMA tpcds(30).
+    query = run_query(engine, 30, preql_file="query30-alt.preql", label="30.alt")
+    assert len(query) < 12000, query
+    assert query.count('"memory"."web_returns"') == 1, query
+    assert query.count("GROUP BY") == 2, query
+    assert '"WR_RETURNING_ADDR_SK" as "web_returns_return_address_id"' not in query
+    assert 'LEFT OUTER JOIN "abundant"' not in query
+    assert 'web_returns_return_address_state" is not distinct from' in query
+
+
 def test_thirty_one(engine):
     query = run_query(engine, 31)
     # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
     assert len(query) < 7500, query
+
+
+def test_thirty_two(engine):
+    query = run_query(engine, 32)
+    # size gating
+    assert len(query) < 12640, query
 
 
 def test_thirty_three(engine):
@@ -423,10 +398,63 @@ def test_thirty_four(engine):
     assert len(query) < 6000, query
 
 
-def test_thirty_two(engine):
-    query = run_query(engine, 32)
-    # size gating
-    assert len(query) < 12640, query
+def test_thirty_five(engine):
+    query = run_query(engine, 35)
+    assert len(query) < 11000, query
+
+
+def test_thirty_six(engine):
+    query = run_query(engine, 36)
+    assert len(query) < 8500, query
+
+
+def test_thirty_seven(engine):
+    query = run_query(engine, 37)
+    assert len(query) < 2200, query
+
+
+def test_thirty_eight(engine):
+    _ = run_query(engine, 38)
+
+
+def test_thirty_nine(engine):
+    query = run_query(engine, 39)
+    assert len(query) < 4500, query
+
+
+def test_forty(engine):
+    query = run_query(engine, 40, sql_override=True)
+    assert len(query) < 8000, query
+
+
+def test_forty_one(engine):
+    query = run_query(engine, 41)
+    assert len(query) < 8000, query
+
+
+def test_forty_two(engine):
+    _ = run_query(engine, 42)
+
+
+def test_forty_three(engine):
+    query = run_query(engine, 43)
+    assert len(query) < 5000, query
+
+
+def test_forty_four(engine):
+    _ = run_query(engine, 44)
+
+
+def test_forty_five(engine):
+    query = run_query(engine, 45)
+    assert len(query) < 6000, query
+
+
+def test_forty_six(engine):
+    query = run_query(engine, 46)
+    assert len(query) < 8000, query
+    assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
+    assert query.count("GROUP BY") == 1, query
 
 
 def test_forty_seven(engine):
@@ -509,13 +537,13 @@ def test_sixty_two(engine):
     assert len(query) < 2500, query
 
 
-def test_sixty_four(engine_sf001):
-    _ = run_query(engine_sf001, 64, sql_override=True)
-
-
 def test_sixty_three(engine):
     query = run_query(engine, 63)
     assert len(query) < 6000, query
+
+
+def test_sixty_four(engine_sf001):
+    _ = run_query(engine_sf001, 64, sql_override=True)
 
 
 def test_sixty_five(engine):
@@ -562,7 +590,11 @@ def test_seventy_two(engine_sf001):
 
 def test_seventy_three(engine):
     query = run_query(engine, 73)
-    assert len(query) < 7500, query
+    assert len(query) < 3000, query
+
+
+def test_seventy_four(engine):
+    _ = run_query(engine, 74)
 
 
 def test_seventy_five(engine):
@@ -578,6 +610,10 @@ def test_seventy_seven(engine):
     _ = run_query(engine, 77)
 
 
+def test_seventy_eight(engine):
+    _ = run_query(engine, 78)
+
+
 def test_seventy_nine(engine):
     query = run_query(engine, 79)
     assert len(query) < 8000, query
@@ -585,13 +621,14 @@ def test_seventy_nine(engine):
 
 def test_eighty(engine):
     query = run_query(engine, 80)
-    assert len(query) < 25000, query
+    # size gating
+    assert len(query) < 8000, query
 
 
 def test_eighty_one(engine):
     query = run_query(engine, 81)
-    assert len(query) < 12000, query
-
+    # size gating
+    assert len(query) < 8000, query
 
 
 def test_eighty_two(engine):

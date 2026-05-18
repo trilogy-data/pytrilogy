@@ -1,12 +1,14 @@
 import catalog_returns as cr;
 
-
-auto customer_state_returns_2000 <- sum( cr.return_amt_inc_tax ? cr.date.year = 2000) by cr.return_address.state, cr.customer.id ;
-auto scaled_state_returns_2000 <- 1.2 * avg(customer_state_returns_2000) by cr.return_address.state;
-
+# Non-rowset equivalent of the rowset form: the key-join shape achieved by
+# grouping the aggregate to (return_address.state, customer.id). The year/state
+# filter is bound *inside* the conditional sum because a plain sum + a row-grain
+# WHERE year=2000 loses the filter from the customer-grain aggregate.
+auto customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.return_address.state is not null) by cr.return_address.state, cr.customer.id;
+auto scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
 
 WHERE
-    customer_state_returns_2000 > scaled_state_returns_2000
+    customer_state > scaled_state
     and cr.customer.address.state = 'GA'
     and cr.return_address.state is not null
 SELECT
@@ -26,23 +28,23 @@ SELECT
     cr.customer.address.country,
     cr.customer.address.gmt_offset,
     cr.customer.address.location_type,
-    customer_state_returns_2000,
-    --cr.return_address.state
+    customer_state,
 ORDER BY
-    cr.customer.text_id asc NULLS FIRST,
-    cr.customer.salutation asc NULLS FIRST,
-    cr.customer.first_name asc NULLS FIRST,
-    cr.customer.last_name asc NULLS FIRST,
-    cr.customer.address.street_number asc NULLS FIRST,
-    cr.customer.address.street_name asc NULLS FIRST,
-    cr.customer.address.street_type asc NULLS FIRST,
-    cr.customer.address.suite_number asc NULLS FIRST,
-    cr.customer.address.city asc NULLS FIRST,
-    cr.customer.address.county asc NULLS FIRST,
-    cr.customer.address.state asc NULLS FIRST,
-    cr.customer.address.zip asc NULLS FIRST,
-    cr.customer.address.country asc NULLS FIRST,
-    cr.customer.address.gmt_offset asc NULLS FIRST,
-    cr.customer.address.location_type asc NULLS FIRST,
-    customer_state_returns_2000 asc NULLS FIRST
-LIMIT 100;
+    cr.customer.text_id asc nulls first,
+    cr.customer.salutation asc nulls first,
+    cr.customer.first_name asc nulls first,
+    cr.customer.last_name asc nulls first,
+    cr.customer.address.street_number asc nulls first,
+    cr.customer.address.street_name asc nulls first,
+    cr.customer.address.street_type asc nulls first,
+    cr.customer.address.suite_number asc nulls first,
+    cr.customer.address.city asc nulls first,
+    cr.customer.address.county asc nulls first,
+    cr.customer.address.state asc nulls first,
+    cr.customer.address.zip asc nulls first,
+    cr.customer.address.country asc nulls first,
+    cr.customer.address.gmt_offset asc nulls first,
+    cr.customer.address.location_type asc nulls first,
+    customer_state asc nulls first
+LIMIT 100
+;

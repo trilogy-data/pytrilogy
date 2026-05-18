@@ -159,3 +159,35 @@ select
     assert "FULL JOIN" not in query
     assert '    :label as "label"' in query
     assert '    count("nums"."x") as "n"' in query
+
+
+def test_non_nullable_null_guard_does_not_block_datasource_inlining():
+    raw = """
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+
+datasource customers (
+    customer_id: customer_id,
+    name: name,
+)
+grain (customer_id)
+address customers;
+
+datasource orders (
+    order_id: order_id,
+    customer_id: ?customer_id,
+)
+grain (order_id)
+address orders;
+
+WHERE customer_id is not null
+SELECT
+    order_id,
+    name;
+"""
+    query = Dialects.DUCK_DB.default_executor().generate_sql(raw)[-1]
+
+    assert "WITH" not in query
+    assert '"customers"."customer_id" is not null' not in query
+    assert '"orders"."customer_id" is not null' in query

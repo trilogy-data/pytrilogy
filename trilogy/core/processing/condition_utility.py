@@ -666,3 +666,61 @@ def concepts_implied_non_null(value: object) -> set[str]:
             addresses |= concepts_implied_non_null(arg)
         return addresses
     return set()
+
+
+def _non_null_or_disjuncts(
+    atom: BuildComparison | BuildConditional | BuildParenthetical,
+) -> list[BuildComparison | BuildConditional | BuildParenthetical]:
+    if isinstance(atom, BuildParenthetical):
+        return _non_null_or_disjuncts(atom.content)  # type: ignore[arg-type]
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
+        return _non_null_or_disjuncts(atom.left) + _non_null_or_disjuncts(  # type: ignore[arg-type]
+            atom.right  # type: ignore[arg-type]
+        )
+    return [atom]
+
+
+def _atom_proves_non_null(
+    atom: BuildComparison | BuildConditional | BuildParenthetical,
+) -> set[str]:
+    if isinstance(atom, BuildParenthetical):
+        return _atom_proves_non_null(atom.content)  # type: ignore[arg-type]
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
+        # A surviving row satisfies at least one disjunct but we don't know
+        # which — only concepts non-null under *every* disjunct are proven.
+        sets = [condition_proves_non_null(d) for d in _non_null_or_disjuncts(atom)]
+        return set.intersection(*sets) if sets else set()
+    if not isinstance(atom, BuildComparison):
+        return set()
+    left, right, op = atom.left, atom.right, atom.operator
+    if op == ComparisonOperator.IS_NOT:
+        # `<expr> IS NOT NULL` — every concept inside the expression is non-null.
+        if is_null_literal(right):
+            return concepts_implied_non_null(left)
+        if is_null_literal(left):
+            return concepts_implied_non_null(right)
+        return set()
+    if op == ComparisonOperator.IS:
+        # `<expr> IS NULL` specifically wants NULLs — never proves non-null.
+        return set()
+    if op in NULL_PROPAGATING_OPS:
+        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
+    return set()
+
+
+def condition_proves_non_null(
+    condition: BuildComparison | BuildConditional | BuildParenthetical,
+) -> set[str]:
+    """Concept addresses a *fully applied* condition forces non-null.
+
+    Unlike ``non_null_proofs`` (logical/merge stage — deliberately ignores
+    ``IS NOT NULL`` because a merged join key may materialize as
+    ``COALESCE(left, right)``), this honors ``IS NOT NULL`` too. Safe only for
+    a caller asking about a single datasource's own columns under that scan's
+    own applied WHERE, where no cross-source COALESCE of the key exists.
+    """
+    return {
+        addr
+        for atom in decompose_condition(condition)
+        for addr in _atom_proves_non_null(atom)
+    }

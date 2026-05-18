@@ -15,9 +15,11 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
+    resolve_function_parent_concepts,
 )
 from trilogy.core.processing.nodes import (
     FilterNode,
+    GroupNode,
     History,
     MergeNode,
     SelectNode,
@@ -38,6 +40,7 @@ class FilterParentPlan:
     same_filter_optional: list[BuildConcept]
     row_output_concepts: list[BuildConcept]
     optimized_pushdown: bool
+    grouped_pushdown: bool
     global_filter_is_local_filter: bool
 
 
@@ -68,6 +71,24 @@ def _missing_optional(
 
 def _same_concepts(left: list[BuildConcept], right: list[BuildConcept]) -> bool:
     return _concept_addresses(left) == _concept_addresses(right)
+
+
+def _aggregate_filter_parent_concepts(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    if not isinstance(concept.lineage, FILTER_TYPES):
+        return []
+    parents: list[BuildConcept] = []
+    content = concept.lineage.content
+    if isinstance(content, BuildConcept):
+        parents.append(content)
+    for condition_concept in concept.lineage.where.row_arguments:
+        if isinstance(condition_concept.lineage, BuildAggregateWrapper):
+            parents += resolve_function_parent_concepts(condition_concept, environment)
+        else:
+            parents.append(condition_concept)
+    return unique(parents, "address")
 
 
 def _resolve_parent_row_outputs(
@@ -231,6 +252,43 @@ def pushdown_filter_to_parent(
     return optimized_pushdown
 
 
+def _can_pushdown_as_grouped_filter(
+    concept: BuildConcept,
+    local_optional: list[BuildConcept],
+    parent_existence_concepts: list[tuple[BuildConcept, ...]],
+    filter_where: BuildWhereClause,
+) -> bool:
+    if (
+        local_optional
+        or parent_existence_concepts
+        or is_scalar_condition(filter_where.conditional)
+    ):
+        return False
+    # Grouped pushdown collapses the filter and its aggregate predicate into a
+    # single GroupNode whose only output is `concept`, with the predicate moved
+    # to HAVING and the content rendered as the group key. That is only sound
+    # when the content's own grain matches the predicate's grouping grain — i.e.
+    # the content *is* the group key. `filter order_id where count(x) by
+    # order_id > 1` qualifies (content `order_id` grain == agg by-grain). But
+    # `filter customer.address.zip where zip_p_count > 10` does not: zip is a
+    # property at `customer.address.id` grain while `zip_p_count` groups by
+    # `customer.address.zip`, so there is no real group key to render — the
+    # collapsed CTE would group by the content expression with the aggregate
+    # inlined as a CASE WHEN, producing an invalid `GROUP BY count(...)`. Keep
+    # filter and group separate there so the aggregate's by-grain survives.
+    assert isinstance(concept.lineage, FILTER_TYPES)
+    content = concept.lineage.content
+    if isinstance(content, BuildConcept):
+        agg_args = [
+            r
+            for r in filter_where.row_arguments
+            if r.derivation == Derivation.AGGREGATE
+        ]
+        if any(a.grain != content.grain for a in agg_args):
+            return False
+    return True
+
+
 def build_parent_concepts(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -283,18 +341,30 @@ def build_parent_concepts(
         if x.address in same_filter_optional_addresses:
             continue
         extra_row_level_optional.append(x)
-    is_optimized_pushdown = exact_partial_matches and pushdown_filter_to_parent(
+    grouped_pushdown = _can_pushdown_as_grouped_filter(
         concept,
-        environment,
         local_optional,
-        conditions,
+        parent_existence_concepts,
         filter_where,
-        same_filter_optional,
-        depth,
     )
+    is_optimized_pushdown = grouped_pushdown or (
+        exact_partial_matches
+        and pushdown_filter_to_parent(
+            concept,
+            environment,
+            local_optional,
+            conditions,
+            filter_where,
+            same_filter_optional,
+            depth,
+        )
+    )
+
+    if grouped_pushdown:
+        parent_row_concepts = _aggregate_filter_parent_concepts(concept, environment)
     if not is_optimized_pushdown:
         parent_row_concepts += extra_row_level_optional
-    else:
+    elif not grouped_pushdown:
         # New "disjoint" pushdown branch can leave behind grain-key concepts
         # that weren't pulled in by same_filter_optional's content scan. The
         # parent CTE will carry the pushed WHERE and must still project them,
@@ -316,6 +386,7 @@ def build_parent_concepts(
         same_filter_optional=same_filter_optional,
         row_output_concepts=row_output_concepts,
         optimized_pushdown=is_optimized_pushdown,
+        grouped_pushdown=grouped_pushdown,
         global_filter_is_local_filter=global_filter_is_local_filter,
     )
 
@@ -376,6 +447,7 @@ def gen_filter_node(
     same_filter_optional = parent_plan.same_filter_optional
     row_output_concepts = parent_plan.row_output_concepts
     optimized_pushdown = parent_plan.optimized_pushdown
+    grouped_pushdown = parent_plan.grouped_pushdown
     global_filter_is_local_filter = parent_plan.global_filter_is_local_filter
 
     row_parent: StrategyNode = source_concepts(
@@ -408,6 +480,20 @@ def gen_filter_node(
     else:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} filter node has row parents {[x.address for x in parent_row_concepts]} from node with output [{[x.address for x in row_parent.output_concepts]}] partial {row_parent.partial_concepts}"
+        )
+    if grouped_pushdown:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} returning grouped filter node "
+            f"with pushdown to HAVING {where.conditional}"
+        )
+        return GroupNode(
+            input_concepts=parent_row_concepts,
+            output_concepts=[concept],
+            environment=environment,
+            parents=[row_parent],
+            conditions=where.conditional,
+            preexisting_conditions=conditions.conditional if conditions else None,
+            force_group=True,
         )
     if global_filter_is_local_filter:
         logger.info(

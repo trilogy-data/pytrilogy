@@ -1,5 +1,5 @@
 query_id = "94"
-gen_length = 4026
+gen_length = 3626
 preql_size = 627
 comp_size = 795
 generated_sql = """
@@ -23,33 +23,32 @@ GROUP BY
     1),
 abundant as (
 SELECT
-    \"questionable\".\"ws_order_number\" as \"ws_order_number\",
-    count(\"questionable\".\"ws_warehouse_id\") as \"_virt_agg_count_9309405360138092\"
+    \"questionable\".\"ws_order_number\" as \"multi_warehouse_orders\"
 FROM
     \"questionable\"
 GROUP BY
-    1),
+    1
+HAVING
+    count(\"questionable\".\"ws_warehouse_id\") > 1
+),
 uneven as (
 SELECT
-    CASE WHEN \"abundant\".\"_virt_agg_count_9309405360138092\" > 1 THEN \"abundant\".\"ws_order_number\" ELSE NULL END as \"multi_warehouse_orders\"
+    \"abundant\".\"multi_warehouse_orders\" as \"multi_warehouse_orders\"
 FROM
     \"abundant\"),
 cooperative as (
 SELECT
-    \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\",
-    \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" as \"ws_ship_address_id\",
-    \"ws_web_sales\".\"WS_SHIP_DATE_SK\" as \"ws_ship_date_id\",
-    \"ws_web_sales\".\"WS_WEB_SITE_SK\" as \"ws_web_site_id\"
+    \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
+    INNER JOIN \"memory\".\"web_site\" as \"ws_web_site_web_site\" on \"ws_web_sales\".\"WS_WEB_SITE_SK\" = \"ws_web_site_web_site\".\"web_site_sk\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"ws_web_sales\".\"WS_SHIP_DATE_SK\" = \"ws_ship_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ws_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"ws_web_sales\".\"WS_ORDER_NUMBER\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
+    \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and cast(\"ws_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"ws_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"ws_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"ws_web_sales\".\"WS_ORDER_NUMBER\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
 
 GROUP BY
-    1,
-    2,
-    3,
-    4),
+    1),
 concerned as (
 SELECT
     \"ws_web_sales\".\"WS_EXT_SHIP_COST\" as \"ws_ext_ship_cost\",
@@ -67,30 +66,17 @@ GROUP BY
     2,
     \"ws_web_sales\".\"WS_ITEM_SK\",
     \"ws_web_sales\".\"WS_ORDER_NUMBER\"),
-juicy as (
+vacuous as (
 SELECT
-    \"cooperative\".\"ws_order_number\" as \"ws_order_number\"
+    count(distinct \"cooperative\".\"ws_order_number\") as \"order_count\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"web_site\" as \"ws_web_site_web_site\" on \"cooperative\".\"ws_web_site_id\" = \"ws_web_site_web_site\".\"web_site_sk\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"cooperative\".\"ws_ship_date_id\" = \"ws_ship_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"cooperative\".\"ws_ship_address_id\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    cast(\"ws_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"ws_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"ws_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_site_web_site\".\"web_company_name\" = 'pri'
-
-GROUP BY
-    1),
+    \"cooperative\"),
 young as (
 SELECT
     sum(\"concerned\".\"ws_ext_ship_cost\") as \"total_shipping_cost\",
     sum(\"concerned\".\"ws_net_profit\") as \"total_net_profit\"
 FROM
-    \"concerned\"),
-vacuous as (
-SELECT
-    count(distinct \"juicy\".\"ws_order_number\") as \"order_count\"
-FROM
-    \"juicy\")
+    \"concerned\")
 SELECT
     \"vacuous\".\"order_count\" as \"order_count\",
     \"young\".\"total_shipping_cost\" as \"total_shipping_cost\",

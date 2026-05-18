@@ -55,6 +55,10 @@ from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
 )
+from trilogy.core.optimizations.join_upgrade import (
+    UpgradeJoinOnGuards,
+    _gather_proofs,
+)
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
     add_parent_cte,
@@ -64,6 +68,12 @@ from trilogy.core.optimizations.utils import (
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import is_scalar_condition
+
+HOISTABLE_JOIN_TYPES = {JoinType.INNER, JoinType.LEFT_OUTER}
+
+
+def _is_grouped_cte(cte: CTE) -> bool:
+    return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
 
 
 def _is_child_of(candidate, condition) -> bool:
@@ -104,6 +114,19 @@ class JoinHoist(OptimizationRule):
             if fk_addresses.issubset(ds_outputs):
                 return ds
         return None
+
+    def _find_left_base_join_cte(
+        self,
+        parent_cte: CTE,
+        left_base_ds: QueryDatasource | BuildDatasource,
+        fk_addresses: set[str],
+    ) -> tuple[CTE | UnionCTE | None, bool]:
+        left_base_cte = self._find_left_base_cte(parent_cte, fk_addresses)
+        if left_base_cte is not None:
+            return left_base_cte, False
+        if isinstance(left_base_ds, BuildDatasource):
+            return CTE.from_datasource(left_base_ds), True
+        return None, False
 
     def _candidates(self, cte: CTE) -> list:
         if not cte.condition:
@@ -150,7 +173,7 @@ class JoinHoist(OptimizationRule):
         cte: CTE,
         parent_cte: CTE,
         inverse_map: dict[str, list[CTE | UnionCTE]],
-    ) -> list[tuple[Join, list, list]] | None:
+    ) -> list[tuple[Join, list, list, JoinType]] | None:
         """Per-join plan: which joins to hoist, and which candidate predicates
         ride along with each.
 
@@ -172,6 +195,8 @@ class JoinHoist(OptimizationRule):
         siblings = inverse_map.get(parent_cte.name, [])
         if not siblings:
             return None
+        if not _is_grouped_cte(parent_cte):
+            return None
         candidates = [
             c
             for c in self._candidates(cte)
@@ -184,13 +209,22 @@ class JoinHoist(OptimizationRule):
         if not candidates:
             return None
 
-        plan: list[tuple[Join, list, list]] = []
-        for j in cte.joins:
-            if not isinstance(j, Join):
+        child_joins = [
+            j
+            for j in cte.joins
+            if isinstance(j, Join)
+            and isinstance(j.right_cte, CTE)
+            and j.right_cte.name != parent_cte.name
+            and j.right_cte.source is not parent_cte.source
+        ]
+        plan: list[tuple[Join, list, list, JoinType]] = []
+        for j in child_joins:
+            if j.jointype not in HOISTABLE_JOIN_TYPES:
                 continue
-            if j.jointype != JoinType.INNER:
-                continue
-            if not isinstance(j.right_cte, CTE):
+            if (
+                j.right_cte.name == parent_cte.name
+                or j.right_cte.source is parent_cte.source
+            ):
                 continue
             if not j.joinkey_pairs:
                 continue
@@ -240,14 +274,37 @@ class JoinHoist(OptimizationRule):
             bundled = to_push + to_strip_only
             if not bundled:
                 continue
+            join_type = self._join_type_after_hoist(join, bundled)
+            if join_type is None:
+                continue
             # dim concepts must be unused outside the bundled candidates
             needed_elsewhere = self._collect_referenced_addresses_excluding(
                 cte, bundled
             )
             if filter_concepts & needed_elsewhere:
                 continue
-            plan.append((join, to_push, to_strip_only))
+            plan.append((join, to_push, to_strip_only, join_type))
+        if len(siblings) == 1 and len(plan) != len(child_joins):
+            return None
         return plan or None
+
+    def _lock_in_guarded_upgrades(
+        self,
+        cte: CTE,
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+    ) -> None:
+        """Realize guard-enabled join upgrades on ``cte`` before its guards are
+        hoisted away.
+
+        Hoisting a dim join up to the shared parent strips the filter predicate
+        from ``cte``. That predicate may be the only thing letting
+        UpgradeJoinOnGuards downgrade an OUTER join in ``cte`` (classically a
+        filter-only RIGHT_OUTER to the very parent the dim is hoisted into,
+        which contributes no output columns and only restricts rows). Once the
+        guard is gone UpgradeJoinOnGuards bails (no condition) and the
+        conservative OUTER join sticks. Apply that upgrade now, while the guard
+        is still present, so the hoist can't silently regress the join."""
+        UpgradeJoinOnGuards().optimize(cte, inverse_map)
 
     def _parent_already_joins_dim(
         self, parent_cte: CTE, dim_qds: QueryDatasource
@@ -258,11 +315,23 @@ class JoinHoist(OptimizationRule):
             for bj in parent_cte.source.joins
         )
 
+    def _join_type_after_hoist(self, join: Join, bundled: list) -> JoinType | None:
+        if join.jointype == JoinType.INNER:
+            return JoinType.INNER
+        if join.jointype != JoinType.LEFT_OUTER:
+            return None
+        right_addresses = {c.address for c in join.right_cte.output_columns}
+        forced = {addr for cand in bundled for addr in _gather_proofs(cand)}
+        if forced & right_addresses:
+            return JoinType.INNER
+        return None
+
     def _hoist_join(
         self,
         cte: CTE,
         parent_cte: CTE,
         join: Join,
+        join_type: JoinType,
     ) -> bool:
         """Construct fresh BaseJoin + Join state on parent_cte for `join`, and
         strip the original from cte. If parent_cte already joins the same dim
@@ -284,11 +353,23 @@ class JoinHoist(OptimizationRule):
 
         if not self._parent_already_joins_dim(parent_cte, dim_qds):
             fk_addresses = {p.left.address for p in (join.joinkey_pairs or [])}
-            left_base_cte = self._find_left_base_cte(parent_cte, fk_addresses)
             left_base_ds = self._find_left_base_datasource(parent_cte, fk_addresses)
-            if left_base_cte is None or left_base_ds is None:
+            if left_base_ds is None:
                 self.debug(
                     f"Cannot locate left base for FK {fk_addresses} on "
+                    f"{parent_cte.name}; "
+                    f"parents={[p.name for p in parent_cte.parent_ctes]}, "
+                    f"datasources={[d.identifier for d in parent_cte.source.datasources]}"
+                )
+                return False
+            left_base_cte, inline_left_base = self._find_left_base_join_cte(
+                parent_cte,
+                left_base_ds,
+                fk_addresses,
+            )
+            if left_base_cte is None:
+                self.debug(
+                    f"Cannot locate left CTE for FK {fk_addresses} on "
                     f"{parent_cte.name}; "
                     f"parents={[p.name for p in parent_cte.parent_ctes]}, "
                     f"datasources={[d.identifier for d in parent_cte.source.datasources]}"
@@ -306,7 +387,7 @@ class JoinHoist(OptimizationRule):
             ]
             new_base_join = BaseJoin(
                 right_datasource=dim_qds,
-                join_type=JoinType.INNER,
+                join_type=join_type,
                 concept_pairs=new_concept_pairs,
                 modifiers=list(join.modifiers),
             )
@@ -331,11 +412,17 @@ class JoinHoist(OptimizationRule):
             ]
             new_join = Join(
                 right_cte=dim_cte,
-                jointype=JoinType.INNER,
+                jointype=join_type,
                 left_cte=None,
                 joinkey_pairs=new_joinkey_pairs,
                 modifiers=list(join.modifiers),
             )
+            if (
+                inline_left_base
+                and isinstance(left_base_ds, BuildDatasource)
+                and isinstance(left_base_cte, CTE)
+            ):
+                new_join.inline_cte(left_base_cte, left_base_ds)
             parent_cte.joins.append(new_join)
             add_parent_cte(parent_cte, dim_cte)
             for c in dim_cte.output_columns:
@@ -444,12 +531,20 @@ class JoinHoist(OptimizationRule):
             return False, None
 
         actions = False
+        locked_in_upgrades = False
         for parent_cte in candidate_parents:
             plan = self._join_hoist_plan(cte, parent_cte, inverse_map)
             if not plan:
                 continue
-            for join, to_push, to_strip_only in plan:
-                if not self._hoist_join(cte, parent_cte, join):
+            if not locked_in_upgrades:
+                self._lock_in_guarded_upgrades(cte, inverse_map)
+                locked_in_upgrades = True
+                # join types may have tightened; recompute against current state
+                plan = self._join_hoist_plan(cte, parent_cte, inverse_map)
+                if not plan:
+                    continue
+            for join, to_push, to_strip_only, join_type in plan:
+                if not self._hoist_join(cte, parent_cte, join, join_type):
                     continue
                 for cand in to_push:
                     parent_cte.condition = append_condition(

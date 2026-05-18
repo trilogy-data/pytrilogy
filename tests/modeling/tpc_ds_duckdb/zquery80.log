@@ -1,6 +1,6 @@
 query_id = "80"
-gen_length = 7335
-preql_size = 1511
+gen_length = 7251
+preql_size = 1323
 comp_size = 3674
 generated_sql = """
 
@@ -126,16 +126,16 @@ WHERE
     \"cheerful\".\"sales_channel_dim_text_id\" is not null
 )
 SELECT
-    \"abhorrent\".\"channel_label\" as \"q80_results_channel\",
-    \"abhorrent\".\"id_label\" as \"q80_results_id\",
-    sum(\"abhorrent\".\"sales_ext_sales_price\") as \"q80_results_sales_total\",
-    sum(coalesce(\"abhorrent\".\"sales_return_amount\",0)) as \"q80_results_returns_total\",
-    sum(\"abhorrent\".\"profit_minus_loss\") as \"q80_results_profit_total\"
+    \"abhorrent\".\"channel_label\" as \"channel\",
+    \"abhorrent\".\"id_label\" as \"id\",
+    sum(\"abhorrent\".\"sales_ext_sales_price\") as \"sales_total\",
+    sum(coalesce(\"abhorrent\".\"sales_return_amount\",0)) as \"returns_total\",
+    sum(\"abhorrent\".\"profit_minus_loss\") as \"profit_total\"
 FROM
     \"abhorrent\"
 GROUP BY
     ROLLUP (1, 2)
 ORDER BY 
-    \"q80_results_channel\" asc nulls first,
-    \"q80_results_id\" asc nulls first
+    \"channel\" asc nulls first,
+    \"id\" asc nulls first
 LIMIT (100)"""

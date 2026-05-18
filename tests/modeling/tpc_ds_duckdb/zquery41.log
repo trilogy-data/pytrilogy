@@ -1,5 +1,5 @@
 query_id = "41"
-gen_length = 2406
+gen_length = 2558
 preql_size = 1587
 comp_size = 2745
 generated_sql = """
@@ -27,18 +27,24 @@ WHERE
 
 GROUP BY
     1,
-    2)
+    2),
+cooperative as (
 SELECT
-    \"cheerful\".\"filtered_product_name\" as \"filtered_product_name\"
+    \"cheerful\".\"filtered_product_name\" as \"filtered_product_name\",
+    coalesce(\"highfalutin\".\"manufact_matches\",0) as \"manufact_matches\"
 FROM
     \"cheerful\"
-    INNER JOIN \"highfalutin\" on \"cheerful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
+    LEFT OUTER JOIN \"highfalutin\" on \"cheerful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
 WHERE
-    \"cheerful\".\"filtered_product_name\" is not null and \"highfalutin\".\"manufact_matches\" > 0
+    \"cheerful\".\"filtered_product_name\" is not null
+)
+SELECT
+    \"cooperative\".\"filtered_product_name\" as \"filtered_product_name\"
+FROM
+    \"cooperative\"
+WHERE
+    \"cooperative\".\"manufact_matches\" > 0
 
-GROUP BY
-    1,
-    \"highfalutin\".\"manufact_matches\"
 ORDER BY 
-    \"cheerful\".\"filtered_product_name\" asc
+    \"cooperative\".\"filtered_product_name\" asc
 LIMIT (100)"""
