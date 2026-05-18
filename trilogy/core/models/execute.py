@@ -405,7 +405,7 @@ class CTE:
             if c.derivation == Derivation.ROWSET:
                 assert isinstance(c.lineage, BuildRowsetItem)
                 return check_is_not_in_group(c.lineage.content)
-            
+
             if c.derivation == Derivation.CONSTANT:
                 return True
             if (
