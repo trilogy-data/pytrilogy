@@ -104,6 +104,44 @@ def canonicalize_graph(input: list[CTE]) -> None:
                     pair.cte = resolve(pair.cte)
         if isinstance(cte, UnionCTE):
             cte.internal_ctes = [resolve(b) for b in cte.internal_ctes]
+            # UNION ALL arity invariant: every branch must project exactly the
+            # union's columns. If a rule over-pruned one branch's
+            # ``output_columns`` (its ``source_map`` still carries the data),
+            # the branches diverge and the union renders invalid SQL (empty
+            # SELECT / column-count mismatch). Re-align divergent branches to
+            # the union's projection. Triggers ONLY when branches already
+            # disagree (an already-broken union) so consistent unions — every
+            # passing query — are untouched.
+            plain = [b for b in cte.internal_ctes if isinstance(b, CTE)]
+            if len(plain) > 1:
+
+                def visible(b: CTE) -> list[str]:
+                    return [
+                        x.address
+                        for x in b.output_columns
+                        if x.address not in b.hidden_concepts
+                    ]
+
+                counts = {len(visible(b)) for b in plain}
+                # ``union()``-concept branches legitimately project *different*
+                # local concepts, but a valid UNION ALL still needs the same
+                # column *count* per branch. Only when counts disagree is the
+                # union definitively invalid — a rule over-pruned one branch's
+                # projection. Re-align the short branch(es) to a healthy
+                # sibling's projection (its source_map still carries the data).
+                if len(counts) > 1:
+                    ref = max(plain, key=lambda b: len(visible(b)))
+                    ref_addrs = {x.address for x in ref.output_columns}
+                    for b in plain:
+                        if b is ref or len(visible(b)) == len(visible(ref)):
+                            continue
+                        sourceable = set(b.source_map.keys()) | {
+                            x.address for x in b.output_columns
+                        }
+                        if not ref_addrs <= sourceable:
+                            continue
+                        b.output_columns = list(ref.output_columns)
+                        b.hidden_concepts = set(ref.hidden_concepts)
 
 
 def reorder_ctes(

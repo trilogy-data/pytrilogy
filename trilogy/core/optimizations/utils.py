@@ -40,6 +40,15 @@ def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE) -> None:
                 else:
                     new_sources.append(x)
             target.source_map[k] = new_sources
+    if isinstance(target, UnionCTE):
+        # A union renders its branches from ``internal_ctes``, not
+        # ``parent_ctes`` — keep them in sync or the union emits the stale,
+        # now-divergent branch (breaking UNION arity / empty SELECT).
+        target.internal_ctes = [
+            new if b.safe_identifier == old.safe_identifier else b
+            for b in target.internal_ctes
+        ]
+        return
     if not isinstance(target, CTE):
         return
     if target.base_alias_override == old.safe_identifier:
