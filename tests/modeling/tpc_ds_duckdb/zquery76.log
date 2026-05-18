@@ -1,5 +1,5 @@
 query_id = "76"
-gen_length = 8762
+gen_length = 7761
 preql_size = 2275
 comp_size = 1708
 generated_sql = """
@@ -106,15 +106,9 @@ FROM
     \"quizzical\"),
 divergent as (
 SELECT
-    \"macho\".\"ws_date_quarter\" as \"_q76_results_qoy_b\",
     \"macho\".\"ws_date_quarter\" as \"d_qoy\",
-    \"macho\".\"ws_date_quarter\" as \"ws_date_quarter\",
-    \"macho\".\"ws_date_year\" as \"_q76_results_year_b\",
     \"macho\".\"ws_date_year\" as \"d_year\",
-    \"macho\".\"ws_date_year\" as \"ws_date_year\",
-    \"ws_item_items\".\"I_CATEGORY\" as \"_q76_results_category_b\",
     \"ws_item_items\".\"I_CATEGORY\" as \"i_category\",
-    \"ws_item_items\".\"I_CATEGORY\" as \"ws_item_category\",
     :_q76_results_channel_b as \"channel\",
     :_q76_results_col_name_b as \"col_name\",
     sum(\"kaput\".\"ws_row_flag\") as \"_q76_results_cnt_b\",
@@ -124,22 +118,16 @@ FROM
     INNER JOIN \"kaput\" on \"macho\".\"ws_item_id\" = \"kaput\".\"ws_item_id\" AND \"macho\".\"ws_order_number\" = \"kaput\".\"ws_order_number\"
     INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"macho\".\"ws_item_id\" = \"ws_item_items\".\"I_ITEM_SK\"
 GROUP BY
+    1,
+    2,
     3,
-    6,
-    9,
-    10,
-    11),
+    4,
+    5),
 sparkling as (
 SELECT
-    \"juicy\".\"ss_date_quarter\" as \"_q76_results_qoy_a\",
     \"juicy\".\"ss_date_quarter\" as \"d_qoy\",
-    \"juicy\".\"ss_date_quarter\" as \"ss_date_quarter\",
-    \"juicy\".\"ss_date_year\" as \"_q76_results_year_a\",
     \"juicy\".\"ss_date_year\" as \"d_year\",
-    \"juicy\".\"ss_date_year\" as \"ss_date_year\",
-    \"ss_item_items\".\"I_CATEGORY\" as \"_q76_results_category_a\",
     \"ss_item_items\".\"I_CATEGORY\" as \"i_category\",
-    \"ss_item_items\".\"I_CATEGORY\" as \"ss_item_category\",
     :_q76_results_channel_a as \"channel\",
     :_q76_results_col_name_a as \"col_name\",
     sum(\"juicy\".\"ss_ext_sales_price\") as \"_q76_results_amt_a\",
@@ -149,21 +137,15 @@ FROM
     INNER JOIN \"young\" on \"juicy\".\"ss_item_id\" = \"young\".\"ss_item_id\" AND \"juicy\".\"ss_ticket_number\" = \"young\".\"ss_ticket_number\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"juicy\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
+    1,
+    2,
     3,
-    6,
-    9,
-    10,
-    11),
+    4,
+    5),
 questionable as (
 SELECT
-    \"cs_item_items\".\"I_CATEGORY\" as \"_q76_results_category_c\",
-    \"cs_item_items\".\"I_CATEGORY\" as \"cs_item_category\",
     \"cs_item_items\".\"I_CATEGORY\" as \"i_category\",
-    \"thoughtful\".\"cs_date_quarter\" as \"_q76_results_qoy_c\",
-    \"thoughtful\".\"cs_date_quarter\" as \"cs_date_quarter\",
     \"thoughtful\".\"cs_date_quarter\" as \"d_qoy\",
-    \"thoughtful\".\"cs_date_year\" as \"_q76_results_year_c\",
-    \"thoughtful\".\"cs_date_year\" as \"cs_date_year\",
     \"thoughtful\".\"cs_date_year\" as \"d_year\",
     :_q76_results_channel_c as \"channel\",
     :_q76_results_col_name_c as \"col_name\",
@@ -174,11 +156,11 @@ FROM
     INNER JOIN \"highfalutin\" on \"thoughtful\".\"cs_item_id\" = \"highfalutin\".\"cs_item_id\" AND \"thoughtful\".\"cs_order_number\" = \"highfalutin\".\"cs_order_number\"
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"thoughtful\".\"cs_item_id\" = \"cs_item_items\".\"I_ITEM_SK\"
 GROUP BY
+    1,
     2,
-    5,
-    8,
-    10,
-    11)
+    3,
+    4,
+    5)
 SELECT
     coalesce(\"divergent\".\"channel\",\"questionable\".\"channel\",\"sparkling\".\"channel\") as \"q76_results_channel\",
     coalesce(\"divergent\".\"col_name\",\"questionable\".\"col_name\",\"sparkling\".\"col_name\") as \"q76_results_col_name\",

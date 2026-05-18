@@ -1,5 +1,5 @@
 query_id = "50"
-gen_length = 6615
+gen_length = 6577
 preql_size = 1574
 comp_size = 1903
 generated_sql = """
@@ -61,7 +61,6 @@ GROUP BY
 abundant as (
 SELECT
     \"questionable\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    \"questionable\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
     count(CASE WHEN \"questionable\".\"days_to_return\" > -1 and \"questionable\".\"days_to_return\" <= 30 THEN \"questionable\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_7691116690045464\",
     count(CASE WHEN \"questionable\".\"days_to_return\" > 120 and \"questionable\".\"days_to_return\" <= 99999 THEN \"questionable\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_7969998780980378\",
     count(CASE WHEN \"questionable\".\"days_to_return\" > 30 and \"questionable\".\"days_to_return\" <= 60 THEN \"questionable\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_3393740962845140\",
@@ -71,7 +70,7 @@ FROM
     \"questionable\"
 GROUP BY
     1,
-    2),
+    \"questionable\".\"store_sales_ticket_number\"),
 yummy as (
 SELECT
     \"abundant\".\"store_sales_store_id\" as \"store_sales_store_id\",
