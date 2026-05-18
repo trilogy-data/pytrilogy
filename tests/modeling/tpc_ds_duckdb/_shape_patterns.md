@@ -3,10 +3,19 @@
 **Scope: main queries only.** Alt `.1`/`.2` variants (q2.1/2.2/97.1/97.2)
 exercise deliberately non-performant paths — ignore them when ranking.
 
-Timings: single-run per query (`test_queries.py:run_query`, one trilogy +
-one reference exec → `zquery_timing_<fp>.log`). Absolute deltas are noisy —
-**trust the ratio ranking + the structural SQL diffs, not any single ms or
-the raw win count.** Win = trilogy `exec_time < comp_time`.
+Timings (`test_queries.py:run_query` → `zquery_timing_<fp>.log`):
+`time.perf_counter` (monotonic, not Windows-quantized `datetime.now`)
+around exec **including fetch** on both sides — DuckDB materializes
+lazily, so fetch must be inside the window symmetrically. Any stage under
+`REPEAT_TIME_CUTOFF` (0.15s) is re-run `REPEAT_COUNT` times interleaved
+trilogy/reference and the **minimum** is kept (noise only adds time).
+Above the cutoff: single cold sample (trilogy runs first, so it slightly
+warms shared fact tables for the reference). Absolute deltas are still
+noisy — **trust the ratio ranking + the structural SQL diffs, not any
+single ms or the raw win count.** Win = trilogy `exec_time < comp_time`.
+Numbers in the tables below predate the symmetric-fetch fix (trilogy
+`exec_time` was undercounting result materialization); they regenerate on
+the next full run.
 
 ## State
 

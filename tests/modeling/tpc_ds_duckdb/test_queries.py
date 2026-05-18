@@ -1,7 +1,8 @@
 import os
 import platform
-from datetime import datetime
+import time
 from pathlib import Path
+from typing import Callable, TypeVar
 
 import tomli_w
 import tomllib
@@ -20,6 +21,24 @@ fingerprint = (
 )
 
 working_path = Path(__file__).parent
+
+# Sub-cutoff timings are dominated by scheduler/timer jitter rather than real
+# query cost, so a single sample is not reproducible. When any stage lands
+# under the cutoff we re-run it REPEAT_COUNT extra times (trilogy/reference
+# interleaved so cache warmth stays symmetric) and keep the minimum -- noise
+# only ever adds time, so the min is the most faithful estimate of true cost.
+REPEAT_TIME_CUTOFF = 0.15
+REPEAT_COUNT = 5
+
+T = TypeVar("T")
+
+
+def _time(fn: Callable[[], T]) -> tuple[float, T]:
+    """Monotonic, high-resolution elapsed time around fn (perf_counter, not
+    datetime.now, which is wall-clock and ~15ms-quantized on Windows)."""
+    start = time.perf_counter()
+    value = fn()
+    return time.perf_counter() - start, value
 
 
 def _load_toml_mapping(path: Path) -> dict[str, object]:
@@ -51,25 +70,30 @@ def run_query(
         text = f.read()
     preql_size = query_size(text, "preql")
 
-    # fetch our results
-    parse_start = datetime.now()
-    query = engine.generate_sql(text)[-1]
-    parse_time = datetime.now() - parse_start
-    exec_start = datetime.now()
-    results = engine.execute_raw_sql(query)
-    exec_time = datetime.now() - exec_start
-    # assert results == ''
-    comp_results = list(results.fetchall())
-    # run the built-in comp
-    comp_start = datetime.now()
+    # Resolve the reference SQL up front so file IO never lands inside a
+    # timing window.
     if sql_override:
-        with open(working_path / f"query{idx:02d}.sql") as f:
-            rquery = f.read()
+        rquery = (working_path / f"query{idx:02d}.sql").read_text()
     else:
         rquery = f"PRAGMA tpcds({idx});"
-    base = engine.execute_raw_sql(rquery)
-    base_results = list(base.fetchall())
-    comp_time = datetime.now() - comp_start
+
+    # Time exec *including* fetch on both sides -- DuckDB materializes lazily,
+    # so excluding fetch on one side only would bias the comparison.
+    def _exec_trilogy() -> list:
+        return list(engine.execute_raw_sql(query).fetchall())
+
+    def _exec_reference() -> list:
+        return list(engine.execute_raw_sql(rquery).fetchall())
+
+    parse_time, query = _time(lambda: engine.generate_sql(text)[-1])
+    exec_time, comp_results = _time(_exec_trilogy)
+    comp_time, base_results = _time(_exec_reference)
+
+    if min(parse_time, exec_time, comp_time) < REPEAT_TIME_CUTOFF:
+        for _ in range(REPEAT_COUNT):
+            parse_time = min(parse_time, _time(lambda: engine.generate_sql(text))[0])
+            exec_time = min(exec_time, _time(_exec_trilogy)[0])
+            comp_time = min(comp_time, _time(_exec_reference)[0])
 
     # Always prefer the on-disk reference SQL for size comparison when available,
     # so the PRAGMA-driven runs still report a meaningful comp_size.
@@ -107,9 +131,9 @@ def run_query(
     timing = Path(working_path / f"zquery_timing_{fingerprint}.log")
     current = _load_toml_mapping(timing)
     current[f"query_{query_label}"] = {
-        "parse_time": parse_time.total_seconds(),
-        "exec_time": exec_time.total_seconds(),
-        "comp_time": comp_time.total_seconds(),
+        "parse_time": parse_time,
+        "exec_time": exec_time,
+        "comp_time": comp_time,
     }
     final = {x: current[x] for x in sorted(current.keys())}
     temp_timing = timing.with_suffix(f"{timing.suffix}.tmp")
