@@ -1,5 +1,5 @@
 query_id = "95"
-gen_length = 4122
+gen_length = 4230
 preql_size = 713
 comp_size = 1010
 generated_sql = """
@@ -16,17 +16,15 @@ GROUP BY
     2),
 abundant as (
 SELECT
-    \"questionable\".\"web_sales_order_number\" as \"multi_warehouse_order\"
+    \"questionable\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    count(\"questionable\".\"web_sales_warehouse_id\") as \"_virt_agg_count_2435454530783120\"
 FROM
     \"questionable\"
 GROUP BY
-    1
-HAVING
-    count(\"questionable\".\"web_sales_warehouse_id\") > 1
-),
+    1),
 uneven as (
 SELECT
-    \"abundant\".\"multi_warehouse_order\" as \"multi_warehouse_order\"
+    CASE WHEN \"abundant\".\"_virt_agg_count_2435454530783120\" > 1 THEN \"abundant\".\"web_sales_order_number\" ELSE NULL END as \"multi_warehouse_order\"
 FROM
     \"abundant\"),
 thoughtful as (

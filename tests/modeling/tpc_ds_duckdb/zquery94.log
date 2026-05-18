@@ -1,5 +1,5 @@
 query_id = "94"
-gen_length = 3626
+gen_length = 3718
 preql_size = 627
 comp_size = 795
 generated_sql = """
@@ -23,17 +23,15 @@ GROUP BY
     1),
 abundant as (
 SELECT
-    \"questionable\".\"ws_order_number\" as \"multi_warehouse_orders\"
+    \"questionable\".\"ws_order_number\" as \"ws_order_number\",
+    count(\"questionable\".\"ws_warehouse_id\") as \"_virt_agg_count_9309405360138092\"
 FROM
     \"questionable\"
 GROUP BY
-    1
-HAVING
-    count(\"questionable\".\"ws_warehouse_id\") > 1
-),
+    1),
 uneven as (
 SELECT
-    \"abundant\".\"multi_warehouse_orders\" as \"multi_warehouse_orders\"
+    CASE WHEN \"abundant\".\"_virt_agg_count_9309405360138092\" > 1 THEN \"abundant\".\"ws_order_number\" ELSE NULL END as \"multi_warehouse_orders\"
 FROM
     \"abundant\"),
 cooperative as (

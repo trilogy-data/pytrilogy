@@ -1,5 +1,5 @@
 query_id = "79"
-gen_length = 2368
+gen_length = 2408
 preql_size = 1070
 comp_size = 1188
 generated_sql = """
@@ -7,6 +7,7 @@ generated_sql = """
 WITH 
 cooperative as (
 SELECT
+    \"store_sales_store_sales\".\"SS_ADDR_SK\" as \"store_sales_sale_address_id\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_CITY\" as \"store_sales_store_city\",
@@ -24,7 +25,7 @@ GROUP BY
     1,
     2,
     3,
-    \"store_sales_store_sales\".\"SS_ADDR_SK\")
+    4)
 SELECT
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",

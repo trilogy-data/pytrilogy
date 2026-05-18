@@ -10,36 +10,6 @@ class HideUnusedConcepts(OptimizationRule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-    def _argument_addresses(self, concept: BuildConcept) -> set[str]:
-        addresses: set[str] = set()
-        pending = list(concept.concept_arguments)
-        while pending:
-            argument = pending.pop()
-            if argument.address in addresses:
-                continue
-            addresses.add(argument.address)
-            pending.extend(argument.concept_arguments)
-        return addresses
-
-    def _group_dependency_candidates(
-        self, cte: CTE | UnionCTE, candidates: set[str]
-    ) -> set[str]:
-        if isinstance(cte, UnionCTE) or not cte.group_to_grain:
-            return set()
-        group_addresses = {concept.address for concept in cte.group_concepts}
-        if not group_addresses:
-            return set()
-        visible_outputs = [
-            concept
-            for concept in cte.output_columns
-            if concept.address not in candidates
-            and concept.address not in cte.hidden_concepts
-        ]
-        referenced_addresses: set[str] = set()
-        for concept in visible_outputs:
-            referenced_addresses.update(self._argument_addresses(concept))
-        return candidates & group_addresses & referenced_addresses
-
     def _hide_branch_only_outputs(self, cte: UnionCTE) -> bool:
         """Hide any concept that appears in a branch's ``output_columns`` but
         not in the union's ``output_columns`` — those columns are projected
