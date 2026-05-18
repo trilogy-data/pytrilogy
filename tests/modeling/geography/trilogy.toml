@@ -1,8 +1,9 @@
+env_file = "../../../.env.secrets"
+
 [engine]
 # Default dialect for execution
 dialect = "duck_db"
 parallelism = 2
-env_file="../../../.env.secrets"
 
 [engine.config]
 enable_gcs = true
