@@ -596,12 +596,14 @@ def test_seventy_nine(engine):
 
 def test_eighty(engine):
     query = run_query(engine, 80)
-    assert len(query) < 25000, query
+    # size gating
+    assert len(query) < 8000, query
 
 
 def test_eighty_one(engine):
     query = run_query(engine, 81)
-    assert len(query) < 12000, query
+    # size gating
+    assert len(query) < 8000, query
 
 
 def test_eighty_two(engine):

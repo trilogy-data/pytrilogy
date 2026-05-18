@@ -15,131 +15,174 @@ summarized in `tcp-ds-summary.md` via `summarize_test_results.py`. Win =
 
 ---
 
-## Clean-sheet audit — 2026-05-17 (best-of-5)
+## Clean-sheet audit — 2026-05-17 (refreshed, single-run)
 
-**Methodology.** This section is a from-scratch re-analysis. The P1–P12
-priority framing was discarded and every target re-diagnosed purely from the
-committed generated SQL (`zqueryNN.log`) vs reference (`queryNN.sql`) — five
-independent clean-room SQL diffs with no access to this doc. The P1–P12
-sections below are **retained only as a SQL-shape reference** (the concrete
-before/after sketches are still correct); the **root-cause (RC) model here
-supersedes their Status / priority lines**, which still reflect the old
-2026-05-16 framing. Each RC points to the P-section with its sketch.
+**Methodology.** From-scratch re-run + re-analysis. The full suite was
+re-executed (`pytest test_queries.py`, 106 passed, 2:03; session teardown
+regenerates every `zqueryNN.log`, `zquery_timing_<fingerprint>.log`,
+`tcp-ds-summary.md`). Every ratio-ranked target was then re-diagnosed from
+the **fresh** generated SQL (`zqueryNN.log`) vs reference (`queryNN.sql`) in
+four independent clean-room SQL diffs. The P1–P12 sections below are
+**retained only as a SQL-shape reference** (before/after sketches still
+correct); the root-cause (RC) model here supersedes their Status / priority
+lines. Each RC points to the P-section with its sketch.
 
-### Current state (best-of-5 run)
+**Timing harness is single-run, not best-of-5.** The prior audit claimed
+"best-of-5 = one warmup + 5 timed, min recorded (`_best_time`,
+`TPCDS_TIMING_RUNS=5`)". That code **never existed** in the harness
+(`git log -S _best_time` is empty). `test_queries.py:run_query` does exactly
+**one** timed trilogy exec and **one** reference exec per query, written to
+`zquery_timing_<fingerprint>.log`. So absolute deltas are noisier than the
+old text implied — **rely on the ratio ranking + the structural SQL diffs,
+not the raw win count or any single ms delta.**
 
-**37 wins / 62 losses out of 99 main queries** (~37%). Trilogy total
-14.725s vs reference 60.940s — but ~45s of the reference total is the
-q64/q72 PRAGMA plan-blowups, so **totals are not an optimization signal**.
-Target 50/99 → **need +13 swing wins**.
+### Current state
 
-37/99 is a *worse* best-of-5 sample than the 42/99 seen earlier the same
-day (run-to-run variance in the win count and absolute deltas). The **ratio
-ranking is stable run-to-run and is the durable target list** — not the
-count. Best-of-5 = one untimed warmup + 5 timed iterations, minimum recorded
-(`test_queries.py:_best_time`, `TPCDS_TIMING_RUNS=5`); queries whose first
-probe exceeds 1.0s keep a single sample.
+**44 wins / 55 losses out of 99 main queries** (~44%). Trilogy total
+13.065s vs reference 56.425s — but ~41s of the reference total is the
+q64/q72 PRAGMA plan-blowups (ref 17.8s / 23.0s, trilogy 0.03s / 0.07s), so
+**totals are not an optimization signal**. Target 50/99 → **need +6 swing
+wins** (was +13 in the prior snapshot; the gap closed because the RC-B
+cluster self-resolved — see Corrections). Alt bucket: **2/5 wins**.
 
 ### Root-cause model (replaces the P1–P12 priority framing)
 
-The clean-room diffs collapsed the 12-pattern taxonomy into **six root
-causes — and the two highest-leverage ones are the same defect**:
+The fresh clean-room diffs collapse the targets into **seven root causes**.
+RC-B (the prior "highest-leverage" defect) is **largely resolved**; the new
+dominant lever is **RC-G — null-safe `IS NOT DISTINCT FROM` joins**.
 
-| RC | Defect (one line) | Queries | Shape ref |
-|---|---|---|---|
-| **RC-A** | Shared-grain multi-metric query split into per-metric / per-source join pipelines that each re-scan the big fact tables, then re-merged with `FULL JOIN … IS NOT DISTINCT FROM` on the group keys | q17, q25, q29, q50, q05 (+ partial q77) | P3, P6, P4 |
-| **RC-B** | Leading unfiltered key-extraction CTE (`SELECT <fks> FROM fact GROUP BY <all keys>`, no filter pushed in) + a third CTE that re-scans/re-joins the fact to attach enrichment columns |  q30, q76 | P1, P3, P8 |
-| **RC-C** | Aggregate-membership `IN/NOT IN` lowered to a materialized CTE + `IN (SELECT … WHERE … IS NOT NULL)` probed 2×, `count>1` filter as a CASE→NULL projection over the full grain instead of `HAVING` | q16, q94 | P10 |
-| **RC-D** | Channel-marked `UNION ALL` + `CASE WHEN channel=` pivot instead of per-channel pre-aggregate-then-join | q78, q05 | P4 |
-| **RC-E** | Disjoint constant buckets lowered to CASE-WHEN over one loose scan; the `count(DISTINCT)`s run over the loose superset instead of a tight per-bucket WHERE | q28 | P2 |
-| **RC-F** | `UNION ALL` lowered to a FULL-JOIN-on-all-output-columns tower (multi-select MERGE/align); scalar branch cross-joined N× | q77, q76 | P12, P7 |
+| RC | Defect (one line) | Queries | Status (fresh diff) | Shape ref |
+|---|---|---|---|---|
+| **RC-A** | Shared-grain multi-metric query split into per-metric / per-source join pipelines that each re-scan the big fact tables, then re-merged with `FULL JOIN … IS NOT DISTINCT FROM` on the group keys | q17, q25, q29; q50 (partial: dim/metric fork, not multi-metric) | confirmed verbatim (ss×2, sr×2, cs×3 vs ref ×1 each; 1 FULL JOIN INDF) | P3, P6, P4 |
+| **RC-B** | Leading unfiltered key-extraction CTE (`SELECT <fks> FROM fact GROUP BY <all keys>`, no filter pushed in) + a third CTE that re-scans the fact for enrichment | ~~q73, q81, q30~~ (RESOLVED); q44 residue | **largely gone** — q73/q81/q30 now single filtered scan; q44 keeps an RC-B-adjacent 3rd store_sales scan | P1, P3, P8 |
+| **RC-C** | Aggregate-membership `IN/NOT IN` lowered to a materialized CTE + `IN (SELECT … WHERE … IS NOT NULL)` probed 2×, `count>1` as a CASE→NULL projection over the full grain instead of `HAVING` | q16, q94 | confirmed verbatim (cs×4 / ws×3 vs ref ×2) **+ latent correctness smell: `count(wh)>1` where ref needs `count(distinct wh)`** | P10 |
+| **RC-D** | Channel-marked `UNION ALL` + `CASE WHEN channel=` pivot instead of per-channel pre-aggregate-then-join; returns anti-join lifted *above* per-channel aggregation | q78, q05 | confirmed; **q78 regressed to the largest absolute loss** | P4 |
+| **RC-E** | Disjoint constant buckets lowered to CASE-WHEN over one loose scan; the `count(DISTINCT)`s run over the loose superset instead of a tight per-bucket WHERE | q28 | confirmed verbatim (ss×1 vs ref ×6) | P2 |
+| **RC-F** | `UNION ALL` lowered to a FULL-JOIN-on-all-output-columns tower; scalar branch cross-joined N× | q77, q76 | confirmed; q77 most severe (4 FULL JOINs, 3 `ON 1=1`); q76 also doubles every fact scan (RC-B-flavored flag CTE) | P12, P7 |
+| **RC-G** | Null-safe `IS NOT DISTINCT FROM` key join (the FK is provably non-null) — defeats DuckDB hash-join planning and blocks filter pushdown; often paired with an unfiltered dimension cross-section, a post-join-only selectivity filter, or a dead trailing GROUP BY | q68, q65; the cost half of every RC-A re-merge; q50 | **NEW — emergent dominant lever** | P5, P6 |
 
-**RC-A and RC-B are the same disease** — "re-scan / re-derive instead of
-carrying columns through one join graph, then reconcile with a null-safe
-FULL JOIN." Counting partial-overlap queries, **one generator-side fix here
-touches ~9 queries** (q17, q25, q29, q50, q73, q81, q30 directly; q05, q76,
-q77 partially). The old doc fragmented this exact fix across P3/P6/P9/P1 as
-four separate "partial/not-landed" rows — which is why it read as
-intractable. Consolidated, it is the single highest-leverage lever in the
-suite and by itself clears the +13 to 50/99.
+**The unifying insight has shifted.** The prior audit's thesis ("RC-A and
+RC-B are the same disease — re-scan instead of carrying columns through one
+join graph") is **obsolete**: RC-B's unfiltered-scan family was fixed by the
+recent `null-opt-away` / `update_shape` generator commits (q73/q81/q30 now
+emit a single filtered scan). What survives across RC-A, q65, q68 and q50 is
+the **second half** of that old defect — the null-safe `FULL JOIN … IS NOT
+DISTINCT FROM` re-merge — and it independently sinks queries (q65, q68) that
+have *no* multi-scan fork at all. **RC-G is the new single highest-leverage
+lever:** one generator rule — emit an equi-join (not `IS NOT DISTINCT FROM`)
+whenever the join key is provably non-null, and don't fork co-grain metrics
+into per-source pipelines that need the re-merge — touches q17, q25, q29,
+q50, q65, q68 directly and clears the +6 on its own.
 
-### Target table (best-of-5, main only, ref ≥ 15ms, by ratio)
+### Target table (single-run, main only, ref ≥ 15ms, by ratio)
 
 | Query | trilogy | ref | Δ | ratio | RC | locus |
 |---|---:|---:|---:|---:|---|---|
-| 16 | 0.140s | 0.018s | +0.122 | **7.75x** | RC-C | gen |
-| 28 | 0.234s | 0.048s | +0.186 | **4.88x** | RC-E | gen |
-| 73 | 0.154s | 0.039s | +0.115 | **3.97x** | RC-B | gen |
-| 94 | 0.080s | 0.023s | +0.058 | **3.52x** | RC-C | gen |
-| 81 | 0.160s | 0.052s | +0.108 | **3.07x** | RC-B | gen |
-| 17 | 0.164s | 0.054s | +0.109 | **3.01x** | RC-A | gen |
-| 30 | 0.115s | 0.039s | +0.076 | **2.95x** | RC-B | gen |
-| 25 | 0.127s | 0.045s | +0.082 | **2.81x** | RC-A | gen |
-| 76 | 0.131s | 0.047s | +0.083 | **2.77x** | RC-B/F | gen |
-| 77 | 0.143s | 0.052s | +0.091 | **2.77x** | RC-F/B | gen |
-| 29 | 0.219s | 0.096s | +0.122 | **2.27x** | RC-A | gen |
-| 44 | 0.065s | 0.030s | +0.035 | 2.19x | *unassigned* | ? |
-| 68 | 0.182s | 0.087s | +0.095 | 2.09x | *unassigned* | ? |
-| 50 | 0.411s | 0.198s | +0.213 | 2.07x | RC-A | gen |
-| 78 | 0.398s | 0.250s | +0.149 | 1.60x | RC-D | gen |
-| 05 | 0.140s | 0.107s | +0.034 | 1.32x | RC-A/D | gen |
-| 90 | 0.044s | 0.009s | +0.035 | 4.86x | RC-E | floor — skip |
+| 16 | 0.131s | 0.017s | +0.113 | **7.65x** | RC-C | gen |
+| 28 | 0.229s | 0.049s | +0.180 | **4.66x** | RC-E | gen |
+| 17 | 0.174s | 0.063s | +0.110 | **2.75x** | RC-A | gen |
+| 94 | 0.071s | 0.028s | +0.043 | **2.53x** | RC-C | gen |
+| 68 | 0.173s | 0.073s | +0.100 | **2.38x** | RC-G | gen |
+| 76 | 0.125s | 0.055s | +0.070 | **2.27x** | RC-F+B | gen |
+| 05 | 0.161s | 0.072s | +0.089 | **2.23x** | RC-D/A | gen |
+| 29 | 0.208s | 0.095s | +0.113 | **2.18x** | RC-A | gen |
+| 25 | 0.112s | 0.055s | +0.057 | **2.03x** | RC-A | gen |
+| 77 | 0.115s | 0.057s | +0.057 | **2.00x** | RC-F | gen |
+| 65 | 0.205s | 0.110s | +0.095 | 1.87x | RC-G | gen |
+| 50 | 0.328s | 0.179s | +0.149 | 1.83x | RC-A/G | gen |
+| 78 | 0.431s | 0.248s | +0.183 | 1.74x | RC-D | gen |
+| 44 | 0.059s | 0.038s | +0.021 | 1.56x | RC-B-adj | gen |
+| 90 | 0.038s | 0.008s | +0.030 | 4.82x | RC-E | floor — skip |
 
-q28 is the **largest absolute loss** (+0.186); q16 the **worst ratio**
-(7.75x). q67 (1.22x, +0.214) and q22 (1.17x, +0.141) are the
-high-cost / low-ratio tail — large absolute, near-parity ratio, not
-structurally flippable; **exclude from win-rate targeting**.
+q78 is the **largest absolute loss** (+0.183, and a regression); q28 second
+(+0.180); q16 the **worst ratio** (7.65x). High-cost / near-parity tail —
+large absolute, ratio ~1, not structurally flippable, **exclude from
+win-rate targeting**: q67 (+0.102, 1.12x, trilogy 0.943s), q69 (+0.072,
+1.33x, trilogy 0.292s), q22 (now a thin win −0.024 but trilogy 0.865s).
 
-### Corrections to the prior (2026-05-16) audit
+**Dropped off vs the prior snapshot (self-resolved):** q81 → **WIN**
+(−0.000, 0.99x), q30 → **WIN** (−0.010, 0.73x), q73 → near-tie (+0.010,
+1.26x, ref 38ms). All three were 3–4x RC-B targets in the old table; the
+recent generator commits collapsed them to a single filtered scan. This is
+the entire reason the gap fell from +13 to +6 — it is a structural change
+confirmed in the fresh SQL, not run-to-run noise.
 
-1. **q81 is NOT "structurally landed (P1+P2)."** That was inferred from a
-   WHERE-clause / 0-CASE-WHEN check. The actual SQL still has **3
-   `catalog_returns` scans + an unfiltered `highfalutin` dedup CTE** —
-   identical RC-B defect to q73. q81 is a live target, not a closed one;
-   the "structural landing ≠ win, don't bank it" framing solved the wrong
-   problem.
-2. **q28 is the highest-confidence flip, not low-value.** Old doc: "P2 fix
-   modest because count(DISTINCT) dominates (1.1x)." Inverted —
-   count(DISTINCT) dominating is *why* WHERE-pushdown wins: it shrinks each
-   distinct's input from the whole `0–30` band to one tight bucket. Largest
-   absolute loss, isolated, clean generator fix.
-3. **q90 is measurement-floor — drop it.** 9 ms reference, +0.035s;
-   trilogy's single-scan plan is already algorithmically better than the
-   reference's two cross-joined subqueries. The ratio (4.86x) is real but
-   the absolute is noise; not a target.
-4. **The near-tie band is not a planning input.** The old doc spent most of
-   its length on it. Every genuine target is a solid 2–7.75x structural
-   loss; none is a near-tie. Best-of-5 already removes most of the jitter
-   that motivated the discussion — ignore the band entirely.
+### Corrections to the prior (2026-05-17 best-of-5) audit
+
+1. **The harness is single-run, not best-of-5.** `_best_time` /
+   `TPCDS_TIMING_RUNS=5` never existed (`git log -S` is empty);
+   `run_query` records one timed exec per query. Treat absolute deltas as
+   noisy; trust the ratio ranking and the structural diffs.
+2. **RC-B's leading queries self-resolved — the "+13 via one RC-A+RC-B
+   fix" thesis is dead.** The prior audit's correction #1 ("q81 is NOT
+   landed — 3 catalog_returns scans + unfiltered `highfalutin` dedup,
+   identical to q73") is now **false on the fresh SQL**: q81, q30 and q73
+   each emit a *single filtered* fact scan with the aggregate/`GROUP BY`
+   inline — no unfiltered key-extraction CTE. q81/q30 are wins, q73 a
+   near-tie. RC-A and RC-B are no longer "the same disease"; RC-A's
+   surviving cost is the `IS NOT DISTINCT FROM` re-merge (now RC-G).
+3. **q65's P3 collapse is real but it REGRESSED to 1.87x (+0.095).** It
+   genuinely has one `store_sales` scan (P3 landed), yet it is a worse loss
+   than when it was a near-tie. New cause (RC-G): the collapsed `wakeful`
+   CTE is reused via a null-safe `IS NOT DISTINCT FROM` self-rejoin, plus a
+   redundant trailing `GROUP BY` and a `0.1 * store_avg_revenue`
+   selectivity filter applied only *after* the join — the planner can't
+   hash-join or prune early, so the collapsed plan loses to the reference's
+   two cheap independently-filtered scans. **Structural collapse ≠ win;
+   retire P3 for q65.**
+4. **q78 is now the single largest absolute loss (+0.183) and regressed.**
+   Scan counts tie (6 vs 6) and there is no FULL-JOIN tower — the loss is
+   pure RC-D: the returns anti-join moved *above* per-channel aggregation,
+   so `abundant LEFT JOIN cheerful` runs at raw row grain against an
+   unfiltered `UNION ALL` of all three returns tables (no date pruning).
+   Highest-value RC-D fix; was a near-tie in an earlier snapshot.
+5. **q28 remains the highest-confidence isolated flip** (unchanged from the
+   prior audit, numbers refreshed: 4.66x, +0.180, ss×1 vs ref ×6).
+   count(DISTINCT) dominating is *why* per-bucket WHERE-pushdown wins.
+6. **q90 stays measurement-floor — drop it** (ref 8ms, +0.030s; trilogy's
+   single-scan plan already beats the reference algorithmically).
 
 ### Priority order
 
-1. **RC-A + RC-B unified generator fix** — carry the shared join graph
-   once, single GROUP BY, no `FULL JOIN … IS NOT DISTINCT FROM` re-merge, no
-   unfiltered key-dedup re-scan. Flips q17, q25, q29, q50, q73, q81, q30 and
-   assists q05/q76/q77. Clears 50/99 on its own. Locus: the select-merge /
-   key-projection node generator
-   (`trilogy/core/processing/node_generators/select_merge_node.py`, already
-   open on this branch). Before/after sketches: P1, P3, P6.
-2. **q28 (RC-E)** — disjoint buckets → WHERE-filtered subqueries (the
-   reference shape). Biggest single absolute win, isolated, high
-   confidence, pure generator fix. Sketch: P2.
-3. **q16 + q94 (RC-C)** — `filter where count(...) by … > N` → `HAVING`
-   semi-join + single filtered scan; `IN (SELECT … IS NOT NULL)` →
-   semi/anti-join. Best ratio in the suite (7.75x); two wins from one
-   lowering change. Sketch: P10.
+Only **+6** needed. (1)+(2)+three from (3) clears 50/99 with margin.
 
-Secondary (real, lower-confidence, partly absorbed once RC-A/B lands):
-q77/q76 (RC-F), q78/q05 (RC-D). Needing a first SQL diff:
-**q68 (2.09x, +0.095), q44 (2.19x, +0.035)** — unassigned, likely the same
-re-scan/enrichment family as RC-A/B but not yet verified.
+1. **q16 + q94 (RC-C)** — `filter where count(...) by … > N` → real
+   `HAVING` semi-join + single filtered scan; `IN (SELECT … IS NOT NULL)`
+   → semi/anti-join, materialized once not probed 2×. Worst ratio in the
+   suite (q16 7.65x), isolated, two wins from one lowering change, and it
+   also closes the latent `count(wh)>1` vs `count(distinct wh)`
+   correctness gap. Sketch: P10.
+2. **q28 (RC-E)** — disjoint buckets → 6 WHERE-filtered subqueries (the
+   reference shape). Second-largest absolute loss, isolated, high
+   confidence, pure generator fix. Sketch: P2.
+3. **RC-A + RC-G null-safe-join fix** — (a) don't fork co-grain metrics
+   into per-source pipelines re-merged by `FULL JOIN … IS NOT DISTINCT
+   FROM` (q17, q25, q29 verbatim; q50 the dim/metric variant); (b) emit a
+   plain equi-join wherever the key is provably non-null — this alone also
+   flips q65 and q68, which have no fork. One lever, ~6 queries. Locus: the
+   select-merge / key-projection node generator
+   (`trilogy/core/processing/node_generators/select_merge_node.py`, open on
+   this branch) plus the join-operator selection that emits `IS NOT
+   DISTINCT FROM`. Sketches: P3, P6 (and P5 for the unused-dim half of q68).
+
+Secondary (real, lower-confidence, larger rewrites):
+- **q78 + q05 (RC-D)** — per-channel pre-aggregate-then-join; critically
+  keep the returns anti-join *per-channel and date-filtered* rather than
+  lifting it above the aggregation (this is q78's regression). Sketch: P4.
+- **q76 + q77 (RC-F)** — keep `UNION ALL` as `UNION ALL`; do not lower it
+  to a FULL-JOIN-on-all-output-columns tower; don't cross-join the scalar
+  branch N× (q77 does it 3×). q76 also needs the RC-B-flavored flag-CTE
+  re-scan removed. Sketch: P12, P7.
+- **q44 (RC-B-adjacent)** — drop the redundant 3rd `store_sales` scan that
+  re-derives `ss_item_id` already present upstream; attach the scalar
+  threshold without a `1=1` cross join. Now diagnosed (was unassigned).
 
 All fixes are **generator-side**; the `.preql` intent files already express
-the reference-equivalent single-scan / UNION / HAVING semantics — the
-generator is over-materializing. No preql rewrites required.
+the reference-equivalent single-scan / UNION / HAVING / equi-join semantics
+— the generator is over-materializing. No preql rewrites required.
 
-(Alt bucket out of scope per the top scope note; q97.1 ~16x is alt-only and
-ignored. Alt: 0/4 wins.)
+(Alt bucket out of scope per the top scope note; q97.1 ~17x is alt-only and
+ignored. Alt: 2/5 wins.)
 
 ---
 
@@ -274,6 +317,11 @@ pre-aggregation form, but q65's remaining cost is P3, not P1. **PM re-run
 caution:** q81's AM "win" was a reference-side blowup, not P1 — at steady-state
 reference timing q81 is +0.189 (5.25x). Structural landing ≠ measured win.
 
+> ↑ **2026-05-17 refresh:** stale. Fresh `zquery81.log` shows a *single
+> filtered* `catalog_returns` scan with the aggregate inline (no unfiltered
+> key-extraction CTE); q81 is now a **win** (−0.000, 0.99x). The RC-B defect
+> here is gone — see the clean-sheet audit.
+
 When a dimension column (`d_year`, `d_month_seq`, `d_moy`, ...) appears only as a
 filter (not in the projection of an aggregate), the generator previously did:
 
@@ -320,6 +368,11 @@ steady-state reference. The **mutually-exclusive UNION-of-subqueries variant
 (q28 18 CASE WHEN, q90 3 CASE WHEN) is NOT landed.** q44's
 `with addr_null_threshold` rewrite holds but drifted to +0.036 (1.60x).
 
+> ↑ **2026-05-17 refresh:** q81 is now a win (single filtered scan, RC-B
+> gone). q28 (RC-E) is unchanged and remains priority #2 — refreshed
+> numbers 4.66x / +0.180. q44 now 1.56x (+0.021), RC-B-adjacent (redundant
+> 3rd store_sales scan), not the addr-threshold form.
+
 When every aggregate has the same `CASE WHEN dim_col = K` guard (or is part of a
 mutually-exclusive set), promote the predicate to the WHERE clause:
 
@@ -362,6 +415,14 @@ losses (q65 +0.041 1.24x, q34 +0.012 1.15x) — the collapse held; the small
 residual loss is variance. This is still the highest-leverage *remaining*
 pattern for the queries it did not reach (q73 2 ss, q16 3 cs, q94 3 ws,
 q29/q17/q25 multi — all unchanged vs AM).
+
+> ↑ **2026-05-17 refresh:** q65's collapse held (still 1 store_sales scan)
+> but it **regressed to 1.87x (+0.095)**, not a near-tie — the residual is
+> *not* variance: it is RC-G (null-safe `IS NOT DISTINCT FROM` self-rejoin
+> of the collapsed CTE + dead trailing GROUP BY + post-join-only filter).
+> q73 is now a single filtered scan (RC-B gone), near-tie 1.26x. q16/q94
+> still over-scan (RC-C); q29/q17/q25 still RC-A multi-scan + FULL-JOIN
+> re-merge.
 
 When the trilogy lowering produces N CTEs that each scan the same fact table
 with the same filter set but project different columns (because the user
@@ -619,10 +680,13 @@ split. q75 fixed by preql rewrite.
 
 ## Win-rate projection
 
-**Superseded.** See **Clean-sheet audit — 2026-05-17 (best-of-5)** at the top
-of this file for current state (37/99, +13 to target), the root-cause (RC)
-model, the ratio-ranked target table, and the priority order. The P1–P12
-sections above are retained only as SQL-shape reference (before/after
-sketches); their individual "Status / priority" lines reflect the old
-2026-05-16 framing and are **not** the current plan. RC→P map: RC-A→P3/P6/P4,
-RC-B→P1/P3/P8, RC-C→P10, RC-D→P4, RC-E→P2, RC-F→P12/P7.
+**Superseded.** See **Clean-sheet audit — 2026-05-17 (refreshed,
+single-run)** at the top of this file for current state (44/99, +6 to
+target), the root-cause (RC) model, the ratio-ranked target table, and the
+priority order. The P1–P12 sections above are retained only as SQL-shape
+reference (before/after sketches); their individual "Status / priority"
+lines reflect older framing and are **not** the current plan — where a
+P-section asserts a now-false specific (q81/q73 RC-B, q65 near-tie) an
+inline `↑ 2026-05-17 refresh` stamp flags it. RC→P map: RC-A→P3/P6/P4,
+RC-B→P1/P3/P8 (largely resolved), RC-C→P10, RC-D→P4, RC-E→P2, RC-F→P12/P7,
+**RC-G→P5/P6 (new — null-safe `IS NOT DISTINCT FROM` joins)**.

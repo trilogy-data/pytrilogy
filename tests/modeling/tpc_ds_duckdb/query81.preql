@@ -1,18 +1,16 @@
 import catalog_returns as cr;
 
-rowset returns_2000 <- WHERE
-   cr.date.year = 2000 and cr.return_address.state is not null
-SELECT
-    cr.customer.id,
-    cr.return_address.state,
-    sum(cr.return_amt_inc_tax) -> customer_state,
-    1.2 * avg(customer_state) by cr.return_address.state -> scaled_state,
-;
-
-MERGE returns_2000.cr.customer.id into cr.customer.id;
+# Non-rowset equivalent of the rowset form: the key-join shape achieved by
+# grouping the aggregate to (return_address.state, customer.id). The year/state
+# filter is bound *inside* the conditional sum because a plain sum + a row-grain
+# WHERE year=2000 loses the filter from the customer-grain aggregate.
+auto customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.return_address.state is not null) by cr.return_address.state, cr.customer.id;
+auto scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
 
 WHERE
-    returns_2000.customer_state > returns_2000.scaled_state and cr.customer.address.state = 'GA'
+    customer_state > scaled_state
+    and cr.customer.address.state = 'GA'
+    and cr.return_address.state is not null
 SELECT
     --cr.customer.id,
     cr.customer.text_id,
@@ -30,7 +28,7 @@ SELECT
     cr.customer.address.country,
     cr.customer.address.gmt_offset,
     cr.customer.address.location_type,
-    returns_2000.customer_state,
+    customer_state,
 ORDER BY
     cr.customer.text_id asc nulls first,
     cr.customer.salutation asc nulls first,
@@ -47,6 +45,6 @@ ORDER BY
     cr.customer.address.country asc nulls first,
     cr.customer.address.gmt_offset asc nulls first,
     cr.customer.address.location_type asc nulls first,
-    returns_2000.customer_state asc nulls first
+    customer_state asc nulls first
 LIMIT 100
 ;
