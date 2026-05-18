@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 7504
+gen_length = 7361
 preql_size = 2275
 comp_size = 2234
 generated_sql = """
@@ -68,7 +68,7 @@ SELECT
     \"ss_store_store\".\"S_STORE_NAME\" as \"ss_store_name\"
 FROM
     \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"),
+    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"cheerful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"),
 juicy as (
 SELECT
     \"abundant\".\"_wss_fri_sales\" as \"wss_fri_sales\",
@@ -80,17 +80,17 @@ SELECT
     \"abundant\".\"_wss_wed_sales\" as \"wss_wed_sales\",
     \"cooperative\".\"_wss_in_year1\" as \"wss_in_year1\",
     \"cooperative\".\"_wss_in_year2\" as \"wss_in_year2\",
-    \"cooperative\".\"ss_store_name\" as \"wss_store_name\",
-    \"cooperative\".\"ss_store_text_id\" as \"wss_store_text_id\",
-    coalesce(\"abundant\".\"ss_date_week_seq\",\"cooperative\".\"ss_date_week_seq\") - (CASE
+    \"cooperative\".\"ss_date_week_seq\" - (CASE
 	WHEN \"cooperative\".\"_wss_in_year2\" = 1 THEN 52
 	ELSE 0
 	END) as \"normalized_week\",
-    coalesce(\"abundant\".\"ss_date_week_seq\",\"cooperative\".\"ss_date_week_seq\") as \"wss_week_seq\",
-    coalesce(\"abundant\".\"ss_store_id\",\"cooperative\".\"ss_store_id\") as \"wss_store_id\"
+    \"cooperative\".\"ss_date_week_seq\" as \"wss_week_seq\",
+    \"cooperative\".\"ss_store_id\" as \"wss_store_id\",
+    \"cooperative\".\"ss_store_name\" as \"wss_store_name\",
+    \"cooperative\".\"ss_store_text_id\" as \"wss_store_text_id\"
 FROM
     \"cooperative\"
-    FULL JOIN \"abundant\" on \"cooperative\".\"ss_date_week_seq\" = \"abundant\".\"ss_date_week_seq\" AND \"cooperative\".\"ss_store_id\" is not distinct from \"abundant\".\"ss_store_id\"),
+    INNER JOIN \"abundant\" on \"cooperative\".\"ss_date_week_seq\" = \"abundant\".\"ss_date_week_seq\" AND \"cooperative\".\"ss_store_id\" = \"abundant\".\"ss_store_id\"),
 vacuous as (
 SELECT
     \"juicy\".\"normalized_week\" as \"normalized_week\",
@@ -125,8 +125,8 @@ SELECT
     \"vacuous\".\"wss_fri_sales\" / \"vacuous\".\"_virt_window_lead_6145286498170393\" as \"fri_sales_ratio\",
     \"vacuous\".\"wss_sat_sales\" / \"vacuous\".\"_virt_window_lead_5231294923035285\" as \"sat_sales_ratio\"
 FROM
-    \"juicy\"
-    LEFT OUTER JOIN \"vacuous\" on \"juicy\".\"normalized_week\" = \"vacuous\".\"normalized_week\" AND \"juicy\".\"wss_in_year2\" = \"vacuous\".\"wss_in_year2\" AND \"juicy\".\"wss_store_id\" = \"vacuous\".\"wss_store_id\" AND \"juicy\".\"wss_week_seq\" = \"vacuous\".\"wss_week_seq\"
+    \"vacuous\"
+    INNER JOIN \"juicy\" on \"vacuous\".\"normalized_week\" = \"juicy\".\"normalized_week\" AND \"vacuous\".\"wss_in_year2\" = \"juicy\".\"wss_in_year2\" AND \"vacuous\".\"wss_store_id\" = \"juicy\".\"wss_store_id\" AND \"vacuous\".\"wss_week_seq\" = \"juicy\".\"wss_week_seq\"
 WHERE
     \"juicy\".\"wss_in_year1\" = 1 and \"vacuous\".\"wss_sun_sales\" / \"vacuous\".\"_virt_window_lead_5413357402804969\" is not null
 

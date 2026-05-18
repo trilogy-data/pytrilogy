@@ -20,6 +20,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
 from trilogy.core.processing.condition_utility import (
     condition_implies,
+    condition_proves_non_null,
     filter_union_children,
 )
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
@@ -331,6 +332,15 @@ def create_datasource_node(
         datasource, conditions, injected_conditions, partial_is_full
     )
 
+    # A column the scan's own applied WHERE proves non-null (e.g.
+    # ``store.id IS NOT NULL``) is not nullable in this node's output, so it
+    # must not carry NULLABLE downstream — otherwise the join scorer picks an
+    # OUTER join rendered as ``is not distinct from`` (defeats hash joins).
+    # Gate on routed_conditions: only filters actually pushed into this scan.
+    proven_non_null = (
+        condition_proves_non_null(routed_conditions) if routed_conditions else set()
+    )
+
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
 
@@ -361,7 +371,14 @@ def create_datasource_node(
             [] if partial_is_full else [c for c in output_concepts if c in partial_lcl]
         ),
         rollup_concepts=rollup_concepts,
-        nullable_concepts=[c for c in output_concepts if c in nullable_lcl],
+        nullable_concepts=[
+            c
+            for c in output_concepts
+            if c in nullable_lcl
+            and not proven_non_null.intersection(
+                {c.address, c.canonical_address, *c.pseudonyms}
+            )
+        ],
         accept_partial=accept_partial,
         datasource=datasource,
         grain=datasource.grain,

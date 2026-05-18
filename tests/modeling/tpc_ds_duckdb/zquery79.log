@@ -1,5 +1,5 @@
 query_id = "79"
-gen_length = 2373
+gen_length = 2368
 preql_size = 1070
 comp_size = 1188
 generated_sql = """
@@ -34,7 +34,7 @@ SELECT
     \"cooperative\".\"profit\" as \"profit\"
 FROM
     \"cooperative\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_id\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_id\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
 ORDER BY 
     \"store_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" asc nulls first,

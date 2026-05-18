@@ -1,5 +1,5 @@
 query_id = "73"
-gen_length = 2693
+gen_length = 2697
 preql_size = 1275
 comp_size = 1437
 generated_sql = """
@@ -36,9 +36,9 @@ SELECT
     \"cooperative\".\"ticket_cnt\" as \"ticket_cnt\"
 FROM
     \"cooperative\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_id\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_id\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
 ORDER BY 
     \"cooperative\".\"ticket_cnt\" desc,
     \"store_sales_customer_customers\".\"C_LAST_NAME\" asc,
     \"cooperative\".\"store_sales_ticket_number\" asc,
-    \"cooperative\".\"store_sales_customer_id\" asc"""
+    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" asc"""

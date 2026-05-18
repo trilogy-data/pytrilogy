@@ -1,5 +1,5 @@
 query_id = "66"
-gen_length = 17982
+gen_length = 17977
 preql_size = 6668
 comp_size = 7431
 generated_sql = """
@@ -146,7 +146,7 @@ SELECT
     coalesce(\"abundant\".\"ws_dec_net\",0) + coalesce(\"abundant\".\"cs_dec_net\",0) as \"dec_net\"
 FROM
     \"abundant\"
-    LEFT OUTER JOIN \"memory\".\"warehouse\" as \"sales_warehouse_warehouse\" on \"abundant\".\"sales_warehouse_id\" = \"sales_warehouse_warehouse\".\"w_warehouse_sk\"
+    INNER JOIN \"memory\".\"warehouse\" as \"sales_warehouse_warehouse\" on \"abundant\".\"sales_warehouse_id\" = \"sales_warehouse_warehouse\".\"w_warehouse_sk\"
 ORDER BY 
     \"w_warehouse_name\" asc nulls first,
     \"year_\" asc nulls first

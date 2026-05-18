@@ -12,7 +12,10 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
-from trilogy.core.processing.condition_utility import is_scalar_condition
+from trilogy.core.processing.condition_utility import (
+    condition_proves_non_null,
+    is_scalar_condition,
+)
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
@@ -137,8 +140,25 @@ class GroupNode(StrategyNode):
         nullable_addresses = find_nullable_concepts(
             source_map=source_map, joins=[], datasources=parent_sources
         )
+        # A scalar condition already applied at/below this group (e.g.
+        # ``store.id IS NOT NULL``, often pushed into an upstream scan so it
+        # only shows up here as a preexisting condition) filters the rows, so
+        # any concept it proves non-null must not be re-marked nullable by the
+        # parent-derived recompute above — otherwise the join scorer emits an
+        # OUTER ``is not distinct from`` (defeats hash joins).
+        applied = self.preexisting_conditions or self.conditions
+        proven_non_null = (
+            condition_proves_non_null(applied)
+            if applied and is_scalar_condition(applied)
+            else set()
+        )
         nullable_concepts = [
-            x for x in self.output_concepts if x.address in nullable_addresses
+            x
+            for x in self.output_concepts
+            if x.address in nullable_addresses
+            and not proven_non_null.intersection(
+                {x.address, x.canonical_address, *x.pseudonyms}
+            )
         ]
         # Merge partial concepts from parent resolved sources
         # so partial keys from upstream datasources propagate through grouping.

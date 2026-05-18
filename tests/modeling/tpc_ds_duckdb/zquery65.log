@@ -1,5 +1,5 @@
 query_id = "65"
-gen_length = 2508
+gen_length = 2478
 preql_size = 673
 comp_size = 1062
 generated_sql = """
@@ -31,7 +31,7 @@ SELECT
 FROM
     \"wakeful\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"wakeful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"wakeful\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"),
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"wakeful\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"),
 thoughtful as (
 SELECT
     \"wakeful\".\"store_sales_store_id\" as \"store_sales_store_id\",
@@ -49,7 +49,7 @@ SELECT
     \"abundant\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\"
 FROM
     \"abundant\"
-    RIGHT OUTER JOIN \"thoughtful\" on \"abundant\".\"store_sales_store_id\" is not distinct from \"thoughtful\".\"store_sales_store_id\"
+    INNER JOIN \"thoughtful\" on \"abundant\".\"store_sales_store_id\" = \"thoughtful\".\"store_sales_store_id\"
 WHERE
     \"abundant\".\"item_revenue\" <= 0.1 * \"thoughtful\".\"store_avg_revenue\"
 
