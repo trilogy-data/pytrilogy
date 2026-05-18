@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 2414
+gen_length = 2249
 preql_size = 20358
 comp_size = 19155
 generated_sql = """
@@ -7,8 +7,7 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\",
-    count(\"customer_customers\".\"C_CUSTOMER_SK\") as \"zip_p_count\"
+    SUBSTRING(\"customer_address_customer_address\".\"CA_ZIP\",1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
     \"memory\".\"customer_address\" as \"customer_address_customer_address\"
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
@@ -16,20 +15,23 @@ WHERE
     \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" = 'Y'
 
 GROUP BY
-    1),
+    1,
+    \"customer_address_customer_address\".\"CA_ZIP\"
+HAVING
+    count(\"customer_customers\".\"C_CUSTOMER_SK\") > 10
+),
 quizzical as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
 ),
 cooperative as (
 SELECT
-    SUBSTRING(CASE WHEN \"cheerful\".\"zip_p_count\" > 10 THEN \"customer_address_customer_address\".\"CA_ZIP\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+    \"cheerful\".\"_virt_func_substring_4293448550966409\" as \"_virt_func_substring_4293448550966409\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"cheerful\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"
 GROUP BY
     1),
-yummy as (
+abundant as (
 SELECT
     SUBSTRING(SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
@@ -39,7 +41,7 @@ WHERE
 
 GROUP BY
     1),
-abhorrent as (
+young as (
 SELECT
     \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
@@ -48,7 +50,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_QOY\" = 2 and \"store_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2) in (select yummy.\"final_zips\" from yummy where yummy.\"final_zips\" is not null)
+    \"store_sales_date_date\".\"D_QOY\" = 2 and \"store_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2) in (select abundant.\"final_zips\" from abundant where abundant.\"final_zips\" is not null)
 
 GROUP BY
     1,
@@ -56,12 +58,12 @@ GROUP BY
     \"store_sales_store_sales\".\"SS_ITEM_SK\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\")
 SELECT
-    \"abhorrent\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    sum(\"abhorrent\".\"store_sales_net_profit\") as \"store_net_profit\"
+    \"young\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    sum(\"young\".\"store_sales_net_profit\") as \"store_net_profit\"
 FROM
-    \"abhorrent\"
+    \"young\"
 GROUP BY
     1
 ORDER BY 
-    \"abhorrent\".\"store_sales_store_name\" asc
+    \"young\".\"store_sales_store_name\" asc
 LIMIT (100)"""
