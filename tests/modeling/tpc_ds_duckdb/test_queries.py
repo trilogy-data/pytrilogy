@@ -158,7 +158,6 @@ def test_adhoc_one(engine: Executor):
         engine.execute_text(text2, non_interactive=True)
     query = engine.generate_sql(text)[-1]
 
-
     engine.execute_raw_sql(query)
 
 

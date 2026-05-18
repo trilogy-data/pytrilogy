@@ -2,7 +2,7 @@ from collections import defaultdict
 
 from trilogy.constants import CONFIG
 from trilogy.core.models.build import BuildDatasource
-from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
+from trilogy.core.models.execute import CTE, DatasourceCTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 
 
@@ -33,6 +33,11 @@ class InlineDatasource(OptimizationRule):
             if isinstance(parent_cte, UnionCTE):
                 continue
             if isinstance(parent_cte, RecursiveCTE):
+                continue
+            if not isinstance(parent_cte, DatasourceCTE):
+                self.debug(
+                    f"Cannot inline: parent {parent_cte.name} is not a DatasourceCTE"
+                )
                 continue
             if not parent_cte.is_root_datasource:
                 self.debug(f"Cannot inline: parent {parent_cte.name} is not root")

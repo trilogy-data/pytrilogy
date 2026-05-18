@@ -159,12 +159,12 @@ def test_query_datasource_effective_grain_skips_recursive_gating():
     assert gating.address not in grain.components
 
 
-def test_join_get_name_falls_back_to_cte_base_when_no_inlined_datasource():
-    """When ``inline_cte`` is called without an explicit datasource, ``get_name``
-    and ``right_ref`` recover the BuildDatasource from the CTE's base."""
+def test_join_reference_for_inlined_datasource_renders_raw_table():
+    """An inlined ``DatasourceCTE`` join target renders its raw table under
+    the datasource alias; a materialized one is referenced by name."""
     from trilogy.core.enums import JoinType
     from trilogy.core.models.build import BuildColumnAssignment
-    from trilogy.core.models.execute import CTE, Join
+    from trilogy.core.models.execute import CTE, Join, QueryDatasource
 
     key = _key_concept("k")
     base_ds = BuildDatasource(
@@ -173,14 +173,40 @@ def test_join_get_name_falls_back_to_cte_base_when_no_inlined_datasource():
         address="base_addr",
         grain=BuildGrain(),
     )
-    cte = CTE.from_datasource(base_ds)
-    join = Join(
-        right_cte=cte,
-        jointype=JoinType.INNER,
+    dim = CTE.from_datasource(base_ds)
+    consumer = CTE(
+        name="consumer",
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[dim.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={key.address: {dim.source}},
+        ),
+        output_columns=[key],
+        parent_ctes=[dim],
+        grain=BuildGrain(),
+        source_map={key.address: [dim.name]},
+        existence_source_map={},
     )
-    join.inline_cte(cte)  # no datasource argument → fallback path
-    assert join.get_name(cte) == base_ds.safe_identifier
-    assert base_ds.safe_identifier in join.right_ref
+    join = Join(right_cte=dim, jointype=JoinType.INNER)
+    join.quote = '"'
+
+    # normal parent: referenced by CTE name
+    assert consumer.renders_inline(dim) is False
+    assert join.name_for(consumer, dim) == dim.name
+    assert join.reference_for(consumer, dim) == f'"{dim.name}"'
+
+    # folded into the consumer (parked on inlined_parents): raw table under
+    # the datasource alias
+    consumer.parent_ctes = []
+    consumer.inlined_parents = [dim]
+    assert consumer.renders_inline(dim) is True
+    assert join.name_for(consumer, dim) == base_ds.safe_identifier
+    ref = join.reference_for(consumer, dim)
+    assert base_ds.safe_location in ref
+    assert f'as "{base_ds.safe_identifier}"' in ref
 
 
 def test_query_datasource_raises_on_missing_source_map():
@@ -266,11 +292,13 @@ def test_unnest_join_equality_and_hash():
     assert (a1 == "not an unnest join") is False
 
 
-def test_cte_inline_parent_rewrites_existence_source_map():
-    """``inline_parent_datasource`` must rewrite existence_source_map entries
-    that pointed to the parent QDS, mirroring the source_map loop."""
+def test_inline_parent_datasource_folds_leaf_into_consumer():
+    """``inline_parent_datasource`` structurally folds the datasource leaf
+    into the consumer (parent leaves ``parent_ctes``, source maps repoint to
+    the datasource, the BD enters ``source.datasources``) and parks the
+    CTE-shaped leaf on ``inlined_parents`` for uniform rendering."""
     from trilogy.core.models.build import BuildColumnAssignment
-    from trilogy.core.models.execute import CTE
+    from trilogy.core.models.execute import CTE, DatasourceCTE
 
     key = _key_concept("k")
     parent_ds = BuildDatasource(
@@ -280,11 +308,8 @@ def test_cte_inline_parent_rewrites_existence_source_map():
         grain=BuildGrain(),
     )
     parent = CTE.from_datasource(parent_ds)
+    assert isinstance(parent, DatasourceCTE)
 
-    # Build a child CTE off a separate base, then point its source at the parent
-    # CTE's QDS so inline_parent_datasource recognizes it. Populate
-    # existence_source_map with an entry referencing the parent's safe_identifier
-    # to force the rewrite loop into doing real work.
     child_base_ds = BuildDatasource(
         name="child_ds",
         columns=[BuildColumnAssignment(alias="k", concept=key)],
@@ -292,13 +317,21 @@ def test_cte_inline_parent_rewrites_existence_source_map():
         grain=BuildGrain(),
     )
     child = CTE.from_datasource(child_base_ds)
-    # Splice the parent's QDS into the child's datasources list so the inline
-    # logic actually finds it.
     child.source.datasources = [parent.source]
+    child.parent_ctes = [parent]
+    child.source_map = {key.address: [parent.safe_identifier]}
     child.existence_source_map = {key.address: [parent.safe_identifier]}
 
     assert child.inline_parent_datasource(parent) is True
-    # After inline, the parent's safe_identifier should be replaced with the
-    # parent's *base datasource*'s safe_identifier (since that's what was
-    # inlined).
+    # parent left the optimizer graph and is parked for rendering
+    assert child.parent_ctes == []
+    assert parent in child.inlined_parents
+    assert child.renders_inline(parent) is True
+    # source maps now resolve via the datasource alias
+    assert child.source_map[key.address] == [parent_ds.safe_identifier]
     assert child.existence_source_map[key.address] == [parent_ds.safe_identifier]
+    # the inlined datasource is now a direct source of the consumer's QDS
+    assert any(
+        getattr(d, "safe_location", None) == parent_ds.safe_location
+        for d in child.source.datasources
+    )

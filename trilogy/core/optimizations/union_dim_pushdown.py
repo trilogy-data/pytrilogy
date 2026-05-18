@@ -18,7 +18,7 @@ consumer level, and before any rule that flattens / inlines the UnionCTE.
 """
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 
 from trilogy.core.enums import JoinType, SourceType
 from trilogy.core.models.build import (
@@ -34,6 +34,7 @@ from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
     CTEConceptPair,
+    DatasourceCTE,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -102,7 +103,7 @@ def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | N
     ``parent_ctes`` but ``Join.right_cte`` retains the reference, so search
     there too.
     """
-    for p in consumer.parent_ctes:
+    for p in (*consumer.parent_ctes, *consumer.inlined_parents):
         if isinstance(p, (CTE, UnionCTE)) and p.source.identifier == join_qds_id:
             return p
     for j in consumer.joins:
@@ -204,7 +205,6 @@ class _ConsumerDimCandidate:
 class _PushContext:
     dim_cte: CTE | UnionCTE
     source_consumer: CTE | None
-    inlined_entry: Any | None
 
 
 class UnionDimPushdown(OptimizationRule):
@@ -467,18 +467,7 @@ class UnionDimPushdown(OptimizationRule):
         for c in consumers:
             found = _find_dim_cte_for_qds(c, d.join_qds_id)
             if found is not None:
-                inlined_entry = None
-                # ``CTE.inlined_ctes`` is keyed by ``new_alias``, not by the
-                # original CTE name. Scan values to recover the entry.
-                for e in c.inlined_ctes.values():
-                    if e.original_alias == found.name:
-                        inlined_entry = e
-                        break
-                return _PushContext(
-                    dim_cte=found,
-                    source_consumer=c,
-                    inlined_entry=inlined_entry,
-                )
+                return _PushContext(dim_cte=found, source_consumer=c)
         return None
 
     def _can_push_into_branch(self, branch: CTE, d: _DimDescriptor) -> bool:
@@ -520,7 +509,6 @@ class UnionDimPushdown(OptimizationRule):
                 branch,
                 context.dim_cte,
                 d,
-                context.inlined_entry,
                 context.source_consumer,
             ):
                 return False
@@ -566,7 +554,6 @@ class UnionDimPushdown(OptimizationRule):
         branch: CTE,
         dim_cte: CTE | UnionCTE,
         d: _DimDescriptor,
-        inlined_entry=None,
         source_consumer: CTE | None = None,
     ) -> bool:
         # already there? (idempotency)
@@ -626,23 +613,28 @@ class UnionDimPushdown(OptimizationRule):
             jointype=JoinType.INNER,
             left_cte=None,
             joinkey_pairs=cte_pairs,
+            # The branch CTE name isn't a valid alias inside its own SELECT;
+            # the LHS keys are the branch's own base columns. Render them as
+            # the branch's expressions (mirrors the historical inline_cte).
+            left_self_scope=isinstance(branch.source.base_datasource, BuildDatasource),
         )
-        # The branch CTE name isn't a valid alias inside its own SELECT —
-        # the FROM clause aliases the underlying BuildDatasource. Mark the
-        # branch as "inlined" on this Join so the LHS renders using
-        # ``branch.source.base_datasource.safe_identifier``.
-        branch_base = branch.source.base_datasource
-        if isinstance(branch_base, BuildDatasource):
-            new_join.inline_cte(branch, branch_base)
-        if inlined_entry is not None:
-            # Dim was inlined on the consumer; replicate on this branch so
-            # the RHS renders using the dim's underlying ds alias too.
-            dim_base = dim_cte.source.base_datasource
-            if isinstance(dim_base, BuildDatasource) and isinstance(dim_cte, CTE):
-                new_join.inline_cte(dim_cte, dim_base)
-            branch.inlined_ctes[inlined_entry.new_alias] = inlined_entry
+        # If the dim was folded into the consumer (inlined datasource), fold
+        # it into the branch too so the branch renders its raw table — the
+        # branch CTE wouldn't be emitted to join by name. Otherwise it is a
+        # normal emitted CTE the branch joins by name.
+        dim_inlined = (
+            isinstance(dim_cte, DatasourceCTE)
+            and source_consumer is not None
+            and any(p.name == dim_cte.name for p in source_consumer.inlined_parents)
+        )
+        if dim_inlined:
+            assert isinstance(dim_cte, DatasourceCTE)
+            if not any(p.name == dim_cte.name for p in branch.inlined_parents):
+                branch.inlined_parents.append(dim_cte)
+            dim_source_key = dim_cte.datasource.safe_identifier
         else:
             add_parent_cte(branch, dim_cte)
+            dim_source_key = dim_cte.name
         branch.joins.append(new_join)
         existing_out = {c.address for c in branch.output_columns}
         # FK concepts already resolve via the branch's fact ds. Only the
@@ -651,15 +643,6 @@ class UnionDimPushdown(OptimizationRule):
         non_key_dim_addrs = {
             c.address for c in d.dim_concepts if c.address not in d.fk_left_addrs
         }
-        # source_map values are *datasource* safe_identifiers, not CTE names.
-        # When the dim is inlined the safe_identifier equals new_alias; when
-        # the dim has its own CTE the dim CTE's safe_identifier is the same
-        # as cte.name, but the QDS-level source_map needs the BuildDatasource.
-        dim_source_key = (
-            inlined_entry.new_alias
-            if inlined_entry is not None
-            else d.dim_qds.safe_identifier
-        )
         for c in d.dim_concepts:
             if c.address not in existing_out:
                 branch.output_columns.append(c)

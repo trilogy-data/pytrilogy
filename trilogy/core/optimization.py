@@ -6,7 +6,7 @@ from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.models.build import (
     BuildConditional,
 )
-from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
+from trilogy.core.models.execute import CTE, Join, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
     CollapseSingleParent,
     HideUnusedConcepts,
@@ -56,24 +56,83 @@ class OptimizationRulePlan:
 #     return parent
 
 
+def canonicalize_graph(input: list[CTE]) -> None:
+    """Make the CTE graph self-consistent.
+
+    Optimization rules (inline, merge, collapse) replace or fold CTEs, but
+    other CTEs / joins can retain references to the *old* object. Those stale
+    copies are the source of "table does not exist" / reorder ``KeyError``
+    bugs. Rewrite every cross-reference to the single live instance keyed by
+    name:
+
+    - ``parent_ctes``: keep only references whose target is still in the
+      working set (a folded/merged parent is sourced via inline/merge now);
+      dedupe to the live object.
+    - join endpoints (``right_cte``/``left_cte``/``joinkey_pairs[].cte``):
+      resolve to the live emitted CTE, or to the consumer's folded
+      ``inlined_parents`` instance so the render contract stays in sync.
+    """
+    emitted: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
+    inlined: dict[str, CTE] = {
+        p.name: p for c in input for p in getattr(c, "inlined_parents", [])
+    }
+
+    def resolve(node):
+        # Sync to the single live instance; never drop a reference (a missing
+        # target means another rule must still resolve it — dropping it would
+        # corrupt reachability).
+        return emitted.get(node.name) or inlined.get(node.name) or node
+
+    for cte in input:
+        deduped: list[CTE | UnionCTE] = []
+        seen: set[str] = set()
+        for p in cte.parent_ctes:
+            live = resolve(p)
+            if live.name in seen:
+                continue
+            seen.add(live.name)
+            deduped.append(live)
+        cte.parent_ctes = deduped
+        for join in getattr(cte, "joins", []) or []:
+            if not isinstance(join, Join):
+                continue
+            join.right_cte = resolve(join.right_cte)
+            if join.left_cte is not None:
+                join.left_cte = resolve(join.left_cte)
+            for pair in join.joinkey_pairs or []:
+                if pair.cte is not None:
+                    pair.cte = resolve(pair.cte)
+        if isinstance(cte, UnionCTE):
+            cte.internal_ctes = [resolve(b) for b in cte.internal_ctes]
+
+
 def reorder_ctes(
     input: list[CTE],
 ):
     from trilogy.core import graph as nx
 
+    canonicalize_graph(input)
     # Create a directed graph
     G = nx.DiGraph()
     mapping: dict[str, CTE] = {}
     for cte in input:
         mapping[cte.name] = cte
+    for cte in input:
         for parent in cte.parent_ctes:
-            G.add_edge(parent.name, cte.name)
+            # Only order nodes that are in the working set; a parent that
+            # isn't is sourced elsewhere (inlined/merged) and not emitted.
+            if parent.name in mapping:
+                G.add_edge(parent.name, cte.name)
     # Perform topological sort (only works for DAGs)
     try:
         topological_order = list(nx.topological_sort(G))
         if not topological_order:
             return input
-        return [mapping[x] for x in topological_order]
+        ordered = [mapping[x] for x in topological_order if x in mapping]
+        # never silently drop a working-set CTE that had no graph edges
+        ordered_names = {c.name for c in ordered}
+        ordered.extend(c for c in input if c.name not in ordered_names)
+        return ordered
     except nx.NetworkXUnfeasible as e:
         logger.error(
             "The graph is not a DAG (contains cycles) and cannot be topologically sorted."

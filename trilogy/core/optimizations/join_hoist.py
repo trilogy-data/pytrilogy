@@ -47,6 +47,7 @@ from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
     CTEConceptPair,
+    DatasourceCTE,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -420,9 +421,11 @@ class JoinHoist(OptimizationRule):
             if (
                 inline_left_base
                 and isinstance(left_base_ds, BuildDatasource)
-                and isinstance(left_base_cte, CTE)
+                and isinstance(left_base_cte, DatasourceCTE)
             ):
-                new_join.inline_cte(left_base_cte, left_base_ds)
+                # Fold the synthetic base wrapper into the hoisted join: it
+                # renders its raw table directly instead of as a WITH entry.
+                left_base_cte.materialized = False
             parent_cte.joins.append(new_join)
             add_parent_cte(parent_cte, dim_cte)
             for c in dim_cte.output_columns:

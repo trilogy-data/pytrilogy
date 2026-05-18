@@ -63,5 +63,3 @@ def test_hide_branch_only_keeps_one_visible_projection(test_environment):
 
     assert HideUnusedConcepts()._hide_branch_only_outputs(union) is False
     assert branch.hidden_concepts == set()
-
-
