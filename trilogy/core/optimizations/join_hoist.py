@@ -55,7 +55,10 @@ from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
 )
-from trilogy.core.optimizations.join_upgrade import _gather_proofs
+from trilogy.core.optimizations.join_upgrade import (
+    UpgradeJoinOnGuards,
+    _gather_proofs,
+)
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
     add_parent_cte,
@@ -285,6 +288,24 @@ class JoinHoist(OptimizationRule):
             return None
         return plan or None
 
+    def _lock_in_guarded_upgrades(
+        self,
+        cte: CTE,
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+    ) -> None:
+        """Realize guard-enabled join upgrades on ``cte`` before its guards are
+        hoisted away.
+
+        Hoisting a dim join up to the shared parent strips the filter predicate
+        from ``cte``. That predicate may be the only thing letting
+        UpgradeJoinOnGuards downgrade an OUTER join in ``cte`` (classically a
+        filter-only RIGHT_OUTER to the very parent the dim is hoisted into,
+        which contributes no output columns and only restricts rows). Once the
+        guard is gone UpgradeJoinOnGuards bails (no condition) and the
+        conservative OUTER join sticks. Apply that upgrade now, while the guard
+        is still present, so the hoist can't silently regress the join."""
+        UpgradeJoinOnGuards().optimize(cte, inverse_map)
+
     def _parent_already_joins_dim(
         self, parent_cte: CTE, dim_qds: QueryDatasource
     ) -> bool:
@@ -510,10 +531,18 @@ class JoinHoist(OptimizationRule):
             return False, None
 
         actions = False
+        locked_in_upgrades = False
         for parent_cte in candidate_parents:
             plan = self._join_hoist_plan(cte, parent_cte, inverse_map)
             if not plan:
                 continue
+            if not locked_in_upgrades:
+                self._lock_in_guarded_upgrades(cte, inverse_map)
+                locked_in_upgrades = True
+                # join types may have tightened; recompute against current state
+                plan = self._join_hoist_plan(cte, parent_cte, inverse_map)
+                if not plan:
+                    continue
             for join, to_push, to_strip_only, join_type in plan:
                 if not self._hoist_join(cte, parent_cte, join, join_type):
                     continue
