@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -389,3 +390,11 @@ def test_two_merge_aggregate_compacts_inline_window_query():
 
     assert len(off_processed.ctes) == 9
     assert len(on_processed.ctes) == 5
+
+
+def test_rowset_arithmetic_argument_keeps_precedence():
+    query = (working_path / "query02-one.preql").read_text()
+    env = Environment(working_path=working_path)
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+
+    assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql

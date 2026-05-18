@@ -1,4 +1,3 @@
-from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
@@ -8,7 +7,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
     condition_implies,
+    condition_required_addresses,
     decompose_condition,
     flatten_conditions,
     is_scalar_condition,
@@ -16,14 +17,6 @@ from trilogy.core.processing.condition_utility import (
 )
 
 ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
-
-
-def condition_atom_addresses(atom: ConditionExpression) -> set[str]:
-    return {
-        c.canonical_address
-        for c in atom.row_arguments
-        if c.derivation != Derivation.CONSTANT
-    }
 
 
 def datasource_conditions(
@@ -51,11 +44,11 @@ def datasource_conditions(
     for atom in decompose_condition(conditions.conditional):
         if (
             str(atom) in covered_atoms
-            or atom.existence_arguments
+            or any(arg for group in atom.existence_arguments for arg in group)
             or not is_scalar_condition(atom)
         ):
             continue
-        if condition_atom_addresses(atom).issubset(ds_outputs):
+        if condition_required_addresses(atom).issubset(ds_outputs):
             datasource_conditions = (
                 merge_conditions_and_dedup(atom, datasource_conditions)
                 if datasource_conditions
@@ -100,9 +93,7 @@ def covered_conditions(
             if key in atom_str_map and key not in seen:
                 preserved.append(atom_str_map[key])
                 seen.add(key)
-    if not preserved:
+    cond = combine_condition_atoms(preserved)
+    if cond is None:
         return None
-    cond = preserved[0]
-    for a in preserved[1:]:
-        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
     return BuildWhereClause(conditional=cond)

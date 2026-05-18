@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3117
+gen_length = 3363
 preql_size = 1041
 comp_size = 2151
 generated_sql = """
@@ -37,16 +37,21 @@ GROUP BY
     \"cheerful\".\"sales_sales_channel\"),
 uneven as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"store_first_year\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"store_second_year\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"web_first_year\",
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) as \"web_second_year\"
+    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\"
 FROM
     \"cheerful\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 GROUP BY
-    1),
+    1
+HAVING
+    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END)
+	ELSE null
+	END ) > ( CASE
+	WHEN sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END)
+	ELSE null
+	END )
+),
 questionable as (
 SELECT
     \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
@@ -63,15 +68,6 @@ SELECT
 FROM
     \"uneven\"
     INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
-WHERE
-    \"uneven\".\"store_first_year\" > 0 and \"uneven\".\"web_first_year\" > 0 and ( CASE
-	WHEN \"uneven\".\"web_first_year\" > 0 THEN \"uneven\".\"web_second_year\" / \"uneven\".\"web_first_year\"
-	ELSE null
-	END ) > ( CASE
-	WHEN \"uneven\".\"store_first_year\" > 0 THEN \"uneven\".\"store_second_year\" / \"uneven\".\"store_first_year\"
-	ELSE null
-	END )
-
 GROUP BY
     1,
     2,

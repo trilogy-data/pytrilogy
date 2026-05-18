@@ -1,11 +1,11 @@
 query_id = "50"
-gen_length = 6412
+gen_length = 6631
 preql_size = 1574
 comp_size = 1903
 generated_sql = """
 
 WITH 
-cooperative as (
+questionable as (
 SELECT
     \"store_sales_return_date_date\".\"D_DATE_SK\" - \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"days_to_return\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
@@ -40,9 +40,9 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_return_customer_customers\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"store_sales_return_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"store_sales_return_date_date\".\"D_YEAR\" = 2001 and \"store_sales_return_date_date\".\"D_MOY\" = 8 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_return_customer_customers\".\"C_CUSTOMER_SK\" and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,
@@ -55,30 +55,32 @@ GROUP BY
     8,
     9,
     10,
-    11),
-questionable as (
-SELECT
-    \"cooperative\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    count(CASE WHEN \"cooperative\".\"days_to_return\" > -1 and \"cooperative\".\"days_to_return\" <= 30 THEN \"cooperative\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_7691116690045464\",
-    count(CASE WHEN \"cooperative\".\"days_to_return\" > 120 and \"cooperative\".\"days_to_return\" <= 99999 THEN \"cooperative\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_7969998780980378\",
-    count(CASE WHEN \"cooperative\".\"days_to_return\" > 30 and \"cooperative\".\"days_to_return\" <= 60 THEN \"cooperative\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_3393740962845140\",
-    count(CASE WHEN \"cooperative\".\"days_to_return\" > 60 and \"cooperative\".\"days_to_return\" <= 90 THEN \"cooperative\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_4020156712075239\",
-    count(CASE WHEN \"cooperative\".\"days_to_return\" > 90 and \"cooperative\".\"days_to_return\" <= 120 THEN \"cooperative\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_5623669394588902\"
-FROM
-    \"cooperative\"
-GROUP BY
-    1,
-    \"cooperative\".\"store_sales_ticket_number\"),
-uneven as (
+    11,
+    \"store_sales_return_customer_customers\".\"C_CUSTOMER_SK\",
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\"),
+abundant as (
 SELECT
     \"questionable\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    sum(\"questionable\".\"_virt_agg_count_3393740962845140\") as \"days_31_60\",
-    sum(\"questionable\".\"_virt_agg_count_4020156712075239\") as \"days_61_90\",
-    sum(\"questionable\".\"_virt_agg_count_5623669394588902\") as \"days_91_120\",
-    sum(\"questionable\".\"_virt_agg_count_7691116690045464\") as \"days_30\",
-    sum(\"questionable\".\"_virt_agg_count_7969998780980378\") as \"days_120_plus\"
+    count(CASE WHEN \"questionable\".\"days_to_return\" > -1 and \"questionable\".\"days_to_return\" <= 30 THEN \"questionable\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_7691116690045464\",
+    count(CASE WHEN \"questionable\".\"days_to_return\" > 120 and \"questionable\".\"days_to_return\" <= 99999 THEN \"questionable\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_7969998780980378\",
+    count(CASE WHEN \"questionable\".\"days_to_return\" > 30 and \"questionable\".\"days_to_return\" <= 60 THEN \"questionable\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_3393740962845140\",
+    count(CASE WHEN \"questionable\".\"days_to_return\" > 60 and \"questionable\".\"days_to_return\" <= 90 THEN \"questionable\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_4020156712075239\",
+    count(CASE WHEN \"questionable\".\"days_to_return\" > 90 and \"questionable\".\"days_to_return\" <= 120 THEN \"questionable\".\"store_sales_item_id\" ELSE NULL END) as \"_virt_agg_count_5623669394588902\"
 FROM
     \"questionable\"
+GROUP BY
+    1,
+    \"questionable\".\"store_sales_ticket_number\"),
+yummy as (
+SELECT
+    \"abundant\".\"store_sales_store_id\" as \"store_sales_store_id\",
+    sum(\"abundant\".\"_virt_agg_count_3393740962845140\") as \"days_31_60\",
+    sum(\"abundant\".\"_virt_agg_count_4020156712075239\") as \"days_61_90\",
+    sum(\"abundant\".\"_virt_agg_count_5623669394588902\") as \"days_91_120\",
+    sum(\"abundant\".\"_virt_agg_count_7691116690045464\") as \"days_30\",
+    sum(\"abundant\".\"_virt_agg_count_7969998780980378\") as \"days_120_plus\"
+FROM
+    \"abundant\"
 GROUP BY
     1)
 SELECT
@@ -92,14 +94,31 @@ SELECT
     \"thoughtful\".\"store_sales_store_county\" as \"store_sales_store_county\",
     \"thoughtful\".\"store_sales_store_state\" as \"store_sales_store_state\",
     \"thoughtful\".\"store_sales_store_zip\" as \"store_sales_store_zip\",
-    \"uneven\".\"days_30\" as \"days_30\",
-    \"uneven\".\"days_31_60\" as \"days_31_60\",
-    \"uneven\".\"days_61_90\" as \"days_61_90\",
-    \"uneven\".\"days_91_120\" as \"days_91_120\",
-    \"uneven\".\"days_120_plus\" as \"days_120_plus\"
+    \"yummy\".\"days_30\" as \"days_30\",
+    \"yummy\".\"days_31_60\" as \"days_31_60\",
+    \"yummy\".\"days_61_90\" as \"days_61_90\",
+    \"yummy\".\"days_91_120\" as \"days_91_120\",
+    \"yummy\".\"days_120_plus\" as \"days_120_plus\"
 FROM
     \"thoughtful\"
-    FULL JOIN \"uneven\" on \"thoughtful\".\"store_sales_store_id\" is not distinct from \"uneven\".\"store_sales_store_id\"
+    FULL JOIN \"yummy\" on \"thoughtful\".\"store_sales_store_id\" is not distinct from \"yummy\".\"store_sales_store_id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    coalesce(\"thoughtful\".\"store_sales_store_id\",\"yummy\".\"store_sales_store_id\")
 ORDER BY 
     \"thoughtful\".\"store_sales_store_name\" asc nulls first,
     \"thoughtful\".\"store_sales_store_company_id\" asc nulls first,

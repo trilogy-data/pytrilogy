@@ -433,7 +433,7 @@ union  = { _UNION ~ (expr ~ ",")* ~ expr ~ ")" }
 // AGGREGATES
 // =============================================================================
 aggregate_all  = { "*" }
-aggregate_rollup = { ^"rollup" ~ over_list }
+aggregate_rollup = { ^"rollup" ~ (("(" ~ ")") | over_list) }
 aggregate_cube = { ^"cube" ~ over_list }
 grouping_set = { "(" ~ expr_over_list? ~ ")" }
 aggregate_grouping_sets = { ^"grouping" ~ ^"sets" ~ grouping_set ~ ("," ~ grouping_set)* }
@@ -522,8 +522,8 @@ window_item_legacy = {
     | WINDOW_TYPE_LEGACY ~ expr ~ window_item_over? ~ window_item_order?
 }
 // SQL-like numbering: rank(a, b, c) over (...). All comma-separated fields
-// are equal-status grain keys.
-window_item_sql_numbering  = { WINDOW_TYPE_SQL_NUMBERING ~ expr ~ ("," ~ expr)* ~ ")" ~ window_sql_over? }
+// are equal-status grain keys. Empty args inherit the surrounding SELECT grain.
+window_item_sql_numbering  = { WINDOW_TYPE_SQL_NUMBERING ~ (expr ~ ("," ~ expr)*)? ~ ")" ~ window_sql_over? }
 // SQL-like navigation: lag(field) or lag(field, 2) over (...).
 window_item_sql_navigation = { WINDOW_TYPE_SQL_NAVIGATION ~ expr ~ ("," ~ int_lit)? ~ ")" ~ window_sql_over? }
 window_item                = { window_item_sql_numbering | window_item_sql_navigation | window_item_legacy }

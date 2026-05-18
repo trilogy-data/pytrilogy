@@ -1,5 +1,5 @@
 query_id = "14"
-gen_length = 6794
+gen_length = 6732
 preql_size = 2071
 comp_size = 4229
 generated_sql = """
@@ -60,20 +60,19 @@ GROUP BY
     2),
 abundant as (
 SELECT
-    \"questionable\".\"tuple_key\" as \"_cross_tuples_ci_tuple_key\",
-    count(distinct \"questionable\".\"sales_sales_channel\") as \"cross_channel_count\"
+    \"questionable\".\"tuple_key\" as \"_cross_tuples_ci_tuple_key\"
 FROM
     \"questionable\"
 GROUP BY
-    1),
+    1
+HAVING
+    count(distinct \"questionable\".\"sales_sales_channel\") = 3
+),
 uneven as (
 SELECT
     \"abundant\".\"_cross_tuples_ci_tuple_key\" as \"cross_tuples_ci_tuple_key\"
 FROM
-    \"abundant\"
-WHERE
-    \"abundant\".\"cross_channel_count\" = 3
-),
+    \"abundant\"),
 yummy as (
 SELECT
     \"cheerful\".\"sales_item_id\" as \"sales_item_id\",

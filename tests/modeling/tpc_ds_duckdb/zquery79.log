@@ -1,27 +1,21 @@
 query_id = "79"
-gen_length = 4368
+gen_length = 2870
 preql_size = 1070
 comp_size = 1188
 generated_sql = """
 
 WITH 
-cooperative as (
+quizzical as (
 SELECT
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_store_sales\".\"SS_HDEMO_SK\" as \"store_sales_household_demographic_id\",
-    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
-    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_id\"
+    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
+    \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\"
 FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    \"memory\".\"customer\" as \"store_sales_customer_customers\"
 WHERE
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-abundant as (
+    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" is not null
+),
+cooperative as (
 SELECT
     \"store_sales_store_sales\".\"SS_ADDR_SK\" as \"store_sales_sale_address_id\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
@@ -33,7 +27,7 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    LEFT OUTER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
+    INNER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
     ( \"store_sales_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 6 or \"store_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 2 ) and \"store_sales_date_date\".\"D_DOW\" = 1 and \"store_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"store_sales_store_store\".\"S_NUMBER_EMPLOYEES\" >= 200 and \"store_sales_store_store\".\"S_NUMBER_EMPLOYEES\" <= 295 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null
 
@@ -41,35 +35,17 @@ GROUP BY
     1,
     2,
     3,
-    4),
-questionable as (
+    4)
 SELECT
-    \"cooperative\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
-    \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\"
+    \"quizzical\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
+    \"quizzical\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    SUBSTRING(\"cooperative\".\"store_sales_store_city\",1,30) as \"city_short\",
+    \"cooperative\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    \"cooperative\".\"amt\" as \"amt\",
+    \"cooperative\".\"profit\" as \"profit\"
 FROM
     \"cooperative\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"cooperative\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"cooperative\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_id\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
-    LEFT OUTER JOIN \"memory\".\"household_demographics\" as \"store_sales_household_demographic_household_demographics\" on \"cooperative\".\"store_sales_household_demographic_id\" = \"store_sales_household_demographic_household_demographics\".\"HD_DEMO_SK\"
-WHERE
-    ( \"store_sales_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 6 or \"store_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 2 ) and \"store_sales_date_date\".\"D_DOW\" = 1 and \"store_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"store_sales_store_store\".\"S_NUMBER_EMPLOYEES\" >= 200 and \"store_sales_store_store\".\"S_NUMBER_EMPLOYEES\" <= 295
-
-GROUP BY
-    1,
-    2,
-    3)
-SELECT
-    \"questionable\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"questionable\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    SUBSTRING(\"abundant\".\"store_sales_store_city\",1,30) as \"city_short\",
-    \"abundant\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    \"abundant\".\"amt\" as \"amt\",
-    \"abundant\".\"profit\" as \"profit\"
-FROM
-    \"questionable\"
-    FULL JOIN \"abundant\" on \"questionable\".\"store_sales_customer_id\" is not distinct from \"abundant\".\"store_sales_customer_id\"
+    LEFT OUTER JOIN \"quizzical\" on \"cooperative\".\"store_sales_customer_id\" = \"quizzical\".\"store_sales_customer_id\"
 GROUP BY
     1,
     2,
@@ -77,11 +53,11 @@ GROUP BY
     4,
     5,
     6,
-    \"abundant\".\"store_sales_sale_address_id\"
+    \"cooperative\".\"store_sales_sale_address_id\"
 ORDER BY 
-    \"questionable\".\"store_sales_customer_last_name\" asc nulls first,
-    \"questionable\".\"store_sales_customer_first_name\" asc nulls first,
+    \"quizzical\".\"store_sales_customer_last_name\" asc nulls first,
+    \"quizzical\".\"store_sales_customer_first_name\" asc nulls first,
     \"city_short\" asc nulls first,
-    \"abundant\".\"profit\" asc nulls first,
-    \"abundant\".\"store_sales_ticket_number\" asc
+    \"cooperative\".\"profit\" asc nulls first,
+    \"cooperative\".\"store_sales_ticket_number\" asc
 LIMIT (100)"""

@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
     DatePart,
+    Derivation,
     FunctionClass,
     FunctionType,
 )
@@ -527,9 +528,21 @@ def condition_value_implies(
     return True
 
 
-def _build_from_atoms(
+def condition_required_addresses(
+    condition: BuildComparison | BuildConditional | BuildParenthetical,
+) -> set[str]:
+    """Canonical addresses of the non-constant row concepts a condition references."""
+    return {
+        c.canonical_address
+        for c in condition.row_arguments
+        if c.derivation != Derivation.CONSTANT
+    }
+
+
+def combine_condition_atoms(
     atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
 ) -> BuildComparison | BuildConditional | BuildParenthetical | None:
+    """AND-combine atoms into a single left-associative condition (None if empty)."""
     if not atoms:
         return None
     result: BuildComparison | BuildConditional | BuildParenthetical = atoms[0]
@@ -553,7 +566,7 @@ def merge_conditions_and_dedup(
     ]
     if not new_atoms:
         return preexisting
-    return _build_from_atoms(preexisting_atoms + new_atoms)  # type: ignore[return-value]
+    return combine_condition_atoms(preexisting_atoms + new_atoms)  # type: ignore[return-value]
 
 
 def strip_condition_atoms(
@@ -562,7 +575,7 @@ def strip_condition_atoms(
 ) -> BuildComparison | BuildConditional | BuildParenthetical | None:
     """Remove atoms present in to_strip from query's AND-tree. Returns None if all atoms removed."""
     strip_atoms = decompose_condition(to_strip)
-    return _build_from_atoms(
+    return combine_condition_atoms(
         [a for a in decompose_condition(query) if a not in strip_atoms]
     )
 
@@ -590,12 +603,12 @@ def merge_conditions(
     all_varying = [a for atoms in per_atoms for a in atoms if a not in common]
 
     if not all_varying:
-        return _build_from_atoms(common)
+        return combine_condition_atoms(common)
 
     if not simplify_conditions(all_varying):
         return conditions[0]
 
-    return _build_from_atoms(common)
+    return combine_condition_atoms(common)
 
 
 def filter_union_children(

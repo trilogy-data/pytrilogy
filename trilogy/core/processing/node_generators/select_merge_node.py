@@ -25,19 +25,27 @@ from trilogy.core.processing.aggregate_rollup import (
     _is_additive_aggregate,
     get_additive_rollup_concepts,
 )
-from trilogy.core.processing.condition_utility import merge_conditions
+from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
+    condition_required_addresses,
+    decompose_condition,
+    is_scalar_condition,
+    merge_conditions,
+)
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     validate_stack,
 )
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
+    ConditionExpression,
     covered_conditions,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
+    SourceNodeCandidate,
     create_datasource_node,
     create_select_node,
     create_select_node_candidate,
@@ -151,7 +159,6 @@ def create_pruned_concept_graph(
     }
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     partial = get_graph_partial_nodes(g, conditions)
-
     if criteria == SearchCriteria.FULL_ONLY:
         datasource_map = orig_g.datasources
         to_remove = [
@@ -166,7 +173,9 @@ def create_pruned_concept_graph(
     relevant_datasets = [
         n for n in g.datasources if any((n, x) in g_edges for x in relevant_concepts)
     ]
-    logger.info(f"Relevant datasets after pruning: {relevant_datasets}")
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} Relevant datasets after pruning: {relevant_datasets}"
+    )
 
     relevant_datasets = deduplicate_datasources(
         relevant_datasets, relevant_concepts, g_edges, g.datasources, depth, partial
@@ -229,70 +238,368 @@ def _source_concepts_via_graph(
     conditions: used for graph pruning (which datasources to keep).
     filter_conditions: if set, used for WHERE application in SelectNodes instead of conditions.
     """
-    select_conditions = (
-        filter_conditions if filter_conditions is not None else conditions
+    orig_concepts = list(concepts)
+    sourceable_condition_atoms = (
+        _sourceable_condition_atoms(conditions, environment) if conditions else []
     )
-    attempts = [SearchCriteria.FULL_ONLY]
-    if accept_partial:
-        attempts.append(SearchCriteria.PARTIAL_UNSCOPED)
-        attempts.append(SearchCriteria.PARTIAL_INCLUDING_SCOPED)
-    pruned: ReferenceGraph | None = None
-    sub_nodes: dict[str, list[str]] = {}
-    for attempt in attempts:
-        pruned = create_pruned_concept_graph(
-            g,
-            concepts,
-            criteria=attempt,
-            conditions=conditions,
-            datasources=list(environment.datasources.values()),
-            depth=depth,
-            allow_intersection=allow_intersection,
+    concept_attempts = [orig_concepts]
+    if sourceable_condition_atoms:
+        # Bring the filter columns into the graph so they surface as parent
+        # outputs; when deferring (below) the WHERE is reapplied once at the
+        # merge instead of being pushed into each subselect.
+        augmented = unique(
+            orig_concepts
+            + _condition_source_concepts(sourceable_condition_atoms, environment),
+            "address",
         )
+        if {c.address for c in augmented} != {c.address for c in orig_concepts}:
+            concept_attempts.append(augmented)
+    search_attempts = [SearchCriteria.FULL_ONLY]
+    if accept_partial:
+        search_attempts.append(SearchCriteria.PARTIAL_UNSCOPED)
+        search_attempts.append(SearchCriteria.PARTIAL_INCLUDING_SCOPED)
+    for concepts in concept_attempts:
+        # Only defer when this is the primary pruning pass. The partial-datasource
+        # path uses filter_conditions and must still push per-source WHEREs.
+        defer_conditions_to_merge = (
+            filter_conditions is None
+            and conditions is not None
+            and _conditions_deferrable_to_merge(orig_concepts, conditions, environment)
+        )
+        select_conditions = (
+            filter_conditions if filter_conditions is not None else conditions
+        )
+        pruned: ReferenceGraph | None = None
+        sub_nodes: dict[str, list[str]] = {}
+        for attempt in search_attempts:
+            pruned = create_pruned_concept_graph(
+                g,
+                concepts,
+                criteria=attempt,
+                conditions=conditions,
+                datasources=list(environment.datasources.values()),
+                depth=depth,
+                allow_intersection=allow_intersection,
+            )
+            if not pruned:
+                continue
+            sub_nodes = resolve_subgraphs(
+                pruned,
+                relevant=concepts,
+                criteria=attempt,
+                conditions=select_conditions,
+                depth=depth,
+            )
+            break
         if not pruned:
             continue
-        sub_nodes = resolve_subgraphs(
-            pruned,
-            relevant=concepts,
-            criteria=attempt,
-            conditions=select_conditions,
-            depth=depth,
+        # On the augmented attempt the concept set was widened with filter-only
+        # columns; the originally requested concepts still define grain so a
+        # finer source gets regrouped instead of fanning the request out.
+        requested_concepts = orig_concepts if concepts is not orig_concepts else None
+        candidates = [
+            create_select_node_candidate(
+                k,
+                subgraph,
+                g=pruned,
+                accept_partial=accept_partial,
+                environment=environment,
+                depth=depth,
+                conditions=select_conditions,
+            )
+            for k, subgraph in sub_nodes.items()
+        ]
+        if conditions and len(sub_nodes) > 1:
+            trial = [
+                create_select_node_candidate(
+                    k,
+                    subgraph,
+                    g=pruned,
+                    accept_partial=accept_partial,
+                    environment=environment,
+                    depth=depth,
+                    conditions=None,
+                )
+                for k, subgraph in sub_nodes.items()
+            ]
+            # Only defer for a flat star: every source must be a single ungrouped
+            # scan, so the merge can apply the WHERE across the joined rowset.
+            safe = all(t.group_source_count == 0 and not t.force_group for t in trial)
+            if defer_conditions_to_merge and safe:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} conditions sourceable by "
+                    f"components; deferring WHERE to merge across {len(sub_nodes)} "
+                    "sources rather than pushing into each subselect"
+                )
+                candidates = trial
+            else:
+                defer_conditions_to_merge = False
+                grouped_candidates = [
+                    filtered
+                    for filtered, unfiltered in zip(candidates, trial, strict=True)
+                    if unfiltered.group_source_count > 0 or unfiltered.force_group
+                ]
+                if grouped_candidates:
+                    mixed = [
+                        (
+                            unfiltered
+                            if unfiltered.group_source_count == 0
+                            and not unfiltered.force_group
+                            else filtered
+                        )
+                        for filtered, unfiltered in zip(candidates, trial, strict=True)
+                    ]
+                    pushed = _condition_atoms_applied_by_candidates(grouped_candidates)
+                    remaining = combine_condition_atoms(
+                        [
+                            atom
+                            for atom in decompose_condition(conditions.conditional)
+                            if atom not in pushed
+                        ]
+                    )
+                    if remaining and _condition_can_apply_after_merge(mixed, remaining):
+                        logger.info(
+                            f"{padding(depth)}{LOGGER_PREFIX} progressively routing WHERE; "
+                            "grouped sources keep applicable atoms and flat sources defer "
+                            "remaining atoms to the merge"
+                        )
+                        candidates = mixed
+        if select_conditions and not _candidates_route_conditions(
+            candidates, select_conditions
+        ):
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} candidates cannot route WHERE "
+                f"{select_conditions}; trying next concept set"
+            )
+            continue
+        group_source_count = sum(c.group_source_count for c in candidates)
+        grouped_condition_deferred = any(
+            c.force_group and c.conditions_deferred for c in candidates
         )
-        break
-    if not pruned:
+        defer_group = (
+            len(candidates) > 1
+            and group_source_count == 1
+            and grouped_condition_deferred
+        )
+        if len(candidates) > 1 and group_source_count > 1:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} keeping source groups before merge; "
+                f"{group_source_count} grouped source branches would be joined."
+            )
+        return [
+            finalize_select_node(
+                candidate,
+                environment=environment,
+                depth=depth,
+                defer_group=defer_group,
+                requested_concepts=requested_concepts,
+            )
+            for candidate in candidates
+        ]
+    return []
+
+
+def _conditions_can_be_sourced_by_components(
+    concepts: list[BuildConcept],
+    conditions: BuildWhereClause,
+    environment: BuildEnvironment,
+) -> bool:
+    return len(_sourceable_condition_atoms(conditions, environment)) == len(
+        decompose_condition(conditions.conditional)
+    )
+
+
+def _sourceable_condition_atoms(
+    conditions: BuildWhereClause,
+    environment: BuildEnvironment,
+) -> list[ConditionExpression]:
+    datasources = [
+        ds
+        for ds in environment.datasources.values()
+        if isinstance(ds, BuildDatasource)
+        and not ds.non_partial_for
+        and not any(c.is_aggregate for c in ds.output_concepts)
+    ]
+    if not datasources:
         return []
-    candidates = [
-        create_select_node_candidate(
-            k,
-            subgraph,
-            g=pruned,
-            accept_partial=accept_partial,
-            environment=environment,
-            depth=depth,
-            conditions=select_conditions,
+    available: set[str] = set()
+    for ds in datasources:
+        partial = {c.canonical_address for c in ds.partial_concepts}
+        available.update(
+            c.canonical_address
+            for c in ds.output_concepts
+            if c.canonical_address not in partial
         )
-        for k, subgraph in sub_nodes.items()
-    ]
-    group_source_count = sum(c.group_source_count for c in candidates)
-    grouped_condition_deferred = any(
-        c.force_group and c.conditions_deferred for c in candidates
+    sourceable = []
+    for atom in decompose_condition(conditions.conditional):
+        if any(arg for group in atom.existence_arguments for arg in group):
+            continue
+        if not is_scalar_condition(atom):
+            continue
+        if condition_required_addresses(atom).issubset(available):
+            sourceable.append(atom)
+    return sourceable
+
+
+def _conditions_deferrable_to_merge(
+    concepts: list[BuildConcept],
+    conditions: BuildWhereClause,
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether the WHERE can be merged-then-reapplied rather than pushed per source.
+
+    This is only the early routing check: every atom must be coverable by a
+    complete, non-aggregate source. The caller still builds conditionless trial
+    candidates and only accepts deferral for flat source scans.
+    """
+    return _conditions_can_be_sourced_by_components(concepts, conditions, environment)
+
+
+def _condition_source_concepts(
+    atoms: list[ConditionExpression],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    concepts = [c for atom in atoms for c in atom.row_arguments]
+    seen = {c.address for c in concepts}
+    for concept in list(concepts):
+        for key in concept.keys or []:
+            if key in seen:
+                continue
+            key_concept = environment.concepts.get(key)
+            if key_concept is None:
+                continue
+            concepts.append(key_concept)
+            seen.add(key)
+    return concepts
+
+
+def _node_condition_atoms(node: StrategyNode) -> list[ConditionExpression]:
+    atoms: list[ConditionExpression] = []
+    for expr in (node.conditions, node.preexisting_conditions):
+        if expr is not None:
+            atoms.extend(decompose_condition(expr))
+    return atoms
+
+
+def _condition_can_apply_after_node_merge(
+    nodes: list[StrategyNode],
+    condition: ConditionExpression,
+) -> bool:
+    if not is_scalar_condition(condition):
+        return False
+    if any(
+        arg
+        for atom in decompose_condition(condition)
+        for group in atom.existence_arguments
+        for arg in group
+    ):
+        return False
+    available = {c.canonical_address for node in nodes for c in node.usable_outputs}
+    return condition_required_addresses(condition).issubset(available)
+
+
+def _condition_atoms_applied_by_candidates(
+    candidates: list[SourceNodeCandidate],
+) -> list[ConditionExpression]:
+    return [a for c in candidates for a in _node_condition_atoms(c.node)]
+
+
+def _condition_can_apply_after_merge(
+    candidates: list[SourceNodeCandidate],
+    condition: ConditionExpression,
+) -> bool:
+    return _condition_can_apply_after_node_merge(
+        [c.node for c in candidates], condition
     )
-    defer_group = (
-        len(candidates) > 1 and group_source_count == 1 and grouped_condition_deferred
+
+
+def _candidates_route_conditions(
+    candidates: list[SourceNodeCandidate],
+    conditions: BuildWhereClause,
+) -> bool:
+    pushed = _condition_atoms_applied_by_candidates(candidates)
+    remaining = combine_condition_atoms(
+        [
+            atom
+            for atom in decompose_condition(conditions.conditional)
+            if atom not in pushed
+        ]
     )
-    if len(candidates) > 1 and group_source_count > 1:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} keeping source groups before merge; "
-            f"{group_source_count} grouped source branches would be joined."
+    return remaining is None or _condition_can_apply_after_merge(candidates, remaining)
+
+
+def _parents_apply_condition_atoms(
+    parents: list[StrategyNode],
+    conditions: BuildWhereClause,
+) -> bool:
+    if not parents:
+        return False
+    parent_atoms = [_node_condition_atoms(parent) for parent in parents]
+    for atom in decompose_condition(conditions.conditional):
+        if any(arg for group in atom.existence_arguments for arg in group):
+            return False
+        if not all(atom in atoms for atoms in parent_atoms):
+            return False
+    return True
+
+
+def _condition_remaining_after_parents(
+    parents: list[StrategyNode],
+    conditions: BuildWhereClause,
+) -> ConditionExpression | None:
+    parent_atoms = [a for parent in parents for a in _node_condition_atoms(parent)]
+    return combine_condition_atoms(
+        [
+            atom
+            for atom in decompose_condition(conditions.conditional)
+            if atom not in parent_atoms
+        ]
+    )
+
+
+def _condition_can_apply_after_parent_merge(
+    parents: list[StrategyNode],
+    condition: ConditionExpression,
+) -> bool:
+    return _condition_can_apply_after_node_merge(parents, condition)
+
+
+def _merge_condition_routing(
+    parents: list[StrategyNode],
+    output_concepts: list[BuildConcept],
+    conditions: BuildWhereClause | None,
+) -> tuple[ConditionExpression | None, ConditionExpression | None, JoinType | None]:
+    if conditions is None:
+        return None, None, None
+    condition = conditions.conditional
+    if all(
+        x.preexisting_conditions and x.preexisting_conditions == condition
+        for x in parents
+    ):
+        return condition, None, None
+    if _parents_apply_condition_atoms(parents, conditions):
+        merge_condition = (
+            condition
+            if _condition_can_apply_after_parent_merge(parents, condition)
+            else None
         )
-    return [
-        finalize_select_node(
-            candidate,
-            environment=environment,
-            depth=depth,
-            defer_group=defer_group,
-        )
-        for candidate in candidates
-    ]
+        return condition, merge_condition, None
+    remaining_conditions = _condition_remaining_after_parents(parents, conditions)
+    if remaining_conditions and _condition_can_apply_after_parent_merge(
+        parents, remaining_conditions
+    ):
+        return condition, remaining_conditions, None
+
+    # Filter applied at one parent (e.g. a partial-aggregate rollup) plus pure
+    # enumerator joins: the conditioned parent already carries the merge output
+    # set, so unmatched enumerator rows should not leak into the result.
+    output_addrs = {c.address for c in output_concepts}
+    for parent in parents:
+        if parent.preexisting_conditions == condition and output_addrs.issubset(
+            {c.address for c in parent.usable_outputs}
+        ):
+            return condition, None, JoinType.INNER
+    return None, None, None
 
 
 def gen_select_merge_node(
@@ -387,6 +694,29 @@ def gen_select_merge_node(
             normals, g, environment, depth, accept_partial, conditions
         )
         if not parents and conditions:
+            if _conditions_can_be_sourced_by_components(
+                normals, conditions, environment
+            ):
+                augmented = unique(
+                    normals
+                    + _condition_source_concepts(
+                        decompose_condition(conditions.conditional), environment
+                    ),
+                    "address",
+                )
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} retrying source graph with "
+                    "condition inputs; WHERE atoms are covered by component sources."
+                )
+                parents = _source_concepts_via_graph(
+                    augmented,
+                    g,
+                    environment,
+                    depth,
+                    accept_partial,
+                    conditions,
+                )
+        if not parents and conditions:
             # Retry with only "covered" condition atoms (those implied by some datasource's
             # non_partial_for) for graph pruning. Foreign datasources (e.g. tree_enrichment
             # when filtering by city='USSFO') are kept via the intersection check since the
@@ -429,31 +759,10 @@ def gen_select_merge_node(
 
         preexisting_conditions = None
         force_join_type: JoinType | None = None
-        if conditions and all(
-            x.preexisting_conditions
-            and x.preexisting_conditions == conditions.conditional
-            for x in parents
-        ):
-            preexisting_conditions = conditions.conditional
-        elif conditions:
-            # Filter applied at one parent (e.g. a partial-aggregate rollup)
-            # plus pure-enumerator joins (single-key dimension tables added by
-            # prune_sources_for_aggregates upgrade): the conditioned parent
-            # already carries the merge's full output set, so the merge
-            # inherits its conditions. Force INNER joins so unmatched
-            # enumerator rows (which never went through the WHERE) don't leak
-            # NULL-filter rows into the result.
-            output_addrs = {c.address for c in all_concepts}
-            for parent in parents:
-                if (
-                    parent.preexisting_conditions == conditions.conditional
-                    and output_addrs.issubset(
-                        {c.address for c in parent.usable_outputs}
-                    )
-                ):
-                    preexisting_conditions = conditions.conditional
-                    force_join_type = JoinType.INNER
-                    break
+        merge_conditions = None
+        preexisting_conditions, merge_conditions, force_join_type = (
+            _merge_condition_routing(parents, all_concepts, conditions)
+        )
 
         # When the merge's joined grain (e.g. customer_id from agg + dim) is
         # finer than the outer target's grain (e.g. region) — and the target
@@ -494,10 +803,16 @@ def gen_select_merge_node(
 
         candidate = MergeNode(
             output_concepts=all_concepts,
-            input_concepts=normals + abstract_props,
+            input_concepts=unique(
+                normals
+                + abstract_props
+                + (list(merge_conditions.row_arguments) if merge_conditions else []),
+                "address",
+            ),
             environment=environment,
             depth=depth,
             parents=parents,
+            conditions=merge_conditions,
             preexisting_conditions=preexisting_conditions,
             force_join_type=force_join_type,
             force_group=force_merge_group,

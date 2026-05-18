@@ -70,16 +70,26 @@ def _persist_setup(executor):
     """)
 
 
+def _rows(executor, text: str) -> set[tuple]:
+    queries = executor.parse_text(text)
+    return {tuple(r) for r in executor.execute_query(queries[-1]).fetchall()}
+
+
 def test_full_unchanged_without_guard():
-    """No filter that proves either side non-null — FULL is preserved."""
+    """No filter that proves either side non-null — FULL is preserved, and
+    every row (fact NULL-region, dim-only AS) survives."""
     executor = Dialects.DUCK_DB.default_executor()
     _persist_setup(executor)
 
-    queries = executor.parse_text("""
-        SELECT region, sum(amount) as total;
-    """)
-    sql = executor.generate_sql(queries[-1])[0]
+    text = "SELECT region, sum(amount) as total;"
+    sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
     assert "FULL JOIN" in sql, sql
+    assert _rows(executor, text) == {
+        ("NA", 10),
+        ("EU", 20),
+        (None, 30),
+        ("AS", None),
+    }
 
 
 def test_full_to_inner_when_both_sides_proven():
@@ -91,13 +101,11 @@ def test_full_to_inner_when_both_sides_proven():
     # `region = 'NA'` proves the merged region (the join key) non-null;
     # `amount > 5` proves a left-only concept non-null. Together they rule
     # out both unmatched directions → INNER.
-    queries = executor.parse_text("""
-        WHERE region = 'NA' and amount > 5
-        SELECT region, sum(amount) as total;
-    """)
-    sql = executor.generate_sql(queries[-1])[0]
+    text = "WHERE region = 'NA' and amount > 5 SELECT region, sum(amount) as total;"
+    sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
     assert "FULL JOIN" not in sql, sql
     assert "INNER JOIN" in sql, sql
+    assert _rows(executor, text) == {("NA", 10)}
 
 
 def test_full_to_one_sided_outer_when_only_one_side_proven():
@@ -109,13 +117,13 @@ def test_full_to_one_sided_outer_when_only_one_side_proven():
     executor = Dialects.DUCK_DB.default_executor()
     _persist_setup(executor)
 
-    queries = executor.parse_text("""
-        WHERE amount > 5
-        SELECT region, sum(amount) as total;
-    """)
-    sql = executor.generate_sql(queries[-1])[0]
+    text = "WHERE amount > 5 SELECT region, sum(amount) as total;"
+    sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
     assert "FULL JOIN" not in sql, sql
     assert "LEFT OUTER JOIN" in sql or "RIGHT OUTER JOIN" in sql, sql
+    # The NULL-region fact row (amount 30) passes `amount > 5` and the dim is
+    # not nullable, so an INNER would wrongly drop it — it must survive.
+    assert _rows(executor, text) == {("NA", 10), ("EU", 20), (None, 30)}
 
 
 def test_full_kept_when_only_coalesced_key_proven():
@@ -125,14 +133,12 @@ def test_full_kept_when_only_coalesced_key_proven():
     executor = Dialects.DUCK_DB.default_executor()
     _persist_setup(executor)
 
-    queries = executor.parse_text("""
-        WHERE region is not null
-        SELECT region, sum(amount) as total;
-    """)
-    sql = executor.generate_sql(queries[-1])[0]
+    text = "WHERE region is not null SELECT region, sum(amount) as total;"
+    sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
     # The coalesce form keeps left-unmatched and right-unmatched rows alike,
     # so a downgrade would lose data — verify we don't emit the wrong shape.
     assert "FULL JOIN" in sql, sql
+    assert _rows(executor, text) == {("NA", 10), ("EU", 20), ("AS", None)}
 
 
 def test_proves_non_null_helpers():

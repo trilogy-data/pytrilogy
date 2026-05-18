@@ -1,34 +1,11 @@
 query_id = "44"
-gen_length = 3883
-preql_size = 886
+gen_length = 2856
+preql_size = 979
 comp_size = 1462
 generated_sql = """
 
 WITH 
-wakeful as (
-SELECT
-    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" = 4
-
-GROUP BY
-    1,
-    2),
 thoughtful as (
-SELECT
-    \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_id\",
-    avg(CASE WHEN \"ss_store_sales\".\"SS_ADDR_SK\" is null THEN \"ss_store_sales\".\"SS_NET_PROFIT\" ELSE NULL END) as \"threshold\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" = 4
-
-GROUP BY
-    1),
-abundant as (
 SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
     avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"item_avg_profit\"
@@ -39,106 +16,92 @@ WHERE
 
 GROUP BY
     1),
-cheerful as (
+cooperative as (
 SELECT
-    \"ss_item_items\".\"I_ITEM_SK\" as \"ss_item_id\",
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ss_item_product_name\",
-    \"wakeful\".\"ss_store_id\" as \"ss_store_id\"
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"wakeful\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
-    \"wakeful\".\"ss_store_id\" = 4
-),
-yummy as (
+    \"ss_store_sales\".\"SS_STORE_SK\" = 4
+
+GROUP BY
+    1,
+    \"ss_store_sales\".\"SS_STORE_SK\"),
+highfalutin as (
 SELECT
-    \"thoughtful\".\"threshold\" as \"threshold\",
-    \"wakeful\".\"ss_item_id\" as \"ss_item_id\"
+    avg(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"addr_null_threshold_threshold\"
 FROM
-    \"thoughtful\"
-    FULL JOIN \"wakeful\" on \"thoughtful\".\"ss_store_id\" is not distinct from \"wakeful\".\"ss_store_id\"),
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" = 4 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
+),
 questionable as (
 SELECT
-    \"cheerful\".\"ss_item_id\" as \"ss_item_id\",
-    \"cheerful\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"thoughtful\".\"threshold\" as \"threshold\"
+    \"thoughtful\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"thoughtful\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"cheerful\"
-    FULL JOIN \"thoughtful\" on \"cheerful\".\"ss_store_id\" is not distinct from \"thoughtful\".\"ss_store_id\"),
-juicy as (
+    \"cooperative\"
+    INNER JOIN \"thoughtful\" on \"cooperative\".\"ss_item_id\" = \"thoughtful\".\"ss_item_id\"),
+abundant as (
 SELECT
-    \"abundant\".\"item_avg_profit\" as \"item_avg_profit\",
-    \"yummy\".\"ss_item_id\" as \"ss_item_id\"
+    \"questionable\".\"item_avg_profit\" as \"item_avg_profit\",
+    \"questionable\".\"ss_item_id\" as \"ss_item_id\"
 FROM
-    \"yummy\"
-    INNER JOIN \"abundant\" on \"yummy\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
+    \"highfalutin\"
+    INNER JOIN \"questionable\" on 1=1
 WHERE
-    \"abundant\".\"item_avg_profit\" > 0.9 * \"yummy\".\"threshold\"
+    \"questionable\".\"item_avg_profit\" > 0.9 * \"highfalutin\".\"addr_null_threshold_threshold\"
 
 GROUP BY
     1,
     2),
 uneven as (
 SELECT
-    \"questionable\".\"ss_item_id\" as \"ss_item_id\",
-    \"questionable\".\"ss_item_product_name\" as \"ss_item_product_name\"
+    \"abundant\".\"ss_item_id\" as \"ss_item_id\",
+    rank() over (order by \"abundant\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
+    rank() over (order by \"abundant\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
 FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"ss_item_id\" = \"abundant\".\"ss_item_id\"
-WHERE
-    \"abundant\".\"item_avg_profit\" > 0.9 * \"questionable\".\"threshold\"
-
+    \"abundant\"),
+juicy as (
+SELECT
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"descending_worst_performing\",
+    \"uneven\".\"_descending_rnk_d\" as \"descending_rnk_d\",
+    \"uneven\".\"_descending_rnk_d\" as \"rnk\"
+FROM
+    \"uneven\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+GROUP BY
+    1,
+    2),
+yummy as (
+SELECT
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ascending_best_performing\",
+    \"uneven\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
+FROM
+    \"uneven\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"uneven\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2),
 vacuous as (
 SELECT
-    \"juicy\".\"ss_item_id\" as \"ss_item_id\",
-    rank() over (order by \"juicy\".\"item_avg_profit\" asc ) as \"_ascending_rnk_a\",
-    rank() over (order by \"juicy\".\"item_avg_profit\" desc ) as \"_descending_rnk_d\"
+    \"juicy\".\"descending_worst_performing\" as \"descending_worst_performing\",
+    \"juicy\".\"rnk\" as \"rnk\",
+    \"yummy\".\"ascending_best_performing\" as \"ascending_best_performing\"
 FROM
-    \"juicy\"),
-young as (
-SELECT
-    \"uneven\".\"ss_item_product_name\" as \"descending_worst_performing\",
-    \"vacuous\".\"_descending_rnk_d\" as \"descending_rnk_d\",
-    \"vacuous\".\"_descending_rnk_d\" as \"rnk\"
-FROM
-    \"uneven\"
-    INNER JOIN \"vacuous\" on \"uneven\".\"ss_item_id\" = \"vacuous\".\"ss_item_id\"
-GROUP BY
-    1,
-    2,
-    3),
-concerned as (
-SELECT
-    \"uneven\".\"ss_item_product_name\" as \"ascending_best_performing\",
-    \"vacuous\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
-FROM
-    \"uneven\"
-    INNER JOIN \"vacuous\" on \"uneven\".\"ss_item_id\" = \"vacuous\".\"ss_item_id\"
-GROUP BY
-    1,
-    2),
-sparkling as (
-SELECT
-    \"concerned\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"young\".\"descending_worst_performing\" as \"descending_worst_performing\",
-    \"young\".\"rnk\" as \"rnk\"
-FROM
-    \"young\"
-    INNER JOIN \"concerned\" on \"young\".\"descending_rnk_d\" = \"concerned\".\"ascending_rnk_a\"
+    \"juicy\"
+    INNER JOIN \"yummy\" on \"juicy\".\"descending_rnk_d\" = \"yummy\".\"ascending_rnk_a\"
 WHERE
-    \"young\".\"rnk\" < 11
+    \"juicy\".\"rnk\" < 11
 )
 SELECT
-    \"sparkling\".\"rnk\" as \"rnk\",
-    \"sparkling\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"sparkling\".\"descending_worst_performing\" as \"descending_worst_performing\"
+    \"vacuous\".\"rnk\" as \"rnk\",
+    \"vacuous\".\"ascending_best_performing\" as \"ascending_best_performing\",
+    \"vacuous\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
-    \"sparkling\"
+    \"vacuous\"
 ORDER BY 
-    \"sparkling\".\"rnk\" asc nulls first,
-    \"sparkling\".\"ascending_best_performing\" desc nulls first,
-    \"sparkling\".\"descending_worst_performing\" desc nulls first
+    \"vacuous\".\"rnk\" asc nulls first,
+    \"vacuous\".\"ascending_best_performing\" desc nulls first,
+    \"vacuous\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""

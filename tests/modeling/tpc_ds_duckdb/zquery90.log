@@ -1,14 +1,13 @@
 query_id = "90"
-gen_length = 1508
-preql_size = 527
+gen_length = 1211
+preql_size = 483
 comp_size = 982
 generated_sql = """
-
-WITH 
-thoughtful as (
 SELECT
-    count(CASE WHEN \"ws_time_time\".\"T_HOUR\" >= 19 and \"ws_time_time\".\"T_HOUR\" <= 20 THEN \"ws_web_sales\".\"WS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_8726078676153832\",
-    count(CASE WHEN \"ws_time_time\".\"T_HOUR\" >= 8 and \"ws_time_time\".\"T_HOUR\" <= 9 THEN \"ws_web_sales\".\"WS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_6931757147716189\"
+    CASE
+	WHEN sum(CASE WHEN \"ws_time_time\".\"T_HOUR\" >= 19 and \"ws_time_time\".\"T_HOUR\" <= 20 THEN 1 ELSE NULL END) = 0 THEN null
+	ELSE cast(sum(CASE WHEN \"ws_time_time\".\"T_HOUR\" >= 8 and \"ws_time_time\".\"T_HOUR\" <= 9 THEN 1 ELSE NULL END) as numeric(15,4)) / cast(sum(CASE WHEN \"ws_time_time\".\"T_HOUR\" >= 19 and \"ws_time_time\".\"T_HOUR\" <= 20 THEN 1 ELSE NULL END) as numeric(15,4))
+	END as \"am_pm_ratio\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"time_dim\" as \"ws_time_time\" on \"ws_web_sales\".\"WS_SOLD_TIME_SK\" = \"ws_time_time\".\"T_TIME_SK\"
@@ -17,15 +16,6 @@ FROM
 WHERE
     \"ws_ship_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 6 and \"ws_web_page_web_page\".\"WP_CHAR_COUNT\" >= 5000 and \"ws_web_page_web_page\".\"WP_CHAR_COUNT\" <= 5200 and \"ws_time_time\".\"T_HOUR\" in (8,9,19,20)
 
-GROUP BY
-    \"ws_web_sales\".\"WS_ORDER_NUMBER\")
-SELECT
-    CASE
-	WHEN sum(\"thoughtful\".\"_virt_agg_count_8726078676153832\") = 0 THEN null
-	ELSE cast(sum(\"thoughtful\".\"_virt_agg_count_6931757147716189\") as numeric(15,4)) / cast(sum(\"thoughtful\".\"_virt_agg_count_8726078676153832\") as numeric(15,4))
-	END as \"am_pm_ratio\"
-FROM
-    \"thoughtful\"
 ORDER BY 
     \"am_pm_ratio\" asc nulls first
 LIMIT (100)"""

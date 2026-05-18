@@ -14,6 +14,7 @@ from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_implies_with_extras,
     decompose_condition,
+    is_scalar_condition,
 )
 
 ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
@@ -252,7 +253,53 @@ def get_graph_exact_match(
             canonical_to_concept=canonical_to_concept,
         ):
             exact.add(node)
-    return exact
+    if exact or not conditions or relevant_concepts is None:
+        return exact
+    return _get_collective_condition_matches(g, conditions, relevant_concepts)
+
+
+def _get_collective_condition_matches(
+    g: "ReferenceGraph",
+    conditions: BuildWhereClause,
+    relevant_concepts: set[str],
+) -> set[str]:
+    keep: set[str] = set()
+    datasources = {
+        node: ds
+        for node, ds in g.datasources.items()
+        if isinstance(ds, BuildDatasource)
+        and not ds.non_partial_for
+        and not any(c.is_aggregate for c in ds.output_concepts)
+    }
+    if not datasources:
+        return keep
+    for atom in decompose_condition(conditions.conditional):
+        if any(arg for group in atom.existence_arguments for arg in group):
+            return set()
+        if not is_scalar_condition(atom):
+            return set()
+        atom_addresses = {
+            c.canonical_address
+            for c in atom.row_arguments
+            if c.derivation != Derivation.CONSTANT
+        }
+        if not atom_addresses:
+            continue
+        atom_matches = set()
+        for node, ds in datasources.items():
+            outputs = {c.canonical_address for c in ds.output_concepts}
+            partials = {c.canonical_address for c in ds.partial_concepts}
+            if atom_addresses.issubset(outputs) and atom_addresses.isdisjoint(partials):
+                atom_matches.add(node)
+        if not atom_matches:
+            return set()
+        keep.update(atom_matches)
+    for node, ds in datasources.items():
+        outputs = {c.canonical_address for c in ds.output_concepts}
+        partials = {c.canonical_address for c in ds.partial_concepts}
+        if (outputs & relevant_concepts) - partials:
+            keep.add(node)
+    return keep
 
 
 def prune_sources_for_conditions(

@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 5540
+gen_length = 4643
 preql_size = 922
 comp_size = 2566
 generated_sql = """
@@ -57,36 +57,29 @@ GROUP BY
     1),
 juicy as (
 SELECT
-    \"abundant\".\"_virt_agg_sum_1215995592885356\" as \"_virt_agg_sum_1215995592885356\",
-    \"abundant\".\"_virt_agg_sum_1755492547499297\" as \"_virt_agg_sum_1755492547499297\",
-    \"abundant\".\"_virt_agg_sum_3160525683686265\" as \"_virt_agg_sum_3160525683686265\",
-    \"abundant\".\"_virt_agg_sum_3226984322777641\" as \"_virt_agg_sum_3226984322777641\",
-    \"abundant\".\"_virt_agg_sum_5503961012463124\" as \"_virt_agg_sum_5503961012463124\",
-    \"abundant\".\"_virt_agg_sum_5898269946212687\" as \"_virt_agg_sum_5898269946212687\",
-    \"abundant\".\"_virt_agg_sum_6232287870778562\" as \"_virt_agg_sum_6232287870778562\",
     \"abundant\".\"sales_date_week_seq\" as \"sales_date_week_seq\",
-    lead(\"abundant\".\"_virt_agg_sum_1215995592885356\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc ) as \"_virt_window_lead_8434916643189094\",
-    lead(\"abundant\".\"_virt_agg_sum_1755492547499297\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc ) as \"_virt_window_lead_1513977696668684\",
-    lead(\"abundant\".\"_virt_agg_sum_3160525683686265\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc ) as \"_virt_window_lead_6726398054446491\",
-    lead(\"abundant\".\"_virt_agg_sum_3226984322777641\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc ) as \"_virt_window_lead_7589933802981203\",
-    lead(\"abundant\".\"_virt_agg_sum_5503961012463124\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc ) as \"_virt_window_lead_5402686874923245\",
-    lead(\"abundant\".\"_virt_agg_sum_5898269946212687\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc ) as \"_virt_window_lead_3355739386573542\",
-    lead(\"abundant\".\"_virt_agg_sum_6232287870778562\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc ) as \"_virt_window_lead_8846802885933861\"
+    round(\"abundant\".\"_virt_agg_sum_1215995592885356\" / (lead(\"abundant\".\"_virt_agg_sum_1215995592885356\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc )),2) as \"monday_increase\",
+    round(\"abundant\".\"_virt_agg_sum_1755492547499297\" / (lead(\"abundant\".\"_virt_agg_sum_1755492547499297\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc )),2) as \"friday_increase\",
+    round(\"abundant\".\"_virt_agg_sum_3160525683686265\" / (lead(\"abundant\".\"_virt_agg_sum_3160525683686265\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc )),2) as \"saturday_increase\",
+    round(\"abundant\".\"_virt_agg_sum_3226984322777641\" / (lead(\"abundant\".\"_virt_agg_sum_3226984322777641\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc )),2) as \"thursday_increase\",
+    round(\"abundant\".\"_virt_agg_sum_5503961012463124\" / (lead(\"abundant\".\"_virt_agg_sum_5503961012463124\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc )),2) as \"tuesday_increase\",
+    round(\"abundant\".\"_virt_agg_sum_5898269946212687\" / (lead(\"abundant\".\"_virt_agg_sum_5898269946212687\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc )),2) as \"sunday_increase\",
+    round(\"abundant\".\"_virt_agg_sum_6232287870778562\" / (lead(\"abundant\".\"_virt_agg_sum_6232287870778562\", 53) over (order by \"abundant\".\"sales_date_week_seq\" asc )),2) as \"wednesday_increase\"
 FROM
     \"abundant\")
 SELECT
     \"juicy\".\"sales_date_week_seq\" as \"sales_date_week_seq\",
-    round(\"juicy\".\"_virt_agg_sum_5898269946212687\" / (\"juicy\".\"_virt_window_lead_3355739386573542\"),2) as \"sunday_increase\",
-    round(\"juicy\".\"_virt_agg_sum_1215995592885356\" / (\"juicy\".\"_virt_window_lead_8434916643189094\"),2) as \"monday_increase\",
-    round(\"juicy\".\"_virt_agg_sum_5503961012463124\" / (\"juicy\".\"_virt_window_lead_5402686874923245\"),2) as \"tuesday_increase\",
-    round(\"juicy\".\"_virt_agg_sum_6232287870778562\" / (\"juicy\".\"_virt_window_lead_8846802885933861\"),2) as \"wednesday_increase\",
-    round(\"juicy\".\"_virt_agg_sum_3226984322777641\" / (\"juicy\".\"_virt_window_lead_7589933802981203\"),2) as \"thursday_increase\",
-    round(\"juicy\".\"_virt_agg_sum_1755492547499297\" / (\"juicy\".\"_virt_window_lead_1513977696668684\"),2) as \"friday_increase\",
-    round(\"juicy\".\"_virt_agg_sum_3160525683686265\" / (\"juicy\".\"_virt_window_lead_6726398054446491\"),2) as \"saturday_increase\"
+    \"juicy\".\"sunday_increase\" as \"sunday_increase\",
+    \"juicy\".\"monday_increase\" as \"monday_increase\",
+    \"juicy\".\"tuesday_increase\" as \"tuesday_increase\",
+    \"juicy\".\"wednesday_increase\" as \"wednesday_increase\",
+    \"juicy\".\"thursday_increase\" as \"thursday_increase\",
+    \"juicy\".\"friday_increase\" as \"friday_increase\",
+    \"juicy\".\"saturday_increase\" as \"saturday_increase\"
 FROM
     \"juicy\"
 WHERE
-    round(\"juicy\".\"_virt_agg_sum_5898269946212687\" / (\"juicy\".\"_virt_window_lead_3355739386573542\"),2) is not null
+    \"juicy\".\"sunday_increase\" is not null
 
 ORDER BY 
     \"juicy\".\"sales_date_week_seq\" asc nulls first

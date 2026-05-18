@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 4075
+gen_length = 4636
 preql_size = 1282
 comp_size = 1999
 generated_sql = """
@@ -29,7 +29,7 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
 ),
-yummy as (
+vacuous as (
 SELECT
     \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
     \"cheerful\".\"sales_sales_channel\" as \"sales_sales_channel\",
@@ -41,6 +41,18 @@ GROUP BY
     1,
     2,
     3),
+yummy as (
+SELECT
+    \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
+    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
+FROM
+    \"cheerful\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+GROUP BY
+    1,
+    2,
+    \"cheerful\".\"sales_sales_channel\",
+    \"sales_date_date\".\"D_MONTH_SEQ\"),
 cooperative as (
 SELECT
     \"cheerful\".\"sales_item_id\" as \"sales_item_id\",
@@ -53,20 +65,20 @@ FROM
 GROUP BY
     1,
     2),
-juicy as (
+concerned as (
 SELECT
-    \"yummy\".\"sales_date_date\" as \"sales_date_date\",
-    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
+    \"vacuous\".\"sales_date_date\" as \"sales_date_date\",
+    \"vacuous\".\"sales_item_id\" as \"sales_item_id\",
     max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 1
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'STORE' THEN 1
 	ELSE 0
 	END) as \"store_has_row\",
     max(CASE
-	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 1
+	WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' THEN 1
 	ELSE 0
 	END) as \"web_has_row\"
 FROM
-    \"yummy\"
+    \"vacuous\"
 GROUP BY
     1,
     2),
@@ -78,36 +90,42 @@ SELECT
     sum(\"cooperative\".\"web_daily\") over (partition by \"cooperative\".\"sales_item_id\" order by \"cooperative\".\"sales_date_date\" asc ) as \"web_cume\"
 FROM
     \"cooperative\"),
-vacuous as (
+juicy as (
 SELECT
-    \"uneven\".\"store_cume\" as \"store_cumulative\",
-    \"uneven\".\"web_cume\" as \"web_cumulative\",
-    CASE
-	WHEN \"juicy\".\"store_has_row\" = 1 THEN \"uneven\".\"store_cume\"
-	ELSE null
-	END as \"store_sales\",
-    CASE
-	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"uneven\".\"web_cume\"
-	ELSE null
-	END as \"web_sales\",
-    coalesce(\"juicy\".\"sales_date_date\",\"uneven\".\"sales_date_date\") as \"d_date\",
-    coalesce(\"juicy\".\"sales_item_id\",\"uneven\".\"sales_item_id\") as \"item_sk\"
+    \"uneven\".\"store_cume\" as \"store_cume\",
+    \"uneven\".\"web_cume\" as \"web_cume\",
+    coalesce(\"uneven\".\"sales_date_date\",\"yummy\".\"sales_date_date\") as \"sales_date_date\",
+    coalesce(\"uneven\".\"sales_item_id\",\"yummy\".\"sales_item_id\") as \"sales_item_id\"
 FROM
     \"uneven\"
-    FULL JOIN \"juicy\" on \"uneven\".\"sales_date_date\" is not distinct from \"juicy\".\"sales_date_date\" AND \"uneven\".\"sales_item_id\" = \"juicy\".\"sales_item_id\")
+    FULL JOIN \"yummy\" on \"uneven\".\"sales_date_date\" is not distinct from \"yummy\".\"sales_date_date\" AND \"uneven\".\"sales_item_id\" = \"yummy\".\"sales_item_id\")
 SELECT
-    \"vacuous\".\"item_sk\" as \"item_sk\",
-    \"vacuous\".\"d_date\" as \"d_date\",
-    \"vacuous\".\"web_sales\" as \"web_sales\",
-    \"vacuous\".\"store_sales\" as \"store_sales\",
-    \"vacuous\".\"web_cumulative\" as \"web_cumulative\",
-    \"vacuous\".\"store_cumulative\" as \"store_cumulative\"
+    coalesce(\"concerned\".\"sales_item_id\",\"juicy\".\"sales_item_id\") as \"item_sk\",
+    coalesce(\"concerned\".\"sales_date_date\",\"juicy\".\"sales_date_date\") as \"d_date\",
+    CASE
+	WHEN \"concerned\".\"web_has_row\" = 1 THEN \"juicy\".\"web_cume\"
+	ELSE null
+	END as \"web_sales\",
+    CASE
+	WHEN \"concerned\".\"store_has_row\" = 1 THEN \"juicy\".\"store_cume\"
+	ELSE null
+	END as \"store_sales\",
+    \"juicy\".\"web_cume\" as \"web_cumulative\",
+    \"juicy\".\"store_cume\" as \"store_cumulative\"
 FROM
-    \"vacuous\"
+    \"juicy\"
+    FULL JOIN \"concerned\" on \"juicy\".\"sales_date_date\" is not distinct from \"concerned\".\"sales_date_date\" AND \"juicy\".\"sales_item_id\" = \"concerned\".\"sales_item_id\"
 WHERE
-    \"vacuous\".\"web_cumulative\" > \"vacuous\".\"store_cumulative\"
+    \"juicy\".\"web_cume\" > \"juicy\".\"store_cume\"
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
 ORDER BY 
-    \"vacuous\".\"item_sk\" asc nulls first,
-    \"vacuous\".\"d_date\" asc nulls first
+    \"item_sk\" asc nulls first,
+    \"d_date\" asc nulls first
 LIMIT (100)"""

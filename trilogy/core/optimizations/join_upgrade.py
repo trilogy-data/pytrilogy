@@ -32,7 +32,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from trilogy.core.enums import ComparisonOperator, JoinType, Modifier
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    JoinType,
+    Modifier,
+)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
@@ -65,9 +70,20 @@ class _ProofState:
     direct: set[str]
     cte_keys: set[tuple[str, str]] = field(default_factory=set)
     datasource_keys: set[tuple[str, str]] = field(default_factory=set)
+    or_groups: list[list[set[str]]] = field(default_factory=list)
 
     def direct_intersects(self, addresses: set[str]) -> bool:
         return bool(self.direct & addresses)
+
+    def side_forced_by_or(self, side_only: set[str]) -> bool:
+        """An OR atom forces a side present when every disjunct proves a
+        concept unique to that side — whichever disjunct made the row survive,
+        a side-only column is non-null, so no unmatched (NULL-padded) row of
+        that side can survive."""
+        return any(
+            all(bool(disjunct & side_only) for disjunct in group)
+            for group in self.or_groups
+        )
 
     def proves_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
         return address in self.direct or (cte.name, address) in self.cte_keys
@@ -117,12 +133,30 @@ def _pair_can_match_nulls(
     )
 
 
+def _or_disjuncts(
+    atom: BuildComparison | BuildConditional | BuildParenthetical,
+) -> list[BuildComparison | BuildConditional | BuildParenthetical]:
+    """Flatten an OR tree (unwrapping parentheticals) into its disjuncts.
+
+    A non-OR node returns ``[node]`` (a single "disjunct")."""
+    if isinstance(atom, BuildParenthetical):
+        return _or_disjuncts(atom.content)  # type: ignore[arg-type]
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
+        return _or_disjuncts(atom.left) + _or_disjuncts(atom.right)  # type: ignore[arg-type]
+    return [atom]
+
+
 def _proves_non_null(
     atom: BuildComparison | BuildConditional | BuildParenthetical,
 ) -> set[str]:
     """Concept addresses that this AND-atom forces non-null in surviving rows."""
     if isinstance(atom, BuildParenthetical):
         return _proves_non_null(atom.content)  # type: ignore[arg-type]
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
+        # A surviving row satisfies at least one disjunct but we don't know
+        # which — only concepts non-null under *every* disjunct are proven.
+        sets = [_gather_proofs(d) for d in _or_disjuncts(atom)]
+        return set.intersection(*sets) if sets else set()
     if not isinstance(atom, BuildComparison):
         return set()
 
@@ -153,6 +187,24 @@ def _gather_proofs(
     return {
         addr for atom in decompose_condition(cond) for addr in _proves_non_null(atom)
     }
+
+
+def _gather_or_groups(
+    cond: BuildComparison | BuildConditional | BuildParenthetical,
+) -> list[list[set[str]]]:
+    """Per-OR-atom disjunct proof sets, for side-level (not concept-level)
+    proofs. ``(a.x = 1 OR a.y = 2)`` proves no single concept non-null, but
+    every disjunct forces the ``a`` side present — enough to drop ``a``'s
+    unmatched rows. Only kept when every disjunct proves something."""
+    groups: list[list[set[str]]] = []
+    for atom in decompose_condition(cond):
+        disjuncts = _or_disjuncts(atom)
+        if len(disjuncts) < 2:
+            continue
+        sets = [_gather_proofs(d) for d in disjuncts]
+        if all(sets):
+            groups.append(sets)
+    return groups
 
 
 def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
@@ -307,6 +359,7 @@ def _downgrade(
     # right side.
     left_forced = (
         proofs.direct_intersects(left_only)
+        or proofs.side_forced_by_or(left_only)
         or any(
             proofs.proves_cte_present(left_cte, _cte_addresses(left_cte))
             for left_cte in left_ctes
@@ -318,6 +371,7 @@ def _downgrade(
     )
     right_forced = (
         proofs.direct_intersects(right_only)
+        or proofs.side_forced_by_or(right_only)
         or proofs.proves_cte_present(join.right_cte, right_all)
         or (
             bool(pairs)
@@ -392,6 +446,7 @@ def _downgrade_base_join(
 
     right_forced = (
         proofs.direct_intersects(right_only)
+        or proofs.side_forced_by_or(right_only)
         or proofs.proves_datasource_present(right_ds, right_all)
         or (
             right_base is not None
@@ -502,9 +557,10 @@ class UpgradeJoinOnGuards(OptimizationRule):
             return False, None
 
         direct_proofs = _gather_proofs(cte.condition)
-        if not direct_proofs:
+        or_groups = _gather_or_groups(cte.condition)
+        if not direct_proofs and not or_groups:
             return False, None
-        proofs = _ProofState(direct=direct_proofs)
+        proofs = _ProofState(direct=direct_proofs, or_groups=or_groups)
 
         # Iterate to fixpoint: when an INNER join uses null-rejecting key
         # predicates, keys for those specific sources are non-null. Source-bound

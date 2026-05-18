@@ -58,7 +58,63 @@ def finalize_select_node(
     environment: BuildEnvironment,
     depth: int,
     defer_group: bool = False,
+    requested_concepts: list[BuildConcept] | None = None,
 ) -> StrategyNode:
+
+    node = candidate.node
+    # When the concept set was widened with filter-only columns so a pushed
+    # WHERE could be sourced, the source can be finer than the requested grain
+    # (e.g. count(<key>) off a datasource whose grain is below <key>). The
+    # condition is applied on `node`, so its filter columns are already
+    # consumed — collapse back to the requested grain here, *after* the
+    # condition, instead of letting the request fan out.
+    if requested_concepts is not None and not defer_group:
+        req_addrs = {c.canonical_address for c in requested_concepts}
+        output_addrs = {c.canonical_address for c in node.usable_outputs}
+        condition_applied = (
+            node.conditions is not None or node.preexisting_conditions is not None
+        )
+        node_grain = (
+            BuildGrain.from_concepts(node.grain.components, environment=environment)
+            if node.grain
+            else None
+        )
+        requested_grain = BuildGrain.from_concepts(
+            requested_concepts, environment=environment
+        )
+        if (
+            req_addrs
+            and req_addrs.issubset(output_addrs)
+            and condition_applied
+            and node_grain is not None
+            and not node_grain.issubset(requested_grain)
+        ):
+            grouped_output = [
+                c for c in node.output_concepts if c.canonical_address in req_addrs
+            ]
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} regrouping widened source to "
+                f"requested grain {[c.address for c in grouped_output]} after "
+                "condition application"
+            )
+            return GroupNode(
+                output_concepts=grouped_output,
+                input_concepts=node.output_concepts,
+                environment=environment,
+                parents=[node],
+                depth=depth + 1,
+                partial_concepts=[
+                    c for c in node.partial_concepts if c.canonical_address in req_addrs
+                ],
+                nullable_concepts=[
+                    c
+                    for c in node.nullable_concepts
+                    if c.canonical_address in req_addrs
+                ],
+                preexisting_conditions=node.preexisting_conditions,
+                force_group=True,
+            )
+
     if candidate.force_group is True and not defer_group:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
@@ -372,7 +428,7 @@ def create_union_datasource_candidate(
         parents.append(subnode)
         force_group = force_group or fg
         if fg:
-            group_source_count += 1
+            group_source_count = max(group_source_count, 1)
     # Intrinsic column-level partials (``~col``, captured at parse time) carry
     # over by default — the column is missing values relative to its universe
     # and the union doesn't necessarily repair that. Two cases DO repair it:

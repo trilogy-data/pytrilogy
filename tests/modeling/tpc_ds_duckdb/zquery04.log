@@ -1,5 +1,5 @@
 query_id = "04"
-gen_length = 11323
+gen_length = 11320
 preql_size = 1685
 comp_size = 4661
 generated_sql = """
@@ -101,7 +101,10 @@ SELECT
 FROM
     \"uneven\"
 GROUP BY
-    1),
+    1
+HAVING
+    \"catalog_first_year\" > 0
+),
 kaput as (
 SELECT
     \"uneven\".\"sales_customer_id\" as \"sales_customer_id\",
@@ -216,7 +219,7 @@ FROM
     \"busy\"
     INNER JOIN \"charming\" on \"busy\".\"sales_customer_id\" is not distinct from \"charming\".\"sales_customer_id\"
 WHERE
-    \"busy\".\"store_first_year\" > 0 and \"charming\".\"catalog_first_year\" > 0 and \"busy\".\"web_first_year\" > 0 and ( CASE
+    \"busy\".\"store_first_year\" > 0 and \"busy\".\"web_first_year\" > 0 and ( CASE
 	WHEN \"charming\".\"catalog_first_year\" > 0 THEN \"busy\".\"catalog_second_year\" / \"charming\".\"catalog_first_year\"
 	ELSE null
 	END ) > ( CASE

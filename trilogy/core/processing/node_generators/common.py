@@ -10,15 +10,24 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
+    BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
     LooseBuildConceptList,
+    concept_is_relevant,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
+    condition_implies,
+    condition_required_addresses,
+    decompose_condition,
+)
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,
@@ -29,6 +38,90 @@ from trilogy.utility import unique
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 FUNCTION_TYPES = (BuildFunction,)
+ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+
+
+def _node_has_preexisting_conditions(
+    node: StrategyNode,
+    condition: ConditionExpression,
+) -> bool:
+    return node.preexisting_conditions == condition or (
+        node.preexisting_conditions is not None
+        and condition_implies(node.preexisting_conditions, condition)
+    )
+
+
+def _preexisting_conditions_from_parents(
+    parents: list[StrategyNode],
+    conditions: BuildWhereClause | None,
+) -> ConditionExpression | None:
+    if conditions is None or not parents:
+        return None
+    if all(
+        _node_has_preexisting_conditions(parent, conditions.conditional)
+        for parent in parents
+    ):
+        return conditions.conditional
+    return None
+
+
+def _condition_available_from_parents(
+    parents: list[StrategyNode],
+    condition: ConditionExpression,
+) -> bool:
+    available = {
+        concept.canonical_address
+        for parent in parents
+        for concept in parent.usable_outputs
+    }
+    return condition_required_addresses(condition).issubset(available)
+
+
+def _local_property_conditions(
+    conditions: BuildWhereClause | None,
+    required: list[BuildConcept],
+    key_addresses: set[str],
+) -> tuple[BuildWhereClause | None, list[BuildConcept]]:
+    if conditions is None:
+        return None, []
+    available = {c.canonical_address for c in required}
+    condition_concepts: list[BuildConcept] = []
+    atoms: list[ConditionExpression] = []
+    for atom in decompose_condition(conditions.conditional):
+        atom_concepts = [
+            c for c in atom.row_arguments if c.derivation != Derivation.CONSTANT
+        ]
+        extra_concepts = [
+            c
+            for c in atom_concepts
+            if c.canonical_address not in available
+            and c.keys
+            and c.keys.issubset(key_addresses)
+        ]
+        lineage_concepts = [
+            c
+            for c in atom_concepts
+            if c.canonical_address not in available
+            and any(
+                required_concept.derivation
+                not in (Derivation.ROOT, Derivation.CONSTANT)
+                and concept_is_relevant(required_concept, [c])
+                for required_concept in required
+            )
+        ]
+        atom_addresses = {c.canonical_address for c in atom_concepts}
+        extra_addresses = {c.canonical_address for c in extra_concepts}
+        lineage_addresses = {c.canonical_address for c in lineage_concepts}
+        if atom_addresses.issubset(available | extra_addresses | lineage_addresses):
+            atoms.append(atom)
+            condition_concepts.extend(extra_concepts + lineage_concepts)
+            available.update(extra_addresses | lineage_addresses)
+    condition = combine_condition_atoms(atoms)
+    if condition is None:
+        return None, []
+    return BuildWhereClause(conditional=condition), unique(
+        condition_concepts, "address"
+    )
 
 
 def _walk_aggregate_grain_inputs(
@@ -186,14 +279,24 @@ def gen_property_enrichment_node(
     for _k, vs in required_keys.items():
         log_lambda(f"Generating enrichment node for {_k} with {vs}")
         ks = _k.split("-")
+        required = [environment.concepts[k] for k in ks] + [
+            environment.concepts[v] for v in vs
+        ]
+        key_addresses = set(ks)
+        for key in ks:
+            key_addresses.update(environment.concepts[key].keys or set())
+        local_conditions, local_condition_concepts = _local_property_conditions(
+            conditions,
+            required,
+            key_addresses,
+        )
         enrich_node: StrategyNode = source_concepts(
-            mandatory_list=[environment.concepts[k] for k in ks]
-            + [environment.concepts[v] for v in vs],
+            mandatory_list=unique(required + local_condition_concepts, "address"),
             environment=environment,
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=conditions,
+            conditions=local_conditions,
         )
         if not enrich_node:
             return None
@@ -527,7 +630,7 @@ def reinject_common_join_keys_v2(
             final.add_edge(ds1, cnode)
             final.add_edge(ds2, cnode)
 
-            logger.info(
+            logger.debug(
                 f"{LOGGER_PREFIX} reinjecting common join key {cnode} "
                 f"between {ds1} and {ds2}, existing {existing}"
             )

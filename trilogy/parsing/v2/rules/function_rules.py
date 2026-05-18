@@ -240,9 +240,10 @@ def aggregate_rollup(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> AggregateGrouping:
+    args = hydrated_children(node, hydrate)
     return AggregateGrouping(
         mode=AggregateGroupingMode.ROLLUP,
-        by=hydrated_children(node, hydrate)[0],
+        by=args[0] if args else [],
     )
 
 
@@ -750,6 +751,20 @@ def window_item_from_args(
     args = hydrated_children(node, hydrate)
     wtype, field_args, offset, order_by, over = _parse_window_args(args, context)
     if not field_args:
+        has_fieldlike_arg = any(
+            not isinstance(item, (WindowType, WindowItemOrder, WindowItemOver, dict))
+            for item in args
+        )
+        if (
+            node.kind == SyntaxNodeKind.WINDOW_ITEM_SQL_NUMBERING
+            and not has_fieldlike_arg
+        ):
+            return NumberingWindowItem(
+                type=wtype,
+                arguments=[],
+                over=over,
+                order_by=order_by,
+            )
         raise fail(node, _WINDOW_ITEM_MISSING_FIELD_ERROR[node.kind])
     if wtype in NUMBERING_WINDOW_TYPES:
         return NumberingWindowItem(

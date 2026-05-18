@@ -4,14 +4,22 @@ from pathlib import Path
 
 import pytest
 
+from trilogy import Dialects
 from trilogy.constants import CONFIG, ParserBackend
-from trilogy.core.enums import AggregateGroupingMode, DatasourceState
+from trilogy.core.enums import AggregateGroupingMode, DatasourceState, WindowType
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
+from trilogy.core.models.author import (
+    ConceptRef,
+    Metadata,
+    NumberingWindowItem,
+    UndefinedConcept,
+)
 from trilogy.core.models.environment import (
     DictImportResolver,
     Environment,
     EnvironmentConfig,
 )
+from trilogy.parsing.common import _numbering_window_to_concept
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
 
@@ -405,6 +413,67 @@ select
         rendered = str(output[-1])
         assert "sum(x) by rollup a, b -> sx" in rendered
         assert "sum(x) by grouping sets (a, b), (a), () -> sx_sets" in rendered
+
+
+def test_empty_rollup_and_rank_inherit_select_grain() -> None:
+    query = """
+key a int;
+key b int;
+key x int;
+select
+    a,
+    b,
+    sum(x) by rollup() as sx,
+    rank() over (partition by a order by sx desc) as rk;
+"""
+    for backend in (ParserBackend.PEST, ParserBackend.LARK):
+        with _using_backend(backend):
+            _, output = parse_text(query, Environment())
+        select = output[-1]
+        rollup = select.local_concepts["local.sx"].lineage
+        rank = select.local_concepts["local.rk"].lineage
+        assert rollup.grouping == AggregateGroupingMode.ROLLUP
+        assert {item.address for item in rollup.by} == {"local.a", "local.b"}
+        assert {item.address for item in rank.arguments} == {"local.a", "local.b"}
+
+
+def test_empty_top_level_rollup_inherits_build_grain() -> None:
+    query = """
+const a <- unnest([1, 2, 3]);
+const b <- unnest([1, 1, 2]);
+auto sx <- sum(1) by rollup();
+select
+    a,
+    b,
+    sx,
+    rank() over (partition by a order by sx desc) as rk;
+"""
+    for backend in (ParserBackend.PEST, ParserBackend.LARK):
+        with _using_backend(backend):
+            sql = Dialects.DUCK_DB.default_executor().generate_sql(query)[-1]
+        assert "ROLLUP" in sql
+        assert "rank() over" in sql
+
+
+def test_numbering_window_returns_undefined_for_undefined_anchor() -> None:
+    env = Environment()
+    env.concepts["local.missing"] = UndefinedConcept(address="local.missing")
+    item = NumberingWindowItem(
+        type=WindowType.RANK,
+        arguments=[ConceptRef(address="local.missing")],
+        over=[],
+        order_by=[],
+    )
+
+    concept = _numbering_window_to_concept(
+        item,
+        name="rk",
+        namespace="local",
+        environment=env,
+        metadata=Metadata(),
+    )
+
+    assert isinstance(concept, UndefinedConcept)
 
 
 def test_lark_parse_error_keeps_rich_error_codes() -> None:

@@ -22,13 +22,47 @@ from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
 from trilogy.core.optimization import (
     PredicatePushdown,
     PredicatePushdownRemove,
+    _grains_equivalent,
 )
 from trilogy.core.optimizations.predicate_pushdown import (
     _consumer_outer_joins_union,
     _parent_covers_condition,
+    _parent_nullable_in_cte,
     is_child_of,
 )
 from trilogy.core.processing.condition_utility import decompose_condition
+
+
+def _simple_cte(
+    name: str,
+    columns,
+    *,
+    grain: BuildGrain | None = None,
+    condition=None,
+    group_to_grain: bool = False,
+    source_map: dict[str, list[str]] | None = None,
+    parent_ctes=None,
+    joins=None,
+) -> CTE:
+    local_grain = grain or BuildGrain()
+    return CTE(
+        name=name,
+        source=QueryDatasource(
+            input_concepts=columns,
+            output_concepts=columns,
+            datasources=[],
+            grain=local_grain,
+            joins=[],
+            source_map={c.address: set() for c in columns},
+        ),
+        output_columns=columns,
+        source_map=source_map or {c.address: [name] for c in columns},
+        grain=local_grain,
+        condition=condition,
+        group_to_grain=group_to_grain,
+        parent_ctes=parent_ctes or [],
+        joins=joins or [],
+    )
 
 
 def test_is_child_function():
@@ -76,6 +110,100 @@ def test_is_child_function():
             condition.left,
         )
         is False
+    )
+
+
+def test_grains_equivalent_rejects_empty_grain_fallback(test_environment):
+    build_env = test_environment.materialize_for_select()
+    product_id = build_env.concepts["product_id"]
+    child = _simple_cte(
+        "child",
+        [product_id],
+        grain=BuildGrain(components={product_id.address}),
+    )
+    parent = _simple_cte("parent", [product_id], grain=BuildGrain())
+
+    assert not _grains_equivalent(child, parent)
+
+
+def test_parent_nullable_ignores_non_join_entries(test_environment):
+    build_env = test_environment.materialize_for_select()
+    product_id = build_env.concepts["product_id"]
+    cte = _simple_cte("child", [product_id], joins=[object()])
+
+    assert not _parent_nullable_in_cte(cte, "parent")
+
+
+def test_having_pushdown_guard_branches():
+    env = Environment()
+    env.parse(
+        """
+key sale_id int;
+auto sale_count <- count(sale_id);
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    sale_count = build_env.concepts["sale_count"]
+    condition = BuildComparison(
+        left=sale_count,
+        right=1,
+        operator=ComparisonOperator.GT,
+    )
+    rule = PredicatePushdown(having_alias=True)
+    group_parent = _simple_cte(
+        "grouped",
+        [sale_count],
+        condition=None,
+        group_to_grain=True,
+    )
+    consumer = _simple_cte("consumer", [sale_count], condition=condition)
+    plain_parent = _simple_cte(
+        "plain",
+        [sale_count],
+        condition=None,
+        group_to_grain=False,
+    )
+
+    assert not rule._push_having_into_group_parent(
+        consumer, plain_parent, condition, {}
+    )
+    assert not rule._push_having_into_group_parent(consumer, group_parent, None, {})
+    assert not rule._push_having_into_group_parent(
+        consumer,
+        group_parent,
+        BuildSubselectComparison(
+            left=sale_count,
+            right=sale_count,
+            operator=ComparisonOperator.IN,
+        ),
+        {},
+    )
+    assert not rule._push_having_into_group_parent(
+        consumer,
+        group_parent,
+        BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+        {},
+    )
+    group_parent.condition = condition
+    assert not rule._push_having_into_group_parent(
+        consumer, group_parent, condition, {}
+    )
+    group_parent.condition = None
+    assert not rule._push_having_into_group_parent(
+        consumer, group_parent, condition, {}
+    )
+    assert not rule._push_having_into_group_parent(
+        consumer, group_parent, condition, {group_parent.name: [object()]}
+    )
+    unfiltered_child = _simple_cte(
+        "unfiltered_child",
+        [sale_count],
+        condition=None,
+        source_map={sale_count.address: [group_parent.name]},
+    )
+    assert not rule._push_having_into_group_parent(
+        consumer, group_parent, condition, {group_parent.name: [unfiltered_child]}
     )
 
 

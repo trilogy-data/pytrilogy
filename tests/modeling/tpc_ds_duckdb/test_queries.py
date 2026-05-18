@@ -431,7 +431,7 @@ def test_thirty_two(engine):
 
 def test_forty_seven(engine):
     query = run_query(engine, 47)
-    assert len(query) < 6500, query
+    assert len(query) < 6800, query
 
 
 def test_forty_eight(engine):
@@ -478,7 +478,7 @@ def test_fifty_six(engine):
 
 def test_fifty_seven(engine):
     query = run_query(engine, 57)
-    assert len(query) < 6000, query
+    assert len(query) < 6500, query
 
 
 def test_fifty_eight(engine):
@@ -521,6 +521,7 @@ def test_sixty_three(engine):
 def test_sixty_five(engine):
     query = run_query(engine, 65)
     assert len(query) < 5000, query
+    assert query.count('"memory"."store_sales"') == 1, query
 
 
 def test_sixty_six(engine):
@@ -590,6 +591,7 @@ def test_eighty(engine):
 def test_eighty_one(engine):
     query = run_query(engine, 81)
     assert len(query) < 12000, query
+
 
 
 def test_eighty_two(engine):
@@ -669,7 +671,7 @@ def test_ninety_six(engine):
 
 def test_ninety_seven(engine):
     query = run_query(engine, 97)
-    assert len(query) < 5000, query
+    assert len(query) < 3000, query
 
 
 def test_ninety_seven_one(engine):

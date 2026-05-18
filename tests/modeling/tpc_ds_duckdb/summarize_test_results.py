@@ -40,9 +40,45 @@ def _fmt_ratio(value: float) -> str:
     return f"{value:.2f}x"
 
 
+def _fmt_chars_plain(value: float) -> str:
+    return f"{value:,.0f}"
+
+
+def _fmt_seconds_plain(value: float) -> str:
+    return f"{value:,.3f}s"
+
+
 def _row(label: str, values: tuple[float, float, float], formatter) -> str:
     p10, p50, p90 = values
     return f"| {label} | {formatter(p10)} | {formatter(p50)} | {formatter(p90)} |"
+
+
+def _top_table(
+    title: str,
+    frame: pd.DataFrame,
+    left: pd.Series,
+    right: pd.Series,
+    delta: pd.Series,
+    mask: pd.Series,
+    ascending: bool,
+    headers: tuple[str, str, str],
+    value_fmt,
+    delta_fmt,
+) -> list[str]:
+    ranked = delta[mask].sort_values(ascending=ascending).head(5)
+    lines = [title, ""]
+    if ranked.empty:
+        return lines + ["None.", ""]
+    h_left, h_right, h_delta = headers
+    lines.append(f"| Query | {h_left} | {h_right} | {h_delta} |")
+    lines.append("| --- | ---: | ---: | ---: |")
+    for idx in ranked.index:
+        lines.append(
+            f"| {frame.at[idx, 'query_id']} | {value_fmt(left[idx])} | "
+            f"{value_fmt(right[idx])} | {delta_fmt(delta[idx])} |"
+        )
+    lines.append("")
+    return lines
 
 
 def _section(title: str, frame: pd.DataFrame) -> list[str]:
@@ -67,7 +103,7 @@ def _section(title: str, frame: pd.DataFrame) -> list[str]:
     trilogy_total = float(data["exec_time"].sum())
     reference_exec_total = float(data["comp_time"].sum())
 
-    return [
+    lines = [
         f"## {title}",
         "",
         f"Queries: {total}",
@@ -79,15 +115,48 @@ def _section(title: str, frame: pd.DataFrame) -> list[str]:
         _row("PreQL - Reference SQL chars", _stats(length_delta), _fmt_chars),
         _row("PreQL vs Reference SQL", _stats(length_pct_delta), _fmt_percent),
         "",
-        f"Trilogy execution is faster than the reference SQL for {exec_wins}/{total} queries. Total Trilogy execution time is {trilogy_total:.3f}s vs {reference_exec_total:.3f}s reference SQL time.",
-        "",
-        "| Performance metric | P10 | P50 | P90 |",
-        "| --- | ---: | ---: | ---: |",
-        _row("Trilogy - Reference SQL seconds", _stats(exec_delta), _fmt_seconds),
-        _row("Trilogy vs Reference SQL", _stats(exec_pct_delta), _fmt_percent),
-        _row("Trilogy / Reference SQL", _stats(exec_ratio), _fmt_ratio),
-        "",
     ]
+    lines.extend(
+        _top_table(
+            "Top 5 queries where PreQL is longest vs reference SQL",
+            data,
+            data["preql_size"],
+            data["comp_size"],
+            length_delta,
+            length_delta > 0,
+            False,
+            ("PreQL chars", "Reference SQL chars", "PreQL - Reference SQL"),
+            _fmt_chars_plain,
+            _fmt_chars,
+        )
+    )
+    lines.extend(
+        [
+            f"Trilogy execution is faster than the reference SQL for {exec_wins}/{total} queries. Total Trilogy execution time is {trilogy_total:.3f}s vs {reference_exec_total:.3f}s reference SQL time.",
+            "",
+            "| Performance metric | P10 | P50 | P90 |",
+            "| --- | ---: | ---: | ---: |",
+            _row("Trilogy - Reference SQL seconds", _stats(exec_delta), _fmt_seconds),
+            _row("Trilogy vs Reference SQL", _stats(exec_pct_delta), _fmt_percent),
+            _row("Trilogy / Reference SQL", _stats(exec_ratio), _fmt_ratio),
+            "",
+        ]
+    )
+    lines.extend(
+        _top_table(
+            "Top 5 queries where reference SQL is fastest vs Trilogy",
+            data,
+            data["exec_time"],
+            data["comp_time"],
+            exec_delta,
+            exec_delta > 0,
+            False,
+            ("Trilogy s", "Reference SQL s", "Trilogy - Reference SQL"),
+            _fmt_seconds_plain,
+            _fmt_seconds,
+        )
+    )
+    return lines
 
 
 def build_summary(

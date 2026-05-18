@@ -156,6 +156,45 @@ SENSITIVE_DERIVATIONS = [
 ]
 
 
+def _grains_equivalent(cte: CTE | UnionCTE, direct_parent: CTE | UnionCTE) -> bool:
+    """Strict grain equality, with a pseudonym-aware fallback.
+
+    A pure projection that only renames or duplicates grain columns (e.g.
+    q39 selecting one key twice as ``isk1``/``isk2``) has a grain whose
+    component *addresses* differ from the parent's but which covers the same
+    underlying concepts. Treat those as equal so the redundant projection
+    CTE can still collapse. Additive: never rejects a previously-equal pair.
+    """
+    if direct_parent.grain == cte.grain:
+        return True
+    g1 = direct_parent.grain.components
+    g2 = cte.grain.components
+    if not g1 or not g2:
+        return False
+    concepts = {
+        c.address: c
+        for c in list(cte.source.output_concepts)
+        + list(direct_parent.source.output_concepts)
+    }
+
+    def equiv_sets(components: set[str]) -> list[set[str]] | None:
+        out: list[set[str]] = []
+        for addr in components:
+            concept = concepts.get(addr)
+            if concept is None:
+                return None
+            out.append(concept.equivalent_addresses)
+        return out
+
+    e1 = equiv_sets(g1)
+    e2 = equiv_sets(g2)
+    if e1 is None or e2 is None:
+        return False
+    return all(any(s1 & s2 for s2 in e2) for s1 in e1) and all(
+        any(s2 & s1 for s1 in e1) for s2 in e2
+    )
+
+
 def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     # if isinstance(select, (PersistStatement, MultiSelectStatement)):
     #     return False
@@ -172,7 +211,7 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     parent_output_addresses = set([x.address for x in direct_parent.output_columns])
     if not output_addresses.issubset(parent_output_addresses):
         return None
-    if not direct_parent.grain == cte.grain:
+    if not _grains_equivalent(cte, direct_parent):
         logger.info("[Direct Return] grain mismatch, cannot early exit")
         return None
 
@@ -238,7 +277,9 @@ def _enabled_dependencies(*names: tuple[str, bool]) -> tuple[str, ...]:
     return tuple(name for name, enabled in names if enabled)
 
 
-def build_optimization_rule_plan() -> list[OptimizationRulePlan]:
+def build_optimization_rule_plan(
+    having_alias: bool = False,
+) -> list[OptimizationRulePlan]:
     opts = CONFIG.optimizations
     plan: list[OptimizationRulePlan] = []
 
@@ -279,7 +320,7 @@ def build_optimization_rule_plan() -> list[OptimizationRulePlan]:
         plan.append(
             OptimizationRulePlan(
                 name="predicate_pushdown.initial",
-                rule_factory=PredicatePushdown,
+                rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
             )
         )
     if opts.upgrade_condition_joins:
@@ -315,7 +356,7 @@ def build_optimization_rule_plan() -> list[OptimizationRulePlan]:
         plan.append(
             OptimizationRulePlan(
                 name="predicate_pushdown.after_union_dim",
-                rule_factory=PredicatePushdown,
+                rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
                 depends_on=("union_dim_pushdown",),
                 refires_after=("union_dim_pushdown",),
                 reason=(
@@ -381,6 +422,7 @@ def optimize_ctes(
     input: list[CTE | UnionCTE],
     root_cte: CTE | UnionCTE,
     select: SelectStatement | MultiSelectStatement,
+    having_alias: bool = False,
 ) -> list[CTE | UnionCTE]:
     direct_parent: CTE | UnionCTE | None = root_cte
     while CONFIG.optimizations.direct_return and (
@@ -395,7 +437,7 @@ def optimize_ctes(
     cte_lookup[root_cte.name] = root_cte
 
     phase_actions: dict[str, bool] = {}
-    rule_plan = build_optimization_rule_plan()
+    rule_plan = build_optimization_rule_plan(having_alias=having_alias)
     log_optimization_rule_plan(rule_plan)
     for phase in rule_plan:
         if phase.refires_after and not any(

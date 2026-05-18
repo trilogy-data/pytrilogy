@@ -1,11 +1,11 @@
 query_id = "01"
-gen_length = 2861
+gen_length = 2495
 preql_size = 522
 comp_size = 689
 generated_sql = """
 
 WITH 
-questionable as (
+cooperative as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
     \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\",
@@ -22,59 +22,45 @@ GROUP BY
     2),
 thoughtful as (
 SELECT
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
-    coalesce(\"returns_store_returns\".\"SR_STORE_SK\",\"returns_store_store\".\"S_STORE_SK\") as \"returns_store_id\"
+    \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
+    \"returns_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_customer_id\",
+    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
 FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
     INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"returns_store_returns\".\"SR_CUSTOMER_SK\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and \"returns_return_date_date\".\"D_YEAR\" = 2000
-
-GROUP BY
-    1,
-    2,
-    coalesce(\"returns_return_date_date\".\"D_DATE_SK\",\"returns_store_returns\".\"SR_RETURNED_DATE_SK\")),
-yummy as (
-SELECT
-    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
-    avg(\"questionable\".\"total_returns\") as \"avg_store_returns\"
-FROM
-    \"questionable\"
-GROUP BY
-    1),
-cooperative as (
-SELECT
-    \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
-    \"returns_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\"
-FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"thoughtful\".\"returns_customer_id\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"
-GROUP BY
-    1,
-    2,
-    3),
+),
 uneven as (
 SELECT
-    \"cooperative\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
     \"cooperative\".\"returns_store_id\" as \"returns_store_id\",
-    \"questionable\".\"total_returns\" as \"total_returns\"
+    avg(\"cooperative\".\"total_returns\") as \"avg_store_returns\"
 FROM
     \"cooperative\"
-    INNER JOIN \"questionable\" on \"cooperative\".\"returns_customer_id\" = \"questionable\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"questionable\".\"returns_store_id\"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    \"cooperative\".\"total_returns\" as \"total_returns\",
+    \"thoughtful\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\"
+FROM
+    \"cooperative\"
+    INNER JOIN \"thoughtful\" on \"cooperative\".\"returns_customer_id\" = \"thoughtful\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"thoughtful\".\"returns_store_id\"
 GROUP BY
     1,
     2,
     3)
 SELECT
-    \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    \"abundant\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    \"uneven\"
-    INNER JOIN \"yummy\" on \"uneven\".\"returns_store_id\" = \"yummy\".\"returns_store_id\"
+    \"abundant\"
+    INNER JOIN \"uneven\" on \"abundant\".\"returns_store_id\" = \"uneven\".\"returns_store_id\"
 WHERE
-    \"uneven\".\"total_returns\" > ( 1.2 * \"yummy\".\"avg_store_returns\" )
+    \"abundant\".\"total_returns\" > ( 1.2 * \"uneven\".\"avg_store_returns\" )
 
 ORDER BY 
-    \"uneven\".\"returns_customer_text_id\" asc
+    \"abundant\".\"returns_customer_text_id\" asc
 LIMIT (100)"""

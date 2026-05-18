@@ -1,5 +1,5 @@
 query_id = "97.2"
-gen_length = 2897
+gen_length = 2869
 preql_size = 1262
 comp_size = 1159
 generated_sql = """
@@ -40,9 +40,7 @@ WHERE
     \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 GROUP BY
-    1,
     2,
-    3,
     4),
 cheerful as (
 SELECT
@@ -58,9 +56,7 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3,
-    4)
+    3)
 SELECT
     sum(CASE
 	WHEN \"abundant\".\"store_sales_customer_id\" is not null and \"abundant\".\"store_sales_item_id\" is not null and \"cheerful\".\"catalog_sales_bill_customer_id\" is null and \"cheerful\".\"catalog_sales_item_id\" is null THEN 1

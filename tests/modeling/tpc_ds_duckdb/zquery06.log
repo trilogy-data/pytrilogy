@@ -1,5 +1,5 @@
 query_id = "06"
-gen_length = 2237
+gen_length = 2247
 preql_size = 669
 comp_size = 654
 generated_sql = """
@@ -42,7 +42,7 @@ WHERE
 GROUP BY
     1
 HAVING
-    sum(1) >= 10
+    \"customer_count\" >= 10
 
 ORDER BY 
     \"customer_count\" asc nulls first,

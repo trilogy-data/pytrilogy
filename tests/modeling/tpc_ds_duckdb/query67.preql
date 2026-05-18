@@ -1,16 +1,5 @@
 import store_sales as ss;
 
-auto sumsales <- sum(coalesce(ss.sales_price * ss.quantity, 0)) by rollup
-    ss.item.category,
-    ss.item.class,
-    ss.item.brand_name,
-    ss.item.product_name,
-    ss.date.year,
-    ss.date.quarter,
-    ss.date.month_of_year,
-    ss.store.text_id;
-
-
 WHERE
     ss.date.month_seq BETWEEN 1200 AND 1211
     AND ss.store.id is not null
@@ -23,17 +12,8 @@ SELECT
     ss.date.quarter,
     ss.date.month_of_year,
     ss.store.text_id,
-    sumsales,
-    rank(
-    ss.store.text_id,
-    ss.item.category,
-    ss.item.class,
-    ss.item.brand_name,
-    ss.item.product_name,
-    ss.date.year,
-    ss.date.quarter,
-    ss.date.month_of_year
-) over (partition by ss.item.category order by sumsales desc) as rk,
+    sum(coalesce(ss.sales_price * ss.quantity, 0)) by rollup() as sumsales,
+    rank() over (partition by ss.item.category order by sumsales desc) as rk,
 HAVING
     rk <= 100
 ORDER BY

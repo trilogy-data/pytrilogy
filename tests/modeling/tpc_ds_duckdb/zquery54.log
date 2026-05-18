@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 4621
+gen_length = 4629
 preql_size = 1374
 comp_size = 1665
 generated_sql = """
@@ -89,8 +89,8 @@ GROUP BY
     1),
 sweltering as (
 SELECT
-    cast(round(\"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\" / 50,0) as int) * 50 as \"segment_base\",
-    cast(round(\"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\" / 50,0) as int) as \"segment\"
+    cast(round(( \"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\" ) / 50,0) as int) * 50 as \"segment_base\",
+    cast(round(( \"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\" ) / 50,0) as int) as \"segment\"
 FROM
     \"concerned\"
     INNER JOIN \"sparkling\" on \"concerned\".\"cust_ss_ss_cust_county\" = \"sparkling\".\"stores_cs_scs_county\" AND \"concerned\".\"cust_ss_ss_cust_state\" = \"sparkling\".\"stores_cs_scs_state\"

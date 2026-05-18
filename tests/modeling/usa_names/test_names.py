@@ -75,33 +75,34 @@ def test_aggregate_filter_anonymous():
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
 
-    # After CollapseSingleParent optimization, aggregate selects directly from datasource
+    # The aggregate-result predicate is relocated into the by-name group's
+    # HAVING (PredicatePushdown), so the qualifying-name filter runs during
+    # aggregation -- before the join back to the base table -- and the
+    # redundant downstream WHERE copy is stripped.
     pattern = r"""
 WITH\s+
 [a-z_]+\s+as\s+\(
 \s*SELECT
-\s*"[^"]+"\."name"\s+as\s+"name",
-\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+"
+\s*"[^"]+"\."name"\s+as\s+"name"
 \s*FROM
 \s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
 \s*GROUP\s+BY
-\s*1\s*\)
-.*?
-WHERE
+\s*1
+\s*HAVING
 \s*abs\(
-\s*"[^"]+"\."_virt_agg_sum_\d+"
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)
 \s*-\s*
-\s*"[^"]+"\."_virt_agg_sum_\d+"
-\s*\)\s*<\s*\(\s*0\.05\s*\*\s*"[^"]+"\."_virt_agg_sum_\d+"\s*\)
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)
+\s*\)\s*<\s*\(\s*0\.05\s*\*\s*sum\(".*?"\."number"\)\s*\)
 .*?
 SELECT
 \s*"[^"]+"\."state"\s+as\s+"state",
 \s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+float\)\s+as\s+"percent_of_total"
     """
 
-    assert re.search(pattern, sql, re.DOTALL | re.VERBOSE)
+    assert re.search(pattern, sql, re.DOTALL | re.VERBOSE), sql
+    # filter applied once (in HAVING), not duplicated in a downstream WHERE
+    assert "WHERE" not in sql, sql
 
 
 def test_aggregate_filter():
