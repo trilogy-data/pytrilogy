@@ -333,6 +333,7 @@ def build_parent_concepts(
             depth,
         )
     )
+
     if grouped_pushdown:
         parent_row_concepts = _aggregate_filter_parent_concepts(concept, environment)
     if not is_optimized_pushdown:

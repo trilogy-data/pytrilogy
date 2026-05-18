@@ -13,72 +13,85 @@ Above the cutoff: single cold sample (trilogy runs first, so it slightly
 warms shared fact tables for the reference). Absolute deltas are still
 noisy — **trust the ratio ranking + the structural SQL diffs, not any
 single ms or the raw win count.** Win = trilogy `exec_time < comp_time`.
-Numbers in the tables below predate the symmetric-fetch fix (trilogy
-`exec_time` was undercounting result materialization); they regenerate on
-the next full run.
+Tables below regenerated 2026-05-18 under the corrected harness.
 
 ## State
 
-**47 / 99 main wins.** Trilogy 12.06s vs reference ~57s (ignore totals:
-~41s of the ref is the q64/q72 PRAGMA plan-blowups). **Target 50/99 → need
-+3.** Alt bucket 2/5.
+**40 / 99 main wins.** Trilogy 11.94s vs reference 55.11s (ignore totals:
+~40s of the ref is the q64/q72 PRAGMA plan-blowups). Alt bucket 2/5.
+
+The prior **47/99** was a measurement artifact: trilogy `exec_time`
+excluded result materialization (fetch) while the reference included it,
+over-counting ~7 wins. **40/99 is the honest baseline** — not a trilogy
+regression. The RC-G strip is structurally validated (q65/q68 now at
+parity, 1.0x) but did not move the honest count the way the inflated
+metric implied.
 
 ## Root causes
 
 | RC | Defect | Queries | Status |
 |---|---|---|---|
 | **RC-A** | Shared-grain multi-metric query split into per-source pipelines that each re-scan the fact tables, re-merged with `FULL JOIN … IS NOT DISTINCT FROM` on the group keys | q17, q25, q29; q50 (dim/metric variant) | open — fork half (the INDF half is fixed by RC-G strip) |
-| **RC-C** | Aggregate-membership `IN/NOT IN` → materialized CTE + `IN (SELECT … IS NOT NULL)` probed 2×; `count>1` as CASE→NULL over full grain instead of `HAVING` | q16, q94 | open. Also a correctness smell: `count(wh)>1` where ref needs `count(distinct wh)` |
+| **RC-C** | Aggregate-membership `IN/NOT IN` → materialized CTE + `IN (SELECT … IS NOT NULL)` probed 2×; `count>1` as CASE→NULL over full grain instead of `HAVING` | q94 (q16 same shape but ref 13ms — sub-floor) | open. Also a correctness smell: `count(wh)>1` where ref needs `count(distinct wh)` |
 | **RC-D** | Channel-marked `UNION ALL` + `CASE WHEN channel=` pivot instead of per-channel pre-aggregate-then-join; returns anti-join lifted *above* per-channel aggregation | q78, q05 | open |
 | **RC-E** | Disjoint constant buckets → CASE-WHEN over one loose scan; `count(DISTINCT)` runs over the loose superset, not a tight per-bucket WHERE | q28 | open |
 | **RC-F** | `UNION ALL` lowered to a FULL-JOIN-on-all-output-columns tower; scalar branch cross-joined N× | q77 (4 FULL JOINs, 3 `ON 1=1`), q76 (also doubles every fact scan) | open |
-| **RC-G** | Null-safe `IS NOT DISTINCT FROM` key join (FK provably non-null) — defeats hash joins; often paired with an unfiltered dim cross-section, post-join-only selectivity filter, or dead trailing GROUP BY | q65, q68, q50; the cost half of every RC-A re-merge | **null-safe→equi-join strip LANDED** (q65 join now `INNER … =`; +3 wins). Non-join halves still open for q65/q68/q50 |
+| **RC-G** | Null-safe `IS NOT DISTINCT FROM` key join (FK provably non-null) — defeats hash joins; often paired with an unfiltered dim cross-section, post-join-only selectivity filter, or dead trailing GROUP BY | q50 residue; the cost half of every RC-A re-merge | **strip LANDED + validated** — q65 1.02x, q68 1.01x (parity, no longer losses). Only q50 residue remains, RC-A-dominant |
 | RC-B | Leading unfiltered key-extraction CTE + re-scan for enrichment | q44 (residue) | resolved for q73/q81/q30 (single filtered scan now); q44 keeps an RC-B-adjacent 3rd store_sales scan |
 
 ## Targets (current, main, ref ≥ 15ms, by ratio)
 
 | Query | trilogy | ref | Δ | ratio | RC |
 |---|---:|---:|---:|---:|---|
-| 16 | 0.112s | 0.014s | +0.097 | **~7.8x** | RC-C — worst ratio; ref at the 15ms floor (noisy) but structurally the top target |
-| 28 | 0.218s | 0.051s | +0.167 | **4.29x** | RC-E |
-| 29 | 0.199s | 0.077s | +0.122 | **2.58x** | RC-A |
-| 25 | 0.093s | 0.041s | +0.052 | **2.25x** | RC-A |
-| 17 | 0.130s | 0.058s | +0.072 | **2.24x** | RC-A |
-| 77 | 0.108s | 0.049s | +0.059 | **2.20x** | RC-F |
-| 94 | 0.054s | 0.024s | +0.029 | **2.19x** | RC-C |
-| 68 | 0.159s | 0.073s | +0.086 | **2.18x** | RC-G (non-join half) |
-| 76 | 0.098s | 0.047s | +0.050 | **2.07x** | RC-F+B |
-| 05 | 0.150s | 0.075s | +0.075 | **2.00x** | RC-D/A |
-| 50 | 0.373s | 0.207s | +0.166 | 1.80x | RC-A/G |
-| 65 | 0.190s | 0.117s | +0.073 | 1.62x | RC-G (non-join half) |
-| 44 | 0.060s | 0.038s | +0.022 | 1.58x | RC-B-adjacent |
-| 78 | 0.362s | 0.235s | +0.127 | 1.54x | RC-D |
+| 28 | 0.200s | 0.037s | +0.163 | **5.47x** | RC-E — worst trustworthy ratio (ref above floor) |
+| 94 | 0.061s | 0.019s | +0.043 | **3.28x** | RC-C |
+| 17 | 0.123s | 0.046s | +0.077 | **2.67x** | RC-A |
+| 25 | 0.087s | 0.036s | +0.051 | **2.42x** | RC-A |
+| 66 | 0.362s | 0.153s | +0.209 | **2.37x** | unclassified — large absolute, needs triage |
+| 83 | 0.084s | 0.036s | +0.048 | **2.33x** | UnionDimPushdown residue |
+| 77 | 0.097s | 0.042s | +0.055 | **2.30x** | RC-F |
+| 05 | 0.114s | 0.051s | +0.063 | **2.22x** | RC-D/A |
+| 29 | 0.158s | 0.074s | +0.084 | **2.14x** | RC-A |
+| 76 | 0.098s | 0.047s | +0.050 | **2.07x** | RC-F+B — ⚠ stale: `test_seventy_six` errors (coalesce type) |
+| 78 | 0.456s | 0.226s | +0.231 | **2.02x** | RC-D — largest absolute |
+| 69 | 0.386s | 0.199s | +0.187 | **1.94x** | unclassified — large absolute, was wrongly excluded |
+| 50 | 0.302s | 0.174s | +0.128 | 1.74x | RC-A/G |
+| 44 | 0.042s | 0.025s | +0.017 | 1.65x | RC-B-adjacent |
+| 09 | 0.059s | 0.036s | +0.023 | 1.65x | unclassified |
 
-Largest absolute losses: q67 (+0.203) and q50/q78/q29 — but q67 is
-near-parity (1.26x, trilogy 1.0s).
+Largest absolute losses: q78 (+0.231), q66 (+0.209), q69 (+0.187), q28
+(+0.163), q50 (+0.128), q29 (+0.084).
 
 **Exclude from win-rate targeting** (large absolute, ratio ≈ 1, not
-structurally flippable): q67, q69, q22. **Measurement floor** (ref < ~10ms,
-already algorithmically fine): q90. **Variance, not structural** (RC-B
-resolved; ratio jumps run-to-run): q73.
+structurally flippable): q67 (1.06x, trilogy 0.90s), q22 (1.02x, 0.76s).
+**Measurement floor** (ref < 15ms, already algorithmically fine — ratio is
+floor noise): q16 (ref 13ms, 7.46x — *was* the doc's #1 target; the old
+~7.8x was a `datetime.now`-quantization artifact), q90 (ref 6ms). **Now at
+parity** (RC-G strip + honest timing): q65 (1.02x), q68 (1.01x), q73
+(1.11x).
 
 ## Priority
 
-Only **+3** needed (RC-G strip already banked +3). (1)+(2) clears 50/99.
+40/99 honest baseline. q28 + q94 are the two highest-confidence structural
+flips with ref above the measurement floor.
 
-1. **q16 + q94 (RC-C)** — `count(...) by … > N` → real `HAVING` semi-join +
+1. **q28 (RC-E)** — disjoint buckets → 6 WHERE-filtered subqueries (the
+   reference shape). Highest trustworthy ratio (5.47x), large absolute,
+   isolated, high-confidence generator fix.
+2. **q94 (RC-C)** — `count(...) by … > N` → real `HAVING` semi-join +
    single filtered scan; `IN (SELECT … IS NOT NULL)` → semi/anti-join,
-   materialized once not probed 2×. Worst ratio in the suite, isolated, two
-   wins from one lowering change, and closes the `count` vs `count(distinct)`
-   correctness gap.
-2. **q28 (RC-E)** — disjoint buckets → 6 WHERE-filtered subqueries (the
-   reference shape). Large absolute, isolated, high-confidence generator fix.
-3. **RC-A fork + remaining RC-G halves** — (a) don't fork co-grain metrics
-   into per-source pipelines re-merged by `FULL JOIN … IS NOT DISTINCT FROM`
-   (q17/q25/q29; q50 dim/metric variant); (b) for q65/q68/q50, the null-safe
-   join is already fixed — remaining is the post-join selectivity filter,
-   dead trailing GROUP BY, and unfiltered dim cross-section. Locus:
+   materialized once not probed 2×. Closes the `count` vs `count(distinct)`
+   correctness gap. Same lowering also helps q16 (sub-floor, won't show in
+   ratio but still structurally wrong).
+3. **RC-A fork** — don't fork co-grain metrics into per-source pipelines
+   re-merged by `FULL JOIN … IS NOT DISTINCT FROM` (q17/q25/q29; q50
+   dim/metric variant). The null-safe join itself is fixed (RC-G validated);
+   q50's residue is the post-join selectivity filter + dead trailing GROUP
+   BY. Locus:
    `trilogy/core/processing/node_generators/select_merge_node.py`.
+4. **Triage q66/q69/q83** — large absolute/ratio losses with no RC mapping
+   yet; q76's RC-F row is stale until the coalesce-type generation error in
+   `test_seventy_six` is fixed.
 
 Secondary, larger rewrites: **q78/q05 (RC-D)** per-channel
 pre-aggregate-then-join, keeping the returns anti-join per-channel +
@@ -99,6 +112,19 @@ scorer emits `=`/INNER instead of OUTER `IS NOT DISTINCT FROM`. New
 `GroupNode.resolve` (gated on scalar `preexisting_conditions` — the one that
 flips q65, whose `store.id IS NOT NULL` is pushed into an upstream scan).
 `MergeNode` left alone (merge-stage COALESCE caveat in `non_null_proofs`).
-Effect: 44→47/99 wins, 13.07→12.06s; q65 join `RIGHT OUTER … IS NOT
-DISTINCT FROM` → `INNER … =` (+ `store` dim `LEFT OUTER`→`INNER`);
-q17/q68/q05/q78 improved. 106/106 row-equality pass; ruff/mypy/black clean.
+Effect: q65 join `RIGHT OUTER … IS NOT DISTINCT FROM` → `INNER … =` (+
+`store` dim `LEFT OUTER`→`INNER`); q65/q68 now at parity (1.0x),
+q17/q05/q78 improved. The reported 44→47/99 win bump was partly the
+fetch-asymmetry artifact (see harness fix below); the structural join win
+is real and confirmed by q65/q68 parity. 106/106 row-equality pass.
+
+**Profiling harness fix (2026-05-18).** `run_query` now times with
+`time.perf_counter` (was `datetime.now` — wall-clock, ~15ms-quantized on
+Windows), wraps exec **including `fetchall`** symmetrically on both sides
+(was: trilogy excluded fetch, reference included it), resolves reference
+SQL outside the timing window, and takes the **min of `REPEAT_COUNT`
+interleaved runs** for any stage under `REPEAT_TIME_CUTOFF` (0.15s).
+Effect: honest count 47→**40/99** (fetch-asymmetry was over-counting ~7
+trilogy wins); q16 unmasked as measurement-floor noise (ref 13ms; old
+~7.8x was timer quantization), so it drops from the #1 priority slot; q94
+becomes the trustworthy RC-C target. ruff/mypy/black clean.

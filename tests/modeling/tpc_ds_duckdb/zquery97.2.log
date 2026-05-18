@@ -1,75 +1,53 @@
 query_id = "97.2"
-gen_length = 2869
+gen_length = 2351
 preql_size = 1262
 comp_size = 1159
 generated_sql = """
 
 WITH 
-cooperative as (
-SELECT
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
-FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-GROUP BY
-    1,
-    2,
-    3),
 quizzical as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
+    \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"customer_id\",
     \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"catalog_sales_item_id\",
-    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
-GROUP BY
-    1,
-    2,
-    3),
-abundant as (
-SELECT
-    \"cooperative\".\"store_sales_customer_id\" as \"customer_id\",
-    \"cooperative\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    \"cooperative\".\"store_sales_item_id\" as \"item_id\",
-    \"cooperative\".\"store_sales_item_id\" as \"store_sales_item_id\"
-FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"cooperative\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
-
-GROUP BY
-    2,
-    4),
-cheerful as (
-SELECT
-    \"quizzical\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
-    \"quizzical\".\"catalog_sales_bill_customer_id\" as \"customer_id\",
-    \"quizzical\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
-    \"quizzical\".\"catalog_sales_item_id\" as \"item_id\"
-FROM
-    \"quizzical\"
-    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"catalog_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 GROUP BY
     1,
-    3)
+    3),
+cooperative as (
+SELECT
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"item_id\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
+
+GROUP BY
+    2,
+    4)
 SELECT
     sum(CASE
-	WHEN \"abundant\".\"store_sales_customer_id\" is not null and \"abundant\".\"store_sales_item_id\" is not null and \"cheerful\".\"catalog_sales_bill_customer_id\" is null and \"cheerful\".\"catalog_sales_item_id\" is null THEN 1
+	WHEN \"cooperative\".\"store_sales_customer_id\" is not null and \"cooperative\".\"store_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is null and \"quizzical\".\"catalog_sales_item_id\" is null THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"abundant\".\"store_sales_customer_id\" is null and \"abundant\".\"store_sales_item_id\" is null and \"cheerful\".\"catalog_sales_bill_customer_id\" is not null and \"cheerful\".\"catalog_sales_item_id\" is not null THEN 1
+	WHEN \"cooperative\".\"store_sales_customer_id\" is null and \"cooperative\".\"store_sales_item_id\" is null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"abundant\".\"store_sales_customer_id\" is not null and \"abundant\".\"store_sales_item_id\" is not null and \"cheerful\".\"catalog_sales_bill_customer_id\" is not null and \"cheerful\".\"catalog_sales_item_id\" is not null THEN 1
+	WHEN \"cooperative\".\"store_sales_customer_id\" is not null and \"cooperative\".\"store_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"abundant\"
-    FULL JOIN \"cheerful\" on \"abundant\".\"customer_id\" is not distinct from \"cheerful\".\"customer_id\" AND \"abundant\".\"item_id\" is not distinct from \"cheerful\".\"item_id\""""
+    \"cooperative\"
+    FULL JOIN \"quizzical\" on \"cooperative\".\"customer_id\" is not distinct from \"quizzical\".\"customer_id\" AND \"cooperative\".\"item_id\" is not distinct from \"quizzical\".\"item_id\""""

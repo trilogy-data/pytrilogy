@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 4110
+gen_length = 3791
 preql_size = 641
 comp_size = 821
 generated_sql = """
@@ -38,20 +38,17 @@ FROM
     \"questionable\"),
 thoughtful as (
 SELECT
-    \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
-    \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
 
 GROUP BY
-    1,
-    2,
-    3,
-    4),
+    1),
 concerned as (
 SELECT
     \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_ext_ship_cost\",
@@ -69,30 +66,17 @@ GROUP BY
     2,
     \"cs_catalog_sales\".\"CS_ITEM_SK\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\"),
-juicy as (
+vacuous as (
 SELECT
-    \"thoughtful\".\"cs_order_number\" as \"cs_order_number\"
+    count(distinct \"thoughtful\".\"cs_order_number\") as \"order_count\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"thoughtful\".\"cs_ship_date_id\" = \"cs_ship_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"thoughtful\".\"cs_call_center_id\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"thoughtful\".\"cs_customer_address_id\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County'
-
-GROUP BY
-    1),
+    \"thoughtful\"),
 young as (
 SELECT
     sum(\"concerned\".\"cs_ext_ship_cost\") as \"total_shipping_cost\",
     sum(\"concerned\".\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    \"concerned\"),
-vacuous as (
-SELECT
-    count(distinct \"juicy\".\"cs_order_number\") as \"order_count\"
-FROM
-    \"juicy\")
+    \"concerned\")
 SELECT
     \"vacuous\".\"order_count\" as \"order_count\",
     \"young\".\"total_shipping_cost\" as \"total_shipping_cost\",

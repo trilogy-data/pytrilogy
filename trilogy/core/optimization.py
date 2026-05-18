@@ -308,6 +308,16 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+    if opts.merge_irrelevant_group_by and opts.join_hoist:
+        plan.append(
+            OptimizationRulePlan(
+                name="merge_irrelevant_group_by.after_join_hoist",
+                rule_factory=MergeIrrelevantGroupBy,
+                depends_on=("join_hoist",),
+                refires_after=("join_hoist",),
+                reason="uses joins and predicates stripped by join hoist",
+            )
+        )
     if opts.datasource_inlining:
         plan.append(
             OptimizationRulePlan(
@@ -380,6 +390,16 @@ def build_optimization_rule_plan(
                         not opts.union_dim_pushdown,
                     ),
                 ),
+            )
+        )
+    if opts.merge_irrelevant_group_by and opts.predicate_pushdown:
+        plan.append(
+            OptimizationRulePlan(
+                name="merge_irrelevant_group_by.after_predicate_remove",
+                rule_factory=MergeIrrelevantGroupBy,
+                depends_on=("predicate_pushdown.remove",),
+                refires_after=("predicate_pushdown.remove",),
+                reason="uses redundant predicates removed from grouped children",
             )
         )
     if opts.upgrade_condition_joins:

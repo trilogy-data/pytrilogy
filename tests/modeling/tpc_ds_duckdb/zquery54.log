@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 4629
+gen_length = 4258
 preql_size = 1374
 comp_size = 1665
 generated_sql = """
@@ -7,27 +7,23 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
-     'CATALOG'  as \"sales_sales_channel\"
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_item_items\".\"I_CATEGORY\" = 'Women' and \"sales_item_items\".\"I_CLASS\" = 'maternity'
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_item_items\".\"I_CATEGORY\" = 'Women' and \"sales_item_items\".\"I_CLASS\" = 'maternity'
 
 UNION ALL
 SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
-     'WEB'  as \"sales_sales_channel\"
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_item_items\".\"I_CATEGORY\" = 'Women' and \"sales_item_items\".\"I_CLASS\" = 'maternity'
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 12 and \"sales_item_items\".\"I_CATEGORY\" = 'Women' and \"sales_item_items\".\"I_CLASS\" = 'maternity'
 ),
 sparkling as (
 SELECT
@@ -41,24 +37,9 @@ GROUP BY
     2),
 thoughtful as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\",
-    \"cheerful\".\"sales_date_id\" as \"sales_date_id\"
+    \"cheerful\".\"sales_customer_id\" as \"my_customers_my_cust_id\"
 FROM
     \"cheerful\"
-GROUP BY
-    1,
-    2,
-    \"cheerful\".\"sales_item_id\",
-    \"cheerful\".\"sales_sales_channel\"),
-abundant as (
-SELECT
-    \"thoughtful\".\"sales_customer_id\" as \"my_customers_my_cust_id\"
-FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 12
-
 GROUP BY
     1),
 concerned as (
@@ -73,7 +54,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_address\" as \"ss_customer_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ss_store_sales\".\"SS_CUSTOMER_SK\" in (select abundant.\"my_customers_my_cust_id\" from abundant where abundant.\"my_customers_my_cust_id\" is not null) and \"ss_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
+    \"ss_store_sales\".\"SS_CUSTOMER_SK\" in (select thoughtful.\"my_customers_my_cust_id\" from thoughtful where thoughtful.\"my_customers_my_cust_id\" is not null) and \"ss_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1,

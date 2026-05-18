@@ -1,79 +1,40 @@
 query_id = "35"
-gen_length = 10502
+gen_length = 9884
 preql_size = 2119
 comp_size = 1745
 generated_sql = """
 
 WITH 
-juicy as (
-SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\"
-FROM
-    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-WHERE
-     'WEB'  = 'WEB' and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
-
-GROUP BY
-    1,
-    2,
-     'WEB' ),
-abundant as (
-SELECT
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\"
-FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-WHERE
-     'STORE'  = 'STORE' and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
-
-GROUP BY
-    1,
-    2,
-     'STORE' ),
 cheerful as (
 SELECT
-    \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" as \"sales_ship_customer_id\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\"
+    \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" as \"catalog_buyers_cat_cust_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-     'CATALOG'  = 'CATALOG' and \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" is not null
-
-GROUP BY
-    1,
-    2,
-     'CATALOG' ),
-concerned as (
-SELECT
-    \"juicy\".\"sales_customer_id\" as \"web_buyers_web_cust_id\"
-FROM
-    \"juicy\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"juicy\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4
+    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and  'CATALOG'  = 'CATALOG' and \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
-yummy as (
+abundant as (
 SELECT
-    \"abundant\".\"sales_customer_id\" as \"store_buyers_store_cust_id\"
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"store_buyers_store_cust_id\"
 FROM
-    \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4
+    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and  'STORE'  = 'STORE' and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
-questionable as (
+juicy as (
 SELECT
-    \"cheerful\".\"sales_ship_customer_id\" as \"catalog_buyers_cat_cust_id\"
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"web_buyers_web_cust_id\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4
+    \"sales_date_date\".\"D_YEAR\" = 2002 and \"sales_date_date\".\"D_QOY\" < 4 and  'WEB'  = 'WEB' and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
@@ -91,7 +52,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"customer_customers\".\"C_CUSTOMER_SK\" in (select yummy.\"store_buyers_store_cust_id\" from yummy where yummy.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select concerned.\"web_buyers_web_cust_id\" from concerned where concerned.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select questionable.\"catalog_buyers_cat_cust_id\" from questionable where questionable.\"catalog_buyers_cat_cust_id\" is not null) )
+    \"customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers_store_cust_id\" from abundant where abundant.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"web_buyers_web_cust_id\" from juicy where juicy.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select cheerful.\"catalog_buyers_cat_cust_id\" from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not null) )
 
 GROUP BY
     1,
@@ -114,7 +75,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"customer_customers\".\"C_CUSTOMER_SK\" in (select yummy.\"store_buyers_store_cust_id\" from yummy where yummy.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select concerned.\"web_buyers_web_cust_id\" from concerned where concerned.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select questionable.\"catalog_buyers_cat_cust_id\" from questionable where questionable.\"catalog_buyers_cat_cust_id\" is not null) )
+    \"customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers_store_cust_id\" from abundant where abundant.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"web_buyers_web_cust_id\" from juicy where juicy.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select cheerful.\"catalog_buyers_cat_cust_id\" from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not null) )
 
 GROUP BY
     1,

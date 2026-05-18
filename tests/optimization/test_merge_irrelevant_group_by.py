@@ -78,6 +78,22 @@ def test_basic_merge(test_environment: Environment):
     assert cte_map == {child.name: parent.name}
 
 
+def test_merge_ignores_stale_unrendered_parents(test_environment: Environment):
+    cols = _get_cols(test_environment)[:2]
+    parent = _make_group_cte("parent", [cols[0]])
+    stale = _make_group_cte("stale", [cols[1]])
+    child = _make_group_cte("child", [cols[0]], parent_ctes=[parent, stale])
+    child.base_alias_override = parent.safe_identifier
+    child.source_map[cols[0].address] = [parent.name]
+
+    inverse_map: dict = {parent.name: [child], stale.name: [child]}
+    rule = MergeIrrelevantGroupBy()
+    merged, cte_map = rule.optimize(child, inverse_map)
+
+    assert merged is True
+    assert cte_map == {child.name: parent.name}
+
+
 def test_no_merge_when_parent_has_multiple_children(test_environment: Environment):
     cols = _get_cols(test_environment)[:1]
     parent = _make_group_cte("parent", cols)

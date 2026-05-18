@@ -28,7 +28,7 @@ working_path = Path(__file__).parent
 # interleaved so cache warmth stays symmetric) and keep the minimum -- noise
 # only ever adds time, so the min is the most faithful estimate of true cost.
 REPEAT_TIME_CUTOFF = 0.15
-REPEAT_COUNT = 5
+REPEAT_COUNT = 3
 
 T = TypeVar("T")
 
@@ -89,7 +89,7 @@ def run_query(
     exec_time, comp_results = _time(_exec_trilogy)
     comp_time, base_results = _time(_exec_reference)
 
-    if min(parse_time, exec_time, comp_time) < REPEAT_TIME_CUTOFF:
+    if min(exec_time, comp_time) < REPEAT_TIME_CUTOFF:
         for _ in range(REPEAT_COUNT):
             parse_time = min(parse_time, _time(lambda: engine.generate_sql(text))[0])
             exec_time = min(exec_time, _time(_exec_trilogy)[0])
@@ -157,6 +157,7 @@ def test_adhoc_one(engine: Executor):
         text2 = f.read()
         engine.execute_text(text2, non_interactive=True)
     query = engine.generate_sql(text)[-1]
+
 
     engine.execute_raw_sql(query)
 

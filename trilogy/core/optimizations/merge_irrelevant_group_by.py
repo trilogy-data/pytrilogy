@@ -6,7 +6,11 @@ from trilogy.core.models.execute import (
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import is_sole_consumer, repoint_consumers
+from trilogy.core.optimizations.utils import (
+    is_sole_consumer,
+    render_cte_used_map,
+    repoint_consumers,
+)
 
 # Child must have no aggregates or other unsafe derivations - it must be
 # pure scalar transforms so its GROUP BY is truly vacuous relative to parent.
@@ -31,6 +35,24 @@ def _is_child_ineligible(concept: BuildConcept, cte: CTE, parent: CTE) -> bool:
     if concept.derivation not in CHILD_INELIGIBLE_DERIVATIONS:
         return False
     return cte.source_map.get(concept.address) != [parent.name]
+
+
+def _active_parent_ctes(cte: CTE) -> list[CTE | UnionCTE]:
+    used_map = render_cte_used_map(cte)
+    referenced = set(used_map)
+    active = [parent for parent in cte.parent_ctes if parent.name in referenced]
+    if active:
+        return active
+    referenced = {
+        source
+        for source_list in [
+            *cte.source_map.values(),
+            *cte.existence_source_map.values(),
+        ]
+        for source in source_list
+    }
+    active = [parent for parent in cte.parent_ctes if parent.name in referenced]
+    return active or list(cte.parent_ctes)
 
 
 class MergeIrrelevantGroupBy(OptimizationRule):
@@ -59,11 +81,12 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             return False, None
         if not _is_group_by_cte(cte):
             return False, None
-        # cte must have one parent
-        if len(cte.parent_ctes) != 1:
+        active_parents = _active_parent_ctes(cte)
+        if len(active_parents) != 1:
             return False, None
 
-        parent = cte.parent_ctes[0]
+        cte.parent_ctes = active_parents
+        parent = active_parents[0]
         if cte.base_alias != parent.safe_identifier:
             self.debug(
                 f"CTE {cte.name} base alias {cte.base_alias} != parent {parent.safe_identifier}, skipping"

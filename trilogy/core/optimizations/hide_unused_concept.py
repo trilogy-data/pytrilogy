@@ -10,6 +10,36 @@ class HideUnusedConcepts(OptimizationRule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+    def _argument_addresses(self, concept: BuildConcept) -> set[str]:
+        addresses: set[str] = set()
+        pending = list(concept.concept_arguments)
+        while pending:
+            argument = pending.pop()
+            if argument.address in addresses:
+                continue
+            addresses.add(argument.address)
+            pending.extend(argument.concept_arguments)
+        return addresses
+
+    def _group_dependency_candidates(
+        self, cte: CTE | UnionCTE, candidates: set[str]
+    ) -> set[str]:
+        if isinstance(cte, UnionCTE) or not cte.group_to_grain:
+            return set()
+        group_addresses = {concept.address for concept in cte.group_concepts}
+        if not group_addresses:
+            return set()
+        visible_outputs = [
+            concept
+            for concept in cte.output_columns
+            if concept.address not in candidates
+            and concept.address not in cte.hidden_concepts
+        ]
+        referenced_addresses: set[str] = set()
+        for concept in visible_outputs:
+            referenced_addresses.update(self._argument_addresses(concept))
+        return candidates & group_addresses & referenced_addresses
+
     def _hide_branch_only_outputs(self, cte: UnionCTE) -> bool:
         """Hide any concept that appears in a branch's ``output_columns`` but
         not in the union's ``output_columns`` — those columns are projected
@@ -76,10 +106,9 @@ class HideUnusedConcepts(OptimizationRule):
             branch_only_hidden = self._hide_branch_only_outputs(cte)
         if not newly_hidden or len(non_hidden) <= 1:
             return branch_only_hidden, None
-        self.log(
-            f"Hiding unused concepts {[x.address for x in add_to_hidden]} from {cte.name} (used: {used}, all: {[x.address for x in cte.output_columns]})"
-        )
-        candidates = [x.address for x in cte.output_columns if x.address not in used]
+        candidate_set = {x.address for x in cte.output_columns if x.address not in used}
+        protected = self._group_dependency_candidates(cte, candidate_set)
+        candidates = [x for x in candidate_set if x not in protected]
         visible_addresses = {
             x.address
             for x in cte.output_columns
@@ -95,6 +124,9 @@ class HideUnusedConcepts(OptimizationRule):
             candidates = [x for x in candidates if x != keep_address]
         if not candidates:
             return branch_only_hidden, None
+        self.log(
+            f"Hiding unused concepts {candidates} from {cte.name} (used: {used}, all: {[x.address for x in cte.output_columns]})"
+        )
         cte.hidden_concepts = set(candidates)
         # UnionCTE rendering joins the per-branch CTEs with UNION ALL; each
         # branch's SELECT list is filtered by *that branch's* hidden_concepts,

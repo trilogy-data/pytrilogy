@@ -63,3 +63,28 @@ def test_hide_branch_only_keeps_one_visible_projection(test_environment):
 
     assert HideUnusedConcepts()._hide_branch_only_outputs(union) is False
     assert branch.hidden_concepts == set()
+
+
+def test_hide_unused_keeps_group_key_used_by_visible_lineage(
+    test_environment, monkeypatch
+):
+    env = test_environment.materialize_for_select()
+    category = env.datasources["category"]
+    category_name = env.concepts["category_name"]
+    category_name_length = env.concepts["category_name_length"]
+    parent = _simple_cte("parent", category, [category_name, category_name_length])
+    parent.group_to_grain = True
+    child = _simple_cte("child", category, [category_name_length])
+
+    def used_map(_cte):
+        return {parent.name: {category_name_length.address}}
+
+    monkeypatch.setattr(
+        "trilogy.core.optimizations.hide_unused_concept.render_cte_used_map",
+        used_map,
+    )
+
+    changed, _ = HideUnusedConcepts().optimize(parent, {parent.name: [child]})
+
+    assert changed is False
+    assert parent.hidden_concepts == set()

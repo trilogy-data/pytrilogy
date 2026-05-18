@@ -1,7 +1,14 @@
 from trilogy import Dialects
-from trilogy.core.enums import ComparisonOperator, JoinType
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import ComparisonOperator, JoinType, SourceType
 from trilogy.core.models.build import BuildComparison, BuildGrain
-from trilogy.core.models.execute import CTE, CTEConceptPair, Join, QueryDatasource
+from trilogy.core.models.execute import (
+    CTE,
+    BaseJoin,
+    CTEConceptPair,
+    Join,
+    QueryDatasource,
+)
 from trilogy.core.optimizations.join_hoist import JoinHoist
 
 
@@ -87,16 +94,15 @@ def _simple_cte(name: str, datasource, columns) -> CTE:
     )
 
 
-def test_join_hoist_rejects_outer_join(test_environment):
-    env = test_environment.materialize_for_select()
-    products = env.datasources["products"]
-    category = env.datasources["category"]
-    category_id = env.concepts["category_id"]
-    category_name = env.concepts["category_name"]
-    product_id = env.concepts["product_id"]
-    parent = _simple_cte("parent", products, [product_id, category_id])
-    dim = _simple_cte("category_dim", category, [category_id, category_name])
-    child = CTE(
+def _category_filter_child(
+    parent: CTE,
+    dim: CTE,
+    product_id,
+    category_id,
+    category_name,
+    condition: BuildComparison,
+) -> CTE:
+    return CTE(
         name="child",
         source=QueryDatasource(
             input_concepts=[product_id, category_id, category_name],
@@ -112,11 +118,7 @@ def test_join_hoist_rejects_outer_join(test_environment):
         ),
         output_columns=[product_id],
         parent_ctes=[parent, dim],
-        condition=BuildComparison(
-            left=category_name,
-            right="special",
-            operator=ComparisonOperator.EQ,
-        ),
+        condition=condition,
         grain=BuildGrain(),
         source_map={
             product_id.address: [parent.name],
@@ -141,6 +143,95 @@ def test_join_hoist_rejects_outer_join(test_environment):
         ],
     )
 
+
+def test_join_hoist_rejects_null_preserving_outer_join(test_environment):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+    product_id = env.concepts["product_id"]
+    parent = _simple_cte("parent", products, [product_id, category_id])
+    dim = _simple_cte("category_dim", category, [category_id, category_name])
+    child = _category_filter_child(
+        parent,
+        dim,
+        product_id,
+        category_id,
+        category_name,
+        BuildComparison(
+            left=category_name,
+            right=MagicConstants.NULL,
+            operator=ComparisonOperator.IS,
+        ),
+    )
+
     plan = JoinHoist()._join_hoist_plan(child, parent, {parent.name: [child]})
 
     assert plan is None
+
+
+def test_join_hoist_pushes_guarded_left_join_into_base_parent(test_environment):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+    product_id = env.concepts["product_id"]
+    parent = _simple_cte("parent", products, [product_id, category_id])
+    parent.source.source_type = SourceType.GROUP
+    dim = _simple_cte("category_dim", category, [category_id, category_name])
+    condition = BuildComparison(
+        left=category_name,
+        right="special",
+        operator=ComparisonOperator.EQ,
+    )
+    child = _category_filter_child(
+        parent,
+        dim,
+        product_id,
+        category_id,
+        category_name,
+        condition,
+    )
+
+    changed, _ = JoinHoist().optimize(child, {parent.name: [child]})
+
+    assert changed is True
+    assert child.condition is None
+    assert child.joins == []
+    assert parent.condition == condition
+    assert len(parent.joins) == 1
+    assert parent.joins[0].jointype == JoinType.INNER
+    assert len(parent.source.joins) == 1
+    assert isinstance(parent.source.joins[0], BaseJoin)
+    assert parent.source.joins[0].join_type == JoinType.INNER
+
+
+def test_join_hoist_rejects_single_consumer_non_group_parent(test_environment):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+    product_id = env.concepts["product_id"]
+    parent = _simple_cte("parent", products, [product_id, category_id])
+    dim = _simple_cte("category_dim", category, [category_id, category_name])
+    child = _category_filter_child(
+        parent,
+        dim,
+        product_id,
+        category_id,
+        category_name,
+        BuildComparison(
+            left=category_name,
+            right="special",
+            operator=ComparisonOperator.EQ,
+        ),
+    )
+
+    changed, _ = JoinHoist().optimize(child, {parent.name: [child]})
+
+    assert changed is False
+    assert child.joins
+    assert parent.joins == []
