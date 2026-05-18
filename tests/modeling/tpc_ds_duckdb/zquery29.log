@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 8411
+gen_length = 8392
 preql_size = 1069
 comp_size = 1089
 generated_sql = """
@@ -62,7 +62,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"highfalutin\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" is not distinct from \"highfalutin\".\"store_sales_return_customer_id\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"highfalutin\".\"store_sales_item_id\"
+    INNER JOIN \"highfalutin\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"highfalutin\".\"store_sales_return_customer_id\" AND coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\", \"store_sales_store_sales\".\"SS_ITEM_SK\") = \"highfalutin\".\"store_sales_item_id\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"highfalutin\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"highfalutin\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE

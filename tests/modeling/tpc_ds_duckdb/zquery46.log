@@ -1,5 +1,5 @@
 query_id = "46"
-gen_length = 2885
+gen_length = 2866
 preql_size = 976
 comp_size = 1474
 generated_sql = """
@@ -44,7 +44,7 @@ SELECT
     \"uneven\".\"profit\" as \"profit\"
 FROM
     \"wakeful\"
-    INNER JOIN \"uneven\" on \"wakeful\".\"customer_id\" is not distinct from \"uneven\".\"customer_id\"
+    INNER JOIN \"uneven\" on \"wakeful\".\"customer_id\" = \"uneven\".\"customer_id\"
 WHERE
     \"wakeful\".\"customer_address_city\" != \"uneven\".\"bought_city\"
 
