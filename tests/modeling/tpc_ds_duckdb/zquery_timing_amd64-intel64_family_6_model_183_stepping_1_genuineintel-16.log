@@ -74,9 +74,9 @@ exec_time = 0.013621
 comp_time = 0.133876
 
 [query_16]
-parse_time = 0.606729
-exec_time = 0.111614
-comp_time = 0.014312
+parse_time = 0.764608
+exec_time = 0.118643
+comp_time = 0.06046
 
 [query_17]
 parse_time = 0.274439
@@ -479,9 +479,9 @@ exec_time = 0.101186
 comp_time = 0.076566
 
 [query_94]
-parse_time = 0.823342
-exec_time = 0.053641
-comp_time = 0.024481
+parse_time = 0.818704
+exec_time = 0.065845
+comp_time = 0.019369
 
 [query_95]
 parse_time = 0.456262

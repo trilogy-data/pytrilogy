@@ -201,6 +201,43 @@ select
     assert len(results) == 1
 
 
+def test_aggregate_filter_uses_having(default_duckdb_engine: Executor):
+    test = """
+key order_id int;
+key warehouse_id int;
+
+datasource sales (
+    order_id,
+    warehouse_id
+)
+grain (order_id, warehouse_id)
+query '''
+select 1 as order_id, 10 as warehouse_id
+union all
+select 1, 20
+union all
+select 2, 10
+''';
+
+auto multi_warehouse_orders <- filter order_id
+    where count(warehouse_id) by order_id > 1;
+
+select
+    multi_warehouse_orders
+order by
+    multi_warehouse_orders asc;
+"""
+    statement = default_duckdb_engine.parse_text(test)[-1]
+
+    sql = default_duckdb_engine.generate_sql(statement)[0]
+
+    assert "HAVING" in sql
+    assert "count(" in sql
+    assert "CASE WHEN" not in sql
+    assert "multi_warehouse_orders" in sql
+    assert default_duckdb_engine.execute_statement(statement).fetchall() == [(1,)]
+
+
 def test_boolean_filter():
     test = """const x <- unnest([0, 1,2,2,3]);
 

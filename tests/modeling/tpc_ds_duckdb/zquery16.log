@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 4208
+gen_length = 4110
 preql_size = 641
 comp_size = 821
 generated_sql = """
@@ -23,15 +23,17 @@ GROUP BY
     1),
 questionable as (
 SELECT
-    \"cooperative\".\"cs_order_number\" as \"cs_order_number\",
-    count(\"cooperative\".\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\"
+    \"cooperative\".\"cs_order_number\" as \"multi_warehouse_sales\"
 FROM
     \"cooperative\"
 GROUP BY
-    1),
+    1
+HAVING
+    count(\"cooperative\".\"cs_warehouse_id\") > 1
+),
 abundant as (
 SELECT
-    CASE WHEN \"questionable\".\"_virt_agg_count_7777088585630721\" > 1 THEN \"questionable\".\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    \"questionable\".\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
 FROM
     \"questionable\"),
 thoughtful as (
