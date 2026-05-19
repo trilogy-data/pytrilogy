@@ -6,6 +6,7 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
+    BuildDatasource,
     BuildFunction,
     BuildParamaterizedConceptReference,
     BuildParenthetical,
@@ -17,6 +18,7 @@ from trilogy.core.models.execute import (
     InstantiatedUnnestJoin,
     Join,
     UnionCTE,
+    _datasource_column_for_concept,
 )
 
 
@@ -113,6 +115,24 @@ def _render_left_concept(
 ) -> str:
     if join.left_is_local:
         # LHS key is the rendering branch's own base column (no self-alias).
+        # If the key also resolves through a hoisted dim, the generic concept
+        # render would COALESCE the fact FK with the dim's own key into a
+        # tautological ON clause (cross join). Pin the LHS to its own
+        # left-base datasource column in that case.
+        ds = pair.existing_datasource
+        sources = (
+            consumer.source_map.get(pair.left.address)
+            if isinstance(consumer, CTE)
+            else None
+        )
+        if isinstance(ds, BuildDatasource) and sources and len(sources) > 1:
+            col = _datasource_column_for_concept(ds, pair.left)
+            if isinstance(col, str):
+                use_map[ds.safe_identifier].add(pair.left.address)
+                return (
+                    f"{quote_character}{ds.safe_identifier}{quote_character}"
+                    f".{quote_character}{col}{quote_character}"
+                )
         return render_expr_func(pair.left, consumer)
     node = join.authoritative(consumer, pair.cte)
     col = (

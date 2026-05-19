@@ -51,8 +51,6 @@ LOGGER_PREFIX = "[MODELS_EXECUTE]"
 def _datasource_column_for_concept(
     datasource: BuildDatasource,
     concept: BuildConcept,
-    *,
-    use_raw_name: bool,
 ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper | None:
     for column in datasource.columns:
         if (
@@ -60,9 +58,7 @@ def _datasource_column_for_concept(
             or column.concept == concept
             or column.concept.with_grain(concept.grain) == concept
         ):
-            if use_raw_name:
-                return column.alias
-            return concept.safe_address
+            return column.alias
     return None
 
 
@@ -192,9 +188,7 @@ class CTE:
         if not isinstance(parent, DatasourceCTE):
             return False
         qds_being_inlined = parent.source
-        ds_being_inlined = qds_being_inlined.base_datasource
-        if not isinstance(ds_being_inlined, BuildDatasource):
-            return False
+        ds_being_inlined = parent.datasource
         existing_aliases = {
             x.safe_identifier
             for x in self.source.datasources
@@ -411,11 +405,7 @@ class CTE:
             return inlined.consumer_column(concept)
 
         try:
-            resolved = self.source.get_alias(concept, source=source)
-
-            if not resolved:
-                raise ValueError("No source found")
-            return resolved
+            return self.source.get_alias(concept, source=source)
         except ValueError as e:
             return f"INVALID_ALIAS: {str(e)}"
 
@@ -550,9 +540,7 @@ class CTE:
         if isinstance(source, str):
             return self.resolve_render_alias(source)
         if isinstance(source, DatasourceCTE) and self.renders_inline(source):
-            if self.inlined_parent_for_source(source.name) is not None:
-                return self.resolve_render_alias(source.name)
-            return source.datasource.safe_identifier
+            return self.resolve_render_alias(source.name)
         if isinstance(source, (CTE, UnionCTE)):
             return source.name
         if isinstance(source, BuildDatasource):
@@ -634,21 +622,15 @@ class CTE:
                 join.right_cte = new
 
     def inlined_parent_for_source(self, source: str) -> "DatasourceCTE | None":
-        alias = self.source_key_for(source)
         for p in self.inlined_parents:
             if source in {p.name, p.datasource.safe_identifier}:
-                return p
-            if alias == p.datasource.safe_identifier:
                 return p
         return None
 
     def inlined_parent_providing(self, concept: BuildConcept) -> "DatasourceCTE | None":
         """An inlined datasource exposing ``concept`` as a raw column."""
         for p in self.inlined_parents:
-            if (
-                _datasource_column_for_concept(p.datasource, concept, use_raw_name=True)
-                is not None
-            ):
+            if _datasource_column_for_concept(p.datasource, concept) is not None:
                 return p
         return None
 
@@ -1340,9 +1322,7 @@ class DatasourceCTE(CTE):
     def consumer_column(
         self, concept: BuildConcept
     ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:
-        alias = _datasource_column_for_concept(
-            self.datasource, concept, use_raw_name=True
-        )
+        alias = _datasource_column_for_concept(self.datasource, concept)
         assert alias is not None  # concept is an output of this datasource
         return alias
 
@@ -1587,18 +1567,19 @@ class Join:
         return str(self)
 
     def __str__(self):
+        pairs = self.joinkey_pairs or []
         if self.joinkey_pairs:
             return (
                 f"{self.jointype.value} join"
                 f" {self.right_name} on"
-                f" {','.join([k.cte.name + '.'+str(k.left.address)+'='+str(k.right.address) for k in self.joinkey_pairs])}"
+                f" {','.join([k.cte.name + '.'+str(k.left.address)+'='+str(k.right.address) for k in pairs])}"
             )
         elif self.left_cte:
             return (
                 f"{self.jointype.value} JOIN {self.left_cte.name} and"
-                f" {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
+                f" {self.right_name} on {','.join([str(k) for k in pairs])}"
             )
-        return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
+        return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in pairs])}"
 
 
 def merge_ctes(ctes: List[CTE | UnionCTE]) -> List[CTE | UnionCTE]:

@@ -1,5 +1,13 @@
-from trilogy.core.enums import ComparisonOperator, JoinType, SourceType
-from trilogy.core.models.build import BuildComparison, BuildConcept, BuildGrain
+from trilogy.core.enums import ComparisonOperator, FunctionType, JoinType, SourceType
+from trilogy.core.models.build import (
+    BuildColumnAssignment,
+    BuildComparison,
+    BuildConcept,
+    BuildDatasource,
+    BuildFunction,
+    BuildGrain,
+    BuildSubselectComparison,
+)
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -11,6 +19,9 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.union_dim_pushdown import (
     UnionDimPushdown,
+    _add_render_dependencies,
+    _base_datasource,
+    _datasource_matches_raw_id,
     _DimDescriptor,
     _find_dim_cte_for_qds,
 )
@@ -320,6 +331,24 @@ def test_union_dim_pushdown_resolves_inlined_dim_by_raw_datasource_id(
     assert _find_dim_cte_for_qds(consumer, category.identifier) is dim
 
 
+def test_union_dim_pushdown_finds_dim_from_join_when_not_parent(test_environment):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    branch = _branch_cte("branch", products, [product_id, category_id])
+    union = _union_cte("unioned", [branch], [product_id, category_id])
+    dim = CTE.from_datasource(category)
+    dim.name = "category_dim"
+    consumer = _dim_consumer(union, dim, category_id, category_id, category_name)
+    consumer.parent_ctes = [union]
+
+    assert _find_dim_cte_for_qds(consumer, dim.source.identifier) is dim
+
+
 def test_union_dim_pushdown_rejects_ambiguous_raw_datasource_binding(
     test_environment,
 ):
@@ -361,3 +390,83 @@ def test_union_dim_pushdown_rejects_ambiguous_raw_datasource_binding(
     )
 
     assert _find_dim_cte_for_qds(consumer, category.identifier) is None
+
+
+def test_union_dim_pushdown_helper_paths_for_raw_datasources(test_environment):
+    env = test_environment.materialize_for_select()
+    category = env.datasources["category"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    raw = BuildDatasource(
+        name="raw_category",
+        columns=[BuildColumnAssignment(alias="category_id", concept=category_id)],
+        address="raw_category_addr",
+        grain=BuildGrain(),
+    )
+    wrapped = QueryDatasource.from_datasource(raw)
+    dependency = BuildFunction(
+        operator=FunctionType.ADD,
+        arguments=[category_id, 1],
+        output_data_type=category_name.datatype,
+        output_purpose=category_name.purpose,
+        arg_count=2,
+    )
+    derived = BuildConcept(
+        name="derived_category_name",
+        canonical_name="derived_category_name",
+        datatype=category_name.datatype,
+        purpose=category_name.purpose,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+        lineage=dependency,
+    )
+    concepts = _add_render_dependencies([derived], raw)
+
+    assert _base_datasource(raw) is None
+    assert _base_datasource(wrapped) is raw
+    assert _datasource_matches_raw_id(raw, raw.identifier) is True
+    assert category_id in concepts
+    assert (
+        _find_dim_cte_for_qds(
+            _dim_consumer(
+                _union_cte(
+                    "unioned",
+                    [_branch_cte("branch", category, [category_id])],
+                    [category_id],
+                ),
+                CTE.from_datasource(category),
+                category_id,
+                category_id,
+                category_name,
+            ),
+            raw.identifier,
+        )
+        is None
+    )
+
+
+def test_union_dim_pushdown_propagates_existence_dependencies(test_environment):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    branch = _branch_cte("branch", products, [product_id, category_id])
+    source_consumer = _branch_cte("consumer", products, [product_id, category_id])
+    source_consumer.existence_source_map = {category_name.address: ["category_parent"]}
+    category_parent = CTE.from_datasource(category)
+    category_parent.name = "category_parent"
+    source_consumer.parent_ctes = [category_parent]
+    atom = BuildSubselectComparison(
+        left=product_id,
+        right=category_name,
+        operator=ComparisonOperator.IN,
+    )
+
+    UnionDimPushdown()._propagate_existence_sources(branch, source_consumer, atom)
+
+    assert branch.existence_source_map[category_name.address] == ["category_parent"]
+    assert branch.parent_ctes == [category_parent]

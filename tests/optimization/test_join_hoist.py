@@ -4,6 +4,7 @@ from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, So
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
+    BuildDatasource,
     BuildGrain,
     BuildSubselectComparison,
 )
@@ -14,7 +15,7 @@ from trilogy.core.models.execute import (
     Join,
     QueryDatasource,
 )
-from trilogy.core.optimizations.join_hoist import JoinHoist
+from trilogy.core.optimizations.join_hoist import JoinHoist, _datasource_matches
 
 
 def _hoist_setup(executor):
@@ -40,6 +41,38 @@ def _hoist_setup(executor):
         SELECT 4, 'STORE', 2, 30
         ''';
     """)
+
+
+def test_datasource_matches_handles_non_datasource_and_wrapped_base():
+    right = BuildDatasource(
+        name="right",
+        columns=[],
+        address="right_addr",
+        grain=BuildGrain(),
+    )
+    left_wrapper = QueryDatasource.from_datasource(right)
+    left = BuildDatasource(
+        name="left",
+        columns=[],
+        address="left_addr",
+        grain=BuildGrain(),
+    )
+    right_wrapper = QueryDatasource.from_datasource(left)
+
+    assert _datasource_matches(object(), right) is False
+    assert _datasource_matches(left_wrapper, right) is True
+    assert _datasource_matches(left, right_wrapper) is True
+
+
+def test_join_hoist_skips_completed_cte(test_environment):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    product_id = env.concepts["product_id"]
+    cte = _simple_cte("completed", products, [product_id])
+    rule = JoinHoist()
+    rule.complete[cte.name] = True
+
+    assert rule.optimize(cte, {}) == (False, None)
 
 
 def test_hoist_preserves_concepts_referenced_via_output_lineage():

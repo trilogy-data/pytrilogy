@@ -3,9 +3,9 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Environment
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import ComparisonOperator, FunctionType, JoinType
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models.build import BuildColumnAssignment
+from trilogy.core.models.build import BuildColumnAssignment, BuildSubselectComparison
 from trilogy.core.models.execute import (
     CTE,
     BuildConcept,
@@ -14,12 +14,14 @@ from trilogy.core.models.execute import (
     CTEConceptPair,
     DatasourceCTE,
     DataType,
+    InstantiatedUnnestJoin,
     Join,
     Purpose,
     QueryDatasource,
     UnionCTE,
     raise_helpful_join_validation_error,
 )
+from trilogy.dialect.base import BaseDialect, safe_get_cte_value
 
 
 def test_raise_helpful_join_validation_error():
@@ -175,6 +177,25 @@ def test_build_datasource_effective_grain_includes_key_outputs():
     assert prop.address not in grain.components
 
 
+def test_cte_rejects_multiple_join_derived_concepts():
+    with raises(NotImplementedError):
+        CTE(
+            name="bad",
+            source=QueryDatasource(
+                input_concepts=[],
+                output_concepts=[],
+                datasources=[],
+                grain=BuildGrain(),
+                joins=[],
+                source_map={},
+            ),
+            output_columns=[],
+            source_map={},
+            grain=BuildGrain(),
+            join_derived_concepts=[_property_concept("a"), _property_concept("b")],
+        )
+
+
 def test_query_datasource_effective_grain_skips_recursive_gating():
     """``QueryDatasource.effective_grain`` mirrors the BuildDatasource version
     but excludes the recursive-gating sentinel concept."""
@@ -287,6 +308,72 @@ def test_join_reference_for_emitted_datasource_ignores_scanned_raw_source():
     assert join.reference_for(consumer, dim) == f'"{dim.name}"'
 
 
+def test_join_reference_for_union_consumer_uses_node_name():
+    key = _key_concept("k")
+    branch = _query_cte("branch", key)
+    union = UnionCTE(
+        name="unioned",
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[branch.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={key.address: {branch.source}},
+        ),
+        parent_ctes=[],
+        internal_ctes=[branch],
+        output_columns=[key],
+        grain=BuildGrain(),
+    )
+    join = Join(right_cte=branch, jointype=JoinType.INNER)
+    join.quote = '"'
+
+    assert union.identifier == union.name
+    assert union.safe_identifier == union.name
+    assert union.group_to_grain is False
+    assert union.group_concepts == []
+    assert join.name_for(union, branch) == branch.name
+    assert join.reference_for(union, branch) == f'"{branch.name}"'
+    assert join.right_name == branch.name
+
+
+def test_join_unique_id_includes_sorted_join_key_pairs():
+    left = _key_concept("left_id")
+    right = _key_concept("right_id")
+    cte = _query_cte("source", left)
+    pair = CTEConceptPair(
+        left=left,
+        right=right,
+        existing_datasource=cte.source,
+        cte=cte,
+    )
+    join = Join(
+        right_cte=cte,
+        jointype=JoinType.INNER,
+        joinkey_pairs=[pair],
+    )
+
+    assert join.unique_id == "inner join source on source.local.left_id=local.right_id"
+
+
+def test_join_unique_id_without_pairs_uses_string_form():
+    key = _key_concept("k")
+    cte = _query_cte("source", key)
+    join = Join(right_cte=cte, jointype=JoinType.INNER)
+
+    assert join.unique_id == str(join)
+
+
+def test_cte_group_concepts_keeps_rollup_outputs():
+    key = _key_concept("k")
+    cte = _query_cte("cte", key)
+    cte.rollup_concepts = [key]
+    cte.group_to_grain = True
+
+    assert cte.group_concepts == []
+
+
 def test_source_bindings_include_emitted_and_inlined_sources():
     key = _key_concept("k")
     emitted = _datasource_cte("emitted_ds", key)
@@ -307,6 +394,42 @@ def test_source_bindings_include_emitted_and_inlined_sources():
     assert folded_binding.key == folded.datasource.safe_identifier
     assert folded_binding.emitted is False
     assert consumer.source_key_for(folded) == folded.datasource.safe_identifier
+
+
+def test_source_key_for_resolves_bound_datasources_by_identity_and_identifier():
+    key = _key_concept("k")
+    emitted = _datasource_cte("emitted_ds", key)
+    folded = _datasource_cte("folded_ds", key)
+    query_parent = _query_cte("query_parent", key)
+    consumer = _query_cte("consumer", key, [emitted, query_parent])
+    consumer.add_inlined_datasource(folded)
+
+    same_identifier = BuildDatasource(
+        name=folded.datasource.name,
+        columns=[],
+        address="other_addr",
+        grain=BuildGrain(),
+    )
+    unbound = BuildDatasource(
+        name="unbound",
+        columns=[],
+        address="unbound_addr",
+        grain=BuildGrain(),
+    )
+    unbound_qds = QueryDatasource(
+        input_concepts=[],
+        output_concepts=[],
+        datasources=[],
+        grain=BuildGrain(),
+        joins=[],
+        source_map={},
+    )
+
+    assert consumer.source_key_for(folded.datasource) == folded.datasource.name
+    assert consumer.source_key_for(same_identifier) == folded.datasource.name
+    assert consumer.source_key_for(unbound) == unbound.safe_identifier
+    assert consumer.source_key_for(query_parent.source) == query_parent.name
+    assert consumer.source_key_for(unbound_qds) == unbound_qds.safe_identifier
 
 
 def test_replace_dependency_updates_cte_references_and_source_tokens():
@@ -513,6 +636,49 @@ def test_inline_parent_datasource_folds_leaf_into_consumer():
     )
 
 
+def test_inline_parent_datasource_adds_unmapped_parent_outputs_and_force_group():
+    key = _key_concept("k")
+    extra = _property_concept("extra")
+    parent_ds = BuildDatasource(
+        name="parent_ds",
+        columns=[
+            BuildColumnAssignment(alias="k", concept=key),
+            BuildColumnAssignment(alias="extra", concept=extra),
+        ],
+        address="parent_addr",
+        grain=BuildGrain(),
+    )
+    parent = CTE.from_datasource(parent_ds)
+    child = _query_cte("child", key, [parent])
+
+    assert child.inline_parent_datasource(parent, force_group=True) is True
+    assert child.source_map[extra.address] == [parent_ds.safe_identifier]
+    assert child.group_to_grain is True
+
+
+def test_cte_add_rejects_union_cte():
+    key = _key_concept("k")
+    cte = _query_cte("cte", key)
+    union = UnionCTE(
+        name="unioned",
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[cte.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={key.address: {cte.source}},
+        ),
+        parent_ctes=[],
+        internal_ctes=[cte],
+        output_columns=[key],
+        grain=BuildGrain(),
+    )
+
+    with raises(ValueError, match="cannot merge CTE and union CTE"):
+        cte + union
+
+
 def test_inline_parent_datasource_alias_collision_keeps_existing_source():
     """When a folded datasource would reuse an existing raw alias, render it
     under the parent CTE name without dropping the existing source."""
@@ -549,3 +715,204 @@ def test_inline_parent_datasource_alias_collision_keeps_existing_source():
     assert child.source_map[key.address] == [parent.name]
     assert child.existence_source_map[key.address] == [parent.name]
     assert any(ds is existing_ds for ds in child.source.datasources)
+
+
+def test_inline_parent_datasource_rejects_non_datasource_parent():
+    key = _key_concept("k")
+    child = _query_cte("child", key)
+    parent = _query_cte("parent", key)
+
+    assert child.inline_parent_datasource(parent) is False
+
+
+def test_replace_dependency_ignores_unnest_joins():
+    key = _key_concept("k")
+    old = _datasource_cte("old_ds", key)
+    new = _datasource_cte("new_ds", key)
+    consumer = _query_cte("consumer", key, [old])
+    unnest = InstantiatedUnnestJoin(object_to_unnest=key)
+    consumer.joins = [unnest]
+
+    consumer.replace_dependency(old, new)
+
+    assert consumer.joins == [unnest]
+    assert consumer.parent_ctes == [new]
+
+
+def test_inlined_parent_lookup_accepts_cte_name_and_raw_alias():
+    key = _key_concept("k")
+    dim = _datasource_cte("dim", key)
+    consumer = _query_cte("consumer", key)
+    consumer.add_inlined_datasource(dim)
+
+    assert consumer.inlined_parent_for_source(dim.name) is dim
+    assert consumer.inlined_parent_for_source(dim.datasource.safe_identifier) is dim
+
+
+def test_inlined_parent_providing_returns_none_for_unknown_concept():
+    key = _key_concept("k")
+    dim = _datasource_cte("dim", key)
+    consumer = _query_cte("consumer", key)
+    consumer.add_inlined_datasource(dim)
+
+    assert consumer.inlined_parent_providing(_property_concept("missing")) is None
+
+
+def test_get_alias_skips_source_mismatch_and_reports_invalid():
+    key = _key_concept("k")
+    missing = _property_concept("missing")
+    parent = _datasource_cte("parent", key)
+    consumer = _query_cte("consumer", key, [parent])
+
+    assert consumer.get_alias(key, source="other") == key.safe_address
+    assert consumer.get_alias(missing).startswith("INVALID_ALIAS:")
+
+
+def test_union_condition_setter_is_not_supported():
+    key = _key_concept("k")
+    branch = _query_cte("branch", key)
+    union = UnionCTE(
+        name="unioned",
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[branch.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={key.address: {branch.source}},
+        ),
+        parent_ctes=[],
+        internal_ctes=[branch],
+        output_columns=[key],
+        grain=BuildGrain(),
+    )
+
+    with raises(NotImplementedError):
+        union.condition = None
+
+
+def test_inlined_datasource_renders_raw_column_missing_from_source_map():
+    key = _key_concept("k")
+    raw = _property_concept("raw_name")
+    dim_ds = BuildDatasource(
+        name="dim",
+        columns=[
+            BuildColumnAssignment(alias="k", concept=key),
+            BuildColumnAssignment(alias="_raw_name", concept=raw),
+        ],
+        address="dim_addr",
+        grain=BuildGrain(),
+    )
+    dim = CTE.from_datasource(dim_ds)
+    consumer = _query_cte("consumer", key)
+    consumer.add_inlined_datasource(dim)
+
+    rendered = BaseDialect().render_concept_sql(raw, consumer, alias=False)
+
+    assert rendered == "`dim`.`_raw_name`"
+
+
+def test_safe_get_cte_value_returns_none_when_no_source_can_render():
+    key = _key_concept("k")
+    missing = _property_concept("missing")
+    cte = _query_cte("consumer", key)
+
+    rendered = safe_get_cte_value(
+        BaseDialect().FUNCTION_MAP[FunctionType.COALESCE],
+        cte,
+        missing,
+        "`",
+        BaseDialect().render_expr,
+        {},
+    )
+
+    assert rendered is None
+
+
+def test_inlined_datasource_subselect_renders_raw_table_source():
+    left = _key_concept("left_id")
+    right = _key_concept("right_id")
+    dim = _datasource_cte("dim", right)
+    consumer = _query_cte("consumer", left)
+    consumer.add_inlined_datasource(dim)
+    consumer.existence_source_map = {right.address: [dim.datasource.safe_identifier]}
+
+    rendered = BaseDialect().render_expr(
+        BuildSubselectComparison(
+            left=1,
+            right=right,
+            operator=ComparisonOperator.IN,
+        ),
+        cte=consumer,
+    )
+
+    assert "from dim_addr as dim" in rendered
+    assert "dim.`right_id`" in rendered
+
+
+def test_union_source_key_helpers_resolve_parents_branches_and_fallbacks():
+    key = _key_concept("k")
+    parent = _datasource_cte("parent_ds", key)
+    branch = _query_cte("branch", key, [parent])
+    union = UnionCTE(
+        name="unioned",
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[branch.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={key.address: {branch.source}},
+        ),
+        parent_ctes=[],
+        internal_ctes=[branch],
+        output_columns=[key],
+        grain=BuildGrain(),
+    )
+    unbound = BuildDatasource(
+        name="unbound",
+        columns=[],
+        address="unbound_addr",
+        grain=BuildGrain(),
+    )
+
+    union.add_dependency(parent)
+
+    assert union.source_key_for("literal") == "literal"
+    assert union.source_key_for(parent) == parent.name
+    assert union.source_key_for(parent.datasource) == parent.name
+    assert union.source_key_for(branch.source) == branch.name
+    assert union.source_key_for(unbound) == unbound.safe_identifier
+    assert union.dependency_nodes() == [parent]
+    assert union.dependency_nodes(include_branches=True) == [parent, branch]
+
+
+def test_union_add_rejects_mismatched_union():
+    key = _key_concept("k")
+    branch = _query_cte("branch", key)
+    left = UnionCTE(
+        name="left_union",
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[branch.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={key.address: {branch.source}},
+        ),
+        parent_ctes=[],
+        internal_ctes=[branch],
+        output_columns=[key],
+        grain=BuildGrain(),
+    )
+    right = UnionCTE(
+        name="right_union",
+        source=left.source,
+        parent_ctes=[],
+        internal_ctes=[branch],
+        output_columns=[key],
+        grain=BuildGrain(),
+    )
+
+    with raises(SyntaxError, match="Cannot merge union CTEs"):
+        left + right

@@ -436,6 +436,9 @@ class JoinHoist(OptimizationRule):
                 left_cte=None,
                 joinkey_pairs=new_joinkey_pairs,
                 modifiers=list(join.modifiers),
+                # The synthetic left base is the parent's own raw datasource
+                # (no parent-CTE alias); its FK keys are local columns.
+                left_is_local=inline_left_base,
             )
             parent_cte.joins.append(new_join)
             if dim_was_inlined:
@@ -533,8 +536,6 @@ class JoinHoist(OptimizationRule):
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         if isinstance(cte, UnionCTE):
-            return False, None
-        if not isinstance(cte, CTE):
             return False, None
         if self.complete.get(cte.name):
             return False, None
