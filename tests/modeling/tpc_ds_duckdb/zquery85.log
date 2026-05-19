@@ -1,6 +1,6 @@
 query_id = "85"
-gen_length = 4025
-preql_size = 2000
+gen_length = 4065
+preql_size = 2021
 comp_size = 2166
 generated_sql = """
 SELECT
@@ -20,7 +20,8 @@ WHERE
     \"wr_web_sales_date_date\".\"D_YEAR\" = 2000 and ( ( \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Advanced Degree' and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" >= 100.0 and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" <= 150.0 ) or ( \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" >= 50.0 and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" <= 100.0 ) or ( \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'W' and \"wr_refunded_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = '2 yr Degree' and \"wr_refunded_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = \"wr_returning_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" >= 150.0 and \"wr_web_sales_web_sales\".\"WS_SALES_PRICE\" <= 200.0 ) ) and ( ( \"wr_refunded_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"wr_refunded_address_customer_address\".\"CA_STATE\" in ('IN','OH','NJ') and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" >= 100 and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" <= 200 ) or ( \"wr_refunded_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"wr_refunded_address_customer_address\".\"CA_STATE\" in ('WI','CT','KY') and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" >= 150 and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" <= 300 ) or ( \"wr_refunded_address_customer_address\".\"CA_COUNTRY\" = 'United States' and \"wr_refunded_address_customer_address\".\"CA_STATE\" in ('LA','IA','AR') and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" >= 50 and \"wr_web_sales_web_sales\".\"WS_NET_PROFIT\" <= 250 ) )
 
 GROUP BY
-    1
+    1,
+    \"wr_reason_reason\".\"R_REASON_DESC\"
 ORDER BY 
     \"reason_desc\" asc,
     \"avg1\" asc,
