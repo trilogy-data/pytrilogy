@@ -48,6 +48,16 @@ from trilogy.utility import string_to_hash, unique
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 
 
+@dataclass(frozen=True)
+class SourceBinding:
+    key: str
+    node: "CTE | UnionCTE | None" = None
+    datasource: "BuildDatasource | QueryDatasource | None" = None
+    emitted: bool = True
+    inlined: bool = False
+    branch: bool = False
+
+
 @dataclass
 class CTE:
     name: str
@@ -220,8 +230,7 @@ class CTE:
         rendered_parent = parent
         if inline_datasource is not ds_being_inlined:
             rendered_parent = replace(parent, datasource=inline_datasource)
-        if rendered_parent not in self.inlined_parents:
-            self.inlined_parents.append(rendered_parent)
+        self.add_inlined_datasource(rendered_parent)
         return True
 
     def __add__(self, other: "CTE" | "UnionCTE"):
@@ -489,8 +498,125 @@ class CTE:
         """Translate a source_map token into the SQL alias to emit."""
         return self.inlined_alias_map.get(source, source)
 
+    def source_bindings(self, include_inlined: bool = True) -> list[SourceBinding]:
+        bindings = [
+            SourceBinding(
+                key=parent.name,
+                node=parent,
+                datasource=(
+                    parent.datasource
+                    if isinstance(parent, DatasourceCTE)
+                    else parent.source
+                ),
+                emitted=True,
+            )
+            for parent in self.parent_ctes
+        ]
+        if include_inlined:
+            bindings.extend(
+                SourceBinding(
+                    key=self.source_key_for(parent),
+                    node=parent,
+                    datasource=parent.datasource,
+                    emitted=False,
+                    inlined=True,
+                )
+                for parent in self.inlined_parents
+            )
+        return bindings
+
+    def source_key_for(
+        self,
+        source: str | "CTE" | "UnionCTE" | BuildDatasource | "QueryDatasource",
+    ) -> str:
+        if isinstance(source, str):
+            return self.resolve_render_alias(source)
+        if isinstance(source, DatasourceCTE) and self.renders_inline(source):
+            if self.inlined_parent_for_source(source.name) is not None:
+                return self.resolve_render_alias(source.name)
+            return source.datasource.safe_identifier
+        if isinstance(source, (CTE, UnionCTE)):
+            return source.name
+        if isinstance(source, BuildDatasource):
+            for binding in self.source_bindings(include_inlined=True):
+                if binding.datasource is source:
+                    return binding.key
+                if (
+                    binding.datasource is not None
+                    and binding.datasource.identifier == source.identifier
+                ):
+                    return binding.key
+            return source.safe_identifier
+        for binding in self.source_bindings(include_inlined=True):
+            if binding.datasource is source:
+                return binding.key
+        return source.safe_identifier
+
+    def dependency_nodes(
+        self,
+        include_inlined: bool = False,
+    ) -> list["CTE | UnionCTE"]:
+        return [
+            binding.node
+            for binding in self.source_bindings(include_inlined=include_inlined)
+            if binding.node is not None
+        ]
+
+    def add_dependency(self, parent: "CTE | UnionCTE") -> None:
+        self.parent_ctes = unique(self.parent_ctes + [parent], "name")
+
+    def add_inlined_datasource(self, parent: "DatasourceCTE") -> str:
+        existing = {p.name for p in self.inlined_parents}
+        if parent.name not in existing:
+            self.inlined_parents.append(parent)
+        return self.source_key_for(parent)
+
+    def replace_dependency(self, old: "CTE", new: "CTE | UnionCTE") -> None:
+        self.parent_ctes = [
+            new if x.safe_identifier == old.safe_identifier else x
+            for x in self.parent_ctes
+        ]
+        if isinstance(new, DatasourceCTE):
+            self.inlined_parents = [
+                new if x.safe_identifier == old.safe_identifier else x
+                for x in self.inlined_parents
+            ]
+        else:
+            self.inlined_parents = [
+                x
+                for x in self.inlined_parents
+                if x.safe_identifier != old.safe_identifier
+            ]
+        old_keys = {old.safe_identifier, old.name}
+        if isinstance(old, DatasourceCTE):
+            old_keys.add(old.datasource.safe_identifier)
+        new_key = self.source_key_for(new)
+        for k, v in self.source_map.items():
+            if isinstance(v, list):
+                self.source_map[k] = [new_key if x in old_keys else x for x in v]
+        for k, v in self.existence_source_map.items():
+            if isinstance(v, list):
+                self.existence_source_map[k] = [
+                    new_key if x in old_keys else x for x in v
+                ]
+        if self.base_alias_override == old.safe_identifier:
+            self.base_alias_override = new.safe_identifier
+        if self.base_name_override == old.safe_identifier:
+            self.base_name_override = new.safe_identifier
+        for join in self.joins:
+            if not isinstance(join, Join):
+                continue
+            if join.left_cte and join.left_cte.safe_identifier == old.safe_identifier:
+                join.left_cte = new
+            if join.joinkey_pairs:
+                for pair in join.joinkey_pairs:
+                    if pair.cte and pair.cte.safe_identifier == old.safe_identifier:
+                        pair.cte = new
+            if join.right_cte.safe_identifier == old.safe_identifier:
+                join.right_cte = new
+
     def inlined_parent_for_source(self, source: str) -> "DatasourceCTE | None":
-        alias = self.resolve_render_alias(source)
+        alias = self.source_key_for(source)
         for p in self.inlined_parents:
             if source in {p.name, p.datasource.safe_identifier}:
                 return p
@@ -510,7 +636,7 @@ class CTE:
 
     def renders_inline(self, node: "CTE | UnionCTE") -> bool:
         """Whether this consumer renders ``node`` as a folded raw datasource."""
-        if any(p.name == node.name for p in self.inlined_parents):
+        if self.inlined_parent_for_source(node.name) is not None:
             return True
         if isinstance(node, DatasourceCTE):
             scanned = {
@@ -1269,6 +1395,69 @@ class UnionCTE:
     def resolve_render_alias(self, source: str) -> str:
         return source
 
+    def source_bindings(self, include_branches: bool = True) -> list[SourceBinding]:
+        bindings = [
+            SourceBinding(
+                key=parent.name,
+                node=parent,
+                datasource=(
+                    parent.datasource
+                    if isinstance(parent, DatasourceCTE)
+                    else parent.source
+                ),
+                emitted=True,
+            )
+            for parent in self.parent_ctes
+        ]
+        if include_branches:
+            bindings.extend(
+                SourceBinding(
+                    key=branch.name,
+                    node=branch,
+                    datasource=branch.source,
+                    emitted=False,
+                    branch=True,
+                )
+                for branch in self.internal_ctes
+            )
+        return bindings
+
+    def dependency_nodes(
+        self,
+        include_branches: bool = False,
+    ) -> list[CTE | "UnionCTE"]:
+        return [
+            binding.node
+            for binding in self.source_bindings(include_branches=include_branches)
+            if binding.node is not None
+        ]
+
+    def source_key_for(
+        self,
+        source: str | CTE | "UnionCTE" | BuildDatasource | QueryDatasource,
+    ) -> str:
+        if isinstance(source, str):
+            return source
+        if isinstance(source, (CTE, UnionCTE)):
+            return source.name
+        for binding in self.source_bindings(include_branches=True):
+            if binding.datasource is source:
+                return binding.key
+        return source.safe_identifier
+
+    def add_dependency(self, parent: CTE | "UnionCTE") -> None:
+        self.parent_ctes = unique(self.parent_ctes + [parent], "name")
+
+    def replace_dependency(self, old: CTE, new: CTE | "UnionCTE") -> None:
+        self.parent_ctes = [
+            new if x.safe_identifier == old.safe_identifier else x
+            for x in self.parent_ctes
+        ]
+        self.internal_ctes = [
+            new if x.safe_identifier == old.safe_identifier else x
+            for x in self.internal_ctes
+        ]
+
     @property
     def identifier(self) -> str:
         return self.name
@@ -1314,10 +1503,9 @@ class Join:
     quote: str | None = None
     condition: BuildConditional | BuildComparison | BuildParenthetical | None = None
     modifiers: List[Modifier] = field(default_factory=list)
-    # Set by union_dim_pushdown: the LHS join keys reference the rendering
-    # branch's own scope (its base datasource), which has no valid self-alias
-    # inside its own SELECT — render them as the branch's column expressions.
-    left_self_scope: bool = False
+    # Set by union_dim_pushdown when LHS join keys are local to the rendering
+    # CTE rather than read from a parent alias.
+    left_is_local: bool = False
 
     @staticmethod
     def authoritative(
@@ -1330,9 +1518,9 @@ class Join:
         to the consumer's own instance so inlined state is read from a single
         source of truth."""
         if isinstance(consumer, CTE):
-            for p in (*consumer.inlined_parents, *consumer.parent_ctes):
-                if p.name == node.name:
-                    return p
+            for binding in consumer.source_bindings(include_inlined=True):
+                if binding.node is not None and binding.node.name == node.name:
+                    return binding.node
         return node
 
     @staticmethod
@@ -1342,14 +1530,9 @@ class Join:
             and isinstance(node, DatasourceCTE)
             and consumer.renders_inline(node)
         ):
-            # Inlined: alias is the datasource's safe_identifier, unless the
-            # consumer remapped it for collision avoidance.
-            mapped = consumer.inlined_alias_map.get(node.name)
-            if mapped is not None:
-                return mapped
-            return node.datasource.safe_identifier
+            return consumer.source_key_for(node)
         if isinstance(consumer, CTE):
-            return consumer.resolve_render_alias(node.name)
+            return consumer.source_key_for(node.name)
         return node.name
 
     def name_for(self, consumer: "CTE | UnionCTE", node: "CTE | UnionCTE") -> str:

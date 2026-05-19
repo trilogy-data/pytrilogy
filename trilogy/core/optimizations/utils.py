@@ -7,8 +7,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildParenthetical,
 )
-from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
-from trilogy.utility import unique
+from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
 
 ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
 
@@ -28,45 +27,7 @@ def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:
 
 def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE) -> None:
     """Replace old parent with new parent in target CTE's source map."""
-    target.parent_ctes = [
-        x for x in target.parent_ctes if x.safe_identifier != old.safe_identifier
-    ] + [new]
-    for k, v in target.source_map.items():
-        if isinstance(v, list):
-            new_sources = []
-            for x in v:
-                if x == old.safe_identifier:
-                    new_sources.append(new.safe_identifier)
-                else:
-                    new_sources.append(x)
-            target.source_map[k] = new_sources
-    if isinstance(target, UnionCTE):
-        # A union renders its branches from ``internal_ctes``, not
-        # ``parent_ctes`` — keep them in sync or the union emits the stale,
-        # now-divergent branch (breaking UNION arity / empty SELECT).
-        target.internal_ctes = [
-            new if b.safe_identifier == old.safe_identifier else b
-            for b in target.internal_ctes
-        ]
-        return
-    if not isinstance(target, CTE):
-        return
-    if target.base_alias_override == old.safe_identifier:
-        target.base_alias_override = new.safe_identifier
-    if target.base_name_override == old.safe_identifier:
-        target.base_name_override = new.safe_identifier
-
-    for join in target.joins:
-        if not isinstance(join, Join):
-            continue
-        if join.left_cte and join.left_cte.safe_identifier == old.safe_identifier:
-            join.left_cte = new
-        if join.joinkey_pairs:
-            for pair in join.joinkey_pairs:
-                if pair.cte and pair.cte.safe_identifier == old.safe_identifier:
-                    pair.cte = new
-        if join.right_cte.safe_identifier == old.safe_identifier:
-            join.right_cte = new
+    target.replace_dependency(old, new)
 
 
 def condition_contains_atom(atom: object, condition: object | None) -> bool:
@@ -146,7 +107,7 @@ def add_datasource_sorted(
 
 
 def add_parent_cte(cte: CTE | UnionCTE, parent: CTE | UnionCTE) -> None:
-    cte.parent_ctes = unique(cte.parent_ctes + [parent], "name")
+    cte.add_dependency(parent)
 
 
 def is_sole_consumer(

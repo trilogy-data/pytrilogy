@@ -224,3 +224,76 @@ def test_union_dim_pushdown_filter_only_requires_a_filter(test_environment):
     assert UnionDimPushdown()._apply(union, [consumer], descriptor) is False
     assert branch1.source.joins == []
     assert branch2.source.joins == []
+
+
+def test_union_dim_pushdown_uses_branch_binding_key_for_dim_source(
+    test_environment,
+):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    branch = _branch_cte("branch", products, [product_id, category_id])
+    dim = CTE.from_datasource(category)
+    dim.name = "category_dim"
+    descriptor = _DimDescriptor(
+        dim_qds=dim.source,
+        join_qds_id=dim.source.identifier,
+        key_pairs=[
+            ConceptPair(
+                left=category_id,
+                right=category_id,
+                existing_datasource=branch.source,
+            )
+        ],
+        dim_concepts=[category_id, category_name],
+        where_atoms=[],
+        strip_safe=True,
+    )
+
+    assert UnionDimPushdown()._push_into_branch(branch, dim, descriptor) is True
+    assert branch.source_map[category_name.address] == [branch.source_key_for(dim)]
+    assert branch.source_map[category_name.address] == [dim.name]
+
+
+def test_union_dim_pushdown_uses_inlined_binding_key_for_dim_source(
+    test_environment,
+):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    branch = _branch_cte("branch", products, [product_id, category_id])
+    union = _union_cte("unioned", [branch], [product_id, category_id])
+    dim = CTE.from_datasource(category)
+    dim.name = "category_dim"
+    consumer = _dim_consumer(union, dim, category_id, category_id, category_name)
+    assert consumer.inline_parent_datasource(dim) is True
+    descriptor = _DimDescriptor(
+        dim_qds=dim.source,
+        join_qds_id=dim.source.identifier,
+        key_pairs=[
+            ConceptPair(
+                left=category_id,
+                right=category_id,
+                existing_datasource=branch.source,
+            )
+        ],
+        dim_concepts=[category_id, category_name],
+        where_atoms=[],
+        strip_safe=True,
+    )
+
+    assert (
+        UnionDimPushdown()._push_into_branch(branch, dim, descriptor, consumer) is True
+    )
+    assert branch.source_map[category_name.address] == [branch.source_key_for(dim)]
+    assert branch.source_map[category_name.address] == [category.safe_identifier]
+    assert branch.parent_ctes == []
+    assert branch.inlined_parents == [dim]

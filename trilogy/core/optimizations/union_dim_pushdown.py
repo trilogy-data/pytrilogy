@@ -45,7 +45,6 @@ from trilogy.core.optimizations.base_optimization import (
 )
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
-    add_parent_cte,
     append_condition,
     condition_contains_atom,
     strip_condition_atom,
@@ -103,7 +102,7 @@ def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | N
     ``parent_ctes`` but ``Join.right_cte`` retains the reference, so search
     there too.
     """
-    for p in (*consumer.parent_ctes, *consumer.inlined_parents):
+    for p in consumer.dependency_nodes(include_inlined=True):
         if isinstance(p, (CTE, UnionCTE)) and p.source.identifier == join_qds_id:
             return p
     for j in consumer.joins:
@@ -544,7 +543,11 @@ class UnionDimPushdown(OptimizationRule):
         )
         if has_existence:
             union.parent_ctes = unique(
-                [p for branch in union.internal_ctes for p in branch.parent_ctes],
+                [
+                    p
+                    for branch in union.internal_ctes
+                    for p in branch.dependency_nodes()
+                ],
                 "name",
             )
         return True
@@ -616,25 +619,21 @@ class UnionDimPushdown(OptimizationRule):
             # The branch CTE name isn't a valid alias inside its own SELECT;
             # the LHS keys are the branch's own base columns. Render them as
             # the branch's expressions (mirrors the historical inline_cte).
-            left_self_scope=isinstance(branch.source.base_datasource, BuildDatasource),
+            left_is_local=isinstance(branch.source.base_datasource, BuildDatasource),
         )
         # If the dim was folded into the consumer (inlined datasource), fold
         # it into the branch too so the branch renders its raw table — the
         # branch CTE wouldn't be emitted to join by name. Otherwise it is a
         # normal emitted CTE the branch joins by name.
-        dim_inlined = (
+        if (
             isinstance(dim_cte, DatasourceCTE)
             and source_consumer is not None
-            and any(p.name == dim_cte.name for p in source_consumer.inlined_parents)
-        )
-        if dim_inlined:
-            assert isinstance(dim_cte, DatasourceCTE)
-            if not any(p.name == dim_cte.name for p in branch.inlined_parents):
-                branch.inlined_parents.append(dim_cte)
-            dim_source_key = dim_cte.datasource.safe_identifier
+            and source_consumer.renders_inline(dim_cte)
+        ):
+            dim_source_key = branch.add_inlined_datasource(dim_cte)
         else:
-            add_parent_cte(branch, dim_cte)
-            dim_source_key = dim_cte.name
+            branch.add_dependency(dim_cte)
+            dim_source_key = branch.source_key_for(dim_cte)
         branch.joins.append(new_join)
         existing_out = {c.address for c in branch.output_columns}
         # FK concepts already resolve via the branch's fact ds. Only the
@@ -689,8 +688,11 @@ class UnionDimPushdown(OptimizationRule):
                 branch.existence_source_map[x] = origin
             else:
                 continue
-            sources = [p for p in source_consumer.parent_ctes if p.name in origin]
-            branch.parent_ctes = unique(branch.parent_ctes + sources, "name")
+            sources = [
+                p for p in source_consumer.dependency_nodes() if p.name in origin
+            ]
+            for source in sources:
+                branch.add_dependency(source)
 
     def _branch_left_datasource(
         self, branch: CTE, fk_left_addrs: set[str]

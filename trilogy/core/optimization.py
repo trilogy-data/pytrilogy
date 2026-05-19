@@ -73,9 +73,16 @@ def canonicalize_graph(input: list[CTE]) -> None:
       ``inlined_parents`` instance so the render contract stays in sync.
     """
     emitted: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
-    inlined: dict[str, CTE] = {
-        p.name: p for c in input for p in getattr(c, "inlined_parents", [])
-    }
+    inlined: dict[str, CTE | UnionCTE] = {}
+    for c in input:
+        if isinstance(c, CTE):
+            inlined.update(
+                {
+                    p.name: p
+                    for p in c.dependency_nodes(include_inlined=True)
+                    if p.name not in emitted
+                }
+            )
 
     def resolve(node):
         # Sync to the single live instance; never drop a reference (a missing
@@ -86,7 +93,7 @@ def canonicalize_graph(input: list[CTE]) -> None:
     for cte in input:
         deduped: list[CTE | UnionCTE] = []
         seen: set[str] = set()
-        for p in cte.parent_ctes:
+        for p in cte.dependency_nodes():
             live = resolve(p)
             if live.name in seen:
                 continue
@@ -103,7 +110,11 @@ def canonicalize_graph(input: list[CTE]) -> None:
                 if pair.cte is not None:
                     pair.cte = resolve(pair.cte)
         if isinstance(cte, UnionCTE):
-            cte.internal_ctes = [resolve(b) for b in cte.internal_ctes]
+            cte.internal_ctes = [
+                resolve(binding.node)
+                for binding in cte.source_bindings(include_branches=True)
+                if binding.branch and binding.node is not None
+            ]
             # UNION ALL arity invariant: every branch must project exactly the
             # union's columns. If a rule over-pruned one branch's
             # ``output_columns`` (its ``source_map`` still carries the data),
@@ -156,7 +167,7 @@ def reorder_ctes(
     for cte in input:
         mapping[cte.name] = cte
     for cte in input:
-        for parent in cte.parent_ctes:
+        for parent in cte.dependency_nodes():
             # Only order nodes that are in the working set; a parent that
             # isn't is sourced elsewhere (inlined/merged) and not emitted.
             if parent.name in mapping:
@@ -216,7 +227,7 @@ def filter_irrelevant_ctes(
         if emit:
             relevant_ctes.add(cte.name)
 
-        for parent in cte.parent_ctes:
+        for parent in cte.dependency_nodes():
             if parent.name in visited:
                 logger.info(
                     optimization_log(
@@ -228,10 +239,12 @@ def filter_irrelevant_ctes(
 
             recurse(parent, inverse_map)
         if isinstance(cte, UnionCTE):
-            for internal in cte.internal_ctes:
+            for binding in cte.source_bindings(include_branches=True):
+                if not binding.branch or binding.node is None:
+                    continue
                 # Branches render inside the union; only their parents need
                 # standalone WITH entries.
-                recurse(internal, inverse_map, emit=False)
+                recurse(binding.node, inverse_map, emit=False)
 
     inverse_map = gen_inverse_map(input)
     recurse(root_cte, inverse_map)
@@ -253,15 +266,13 @@ def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCT
     inverse_map: dict[str, list[CTE | UnionCTE]] = {}
     for cte in input:
         if isinstance(cte, UnionCTE):
-            for internal in cte.internal_ctes:
-                if internal.name not in inverse_map:
-                    inverse_map[internal.name] = []
-                inverse_map[internal.name].append(cte)
+            dependencies = cte.dependency_nodes(include_branches=True)
         else:
-            for parent in cte.parent_ctes:
-                if parent.name not in inverse_map:
-                    inverse_map[parent.name] = []
-                inverse_map[parent.name].append(cte)
+            dependencies = cte.dependency_nodes()
+        for parent in dependencies:
+            if parent.name not in inverse_map:
+                inverse_map[parent.name] = []
+            inverse_map[parent.name].append(cte)
 
     return inverse_map
 

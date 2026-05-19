@@ -111,7 +111,7 @@ def _render_left_concept(
     render_expr_func: Callable,
     use_map: dict[str, set[str]],
 ) -> str:
-    if join.left_self_scope:
+    if join.left_is_local:
         # LHS key is the rendering branch's own base column (no self-alias).
         return render_expr_func(pair.left, consumer)
     node = join.authoritative(consumer, pair.cte)

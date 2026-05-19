@@ -526,7 +526,7 @@ def safe_get_cte_value(
             return f"{render_expr(rendered, cte=cte, raise_invalid=True)}"
         # Translate the source_map token to the actual SQL alias: identity for
         # a normal CTE, the raw-table alias for an inlined DatasourceCTE.
-        alias = cte.resolve_render_alias(source) if isinstance(cte, CTE) else source
+        alias = cte.source_key_for(source) if isinstance(cte, CTE) else source
         return f"{quote_char}{alias}{quote_char}.{safe_quote(rendered, quote_char)}"
 
     if not raw:
@@ -1159,7 +1159,7 @@ class BaseDialect:
                     else None
                 )
                 if inlined_parent is not None:
-                    target = cte.resolve_render_alias(target)
+                    target = cte.source_key_for(target)
                     self.used_map[target].add(right.address)
                     new_base = inlined_parent.datasource.safe_location
                     return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"

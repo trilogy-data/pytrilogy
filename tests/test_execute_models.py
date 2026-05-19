@@ -3,13 +3,21 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Environment
+from trilogy.core.enums import JoinType
 from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.models.build import BuildColumnAssignment
 from trilogy.core.models.execute import (
+    CTE,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
+    CTEConceptPair,
+    DatasourceCTE,
     DataType,
+    Join,
     Purpose,
+    QueryDatasource,
+    UnionCTE,
     raise_helpful_join_validation_error,
 )
 
@@ -110,6 +118,42 @@ def _property_concept(name: str) -> BuildConcept:
     )
 
 
+def _datasource_cte(name: str, concept: BuildConcept) -> DatasourceCTE:
+    ds = BuildDatasource(
+        name=name,
+        columns=[BuildColumnAssignment(alias=concept.name, concept=concept)],
+        address=f"{name}_addr",
+        grain=BuildGrain(),
+    )
+    cte = CTE.from_datasource(ds)
+    assert isinstance(cte, DatasourceCTE)
+    return cte
+
+
+def _query_cte(
+    name: str,
+    concept: BuildConcept,
+    parents: list[CTE | UnionCTE] | None = None,
+) -> CTE:
+    parents = parents or []
+    return CTE(
+        name=name,
+        source=QueryDatasource(
+            input_concepts=[concept],
+            output_concepts=[concept],
+            datasources=[parent.source for parent in parents],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={concept.address: {parent.source for parent in parents}},
+        ),
+        output_columns=[concept],
+        parent_ctes=parents,
+        grain=BuildGrain(),
+        source_map={concept.address: [parent.name for parent in parents]},
+        existence_source_map={},
+    )
+
+
 def test_build_datasource_effective_grain_includes_key_outputs():
     """``effective_grain`` unions the declared grain with any KEY-purpose
     outputs that aren't already in the grain."""
@@ -207,6 +251,104 @@ def test_join_reference_for_inlined_datasource_renders_raw_table():
     ref = join.reference_for(consumer, dim)
     assert base_ds.safe_location in ref
     assert f'as "{base_ds.safe_identifier}"' in ref
+
+
+def test_source_bindings_include_emitted_and_inlined_sources():
+    key = _key_concept("k")
+    emitted = _datasource_cte("emitted_ds", key)
+    folded = _datasource_cte("folded_ds", key)
+    consumer = _query_cte("consumer", key, [emitted])
+    consumer.add_inlined_datasource(folded)
+
+    emitted_only = consumer.source_bindings(include_inlined=False)
+    assert [binding.key for binding in emitted_only] == [emitted.name]
+    assert emitted_only[0].node is emitted
+    assert emitted_only[0].datasource is emitted.datasource
+    assert emitted_only[0].emitted is True
+
+    bindings = consumer.source_bindings()
+    folded_binding = next(binding for binding in bindings if binding.inlined)
+    assert folded_binding.node is folded
+    assert folded_binding.datasource is folded.datasource
+    assert folded_binding.key == folded.datasource.safe_identifier
+    assert folded_binding.emitted is False
+    assert consumer.source_key_for(folded) == folded.datasource.safe_identifier
+
+
+def test_replace_dependency_updates_cte_references_and_source_tokens():
+    key = _key_concept("k")
+    old = _datasource_cte("old_ds", key)
+    old.name = "old_cte"
+    new = _datasource_cte("new_ds", key)
+    new.name = "new_cte"
+    consumer = _query_cte("consumer", key, [old])
+    consumer.inlined_parents = [old]
+    consumer.source_map = {key.address: [old.datasource.safe_identifier]}
+    consumer.existence_source_map = {key.address: [old.datasource.safe_identifier]}
+    consumer.base_alias_override = old.safe_identifier
+    consumer.base_name_override = old.safe_identifier
+    pair = CTEConceptPair(
+        left=key,
+        right=key,
+        existing_datasource=old.source,
+        cte=old,
+    )
+    join = Join(
+        right_cte=old,
+        left_cte=old,
+        jointype=JoinType.INNER,
+        joinkey_pairs=[pair],
+    )
+    consumer.joins = [join]
+
+    consumer.replace_dependency(old, new)
+
+    assert consumer.parent_ctes == [new]
+    assert consumer.inlined_parents == [new]
+    assert consumer.source_map[key.address] == [new.datasource.safe_identifier]
+    assert consumer.existence_source_map[key.address] == [
+        new.datasource.safe_identifier
+    ]
+    assert consumer.base_alias_override == new.safe_identifier
+    assert consumer.base_name_override == new.safe_identifier
+    assert join.right_cte is new
+    assert join.left_cte is new
+    assert pair.cte is new
+
+
+def test_union_dependency_helpers_keep_branches_separate_from_parents():
+    key = _key_concept("k")
+    parent = _datasource_cte("parent_ds", key)
+    branch = _query_cte("branch", key, [parent])
+    union = UnionCTE(
+        name="unioned",
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[branch.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={key.address: {branch.source}},
+        ),
+        parent_ctes=[parent],
+        internal_ctes=[branch],
+        output_columns=[key],
+        grain=BuildGrain(),
+    )
+
+    assert union.dependency_nodes() == [parent]
+    assert union.dependency_nodes(include_branches=True) == [parent, branch]
+    branch_binding = next(
+        binding for binding in union.source_bindings() if binding.branch
+    )
+    assert branch_binding.node is branch
+    assert branch_binding.datasource is branch.source
+    assert branch_binding.emitted is False
+
+    replacement = _query_cte("replacement", key, [parent])
+    union.replace_dependency(branch, replacement)
+    assert union.parent_ctes == [parent]
+    assert union.internal_ctes == [replacement]
 
 
 def test_query_datasource_raises_on_missing_source_map():
