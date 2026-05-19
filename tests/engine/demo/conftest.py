@@ -264,7 +264,11 @@ def setup_richest_environment(env: Environment):
             address="rich_info",
             columns=[
                 ColumnAssignment(alias="Name", concept=name),
-                ColumnAssignment(alias="Net Worth 1918 Dollars", concept=money),
+                ColumnAssignment(
+                    alias="Net Worth 1918 Dollars",
+                    concept=money,
+                    modifiers=[Modifier.NULLABLE],
+                ),
             ],
             grain=Grain(components={name.address}),
         )
@@ -405,7 +409,11 @@ def setup_titanic_distributed(env: Environment):
                 ColumnAssignment(alias="id", concept=id.reference),
                 ColumnAssignment(alias="age", concept=age.reference),
                 ColumnAssignment(alias="name", concept=name.reference),
-                ColumnAssignment(alias="last_name", concept=last_name.reference),
+                ColumnAssignment(
+                    alias="last_name",
+                    concept=last_name.reference,
+                    modifiers=[Modifier.NULLABLE],
+                ),
                 # ColumnAssignment(alias="pclass", concept=pclass.reference),
                 # ColumnAssignment(alias="name", concept=name.reference),
                 # ColumnAssignment(alias="fare", concept=fare),

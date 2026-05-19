@@ -1,5 +1,5 @@
 query_id = "84"
-gen_length = 1624
+gen_length = 1770
 preql_size = 679
 comp_size = 606
 generated_sql = """
@@ -9,11 +9,11 @@ SELECT
 FROM
     \"memory\".\"customer_address\" as \"customer_address_customer_address\"
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
-    INNER JOIN \"memory\".\"store_returns\" as \"returns_store_returns\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"returns_store_returns\".\"SR_CDEMO_SK\"
+    INNER JOIN \"memory\".\"store_returns\" as \"returns_store_returns\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not distinct from \"returns_store_returns\".\"SR_CDEMO_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"customer_household_demographic_household_demographics\" on \"customer_customers\".\"C_CURRENT_HDEMO_SK\" = \"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\"
     INNER JOIN \"memory\".\"income_band\" as \"customer_household_demographic_income_band_income_band\" on \"customer_household_demographic_household_demographics\".\"HD_INCOME_BAND_SK\" = \"customer_household_demographic_income_band_income_band\".\"IB_INCOME_BAND_SK\"
 WHERE
-    \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and \"customer_customers\".\"C_CURRENT_HDEMO_SK\" is not null and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000
+    \"customer_address_customer_address\".\"CA_CITY\" = 'Edgewood' and coalesce(\"customer_customers\".\"C_CURRENT_CDEMO_SK\",\"returns_store_returns\".\"SR_CDEMO_SK\") is not null and coalesce(\"customer_customers\".\"C_CURRENT_HDEMO_SK\",\"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\") is not null and \"customer_household_demographic_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_household_demographic_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000
 
 GROUP BY
     1,
