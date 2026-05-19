@@ -158,7 +158,8 @@ class CTE:
         ``parent_ctes``. The *only* change is representation: instead of an
         ``InlinedCTE`` record + per-join ``inline_cte`` maps + render-site
         branching, the folded leaf (a ``DatasourceCTE``) is parked on
-        ``inlined_parents`` and rendered through the uniform contract.
+        ``inlined_parents`` and rendered from the raw datasource in that
+        consumer's scope.
         """
         if not isinstance(parent, DatasourceCTE):
             return False
@@ -166,7 +167,11 @@ class CTE:
         ds_being_inlined = qds_being_inlined.base_datasource
         if not isinstance(ds_being_inlined, BuildDatasource):
             return False
-        existing_aliases = {x.safe_identifier for x in self.source.datasources}
+        existing_aliases = {
+            x.safe_identifier
+            for x in self.source.datasources
+            if x is not qds_being_inlined
+        }
         inline_datasource = ds_being_inlined
         if ds_being_inlined.safe_identifier in existing_aliases:
             inline_datasource = replace(
@@ -178,7 +183,7 @@ class CTE:
                 *[
                     x
                     for x in self.source.datasources
-                    if x.safe_identifier != qds_being_inlined.safe_identifier
+                    if x is not qds_being_inlined
                     and x.safe_identifier != inline_datasource.safe_identifier
                 ],
             ],
@@ -212,12 +217,11 @@ class CTE:
         ]
         if force_group:
             self.group_to_grain = True
-        # Uniform representation of the folded datasource for rendering: the
-        # CTE-shaped leaf itself, parked off the optimizer graph. (Collision
-        # renames are handled at render time by ``inlined_alias_map``; the
-        # shared node is never mutated.)
-        if parent not in self.inlined_parents:
-            self.inlined_parents.append(parent)
+        rendered_parent = parent
+        if inline_datasource is not ds_being_inlined:
+            rendered_parent = replace(parent, datasource=inline_datasource)
+        if rendered_parent not in self.inlined_parents:
+            self.inlined_parents.append(rendered_parent)
         return True
 
     def __add__(self, other: "CTE" | "UnionCTE"):
@@ -468,54 +472,9 @@ class CTE:
     def sourced_concepts(self) -> List[BuildConcept]:
         return [c for c in self.output_columns if c.address in self.source_map]
 
-    # ------------------------------------------------------------------
-    # Parent-facing contract.
-    #
-    # A consumer CTE asks each of its parents these questions to render its
-    # own FROM/JOIN and column references. The base answers describe a normal
-    # materialized CTE (referenced by name). ``DatasourceCTE`` overrides them
-    # when it has been folded into its consumer by the inline-datasource
-    # optimization, so the consumer renders the raw table directly instead.
-    # ------------------------------------------------------------------
-
-    @property
-    def should_render_as_with(self) -> bool:
-        """Whether this node emits its own ``WITH`` entry."""
-        return True
-
-    @property
-    def consumer_source(self) -> Address | str:
-        """FROM/JOIN source a consumer uses to reference this node."""
-        return self.name
-
-    @property
-    def consumer_alias(self) -> str:
-        """Alias a consumer binds ``consumer_source`` to. Kept equal to
-        ``name`` so consumer source maps never need rewriting."""
-        return self.name
-
-    @property
-    def consumer_quote_source(self) -> bool:
-        """Whether ``consumer_source`` is a raw location needing quoting."""
-        return False
-
-    def consumer_column(
-        self, concept: BuildConcept
-    ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:
-        """Column expression a consumer uses to reference ``concept`` from
-        this node (the part following ``alias.``)."""
-        return concept.safe_address
-
     @property
     def inlined_alias_map(self) -> dict[str, str]:
-        """For each inlined datasource folded into this consumer, the SQL
-        alias token to bind its raw table to (and reference its columns by),
-        keyed by the parent's name (the unchanged source_map token).
-
-        Defaults to the datasource's ``safe_identifier`` (matching historical
-        output) and falls back to the parent's unique name on alias collision,
-        so two rendered table references can never share an alias.
-        """
+        """Map inlined CTE names to the raw table aliases this consumer emits."""
         used: set[str] = {p.name for p in self.parent_ctes}
         mapping: dict[str, str] = {}
         for p in sorted(self.inlined_parents, key=lambda x: x.name):
@@ -527,16 +486,20 @@ class CTE:
         return mapping
 
     def resolve_render_alias(self, source: str) -> str:
-        """Translate a source_map token into the actual SQL alias to emit.
-
-        Identity for everything except inlined-DatasourceCTE parents, whose
-        raw table is bound under ``inlined_alias_map``."""
+        """Translate a source_map token into the SQL alias to emit."""
         return self.inlined_alias_map.get(source, source)
 
+    def inlined_parent_for_source(self, source: str) -> "DatasourceCTE | None":
+        alias = self.resolve_render_alias(source)
+        for p in self.inlined_parents:
+            if source in {p.name, p.datasource.safe_identifier}:
+                return p
+            if alias == p.datasource.safe_identifier:
+                return p
+        return None
+
     def inlined_parent_providing(self, concept: BuildConcept) -> "DatasourceCTE | None":
-        """An inlined datasource (folded into this consumer) whose underlying
-        datasource exposes ``concept`` — including raw columns absent from the
-        leaf's pruned projection (the consumer reads the raw table directly)."""
+        """An inlined datasource exposing ``concept`` as a raw column."""
         for p in self.inlined_parents:
             try:
                 p.datasource.get_alias(concept, use_raw_name=True)
@@ -546,12 +509,7 @@ class CTE:
         return None
 
     def renders_inline(self, node: "CTE | UnionCTE") -> bool:
-        """Whether this consumer renders ``node`` as a folded raw datasource
-        (vs. referencing a materialized CTE by name). True when ``node`` is
-        folded onto ``inlined_parents``, or is one of the datasources this
-        consumer scans directly in its own FROM (its base / inlined sources) —
-        in both cases columns resolve as ``<ds_alias>.<raw_col>`` rather than
-        ``<cte_name>.<safe_address>``. Per-consumer; never a shared flag."""
+        """Whether this consumer renders ``node`` as a folded raw datasource."""
         if any(p.name == node.name for p in self.inlined_parents):
             return True
         if isinstance(node, DatasourceCTE):
@@ -567,9 +525,7 @@ class CTE:
     def column_for(
         self, node: "CTE | UnionCTE", concept: BuildConcept
     ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:
-        """How this consumer references ``concept`` from ``node`` (the part
-        after ``alias.``): the raw datasource column when ``node`` is folded
-        in here, else the projected ``safe_address``."""
+        """Column this consumer should read from ``node``."""
         if isinstance(node, DatasourceCTE) and self.renders_inline(node):
             return node.consumer_column(concept)
         return concept.safe_address
@@ -1240,30 +1196,12 @@ class RecursiveCTE(CTE):
 class DatasourceCTE(CTE):
     """A CTE whose source is a single raw ``BuildDatasource``.
 
-    As a normal parent / WITH entry it behaves exactly like a plain ``CTE``
-    (the Phase-1 base case). When the inline-datasource optimization folds it
-    into a consumer it is moved out of the optimizer graph onto that
-    consumer's ``inlined_parents``; the consumer-scoped contract methods below
-    then render its raw table directly. The inline decision is made by the
-    consumer (``CTE.renders_inline``), never by a shared flag — so the same
-    node can be inlined into one consumer and a plain CTE for another.
+    As a normal parent / WITH entry it behaves like a plain ``CTE``. When the
+    inline-datasource optimization folds it into a consumer, the consumer parks
+    this leaf on ``inlined_parents`` and renders its raw table directly.
     """
 
     datasource: BuildDatasource = field(kw_only=True)
-    # Retained as a debugging/tracing signal (set False on inline); rendering
-    # decisions are consumer-scoped, not driven by this flag.
-    materialized: bool = True
-
-    @property
-    def consumer_source(self) -> Address | str:
-        return self.datasource.address
-
-    @property
-    def consumer_quote_source(self) -> bool:
-        addr = self.datasource.address
-        if isinstance(addr, Address):
-            return not addr.is_query
-        return True
 
     def consumer_column(
         self, concept: BuildConcept
@@ -1323,29 +1261,6 @@ class UnionCTE:
     @condition.setter
     def condition(self, value):
         raise NotImplementedError
-
-    # Parent-facing contract — a UnionCTE is always a materialized WITH entry
-    # referenced by name (never inlined), so these mirror the CTE defaults.
-    @property
-    def should_render_as_with(self) -> bool:
-        return True
-
-    @property
-    def consumer_source(self) -> Address | str:
-        return self.name
-
-    @property
-    def consumer_alias(self) -> str:
-        return self.name
-
-    @property
-    def consumer_quote_source(self) -> bool:
-        return False
-
-    def consumer_column(
-        self, concept: BuildConcept
-    ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:
-        return concept.safe_address
 
     @property
     def inlined_alias_map(self) -> dict[str, str]:

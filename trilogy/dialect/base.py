@@ -1153,17 +1153,13 @@ class BaseDialect:
                         f"Missing source CTE for {right.address}"
                     )
                 assert cte, "CTE must be provided for inlined CTEs"
-                inlined_parent = None
-                if isinstance(cte, CTE):
-                    inlined_parent = next(
-                        (
-                            p
-                            for p in cte.inlined_parents
-                            if p.datasource.safe_identifier == target
-                        ),
-                        None,
-                    )
+                inlined_parent = (
+                    cte.inlined_parent_for_source(target)
+                    if isinstance(cte, CTE)
+                    else None
+                )
                 if inlined_parent is not None:
+                    target = cte.resolve_render_alias(target)
                     self.used_map[target].add(right.address)
                     new_base = inlined_parent.datasource.safe_location
                     return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"

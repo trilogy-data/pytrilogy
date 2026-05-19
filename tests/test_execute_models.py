@@ -335,3 +335,41 @@ def test_inline_parent_datasource_folds_leaf_into_consumer():
         getattr(d, "safe_location", None) == parent_ds.safe_location
         for d in child.source.datasources
     )
+
+
+def test_inline_parent_datasource_alias_collision_keeps_existing_source():
+    """When a folded datasource would reuse an existing raw alias, render it
+    under the parent CTE name without dropping the existing source."""
+    from trilogy.core.models.build import BuildColumnAssignment
+    from trilogy.core.models.execute import CTE
+
+    key = _key_concept("k")
+    parent_ds = BuildDatasource(
+        name="shared",
+        columns=[BuildColumnAssignment(alias="parent_k", concept=key)],
+        address="parent_addr",
+        grain=BuildGrain(),
+    )
+    parent = CTE.from_datasource(parent_ds)
+    parent.name = "dim_cte"
+
+    existing_ds = BuildDatasource(
+        name="shared",
+        columns=[BuildColumnAssignment(alias="existing_k", concept=key)],
+        address="existing_addr",
+        grain=BuildGrain(),
+    )
+    child = CTE.from_datasource(existing_ds)
+    child.source.datasources = [existing_ds, parent.source]
+    child.parent_ctes = [parent]
+    child.source_map = {key.address: [parent.safe_identifier]}
+    child.existence_source_map = {key.address: [parent.safe_identifier]}
+
+    assert child.inline_parent_datasource(parent) is True
+
+    inlined = child.inlined_parent_for_source(parent.name)
+    assert inlined is not None
+    assert inlined.datasource.safe_identifier == parent.name
+    assert child.source_map[key.address] == [parent.name]
+    assert child.existence_source_map[key.address] == [parent.name]
+    assert any(ds is existing_ds for ds in child.source.datasources)

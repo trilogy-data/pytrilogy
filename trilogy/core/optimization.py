@@ -182,9 +182,14 @@ def filter_irrelevant_ctes(
     input: list[CTE | UnionCTE],
     root_cte: CTE | UnionCTE,
 ):
-    relevant_ctes = set()
+    relevant_ctes: set[str] = set()
+    visited: set[str] = set()
 
-    def recurse(cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]):
+    def recurse(
+        cte: CTE | UnionCTE,
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+        emit: bool = True,
+    ):
         # TODO: revisit this
         # if parent := is_locally_irrelevant(cte):
         #     logger.info(
@@ -203,10 +208,16 @@ def filter_irrelevant_ctes(
         #                 child.existence_source_map[x2].remove(cte.name)
         #                 child.existence_source_map[x2].append(parent.name)
         # else:
-        relevant_ctes.add(cte.name)
+        if cte.name in visited:
+            if emit:
+                relevant_ctes.add(cte.name)
+            return
+        visited.add(cte.name)
+        if emit:
+            relevant_ctes.add(cte.name)
 
         for parent in cte.parent_ctes:
-            if parent.name in relevant_ctes:
+            if parent.name in visited:
                 logger.info(
                     optimization_log(
                         "FilterIrrelevantCTEs",
@@ -218,7 +229,9 @@ def filter_irrelevant_ctes(
             recurse(parent, inverse_map)
         if isinstance(cte, UnionCTE):
             for internal in cte.internal_ctes:
-                recurse(internal, inverse_map)
+                # Branches render inside the union; only their parents need
+                # standalone WITH entries.
+                recurse(internal, inverse_map, emit=False)
 
     inverse_map = gen_inverse_map(input)
     recurse(root_cte, inverse_map)
