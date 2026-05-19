@@ -238,7 +238,7 @@ def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
     if first.left_cte is not None:
         return _cte_addresses(first.left_cte)
     right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
-    for parent in cte.parent_ctes:
+    for parent in cte.dependency_nodes(include_inlined=True):
         if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
             return _cte_addresses(parent)
     # Inlined-left case: a join carries its own left CTE on the joinkey_pairs.
@@ -265,7 +265,7 @@ def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     if first.left_cte is not None:
         return [first.left_cte]
     right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
-    for parent in cte.parent_ctes:
+    for parent in cte.dependency_nodes(include_inlined=True):
         if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
             return [parent]
     for j in cte.joins:

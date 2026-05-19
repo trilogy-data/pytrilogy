@@ -27,9 +27,9 @@ Safety constraints:
   - All siblings of the parent already carry the same predicate, so the
     post-hoist row set matches every sibling's existing expectation.
 
-Runs before InlineDatasource so the moved join is still in non-inlined form;
-the subsequent inlining pass folds the parent's now-extended FROM into a flat
-table reference exactly like any other dim join.
+Runs after InlineDatasource so it does not hoist work to a dim CTE that will
+immediately disappear. When the child's dim has already been folded, the hoist
+preserves that folded binding on the parent.
 """
 
 from typing import cast
@@ -47,6 +47,7 @@ from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
     CTEConceptPair,
+    DatasourceCTE,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -72,6 +73,23 @@ from trilogy.core.processing.condition_utility import is_scalar_condition
 HOISTABLE_JOIN_TYPES = {JoinType.INNER, JoinType.LEFT_OUTER}
 
 
+def _datasource_matches(
+    left: object,
+    right: QueryDatasource | BuildDatasource,
+) -> bool:
+    if not isinstance(left, (QueryDatasource, BuildDatasource)):
+        return False
+    if left.identifier == right.identifier:
+        return True
+    left_base = getattr(left, "base_datasource", None)
+    right_base = getattr(right, "base_datasource", None)
+    if left_base is not None and left_base is right:
+        return True
+    if right_base is not None and right_base is left:
+        return True
+    return left_base is not None and left_base is right_base
+
+
 def _is_grouped_cte(cte: CTE) -> bool:
     return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
 
@@ -95,9 +113,8 @@ class JoinHoist(OptimizationRule):
     def _find_left_base_cte(
         self, parent_cte: CTE, fk_addresses: set[str]
     ) -> CTE | UnionCTE | None:
-        """Find which of parent_cte.parent_ctes provides the FK columns. That CTE
-        becomes the left side (pair.cte) of the hoisted join."""
-        for p in parent_cte.parent_ctes:
+        """Find which dependency provides the FK columns for the hoisted join."""
+        for p in parent_cte.dependency_nodes(include_inlined=True):
             if isinstance(p, (CTE, UnionCTE)) and fk_addresses.issubset(
                 {c.address for c in p.output_columns}
             ):
@@ -307,11 +324,11 @@ class JoinHoist(OptimizationRule):
         UpgradeJoinOnGuards().optimize(cte, inverse_map)
 
     def _parent_already_joins_dim(
-        self, parent_cte: CTE, dim_qds: QueryDatasource
+        self, parent_cte: CTE, dim_qds: QueryDatasource | BuildDatasource
     ) -> bool:
         return any(
             isinstance(bj, BaseJoin)
-            and bj.right_datasource.identifier == dim_qds.identifier
+            and _datasource_matches(bj.right_datasource, dim_qds)
             for bj in parent_cte.source.joins
         )
 
@@ -339,14 +356,17 @@ class JoinHoist(OptimizationRule):
         success."""
         assert isinstance(join.right_cte, CTE)
         dim_cte = join.right_cte
-        dim_qds = dim_cte.source
+        dim_qds: QueryDatasource | BuildDatasource = dim_cte.source
+        dim_was_inlined = False
+        if isinstance(dim_cte, DatasourceCTE) and cte.renders_inline(dim_cte):
+            dim_was_inlined = True
+            dim_qds = dim_cte.datasource
 
         # find the corresponding BaseJoin in cte.source.joins (matches by right ds)
         cte_base_join: BaseJoin | None = None
         for bj in cte.source.joins:
-            if (
-                isinstance(bj, BaseJoin)
-                and bj.right_datasource.identifier == dim_qds.identifier
+            if isinstance(bj, BaseJoin) and _datasource_matches(
+                bj.right_datasource, dim_qds
             ):
                 cte_base_join = bj
                 break
@@ -358,7 +378,7 @@ class JoinHoist(OptimizationRule):
                 self.debug(
                     f"Cannot locate left base for FK {fk_addresses} on "
                     f"{parent_cte.name}; "
-                    f"parents={[p.name for p in parent_cte.parent_ctes]}, "
+                    f"parents={[p.name for p in parent_cte.dependency_nodes()]}, "
                     f"datasources={[d.identifier for d in parent_cte.source.datasources]}"
                 )
                 return False
@@ -371,7 +391,7 @@ class JoinHoist(OptimizationRule):
                 self.debug(
                     f"Cannot locate left CTE for FK {fk_addresses} on "
                     f"{parent_cte.name}; "
-                    f"parents={[p.name for p in parent_cte.parent_ctes]}, "
+                    f"parents={[p.name for p in parent_cte.dependency_nodes()]}, "
                     f"datasources={[d.identifier for d in parent_cte.source.datasources]}"
                 )
                 return False
@@ -418,11 +438,16 @@ class JoinHoist(OptimizationRule):
                 modifiers=list(join.modifiers),
             )
             parent_cte.joins.append(new_join)
-            add_parent_cte(parent_cte, dim_cte)
+            if dim_was_inlined:
+                assert isinstance(dim_cte, DatasourceCTE)
+                dim_source_key = parent_cte.add_inlined_datasource(dim_cte)
+            else:
+                add_parent_cte(parent_cte, dim_cte)
+                dim_source_key = parent_cte.source_key_for(dim_cte)
             for c in dim_cte.output_columns:
                 parent_cte.source_map.setdefault(c.address, [])
-                if dim_cte.name not in parent_cte.source_map[c.address]:
-                    parent_cte.source_map[c.address].append(dim_cte.name)
+                if dim_source_key not in parent_cte.source_map[c.address]:
+                    parent_cte.source_map[c.address].append(dim_source_key)
 
         # ---- strip the join from cte ----
         cte.joins.remove(join)
@@ -437,7 +462,7 @@ class JoinHoist(OptimizationRule):
         } - join_keys_right
         still_referenced = any(
             isinstance(bj, BaseJoin)
-            and bj.right_datasource.identifier == dim_qds.identifier
+            and _datasource_matches(bj.right_datasource, dim_qds)
             for bj in cte.source.joins
         )
         if not still_referenced and dim_qds in cte.source.datasources:
@@ -451,7 +476,7 @@ class JoinHoist(OptimizationRule):
                     s
                     for s in qds_sources
                     if not hasattr(s, "identifier")
-                    or s.identifier != dim_qds.identifier
+                    or not _datasource_matches(s, dim_qds)
                 }
                 if not qds_sources:
                     del cte.source.source_map[addr]
@@ -483,7 +508,7 @@ class JoinHoist(OptimizationRule):
                     s
                     for s in qds_set
                     if not hasattr(s, "identifier")
-                    or s.identifier != dim_qds.identifier
+                    or not _datasource_matches(s, dim_qds)
                 }
                 if not qds_set:
                     if pair.existing_datasource is not None:
@@ -499,7 +524,9 @@ class JoinHoist(OptimizationRule):
             for jj in cte.joins
         )
         if not still_used:
-            cte.parent_ctes = [p for p in cte.parent_ctes if p.name != dim_cte.name]
+            cte.parent_ctes = [
+                p for p in cte.dependency_nodes() if p.name != dim_cte.name
+            ]
         return True
 
     def optimize(
@@ -511,13 +538,27 @@ class JoinHoist(OptimizationRule):
             return False, None
         if self.complete.get(cte.name):
             return False, None
-        if not cte.condition or not cte.joins or not cte.parent_ctes:
+        parents = cte.dependency_nodes()
+        if not cte.condition or not cte.joins or not parents:
             self.complete[cte.name] = True
             return False, None
+        existence_parent_names = {
+            source
+            for sources in cte.existence_source_map.values()
+            for source in sources
+        }
+        flattened_existence = {
+            x.address for y in cte.condition.existence_arguments for x in y
+        }
         candidate_parents = [
             p
-            for p in cte.parent_ctes
+            for p in parents
             if isinstance(p, CTE)
+            and p.name not in existence_parent_names
+            and not (
+                flattened_existence
+                and all(x.address in flattened_existence for x in p.output_columns)
+            )
             and p.source.source_type not in (SourceType.WINDOW, SourceType.UNNEST)
         ]
         if not candidate_parents:

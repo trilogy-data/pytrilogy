@@ -22,14 +22,15 @@ class InlineDatasource(OptimizationRule):
             return optimized, None
         if isinstance(cte, RecursiveCTE):
             return False, None
-        if not cte.parent_ctes:
+        parents = cte.dependency_nodes()
+        if not parents:
             return False, None
 
         self.debug(
-            f"Checking {cte.name} for consolidating inline tables with {len(cte.parent_ctes)} parents"
+            f"Checking {cte.name} for consolidating inline tables with {len(parents)} parents"
         )
         to_inline: list[CTE] = []
-        for parent_cte in cte.parent_ctes:
+        for parent_cte in parents:
             if isinstance(parent_cte, UnionCTE):
                 continue
             if isinstance(parent_cte, RecursiveCTE):
@@ -42,7 +43,7 @@ class InlineDatasource(OptimizationRule):
             if not parent_cte.is_root_datasource:
                 self.debug(f"Cannot inline: parent {parent_cte.name} is not root")
                 continue
-            if parent_cte.parent_ctes:
+            if parent_cte.dependency_nodes():
                 self.debug(f"Cannot inline: parent {parent_cte.name} has parents")
                 continue
             if parent_cte.condition:

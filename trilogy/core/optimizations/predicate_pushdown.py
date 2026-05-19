@@ -664,10 +664,8 @@ class PredicatePushdownRemove(OptimizationRule):
             cte.condition = None
             # remove any "parent" CTEs that provided only existence inputs
             if existence_only:
-                original = [y.name for y in cte.parent_ctes]
-                cte.parent_ctes = [
-                    x for x in cte.parent_ctes if x.name not in existence_only
-                ]
+                original = [y.name for y in parents]
+                cte.parent_ctes = [x for x in parents if x.name not in existence_only]
                 self.log(
                     f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
                 )

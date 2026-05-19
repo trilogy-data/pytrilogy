@@ -326,9 +326,10 @@ def _grains_equivalent(cte: CTE | UnionCTE, direct_parent: CTE | UnionCTE) -> bo
 def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     # if isinstance(select, (PersistStatement, MultiSelectStatement)):
     #     return False
-    if len(cte.parent_ctes) != 1:
+    parents = cte.dependency_nodes()
+    if len(parents) != 1:
         return None
-    direct_parent = cte.parent_ctes[0]
+    direct_parent = parents[0]
     if isinstance(direct_parent, (UnionCTE, RecursiveCTE)):
         return None
 
@@ -430,14 +431,24 @@ def build_optimization_rule_plan(
                 rule_factory=MergeIrrelevantGroupBy,
             )
         )
+    if opts.datasource_inlining:
+        plan.append(
+            OptimizationRulePlan(
+                name="inline_datasource",
+                rule_factory=InlineDatasource,
+            )
+        )
     if opts.join_hoist:
         plan.append(
             OptimizationRulePlan(
                 name="join_hoist",
                 rule_factory=JoinHoist,
+                depends_on=_enabled_dependencies(
+                    ("inline_datasource", opts.datasource_inlining)
+                ),
                 reason=(
-                    "runs before datasource inlining so moved joins remain "
-                    "visible as CTE joins"
+                    "runs after datasource inlining so joins that target folded "
+                    "datasources stay folded when hoisted"
                 ),
             )
         )
@@ -451,19 +462,20 @@ def build_optimization_rule_plan(
                 reason="uses joins and predicates stripped by join hoist",
             )
         )
-    if opts.datasource_inlining:
-        plan.append(
-            OptimizationRulePlan(
-                name="inline_datasource",
-                rule_factory=InlineDatasource,
-                depends_on=_enabled_dependencies(("join_hoist", opts.join_hoist)),
-            )
-        )
     if opts.predicate_pushdown:
         plan.append(
             OptimizationRulePlan(
                 name="predicate_pushdown.initial",
                 rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
+                depends_on=_enabled_dependencies(
+                    ("inline_datasource", opts.datasource_inlining),
+                    ("join_hoist", opts.join_hoist),
+                ),
+                reason=(
+                    "runs after datasource inlining and join hoist so filters "
+                    "on folded raw sources stay local instead of requiring "
+                    "BuildDatasource pushdown"
+                ),
             )
         )
     if opts.upgrade_condition_joins:

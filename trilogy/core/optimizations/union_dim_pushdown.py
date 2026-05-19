@@ -37,6 +37,7 @@ from trilogy.core.models.execute import (
     DatasourceCTE,
     Join,
     QueryDatasource,
+    SourceBinding,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import (
@@ -96,23 +97,76 @@ def _add_render_dependencies(
 def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | None:
     """Locate the CTE the consumer's BaseJoin actually targets.
 
-    Match strictly on ``cte.source.identifier == join_qds_id`` — never on
-    ``base_datasource`` — because filtered/unfiltered variants of the same
-    dim share a base. After ``InlineDatasource`` the dim CTE is dropped from
-    ``parent_ctes`` but ``Join.right_cte`` retains the reference, so search
-    there too.
+    Prefer exact binding identifiers. After ``InlineDatasource`` a consumer's
+    ``BaseJoin`` can render against the raw ``BuildDatasource`` while the graph
+    still holds a ``DatasourceCTE`` wrapper over that datasource. In that case,
+    fall back through ``base_datasource`` only when the match is unambiguous.
     """
-    for p in consumer.dependency_nodes(include_inlined=True):
-        if isinstance(p, (CTE, UnionCTE)) and p.source.identifier == join_qds_id:
-            return p
+    binding_base_matches: list[CTE | UnionCTE] = []
+    join_base_matches: list[CTE | UnionCTE] = []
+    for binding in consumer.source_bindings(include_inlined=True):
+        if binding.node is None:
+            continue
+        if _source_binding_matches_id(binding, join_qds_id, include_base=False):
+            return binding.node
+        if _source_binding_matches_id(binding, join_qds_id, include_base=True):
+            binding_base_matches.append(binding.node)
     for j in consumer.joins:
         if (
             isinstance(j, Join)
             and isinstance(j.right_cte, (CTE, UnionCTE))
-            and j.right_cte.source.identifier == join_qds_id
         ):
-            return j.right_cte
+            if _cte_matches_source_id(j.right_cte, join_qds_id, include_base=False):
+                return j.right_cte
+            if _cte_matches_source_id(j.right_cte, join_qds_id, include_base=True):
+                join_base_matches.append(j.right_cte)
+    unique_matches = unique(join_base_matches, "name")
+    if len(unique_matches) == 1:
+        return unique_matches[0]
+    unique_matches = unique(binding_base_matches, "name")
+    if len(unique_matches) == 1:
+        return unique_matches[0]
     return None
+
+
+def _source_binding_matches_id(
+    binding: SourceBinding, source_id: str, *, include_base: bool
+) -> bool:
+    if binding.datasource is not None and _datasource_matches_id(
+        binding.datasource, source_id, include_base=include_base
+    ):
+        return True
+    if binding.node is not None:
+        return _cte_matches_source_id(
+            binding.node, source_id, include_base=include_base
+        )
+    return False
+
+
+def _cte_matches_source_id(
+    cte: CTE | UnionCTE, source_id: str, *, include_base: bool
+) -> bool:
+    if cte.source.identifier == source_id:
+        return True
+    if isinstance(cte, DatasourceCTE) and cte.datasource.identifier == source_id:
+        return True
+    if not include_base:
+        return False
+    if isinstance(cte, DatasourceCTE):
+        return cte.datasource.identifier == source_id
+    base = getattr(cte.source, "base_datasource", None)
+    return isinstance(base, BuildDatasource) and base.identifier == source_id
+
+
+def _datasource_matches_id(
+    datasource: BuildDatasource | QueryDatasource, source_id: str, *, include_base: bool
+) -> bool:
+    if datasource.identifier == source_id:
+        return True
+    if not include_base:
+        return False
+    base = getattr(datasource, "base_datasource", None)
+    return isinstance(base, BuildDatasource) and base.identifier == source_id
 
 
 def _dim_local_atoms(
@@ -754,7 +808,7 @@ class UnionDimPushdown(OptimizationRule):
                 and getattr(ds, "base_datasource", None) is not d.dim_qds
             ]
             consumer.parent_ctes = [
-                p for p in consumer.parent_ctes if p.name != dim_cte.name
+                p for p in consumer.dependency_nodes() if p.name != dim_cte.name
             ]
         # Redirect source_map: dim concepts now resolve via the union CTE.
         union_outputs_now = {c.address for c in union.output_columns}

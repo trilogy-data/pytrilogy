@@ -40,7 +40,8 @@ def _is_child_ineligible(concept: BuildConcept, cte: CTE, parent: CTE) -> bool:
 def _active_parent_ctes(cte: CTE) -> list[CTE | UnionCTE]:
     used_map = render_cte_used_map(cte)
     referenced = set(used_map)
-    active = [parent for parent in cte.parent_ctes if parent.name in referenced]
+    parents = cte.dependency_nodes()
+    active = [parent for parent in parents if parent.name in referenced]
     if active:
         return active
     referenced = {
@@ -51,8 +52,8 @@ def _active_parent_ctes(cte: CTE) -> list[CTE | UnionCTE]:
         ]
         for source in source_list
     }
-    active = [parent for parent in cte.parent_ctes if parent.name in referenced]
-    return active or list(cte.parent_ctes)
+    active = [parent for parent in parents if parent.name in referenced]
+    return active or parents
 
 
 class MergeIrrelevantGroupBy(OptimizationRule):

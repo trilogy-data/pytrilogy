@@ -12,6 +12,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.union_dim_pushdown import (
     UnionDimPushdown,
     _DimDescriptor,
+    _find_dim_cte_for_qds,
 )
 
 
@@ -297,3 +298,23 @@ def test_union_dim_pushdown_uses_inlined_binding_key_for_dim_source(
     assert branch.source_map[category_name.address] == [category.safe_identifier]
     assert branch.parent_ctes == []
     assert branch.inlined_parents == [dim]
+
+
+def test_union_dim_pushdown_resolves_inlined_dim_by_raw_datasource_id(
+    test_environment,
+):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    branch = _branch_cte("branch", products, [product_id, category_id])
+    union = _union_cte("unioned", [branch], [product_id, category_id])
+    dim = CTE.from_datasource(category)
+    dim.name = "category_dim"
+    consumer = _dim_consumer(union, dim, category_id, category_id, category_name)
+    assert consumer.inline_parent_datasource(dim) is True
+
+    assert _find_dim_cte_for_qds(consumer, category.identifier) is dim

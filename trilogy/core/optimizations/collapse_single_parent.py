@@ -164,15 +164,16 @@ class CollapseSingleParent(OptimizationRule):
             self.debug(f"CTE {cte.name} has child-specific merge blockers, skipping")
             return False, None
 
-        if not cte.parent_ctes:
+        parents = cte.dependency_nodes()
+        if not parents:
             return False, None
 
         # Only merge single-parent scenarios for simplicity
-        if len(cte.parent_ctes) != 1:
+        if len(parents) != 1:
             self.debug(f"CTE {cte.name} has multiple parents, skipping")
             return False, None
 
-        parent = cte.parent_ctes[0]
+        parent = parents[0]
         if cte.base_alias != parent.safe_identifier:
             self.debug(
                 f"CTE {cte.name} base alias {cte.base_alias} does not match parent {parent.safe_identifier}, skipping"
