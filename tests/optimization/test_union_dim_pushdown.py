@@ -318,3 +318,46 @@ def test_union_dim_pushdown_resolves_inlined_dim_by_raw_datasource_id(
     assert consumer.inline_parent_datasource(dim) is True
 
     assert _find_dim_cte_for_qds(consumer, category.identifier) is dim
+
+
+def test_union_dim_pushdown_rejects_ambiguous_raw_datasource_binding(
+    test_environment,
+):
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    category = env.datasources["category"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+
+    branch = _branch_cte("branch", products, [product_id, category_id])
+    union = _union_cte("unioned", [branch], [product_id, category_id])
+    first_dim = CTE.from_datasource(category)
+    first_dim.name = "category_dim_one"
+    second_dim = CTE.from_datasource(category)
+    second_dim.name = "category_dim_two"
+    consumer = _dim_consumer(
+        union,
+        first_dim,
+        category_id,
+        category_id,
+        env.concepts["category_name"],
+    )
+    consumer.parent_ctes = [union]
+    consumer.inlined_parents = [first_dim, second_dim]
+    consumer.joins.append(
+        Join(
+            right_cte=second_dim,
+            jointype=JoinType.INNER,
+            left_cte=union,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=category_id,
+                    right=category_id,
+                    existing_datasource=union.source,
+                    cte=union,
+                )
+            ],
+        )
+    )
+
+    assert _find_dim_cte_for_qds(consumer, category.identifier) is None

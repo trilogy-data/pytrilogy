@@ -111,8 +111,7 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
             ):
                 return True
             for pair in j.joinkey_pairs or []:
-                cte_ref = getattr(pair, "cte", None)
-                if cte_ref is not None and cte_ref.name == parent_name:
+                if pair.cte.name == parent_name:
                     return True
     return False
 

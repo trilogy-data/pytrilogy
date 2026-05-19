@@ -253,6 +253,40 @@ def test_join_reference_for_inlined_datasource_renders_raw_table():
     assert f'as "{base_ds.safe_identifier}"' in ref
 
 
+def test_join_reference_for_emitted_datasource_ignores_scanned_raw_source():
+    key = _key_concept("k")
+    base_ds = BuildDatasource(
+        name="base",
+        columns=[BuildColumnAssignment(alias="k", concept=key)],
+        address="base_addr",
+        grain=BuildGrain(),
+    )
+    dim = CTE.from_datasource(base_ds)
+    dim.name = "dim_cte"
+    consumer = CTE(
+        name="consumer",
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[base_ds, dim.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={key.address: {base_ds, dim.source}},
+        ),
+        output_columns=[key],
+        parent_ctes=[dim],
+        grain=BuildGrain(),
+        source_map={key.address: [dim.name]},
+        existence_source_map={},
+    )
+    join = Join(right_cte=dim, jointype=JoinType.INNER)
+    join.quote = '"'
+
+    assert consumer.renders_inline(dim) is False
+    assert join.name_for(consumer, dim) == dim.name
+    assert join.reference_for(consumer, dim) == f'"{dim.name}"'
+
+
 def test_source_bindings_include_emitted_and_inlined_sources():
     key = _key_concept("k")
     emitted = _datasource_cte("emitted_ds", key)
@@ -474,7 +508,7 @@ def test_inline_parent_datasource_folds_leaf_into_consumer():
     assert child.existence_source_map[key.address] == [parent_ds.safe_identifier]
     # the inlined datasource is now a direct source of the consumer's QDS
     assert any(
-        getattr(d, "safe_location", None) == parent_ds.safe_location
+        isinstance(d, BuildDatasource) and d.safe_location == parent_ds.safe_location
         for d in child.source.datasources
     )
 

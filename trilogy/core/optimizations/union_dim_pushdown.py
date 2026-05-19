@@ -59,6 +59,30 @@ from trilogy.utility import unique
 ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
 
 
+def _base_datasource(
+    datasource: BuildDatasource | QueryDatasource,
+) -> BuildDatasource | QueryDatasource | None:
+    if isinstance(datasource, QueryDatasource):
+        return datasource.base_datasource
+    return None
+
+
+def _datasource_wraps(
+    datasource: BuildDatasource | QueryDatasource,
+    target: BuildDatasource | QueryDatasource,
+) -> bool:
+    return _base_datasource(datasource) is target
+
+
+def _datasource_matches_dim(
+    datasource: BuildDatasource | QueryDatasource,
+    dim_qds: BuildDatasource | QueryDatasource,
+) -> bool:
+    return datasource.identifier == dim_qds.identifier or _datasource_wraps(
+        datasource, dim_qds
+    )
+
+
 def _add_render_dependencies(
     concepts: list[BuildConcept],
     dim_ds: BuildDatasource | QueryDatasource,
@@ -82,8 +106,7 @@ def _add_render_dependencies(
         if isinstance(alias, BuildConceptArgs):
             dependency_sources.append(alias)
         for source in dependency_sources:
-            dependencies = getattr(source, "rendered_concept_arguments", [])
-            for dependency in dependencies:
+            for dependency in source.rendered_concept_arguments:
                 if dependency.address in seen:
                     continue
                 available_dependency = available_by_address.get(dependency.address)
@@ -107,15 +130,15 @@ def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | N
     for binding in consumer.source_bindings(include_inlined=True):
         if binding.node is None:
             continue
-        if _source_binding_matches_id(binding, join_qds_id, include_base=False):
+        if _source_binding_matches_exact_id(binding, join_qds_id):
             return binding.node
-        if _source_binding_matches_id(binding, join_qds_id, include_base=True):
+        if _source_binding_matches_raw_id(binding, join_qds_id):
             binding_base_matches.append(binding.node)
     for j in consumer.joins:
         if isinstance(j, Join) and isinstance(j.right_cte, (CTE, UnionCTE)):
-            if _cte_matches_source_id(j.right_cte, join_qds_id, include_base=False):
+            if _cte_matches_exact_id(j.right_cte, join_qds_id):
                 return j.right_cte
-            if _cte_matches_source_id(j.right_cte, join_qds_id, include_base=True):
+            if _cte_matches_raw_id(j.right_cte, join_qds_id):
                 join_base_matches.append(j.right_cte)
     unique_matches = unique(join_base_matches, "name")
     if len(unique_matches) == 1:
@@ -126,43 +149,35 @@ def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | N
     return None
 
 
-def _source_binding_matches_id(
-    binding: SourceBinding, source_id: str, *, include_base: bool
-) -> bool:
-    if binding.datasource is not None and _datasource_matches_id(
-        binding.datasource, source_id, include_base=include_base
-    ):
-        return True
-    if binding.node is not None:
-        return _cte_matches_source_id(
-            binding.node, source_id, include_base=include_base
-        )
-    return False
+def _source_binding_matches_exact_id(binding: SourceBinding, source_id: str) -> bool:
+    return binding.node is not None and _cte_matches_exact_id(binding.node, source_id)
 
 
-def _cte_matches_source_id(
-    cte: CTE | UnionCTE, source_id: str, *, include_base: bool
-) -> bool:
-    if cte.source.identifier == source_id:
+def _source_binding_matches_raw_id(binding: SourceBinding, source_id: str) -> bool:
+    if binding.node is not None and _cte_matches_raw_id(binding.node, source_id):
         return True
+    return binding.datasource is not None and _datasource_matches_raw_id(
+        binding.datasource, source_id
+    )
+
+
+def _cte_matches_exact_id(cte: CTE | UnionCTE, source_id: str) -> bool:
+    return cte.source.identifier == source_id
+
+
+def _cte_matches_raw_id(cte: CTE | UnionCTE, source_id: str) -> bool:
     if isinstance(cte, DatasourceCTE) and cte.datasource.identifier == source_id:
         return True
-    if not include_base:
-        return False
-    if isinstance(cte, DatasourceCTE):
-        return cte.datasource.identifier == source_id
-    base = getattr(cte.source, "base_datasource", None)
+    base = cte.source.base_datasource
     return isinstance(base, BuildDatasource) and base.identifier == source_id
 
 
-def _datasource_matches_id(
-    datasource: BuildDatasource | QueryDatasource, source_id: str, *, include_base: bool
+def _datasource_matches_raw_id(
+    datasource: BuildDatasource | QueryDatasource, source_id: str
 ) -> bool:
-    if datasource.identifier == source_id:
+    if isinstance(datasource, BuildDatasource) and datasource.identifier == source_id:
         return True
-    if not include_base:
-        return False
-    base = getattr(datasource, "base_datasource", None)
+    base = _base_datasource(datasource)
     return isinstance(base, BuildDatasource) and base.identifier == source_id
 
 
@@ -393,13 +408,16 @@ class UnionDimPushdown(OptimizationRule):
             # renders with the dim CTE's short alias). q5's
             # return_channel_dim (a UNION of catalog/store/web dim variants)
             # is the canonical example.
-            if getattr(join_qds, "source_type", None) == SourceType.UNION:
+            if (
+                isinstance(join_qds, QueryDatasource)
+                and join_qds.source_type == SourceType.UNION
+            ):
                 continue
             # Resolve to the underlying BD if the consumer carries one.
             if isinstance(join_qds, BuildDatasource):
                 dim_ds: BuildDatasource | QueryDatasource = join_qds
             else:
-                base = getattr(join_qds, "base_datasource", None)
+                base = join_qds.base_datasource
                 if isinstance(base, BuildDatasource) and base.identifier in bd_by_id:
                     dim_ds = bd_by_id[base.identifier]
                 else:
@@ -589,7 +607,7 @@ class UnionDimPushdown(OptimizationRule):
         # branches may have gained a new parent CTE (the subselect source).
         # Re-derive union.parent_ctes so the CTE reorder pass sees the edge.
         has_existence = any(
-            any(arg for tup in getattr(a, "existence_arguments", ()) for arg in tup)
+            any(arg for tup in a.existence_arguments for arg in tup)
             for a in d.where_atoms
         )
         if has_existence:
@@ -722,10 +740,9 @@ class UnionDimPushdown(OptimizationRule):
         atom: ConditionExpression,
     ) -> None:
         existence_addrs: set[str] = set()
-        for tup in getattr(atom, "existence_arguments", ()):
+        for tup in atom.existence_arguments:
             for arg in tup:
-                if hasattr(arg, "address"):
-                    existence_addrs.add(arg.address)
+                existence_addrs.add(arg.address)
         if not existence_addrs:
             return
         for x in existence_addrs:
@@ -766,9 +783,8 @@ class UnionDimPushdown(OptimizationRule):
         # safe_identifier (with ``_at_<key>`` suffix). Strip them all.
         dim_aliases = {dim_cte.name, d.dim_qds.safe_identifier}
         for j in consumer.source.joins:
-            if (
-                isinstance(j, BaseJoin)
-                and getattr(j.right_datasource, "base_datasource", None) is d.dim_qds
+            if isinstance(j, BaseJoin) and _datasource_wraps(
+                j.right_datasource, d.dim_qds
             ):
                 dim_aliases.add(j.right_datasource.safe_identifier)
 
@@ -780,8 +796,7 @@ class UnionDimPushdown(OptimizationRule):
             rd = j.right_datasource
             if rd.identifier == d.dim_qds.identifier:
                 return True
-            base = getattr(rd, "base_datasource", None)
-            return base is d.dim_qds
+            return _datasource_wraps(rd, d.dim_qds)
 
         consumer.source.joins = [
             j for j in consumer.source.joins if not _is_dim_basejoin(j)
@@ -801,8 +816,7 @@ class UnionDimPushdown(OptimizationRule):
             consumer.source.datasources = [
                 ds
                 for ds in consumer.source.datasources
-                if ds.identifier != d.dim_qds.identifier
-                and getattr(ds, "base_datasource", None) is not d.dim_qds
+                if not _datasource_matches_dim(ds, d.dim_qds)
             ]
             consumer.parent_ctes = [
                 p for p in consumer.dependency_nodes() if p.name != dim_cte.name
@@ -816,11 +830,8 @@ class UnionDimPushdown(OptimizationRule):
                     s
                     for s in consumer.source.source_map[addr]
                     if not (
-                        hasattr(s, "identifier")
-                        and (
-                            s.identifier == d.dim_qds.identifier
-                            or getattr(s, "base_datasource", None) is d.dim_qds
-                        )
+                        isinstance(s, (BuildDatasource, QueryDatasource))
+                        and _datasource_matches_dim(s, d.dim_qds)
                     )
                 }
                 if not consumer.source.source_map[addr]:

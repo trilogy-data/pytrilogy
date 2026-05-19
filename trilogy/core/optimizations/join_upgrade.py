@@ -41,6 +41,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
+    BuildDatasource,
     BuildParenthetical,
 )
 from trilogy.core.models.execute import (
@@ -49,6 +50,7 @@ from trilogy.core.models.execute import (
     ConceptPair,
     CTEConceptPair,
     Join,
+    QueryDatasource,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -63,6 +65,14 @@ from trilogy.core.processing.condition_utility import (
 # WHERE. INNER joins already drop both unmatched sides, so they're never
 # eligible to be downgraded further.
 _OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
+
+
+def _base_datasource(
+    datasource: BuildDatasource | QueryDatasource,
+) -> BuildDatasource | QueryDatasource | None:
+    if isinstance(datasource, QueryDatasource):
+        return datasource.base_datasource
+    return None
 
 
 @dataclass
@@ -88,21 +98,25 @@ class _ProofState:
     def proves_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
         return address in self.direct or (cte.name, address) in self.cte_keys
 
-    def proves_datasource_key(self, datasource: object, address: str) -> bool:
-        identifier = getattr(datasource, "identifier")
-        return address in self.direct or (identifier, address) in self.datasource_keys
+    def proves_datasource_key(
+        self, datasource: BuildDatasource | QueryDatasource, address: str
+    ) -> bool:
+        return (
+            address in self.direct
+            or (datasource.identifier, address) in self.datasource_keys
+        )
 
     def proves_cte_present(self, cte: CTE | UnionCTE, addresses: set[str]) -> bool:
         return any((cte.name, address) in self.cte_keys for address in addresses)
 
     def proves_datasource_present(
         self,
-        datasource: object,
+        datasource: BuildDatasource | QueryDatasource,
         addresses: set[str],
     ) -> bool:
-        identifier = getattr(datasource, "identifier")
         return any(
-            (identifier, address) in self.datasource_keys for address in addresses
+            (datasource.identifier, address) in self.datasource_keys
+            for address in addresses
         )
 
     def add_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
@@ -112,9 +126,10 @@ class _ProofState:
         self.cte_keys.add(key)
         return True
 
-    def add_datasource_key(self, datasource: object, address: str) -> bool:
-        identifier = getattr(datasource, "identifier")
-        key = (identifier, address)
+    def add_datasource_key(
+        self, datasource: BuildDatasource | QueryDatasource, address: str
+    ) -> bool:
+        key = (datasource.identifier, address)
         if key in self.datasource_keys:
             return False
         self.datasource_keys.add(key)
@@ -431,7 +446,7 @@ def _downgrade_base_join(
         return None
 
     right_ds = base_join.right_datasource
-    right_base = getattr(right_ds, "base_datasource", None)
+    right_base = _base_datasource(right_ds)
     right_all = {c.address for c in right_ds.output_concepts}
     if right_base is not None:
         right_all |= {c.address for c in right_base.output_concepts}

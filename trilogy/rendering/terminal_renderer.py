@@ -1,7 +1,7 @@
 from typing import Any
 
 from trilogy.core.enums import ChartPlaceKind, ChartType
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.statements.execute import (
     ProcessedChartLayer,
     ProcessedChartStatement,
@@ -27,15 +27,17 @@ _NUMERIC_DATA_TYPES = {
 }
 
 
-def _is_numeric_axis(datatype: Any) -> bool:
+def _is_numeric_axis(datatype: CONCRETE_TYPES | None) -> bool:
     """Plotext treats numeric axes positionally; everything else needs xticks."""
     if datatype is None:
         return False
-    resolved = getattr(datatype, "data_type", datatype)
+    resolved = datatype.data_type
     return resolved in _NUMERIC_DATA_TYPES
 
 
-def _field_datatype(layer: ProcessedChartLayer, field_name: str) -> Any:
+def _field_datatype(
+    layer: ProcessedChartLayer, field_name: str
+) -> CONCRETE_TYPES | None:
     if layer.query is None:
         return None
     for col in layer.query.output_columns:

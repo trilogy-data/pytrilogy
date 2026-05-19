@@ -81,8 +81,8 @@ def _datasource_matches(
         return False
     if left.identifier == right.identifier:
         return True
-    left_base = getattr(left, "base_datasource", None)
-    right_base = getattr(right, "base_datasource", None)
+    left_base = left.base_datasource if isinstance(left, QueryDatasource) else None
+    right_base = right.base_datasource if isinstance(right, QueryDatasource) else None
     if left_base is not None and left_base is right:
         return True
     if right_base is not None and right_base is left:

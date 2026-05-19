@@ -48,6 +48,24 @@ from trilogy.utility import string_to_hash, unique
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 
 
+def _datasource_column_for_concept(
+    datasource: BuildDatasource,
+    concept: BuildConcept,
+    *,
+    use_raw_name: bool,
+) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper | None:
+    for column in datasource.columns:
+        if (
+            column.concept.canonical_address == concept.canonical_address
+            or column.concept == concept
+            or column.concept.with_grain(concept.grain) == concept
+        ):
+            if use_raw_name:
+                return column.alias
+            return concept.safe_address
+    return None
+
+
 @dataclass(frozen=True)
 class SourceBinding:
     key: str
@@ -627,26 +645,16 @@ class CTE:
     def inlined_parent_providing(self, concept: BuildConcept) -> "DatasourceCTE | None":
         """An inlined datasource exposing ``concept`` as a raw column."""
         for p in self.inlined_parents:
-            try:
-                p.datasource.get_alias(concept, use_raw_name=True)
-            except ValueError:
-                continue
-            return p
+            if (
+                _datasource_column_for_concept(p.datasource, concept, use_raw_name=True)
+                is not None
+            ):
+                return p
         return None
 
     def renders_inline(self, node: "CTE | UnionCTE") -> bool:
         """Whether this consumer renders ``node`` as a folded raw datasource."""
-        if self.inlined_parent_for_source(node.name) is not None:
-            return True
-        if isinstance(node, DatasourceCTE):
-            scanned = {
-                d.safe_identifier
-                for d in self.source.datasources
-                if isinstance(d, BuildDatasource)
-            }
-            if node.datasource.safe_identifier in scanned:
-                return True
-        return False
+        return self.inlined_parent_for_source(node.name) is not None
 
     def column_for(
         self, node: "CTE | UnionCTE", concept: BuildConcept
@@ -1332,7 +1340,9 @@ class DatasourceCTE(CTE):
     def consumer_column(
         self, concept: BuildConcept
     ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:
-        alias = self.datasource.get_alias(concept, use_raw_name=True)
+        alias = _datasource_column_for_concept(
+            self.datasource, concept, use_raw_name=True
+        )
         assert alias is not None  # concept is an output of this datasource
         return alias
 

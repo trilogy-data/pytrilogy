@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TypeAlias, cast
+from typing import TypeAlias, cast
+
+from lark import Token, Tree
 
 
 class SyntaxNodeKind(str, Enum):
@@ -768,38 +770,36 @@ def _syntax_error(syntax: SyntaxElement, message: str) -> Exception:
     return HydrationError(HydrationDiagnostic.from_syntax(message, syntax))
 
 
-def syntax_from_parser(element: Any) -> SyntaxElement:
-    data = getattr(element, "data", None)
-    token_type = getattr(element, "type", None)
-    if data is not None:
-        meta_src = getattr(element, "meta", None)
+def syntax_from_parser(element: Tree[Token] | Token) -> SyntaxElement:
+    if isinstance(element, Tree):
+        meta = element.meta
         return SyntaxNode(
-            data,
+            element.data,
             [syntax_from_parser(child) for child in element.children],
-            getattr(meta_src, "line", None),
-            getattr(meta_src, "column", None),
-            getattr(meta_src, "end_line", None),
-            getattr(meta_src, "end_column", None),
-            getattr(meta_src, "start_pos", None),
-            getattr(meta_src, "end_pos", None),
-            LARK_NODE_KIND.get(data),
+            None if meta.empty else meta.line,
+            None if meta.empty else meta.column,
+            None if meta.empty else meta.end_line,
+            None if meta.empty else meta.end_column,
+            None if meta.empty else meta.start_pos,
+            None if meta.empty else meta.end_pos,
+            LARK_NODE_KIND.get(element.data),
         )
-    if token_type is not None:
+    if isinstance(element, Token):
         return SyntaxToken(
-            token_type,
+            element.type,
             element.value,
-            getattr(element, "line", None),
-            getattr(element, "column", None),
-            getattr(element, "end_line", None),
-            getattr(element, "end_column", None),
-            getattr(element, "start_pos", None),
-            getattr(element, "end_pos", None),
-            LARK_TOKEN_KIND.get(token_type),
+            element.line,
+            element.column,
+            element.end_line,
+            element.end_column,
+            element.start_pos,
+            element.end_pos,
+            LARK_TOKEN_KIND.get(element.type),
         )
     msg = f"Unknown syntax element {element!r}"
     raise TypeError(msg)
 
 
-def syntax_document_from_parser(text: str, tree: Any) -> SyntaxDocument:
+def syntax_document_from_parser(text: str, tree: Tree[Token]) -> SyntaxDocument:
     syntax = syntax_from_parser(tree)
     return SyntaxDocument(text=text, tree=cast(SyntaxNode, syntax))

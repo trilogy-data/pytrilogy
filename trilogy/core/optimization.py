@@ -100,7 +100,8 @@ def canonicalize_graph(input: list[CTE]) -> None:
             seen.add(live.name)
             deduped.append(live)
         cte.parent_ctes = deduped
-        for join in getattr(cte, "joins", []) or []:
+        joins = cte.joins if isinstance(cte, CTE) else []
+        for join in joins:
             if not isinstance(join, Join):
                 continue
             join.right_cte = resolve(join.right_cte)
