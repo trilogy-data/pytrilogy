@@ -112,10 +112,7 @@ def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | N
         if _source_binding_matches_id(binding, join_qds_id, include_base=True):
             binding_base_matches.append(binding.node)
     for j in consumer.joins:
-        if (
-            isinstance(j, Join)
-            and isinstance(j.right_cte, (CTE, UnionCTE))
-        ):
+        if isinstance(j, Join) and isinstance(j.right_cte, (CTE, UnionCTE)):
             if _cte_matches_source_id(j.right_cte, join_qds_id, include_base=False):
                 return j.right_cte
             if _cte_matches_source_id(j.right_cte, join_qds_id, include_base=True):
