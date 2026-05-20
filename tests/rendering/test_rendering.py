@@ -367,8 +367,10 @@ auto y <- CASE
     WHEN category_name like '%abc%' then True else False END;""")
 
     test = Renderer().to_string(parsed[-1])
+    # ``X like 'lit'`` is parsed as a ``Comparison`` (not a ``Function``-wrapped
+    # ``= True``), so the round-tripped text reflects the cleaner infix form.
     assert test == """property y <- CASE
-    WHEN like(category_name,'%abc%') = True THEN True
+    WHEN category_name like '%abc%' THEN True
     ELSE False
 END;""", test
 

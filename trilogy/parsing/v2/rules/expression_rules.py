@@ -155,12 +155,23 @@ def sum_operator(
     for i in range(1, len(values), 2):
         op = str(values[i]).lower()
         right = values[i + 1]
+        # LIKE / ILIKE are binary boolean predicates — emit them as
+        # ``Comparison`` so they slot into the proof and pushdown machinery
+        # the same way other null-propagating comparisons do.
+        if op == "like":
+            result = Comparison(
+                left=result, right=right, operator=ComparisonOperator.LIKE
+            )
+            continue
+        if op == "ilike":
+            result = Comparison(
+                left=result, right=right, operator=ComparisonOperator.ILIKE
+            )
+            continue
         operator = {
             "+": FunctionType.ADD,
             "-": FunctionType.SUBTRACT,
             "||": FunctionType.CONCAT,
-            "like": FunctionType.LIKE,
-            "ilike": FunctionType.ILIKE,
         }.get(op)
         if operator is None:
             raise fail(node, f"Unknown operator: {op}")

@@ -1,5 +1,5 @@
 query_id = "91"
-gen_length = 2253
+gen_length = 2217
 preql_size = 837
 comp_size = 982
 generated_sql = """
@@ -17,7 +17,7 @@ FROM
     INNER JOIN \"memory\".\"customer_demographics\" as \"cr_customer_demographics_customer_demographics\" on \"cr_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"cr_customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"cr_customer_household_demographic_household_demographics\" on \"cr_customer_customers\".\"C_CURRENT_HDEMO_SK\" = \"cr_customer_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
-    \"cr_date_date\".\"D_YEAR\" = 1998 and \"cr_date_date\".\"D_MOY\" = 11 and ( ( \"cr_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"cr_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' ) or ( \"cr_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'W' and \"cr_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Advanced Degree' ) ) and  CASE WHEN \"cr_customer_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" like 'Unknown%' THEN True ELSE False END and \"cr_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -7
+    \"cr_date_date\".\"D_YEAR\" = 1998 and \"cr_date_date\".\"D_MOY\" = 11 and ( ( \"cr_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'M' and \"cr_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' ) or ( \"cr_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" = 'W' and \"cr_customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Advanced Degree' ) ) and \"cr_customer_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" like 'Unknown%' and \"cr_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -7
 
 GROUP BY
     1,

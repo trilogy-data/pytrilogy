@@ -1,6 +1,6 @@
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType
+from trilogy.core.enums import ComparisonOperator, FunctionType
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
 
@@ -94,7 +94,6 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda args, types: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
     FunctionType.CONCAT: lambda args, types: f"({' || '.join(args)})",
-    FunctionType.ILIKE: lambda args, types: f"(lower({args[0]}) like lower({args[1]}))",
     FunctionType.CONTAINS: lambda args, types: f"(instr(lower({args[0]}), lower({args[1]})) > 0)",
     FunctionType.BOOL_OR: lambda args, types: f"max(CAST({args[0]} as integer))",
     FunctionType.BOOL_AND: lambda args, types: f"min(CAST({args[0]} as integer))",
@@ -242,6 +241,27 @@ class SQLiteDialect(BaseDialect):
     CREATE_TABLE_SQL_TEMPLATE = SQLITE_CREATE_TABLE_SQL_TEMPLATE
     TABLE_NOT_FOUND_PATTERN = "no such table"
     COLUMN_NOT_FOUND_PATTERN = "no such column"
+
+    def render_comparison(
+        self, left, right, operator, cte=None, cte_map=None, raise_invalid=False
+    ):
+        # SQLite has no native ``ILIKE``; emulate via case-folded LIKE.
+        if operator == ComparisonOperator.ILIKE:
+            left_sql = self.render_expr(
+                left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+            )
+            right_sql = self.render_expr(
+                right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+            )
+            return f"(lower({left_sql}) like lower({right_sql}))"
+        return super().render_comparison(
+            left,
+            right,
+            operator,
+            cte=cte,
+            cte_map=cte_map,
+            raise_invalid=raise_invalid,
+        )
 
     def compile_create_table_statement(self, target, create_mode):
         statement = super().compile_create_table_statement(target, create_mode)

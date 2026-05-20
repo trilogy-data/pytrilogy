@@ -615,18 +615,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.KEY,
         arg_count=-1,
     ),
-    FunctionType.LIKE: FunctionConfig(
-        valid_inputs={DataType.STRING},
-        output_purpose=Purpose.PROPERTY,
-        output_type=DataType.BOOL,
-        arg_count=2,
-    ),
-    FunctionType.ILIKE: FunctionConfig(
-        valid_inputs={DataType.STRING},
-        output_purpose=Purpose.PROPERTY,
-        output_type=DataType.BOOL,
-        arg_count=2,
-    ),
     FunctionType.UPPER: FunctionConfig(
         valid_inputs={DataType.STRING},
         output_purpose=Purpose.PROPERTY,

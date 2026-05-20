@@ -288,8 +288,6 @@ class FunctionType(Enum):
     GROUPING_ID = "grouping_id"
 
     # String
-    LIKE = "like"
-    ILIKE = "ilike"
     LOWER = "lower"
     UPPER = "upper"
     SUBSTRING = "substring"
