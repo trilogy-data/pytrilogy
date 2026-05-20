@@ -46,9 +46,6 @@ FUNCTION_MAP = {
     FunctionType.SUM: lambda x, types: f"sum({x[0]})",
     FunctionType.LENGTH: lambda x, types: handle_length(x, types),
     FunctionType.AVG: lambda x, types: f"avg({x[0]})",
-    FunctionType.LIKE: lambda x, types: (
-        f" CASE WHEN {x[0]} like {x[1]} THEN True ELSE False END"
-    ),
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
     FunctionType.MINUTE: lambda x, types: f"EXTRACT(MINUTE from {x[0]})",
     FunctionType.SECOND: lambda x, types: f"EXTRACT(SECOND from {x[0]})",

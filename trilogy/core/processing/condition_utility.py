@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from datetime import date, datetime, timedelta
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
@@ -20,6 +20,7 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
+    BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildParenthetical,
@@ -38,6 +39,9 @@ from trilogy.core.models.core import (
     TraitDataType,
     TupleWrapper,
 )
+
+if TYPE_CHECKING:
+    from trilogy.core.models.build_environment import BuildEnvironment
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 SUBSELECT_TYPES = (BuildSubselectComparison,)
@@ -645,6 +649,92 @@ def is_null_literal(value: object) -> bool:
     return value is None or value is MagicConstants.NULL
 
 
+def _not_null_concept(
+    atom: BuildComparison | BuildConditional | BuildParenthetical,
+) -> BuildConcept | None:
+    """If ``atom`` is a plain ``X IS NOT NULL`` (either operand order), return X."""
+    if isinstance(atom, BuildSubselectComparison) or not isinstance(
+        atom, BuildComparison
+    ):
+        return None
+    if atom.operator != ComparisonOperator.IS_NOT:
+        return None
+    if isinstance(atom.left, BuildConcept) and is_null_literal(atom.right):
+        return atom.left
+    if isinstance(atom.right, BuildConcept) and is_null_literal(atom.left):
+        return atom.right
+    return None
+
+
+def _concept_globally_non_null(
+    concept: BuildConcept, environment: "BuildEnvironment"
+) -> bool:
+    """True when at least one datasource outputs ``concept`` and *every*
+    datasource that has it as a column exposes it complete and non-nullable.
+
+    Such a column can only ever be NULL via outer-join padding, never from a
+    base scan, so an ``IS NOT NULL`` predicate on it is tautological pre-join.
+    Model nullability is treated as a trusted invariant.
+    """
+    addrs = {concept.address, concept.canonical_address}
+    found = False
+    for ds in environment.datasources.values():
+        if not isinstance(ds, BuildDatasource):
+            continue
+        for col in ds.columns:
+            if addrs & {col.concept.address, col.concept.canonical_address}:
+                if col.is_nullable or not col.is_complete:
+                    return False
+                found = True
+    return found
+
+
+def strip_tautological_not_null(
+    where: BuildWhereClause | None,
+    environment: "BuildEnvironment",
+    protected_addresses: set[str] | None = None,
+) -> BuildWhereClause | None:
+    """Drop top-level ``X IS NOT NULL`` atoms that are provably always true
+    (X non-nullable & complete on every datasource that can source it).
+
+    Keeping such an atom otherwise pins X into the query's required concepts
+    and any dedup grain it lands in, for no semantic effect.
+
+    ``protected_addresses`` are concepts the query directly selects, groups, or
+    orders by. An ``X IS NOT NULL`` on such a concept is an author-intended
+    guard (e.g. q10 ``customer.demographics.gender is not null`` expressing the
+    reference's INNER equi-join over a nullable FK), not redundant noise — even
+    when X is non-null in its *own* table, it can be NULL-padded by a join, so
+    we never strip it. Only WHERE-only / aggregate-input concepts (e.g. q29
+    ``catalog_sales.quantity``, summed in a different branch) are eligible.
+    Returns the reduced clause, or ``None`` when every atom was stripped.
+    """
+    if where is None:
+        return None
+    protected = protected_addresses or set()
+    atoms = decompose_condition(where.conditional)
+    survivors: list[BuildComparison | BuildConditional | BuildParenthetical] = []
+    dropped = False
+    for atom in atoms:
+        concept = _not_null_concept(atom)
+        if (
+            concept is not None
+            and concept.address not in protected
+            and concept.canonical_address not in protected
+            and is_scalar_condition(atom)
+            and _concept_globally_non_null(concept, environment)
+        ):
+            dropped = True
+            continue
+        survivors.append(atom)
+    if not dropped:
+        return where
+    combined = combine_condition_atoms(survivors)
+    if combined is None:
+        return None
+    return BuildWhereClause(conditional=combined)
+
+
 def concepts_implied_non_null(value: object) -> set[str]:
     """Concepts whose individual non-nullness is implied when ``value`` evaluates non-null.
 
@@ -690,6 +780,13 @@ def _atom_proves_non_null(
         # which — only concepts non-null under *every* disjunct are proven.
         sets = [condition_proves_non_null(d) for d in _non_null_or_disjuncts(atom)]
         return set.intersection(*sets) if sets else set()
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
+        # ``decompose_condition`` returns the whole AND as one chunk when a
+        # child isn't in ``CONDITION_TYPES`` (e.g. a ``raw(...)`` predicate
+        # arrives as a bare ``BuildFunction``). Walk both sides ourselves so
+        # ordinary Comparison proofs sitting next to the opaque child still
+        # contribute.
+        return _atom_proves_non_null(atom.left) | _atom_proves_non_null(atom.right)  # type: ignore[arg-type]
     if not isinstance(atom, BuildComparison):
         return set()
     left, right, op = atom.left, atom.right, atom.operator

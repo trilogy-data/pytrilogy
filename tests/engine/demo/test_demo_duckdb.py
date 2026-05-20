@@ -435,6 +435,8 @@ ORDER BY
     row_results = executor.execute_text(test)[-1].fetchall()
     assert len(row_results) == 794
 
+    # ``like`` parses as a ``Comparison`` (rather than ``Function``-then-CASE),
+    # so the rendered WHERE drops the redundant CASE/=True wrapper.
     assert results.strip() == """
 SELECT
     "raw_data"."passengerid" as "passenger_id",
@@ -443,7 +445,7 @@ SELECT
 FROM
     "raw_titanic" as "raw_data"
 WHERE
-     CASE WHEN "raw_data"."name" like '%a%' THEN True ELSE False END = True
+    "raw_data"."name" like '%a%'
 
 ORDER BY 
     "raw_data"."name" asc""".strip()

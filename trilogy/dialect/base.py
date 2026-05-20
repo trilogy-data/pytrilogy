@@ -399,8 +399,6 @@ FUNCTION_MAP = {
     FunctionType.BOOL_OR: lambda x, types: f"bool_or({x[0]})",
     FunctionType.BOOL_AND: lambda x, types: f"bool_and({x[0]})",
     # string types
-    FunctionType.LIKE: lambda x, types: f" {x[0]} like {x[1]} ",
-    FunctionType.ILIKE: lambda x, types: f" {x[0]} ilike {x[1]} ",
     FunctionType.UPPER: lambda x, types: f"UPPER({x[0]}) ",
     FunctionType.LOWER: lambda x, types: f"LOWER({x[0]}) ",
     FunctionType.SUBSTRING: lambda x, types: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
@@ -1081,6 +1079,19 @@ class BaseDialect:
     ):
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
+    def render_comparison(
+        self,
+        left,
+        right,
+        operator: ComparisonOperator,
+        cte: CTE | UnionCTE | None = None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        raise_invalid: bool = False,
+    ) -> str:
+        """Default rendering for a binary comparison. Dialects override when an
+        operator needs translation (e.g. SQLite ``ILIKE``)."""
+        return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+
     def render_expr(
         self,
         e: Union[
@@ -1186,7 +1197,14 @@ class BaseDialect:
 
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):
-            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            return self.render_comparison(
+                e.left,
+                e.right,
+                e.operator,
+                cte=cte,
+                cte_map=cte_map,
+                raise_invalid=raise_invalid,
+            )
         elif isinstance(e, CONDITIONAL_ITEMS):
             # conditions need to be nested in parentheses
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"

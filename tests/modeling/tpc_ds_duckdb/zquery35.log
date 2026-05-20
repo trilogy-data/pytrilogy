@@ -1,6 +1,6 @@
 query_id = "35"
-gen_length = 9884
-preql_size = 2119
+gen_length = 10095
+preql_size = 2164
 comp_size = 1745
 generated_sql = """
 
@@ -52,7 +52,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers_store_cust_id\" from abundant where abundant.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"web_buyers_web_cust_id\" from juicy where juicy.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select cheerful.\"catalog_buyers_cat_cust_id\" from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not null) )
+    \"customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers_store_cust_id\" from abundant where abundant.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"web_buyers_web_cust_id\" from juicy where juicy.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select cheerful.\"catalog_buyers_cat_cust_id\" from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not null) ) and \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null
 
 GROUP BY
     1,
@@ -75,7 +75,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers_store_cust_id\" from abundant where abundant.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"web_buyers_web_cust_id\" from juicy where juicy.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select cheerful.\"catalog_buyers_cat_cust_id\" from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not null) )
+    \"customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers_store_cust_id\" from abundant where abundant.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"web_buyers_web_cust_id\" from juicy where juicy.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select cheerful.\"catalog_buyers_cat_cust_id\" from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not null) ) and \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null
 
 GROUP BY
     1,
@@ -152,7 +152,7 @@ SELECT
     \"sparkling\".\"avg3\" as \"avg3\"
 FROM
     \"sweltering\"
-    FULL JOIN \"sparkling\" on \"sweltering\".\"customer_address_state\" is not distinct from \"sparkling\".\"customer_address_state\" AND \"sweltering\".\"customer_demographics_college_dependent_count\" = \"sparkling\".\"customer_demographics_college_dependent_count\" AND \"sweltering\".\"customer_demographics_dependent_count\" = \"sparkling\".\"customer_demographics_dependent_count\" AND \"sweltering\".\"customer_demographics_employed_dependent_count\" = \"sparkling\".\"customer_demographics_employed_dependent_count\" AND \"sweltering\".\"customer_demographics_gender\" = \"sparkling\".\"customer_demographics_gender\" AND \"sweltering\".\"customer_demographics_marital_status\" = \"sparkling\".\"customer_demographics_marital_status\"
+    FULL JOIN \"sparkling\" on \"sweltering\".\"customer_address_state\" is not distinct from \"sparkling\".\"customer_address_state\" AND \"sweltering\".\"customer_demographics_college_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_college_dependent_count\" AND \"sweltering\".\"customer_demographics_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_dependent_count\" AND \"sweltering\".\"customer_demographics_employed_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_employed_dependent_count\" AND \"sweltering\".\"customer_demographics_gender\" is not distinct from \"sparkling\".\"customer_demographics_gender\" AND \"sweltering\".\"customer_demographics_marital_status\" is not distinct from \"sparkling\".\"customer_demographics_marital_status\"
 ORDER BY 
     coalesce(\"sparkling\".\"customer_address_state\",\"sweltering\".\"customer_address_state\") asc nulls first,
     coalesce(\"sparkling\".\"customer_demographics_gender\",\"sweltering\".\"customer_demographics_gender\") asc nulls first,

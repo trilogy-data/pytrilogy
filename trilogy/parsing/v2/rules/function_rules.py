@@ -64,8 +64,6 @@ SIMPLE_FUNCTION_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
     SyntaxNodeKind.FREGEXP_REPLACE: FunctionType.REGEXP_REPLACE,
     SyntaxNodeKind.FHASH: FunctionType.HASH,
     SyntaxNodeKind.FHEX: FunctionType.HEX,
-    SyntaxNodeKind.LIKE: FunctionType.LIKE,
-    SyntaxNodeKind.ILIKE: FunctionType.ILIKE,
     SyntaxNodeKind.LEN: FunctionType.LENGTH,
     SyntaxNodeKind.CONCAT: FunctionType.CONCAT,
     SyntaxNodeKind.FCOALESCE: FunctionType.COALESCE,
@@ -192,6 +190,23 @@ def simple_function(
     args = hydrated_children(node, hydrate)
     ft = SIMPLE_FUNCTION_DISPATCH[node.kind]  # type: ignore
     return context.function_factory.create_function(args, ft)
+
+
+def like_comparison(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> Comparison:
+    """``X LIKE 'y'`` / ``X ILIKE 'y'`` are binary boolean predicates — emit
+    them as ``Comparison`` so they slot into the proof / pushdown / unwrap
+    machinery the same way other null-propagating comparisons do."""
+    args = hydrated_children(node, hydrate)
+    operator = (
+        ComparisonOperator.ILIKE
+        if node.kind == SyntaxNodeKind.ILIKE
+        else ComparisonOperator.LIKE
+    )
+    return Comparison(left=args[0], right=args[1], operator=operator)
 
 
 # --- Aggregate handlers ---
@@ -963,6 +978,9 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.FARRAY_FILTER: farray_lambda,
     # custom function
     SyntaxNodeKind.CUSTOM_FUNCTION: custom_function,
+    # binary boolean predicates emitted as ``Comparison``
+    SyntaxNodeKind.LIKE: like_comparison,
+    SyntaxNodeKind.ILIKE: like_comparison,
 }
 
 # Add all table-driven simple functions

@@ -63,8 +63,6 @@ FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x, types: f"splitByString({x[1]}, {x[0]})",
     FunctionType.HASH: lambda x, types: _ch_hash(x[0], x[1]),
     FunctionType.HEX: lambda x, types: f"hex({x[0]})",
-    FunctionType.LIKE: lambda x, types: f"({x[0]} like {x[1]})",
-    FunctionType.ILIKE: lambda x, types: f"({x[0]} ilike {x[1]})",
     # aggregates with no direct CH equivalent
     FunctionType.BOOL_OR: lambda x, types: f"max(toUInt8({x[0]})) = 1",
     FunctionType.BOOL_AND: lambda x, types: f"min(toUInt8({x[0]})) = 1",

@@ -14,6 +14,7 @@ def _optimization_flags(**overrides: bool) -> Iterator[None]:
         "datasource_inlining",
         "predicate_pushdown",
         "upgrade_condition_joins",
+        "simplify_null_safe_joins",
         "union_dim_pushdown",
         "hide_unused_concepts",
     }

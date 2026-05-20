@@ -27,6 +27,7 @@ WHERE
           and wr.refunded_address.state in ('LA', 'IA', 'AR')
           and wr.web_sales.net_profit between 50 and 250))
 SELECT
+   --wr.reason.desc,
     substring(wr.reason.desc, 1, 20) as reason_desc,
     avg(wr.web_sales.quantity) as avg1,
     avg(wr.refunded_cash) as avg2,

@@ -206,7 +206,12 @@ select
     assert env.concepts["special_order"].lineage.where.conditional.right is True
     assert env.concepts["special_order_2"].lineage.where.conditional.right == 1
     query = BaseDialect().compile_statement(process_query(test_environment, select))
-    assert "= True" in query
+    # ``like(x, 'lit')`` now parses as a ``Comparison`` so the redundant
+    # ``= True`` wrapper is stripped by ``_unwrap_condition_boolean_wrapper``.
+    # The surviving form ``x like 'lit'`` is identical in semantics and
+    # cleaner SQL.
+    assert "like 'test'" in query
+    assert "= True" not in query
 
 
 def test_bare_where(test_environment):

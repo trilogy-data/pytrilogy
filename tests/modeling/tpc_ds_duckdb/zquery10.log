@@ -65,8 +65,8 @@ SELECT
     \"customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",
     count(\"customer_customers\".\"C_CUSTOMER_SK\") as \"cnt6\"
 FROM
-    \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\" = \"customer_customers\".\"C_CURRENT_CDEMO_SK\"
+    \"memory\".\"customer\" as \"customer_customers\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
     \"customer_customers\".\"C_CUSTOMER_SK\" in (select vacuous.\"relevant_customers\" from vacuous where vacuous.\"relevant_customers\" is not null) and \"customer_demographics_customer_demographics\".\"CD_GENDER\" is not null
 

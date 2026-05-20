@@ -11,9 +11,6 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda x, types: f"avg({x[0]})",
     FunctionType.INDEX_ACCESS: lambda x, types: f"element_at({x[0]},{x[1]})",
     FunctionType.MAP_ACCESS: lambda x, types: f"{x[0]}[{x[1]}]",
-    FunctionType.LIKE: lambda x, types: (
-        f" CASE WHEN {x[0]} like {x[1]} THEN True ELSE False END"
-    ),
     FunctionType.MINUTE: lambda x, types: f"EXTRACT(MINUTE from {x[0]})",
     FunctionType.SECOND: lambda x, types: f"EXTRACT(SECOND from {x[0]})",
     FunctionType.HOUR: lambda x, types: f"EXTRACT(HOUR from {x[0]})",

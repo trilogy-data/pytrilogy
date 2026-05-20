@@ -259,6 +259,31 @@ def test_proves_non_null_helpers():
     )
 
 
+def test_proves_non_null_comparison_shaped_like():
+    """``X LIKE 'lit'`` is parsed as a ``Comparison`` with ``operator=LIKE``
+    (LIKE is in ``NULL_PROPAGATING_OPS``), so its concept is proven non-null
+    by the standard comparison path — both standalone and AND-chained next
+    to another comparison (q91 shape)."""
+
+    env = Environment()
+    env.parse("key x int; property x.s string;")
+    build_env = env.materialize_for_select()
+    x = build_env.concepts["local.x"]
+    s = build_env.concepts["local.s"]
+
+    like = BuildComparison(left=s, right="Unknown%", operator=ComparisonOperator.LIKE)
+
+    assert _proves_non_null(like) == {s.address}
+    assert _gather_proofs(like) == {s.address}
+
+    cond = BuildConditional(
+        left=like,
+        right=BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ),
+        operator=BooleanOperator.AND,
+    )
+    assert _gather_proofs(cond) == {s.address, x.address}
+
+
 def test_cte_addresses_none_returns_empty():
     """Defensive guard: a None CTE has no addresses."""
     assert _cte_addresses(None) == set()

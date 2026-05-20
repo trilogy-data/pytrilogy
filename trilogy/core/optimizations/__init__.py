@@ -5,6 +5,7 @@ from .inline_datasource import InlineDatasource
 from .join_hoist import JoinHoist
 from .join_upgrade import UpgradeJoinOnGuards
 from .merge_irrelevant_group_by import MergeIrrelevantGroupBy
+from .null_safe_join import SimplifyNullSafeJoins
 from .predicate_pushdown import PredicatePushdown, PredicatePushdownRemove
 from .union_dim_pushdown import UnionDimPushdown
 
@@ -19,6 +20,7 @@ __all__ = [
     "PredicatePushdown",
     "PredicatePushdownRemove",
     "UpgradeJoinOnGuards",
+    "SimplifyNullSafeJoins",
     "HideUnusedConcepts",
     "UnionDimPushdown",
 ]

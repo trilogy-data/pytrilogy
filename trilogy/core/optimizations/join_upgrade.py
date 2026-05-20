@@ -172,6 +172,13 @@ def _proves_non_null(
         # which — only concepts non-null under *every* disjunct are proven.
         sets = [_gather_proofs(d) for d in _or_disjuncts(atom)]
         return set.intersection(*sets) if sets else set()
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
+        # ``decompose_condition`` returns the whole AND as one chunk when a
+        # child isn't in ``CONDITION_TYPES`` (e.g. a ``raw(...)`` predicate
+        # arrives as a bare ``BuildFunction``). Walk both sides ourselves so
+        # ordinary Comparison proofs sitting next to the opaque child still
+        # contribute (q64 ``is_returned`` + ``C_CURRENT_ADDR_SK is not null``).
+        return _proves_non_null(atom.left) | _proves_non_null(atom.right)  # type: ignore[arg-type]
     if not isinstance(atom, BuildComparison):
         return set()
 

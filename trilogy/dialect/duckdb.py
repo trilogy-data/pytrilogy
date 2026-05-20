@@ -126,9 +126,6 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda args, types: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
     FunctionType.LOG: lambda args, types: render_log(args),
-    FunctionType.LIKE: lambda args, types: (
-        f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"
-    ),
     FunctionType.CONCAT: lambda args, types: (
         f"CONCAT({','.join([f''' {str(a)} ''' for a in args])})"
     ),
