@@ -156,9 +156,9 @@ WINDOW_TO_AGGREGATE_MAP: dict[WindowType, FunctionType] = {
 
 def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
     if not isinstance(root, Comparison):
-        from trilogy.core.models.author import Conditional
+        from trilogy.core.models.author import Between, Conditional
 
-        if isinstance(root, Conditional):
+        if isinstance(root, (Conditional, Between)):
             return root
         dt = arg_to_datatype(root)
         if dt == DataType.BOOL:

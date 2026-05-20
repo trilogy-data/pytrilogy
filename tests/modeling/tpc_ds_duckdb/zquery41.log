@@ -1,5 +1,5 @@
 query_id = "41"
-gen_length = 2558
+gen_length = 2531
 preql_size = 1587
 comp_size = 2745
 generated_sql = """
@@ -23,7 +23,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"item_items\"
 WHERE
-    \"item_items\".\"I_MANUFACT_ID\" >= 738 and \"item_items\".\"I_MANUFACT_ID\" <= 778
+    \"item_items\".\"I_MANUFACT_ID\" between 738 and 778
 
 GROUP BY
     1,

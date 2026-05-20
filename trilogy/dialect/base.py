@@ -45,6 +45,7 @@ from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
+    BuildBetween,
     BuildCaseElse,
     BuildCaseSimpleWhen,
     BuildCaseWhen,
@@ -204,6 +205,7 @@ SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
 SUBSELECT_ITEMS = (BuildSubselectItem,)
 COMPARISON_ITEMS = (BuildComparison,)
 CONDITIONAL_ITEMS = (BuildConditional,)
+BETWEEN_ITEMS = (BuildBetween,)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -1098,6 +1100,7 @@ class BaseDialect:
             BuildConcept,
             BuildFunction,
             BuildConditional,
+            BuildBetween,
             BuildAggregateWrapper,
             BuildComparison,
             BuildCaseWhen,
@@ -1206,7 +1209,6 @@ class BaseDialect:
                 raise_invalid=raise_invalid,
             )
         elif isinstance(e, CONDITIONAL_ITEMS):
-            # conditions need to be nested in parentheses
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
@@ -1640,8 +1642,20 @@ class BaseDialect:
             final_joins = []
         else:
             final_joins = cte.joins or []
-        where: BuildConditional | BuildParenthetical | BuildComparison | None = None
-        having: BuildConditional | BuildParenthetical | BuildComparison | None = None
+        where: (
+            BuildConditional
+            | BuildParenthetical
+            | BuildComparison
+            | BuildBetween
+            | None
+        ) = None
+        having: (
+            BuildConditional
+            | BuildParenthetical
+            | BuildComparison
+            | BuildBetween
+            | None
+        ) = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
             if not cte.group_to_grain or is_scalar_condition(

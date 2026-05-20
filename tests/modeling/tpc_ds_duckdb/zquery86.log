@@ -1,5 +1,5 @@
 query_id = "86"
-gen_length = 2371
+gen_length = 2337
 preql_size = 1200
 comp_size = 847
 generated_sql = """
@@ -15,7 +15,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"web_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"web_sales_date_date\".\"D_MONTH_SEQ\" <= 1211
+    \"web_sales_date_date\".\"D_MONTH_SEQ\" between 1200 and 1211
 ),
 thoughtful as (
 SELECT

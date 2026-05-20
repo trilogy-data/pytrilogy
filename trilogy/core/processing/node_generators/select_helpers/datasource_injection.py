@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     Modifier,
 )
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -34,7 +35,7 @@ def _datasource_score(ds: BuildDatasource) -> int:
 
 
 def _extract_enum_value_for_key(
-    conditional: BuildComparison | BuildConditional | BuildParenthetical,
+    conditional: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
     key_address: str,
 ) -> object | None:
     """Extract the literal value for a specific concept key from a (compound) condition."""
@@ -57,7 +58,7 @@ def _extract_enum_value_for_key(
     elif isinstance(conditional, BuildConditional):
         if conditional.operator == BooleanOperator.OR:
             return None
-        _cond_types = (BuildComparison, BuildConditional, BuildParenthetical)
+        _cond_types = (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween)
         if isinstance(conditional.left, _cond_types):
             left_val = _extract_enum_value_for_key(conditional.left, key_address)
             if left_val is not None:
@@ -66,7 +67,7 @@ def _extract_enum_value_for_key(
             return _extract_enum_value_for_key(conditional.right, key_address)
     elif isinstance(conditional, BuildParenthetical):
         if isinstance(
-            conditional.content, (BuildComparison, BuildConditional, BuildParenthetical)
+            conditional.content, (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween)
         ):
             return _extract_enum_value_for_key(conditional.content, key_address)
     return None

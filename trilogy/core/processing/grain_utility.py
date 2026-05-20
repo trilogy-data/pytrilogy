@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from trilogy.core.enums import Derivation, JoinType, Purpose
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -23,7 +24,7 @@ GrainSource = QueryDatasource | BuildDatasource
 
 
 def non_null_proofs(
-    condition: BuildComparison | BuildConditional | BuildParenthetical,
+    condition: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
 ) -> set[str]:
     """Concept addresses that this condition forces non-null in surviving rows.
 
@@ -40,7 +41,7 @@ def non_null_proofs(
         if isinstance(atom, BuildParenthetical):
             if isinstance(
                 atom.content,
-                (BuildComparison, BuildConditional, BuildParenthetical),
+                (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween),
             ):
                 proofs |= non_null_proofs(atom.content)
             continue
@@ -229,7 +230,7 @@ def _left_join_addresses(
 
 def downgrade_join_for_condition(
     join: BaseJoin | UnnestJoin,
-    condition: BuildComparison | BuildConditional | BuildParenthetical | None,
+    condition: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | None,
     final_datasets: list[GrainSource],
 ) -> None:
     if not isinstance(join, BaseJoin):
@@ -299,7 +300,7 @@ def grain_satisfied_by_pregrain(
 
 
 def condition_key_grain(
-    condition: BuildComparison | BuildConditional | BuildParenthetical | None,
+    condition: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | None,
     environment: BuildEnvironment,
 ) -> BuildGrain:
     if condition is None:
@@ -314,7 +315,7 @@ def condition_key_grain(
 
 
 def has_condition_key_outside_grain(
-    condition: BuildComparison | BuildConditional | BuildParenthetical | None,
+    condition: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | None,
     grain: BuildGrain,
     environment: BuildEnvironment,
 ) -> bool:

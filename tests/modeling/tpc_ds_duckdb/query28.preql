@@ -1,53 +1,37 @@
 import store_sales as store_sales;
 
-def b_avg(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> avg(
-    case when store_sales.quantity between qmin and qmax
-        and (
-            store_sales.list_price between lpmin and lpmax
-            or store_sales.coupon_amt between camin and camax
-            or store_sales.wholesale_cost between wcmin and wcmax
-        )
-        then store_sales.list_price else null end
-);
+def b_lp(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> CASE
+    WHEN store_sales.quantity >= qmin and store_sales.quantity <= qmax and (store_sales.list_price >= lpmin and store_sales.list_price <= lpmax or store_sales.coupon_amt >= camin and store_sales.coupon_amt <= camax or store_sales.wholesale_cost >= wcmin and store_sales.wholesale_cost <= wcmax) THEN store_sales.list_price
+    ELSE null
+END;
 
-def b_cnt(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> count(
-    case when store_sales.quantity between qmin and qmax
-        and (
-            store_sales.list_price between lpmin and lpmax
-            or store_sales.coupon_amt between camin and camax
-            or store_sales.wholesale_cost between wcmin and wcmax
-        )
-        then store_sales.list_price else null end
-);
+auto b1_lp <- @b_lp(0, 5, 8, 18, 459, 1459, 57, 77);
+auto b2_lp <- @b_lp(6, 10, 90, 100, 2323, 3323, 31, 51);
+auto b3_lp <- @b_lp(11, 15, 142, 152, 12214, 13214, 79, 99);
+auto b4_lp <- @b_lp(16, 20, 135, 145, 6071, 7071, 38, 58);
+auto b5_lp <- @b_lp(21, 25, 122, 132, 836, 1836, 17, 37);
+auto b6_lp <- @b_lp(26, 30, 154, 164, 7326, 8326, 7, 27);
 
-def b_cntd(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> count_distinct(
-    case when store_sales.quantity between qmin and qmax
-        and (
-            store_sales.list_price between lpmin and lpmax
-            or store_sales.coupon_amt between camin and camax
-            or store_sales.wholesale_cost between wcmin and wcmax
-        )
-        then store_sales.list_price else null end
-);
-
-WHERE store_sales.quantity between 0 and 30
+WHERE
+    store_sales.quantity >= 0 and store_sales.quantity <= 30
 SELECT
-    @b_avg(0, 5, 8, 18, 459, 1459, 57, 77) as B1_LP,
-    @b_cnt(0, 5, 8, 18, 459, 1459, 57, 77) as B1_CNT,
-    @b_cntd(0, 5, 8, 18, 459, 1459, 57, 77) as B1_CNTD,
-    @b_avg(6, 10, 90, 100, 2323, 3323, 31, 51) as B2_LP,
-    @b_cnt(6, 10, 90, 100, 2323, 3323, 31, 51) as B2_CNT,
-    @b_cntd(6, 10, 90, 100, 2323, 3323, 31, 51) as B2_CNTD,
-    @b_avg(11, 15, 142, 152, 12214, 13214, 79, 99) as B3_LP,
-    @b_cnt(11, 15, 142, 152, 12214, 13214, 79, 99) as B3_CNT,
-    @b_cntd(11, 15, 142, 152, 12214, 13214, 79, 99) as B3_CNTD,
-    @b_avg(16, 20, 135, 145, 6071, 7071, 38, 58) as B4_LP,
-    @b_cnt(16, 20, 135, 145, 6071, 7071, 38, 58) as B4_CNT,
-    @b_cntd(16, 20, 135, 145, 6071, 7071, 38, 58) as B4_CNTD,
-    @b_avg(21, 25, 122, 132, 836, 1836, 17, 37) as B5_LP,
-    @b_cnt(21, 25, 122, 132, 836, 1836, 17, 37) as B5_CNT,
-    @b_cntd(21, 25, 122, 132, 836, 1836, 17, 37) as B5_CNTD,
-    @b_avg(26, 30, 154, 164, 7326, 8326, 7, 27) as B6_LP,
-    @b_cnt(26, 30, 154, 164, 7326, 8326, 7, 27) as B6_CNT,
-    @b_cntd(26, 30, 154, 164, 7326, 8326, 7, 27) as B6_CNTD
-LIMIT 100;
+    avg(b1_lp) -> B1_LP,
+    count(b1_lp) -> B1_CNT,
+    count_distinct(b1_lp) -> B1_CNTD,
+    avg(b2_lp) -> B2_LP,
+    count(b2_lp) -> B2_CNT,
+    count_distinct(b2_lp) -> B2_CNTD,
+    avg(b3_lp) -> B3_LP,
+    count(b3_lp) -> B3_CNT,
+    count_distinct(b3_lp) -> B3_CNTD,
+    avg(b4_lp) -> B4_LP,
+    count(b4_lp) -> B4_CNT,
+    count_distinct(b4_lp) -> B4_CNTD,
+    avg(b5_lp) -> B5_LP,
+    count(b5_lp) -> B5_CNT,
+    count_distinct(b5_lp) -> B5_CNTD,
+    avg(b6_lp) -> B6_LP,
+    count(b6_lp) -> B6_CNT,
+    count_distinct(b6_lp) -> B6_CNTD,
+LIMIT 100
+;

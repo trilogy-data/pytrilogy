@@ -2,6 +2,7 @@ from typing import List
 
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -26,7 +27,7 @@ class UnionNode(StrategyNode):
         depth: int = 0,
         partial_concepts: List[BuildConcept] | None = None,
         preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
+            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
         ) = None,
     ):
         super().__init__(

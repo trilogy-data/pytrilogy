@@ -1,5 +1,5 @@
 query_id = "14"
-gen_length = 6732
+gen_length = 6682
 preql_size = 2071
 comp_size = 4229
 generated_sql = """
@@ -42,7 +42,7 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" >= 1999 and \"sales_date_date\".\"D_YEAR\" <= 2001
+    \"sales_date_date\".\"D_YEAR\" between 1999 and 2001
 ),
 questionable as (
 SELECT
@@ -53,7 +53,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" >= 1999 and \"sales_date_date\".\"D_YEAR\" <= 2001
+    \"sales_date_date\".\"D_YEAR\" between 1999 and 2001
 
 GROUP BY
     1,

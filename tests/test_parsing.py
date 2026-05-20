@@ -282,25 +282,16 @@ select
 
 
 def test_between():
+    from trilogy.core.models.author import Between
+
     _, parsed = parse_text(
         "const order_id <- 4; SELECT order_id  WHERE order_id BETWEEN 3 and 5;"
     )
     query: ProcessedQuery = parsed[-1]
-    left = query.where_clause.conditional.left
-    assert isinstance(
-        left,
-        Comparison,
-    ), type(left)
-    assert left.operator == ComparisonOperator.GTE
-    assert left.right == 3
-
-    right = query.where_clause.conditional.right
-    assert isinstance(
-        right,
-        Comparison,
-    ), type(right)
-    assert right.operator == ComparisonOperator.LTE
-    assert right.right == 5
+    cond = query.where_clause.conditional
+    assert isinstance(cond, Between), type(cond)
+    assert cond.low == 3
+    assert cond.high == 5
 
 
 def test_the_comments():

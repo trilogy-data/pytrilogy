@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 8051
+gen_length = 7821
 preql_size = 3293
 comp_size = 3129
 generated_sql = """
@@ -14,7 +14,7 @@ FROM
     \"memory\".\"web_returns\" as \"wr_web_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"wr_return_date_date\" on \"wr_web_returns\".\"WR_RETURNED_DATE_SK\" = \"wr_return_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"wr_return_date_date\".\"D_DATE\" as date) >= :period_start and cast(\"wr_return_date_date\".\"D_DATE\" as date) <= :period_end
+    cast(\"wr_return_date_date\".\"D_DATE\" as date) between :period_start and :period_end
 
 GROUP BY
     1),
@@ -27,7 +27,7 @@ FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ws_date_date\".\"D_DATE\" as date) >= :period_start and cast(\"ws_date_date\".\"D_DATE\" as date) <= :period_end
+    cast(\"ws_date_date\".\"D_DATE\" as date) between :period_start and :period_end
 
 GROUP BY
     1),
@@ -40,7 +40,7 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ss_date_date\".\"D_DATE\" as date) >= :period_start and cast(\"ss_date_date\".\"D_DATE\" as date) <= :period_end
+    cast(\"ss_date_date\".\"D_DATE\" as date) between :period_start and :period_end
 
 GROUP BY
     1),
@@ -54,7 +54,7 @@ FROM
     INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ss_return_date_date\".\"D_DATE\" as date) >= :period_start and cast(\"ss_return_date_date\".\"D_DATE\" as date) <= :period_end
+    cast(\"ss_return_date_date\".\"D_DATE\" as date) between :period_start and :period_end
 
 GROUP BY
     1),
@@ -67,7 +67,7 @@ FROM
     \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"cr_date_date\".\"D_DATE\" as date) >= :period_start and cast(\"cr_date_date\".\"D_DATE\" as date) <= :period_end
+    cast(\"cr_date_date\".\"D_DATE\" as date) between :period_start and :period_end
 
 GROUP BY
     1),
@@ -80,7 +80,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"cs_date_date\".\"D_DATE\" as date) >= :period_start and cast(\"cs_date_date\".\"D_DATE\" as date) <= :period_end
+    cast(\"cs_date_date\".\"D_DATE\" as date) between :period_start and :period_end
 
 GROUP BY
     1),

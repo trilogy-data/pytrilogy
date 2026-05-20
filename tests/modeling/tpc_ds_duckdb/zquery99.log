@@ -1,5 +1,5 @@
 query_id = "99"
-gen_length = 2624
+gen_length = 2595
 preql_size = 1026
 comp_size = 1484
 generated_sql = """
@@ -20,7 +20,7 @@ FROM
     INNER JOIN \"memory\".\"warehouse\" as \"warehouse_warehouse\" on \"catalog_sales\".\"CS_WAREHOUSE_SK\" = \"warehouse_warehouse\".\"w_warehouse_sk\"
     INNER JOIN \"memory\".\"call_center\" as \"call_center_call_center\" on \"catalog_sales\".\"CS_CALL_CENTER_SK\" = \"call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
-    \"ship_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ship_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"catalog_sales\".\"CS_CALL_CENTER_SK\" is not null and \"catalog_sales\".\"CS_WAREHOUSE_SK\" is not null and \"catalog_sales\".\"CS_SHIP_MODE_SK\" is not null
+    \"ship_date_date\".\"D_MONTH_SEQ\" between 1200 and 1211 and \"catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"catalog_sales\".\"CS_CALL_CENTER_SK\" is not null and \"catalog_sales\".\"CS_WAREHOUSE_SK\" is not null and \"catalog_sales\".\"CS_SHIP_MODE_SK\" is not null
 
 GROUP BY
     1,

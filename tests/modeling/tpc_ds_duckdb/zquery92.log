@@ -1,5 +1,5 @@
 query_id = "92"
-gen_length = 1382
+gen_length = 1346
 preql_size = 496
 comp_size = 555
 generated_sql = """
@@ -24,7 +24,7 @@ FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"ws_date_date\".\"D_DATE\" as date) >= :start_date and cast(\"ws_date_date\".\"D_DATE\" as date) <= :end_date
+    cast(\"ws_date_date\".\"D_DATE\" as date) between :start_date and :end_date
 
 GROUP BY
     1)

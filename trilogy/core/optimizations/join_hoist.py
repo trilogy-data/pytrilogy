@@ -36,6 +36,7 @@ from typing import cast
 
 from trilogy.core.enums import JoinType, SourceType
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConditional,
     BuildDatasource,
@@ -217,7 +218,7 @@ class JoinHoist(OptimizationRule):
         candidates = [
             c
             for c in self._candidates(cte)
-            if isinstance(c, (BuildComparison, BuildConditional, BuildParenthetical))
+            if isinstance(c, (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween))
             and is_scalar_condition(c)
             # `existence_arguments` may carry literal IN-list values for
             # SubselectComparison; only reject actual concept-bearing ones
@@ -586,7 +587,7 @@ class JoinHoist(OptimizationRule):
                     parent_cte.condition = append_condition(
                         parent_cte.condition,
                         cast(
-                            BuildComparison | BuildConditional | BuildParenthetical,
+                            BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
                             cand,
                         ),
                     )

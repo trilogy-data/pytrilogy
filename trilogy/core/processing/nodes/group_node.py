@@ -3,6 +3,7 @@ from typing import List, Optional
 from trilogy.constants import logger
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -45,10 +46,10 @@ class GroupNode(StrategyNode):
         nullable_concepts: Optional[List[BuildConcept]] = None,
         force_group: bool | None = None,
         conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
+            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
         ) = None,
         preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
+            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
         ) = None,
         existence_concepts: List[BuildConcept] | None = None,
         hidden_concepts: set[str] | None = None,
