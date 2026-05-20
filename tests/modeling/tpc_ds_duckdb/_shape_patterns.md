@@ -31,7 +31,7 @@ metric implied.
 
 | RC | Defect | Queries | Status |
 |---|---|---|---|
-| **RC-A** | Shared-grain multi-metric query split into per-source pipelines that each re-scan the fact tables, re-merged with `FULL JOIN … IS NOT DISTINCT FROM` on the group keys | q17, q25, q29; q50 (dim/metric variant) | open — fork half (the INDF half is fixed by RC-G strip) |
+| **RC-A** | Multi-metric correlated-rowset query split into per-source pipelines that each re-scan the fact tables, re-merged with `FULL JOIN … IS NOT DISTINCT FROM` on the group keys | q29 (landed); q17, q25 (open, **different shape** — see Findings) | **q29 landed 2026-05-20** via correlated-grain rowset; q17/q25 reverted (correlated-rowset is q29-specific, not the right lever for those); q50 reclassified out (no cross-fact fan-out) |
 | **RC-C** | Aggregate-membership `IN/NOT IN` → materialized CTE + `IN (SELECT … IS NOT NULL)` probed 2×; `count>1` as CASE→NULL over full grain instead of `HAVING` | q94 (q16 same shape but ref 13ms — sub-floor) | open. Also a correctness smell: `count(wh)>1` where ref needs `count(distinct wh)` |
 | **RC-D** | Channel-marked `UNION ALL` + `CASE WHEN channel=` pivot instead of per-channel pre-aggregate-then-join; returns anti-join lifted *above* per-channel aggregation | q78, q05 | open |
 | **RC-E** | Disjoint constant buckets → CASE-WHEN over one loose scan; `count(DISTINCT)` runs over the loose superset, not a tight per-bucket WHERE | q28 | open |
@@ -99,8 +99,79 @@ date-filtered; **q76/q77 (RC-F)** keep `UNION ALL` as `UNION ALL`, no
 FULL-JOIN tower, no N× scalar cross-join; **q44** drop the redundant 3rd
 store_sales scan + the `1=1` scalar cross-join.
 
-All fixes are generator-side; the `.preql` intent files already express the
-reference-equivalent single-scan / UNION / HAVING / equi-join semantics.
+All fixes are generator-side *except RC-A* (see Findings below); the
+remaining `.preql` intent files already express the reference-equivalent
+single-scan / UNION / HAVING / equi-join semantics.
+
+## Findings
+
+**RC-A reclassification (2026-05-20).** The fork is **not** a generator
+defect — the generator's refusal to co-group additive aggregates whose
+source grains differ is sound. Co-grouping them would corrupt the result.
+Concrete counterexample on q29 shape: one store-sale line (ticket=1,
+item=A, ss=10) joined to one return (sr=2) and two catalog rows
+(order=100 cs=5; order=200 cs=7) on `(customer, item)`. Reference R has
+2 rows after the cross-fact join → `sum(ss)=20, sum(sr)=4, sum(cs)=12`.
+Co-grouping at per-fact grains gives `10 / 2 / 12` — different answer.
+The reference has exactly **one** source grain — the joined correlated
+rowset, grain `(ss_ticket_number, item.id, cs_order_number)` — over which
+all three measures are jointly additive. Trilogy correctly sees three
+per-fact grains and forks because the `.preql` declares per-fact grains
++ shared join keys (`customer`, `item`) but **does not declare a common
+correlated grain**.
+
+Corollaries:
+- `catalog_store_returns.preql` is insufficient by itself: q17/q25 import
+  it and *still* fork (`zquery17.log:126` `FULL JOIN … IS NOT DISTINCT
+  FROM`). Shared join keys ≠ shared grain.
+- Key-aliasing `ss_ticket_number` ↔ `cs_order_number` is invalid (the
+  reference never equates them; they are independent intra-fact surrogate
+  sequences, not FKs to a shared dimension). Only `customer`/`item` are
+  honestly equatable, and they already are.
+- Latent correctness smell: trilogy's `highfalutin` path approximates the
+  join via *distinct* `(cust, item, date)` catalog tuples, equaling the
+  reference's raw-row fan-out only when catalog rows per `(cust, item)`
+  happen to have distinct dates. The 106/106 row-equality pass on the
+  duckdb scale factor is data-luck, not equivalence. q17/q25/q29 should
+  not be used as RC-A validation targets without a targeted fan-out check.
+- Doc principle correction: "All fixes are generator-side; the `.preql`
+  already expresses reference intent" does **not** hold for RC-A. The
+  `.preql` expresses the join keys but not the common source grain.
+
+Fix for q29: declare the correlated grain in `query29.preql` so all
+three measures share one source. A `with correlated as` rowset selects
+the correlation keys (`store_sales.ticket_number`, `store_sales.item.id`,
+`catalog_sales.order_number`) + dim cols + raw measure columns; the
+cross-fact key projection pins the source grain to the joined-rowset
+grain; the outer SELECT then sums from `correlated.*`. Multiselect is
+*not* required — an early experiment used multiselect+align, but the
+single-branch form is cleaner (no redundant inner-join CTEs).
+
+**Result — q29 only** (2026-05-20, `test_twenty_nine` row-equal vs
+`PRAGMA tpcds(29)`): one 8-way join CTE with inline GROUP BY + 1
+rename passthrough. SQL 8127 → 3801 chars (−53%). No `IS NOT DISTINCT
+FROM`, no per-fact pre-aggregation, no `highfalutin` keys-only dedup.
+Test now asserts `"is not distinct from" not in query` to lock the
+shape.
+
+q29 uses raw `store_sales`/`catalog_sales` + `merge` directives because
+its `.preql` distinguishes `customer` from `return_customer`. The
+correlated-grain lever is **q29-specific**: it works because q29's
+reference defines its sums over a multi-fact join with cross-fact
+fan-out, so binding all three measures to the joined-rowset grain is a
+truthful representation of the intended semantics.
+
+q17 and q25 are *not* this case — an exploratory port using the same
+lever was reverted (2026-05-20) since their RC-A residue isn't the
+correlated-rowset shape. They remain open under RC-A pending separate
+analysis.
+
+Not in this family: **q50** (RC-A/G). Upstream grain is fine — no weird
+join keys, no cross-fact fan-out — handled separately.
+
+Orthogonal followup observed during the exploratory port: CSE on
+identical aggregates (`stddev_samp(x)` emitted twice when reused in a
+`stddev/avg` division) — generator-side, separate from RC-A.
 
 ## Landed
 

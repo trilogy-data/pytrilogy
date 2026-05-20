@@ -8,12 +8,12 @@ Signed deltas are `PreQL - Reference SQL` for size and `Trilogy execution - Refe
 
 Queries: 99
 
-PreQL is shorter than the reference SQL for 80/99 queries. Total PreQL length is 138,883 chars vs 184,304 reference SQL chars.
+PreQL is shorter than the reference SQL for 79/99 queries. Total PreQL length is 139,346 chars vs 184,304 reference SQL chars.
 
 | Length metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| PreQL - Reference SQL chars | -1,257 | -261 | +149 |
-| PreQL vs Reference SQL | -58.0% | -20.4% | +11.6% |
+| PreQL - Reference SQL chars | -1,257 | -261 | +181 |
+| PreQL vs Reference SQL | -58.0% | -20.4% | +12.5% |
 
 Top 5 queries where PreQL is longest vs reference SQL
 
@@ -22,8 +22,8 @@ Top 5 queries where PreQL is longest vs reference SQL
 | 08 | 20,358 | 19,155 | +1,203 |
 | 89 | 1,547 | 965 | +582 |
 | 76 | 2,275 | 1,708 | +567 |
+| 29 | 1,532 | 1,089 | +443 |
 | 35 | 2,164 | 1,745 | +419 |
-| 86 | 1,200 | 847 | +353 |
 
 Trilogy execution is faster than the reference SQL for 46/99 queries. Total Trilogy execution time is 12.558s vs 54.395s reference SQL time.
 
