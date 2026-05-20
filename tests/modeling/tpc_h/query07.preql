@@ -1,0 +1,15 @@
+import lineitem;
+
+where
+    ((part.supplier.nation.name = 'FRANCE' and order.customer.nation.name = 'GERMANY')
+     or (part.supplier.nation.name = 'GERMANY' and order.customer.nation.name = 'FRANCE'))
+    and ship_date between '1995-01-01'::date and '1996-12-31'::date
+select
+    part.supplier.nation.name -> supp_nation,
+    order.customer.nation.name -> cust_nation,
+    year(ship_date) -> l_year,
+    sum(revenue) -> q_revenue
+order by
+    supp_nation asc,
+    cust_nation asc,
+    l_year asc;

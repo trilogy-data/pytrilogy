@@ -1,5 +1,5 @@
 query_id = "49"
-gen_length = 6312
+gen_length = 5424
 preql_size = 1345
 comp_size = 4352
 generated_sql = """
@@ -74,60 +74,40 @@ WHERE
 yummy as (
 SELECT
     \"abundant\".\"sales_item_id\" as \"sales_item_id\",
-    \"abundant\".\"sales_net_paid\" as \"sales_net_paid\",
-    \"abundant\".\"sales_quantity\" as \"sales_quantity\",
     \"abundant\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    \"cheerful\".\"sales_return_amount\" as \"sales_return_amount\",
-    \"cheerful\".\"sales_return_quantity\" as \"sales_return_quantity\"
+    cast(sum(\"cheerful\".\"sales_return_amount\") as numeric(15,4)) / cast(sum(\"abundant\".\"sales_net_paid\") as numeric(15,4)) as \"currency_ratio\",
+    cast(sum(\"cheerful\".\"sales_return_quantity\") as numeric(15,4)) / cast(sum(\"abundant\".\"sales_quantity\") as numeric(15,4)) as \"return_ratio\"
 FROM
     \"abundant\"
     INNER JOIN \"cheerful\" on \"abundant\".\"sales_item_id\" = \"cheerful\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"cheerful\".\"sales_sales_channel\"
 WHERE
     \"cheerful\".\"sales_return_amount\" > 10000
-),
-concerned as (
-SELECT
-    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
-    \"yummy\".\"sales_sales_channel\" as \"sales_sales_channel\"
-FROM
-    \"yummy\"
-GROUP BY
-    1,
-    2),
-juicy as (
-SELECT
-    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
-    \"yummy\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    cast(sum(\"yummy\".\"sales_return_amount\") as numeric(15,4)) / cast(sum(\"yummy\".\"sales_net_paid\") as numeric(15,4)) as \"currency_ratio\",
-    cast(sum(\"yummy\".\"sales_return_quantity\") as numeric(15,4)) / cast(sum(\"yummy\".\"sales_quantity\") as numeric(15,4)) as \"return_ratio\"
-FROM
-    \"yummy\"
+
 GROUP BY
     1,
     2),
 vacuous as (
 SELECT
-    \"juicy\".\"return_ratio\" as \"return_ratio\",
-    \"juicy\".\"sales_item_id\" as \"sales_item_id\",
-    \"juicy\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    rank() over (partition by \"juicy\".\"sales_sales_channel\" order by \"juicy\".\"currency_ratio\" asc ) as \"currency_rank\",
-    rank() over (partition by \"juicy\".\"sales_sales_channel\" order by \"juicy\".\"return_ratio\" asc ) as \"return_rank\"
-FROM
-    \"juicy\")
-SELECT
+    \"yummy\".\"return_ratio\" as \"return_ratio\",
+    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
     CASE
-	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'WEB' THEN 'web'
-	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'CATALOG' THEN 'catalog'
-	WHEN coalesce(\"concerned\".\"sales_sales_channel\",\"vacuous\".\"sales_sales_channel\") = 'STORE' THEN 'store'
+	WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN 'web'
+	WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN 'catalog'
+	WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN 'store'
 	ELSE null
-	END as \"channel\",
-    coalesce(\"concerned\".\"sales_item_id\",\"vacuous\".\"sales_item_id\") as \"item\",
+	END as \"channel_label\",
+    rank() over (partition by \"yummy\".\"sales_sales_channel\" order by \"yummy\".\"currency_ratio\" asc ) as \"currency_rank\",
+    rank() over (partition by \"yummy\".\"sales_sales_channel\" order by \"yummy\".\"return_ratio\" asc ) as \"return_rank\"
+FROM
+    \"yummy\")
+SELECT
+    \"vacuous\".\"channel_label\" as \"channel\",
+    \"vacuous\".\"sales_item_id\" as \"item\",
     \"vacuous\".\"return_ratio\" as \"return_ratio\",
     \"vacuous\".\"return_rank\" as \"return_rank\",
     \"vacuous\".\"currency_rank\" as \"currency_rank\"
 FROM
     \"vacuous\"
-    LEFT OUTER JOIN \"concerned\" on \"vacuous\".\"sales_item_id\" = \"concerned\".\"sales_item_id\" AND \"vacuous\".\"sales_sales_channel\" = \"concerned\".\"sales_sales_channel\"
 WHERE
     \"vacuous\".\"return_rank\" <= 10 or \"vacuous\".\"currency_rank\" <= 10
 

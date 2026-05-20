@@ -1,0 +1,28 @@
+query_id = "07"
+gen_length = 1472
+preql_size = 496
+comp_size = 953
+generated_sql = """
+SELECT
+    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"supp_nation\",
+    UPPER(\"order_customer_nation_nation\".\"n_name\")  as \"cust_nation\",
+    year(\"lineitem\".\"l_shipdate\") as \"l_year\",
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\"
+FROM
+    \"memory\".\"lineitem\" as \"lineitem\"
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
+    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"lineitem\".\"l_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
+    INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
+    INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
+    INNER JOIN \"memory\".\"nation\" as \"order_customer_nation_nation\" on \"order_customer_customers\".\"c_nationkey\" = \"order_customer_nation_nation\".\"n_nationkey\"
+WHERE
+    ( ( UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'FRANCE' and UPPER(\"order_customer_nation_nation\".\"n_name\")  = 'GERMANY' ) or ( UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'GERMANY' and UPPER(\"order_customer_nation_nation\".\"n_name\")  = 'FRANCE' ) ) and \"lineitem\".\"l_shipdate\" >= date '1995-01-01' and \"lineitem\".\"l_shipdate\" <= date '1996-12-31'
+
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    \"supp_nation\" asc,
+    \"cust_nation\" asc,
+    \"l_year\" asc"""

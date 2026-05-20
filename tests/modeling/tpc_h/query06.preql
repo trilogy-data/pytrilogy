@@ -1,0 +1,9 @@
+import lineitem;
+
+where
+    ship_date >= '1994-01-01'::date
+    and ship_date < '1995-01-01'::date
+    and discount between 0.05 and 0.07
+    and quantity < 24
+select
+    sum(extended_price * discount) -> q_revenue;

@@ -1,0 +1,53 @@
+query_id = "21"
+gen_length = 1645
+preql_size = 530
+comp_size = 802
+generated_sql = """
+
+WITH 
+highfalutin as (
+SELECT
+    \"lineitem\".\"l_orderkey\" as \"order_id\",
+    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
+    CASE WHEN \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\" THEN \"lineitem\".\"l_suppkey\" ELSE NULL END as \"_virt_filter_id_1852383943558009\"
+FROM
+    \"memory\".\"lineitem\" as \"lineitem\"
+GROUP BY
+    1,
+    2,
+    3),
+uneven as (
+SELECT
+    \"lineitem\".\"l_orderkey\" as \"order_id\",
+    \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
+    1 as \"row_counter\"
+FROM
+    \"memory\".\"lineitem\" as \"lineitem\"
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
+    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"lineitem\".\"l_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
+    INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
+WHERE
+    UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'SAUDI ARABIA' and \"order_orders\".\"o_orderstatus\" = 'F' and \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\"
+),
+thoughtful as (
+SELECT
+    \"highfalutin\".\"order_id\" as \"order_id\"
+FROM
+    \"highfalutin\"
+GROUP BY
+    1
+HAVING
+    count(distinct \"highfalutin\".\"part_supplier_id\") > 1 and count(distinct \"highfalutin\".\"_virt_filter_id_1852383943558009\") = 1
+)
+SELECT
+    \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
+    sum(\"uneven\".\"row_counter\") as \"numwait\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"uneven\" on \"thoughtful\".\"order_id\" = \"uneven\".\"order_id\"
+GROUP BY
+    1
+ORDER BY 
+    \"numwait\" desc,
+    \"uneven\".\"part_supplier_name\" asc
+LIMIT (100)"""

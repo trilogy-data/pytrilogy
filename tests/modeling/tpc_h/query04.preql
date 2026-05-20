@@ -1,0 +1,13 @@
+import lineitem;
+
+auto late_lines_per_order <- count(line_no ? commit_date < receipt_date) by order.id;
+
+where
+    order.date >= '1993-07-01'::date
+    and order.date < '1993-10-01'::date
+    and late_lines_per_order > 0
+select
+    order.priority,
+    count(order.id) -> order_count
+order by
+    order.priority asc;

@@ -1,0 +1,43 @@
+query_id = "11"
+gen_length = 1211
+preql_size = 355
+comp_size = 581
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"partsupp\".\"ps_availqty\" as \"_virt_filter_available_quantity_5442867613516720\",
+    \"partsupp\".\"ps_partkey\" as \"id\",
+    \"partsupp\".\"ps_supplycost\" as \"supply_cost\"
+FROM
+    \"memory\".\"supplier\" as \"supplier_supplier\"
+    INNER JOIN \"memory\".\"partsupp\" as \"partsupp\" on \"supplier_supplier\".\"s_suppkey\" = \"partsupp\".\"ps_suppkey\"
+    INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
+WHERE
+    UPPER(\"supplier_nation_nation\".\"n_name\")  = 'GERMANY'
+),
+cooperative as (
+SELECT
+    \"cheerful\".\"id\" as \"id\",
+    sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"_virt_filter_available_quantity_5442867613516720\") as \"part_total_value\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"_virt_filter_available_quantity_5442867613516720\") as \"germany_total_value\"
+FROM
+    \"cheerful\")
+SELECT
+    \"cooperative\".\"id\" as \"id\",
+    \"cooperative\".\"part_total_value\" as \"total_value\"
+FROM
+    \"thoughtful\"
+    INNER JOIN \"cooperative\" on 1=1
+WHERE
+    \"cooperative\".\"part_total_value\" > \"thoughtful\".\"germany_total_value\" * 0.0001
+
+ORDER BY 
+    \"total_value\" desc"""

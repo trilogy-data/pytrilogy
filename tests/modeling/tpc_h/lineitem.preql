@@ -1,7 +1,6 @@
 import std.money;
 import std.display;
 import order as order;
-import supplier as supplier;
 import part as part;
 
 
@@ -20,7 +19,7 @@ property <line_no,order.id>.receipt_date date;
 property <line_no,order.id>.ship_instruct string; # one of DELIVER IN PERSON | COLLECT COD | NONE | TAKE BACK RETURN
 property <line_no,order.id>.ship_mode string; # capitalized; one of TRUCK | MAIL | AIR | REG AIR | FOB | RAIL | SHIP
 property <line_no,order.id>.comment string;
-
+property <line_no,order.id>.row_counter int; # a simple counter to give us a unique id for each row, useful for testing and debugging
 
 property <line_no,order.id>.revenue <- extended_price* (1 - discount); # revenue is our price, with discount applied
 
@@ -30,10 +29,11 @@ auto total_revenue <- sum(revenue); # total revenue is an aggregated revenue sui
 
 # upper some fileds to fix stats issue
 datasource lineitem(
+    raw('''1'''): row_counter,
     l_linenumber:line_no,
     l_orderkey: order.id,
-    l_partkey: part.id,
-    l_suppkey: supplier.id,
+    l_partkey: ~part.id,
+    l_suppkey: part.supplier.id,
     concat(order.id::string, '-', line_no::string): row_key,
     l_quantity:quantity,
     l_extendedprice: extended_price,
@@ -49,7 +49,7 @@ datasource lineitem(
     l_comment:comment
 )
 grain(line_no, order.id)
-address `https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/tpc_h/lineitem.parquet`;
+address memory.lineitem;
 
 
 

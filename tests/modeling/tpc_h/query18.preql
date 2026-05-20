@@ -1,0 +1,16 @@
+import lineitem;
+
+auto qty_per_order <- sum(quantity) by order.id;
+
+where qty_per_order > 300
+select
+    order.customer.name,
+    order.customer.id,
+    order.id,
+    order.date,
+    order.total_price,
+    sum(quantity) -> sum_quantity
+order by
+    order.total_price desc,
+    order.date asc
+limit 100;

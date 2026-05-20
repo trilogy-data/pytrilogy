@@ -1,0 +1,13 @@
+import lineitem;
+
+auto qty_per_partsupp_1994 <- sum(quantity ? ship_date >= '1994-01-01'::date and ship_date < '1995-01-01'::date) by part.id, part.supplier.id;
+
+where
+    part.name like 'forest%'
+    and part.available_quantity > 0.5 * qty_per_partsupp_1994
+    and part.supplier.nation.name = 'CANADA'
+select
+    part.supplier.name,
+    part.supplier.address
+order by
+    part.supplier.name asc;

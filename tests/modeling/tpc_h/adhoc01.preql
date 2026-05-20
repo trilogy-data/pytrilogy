@@ -6,13 +6,13 @@ auto discounted_price <- extended_price * (1-discount); #the discounted price is
 auto charge_price <- discounted_price * (1+tax); #charged price includes taxes
 
 # use functions to define repeatable templatized logic
-def part_percent_of_nation(x) -> sum(x) by part.name, supplier.nation.id / sum(x) by supplier.nation.id *100;
+def part_percent_of_nation(x) -> sum(x) by part.name, part.supplier.nation.id / sum(x) by part.supplier.nation.id *100;
 
 
 WHERE ship_date <= '1998-12-01'::date 
 SELECT
     part.name,
-    supplier.nation.name,
+    part.supplier.nation.name,
     sum(charge_price)-> total_charge_price,
     sum(discounted_price) -> total_discounted_price,
     # call functions with @

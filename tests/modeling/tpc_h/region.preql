@@ -8,4 +8,4 @@ datasource region (
     r_comment:comment
 )
 grain(id)
-address `https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/tpc_h/region.parquet`;
+address memory.region;

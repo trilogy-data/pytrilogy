@@ -1,0 +1,7 @@
+import lineitem;
+
+where
+    ship_date >= '1995-09-01'::date
+    and ship_date < '1995-10-01'::date
+select
+    100.00 * sum(revenue ? part.type like 'PROMO%') / sum(revenue) -> promo_revenue;

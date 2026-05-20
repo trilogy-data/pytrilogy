@@ -1,0 +1,15 @@
+import lineitem;
+
+where
+    order.customer.market_segment = 'BUILDING'
+    and order.date < '1995-03-15'::date
+    and ship_date > '1995-03-15'::date
+select
+    order.id,
+    sum(revenue) -> q_revenue,
+    order.date,
+    order.ship_priority
+order by
+    q_revenue desc,
+    order.date asc
+limit 10;
