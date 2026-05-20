@@ -12,19 +12,19 @@
 </div>
 
 <p align="center">
-  <b>Trilogy</b> is a batteries-included data-productivity toolkit to accelerate SQL-based analytics for humans and people. It's great for humans - and even better for agents.
-  It's easy to try with a single file - and the rich surrounding ecosystem - CLI, studio, public models, python integration - let you move fast to scale.
+  <b>Trilogy</b> is a batteries-included data-productivity toolkit that accelerates SQL-based analytics with a typed, expressive language. It's great for humans - and even better for agents.
+  Start with a single file and the rich surrounding ecosystem - CLI, studio, public models, python integration - let you move fast to scale.
   <br/>
 </p>
 
 
 ## Why Trilogy
 
-SQL is easy to start with and hard to maintain at scale. 
+SQL is easy to start with and hard to manage and maintain at scale. 
 
-Trilogy adds a lightweight semantic layer to keep the speed at any size, through the full lifecycel of analytics.
-It provides a full stack for exploration, visualization, and orchestration, but can be adopted incrementally and without lock-in; 
-start with type-checking for SQL; end with a more efficient and productive warehouse.
+Trilogy adds a lightweight semantic layer to keep SQL fast through the full lifecycle of analytics - from exploration to production.
+It provides a full stack for interactive, visualization, and orchestration that can be adopted incrementally and without lock-in; 
+start with checking types and asking agents questions; end with a more efficient and productive warehouse.
 
 Headline features:
 
@@ -44,6 +44,10 @@ To try it out, include both the CLI and serve dependencies.
 ```bash
 pip install pytrilogy[cli,serve]
 ```
+or
+```bash
+uv tool install "pytrilogy[cli,serve]"
+```
 
 ## Docs and Website
 
@@ -51,10 +55,9 @@ pip install pytrilogy[cli,serve]
 > **Try it now:** [Open-source studio](https://trilogydata.dev/trilogy-studio-core/) | [Interactive demo](https://trilogydata.dev/demo/) | [Documentation](https://trilogydata.dev/)
 
 
-### Quick Start
+### Hello World
 
-We provide a set of public models to get started.
-
+Trilogy includes a public model registry with fun datasets you can explore. 
 Run the below to import, query, and explore one of these models directly.
 
 ```bash
@@ -65,7 +68,6 @@ cd faa-demo
 # Run a quick adhoc query (--import prepends the import for you — discover
 # what's available with `trilogy explore flight.preql`)
 trilogy run --import flight "select carrier.code, count(id) as flight_count order by flight_count desc;"
-
 
 # Plot it
 trilogy run --import flight "chart layer barh ( y_axis <- carrier.name, x_axis <- count(id) as flight_count ) order by flight_count desc limit 10;"
@@ -120,8 +122,8 @@ Versus SQL, Trilogy aims to:
 
 **Improve:**
 - Simplicity
-- Refactoring/maintainability
-- Reusability/composability
+- Refactoring and maintainability
+- Reusability and composability
 - Expressivness
 
 **Maintain:**
@@ -215,7 +217,7 @@ trilogy run hello.preql duckdb
 
 ### Python SDK Intro
 
-Trilogy can be run directly in python through the core SDK. Trilogy code can be defined and parsed inline or parsed out of files.
+Use the python SDK to embed Trilogy in larger python workflows. 
 
 A BigQuery example, similar to the [BigQuery quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console):
 
@@ -264,7 +266,7 @@ for row in results:
 
 ### LLM Usage
 
-Connect to your favorite provider and generate queries with confidence and high accuracy.
+Connect to your favorite provider and generate queries with confidence.
 
 ```python
 from trilogy import Environment, Dialects
