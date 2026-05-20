@@ -4,6 +4,7 @@ from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Derivation, Purpose, SourceType
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -44,10 +45,10 @@ class SelectNode(StrategyNode):
         grain: Optional[BuildGrain] = None,
         force_group: bool | None = False,
         conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
+            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
         ) = None,
         preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
+            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
         ) = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,

@@ -1,5 +1,5 @@
 query_id = "40"
-gen_length = 1902
+gen_length = 1807
 preql_size = 1000
 comp_size = 1047
 generated_sql = """
@@ -21,7 +21,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"catalog_sales_warehouse_warehouse\" on \"catalog_sales_catalog_sales\".\"CS_WAREHOUSE_SK\" = \"catalog_sales_warehouse_warehouse\".\"w_warehouse_sk\"
     INNER JOIN \"memory\".\"item\" as \"catalog_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"catalog_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"catalog_sales_item_items\".\"I_CURRENT_PRICE\" >= 0.99 and \"catalog_sales_item_items\".\"I_CURRENT_PRICE\" <= 1.49 and cast(\"catalog_sales_sold_date_date\".\"D_DATE\" as date) >= :start_date and cast(\"catalog_sales_sold_date_date\".\"D_DATE\" as date) <= :end_date
+    \"catalog_sales_item_items\".\"I_CURRENT_PRICE\" between 0.99 and 1.49 and cast(\"catalog_sales_sold_date_date\".\"D_DATE\" as date) between :start_date and :end_date
 
 GROUP BY
     1,

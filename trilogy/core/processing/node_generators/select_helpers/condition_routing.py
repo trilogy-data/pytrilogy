@@ -2,6 +2,7 @@ from enum import Enum, auto
 
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -21,7 +22,7 @@ from trilogy.core.processing.condition_utility import (
     merge_conditions_and_dedup,
 )
 
-ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
 
 
 class DatasourceConditionAtomState(Enum):

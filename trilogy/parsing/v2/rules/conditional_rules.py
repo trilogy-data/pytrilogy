@@ -5,6 +5,7 @@ from typing import Any
 from trilogy.constants import NULL_VALUE
 from trilogy.core.enums import ComparisonOperator, FunctionType
 from trilogy.core.models.author import (
+    Between,
     Comparison,
     Conditional,
     HavingClause,
@@ -22,7 +23,7 @@ from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 
 def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
-    if not isinstance(root, (Comparison, Conditional)):
+    if not isinstance(root, (Comparison, Conditional, Between)):
         if arg_to_datatype(root) == DataType.BOOL:
             root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
         elif arg_to_datatype(root) == DataType.INTEGER:
@@ -87,7 +88,7 @@ def having_clause(
 ) -> HavingClause:
     args = hydrated_children(node, hydrate)
     root = args[0]
-    if not isinstance(root, (Comparison, Conditional, Parenthetical)):
+    if not isinstance(root, (Comparison, Conditional, Parenthetical, Between)):
         from trilogy.constants import MagicConstants
 
         if arg_to_datatype(root) == DataType.BOOL:

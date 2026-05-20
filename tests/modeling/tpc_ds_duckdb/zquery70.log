@@ -1,5 +1,5 @@
 query_id = "70"
-gen_length = 2725
+gen_length = 2671
 preql_size = 1517
 comp_size = 1258
 generated_sql = """
@@ -14,7 +14,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211
+    \"ss_date_date\".\"D_MONTH_SEQ\" between 1200 and 1211
 
 GROUP BY
     1),
@@ -51,7 +51,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"ss_store_store\".\"S_STATE\" in (select questionable.\"top_states_ts_state\" from questionable where questionable.\"top_states_ts_state\" is not null)
+    \"ss_date_date\".\"D_MONTH_SEQ\" between 1200 and 1211 and \"ss_store_store\".\"S_STATE\" in (select questionable.\"top_states_ts_state\" from questionable where questionable.\"top_states_ts_state\" is not null)
 
 GROUP BY
     ROLLUP (2, 1))

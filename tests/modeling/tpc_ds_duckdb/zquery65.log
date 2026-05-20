@@ -1,5 +1,5 @@
 query_id = "65"
-gen_length = 2478
+gen_length = 2442
 preql_size = 673
 comp_size = 1062
 generated_sql = """
@@ -14,7 +14,7 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1176 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1187 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" between 1176 and 1187 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,

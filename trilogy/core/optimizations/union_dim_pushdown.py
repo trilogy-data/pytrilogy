@@ -22,6 +22,7 @@ from typing import cast
 
 from trilogy.core.enums import JoinType, SourceType
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConceptArgs,
@@ -56,7 +57,7 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.utility import unique
 
-ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
 
 
 def _base_datasource(

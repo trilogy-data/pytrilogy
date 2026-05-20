@@ -4,6 +4,7 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -33,10 +34,10 @@ class FilterNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
+            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
         ) = None,
         preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
+            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
         ) = None,
         partial_concepts: List[BuildConcept] | None = None,
         force_group: bool | None = False,

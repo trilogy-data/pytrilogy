@@ -2,6 +2,7 @@ from typing import cast
 
 from trilogy.core.enums import BooleanOperator
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConditional,
     BuildDatasource,
@@ -9,7 +10,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
 
-ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
 
 
 def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:

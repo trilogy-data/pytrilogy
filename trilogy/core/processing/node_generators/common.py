@@ -7,6 +7,7 @@ from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
+    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -37,7 +38,7 @@ from trilogy.utility import unique
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 FUNCTION_TYPES = (BuildFunction,)
-ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
 PROPERTY_PURPOSES = (Purpose.PROPERTY, Purpose.UNIQUE_PROPERTY)
 
 

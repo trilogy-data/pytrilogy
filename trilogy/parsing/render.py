@@ -22,6 +22,7 @@ from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
+    Between,
     CaseElse,
     CaseSimpleWhen,
     CaseWhen,
@@ -669,6 +670,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Comparison"):
         return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
+
+    @to_string.register
+    def _(self, arg: "Between"):
+        return f"{self.to_string(arg.left)} between {self.to_string(arg.low)} and {self.to_string(arg.high)}"
 
     @to_string.register
     def _(self, arg: "Comment"):
