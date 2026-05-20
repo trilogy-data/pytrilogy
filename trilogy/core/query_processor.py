@@ -49,6 +49,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.processing.condition_utility import strip_tautological_not_null
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.core.statements.author import (
     ChartLayer,
@@ -488,11 +489,30 @@ def get_query_node(
 
     search_concepts: list[BuildConcept] = build_statement.output_components
 
+    # A model-non-nullable column can only be NULL via outer-join padding, so a
+    # WHERE-only `X IS NOT NULL` on it is tautological pre-join; dropping it here
+    # keeps X from pinning into required concepts / dedup grains for no semantic
+    # effect. Concepts the query directly selects/groups/orders by are protected:
+    # an `IS NOT NULL` there is an author-intended join guard, not noise.
+    protected_addresses: set[str] = set()
+    for component in build_statement.output_components:
+        protected_addresses.add(component.address)
+        protected_addresses.add(component.canonical_address)
+    order_by = getattr(build_statement, "order_by", None)
+    if order_by is not None:
+        for item in order_by.items:
+            for arg in item.concept_arguments:
+                protected_addresses.add(arg.address)
+                protected_addresses.add(arg.canonical_address)
+    resolution_conditions = strip_tautological_not_null(
+        build_statement.where_clause, build_environment, protected_addresses
+    )
+
     ods: StrategyNode = source_query_concepts(
         output_concepts=search_concepts,
         environment=build_environment,
         g=graph,
-        conditions=build_statement.where_clause,
+        conditions=resolution_conditions,
         history=history,
     )
     if not ods:

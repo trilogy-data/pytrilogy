@@ -40,6 +40,10 @@ WHERE
     customer.id in store_buyers.store_cust_id
     and (customer.id in web_buyers.web_cust_id
          or customer.id in catalog_buyers.cat_cust_id)
+    # reference equi-joins customer_demographics on cd_demo_sk =
+    # c_current_cdemo_sk (INNER); state it explicitly now the model no
+    # longer (incorrectly) declares the FK non-null
+    and customer.demographics.id is not null
 SELECT
     customer.address.state,
     customer.demographics.gender,

@@ -45,6 +45,7 @@ class Optimizations:
     merge_aggregate: bool = True
     merge_irrelevant_group_by: bool = True
     upgrade_condition_joins: bool = True
+    simplify_null_safe_joins: bool = True
     join_hoist: bool = True
     union_dim_pushdown: bool = True
 

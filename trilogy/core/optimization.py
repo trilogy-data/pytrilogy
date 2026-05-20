@@ -16,6 +16,7 @@ from trilogy.core.optimizations import (
     OptimizationRule,
     PredicatePushdown,
     PredicatePushdownRemove,
+    SimplifyNullSafeJoins,
     UnionDimPushdown,
     UpgradeJoinOnGuards,
     optimization_log,
@@ -557,6 +558,20 @@ def build_optimization_rule_plan(
                     ("predicate_pushdown.remove", opts.predicate_pushdown)
                 ),
                 reason="uses guards moved onto joining CTEs by predicate pushdown",
+            )
+        )
+    if opts.simplify_null_safe_joins:
+        plan.append(
+            OptimizationRulePlan(
+                name="simplify_null_safe_joins",
+                rule_factory=SimplifyNullSafeJoins,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins)
+                ),
+                reason=(
+                    "join types and CTE nullability are settled, so redundant "
+                    "null-safe join keys can be downgraded to ="
+                ),
             )
         )
     if opts.hide_unused_concepts:

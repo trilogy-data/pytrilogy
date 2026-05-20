@@ -355,6 +355,7 @@ def test_twenty_eight(engine):
 def test_twenty_nine(engine):
     query = run_query(engine, 29)
     assert len(query) < 12000, query
+    assert "is not distinct from" not in query, query
 
 
 def test_thirty(engine):

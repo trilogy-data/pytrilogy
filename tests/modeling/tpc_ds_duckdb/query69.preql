@@ -1,25 +1,46 @@
 import customer as customer;
-import store_sales as store_sales;
-import web_sales as web_sales;
-import catalog_sales as catalog_sales;
+import unified_sales as sales;
 
-auto store_buyers <- store_sales.customer.id ?
-    store_sales.date.year = 2001
-    and store_sales.date.month_of_year between 4 and 6;
+# TPC-DS q69 uses ss_customer_sk for the store EXISTS branch,
+# ws_bill_customer_sk for web, and cs_ship_customer_sk for catalog, so:
+#   - store/web filters use sales.customer.id (= SS_CUSTOMER_SK / WS_BILL_CUSTOMER_SK)
+#   - catalog filter uses sales.ship_customer.id (= CS_SHIP_CUSTOMER_SK)
 
-auto web_buyers <- web_sales.customer.id ?
-    web_sales.date.year = 2001
-    and web_sales.date.month_of_year between 4 and 6;
+with store_buyers as
+WHERE
+    sales.sales_channel = 'STORE'
+    and sales.date.year = 2001
+    and sales.date.month_of_year between 4 and 6
+    and sales.customer.id is not null
+SELECT
+    sales.customer.id as store_cust_id
+;
 
-auto catalog_buyers <- catalog_sales.customer.id ?
-    catalog_sales.date.year = 2001
-    and catalog_sales.date.month_of_year between 4 and 6;
+with web_buyers as
+WHERE
+    sales.sales_channel = 'WEB'
+    and sales.date.year = 2001
+    and sales.date.month_of_year between 4 and 6
+    and sales.customer.id is not null
+SELECT
+    sales.customer.id as web_cust_id
+;
+
+with catalog_buyers as
+WHERE
+    sales.sales_channel = 'CATALOG'
+    and sales.date.year = 2001
+    and sales.date.month_of_year between 4 and 6
+    and sales.ship_customer.id is not null
+SELECT
+    sales.ship_customer.id as cat_cust_id
+;
 
 WHERE
     customer.address.state in ('KY', 'GA', 'NM')
-    and customer.id in store_buyers
-    and customer.id not in web_buyers
-    and customer.id not in catalog_buyers
+    and customer.id in store_buyers.store_cust_id
+    and customer.id not in web_buyers.web_cust_id
+    and customer.id not in catalog_buyers.cat_cust_id
 SELECT
     customer.demographics.gender,
     customer.demographics.marital_status,
