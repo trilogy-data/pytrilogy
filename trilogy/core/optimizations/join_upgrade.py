@@ -181,6 +181,14 @@ def _proves_non_null(
         # ordinary Comparison proofs sitting next to the opaque child still
         # contribute (q64 ``is_returned`` + ``C_CURRENT_ADDR_SK is not null``).
         return _proves_non_null(atom.left) | _proves_non_null(atom.right)  # type: ignore[arg-type]
+    if isinstance(atom, BuildBetween):
+        # `x BETWEEN low AND high` requires all three operands to be non-null
+        # for the row to survive.
+        return (
+            concepts_implied_non_null(atom.left)
+            | concepts_implied_non_null(atom.low)
+            | concepts_implied_non_null(atom.high)
+        )
     if not isinstance(atom, BuildComparison):
         return set()
 
