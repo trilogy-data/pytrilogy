@@ -26,6 +26,7 @@ from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
+    BuildBetween,
     BuildCaseElse,
     BuildCaseWhen,
     BuildComparison,
