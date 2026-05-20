@@ -1211,6 +1211,12 @@ class BaseDialect:
             )
         elif isinstance(e, CONDITIONAL_ITEMS):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+        elif isinstance(e, BETWEEN_ITEMS):
+            return (
+                f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} "
+                f"BETWEEN {self.render_expr(e.low, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} "
+                f"AND {self.render_expr(e.high, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            )
         elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
                 f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid)} {x.order.value}"
