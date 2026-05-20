@@ -49,8 +49,8 @@ GROUP BY
     5),
 yummy as (
 SELECT
-    CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" between 1200 and 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"catalog_sales\",
-    CASE WHEN \"uneven\".\"store_sales_date_month_seq\" between 1200 and 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"store_sales\"
+    CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"catalog_sales\",
+    CASE WHEN \"uneven\".\"store_sales_date_month_seq\" BETWEEN 1200 AND 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"store_sales\"
 FROM
     \"uneven\"
 GROUP BY

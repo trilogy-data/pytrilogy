@@ -1,11 +1,20 @@
-from trilogy.core.enums import JoinType, Modifier, Purpose
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import ComparisonOperator, JoinType, Modifier, Purpose
 from trilogy.core.models.build import (
     BuildColumnAssignment,
+    BuildComparison,
     BuildConcept,
     BuildGrain,
 )
 from trilogy.core.models.core import DataType
-from trilogy.core.models.execute import CTE, BuildDatasource, CTEConceptPair, Join
+from trilogy.core.models.execute import (
+    CTE,
+    BuildDatasource,
+    CTEConceptPair,
+    Join,
+    QueryDatasource,
+    UnionCTE,
+)
 from trilogy.core.optimizations.null_safe_join import (
     SimplifyNullSafeJoins,
     _proven_non_null,
@@ -99,3 +108,65 @@ def test_inner_kept_when_both_sides_nullable():
     changed, _ = SimplifyNullSafeJoins().optimize(root, {})
     assert not changed
     assert Modifier.NULLABLE in root.joins[0].joinkey_pairs[0].modifiers
+
+
+def test_proven_non_null_via_cte_condition():
+    """A nullable column becomes non-null when the CTE's own WHERE rejects NULLs.
+
+    Mirrors what predicate-pushdown leaves behind on a producing CTE."""
+    key = _build_concept("KEY")
+    cte = _build_cte("source", [key], nullable=[key])
+    cte.condition = BuildComparison(
+        left=key, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
+    )
+    assert _proven_non_null(key, cte) is True
+
+
+def _union_cte(name: str, branches):
+    qds = QueryDatasource(
+        input_concepts=[],
+        output_concepts=list(branches[0].output_columns),
+        datasources=[],
+        source_map={c.address: set() for c in branches[0].output_columns},
+        grain=branches[0].grain,
+        joins=[],
+    )
+    return UnionCTE(
+        name=name,
+        source=qds,
+        parent_ctes=list(branches),
+        internal_ctes=list(branches),
+        output_columns=list(branches[0].output_columns),
+        grain=branches[0].grain,
+    )
+
+
+def test_union_cte_proven_non_null_when_every_branch_clean():
+    key = _build_concept("KEY")
+    branch_a = _build_cte("branch_a", [key])
+    branch_b = _build_cte("branch_b", [key])
+    union = _union_cte("union", [branch_a, branch_b])
+    assert _proven_non_null(key, union) is True
+
+
+def test_union_cte_not_proven_when_one_branch_nullable():
+    key = _build_concept("KEY")
+    branch_a = _build_cte("branch_a", [key])
+    branch_b = _build_cte("branch_b", [key], nullable=[key])
+    union = _union_cte("union", [branch_a, branch_b])
+    assert _proven_non_null(key, union) is False
+
+
+def test_union_cte_proven_via_branch_conditions():
+    """Each branch's own WHERE rejects NULLs, even though build-time tracking
+    still lists the key as nullable on both branches."""
+    key = _build_concept("KEY")
+    cond = BuildComparison(
+        left=key, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
+    )
+    branch_a = _build_cte("branch_a", [key], nullable=[key])
+    branch_a.condition = cond
+    branch_b = _build_cte("branch_b", [key], nullable=[key])
+    branch_b.condition = cond
+    union = _union_cte("union", [branch_a, branch_b])
+    assert _proven_non_null(key, union) is True

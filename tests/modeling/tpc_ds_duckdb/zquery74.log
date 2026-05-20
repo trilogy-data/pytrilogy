@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3363
+gen_length = 3344
 preql_size = 1041
 comp_size = 2151
 generated_sql = """
@@ -67,7 +67,7 @@ SELECT
     \"questionable\".\"sales_customer_last_name\" as \"customer_last_name\"
 FROM
     \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" is not distinct from \"questionable\".\"sales_customer_id\"
+    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" = \"questionable\".\"sales_customer_id\"
 GROUP BY
     1,
     2,
