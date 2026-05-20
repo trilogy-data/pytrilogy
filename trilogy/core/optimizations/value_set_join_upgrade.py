@@ -6,26 +6,35 @@ no rows are ever unmatched — the OUTER form behaves like an INNER, just with
 a slower execution plan (FULL can't be hash-joined; LEFT/RIGHT carry NULL-
 padding bookkeeping the engine doesn't need). Recognise that and upgrade.
 
-The decision is concept-level, not CTE-structural:
+The decision is concept-level — no CTE identity, no physical addresses:
 
   For each join key pair we compute a ``KeySetDescriptor``:
 
     * ``source_address`` — the underlying concept the side projects, after
-      pseudonym / merge / equivalence resolution (e.g. ``local.customer_id``
-      backed by ``store_sales.customer.id`` resolves to the latter).
+      pseudonym / merge / equivalence resolution. ``canonical_address``
+      already collapses these.
     * ``filter`` — the AND of every condition applied to the row population
       that produces this concept, walking up the side's parent chain.
     * ``complete_distinct`` — True iff the side projects every distinct
-      value of the source under the accumulated filter (it lives on a
-      ``GROUP BY`` grain that includes the concept).
+      value of the *full* concept value space: the concept lives on a
+      ``GROUP BY`` grain AND is not marked partial on the side. A partial
+      concept represents a subset projection — distinct *within* that
+      subset, but not the full concept value space. Partial-ness can be
+      stamped by a number of upstream mechanisms (a datasource that's
+      partial for a column, a ``MERGE`` aligning a narrow alias into a
+      shared concept, ``Modifier.PARTIAL`` on a column assignment, etc.);
+      this rule treats them uniformly via the ``partial_concepts`` field
+      that propagates up the CTE chain.
 
   Two descriptors match when source addresses agree, both sides are
-  ``complete_distinct``, and the accumulated filters are mutually implied via
-  ``condition_implies``. When every pair matches, both sides cover exactly
-  the same key tuples — the OUTER preserves no rows an INNER would lose.
+  ``complete_distinct``, and the accumulated filters are mutually implied
+  via ``condition_implies``. When every pair matches, both sides cover
+  exactly the same key tuples — the OUTER preserves no rows an INNER
+  would lose.
 
-The comparison never references CTE identity, so the rule is stable under
-optimizer rewrites that inline, rename, or hoist intermediate CTEs.
+The comparison never references CTE identity or physical datasource
+addresses, so the rule is stable under optimizer rewrites that inline,
+rename, hoist, or repartition intermediate CTEs.
 """
 
 from __future__ import annotations
@@ -35,9 +44,8 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildConditional,
-    BuildDatasource,
 )
-from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
+from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import condition_implies
 
@@ -55,12 +63,34 @@ def _source_address(concept: BuildConcept) -> str:
     return concept.canonical_address
 
 
+def _key_addresses(concept: BuildConcept) -> set[str]:
+    return (
+        {concept.address, concept.canonical_address}
+        | set(concept.pseudonyms)
+        | concept.equivalent_addresses
+    )
+
+
 def _complete_distinct(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     """True when ``side_cte`` projects every distinct value of ``concept``
-    under its accumulated filter — i.e. the concept lives on a GROUP BY
-    grain key here. Cardinality below the grain (a row per group) means
-    no two source rows collapse to one — the side's key column carries
-    exactly the source's distinct values, modulo the filter."""
+    *for the concept's full value space*.
+
+    Two conditions:
+
+    1. The concept lives on a GROUP BY grain key here (``group_to_grain``
+       with the concept in the grain). Cardinality at the grain means no
+       two source rows collapse to one — the side carries exactly the
+       source's distinct values modulo the accumulated filter.
+    2. The side does NOT mark the concept as *partial*. A partial concept
+       is a subset projection — distinct *within* that subset, but not the
+       full concept value space. Partial-ness arrives via any of several
+       upstream mechanisms (a partial datasource binding, a ``MERGE``
+       alignment, a ``Modifier.PARTIAL`` column assignment, …); the
+       ``partial_concepts`` field on the CTE propagates that signal
+       uniformly, and we read it without caring which mechanism set it.
+       Two partial sides may individually be GROUP BY-distinct but their
+       subsets don't coincide — never a basis for upgrading an outer join.
+    """
     if not isinstance(side_cte, CTE):
         return False
     if not side_cte.group_to_grain:
@@ -68,9 +98,13 @@ def _complete_distinct(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
     if not grain_addrs:
         return False
-    keys = {concept.address, concept.canonical_address} | set(concept.pseudonyms)
-    keys |= concept.equivalent_addresses
-    return bool(grain_addrs & keys)
+    keys = _key_addresses(concept)
+    if not (grain_addrs & keys):
+        return False
+    partial_addrs: set[str] = set()
+    for partial in side_cte.partial_concepts:
+        partial_addrs |= _key_addresses(partial)
+    return not (partial_addrs & keys)
 
 
 def _accumulate_filter(
@@ -112,42 +146,6 @@ def _accumulate_filter(
     return result
 
 
-def _collect_base_datasources(
-    node: BuildDatasource | QueryDatasource | object, out: set[str]
-) -> None:
-    if isinstance(node, BuildDatasource):
-        out.add(node.identifier)
-        return
-    if isinstance(node, QueryDatasource):
-        for child in node.datasources:
-            _collect_base_datasources(child, out)
-
-
-def _leaf_datasource_addresses(side_cte: CTE | UnionCTE) -> frozenset[str]:
-    """Identifiers of base tables backing the rows ``side_cte`` projects.
-
-    Two sides projecting the same canonical concept from *different* base
-    tables (e.g. ``customer.id`` materialised from ``web_sales`` on one side
-    and ``catalog_sales`` on the other) produce different row populations
-    even when filters happen to coincide — only the customers who actually
-    shopped on that channel show up. The descriptor must distinguish them.
-
-    Walks the side's own ``QueryDatasource`` tree to leaf
-    ``BuildDatasource`` nodes, then recurses through ``parent_ctes`` for the
-    full upstream coverage. ``UnionCTE`` chains are not unfolded — the
-    consumer treats them as a single opaque source via ``parent_ctes``.
-    """
-    leaves: set[str] = set()
-    if isinstance(side_cte, CTE):
-        _collect_base_datasources(side_cte.source, leaves)
-        for parent in side_cte.parent_ctes:
-            leaves |= _leaf_datasource_addresses(parent)
-    elif isinstance(side_cte, UnionCTE):
-        for branch in side_cte.internal_ctes:
-            leaves |= _leaf_datasource_addresses(branch)
-    return frozenset(leaves)
-
-
 def _filters_equivalent(a: BoolExpr | None, b: BoolExpr | None) -> bool:
     """Both filters cover exactly the same surviving rows.
 
@@ -173,13 +171,6 @@ def _pair_key_sets_equivalent(
     if not _complete_distinct(left_concept, left_cte):
         return False
     if not _complete_distinct(right_concept, right_cte):
-        return False
-    # Same canonical concept can be materialised from different base tables —
-    # ``customer.id`` from ``web_sales`` is *not* the same value set as
-    # ``customer.id`` from ``catalog_sales`` (only the customers who shopped
-    # on that channel). Insist the leaf datasource set matches before
-    # claiming the key sets coincide.
-    if _leaf_datasource_addresses(left_cte) != _leaf_datasource_addresses(right_cte):
         return False
     return _filters_equivalent(
         _accumulate_filter(left_cte),
@@ -223,9 +214,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 continue
             right_cte = join.right_cte
             if not all(
-                _pair_key_sets_equivalent(
-                    pair.left, pair.cte, pair.right, right_cte
-                )
+                _pair_key_sets_equivalent(pair.left, pair.cte, pair.right, right_cte)
                 for pair in join.joinkey_pairs
             ):
                 continue

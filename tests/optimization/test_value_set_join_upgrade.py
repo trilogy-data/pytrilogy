@@ -24,8 +24,8 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.value_set_join_upgrade import (
     UpgradeOuterFromKeySetEquivalence,
     _accumulate_filter,
+    _complete_distinct,
     _filters_equivalent,
-    _leaf_datasource_addresses,
     _pair_key_sets_equivalent,
 )
 
@@ -300,24 +300,32 @@ def test_accumulate_filter_walks_chain():
     assert middle.condition in atoms
 
 
-def test_different_base_tables_block_upgrade():
-    """Same canonical concept, but each side materialises it from a
-    different base table (web_sales vs catalog_sales). The "complete
-    distinct values" claim is per-table, so the two sides are NOT the same
-    set. (TPC-DS q10 regression.)"""
+def test_partial_concept_blocks_upgrade():
+    """Each side projects the same canonical concept but flags it as
+    partial — a conceptual subset of the full value space, not the full
+    distinct set. Two partial sides may be GROUP BY-distinct within their
+    respective subsets, but those subsets needn't coincide.
+
+    Partial-ness can arrive via any upstream mechanism (a partial
+    datasource binding, a ``MERGE`` alignment, ``Modifier.PARTIAL`` on a
+    column assignment, …); the rule only reads the propagated
+    ``partial_concepts`` and doesn't care how the flag was set. The TPC-DS
+    q10 regression that motivated this test happens to use ``MERGE``, but
+    the same logic governs any partial source. We mark the flag directly
+    here to keep the test mechanism-agnostic.
+    """
     cls = _concept("CUSTOMER_ID")
-    # Two datasources, each "containing" the same concept conceptually but
-    # representing different physical row populations.
-    source_left = _datasource_cte("web_sales", [cls])
-    source_right = _datasource_cte("catalog_sales", [cls])
+    source_left = _datasource_cte("a_src", [cls])
+    source_right = _datasource_cte("b_src", [cls])
     left = _grouped_child("left", source_left, cls)
     right = _grouped_child("right", source_right, cls)
+    left.partial_concepts = [cls]
+    right.partial_concepts = [cls]
     root = _datasource_cte("root", [cls])
     _outer_join(root, JoinType.FULL, left, right, cls)
 
-    # Leaf-set equality guard fires before filter equivalence even gets a
-    # chance to mis-conclude.
-    assert _leaf_datasource_addresses(left) != _leaf_datasource_addresses(right)
+    assert not _complete_distinct(cls, left)
+    assert not _complete_distinct(cls, right)
 
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
     assert not changed
