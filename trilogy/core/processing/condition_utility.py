@@ -655,7 +655,7 @@ def is_null_literal(value: object) -> bool:
 
 
 def _not_null_concept(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
+    atom: BuildSubselectComparison | BoolExpr,
 ) -> BuildConcept | None:
     """If ``atom`` is a plain ``X IS NOT NULL`` (either operand order), return X."""
     if isinstance(atom, BuildSubselectComparison) or not isinstance(
@@ -718,7 +718,7 @@ def strip_tautological_not_null(
         return None
     protected = protected_addresses or set()
     atoms = decompose_condition(where.conditional)
-    survivors: list[BuildComparison | BuildConditional | BuildParenthetical] = []
+    survivors: list[BuildSubselectComparison | BoolExpr] = []
     dropped = False
     for atom in atoms:
         concept = _not_null_concept(atom)
@@ -734,7 +734,7 @@ def strip_tautological_not_null(
         survivors.append(atom)
     if not dropped:
         return where
-    combined = combine_condition_atoms(survivors)
+    combined = combine_condition_atoms(survivors)  # type: ignore[arg-type]
     if combined is None:
         return None
     return BuildWhereClause(conditional=combined)
