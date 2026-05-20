@@ -1,5 +1,5 @@
 query_id = "01"
-gen_length = 1836
+gen_length = 1731
 preql_size = 522
 comp_size = 689
 generated_sql = """
@@ -38,19 +38,17 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"thoughtful\".\"returns_customer_id\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"),
 uneven as (
 SELECT
-    \"abundant\".\"avg_store_returns\" as \"avg_store_returns\",
-    \"questionable\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    \"questionable\".\"total_returns\" as \"total_returns\"
+    \"questionable\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
     \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"returns_store_id\" = \"abundant\".\"returns_store_id\")
+    INNER JOIN \"abundant\" on \"questionable\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"
+WHERE
+    \"questionable\".\"total_returns\" > ( 1.2 * \"abundant\".\"avg_store_returns\" )
+)
 SELECT
     \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
     \"uneven\"
-WHERE
-    \"uneven\".\"total_returns\" > ( 1.2 * \"uneven\".\"avg_store_returns\" )
-
 ORDER BY 
     \"uneven\".\"returns_customer_text_id\" asc
 LIMIT (100)"""

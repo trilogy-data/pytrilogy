@@ -58,6 +58,8 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
+    _coalesce_primary_proves_non_null,
+    _flip_op,
     concepts_implied_non_null,
     decompose_condition,
     is_null_literal,
@@ -208,7 +210,19 @@ def _proves_non_null(
         return set()
 
     if op in NULL_PROPAGATING_OPS:
-        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
+        # default statically fails the comparison — surviving rows can only
+        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
+        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
+        # the "count-of-empty is 0, not NULL" convention; predicates like
+        # ``> 0`` on the wrapped column otherwise become opaque to us, which
+        # blocks the OUTER → INNER upgrade on the producing join.
+        proofs |= _coalesce_primary_proves_non_null(left, op, right)
+        flipped = _flip_op(op)
+        if flipped is not None:
+            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
+        return proofs
 
     return set()
 

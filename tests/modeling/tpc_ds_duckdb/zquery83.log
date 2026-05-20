@@ -1,5 +1,5 @@
 query_id = "83"
-gen_length = 5957
+gen_length = 5941
 preql_size = 1429
 comp_size = 2195
 generated_sql = """
@@ -86,7 +86,10 @@ SELECT
 FROM
     \"concerned\"
 GROUP BY
-    1),
+    1
+HAVING
+    \"sr_item_present\" > 0
+),
 juicy as (
 SELECT
     \"yummy\".\"sales_item_name\" as \"sales_item_name\",
@@ -100,7 +103,6 @@ GROUP BY
 sweltering as (
 SELECT
     \"abhorrent\".\"cr_item_present\" as \"cr_item_present\",
-    \"abhorrent\".\"sr_item_present\" as \"sr_item_present\",
     \"abhorrent\".\"wr_item_present\" as \"wr_item_present\",
     \"juicy\".\"cr_item_qty\" as \"cr_item_qty\",
     \"juicy\".\"sales_item_name\" as \"item_id\",
@@ -112,7 +114,10 @@ SELECT
     ( ( (\"juicy\".\"wr_item_qty\" * 1.0) / ( ( \"juicy\".\"sr_item_qty\" + \"juicy\".\"cr_item_qty\" ) + \"juicy\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"wr_dev\"
 FROM
     \"abhorrent\"
-    INNER JOIN \"juicy\" on \"abhorrent\".\"sales_item_name\" = \"juicy\".\"sales_item_name\")
+    INNER JOIN \"juicy\" on \"abhorrent\".\"sales_item_name\" = \"juicy\".\"sales_item_name\"
+WHERE
+    \"abhorrent\".\"sr_item_present\" > 0
+)
 SELECT
     \"sweltering\".\"item_id\" as \"item_id\",
     \"sweltering\".\"sr_item_qty\" as \"sr_item_qty\",
@@ -125,7 +130,7 @@ SELECT
 FROM
     \"sweltering\"
 WHERE
-    \"sweltering\".\"sr_item_present\" > 0 and \"sweltering\".\"cr_item_present\" > 0 and \"sweltering\".\"wr_item_present\" > 0
+    \"sweltering\".\"cr_item_present\" > 0 and \"sweltering\".\"wr_item_present\" > 0
 
 ORDER BY 
     \"sweltering\".\"item_id\" asc nulls first,

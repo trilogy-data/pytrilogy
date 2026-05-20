@@ -775,6 +775,114 @@ def _non_null_or_disjuncts(
     return [atom]
 
 
+def _flip_op(op: ComparisonOperator) -> ComparisonOperator | None:
+    """Mirror an asymmetric comparator so ``X <op> Y`` becomes ``Y <op'> X``.
+    Symmetric comparators (``=``/``!=``) mirror to themselves. Returns
+    ``None`` for operators we don't flip (``IN``, ``LIKE``, etc.)."""
+    if op == ComparisonOperator.LT:
+        return ComparisonOperator.GT
+    if op == ComparisonOperator.GT:
+        return ComparisonOperator.LT
+    if op == ComparisonOperator.LTE:
+        return ComparisonOperator.GTE
+    if op == ComparisonOperator.GTE:
+        return ComparisonOperator.LTE
+    if op == ComparisonOperator.EQ:
+        return ComparisonOperator.EQ
+    if op == ComparisonOperator.NE:
+        return ComparisonOperator.NE
+    return None
+
+
+def _literal_value(value: object) -> object | None:
+    """Return the Python literal carried by ``value``, unwrapping parens.
+
+    ``None`` is returned for anything that isn't a concrete literal (concepts,
+    functions, the NULL sentinel, etc.) — callers use that as "can't fold"."""
+    while isinstance(value, BuildParenthetical):
+        value = value.content  # type: ignore[assignment]
+    if is_null_literal(value):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float, str, date, datetime)):
+        return value
+    if isinstance(value, (ListWrapper, TupleWrapper)):
+        members: list[object] = []
+        for item in value:
+            literal = _literal_value(item)
+            if literal is None:
+                return None
+            members.append(literal)
+        return tuple(members)
+    return None
+
+
+def _eval_literal_comparison(
+    left: object, op: ComparisonOperator, right: object
+) -> bool | None:
+    """Statically evaluate a literal ``<op>`` comparison, or ``None`` if the
+    operator isn't one we fold or the types don't compare cleanly."""
+    try:
+        if op == ComparisonOperator.EQ or op == ComparisonOperator.IS:
+            return left == right
+        if op == ComparisonOperator.NE:
+            return left != right
+        if op == ComparisonOperator.LT:
+            return left < right  # type: ignore[operator]
+        if op == ComparisonOperator.GT:
+            return left > right  # type: ignore[operator]
+        if op == ComparisonOperator.LTE:
+            return left <= right  # type: ignore[operator]
+        if op == ComparisonOperator.GTE:
+            return left >= right  # type: ignore[operator]
+        if op == ComparisonOperator.IN:
+            if isinstance(right, tuple):
+                return left in right
+            return None
+        if op == ComparisonOperator.NOT_IN:
+            if isinstance(right, tuple):
+                return left not in right
+            return None
+    except TypeError:
+        return None
+    return None
+
+
+def _coalesce_primary_proves_non_null(
+    maybe_coalesce: object, op: ComparisonOperator, rhs: object
+) -> set[str]:
+    """``coalesce(PRIMARY, default1, default2, ...) <op> rhs``: when every
+    default is a literal that statically *fails* ``<op> rhs`` (and ``rhs`` is
+    itself a literal), the surviving rows can't have come from a default
+    branch — so the coalesce had to fall on ``PRIMARY``, proving PRIMARY's
+    concepts non-null.
+
+    Returns the implied non-null set, or empty when the pattern doesn't apply
+    (LHS isn't a coalesce, any default is a non-literal, any default survives
+    the comparison, or the comparator isn't statically foldable)."""
+    expr = maybe_coalesce
+    while isinstance(expr, BuildParenthetical):
+        expr = expr.content  # type: ignore[assignment]
+    if not isinstance(expr, BuildFunction):
+        return set()
+    if expr.operator != FunctionType.COALESCE:
+        return set()
+    if len(expr.arguments) < 2:
+        return set()
+    rhs_value = _literal_value(rhs)
+    if rhs_value is None:
+        return set()
+    for default in expr.arguments[1:]:
+        default_value = _literal_value(default)
+        if default_value is None:
+            return set()
+        outcome = _eval_literal_comparison(default_value, op, rhs_value)
+        if outcome is None or outcome is True:
+            return set()
+    return concepts_implied_non_null(expr.arguments[0])
+
+
 def _atom_proves_non_null(
     atom: BoolExpr,
 ) -> set[str]:
@@ -806,7 +914,18 @@ def _atom_proves_non_null(
         # `<expr> IS NULL` specifically wants NULLs — never proves non-null.
         return set()
     if op in NULL_PROPAGATING_OPS:
-        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
+        # default statically fails the comparison — surviving rows can only
+        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
+        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
+        # the "count-of-empty is 0, not NULL" convention; predicates like
+        # ``> 0`` over the wrapped column otherwise become opaque to us.
+        proofs |= _coalesce_primary_proves_non_null(left, op, right)
+        flipped = _flip_op(op)
+        if flipped is not None:
+            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
+        return proofs
     return set()
 
 

@@ -1,5 +1,5 @@
 query_id = "63"
-gen_length = 2524
+gen_length = 2518
 preql_size = 1361
 comp_size = 1795
 generated_sql = """
@@ -34,19 +34,19 @@ SELECT
     coalesce(\"cheerful\".\"store_sales_item_manager_id\",\"cooperative\".\"store_sales_item_manager_id\") as \"store_sales_item_manager_id\"
 FROM
     \"cooperative\"
-    FULL JOIN \"cheerful\" on \"cooperative\".\"store_sales_item_manager_id\" is not distinct from \"cheerful\".\"store_sales_item_manager_id\")
+    FULL JOIN \"cheerful\" on \"cooperative\".\"store_sales_item_manager_id\" is not distinct from \"cheerful\".\"store_sales_item_manager_id\"
+WHERE
+    CASE
+	WHEN \"cooperative\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_monthly_sales\") / \"cooperative\".\"avg_monthly_sales\"
+	ELSE null
+	END > 0.1
+)
 SELECT
     \"questionable\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
     \"questionable\".\"sum_sales\" as \"sum_sales\",
     \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
     \"questionable\"
-WHERE
-    CASE
-	WHEN \"questionable\".\"avg_monthly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\") / \"questionable\".\"avg_monthly_sales\"
-	ELSE null
-	END > 0.1
-
 ORDER BY 
     \"questionable\".\"store_sales_item_manager_id\" asc,
     \"questionable\".\"avg_monthly_sales\" asc,

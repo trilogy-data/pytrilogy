@@ -1,5 +1,5 @@
 query_id = "14"
-gen_length = 6682
+gen_length = 6609
 preql_size = 2071
 comp_size = 4229
 generated_sql = """
@@ -135,11 +135,13 @@ SELECT
     \"vacuous\".\"_l0_filtered_bucket_sum_l0\" as \"_l0_filtered_bucket_sum_l0\",
     \"vacuous\".\"_l0_filtered_category_l0\" as \"_l0_filtered_category_l0\",
     \"vacuous\".\"_l0_filtered_channel_l0\" as \"_l0_filtered_channel_l0\",
-    \"vacuous\".\"_l0_filtered_class_l0\" as \"_l0_filtered_class_l0\",
-    \"young\".\"avg_sales_average_sales\" as \"avg_sales_average_sales\"
+    \"vacuous\".\"_l0_filtered_class_l0\" as \"_l0_filtered_class_l0\"
 FROM
     \"young\"
-    FULL JOIN \"vacuous\" on 1=1),
+    INNER JOIN \"vacuous\" on 1=1
+WHERE
+    \"vacuous\".\"_l0_filtered_bucket_sum_l0\" > \"young\".\"avg_sales_average_sales\"
+),
 sweltering as (
 SELECT
     \"abhorrent\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
@@ -149,10 +151,7 @@ SELECT
     \"abhorrent\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
     \"abhorrent\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
 FROM
-    \"abhorrent\"
-WHERE
-    \"abhorrent\".\"_l0_filtered_bucket_sum_l0\" > \"abhorrent\".\"avg_sales_average_sales\"
-)
+    \"abhorrent\")
 SELECT
     \"sweltering\".\"l0_filtered_channel_l0\" as \"channel\",
     \"sweltering\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
