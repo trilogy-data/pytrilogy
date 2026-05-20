@@ -1,5 +1,5 @@
 query_id = "09"
-gen_length = 1144
+gen_length = 1101
 preql_size = 254
 comp_size = 677
 generated_sql = """
@@ -15,7 +15,7 @@ FROM
     INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"part_partsupp\".\"ps_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
 WHERE
-     CASE WHEN \"part_part\".\"p_name\" like '%green%' THEN True ELSE False END = True
+    \"part_part\".\"p_name\" like '%green%'
 
 GROUP BY
     1,

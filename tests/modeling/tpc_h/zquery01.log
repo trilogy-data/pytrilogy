@@ -1,6 +1,6 @@
 query_id = "01"
-gen_length = 886
-preql_size = 480
+gen_length = 792
+preql_size = 482
 comp_size = 544
 generated_sql = """
 SELECT
@@ -13,7 +13,7 @@ SELECT
     avg(\"lineitem\".\"l_quantity\") as \"avg_qty\",
     avg(\"lineitem\".\"l_extendedprice\") as \"avg_price\",
     avg(\"lineitem\".\"l_discount\") as \"avg_disc\",
-    count((cast(\"lineitem\".\"l_orderkey\" as string) || '-' || cast(\"lineitem\".\"l_linenumber\" as string))) as \"count_order\"
+    sum(1) as \"count_order\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 WHERE
