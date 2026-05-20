@@ -8,7 +8,6 @@ from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
-    BuildBetween,
     BuildComparison,
     BuildConcept,
     BuildDatasource,
