@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 7283
+gen_length = 7229
 preql_size = 2275
 comp_size = 2234
 generated_sql = """
@@ -29,7 +29,7 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
 WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1212 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235 and \"ss_store_sales\".\"SS_STORE_SK\" is not null
+    \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1212 AND 1235 and \"ss_store_sales\".\"SS_STORE_SK\" is not null
 
 GROUP BY
     1,
@@ -52,7 +52,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"wakeful\".\"ss_date_id\" = \"ss_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"wakeful\".\"ss_store_id\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" >= 1212 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235
+    \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1212 AND 1235
 
 GROUP BY
     1,
