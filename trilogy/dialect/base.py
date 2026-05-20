@@ -983,7 +983,7 @@ class BaseDialect:
             and c.lineage.function.operator == FunctionType.COUNT
             and not cte.group_to_grain
             and any(
-                n.address == c.address for n in getattr(cte, "nullable_concepts", [])
+                n.address == c.address for n in cte.nullable_concepts
             )
         ):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])
