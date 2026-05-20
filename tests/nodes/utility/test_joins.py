@@ -38,30 +38,16 @@ address x_source;
     x = BaseDialect()
     env = env.materialize_for_select()
     concept = env.concepts["x"]
-    y_concept = env.concepts["y"]
     ds = env.datasources["x_source"]
+    node = CTE.from_datasource(ds)
+    # folded-in datasource: column resolves to the raw expression
+    col = node.consumer_column(concept)
     rendered = render_join_concept(
-        name="test",
-        cte=CTE(
-            name="test",
-            output_columns=[concept, y_concept],
-            grain=BuildGrain(),
-            source=QueryDatasource(
-                input_concepts=[concept, y_concept],
-                output_concepts=[concept, y_concept],
-                datasources=[ds],
-                grain=BuildGrain(),
-                joins=[],
-                source_map={concept.address: {ds}, y_concept.address: {ds}},
-            ),
-            source_map={
-                concept.address: [ds.identifier],
-                y_concept.address: [ds.identifier],
-            },
-        ),
+        name=node.name,
+        node=node,
+        col=col,
         render_expr=x.render_expr,
         quote_character=x.QUOTE_CHARACTER,
-        inlined_ctes=["test"],
         concept=concept,
         use_map=defaultdict(set),
     )
@@ -82,30 +68,15 @@ address x_source;
     x = BaseDialect()
     env = env.materialize_for_select()
     concept = env.concepts["x"]
-    y_concept = env.concepts["y"]
     ds = env.datasources["x_source"]
+    node = CTE.from_datasource(ds)
+    col = node.consumer_column(concept)
     rendered = render_join_concept(
-        name="test",
-        cte=CTE(
-            name="test",
-            output_columns=[concept, y_concept],
-            grain=BuildGrain(),
-            source=QueryDatasource(
-                input_concepts=[concept, y_concept],
-                output_concepts=[concept, y_concept],
-                datasources=[ds],
-                grain=BuildGrain(),
-                joins=[],
-                source_map={concept.address: {ds}, y_concept.address: {ds}},
-            ),
-            source_map={
-                concept.address: [ds.identifier],
-                y_concept.address: [ds.identifier],
-            },
-        ),
+        name=node.name,
+        node=node,
+        col=col,
         render_expr=x.render_expr,
         quote_character=x.QUOTE_CHARACTER,
-        inlined_ctes=["test"],
         concept=concept,
         use_map=defaultdict(set),
     )

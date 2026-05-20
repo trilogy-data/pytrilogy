@@ -11,6 +11,7 @@ from typing import Sequence
 
 import click
 
+from trilogy.core.models.author import Concept
 from trilogy.core.models.environment import Environment
 from trilogy.parser import parse_text
 from trilogy.scripts.display import print_error, print_info
@@ -24,14 +25,16 @@ def _load_environment(path: Path) -> Environment:
     return env
 
 
-def _concept_row(address: str, concept) -> tuple[str, str, str, str]:
-    purpose = getattr(concept.purpose, "value", str(concept.purpose))
-    derivation = getattr(concept.derivation, "value", str(concept.derivation))
-    datatype = str(getattr(concept, "datatype", "") or "")
+def _concept_row(address: str, concept: Concept) -> tuple[str, str, str, str]:
+    purpose = concept.purpose.value
+    derivation = concept.derivation.value
+    datatype = str(concept.datatype)
     return address, purpose, derivation, datatype
 
 
-def _emit_table(title: str, headers: tuple[str, ...], rows: Sequence[tuple[str, ...]]):
+def _emit_table(
+    title: str, headers: tuple[str, ...], rows: Sequence[tuple[str, ...]]
+) -> None:
     click.echo()
     print_info(title)
     if not rows:
@@ -110,11 +113,7 @@ def explore(
             if not k.startswith("__") and not k.startswith("local._env_")
         ]
     if purpose:
-        concept_items = [
-            (k, v)
-            for k, v in concept_items
-            if getattr(v.purpose, "value", str(v.purpose)) == purpose
-        ]
+        concept_items = [(k, v) for k, v in concept_items if v.purpose.value == purpose]
     if grep:
         needle = grep.lower()
         concept_items = [(k, v) for k, v in concept_items if needle in k.lower()]
@@ -130,7 +129,7 @@ def explore(
     if show in ("all", "datasources"):
         ds_rows = []
         for name, ds in sorted(env.datasources.items()):
-            grain = ",".join(sorted(getattr(ds.grain, "components", []) or []))
+            grain = ",".join(sorted(ds.grain.components))
             ds_rows.append((name, grain or "(no grain)"))
         _emit_table(
             f"Datasources ({len(ds_rows)})",
@@ -142,7 +141,7 @@ def explore(
         import_rows = []
         for alias, stmts in sorted(env.imports.items()):
             for stmt in stmts:
-                import_rows.append((alias, str(getattr(stmt, "path", ""))))
+                import_rows.append((alias, str(stmt.path)))
         _emit_table(
             f"Imports ({len(import_rows)})",
             ("alias", "path"),

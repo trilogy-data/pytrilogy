@@ -111,8 +111,7 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
             ):
                 return True
             for pair in j.joinkey_pairs or []:
-                cte_ref = getattr(pair, "cte", None)
-                if cte_ref is not None and cte_ref.name == parent_name:
+                if pair.cte.name == parent_name:
                     return True
     return False
 
@@ -263,8 +262,9 @@ class PredicatePushdown(OptimizationRule):
                     branch.existence_source_map[x] = origin
                 else:
                     continue
-                sources = [p for p in cte.parent_ctes if p.name in origin]
-                branch.parent_ctes = unique(branch.parent_ctes + sources, "name")
+                sources = [p for p in cte.dependency_nodes() if p.name in origin]
+                for source in sources:
+                    branch.add_dependency(source)
                 union_dependencies_changed = True
             self.log(
                 f"Pushed {candidate} into union branch {branch.name} of {parent_cte.name}"
@@ -273,7 +273,11 @@ class PredicatePushdown(OptimizationRule):
         if union_dependencies_changed:
             # Re-derive union.parent_ctes so reorder_ctes sees the new edges.
             parent_cte.parent_ctes = unique(
-                [p for branch in parent_cte.internal_ctes for p in branch.parent_ctes],
+                [
+                    p
+                    for branch in parent_cte.internal_ctes
+                    for p in branch.dependency_nodes()
+                ],
                 "name",
             )
         return True
@@ -321,7 +325,7 @@ class PredicatePushdown(OptimizationRule):
             if source.identifier in kept_identifiers
         ]
         parent_cte.parent_ctes = unique(
-            [parent for cte in kept for parent in cte.parent_ctes],
+            [parent for cte in kept for parent in cte.dependency_nodes()],
             "name",
         )
         return True
@@ -406,13 +410,12 @@ class PredicatePushdown(OptimizationRule):
                         if x not in parent_cte.source_map and x in cte.source_map:
                             sources = [
                                 parent
-                                for parent in cte.parent_ctes
+                                for parent in cte.dependency_nodes()
                                 if parent.name in cte.source_map[x]
                             ]
                             parent_cte.source_map[x] = cte.source_map[x]
-                            parent_cte.parent_ctes = unique(
-                                parent_cte.parent_ctes + sources, "name"
-                            )
+                            for source in sources:
+                                parent_cte.add_dependency(source)
                 return True
         self.debug(
             f"conditions {row_conditions} not subset of parent {parent_cte.name} parent has {materialized} "
@@ -502,7 +505,8 @@ class PredicatePushdown(OptimizationRule):
             return False, None
         optimized = False
 
-        if not cte.parent_ctes:
+        parents = cte.dependency_nodes()
+        if not parents:
             self.debug(f"No parent CTEs for {cte.name}")
             return False, None
 
@@ -515,7 +519,7 @@ class PredicatePushdown(OptimizationRule):
             return False, None
 
         self.debug(
-            f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
+            f"Checking {cte.name} for predicate pushdown with {len(parents)} parents"
         )
         if isinstance(cte.condition, BuildConditional):
             candidates = cte.condition.decompose()
@@ -539,7 +543,7 @@ class PredicatePushdown(OptimizationRule):
                 self.debug(
                     f"Non-scalar {candidate}; trying group-parent HAVING pushdown"
                 )
-                for parent_cte in cte.parent_ctes:
+                for parent_cte in parents:
                     local = self._push_having_into_group_parent(
                         cte=cte,
                         parent_cte=parent_cte,
@@ -553,7 +557,7 @@ class PredicatePushdown(OptimizationRule):
             self.debug(
                 f"Checking candidate {candidate}, {type(candidate)}, scalar: {is_scalar_condition(candidate)}"
             )
-            for parent_cte in cte.parent_ctes:
+            for parent_cte in parents:
                 local_pushdown = self._check_parent(
                     cte=cte,
                     parent_cte=parent_cte,
@@ -584,7 +588,7 @@ class PredicatePushdownRemove(OptimizationRule):
         `cte` because no upstream filter constrains those columns."""
         if not isinstance(atom, BuildConceptArgs):
             return False
-        parent_names = {p.name for p in cte.parent_ctes}
+        parent_names = {p.name for p in cte.dependency_nodes()}
         for c in atom.row_arguments:
             sources = cte.source_map.get(c.address)
             if not sources:
@@ -602,7 +606,7 @@ class PredicatePushdownRemove(OptimizationRule):
         atom_args = {c.address for c in atom.row_arguments}
         relevant_parents = [
             p
-            for p in cte.parent_ctes
+            for p in cte.dependency_nodes()
             if p.name not in existence_only
             and atom_args.issubset({x.address for x in p.output_columns})
         ]
@@ -620,7 +624,8 @@ class PredicatePushdownRemove(OptimizationRule):
             return False, None
         optimized = False
 
-        if not cte.parent_ctes:
+        parents = cte.dependency_nodes()
+        if not parents:
             self.debug(f"No parent CTEs for {cte.name}")
 
             return False, None
@@ -631,7 +636,7 @@ class PredicatePushdownRemove(OptimizationRule):
 
         parent_filter_status = {
             parent.name: _parent_covers_condition(parent, cte.condition)
-            for parent in cte.parent_ctes
+            for parent in parents
         }
         # flatten existnce argument tuples to a list
 
@@ -641,7 +646,7 @@ class PredicatePushdownRemove(OptimizationRule):
 
         existence_only = [
             parent.name
-            for parent in cte.parent_ctes
+            for parent in parents
             if all([x.address in flattened_existence for x in parent.output_columns])
             and len(flattened_existence) > 0
         ]
@@ -658,10 +663,8 @@ class PredicatePushdownRemove(OptimizationRule):
             cte.condition = None
             # remove any "parent" CTEs that provided only existence inputs
             if existence_only:
-                original = [y.name for y in cte.parent_ctes]
-                cte.parent_ctes = [
-                    x for x in cte.parent_ctes if x.name not in existence_only
-                ]
+                original = [y.name for y in parents]
+                cte.parent_ctes = [x for x in parents if x.name not in existence_only]
                 self.log(
                     f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
                 )

@@ -38,6 +38,43 @@ def test_pipeline_skips_union_refire_when_union_dim_pushdown_disabled():
     assert not any(phase.refires_after for phase in plan)
 
 
+def test_pipeline_runs_datasource_inlining_before_predicate_pushdown():
+    with _optimization_flags(datasource_inlining=True, predicate_pushdown=True):
+        plan = build_optimization_rule_plan()
+
+    names = [phase.name for phase in plan]
+    assert names == [
+        "inline_datasource",
+        "predicate_pushdown.initial",
+        "predicate_pushdown.remove",
+    ]
+    by_name = {phase.name: phase for phase in plan}
+    assert by_name["predicate_pushdown.initial"].depends_on == ("inline_datasource",)
+
+
+def test_pipeline_runs_datasource_inlining_before_join_hoist():
+    with _optimization_flags(
+        datasource_inlining=True,
+        join_hoist=True,
+        predicate_pushdown=True,
+    ):
+        plan = build_optimization_rule_plan()
+
+    names = [phase.name for phase in plan]
+    assert names == [
+        "inline_datasource",
+        "join_hoist",
+        "predicate_pushdown.initial",
+        "predicate_pushdown.remove",
+    ]
+    by_name = {phase.name: phase for phase in plan}
+    assert by_name["join_hoist"].depends_on == ("inline_datasource",)
+    assert by_name["predicate_pushdown.initial"].depends_on == (
+        "inline_datasource",
+        "join_hoist",
+    )
+
+
 def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
     with _optimization_flags(
         predicate_pushdown=True,

@@ -41,7 +41,12 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
-from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind, SyntaxTokenKind
+from trilogy.parsing.v2.syntax import (
+    SyntaxNode,
+    SyntaxNodeKind,
+    SyntaxToken,
+    SyntaxTokenKind,
+)
 
 
 @dataclass
@@ -278,8 +283,8 @@ def address_node(
     raw = str(hydrate(child))
     quoted = False
     if (
-        isinstance(child, SyntaxNode) is False
-        and getattr(child, "kind", None) == SyntaxTokenKind.F_QUOTED_ADDRESS
+        isinstance(child, SyntaxToken)
+        and child.kind == SyntaxTokenKind.F_QUOTED_ADDRESS
     ):
         location = raw
         quoted = True

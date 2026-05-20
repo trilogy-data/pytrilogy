@@ -18,7 +18,7 @@ consumer level, and before any rule that flattens / inlines the UnionCTE.
 """
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 
 from trilogy.core.enums import JoinType, SourceType
 from trilogy.core.models.build import (
@@ -34,8 +34,10 @@ from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
     CTEConceptPair,
+    DatasourceCTE,
     Join,
     QueryDatasource,
+    SourceBinding,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import (
@@ -44,7 +46,6 @@ from trilogy.core.optimizations.base_optimization import (
 )
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
-    add_parent_cte,
     append_condition,
     condition_contains_atom,
     strip_condition_atom,
@@ -56,6 +57,30 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.utility import unique
 
 ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
+
+
+def _base_datasource(
+    datasource: BuildDatasource | QueryDatasource,
+) -> BuildDatasource | QueryDatasource | None:
+    if isinstance(datasource, QueryDatasource):
+        return datasource.base_datasource
+    return None
+
+
+def _datasource_wraps(
+    datasource: BuildDatasource | QueryDatasource,
+    target: BuildDatasource | QueryDatasource,
+) -> bool:
+    return _base_datasource(datasource) is target
+
+
+def _datasource_matches_dim(
+    datasource: BuildDatasource | QueryDatasource,
+    dim_qds: BuildDatasource | QueryDatasource,
+) -> bool:
+    return datasource.identifier == dim_qds.identifier or _datasource_wraps(
+        datasource, dim_qds
+    )
 
 
 def _add_render_dependencies(
@@ -81,8 +106,7 @@ def _add_render_dependencies(
         if isinstance(alias, BuildConceptArgs):
             dependency_sources.append(alias)
         for source in dependency_sources:
-            dependencies = getattr(source, "rendered_concept_arguments", [])
-            for dependency in dependencies:
+            for dependency in source.rendered_concept_arguments:
                 if dependency.address in seen:
                     continue
                 available_dependency = available_by_address.get(dependency.address)
@@ -96,23 +120,65 @@ def _add_render_dependencies(
 def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | None:
     """Locate the CTE the consumer's BaseJoin actually targets.
 
-    Match strictly on ``cte.source.identifier == join_qds_id`` — never on
-    ``base_datasource`` — because filtered/unfiltered variants of the same
-    dim share a base. After ``InlineDatasource`` the dim CTE is dropped from
-    ``parent_ctes`` but ``Join.right_cte`` retains the reference, so search
-    there too.
+    Prefer exact binding identifiers. After ``InlineDatasource`` a consumer's
+    ``BaseJoin`` can render against the raw ``BuildDatasource`` while the graph
+    still holds a ``DatasourceCTE`` wrapper over that datasource. In that case,
+    fall back through ``base_datasource`` only when the match is unambiguous.
     """
-    for p in consumer.parent_ctes:
-        if isinstance(p, (CTE, UnionCTE)) and p.source.identifier == join_qds_id:
-            return p
+    binding_base_matches: list[CTE | UnionCTE] = []
+    join_base_matches: list[CTE | UnionCTE] = []
+    for binding in consumer.source_bindings(include_inlined=True):
+        if binding.node is None:
+            continue
+        if _source_binding_matches_exact_id(binding, join_qds_id):
+            return binding.node
+        if _source_binding_matches_raw_id(binding, join_qds_id):
+            binding_base_matches.append(binding.node)
     for j in consumer.joins:
-        if (
-            isinstance(j, Join)
-            and isinstance(j.right_cte, (CTE, UnionCTE))
-            and j.right_cte.source.identifier == join_qds_id
-        ):
-            return j.right_cte
+        if isinstance(j, Join) and isinstance(j.right_cte, (CTE, UnionCTE)):
+            if _cte_matches_exact_id(j.right_cte, join_qds_id):
+                return j.right_cte
+            if _cte_matches_raw_id(j.right_cte, join_qds_id):
+                join_base_matches.append(j.right_cte)
+    unique_matches = unique(join_base_matches, "name")
+    if len(unique_matches) == 1:
+        return unique_matches[0]
+    unique_matches = unique(binding_base_matches, "name")
+    if len(unique_matches) == 1:
+        return unique_matches[0]
     return None
+
+
+def _source_binding_matches_exact_id(binding: SourceBinding, source_id: str) -> bool:
+    return binding.node is not None and _cte_matches_exact_id(binding.node, source_id)
+
+
+def _source_binding_matches_raw_id(binding: SourceBinding, source_id: str) -> bool:
+    if binding.node is not None and _cte_matches_raw_id(binding.node, source_id):
+        return True
+    return binding.datasource is not None and _datasource_matches_raw_id(
+        binding.datasource, source_id
+    )
+
+
+def _cte_matches_exact_id(cte: CTE | UnionCTE, source_id: str) -> bool:
+    return cte.source.identifier == source_id
+
+
+def _cte_matches_raw_id(cte: CTE | UnionCTE, source_id: str) -> bool:
+    if isinstance(cte, DatasourceCTE) and cte.datasource.identifier == source_id:
+        return True
+    base = cte.source.base_datasource
+    return isinstance(base, BuildDatasource) and base.identifier == source_id
+
+
+def _datasource_matches_raw_id(
+    datasource: BuildDatasource | QueryDatasource, source_id: str
+) -> bool:
+    if isinstance(datasource, BuildDatasource) and datasource.identifier == source_id:
+        return True
+    base = _base_datasource(datasource)
+    return isinstance(base, BuildDatasource) and base.identifier == source_id
 
 
 def _dim_local_atoms(
@@ -204,7 +270,6 @@ class _ConsumerDimCandidate:
 class _PushContext:
     dim_cte: CTE | UnionCTE
     source_consumer: CTE | None
-    inlined_entry: Any | None
 
 
 class UnionDimPushdown(OptimizationRule):
@@ -343,13 +408,16 @@ class UnionDimPushdown(OptimizationRule):
             # renders with the dim CTE's short alias). q5's
             # return_channel_dim (a UNION of catalog/store/web dim variants)
             # is the canonical example.
-            if getattr(join_qds, "source_type", None) == SourceType.UNION:
+            if (
+                isinstance(join_qds, QueryDatasource)
+                and join_qds.source_type == SourceType.UNION
+            ):
                 continue
             # Resolve to the underlying BD if the consumer carries one.
             if isinstance(join_qds, BuildDatasource):
                 dim_ds: BuildDatasource | QueryDatasource = join_qds
             else:
-                base = getattr(join_qds, "base_datasource", None)
+                base = join_qds.base_datasource
                 if isinstance(base, BuildDatasource) and base.identifier in bd_by_id:
                     dim_ds = bd_by_id[base.identifier]
                 else:
@@ -467,18 +535,7 @@ class UnionDimPushdown(OptimizationRule):
         for c in consumers:
             found = _find_dim_cte_for_qds(c, d.join_qds_id)
             if found is not None:
-                inlined_entry = None
-                # ``CTE.inlined_ctes`` is keyed by ``new_alias``, not by the
-                # original CTE name. Scan values to recover the entry.
-                for e in c.inlined_ctes.values():
-                    if e.original_alias == found.name:
-                        inlined_entry = e
-                        break
-                return _PushContext(
-                    dim_cte=found,
-                    source_consumer=c,
-                    inlined_entry=inlined_entry,
-                )
+                return _PushContext(dim_cte=found, source_consumer=c)
         return None
 
     def _can_push_into_branch(self, branch: CTE, d: _DimDescriptor) -> bool:
@@ -520,7 +577,6 @@ class UnionDimPushdown(OptimizationRule):
                 branch,
                 context.dim_cte,
                 d,
-                context.inlined_entry,
                 context.source_consumer,
             ):
                 return False
@@ -551,12 +607,16 @@ class UnionDimPushdown(OptimizationRule):
         # branches may have gained a new parent CTE (the subselect source).
         # Re-derive union.parent_ctes so the CTE reorder pass sees the edge.
         has_existence = any(
-            any(arg for tup in getattr(a, "existence_arguments", ()) for arg in tup)
+            any(arg for tup in a.existence_arguments for arg in tup)
             for a in d.where_atoms
         )
         if has_existence:
             union.parent_ctes = unique(
-                [p for branch in union.internal_ctes for p in branch.parent_ctes],
+                [
+                    p
+                    for branch in union.internal_ctes
+                    for p in branch.dependency_nodes()
+                ],
                 "name",
             )
         return True
@@ -566,7 +626,6 @@ class UnionDimPushdown(OptimizationRule):
         branch: CTE,
         dim_cte: CTE | UnionCTE,
         d: _DimDescriptor,
-        inlined_entry=None,
         source_consumer: CTE | None = None,
     ) -> bool:
         # already there? (idempotency)
@@ -626,23 +685,24 @@ class UnionDimPushdown(OptimizationRule):
             jointype=JoinType.INNER,
             left_cte=None,
             joinkey_pairs=cte_pairs,
+            # The branch CTE name isn't a valid alias inside its own SELECT;
+            # the LHS keys are the branch's own base columns. Render them as
+            # the branch's expressions (mirrors the historical inline_cte).
+            left_is_local=isinstance(branch.source.base_datasource, BuildDatasource),
         )
-        # The branch CTE name isn't a valid alias inside its own SELECT —
-        # the FROM clause aliases the underlying BuildDatasource. Mark the
-        # branch as "inlined" on this Join so the LHS renders using
-        # ``branch.source.base_datasource.safe_identifier``.
-        branch_base = branch.source.base_datasource
-        if isinstance(branch_base, BuildDatasource):
-            new_join.inline_cte(branch, branch_base)
-        if inlined_entry is not None:
-            # Dim was inlined on the consumer; replicate on this branch so
-            # the RHS renders using the dim's underlying ds alias too.
-            dim_base = dim_cte.source.base_datasource
-            if isinstance(dim_base, BuildDatasource) and isinstance(dim_cte, CTE):
-                new_join.inline_cte(dim_cte, dim_base)
-            branch.inlined_ctes[inlined_entry.new_alias] = inlined_entry
+        # If the dim was folded into the consumer (inlined datasource), fold
+        # it into the branch too so the branch renders its raw table — the
+        # branch CTE wouldn't be emitted to join by name. Otherwise it is a
+        # normal emitted CTE the branch joins by name.
+        if (
+            isinstance(dim_cte, DatasourceCTE)
+            and source_consumer is not None
+            and source_consumer.renders_inline(dim_cte)
+        ):
+            dim_source_key = branch.add_inlined_datasource(dim_cte)
         else:
-            add_parent_cte(branch, dim_cte)
+            branch.add_dependency(dim_cte)
+            dim_source_key = branch.source_key_for(dim_cte)
         branch.joins.append(new_join)
         existing_out = {c.address for c in branch.output_columns}
         # FK concepts already resolve via the branch's fact ds. Only the
@@ -651,15 +711,6 @@ class UnionDimPushdown(OptimizationRule):
         non_key_dim_addrs = {
             c.address for c in d.dim_concepts if c.address not in d.fk_left_addrs
         }
-        # source_map values are *datasource* safe_identifiers, not CTE names.
-        # When the dim is inlined the safe_identifier equals new_alias; when
-        # the dim has its own CTE the dim CTE's safe_identifier is the same
-        # as cte.name, but the QDS-level source_map needs the BuildDatasource.
-        dim_source_key = (
-            inlined_entry.new_alias
-            if inlined_entry is not None
-            else d.dim_qds.safe_identifier
-        )
         for c in d.dim_concepts:
             if c.address not in existing_out:
                 branch.output_columns.append(c)
@@ -689,10 +740,9 @@ class UnionDimPushdown(OptimizationRule):
         atom: ConditionExpression,
     ) -> None:
         existence_addrs: set[str] = set()
-        for tup in getattr(atom, "existence_arguments", ()):
+        for tup in atom.existence_arguments:
             for arg in tup:
-                if hasattr(arg, "address"):
-                    existence_addrs.add(arg.address)
+                existence_addrs.add(arg.address)
         if not existence_addrs:
             return
         for x in existence_addrs:
@@ -706,8 +756,11 @@ class UnionDimPushdown(OptimizationRule):
                 branch.existence_source_map[x] = origin
             else:
                 continue
-            sources = [p for p in source_consumer.parent_ctes if p.name in origin]
-            branch.parent_ctes = unique(branch.parent_ctes + sources, "name")
+            sources = [
+                p for p in source_consumer.dependency_nodes() if p.name in origin
+            ]
+            for source in sources:
+                branch.add_dependency(source)
 
     def _branch_left_datasource(
         self, branch: CTE, fk_left_addrs: set[str]
@@ -730,9 +783,8 @@ class UnionDimPushdown(OptimizationRule):
         # safe_identifier (with ``_at_<key>`` suffix). Strip them all.
         dim_aliases = {dim_cte.name, d.dim_qds.safe_identifier}
         for j in consumer.source.joins:
-            if (
-                isinstance(j, BaseJoin)
-                and getattr(j.right_datasource, "base_datasource", None) is d.dim_qds
+            if isinstance(j, BaseJoin) and _datasource_wraps(
+                j.right_datasource, d.dim_qds
             ):
                 dim_aliases.add(j.right_datasource.safe_identifier)
 
@@ -744,8 +796,7 @@ class UnionDimPushdown(OptimizationRule):
             rd = j.right_datasource
             if rd.identifier == d.dim_qds.identifier:
                 return True
-            base = getattr(rd, "base_datasource", None)
-            return base is d.dim_qds
+            return _datasource_wraps(rd, d.dim_qds)
 
         consumer.source.joins = [
             j for j in consumer.source.joins if not _is_dim_basejoin(j)
@@ -765,11 +816,10 @@ class UnionDimPushdown(OptimizationRule):
             consumer.source.datasources = [
                 ds
                 for ds in consumer.source.datasources
-                if ds.identifier != d.dim_qds.identifier
-                and getattr(ds, "base_datasource", None) is not d.dim_qds
+                if not _datasource_matches_dim(ds, d.dim_qds)
             ]
             consumer.parent_ctes = [
-                p for p in consumer.parent_ctes if p.name != dim_cte.name
+                p for p in consumer.dependency_nodes() if p.name != dim_cte.name
             ]
         # Redirect source_map: dim concepts now resolve via the union CTE.
         union_outputs_now = {c.address for c in union.output_columns}
@@ -780,11 +830,8 @@ class UnionDimPushdown(OptimizationRule):
                     s
                     for s in consumer.source.source_map[addr]
                     if not (
-                        hasattr(s, "identifier")
-                        and (
-                            s.identifier == d.dim_qds.identifier
-                            or getattr(s, "base_datasource", None) is d.dim_qds
-                        )
+                        isinstance(s, (BuildDatasource, QueryDatasource))
+                        and _datasource_matches_dim(s, d.dim_qds)
                     )
                 }
                 if not consumer.source.source_map[addr]:

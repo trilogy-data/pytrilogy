@@ -9,6 +9,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.build import (
     BuildComparison,
+    BuildConcept,
     BuildConditional,
     BuildFunction,
     BuildGrain,
@@ -18,11 +19,20 @@ from trilogy.core.models.core import (
     DataType,
 )
 from trilogy.core.models.environment import Environment
-from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
+from trilogy.core.models.execute import (
+    CTE,
+    CTEConceptPair,
+    InstantiatedUnnestJoin,
+    Join,
+    QueryDatasource,
+    UnionCTE,
+)
 from trilogy.core.optimization import (
     PredicatePushdown,
     PredicatePushdownRemove,
     _grains_equivalent,
+    canonicalize_graph,
+    filter_irrelevant_ctes,
 )
 from trilogy.core.optimizations.predicate_pushdown import (
     _consumer_outer_joins_union,
@@ -63,6 +73,129 @@ def _simple_cte(
         parent_ctes=parent_ctes or [],
         joins=joins or [],
     )
+
+
+def test_canonicalize_graph_dedupes_live_references_and_realigns_union_branches():
+    a = BuildConcept(
+        name="a",
+        canonical_name="a",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    b = BuildConcept(
+        name="b",
+        canonical_name="b",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.PROPERTY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    live_parent = _simple_cte("parent", [a])
+    stale_parent = _simple_cte("parent", [a])
+    child = _simple_cte(
+        "child",
+        [a],
+        parent_ctes=[stale_parent, stale_parent],
+        source_map={a.address: [stale_parent.name]},
+    )
+    pair = CTEConceptPair(
+        left=a,
+        right=a,
+        existing_datasource=child.source,
+        cte=stale_parent,
+    )
+    unnest_join = InstantiatedUnnestJoin(object_to_unnest=a)
+    child.joins = [
+        unnest_join,
+        Join(
+            right_cte=stale_parent,
+            left_cte=stale_parent,
+            jointype=JoinType.INNER,
+            joinkey_pairs=[pair],
+        ),
+    ]
+    short_branch = _simple_cte(
+        "short_branch",
+        [a],
+        source_map={a.address: ["short_branch"], b.address: ["short_branch"]},
+    )
+    missing_branch = _simple_cte("missing_branch", [a])
+    full_branch = _simple_cte("full_branch", [a, b])
+    union = UnionCTE(
+        name="unioned",
+        source=QueryDatasource(
+            input_concepts=[a, b],
+            output_concepts=[a, b],
+            datasources=[
+                missing_branch.source,
+                short_branch.source,
+                full_branch.source,
+            ],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={
+                a.address: {
+                    missing_branch.source,
+                    short_branch.source,
+                    full_branch.source,
+                },
+                b.address: {short_branch.source, full_branch.source},
+            },
+            source_type=SourceType.UNION,
+        ),
+        parent_ctes=[],
+        internal_ctes=[missing_branch, short_branch, full_branch],
+        output_columns=[a, b],
+        grain=BuildGrain(),
+    )
+
+    canonicalize_graph([live_parent, child, union])
+
+    assert child.parent_ctes == [live_parent]
+    assert child.joins[0] is unnest_join
+    assert child.joins[1].right_cte is live_parent
+    assert child.joins[1].left_cte is live_parent
+    assert pair.cte is live_parent
+    assert missing_branch.output_columns == [a]
+    assert short_branch.output_columns == full_branch.output_columns
+    assert short_branch.hidden_concepts == full_branch.hidden_concepts
+
+
+def test_filter_irrelevant_ctes_keeps_union_branch_parents_but_not_branches():
+    a = BuildConcept(
+        name="a",
+        canonical_name="a",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    parent = _simple_cte("parent", [a])
+    branch = _simple_cte("branch", [a], parent_ctes=[parent])
+    union = UnionCTE(
+        name="unioned",
+        source=QueryDatasource(
+            input_concepts=[a],
+            output_concepts=[a],
+            datasources=[branch.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={a.address: {branch.source}},
+            source_type=SourceType.UNION,
+        ),
+        parent_ctes=[parent],
+        internal_ctes=[branch],
+        output_columns=[a],
+        grain=BuildGrain(),
+    )
+    root = _simple_cte("root", [a], parent_ctes=[union])
+    unused = _simple_cte("unused", [a])
+
+    filtered = filter_irrelevant_ctes([parent, branch, union, root, unused], root)
+
+    assert [cte.name for cte in filtered] == ["parent", "unioned", "root"]
 
 
 def test_is_child_function():
@@ -111,6 +244,191 @@ def test_is_child_function():
         )
         is False
     )
+
+
+def test_parent_nullable_detects_right_outer_join_pair_cte():
+    key = BuildConcept(
+        name="k",
+        canonical_name="k",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    parent = _simple_cte("parent", [key])
+    right = _simple_cte("right", [key])
+    child = _simple_cte("child", [key])
+    child.joins = [
+        Join(
+            right_cte=right,
+            jointype=JoinType.RIGHT_OUTER,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=child.source,
+                    cte=parent,
+                )
+            ],
+        )
+    ]
+
+    assert _parent_nullable_in_cte(child, parent.name) is True
+
+
+def test_predicate_pushdown_remove_drops_existence_only_parent():
+    row = BuildConcept(
+        name="row_id",
+        canonical_name="row_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    exists = BuildConcept(
+        name="exists_id",
+        canonical_name="exists_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    condition = BuildSubselectComparison(
+        left=row,
+        right=exists,
+        operator=ComparisonOperator.IN,
+    )
+    filtered_parent = _simple_cte("filtered_parent", [row], condition=condition)
+    existence_parent = _simple_cte("existence_parent", [exists])
+    consumer = _simple_cte(
+        "consumer",
+        [row, exists],
+        condition=condition,
+        parent_ctes=[filtered_parent, existence_parent],
+        source_map={
+            row.address: [filtered_parent.name],
+            exists.address: [existence_parent.name],
+        },
+    )
+
+    optimized, _ = PredicatePushdownRemove().optimize(consumer, {})
+
+    assert optimized is True
+    assert consumer.condition is None
+    assert consumer.parent_ctes == [filtered_parent]
+
+
+def test_predicate_pushdown_union_branch_propagates_existence_dependency():
+    row = BuildConcept(
+        name="row_id",
+        canonical_name="row_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    exists = BuildConcept(
+        name="exists_id",
+        canonical_name="exists_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    branch = _simple_cte("branch", [row])
+    union = UnionCTE(
+        name="unioned",
+        source=QueryDatasource(
+            input_concepts=[row],
+            output_concepts=[row],
+            datasources=[branch.source],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={row.address: {branch.source}},
+            source_type=SourceType.UNION,
+        ),
+        parent_ctes=[],
+        internal_ctes=[branch],
+        output_columns=[row],
+        grain=BuildGrain(),
+    )
+    existence_parent = _simple_cte("existence_parent", [exists])
+    condition = BuildSubselectComparison(
+        left=row,
+        right=exists,
+        operator=ComparisonOperator.IN,
+    )
+    consumer = _simple_cte(
+        "consumer",
+        [row, exists],
+        condition=condition,
+        parent_ctes=[union, existence_parent],
+        source_map={
+            row.address: [union.name],
+            exists.address: [existence_parent.name],
+        },
+    )
+
+    optimized = PredicatePushdown()._push_into_union_branches(
+        consumer,
+        union,
+        condition,
+        {union.name: [consumer]},
+    )
+
+    assert optimized is True
+    assert branch.condition == condition
+    assert branch.source_map[exists.address] == [existence_parent.name]
+    assert branch.parent_ctes == [existence_parent]
+    assert union.parent_ctes == [existence_parent]
+
+
+def test_predicate_pushdown_parent_propagates_existence_dependency():
+    row = BuildConcept(
+        name="row_id",
+        canonical_name="row_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    exists = BuildConcept(
+        name="exists_id",
+        canonical_name="exists_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    condition = BuildSubselectComparison(
+        left=row,
+        right=exists,
+        operator=ComparisonOperator.IN,
+    )
+    parent = _simple_cte("parent", [row])
+    existence_parent = _simple_cte("existence_parent", [exists])
+    consumer = _simple_cte(
+        "consumer",
+        [row, exists],
+        condition=condition,
+        parent_ctes=[parent, existence_parent],
+        source_map={
+            row.address: [parent.name],
+            exists.address: [existence_parent.name],
+        },
+    )
+
+    optimized = PredicatePushdown()._check_parent(
+        consumer,
+        parent,
+        condition,
+        {parent.name: [consumer]},
+    )
+
+    assert optimized is True
+    assert parent.condition == condition
+    assert parent.source_map[exists.address] == [existence_parent.name]
+    assert parent.parent_ctes == [existence_parent]
 
 
 def test_grains_equivalent_rejects_empty_grain_fallback(test_environment):

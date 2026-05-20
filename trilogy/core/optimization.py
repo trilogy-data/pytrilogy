@@ -6,7 +6,7 @@ from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.models.build import (
     BuildConditional,
 )
-from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
+from trilogy.core.models.execute import CTE, Join, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
     CollapseSingleParent,
     HideUnusedConcepts,
@@ -56,24 +56,133 @@ class OptimizationRulePlan:
 #     return parent
 
 
+def canonicalize_graph(input: list[CTE]) -> None:
+    """Make the CTE graph self-consistent.
+
+    Optimization rules (inline, merge, collapse) replace or fold CTEs, but
+    other CTEs / joins can retain references to the *old* object. Those stale
+    copies are the source of "table does not exist" / reorder ``KeyError``
+    bugs. Rewrite every cross-reference to the single live instance keyed by
+    name:
+
+    - ``parent_ctes``: keep only references whose target is still in the
+      working set (a folded/merged parent is sourced via inline/merge now);
+      dedupe to the live object.
+    - join endpoints (``right_cte``/``left_cte``/``joinkey_pairs[].cte``):
+      resolve to the live emitted CTE, or to the consumer's folded
+      ``inlined_parents`` instance so the render contract stays in sync.
+    """
+    emitted: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
+    inlined: dict[str, CTE | UnionCTE] = {}
+    for c in input:
+        if isinstance(c, CTE):
+            inlined.update(
+                {
+                    p.name: p
+                    for p in c.dependency_nodes(include_inlined=True)
+                    if p.name not in emitted
+                }
+            )
+
+    def resolve(node):
+        # Sync to the single live instance; never drop a reference (a missing
+        # target means another rule must still resolve it — dropping it would
+        # corrupt reachability).
+        return emitted.get(node.name) or inlined.get(node.name) or node
+
+    for cte in input:
+        deduped: list[CTE | UnionCTE] = []
+        seen: set[str] = set()
+        for p in cte.dependency_nodes():
+            live = resolve(p)
+            if live.name in seen:
+                continue
+            seen.add(live.name)
+            deduped.append(live)
+        cte.parent_ctes = deduped
+        joins = cte.joins if isinstance(cte, CTE) else []
+        for join in joins:
+            if not isinstance(join, Join):
+                continue
+            join.right_cte = resolve(join.right_cte)
+            if join.left_cte is not None:
+                join.left_cte = resolve(join.left_cte)
+            for pair in join.joinkey_pairs or []:
+                if pair.cte is not None:
+                    pair.cte = resolve(pair.cte)
+        if isinstance(cte, UnionCTE):
+            cte.internal_ctes = [
+                resolve(binding.node)
+                for binding in cte.source_bindings(include_branches=True)
+                if binding.branch and binding.node is not None
+            ]
+            # UNION ALL arity invariant: every branch must project exactly the
+            # union's columns. If a rule over-pruned one branch's
+            # ``output_columns`` (its ``source_map`` still carries the data),
+            # the branches diverge and the union renders invalid SQL (empty
+            # SELECT / column-count mismatch). Re-align divergent branches to
+            # the union's projection. Triggers ONLY when branches already
+            # disagree (an already-broken union) so consistent unions — every
+            # passing query — are untouched.
+            plain = [b for b in cte.internal_ctes if isinstance(b, CTE)]
+            if len(plain) > 1:
+
+                def visible(b: CTE) -> list[str]:
+                    return [
+                        x.address
+                        for x in b.output_columns
+                        if x.address not in b.hidden_concepts
+                    ]
+
+                counts = {len(visible(b)) for b in plain}
+                # ``union()``-concept branches legitimately project *different*
+                # local concepts, but a valid UNION ALL still needs the same
+                # column *count* per branch. Only when counts disagree is the
+                # union definitively invalid — a rule over-pruned one branch's
+                # projection. Re-align the short branch(es) to a healthy
+                # sibling's projection (its source_map still carries the data).
+                if len(counts) > 1:
+                    ref = max(plain, key=lambda b: len(visible(b)))
+                    ref_addrs = {x.address for x in ref.output_columns}
+                    for b in plain:
+                        if b is ref or len(visible(b)) == len(visible(ref)):
+                            continue
+                        sourceable = set(b.source_map.keys()) | {
+                            x.address for x in b.output_columns
+                        }
+                        if not ref_addrs <= sourceable:
+                            continue
+                        b.output_columns = list(ref.output_columns)
+                        b.hidden_concepts = set(ref.hidden_concepts)
+
+
 def reorder_ctes(
     input: list[CTE],
 ):
     from trilogy.core import graph as nx
 
+    canonicalize_graph(input)
     # Create a directed graph
     G = nx.DiGraph()
     mapping: dict[str, CTE] = {}
     for cte in input:
         mapping[cte.name] = cte
-        for parent in cte.parent_ctes:
-            G.add_edge(parent.name, cte.name)
+    for cte in input:
+        for parent in cte.dependency_nodes():
+            # Only order nodes that are in the working set; a parent that
+            # isn't is sourced elsewhere (inlined/merged) and not emitted.
+            if parent.name in mapping:
+                G.add_edge(parent.name, cte.name)
     # Perform topological sort (only works for DAGs)
     try:
         topological_order = list(nx.topological_sort(G))
         if not topological_order:
             return input
-        return [mapping[x] for x in topological_order]
+        ordered = [mapping[x] for x in topological_order if x in mapping]
+        # never silently drop a working-set CTE that had no graph edges
+        ordered_names = {c.name for c in ordered}
+        ordered.extend(c for c in input if c.name not in ordered_names)
+        return ordered
     except nx.NetworkXUnfeasible as e:
         logger.error(
             "The graph is not a DAG (contains cycles) and cannot be topologically sorted."
@@ -85,9 +194,14 @@ def filter_irrelevant_ctes(
     input: list[CTE | UnionCTE],
     root_cte: CTE | UnionCTE,
 ):
-    relevant_ctes = set()
+    relevant_ctes: set[str] = set()
+    visited: set[str] = set()
 
-    def recurse(cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]):
+    def recurse(
+        cte: CTE | UnionCTE,
+        inverse_map: dict[str, list[CTE | UnionCTE]],
+        emit: bool = True,
+    ):
         # TODO: revisit this
         # if parent := is_locally_irrelevant(cte):
         #     logger.info(
@@ -106,10 +220,16 @@ def filter_irrelevant_ctes(
         #                 child.existence_source_map[x2].remove(cte.name)
         #                 child.existence_source_map[x2].append(parent.name)
         # else:
-        relevant_ctes.add(cte.name)
+        if cte.name in visited:
+            if emit:
+                relevant_ctes.add(cte.name)
+            return
+        visited.add(cte.name)
+        if emit:
+            relevant_ctes.add(cte.name)
 
-        for parent in cte.parent_ctes:
-            if parent.name in relevant_ctes:
+        for parent in cte.dependency_nodes():
+            if parent.name in visited:
                 logger.info(
                     optimization_log(
                         "FilterIrrelevantCTEs",
@@ -120,8 +240,12 @@ def filter_irrelevant_ctes(
 
             recurse(parent, inverse_map)
         if isinstance(cte, UnionCTE):
-            for internal in cte.internal_ctes:
-                recurse(internal, inverse_map)
+            for binding in cte.source_bindings(include_branches=True):
+                if not binding.branch or binding.node is None:
+                    continue
+                # Branches render inside the union; only their parents need
+                # standalone WITH entries.
+                recurse(binding.node, inverse_map, emit=False)
 
     inverse_map = gen_inverse_map(input)
     recurse(root_cte, inverse_map)
@@ -143,15 +267,13 @@ def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCT
     inverse_map: dict[str, list[CTE | UnionCTE]] = {}
     for cte in input:
         if isinstance(cte, UnionCTE):
-            for internal in cte.internal_ctes:
-                if internal.name not in inverse_map:
-                    inverse_map[internal.name] = []
-                inverse_map[internal.name].append(cte)
+            dependencies = cte.dependency_nodes(include_branches=True)
         else:
-            for parent in cte.parent_ctes:
-                if parent.name not in inverse_map:
-                    inverse_map[parent.name] = []
-                inverse_map[parent.name].append(cte)
+            dependencies = cte.dependency_nodes()
+        for parent in dependencies:
+            if parent.name not in inverse_map:
+                inverse_map[parent.name] = []
+            inverse_map[parent.name].append(cte)
 
     return inverse_map
 
@@ -205,9 +327,10 @@ def _grains_equivalent(cte: CTE | UnionCTE, direct_parent: CTE | UnionCTE) -> bo
 def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     # if isinstance(select, (PersistStatement, MultiSelectStatement)):
     #     return False
-    if len(cte.parent_ctes) != 1:
+    parents = cte.dependency_nodes()
+    if len(parents) != 1:
         return None
-    direct_parent = cte.parent_ctes[0]
+    direct_parent = parents[0]
     if isinstance(direct_parent, (UnionCTE, RecursiveCTE)):
         return None
 
@@ -309,14 +432,24 @@ def build_optimization_rule_plan(
                 rule_factory=MergeIrrelevantGroupBy,
             )
         )
+    if opts.datasource_inlining:
+        plan.append(
+            OptimizationRulePlan(
+                name="inline_datasource",
+                rule_factory=InlineDatasource,
+            )
+        )
     if opts.join_hoist:
         plan.append(
             OptimizationRulePlan(
                 name="join_hoist",
                 rule_factory=JoinHoist,
+                depends_on=_enabled_dependencies(
+                    ("inline_datasource", opts.datasource_inlining)
+                ),
                 reason=(
-                    "runs before datasource inlining so moved joins remain "
-                    "visible as CTE joins"
+                    "runs after datasource inlining so joins that target folded "
+                    "datasources stay folded when hoisted"
                 ),
             )
         )
@@ -330,19 +463,20 @@ def build_optimization_rule_plan(
                 reason="uses joins and predicates stripped by join hoist",
             )
         )
-    if opts.datasource_inlining:
-        plan.append(
-            OptimizationRulePlan(
-                name="inline_datasource",
-                rule_factory=InlineDatasource,
-                depends_on=_enabled_dependencies(("join_hoist", opts.join_hoist)),
-            )
-        )
     if opts.predicate_pushdown:
         plan.append(
             OptimizationRulePlan(
                 name="predicate_pushdown.initial",
                 rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
+                depends_on=_enabled_dependencies(
+                    ("inline_datasource", opts.datasource_inlining),
+                    ("join_hoist", opts.join_hoist),
+                ),
+                reason=(
+                    "runs after datasource inlining and join hoist so filters "
+                    "on folded raw sources stay local instead of requiring "
+                    "BuildDatasource pushdown"
+                ),
             )
         )
     if opts.upgrade_condition_joins:

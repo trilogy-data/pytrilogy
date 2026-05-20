@@ -41,6 +41,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
+    BuildDatasource,
     BuildParenthetical,
 )
 from trilogy.core.models.execute import (
@@ -49,6 +50,7 @@ from trilogy.core.models.execute import (
     ConceptPair,
     CTEConceptPair,
     Join,
+    QueryDatasource,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -63,6 +65,14 @@ from trilogy.core.processing.condition_utility import (
 # WHERE. INNER joins already drop both unmatched sides, so they're never
 # eligible to be downgraded further.
 _OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
+
+
+def _base_datasource(
+    datasource: BuildDatasource | QueryDatasource,
+) -> BuildDatasource | QueryDatasource | None:
+    if isinstance(datasource, QueryDatasource):
+        return datasource.base_datasource
+    return None
 
 
 @dataclass
@@ -88,21 +98,25 @@ class _ProofState:
     def proves_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
         return address in self.direct or (cte.name, address) in self.cte_keys
 
-    def proves_datasource_key(self, datasource: object, address: str) -> bool:
-        identifier = getattr(datasource, "identifier")
-        return address in self.direct or (identifier, address) in self.datasource_keys
+    def proves_datasource_key(
+        self, datasource: BuildDatasource | QueryDatasource, address: str
+    ) -> bool:
+        return (
+            address in self.direct
+            or (datasource.identifier, address) in self.datasource_keys
+        )
 
     def proves_cte_present(self, cte: CTE | UnionCTE, addresses: set[str]) -> bool:
         return any((cte.name, address) in self.cte_keys for address in addresses)
 
     def proves_datasource_present(
         self,
-        datasource: object,
+        datasource: BuildDatasource | QueryDatasource,
         addresses: set[str],
     ) -> bool:
-        identifier = getattr(datasource, "identifier")
         return any(
-            (identifier, address) in self.datasource_keys for address in addresses
+            (datasource.identifier, address) in self.datasource_keys
+            for address in addresses
         )
 
     def add_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
@@ -112,9 +126,10 @@ class _ProofState:
         self.cte_keys.add(key)
         return True
 
-    def add_datasource_key(self, datasource: object, address: str) -> bool:
-        identifier = getattr(datasource, "identifier")
-        key = (identifier, address)
+    def add_datasource_key(
+        self, datasource: BuildDatasource | QueryDatasource, address: str
+    ) -> bool:
+        key = (datasource.identifier, address)
         if key in self.datasource_keys:
             return False
         self.datasource_keys.add(key)
@@ -238,7 +253,7 @@ def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
     if first.left_cte is not None:
         return _cte_addresses(first.left_cte)
     right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
-    for parent in cte.parent_ctes:
+    for parent in cte.dependency_nodes(include_inlined=True):
         if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
             return _cte_addresses(parent)
     # Inlined-left case: a join carries its own left CTE on the joinkey_pairs.
@@ -265,7 +280,7 @@ def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     if first.left_cte is not None:
         return [first.left_cte]
     right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
-    for parent in cte.parent_ctes:
+    for parent in cte.dependency_nodes(include_inlined=True):
         if isinstance(parent, (CTE, UnionCTE)) and parent.name not in right_names:
             return [parent]
     for j in cte.joins:
@@ -431,7 +446,7 @@ def _downgrade_base_join(
         return None
 
     right_ds = base_join.right_datasource
-    right_base = getattr(right_ds, "base_datasource", None)
+    right_base = _base_datasource(right_ds)
     right_all = {c.address for c in right_ds.output_concepts}
     if right_base is not None:
         right_all |= {c.address for c in right_base.output_concepts}

@@ -6,6 +6,7 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
+    BuildDatasource,
     BuildFunction,
     BuildParamaterizedConceptReference,
     BuildParenthetical,
@@ -17,6 +18,7 @@ from trilogy.core.models.execute import (
     InstantiatedUnnestJoin,
     Join,
     UnionCTE,
+    _datasource_column_for_concept,
 )
 
 
@@ -53,16 +55,19 @@ def render_unnest(
 def render_join_concept(
     name: str,
     quote_character: str,
-    cte: CTE | UnionCTE,
+    node: CTE | UnionCTE,
     concept: BuildConcept,
+    col,
     render_expr,
-    inlined_ctes: set[str],
     use_map: dict[str, set[str]],
 ):
-    if cte.name in inlined_ctes:
-        return render_expr(concept, cte)
-    use_map[name].add(concept.address)
-    return f"{quote_character}{name}{quote_character}.{quote_character}{concept.safe_address}{quote_character}"
+    # ``name`` is the consumer-resolved alias; ``col`` is the consumer-scoped
+    # column (safe_address for a normal parent, raw column when folded in).
+    # Non-str columns (computed/raw expressions) render via expr.
+    if isinstance(col, str):
+        use_map[name].add(concept.address)
+        return f"{quote_character}{name}{quote_character}.{quote_character}{col}{quote_character}"
+    return render_expr(concept, node)
 
 
 def _render_unnest_join(
@@ -103,17 +108,45 @@ def _collect_modifiers(pair: ConceptPair, join: Join) -> list[Modifier]:
 def _render_left_concept(
     pair: CTEConceptPair,
     join: Join,
+    consumer: CTE | UnionCTE,
     quote_character: str,
     render_expr_func: Callable,
     use_map: dict[str, set[str]],
 ) -> str:
+    if join.left_is_local:
+        # LHS key is the rendering branch's own base column (no self-alias).
+        # If the key also resolves through a hoisted dim, the generic concept
+        # render would COALESCE the fact FK with the dim's own key into a
+        # tautological ON clause (cross join). Pin the LHS to its own
+        # left-base datasource column in that case.
+        ds = pair.existing_datasource
+        sources = (
+            consumer.source_map.get(pair.left.address)
+            if isinstance(consumer, CTE)
+            else None
+        )
+        if isinstance(ds, BuildDatasource) and sources and len(sources) > 1:
+            col = _datasource_column_for_concept(ds, pair.left)
+            if isinstance(col, str):
+                use_map[ds.safe_identifier].add(pair.left.address)
+                return (
+                    f"{quote_character}{ds.safe_identifier}{quote_character}"
+                    f".{quote_character}{col}{quote_character}"
+                )
+        return render_expr_func(pair.left, consumer)
+    node = join.authoritative(consumer, pair.cte)
+    col = (
+        consumer.column_for(node, pair.left)
+        if isinstance(consumer, CTE)
+        else pair.left.safe_address
+    )
     return render_join_concept(
-        join.get_name(pair.cte),
+        join.name_for(consumer, node),
         quote_character,
-        pair.cte,
+        node,
         pair.left,
+        col,
         render_expr_func,
-        join.inlined_ctes,
         use_map=use_map,
     )
 
@@ -121,23 +154,31 @@ def _render_left_concept(
 def _render_right_concept(
     pair: ConceptPair,
     join: Join,
+    consumer: CTE | UnionCTE,
     quote_character: str,
     render_expr_func: Callable,
     use_map: dict[str, set[str]],
 ) -> str:
+    node = join.authoritative(consumer, join.right_cte)
+    col = (
+        consumer.column_for(node, pair.right)
+        if isinstance(consumer, CTE)
+        else pair.right.safe_address
+    )
     return render_join_concept(
-        join.right_name,
+        join.name_for(consumer, node),
         quote_character,
-        join.right_cte,
+        node,
         pair.right,
+        col,
         render_expr_func,
-        join.inlined_ctes,
         use_map=use_map,
     )
 
 
 def _build_joinkeys(
     join: Join,
+    consumer: CTE | UnionCTE,
     quote_character: str,
     render_expr_func: Callable,
     use_map: dict[str, set[str]],
@@ -155,7 +196,7 @@ def _build_joinkeys(
     result: list[str] = []
     for pairs in right_groups.values():
         right_render = _render_right_concept(
-            pairs[0], join, quote_character, render_expr_func, use_map
+            pairs[0], join, consumer, quote_character, render_expr_func, use_map
         )
         # Sub-group by left address: same left concept from different CTEs
         # can be COALESCE'd; different left concepts are separate AND conditions.
@@ -166,7 +207,7 @@ def _build_joinkeys(
         for sub_pairs in left_addr_groups.values():
             left_renders = [
                 _render_left_concept(
-                    p, join, quote_character, render_expr_func, use_map
+                    p, join, consumer, quote_character, render_expr_func, use_map
                 )
                 for p in sub_pairs
             ]
@@ -213,11 +254,12 @@ def render_join(
     joinkeys = " AND ".join(
         sorted(
             _build_joinkeys(
-                join, quote_character, render_expr_func, use_map, null_wrapper
+                join, cte, quote_character, render_expr_func, use_map, null_wrapper
             )
         )
     )
-    base = f"{join.jointype.value.upper()} JOIN {join.right_ref} on {joinkeys}"
+    right_ref = join.reference_for(cte, join.right_cte)
+    base = f"{join.jointype.value.upper()} JOIN {right_ref} on {joinkeys}"
     if join.condition:
         base = f"{base} and {render_expr_func(join.condition, cte)}"
     return base

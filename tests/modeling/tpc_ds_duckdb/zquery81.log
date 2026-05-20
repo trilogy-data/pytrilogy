@@ -5,6 +5,21 @@ comp_size = 1459
 generated_sql = """
 
 WITH 
+cheerful as (
+SELECT
+    \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_customer_id\",
+    \"cr_return_address_customer_address\".\"CA_STATE\" as \"cr_return_address_state\",
+    sum(CASE WHEN \"cr_date_date\".\"D_YEAR\" = 2000 and \"cr_return_address_customer_address\".\"CA_STATE\" is not null THEN \"cr_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\" ELSE NULL END) as \"customer_state\"
+FROM
+    \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"cr_return_address_customer_address\" on \"cr_catalog_returns\".\"CR_RETURNING_ADDR_SK\" = \"cr_return_address_customer_address\".\"CA_ADDRESS_SK\"
+WHERE
+    \"cr_return_address_customer_address\".\"CA_STATE\" is not null
+
+GROUP BY
+    1,
+    2),
 yummy as (
 SELECT
     \"cr_customer_address_customer_address\".\"CA_CITY\" as \"cr_customer_address_city\",
@@ -29,21 +44,14 @@ FROM
 WHERE
     \"cr_customer_address_customer_address\".\"CA_STATE\" = 'GA'
 ),
-cheerful as (
+questionable as (
 SELECT
-    \"cr_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" as \"cr_customer_id\",
-    \"cr_return_address_customer_address\".\"CA_STATE\" as \"cr_return_address_state\",
-    sum(CASE WHEN \"cr_date_date\".\"D_YEAR\" = 2000 and \"cr_return_address_customer_address\".\"CA_STATE\" is not null THEN \"cr_catalog_returns\".\"CR_RETURN_AMT_INC_TAX\" ELSE NULL END) as \"customer_state\"
+    \"cheerful\".\"cr_return_address_state\" as \"cr_return_address_state\",
+    avg(\"cheerful\".\"customer_state\") as \"_virt_agg_avg_7052944147524274\"
 FROM
-    \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cr_date_date\" on \"cr_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cr_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cr_return_address_customer_address\" on \"cr_catalog_returns\".\"CR_RETURNING_ADDR_SK\" = \"cr_return_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    \"cr_return_address_customer_address\".\"CA_STATE\" is not null
-
+    \"cheerful\"
 GROUP BY
-    1,
-    2),
+    1),
 juicy as (
 SELECT
     \"cheerful\".\"cr_return_address_state\" as \"cr_return_address_state\",
@@ -65,15 +73,7 @@ SELECT
     \"yummy\".\"cr_customer_text_id\" as \"cr_customer_text_id\"
 FROM
     \"cheerful\"
-    INNER JOIN \"yummy\" on \"cheerful\".\"cr_customer_id\" = \"yummy\".\"cr_customer_id\"),
-questionable as (
-SELECT
-    \"cheerful\".\"cr_return_address_state\" as \"cr_return_address_state\",
-    avg(\"cheerful\".\"customer_state\") as \"_virt_agg_avg_7052944147524274\"
-FROM
-    \"cheerful\"
-GROUP BY
-    1)
+    INNER JOIN \"yummy\" on \"cheerful\".\"cr_customer_id\" = \"yummy\".\"cr_customer_id\")
 SELECT
     \"juicy\".\"cr_customer_text_id\" as \"cr_customer_text_id\",
     \"juicy\".\"cr_customer_salutation\" as \"cr_customer_salutation\",
