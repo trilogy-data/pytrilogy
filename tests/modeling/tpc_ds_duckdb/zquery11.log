@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 5092
+gen_length = 5073
 preql_size = 1283
 comp_size = 3006
 generated_sql = """
@@ -89,7 +89,7 @@ SELECT
     \"abundant\".\"sales_customer_preferred_cust_flag\" as \"sales_customer_preferred_cust_flag\"
 FROM
     \"abundant\"
-    INNER JOIN \"uneven\" on \"abundant\".\"sales_customer_id\" is not distinct from \"uneven\".\"sales_customer_id\"
+    INNER JOIN \"uneven\" on \"abundant\".\"sales_customer_id\" = \"uneven\".\"sales_customer_id\"
 GROUP BY
     1,
     2,

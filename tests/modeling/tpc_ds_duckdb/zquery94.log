@@ -45,7 +45,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"ws_web_sales\".\"WS_SHIP_DATE_SK\" = \"ws_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and cast(\"ws_ship_date_date\".\"D_DATE\" as date) between date '1999-02-01' and date '1999-04-02' and \"ws_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"ws_web_sales\".\"WS_ORDER_NUMBER\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
+    \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and cast(\"ws_ship_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and \"ws_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"ws_web_sales\".\"WS_ORDER_NUMBER\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
 
 GROUP BY
     1),
@@ -59,7 +59,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"ws_web_sales\".\"WS_SHIP_DATE_SK\" = \"ws_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ws_ship_address_customer_address\" on \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" = \"ws_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"ws_ship_date_date\".\"D_DATE\" as date) between date '1999-02-01' and date '1999-04-02' and \"ws_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and \"ws_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"ws_web_sales\".\"WS_ORDER_NUMBER\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
+    cast(\"ws_ship_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and \"ws_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and \"ws_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_orders\" from uneven where uneven.\"multi_warehouse_orders\" is not null) and \"ws_web_sales\".\"WS_ORDER_NUMBER\" not in (select quizzical.\"wr_web_sales_order_number\" from quizzical where quizzical.\"wr_web_sales_order_number\" is not null)
 
 GROUP BY
     1,
