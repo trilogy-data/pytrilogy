@@ -40,11 +40,11 @@ SELECT
     \"ss_store_store\".\"S_STORE_ID\" as \"ss_store_text_id\",
     \"wakeful\".\"ss_store_id\" as \"ss_store_id\",
     max(CASE
-	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1212 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1223 THEN 1
+	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" between 1212 and 1223 THEN 1
 	ELSE 0
 	END) as \"_wss_in_year1\",
     max(CASE
-	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" >= 1224 and \"ss_date_date\".\"D_MONTH_SEQ\" <= 1235 THEN 1
+	WHEN \"ss_date_date\".\"D_MONTH_SEQ\" between 1224 and 1235 THEN 1
 	ELSE 0
 	END) as \"_wss_in_year2\"
 FROM
