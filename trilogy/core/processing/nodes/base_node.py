@@ -10,14 +10,12 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.build import (
-    BuildBetween,
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
-    BuildParenthetical,
     LooseBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -143,12 +141,8 @@ class StrategyNode:
         rollup_concepts: List[BuildConcept] | None = None,
         nullable_concepts: List[BuildConcept] | None = None,
         depth: int = 0,
-        conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
-        ) = None,
-        preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
-        ) = None,
+        conditions: BoolExpr | None = None,
+        preexisting_conditions: BoolExpr | None = None,
         force_group: bool | None = None,
         grain: Optional[BuildGrain] = None,
         hidden_concepts: set[str] | None = None,
@@ -239,13 +233,15 @@ class StrategyNode:
         return self
 
     def set_preexisting_conditions(
-        self, conditions: BuildConditional | BuildComparison | BuildParenthetical | BuildBetween
+        self,
+        conditions: BoolExpr,
     ):
         self.preexisting_conditions = conditions
         return self
 
     def add_condition(
-        self, condition: BuildConditional | BuildComparison | BuildParenthetical | BuildBetween
+        self,
+        condition: BoolExpr,
     ):
         if self.conditions and condition == self.conditions:
             return self

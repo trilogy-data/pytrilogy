@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 4075
+gen_length = 4015
 preql_size = 1282
 comp_size = 1999
 generated_sql = """
@@ -15,7 +15,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" between 1200 and 1211
 
 UNION ALL
 SELECT
@@ -27,7 +27,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"sales_date_date\".\"D_MONTH_SEQ\" <= 1211
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null and \"sales_date_date\".\"D_MONTH_SEQ\" between 1200 and 1211
 ),
 yummy as (
 SELECT

@@ -3,13 +3,10 @@ from typing import List, Optional
 from trilogy.constants import logger
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import (
-    BuildBetween,
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildOrderBy,
-    BuildParenthetical,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
@@ -45,12 +42,8 @@ class GroupNode(StrategyNode):
         rollup_concepts: Optional[List[BuildConcept]] = None,
         nullable_concepts: Optional[List[BuildConcept]] = None,
         force_group: bool | None = None,
-        conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
-        ) = None,
-        preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
-        ) = None,
+        conditions: BoolExpr | None = None,
+        preexisting_conditions: BoolExpr | None = None,
         existence_concepts: List[BuildConcept] | None = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,

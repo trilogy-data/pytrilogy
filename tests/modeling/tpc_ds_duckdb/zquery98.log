@@ -1,5 +1,5 @@
 query_id = "98"
-gen_length = 2960
+gen_length = 2915
 preql_size = 736
 comp_size = 811
 generated_sql = """
@@ -18,7 +18,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"store_sales_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"store_sales_date_date\".\"D_DATE\" as date) <= date '1999-03-24'
+    \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"store_sales_date_date\".\"D_DATE\" as date) between date '1999-02-22' and date '1999-03-24'
 ),
 cooperative as (
 SELECT

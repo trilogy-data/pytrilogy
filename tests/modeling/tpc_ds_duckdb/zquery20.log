@@ -1,5 +1,5 @@
 query_id = "20"
-gen_length = 2021
+gen_length = 1980
 preql_size = 631
 comp_size = 819
 generated_sql = """
@@ -18,7 +18,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sold_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cs_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"cs_sold_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"cs_sold_date_date\".\"D_DATE\" as date) <= date '1999-03-24' and \"cs_item_items\".\"I_ITEM_ID\" is not null
+    \"cs_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"cs_sold_date_date\".\"D_DATE\" as date) between date '1999-02-22' and date '1999-03-24' and \"cs_item_items\".\"I_ITEM_ID\" is not null
 
 GROUP BY
     1,

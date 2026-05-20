@@ -22,13 +22,10 @@ from typing import cast
 
 from trilogy.core.enums import JoinType, SourceType
 from trilogy.core.models.build import (
-    BuildBetween,
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
     BuildConceptArgs,
-    BuildConditional,
     BuildDatasource,
-    BuildParenthetical,
 )
 from trilogy.core.models.execute import (
     CTE,
@@ -56,8 +53,6 @@ from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
 )
 from trilogy.utility import unique
-
-ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
 
 
 def _base_datasource(
@@ -185,7 +180,7 @@ def _datasource_matches_raw_id(
 def _dim_local_atoms(
     cte: CTE,
     dim_qds: BuildDatasource | QueryDatasource,
-) -> list[ConditionExpression]:
+) -> list[BoolExpr]:
     """WHERE atoms on ``cte.condition`` whose ``row_arguments`` reference
     *only* ``dim_qds``'s output concepts. Atoms touching other datasources
     can't be pushed verbatim.
@@ -199,7 +194,7 @@ def _dim_local_atoms(
     if not cte.condition:
         return []
     dim_outs = {c.address for c in dim_qds.output_concepts}
-    found: list[ConditionExpression] = []
+    found: list[BoolExpr] = []
     seen: set[str] = set()
     for atom in decompose_condition(cte.condition):
         if not is_scalar_condition(atom):
@@ -222,7 +217,7 @@ class _DimDescriptor:
     join_qds_id: str
     key_pairs: list[ConceptPair]
     dim_concepts: list[BuildConcept]
-    where_atoms: list[ConditionExpression]
+    where_atoms: list[BoolExpr]
     strip_safe: bool
 
     def __init__(
@@ -231,7 +226,7 @@ class _DimDescriptor:
         join_qds_id: str,
         key_pairs: list[ConceptPair],
         dim_concepts: list[BuildConcept],
-        where_atoms: list[ConditionExpression],
+        where_atoms: list[BoolExpr],
         strip_safe: bool,
     ) -> None:
         self.dim_qds = dim_qds
@@ -263,7 +258,7 @@ class _ConsumerDimCandidate:
     join_qds_id: str
     key_pairs: list[ConceptPair]
     dim_concepts: list[BuildConcept]
-    where_atoms: list[ConditionExpression]
+    where_atoms: list[BoolExpr]
     strip_safe: bool
 
 
@@ -724,7 +719,7 @@ class UnionDimPushdown(OptimizationRule):
         for atom in d.where_atoms:
             if not condition_contains_atom(atom, branch.condition):
                 branch.condition = append_condition(
-                    branch.condition, cast(ConditionExpression, atom)
+                    branch.condition, cast(BoolExpr, atom)
                 )
             # For subselect atoms (``D_WEEK_SEQ IN (SELECT … FROM cooperative)``)
             # the inner reference renders against the branch's
@@ -738,7 +733,7 @@ class UnionDimPushdown(OptimizationRule):
         self,
         branch: CTE,
         source_consumer: CTE,
-        atom: ConditionExpression,
+        atom: BoolExpr,
     ) -> None:
         existence_addrs: set[str] = set()
         for tup in atom.existence_arguments:

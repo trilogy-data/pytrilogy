@@ -14,6 +14,7 @@ from trilogy.core.enums import (
     FunctionType,
 )
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildAggregateWrapper,
     BuildBetween,
     BuildCaseElse,
@@ -107,7 +108,7 @@ def _is_tautology(node: BuildComparison) -> bool:
 
 def _unwrap_condition_boolean_wrapper(
     conditional: BuildComparison,
-) -> BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | BuildSubselectComparison:
+) -> BoolExpr | BuildSubselectComparison:
     """Collapse redundant wrappers like ``(<condition>) = True``.
 
     The parser can wrap parenthesized boolean expressions in an equality-to-True
@@ -125,8 +126,8 @@ def _unwrap_condition_boolean_wrapper(
 
 
 def flatten_conditions(
-    conditional: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-) -> BuildComparison | BuildConditional | BuildParenthetical | BuildBetween:
+    conditional: BoolExpr,
+) -> BoolExpr:
     """Simplify a condition tree.
 
     - Unwraps parentheticals around leaf comparisons/subselects (not around
@@ -184,10 +185,7 @@ def is_scalar_condition(
         | BuildConcept
         | BuildWindowItem
         | BuildFilterItem
-        | BuildConditional
-        | BuildComparison
-        | BuildParenthetical
-        | BuildBetween
+        | BoolExpr
         | BuildFunction
         | BuildAggregateWrapper
         | BuildCaseWhen
@@ -337,7 +335,7 @@ def is_fully_covered(
 
 
 def simplify_conditions(
-    conditions: list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween],
+    conditions: list[BoolExpr],
 ) -> bool:
     # Key by address string — concept objects from different datasources may not
     # hash/compare identically even when they represent the same concept.
@@ -375,17 +373,9 @@ def simplify_conditions(
 
 
 def decompose_condition(
-    conditional: BuildConditional | BuildComparison | BuildParenthetical | BuildBetween,
-) -> list[
-    BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
-]:
-    chunks: list[
-        BuildSubselectComparison
-        | BuildComparison
-        | BuildConditional
-        | BuildParenthetical
-        | BuildBetween
-    ] = []
+    conditional: BoolExpr,
+) -> list[BuildSubselectComparison | BoolExpr]:
+    chunks: list[BuildSubselectComparison | BoolExpr] = []
     if not isinstance(conditional, BuildConditional):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
@@ -409,9 +399,9 @@ def decompose_condition(
 
 
 def condition_implies_with_extras(
-    query: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-    required: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-) -> tuple[bool, list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween]]:
+    query: BoolExpr,
+    required: BoolExpr,
+) -> tuple[bool, list[BoolExpr]]:
     """If required is a subset of query, returns (True, atoms in query not in required).
     Otherwise returns (False, [])."""
     query_atoms = decompose_condition(query)
@@ -422,8 +412,8 @@ def condition_implies_with_extras(
 
 
 def condition_implies(
-    query: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-    required: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    query: BoolExpr,
+    required: BoolExpr,
 ) -> bool:
     """True if every AND-atom of required appears in query's AND-atoms (query is a superset)."""
     implied, _ = condition_implies_with_extras(query, required)
@@ -431,8 +421,8 @@ def condition_implies(
 
 
 def drop_covered_conditions(
-    conditions: list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween],
-) -> list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween]:
+    conditions: list[BoolExpr],
+) -> list[BoolExpr]:
     """Remove conditions that are made redundant by a more general one in the same list.
 
     A condition C is dropped if another condition D exists (D != C) where
@@ -460,7 +450,7 @@ def _literal_values(value: object) -> set[object] | None:
 
 
 def _build_allowed_map(
-    atoms: list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween],
+    atoms: list[BoolExpr],
 ) -> dict[str, set[object]]:
     result: dict[str, set[object]] = {}
     for atom in atoms:
@@ -488,8 +478,8 @@ def _build_allowed_map(
 
 
 def conditions_mutually_exclusive(
-    a: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-    b: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    a: BoolExpr,
+    b: BoolExpr,
 ) -> bool:
     """True if a and b cannot both be satisfied by allowed values for the same concept."""
     a_allowed = _build_allowed_map(decompose_condition(a))
@@ -501,8 +491,8 @@ def conditions_mutually_exclusive(
 
 
 def condition_value_implies(
-    constraint: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-    candidate: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    constraint: BoolExpr,
+    candidate: BoolExpr,
 ) -> bool:
     """True if ``constraint`` value-wise guarantees ``candidate`` is true.
 
@@ -545,7 +535,7 @@ def condition_value_implies(
 
 
 def condition_required_addresses(
-    condition: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    condition: BoolExpr,
 ) -> set[str]:
     """Canonical addresses of the non-constant row concepts a condition references."""
     return {
@@ -556,21 +546,21 @@ def condition_required_addresses(
 
 
 def combine_condition_atoms(
-    atoms: list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween],
-) -> BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | None:
+    atoms: list[BoolExpr],
+) -> BoolExpr | None:
     """AND-combine atoms into a single left-associative condition (None if empty)."""
     if not atoms:
         return None
-    result: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween = atoms[0]
+    result: BoolExpr = atoms[0]
     for atom in atoms[1:]:
         result = result + atom  # type: ignore[operator]
     return result
 
 
 def merge_conditions_and_dedup(
-    conditions: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-    preexisting: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-) -> BuildComparison | BuildConditional | BuildParenthetical | BuildBetween:
+    conditions: BoolExpr,
+    preexisting: BoolExpr,
+) -> BoolExpr:
     """AND-merge two conditions, deduplicating atoms from `conditions` already in `preexisting`.
 
     Returns `preexisting` unchanged when every atom of `conditions` is already present,
@@ -586,9 +576,9 @@ def merge_conditions_and_dedup(
 
 
 def strip_condition_atoms(
-    query: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-    to_strip: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-) -> BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | None:
+    query: BoolExpr,
+    to_strip: BoolExpr,
+) -> BoolExpr | None:
     """Remove atoms present in to_strip from query's AND-tree. Returns None if all atoms removed."""
     strip_atoms = decompose_condition(to_strip)
     return combine_condition_atoms(
@@ -597,8 +587,8 @@ def strip_condition_atoms(
 
 
 def merge_conditions(
-    conditions: list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween],
-) -> BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | None:
+    conditions: list[BoolExpr],
+) -> BoolExpr | None:
     """Merge a list of OR'd conditions into a minimal equivalent.
 
     Keeps atoms common to all conditions, then drops per-concept varying atoms
@@ -629,8 +619,8 @@ def merge_conditions(
 
 def filter_union_children(
     non_partial_map: dict[str, BuildWhereClause | None],
-    query_condition: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-) -> dict[str, BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | None]:
+    query_condition: BoolExpr,
+) -> dict[str, BoolExpr | None]:
     """Filter union datasource children based on query conditions.
 
     Takes a mapping of child ID → non_partial_for clause and the query condition.
@@ -640,7 +630,10 @@ def filter_union_children(
     Children whose non_partial_for is implied by the query have redundant atoms stripped.
     Falls back to all children (with full condition) if filtering would drop everything.
     """
-    kept: dict[str, BuildComparison | BuildConditional | BuildParenthetical | BuildBetween | None] = {}
+    kept: dict[
+        str,
+        BoolExpr | None,
+    ] = {}
     for child_id, non_partial_for in non_partial_map.items():
         if not non_partial_for:
             kept[child_id] = query_condition
@@ -771,8 +764,8 @@ def concepts_implied_non_null(value: object) -> set[str]:
 
 
 def _non_null_or_disjuncts(
-    atom: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-) -> list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween]:
+    atom: BoolExpr,
+) -> list[BoolExpr]:
     if isinstance(atom, BuildParenthetical):
         return _non_null_or_disjuncts(atom.content)  # type: ignore[arg-type]
     if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
@@ -783,7 +776,7 @@ def _non_null_or_disjuncts(
 
 
 def _atom_proves_non_null(
-    atom: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    atom: BoolExpr,
 ) -> set[str]:
     if isinstance(atom, BuildParenthetical):
         return _atom_proves_non_null(atom.content)  # type: ignore[arg-type]
@@ -818,7 +811,7 @@ def _atom_proves_non_null(
 
 
 def condition_proves_non_null(
-    condition: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    condition: BoolExpr,
 ) -> set[str]:
     """Concept addresses a *fully applied* condition forces non-null.
 

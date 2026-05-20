@@ -44,6 +44,7 @@ from trilogy.core.enums import (
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildAggregateWrapper,
     BuildBetween,
     BuildCaseElse,
@@ -1642,20 +1643,8 @@ class BaseDialect:
             final_joins = []
         else:
             final_joins = cte.joins or []
-        where: (
-            BuildConditional
-            | BuildParenthetical
-            | BuildComparison
-            | BuildBetween
-            | None
-        ) = None
-        having: (
-            BuildConditional
-            | BuildParenthetical
-            | BuildComparison
-            | BuildBetween
-            | None
-        ) = None
+        where: BoolExpr | None = None
+        having: BoolExpr | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
             if not cte.group_to_grain or is_scalar_condition(

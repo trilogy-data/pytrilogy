@@ -258,6 +258,15 @@ def test_proves_non_null_helpers():
         == set()
     )
 
+    # BETWEEN proves every concept inside left/low/high non-null.
+    from trilogy.core.models.build import BuildBetween
+
+    assert _proves_non_null(BuildBetween(left=x, low=1, high=10)) == {x.address}
+    assert _proves_non_null(BuildBetween(left=x, low=y, high=10)) == {
+        x.address,
+        y.address,
+    }
+
 
 def test_proves_non_null_comparison_shaped_like():
     """``X LIKE 'lit'`` is parsed as a ``Comparison`` with ``operator=LIKE``

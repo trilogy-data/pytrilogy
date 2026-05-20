@@ -1,5 +1,5 @@
 query_id = "90"
-gen_length = 1145
+gen_length = 1108
 preql_size = 483
 comp_size = 982
 generated_sql = """
@@ -14,7 +14,7 @@ FROM
     INNER JOIN \"memory\".\"web_page\" as \"ws_web_page_web_page\" on \"ws_web_sales\".\"WS_WEB_PAGE_SK\" = \"ws_web_page_web_page\".\"WP_WEB_PAGE_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"ws_ship_household_demographic_household_demographics\" on \"ws_web_sales\".\"WS_SHIP_HDEMO_SK\" = \"ws_ship_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
-    \"ws_ship_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 6 and \"ws_web_page_web_page\".\"WP_CHAR_COUNT\" >= 5000 and \"ws_web_page_web_page\".\"WP_CHAR_COUNT\" <= 5200 and \"ws_time_time\".\"T_HOUR\" in (8,9,19,20)
+    \"ws_ship_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 6 and \"ws_web_page_web_page\".\"WP_CHAR_COUNT\" between 5000 and 5200 and \"ws_time_time\".\"T_HOUR\" in (8,9,19,20)
 
 ORDER BY 
     \"am_pm_ratio\" asc nulls first

@@ -39,6 +39,7 @@ from trilogy.core.enums import (
     Modifier,
 )
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildBetween,
     BuildComparison,
     BuildConditional,
@@ -150,8 +151,8 @@ def _pair_can_match_nulls(
 
 
 def _or_disjuncts(
-    atom: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
-) -> list[BuildComparison | BuildConditional | BuildParenthetical | BuildBetween]:
+    atom: BoolExpr,
+) -> list[BoolExpr]:
     """Flatten an OR tree (unwrapping parentheticals) into its disjuncts.
 
     A non-OR node returns ``[node]`` (a single "disjunct")."""
@@ -163,7 +164,7 @@ def _or_disjuncts(
 
 
 def _proves_non_null(
-    atom: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    atom: BoolExpr,
 ) -> set[str]:
     """Concept addresses that this AND-atom forces non-null in surviving rows."""
     if isinstance(atom, BuildParenthetical):
@@ -205,7 +206,7 @@ def _proves_non_null(
 
 
 def _gather_proofs(
-    cond: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    cond: BoolExpr,
 ) -> set[str]:
     return {
         addr for atom in decompose_condition(cond) for addr in _proves_non_null(atom)
@@ -213,7 +214,7 @@ def _gather_proofs(
 
 
 def _gather_or_groups(
-    cond: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+    cond: BoolExpr,
 ) -> list[list[set[str]]]:
     """Per-OR-atom disjunct proof sets, for side-level (not concept-level)
     proofs. ``(a.x = 1 OR a.y = 2)`` proves no single concept non-null, but
