@@ -1,5 +1,5 @@
 query_id = "69"
-gen_length = 4203
+gen_length = 4131
 preql_size = 1509
 comp_size = 1435
 generated_sql = """
@@ -12,7 +12,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" >= 4 and \"sales_date_date\".\"D_MOY\" <= 6 and  'CATALOG'  = 'CATALOG' and \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" is not null
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and  'CATALOG'  = 'CATALOG' and \"sales_catalog_sales_unified\".\"CS_SHIP_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
@@ -23,7 +23,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" >= 4 and \"sales_date_date\".\"D_MOY\" <= 6 and  'STORE'  = 'STORE' and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and  'STORE'  = 'STORE' and \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),
@@ -34,7 +34,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" >= 4 and \"sales_date_date\".\"D_MOY\" <= 6 and  'WEB'  = 'WEB' and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" BETWEEN 4 AND 6 and  'WEB'  = 'WEB' and \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
     1),

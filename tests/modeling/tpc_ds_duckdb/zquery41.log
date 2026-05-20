@@ -23,7 +23,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"item_items\"
 WHERE
-    \"item_items\".\"I_MANUFACT_ID\" between 738 and 778
+    \"item_items\".\"I_MANUFACT_ID\" BETWEEN 738 AND 778
 
 GROUP BY
     1,

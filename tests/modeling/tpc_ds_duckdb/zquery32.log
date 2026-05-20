@@ -14,7 +14,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"item_items\" on \"catalog_sales\".\"CS_ITEM_SK\" = \"item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
 WHERE
-    \"item_items\".\"I_MANUFACT_ID\" = 977 and cast(\"sold_date_date\".\"D_DATE\" as date) between :start_date and :end_date
+    \"item_items\".\"I_MANUFACT_ID\" = 977 and cast(\"sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
 ),
 thoughtful as (
 SELECT
@@ -24,7 +24,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"sold_date_date\".\"D_DATE\" as date) between :start_date and :end_date
+    cast(\"sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
 
 GROUP BY
     1)
