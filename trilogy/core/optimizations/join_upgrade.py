@@ -42,6 +42,7 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
     BuildDatasource,
+    BuildFunction,
     BuildParenthetical,
 )
 from trilogy.core.models.execute import (
@@ -56,6 +57,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
+    NULL_REJECTING_FUNCTIONS,
     concepts_implied_non_null,
     decompose_condition,
     is_null_literal,
@@ -162,7 +164,7 @@ def _or_disjuncts(
 
 
 def _proves_non_null(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
+    atom: BuildComparison | BuildConditional | BuildParenthetical | BuildFunction,
 ) -> set[str]:
     """Concept addresses that this AND-atom forces non-null in surviving rows."""
     if isinstance(atom, BuildParenthetical):
@@ -172,6 +174,20 @@ def _proves_non_null(
         # which — only concepts non-null under *every* disjunct are proven.
         sets = [_gather_proofs(d) for d in _or_disjuncts(atom)]
         return set.intersection(*sets) if sets else set()
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
+        # ``decompose_condition`` bails out and keeps a whole AND chunk when
+        # one child isn't a Comparison/Conditional/Parenthetical (e.g. a
+        # ``BuildFunction(LIKE)`` from the parser). Walk both sides ourselves
+        # so the chunk's proofs aren't lost (q91 buy_potential).
+        return _proves_non_null(atom.left) | _proves_non_null(atom.right)  # type: ignore[arg-type]
+    if isinstance(atom, BuildFunction):
+        # A bare null-rejecting predicate like ``X LIKE 'y'`` lands here when
+        # the parser emits ``Function(LIKE)`` rather than ``Comparison(LIKE)``
+        # (q91's buy_potential filter). Concepts inside it must be non-null
+        # in surviving rows, same as the comparison-shaped form.
+        if atom.operator in NULL_REJECTING_FUNCTIONS:
+            return concepts_implied_non_null(atom)
+        return set()
     if not isinstance(atom, BuildComparison):
         return set()
 

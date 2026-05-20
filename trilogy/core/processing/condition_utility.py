@@ -77,6 +77,16 @@ NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
     ComparisonOperator.CONTAINS,
 )
 
+# Function-shaped null-propagating predicates: when one of these appears as a
+# top-level WHERE atom and evaluates TRUE, every concept inside must be non-null
+# (same logic as NULL_PROPAGATING_OPS, but for predicates the parser builds as
+# ``Function`` rather than ``Comparison`` — e.g. ``X LIKE 'y'`` lands as
+# ``BuildFunction(LIKE, [X, 'y'])``).
+NULL_REJECTING_FUNCTIONS: tuple[FunctionType, ...] = (
+    FunctionType.LIKE,
+    FunctionType.ILIKE,
+)
+
 # Functions whose result can be non-null even when an argument is NULL — we
 # can't recurse through them to claim the args are non-null.
 NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
@@ -377,6 +387,13 @@ def decompose_condition(
     if not isinstance(conditional, BuildConditional):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
+        # Bail out (return the whole AND as one atom) only when a child is
+        # shape we cannot classify here. ``BuildFunction`` on one side is a
+        # valid boolean atom (e.g. ``X LIKE 'y'`` arrives as a Function, not
+        # a Comparison), but widening the return type to include
+        # ``BuildFunction`` would ripple through many downstream signatures.
+        # Instead, callers that care about proofs walk the kept AND tree
+        # themselves (see ``_proves_non_null``).
         if not (
             isinstance(conditional.left, CONDITION_TYPES)
             and isinstance(
@@ -771,7 +788,7 @@ def _non_null_or_disjuncts(
 
 
 def _atom_proves_non_null(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
+    atom: BuildComparison | BuildConditional | BuildParenthetical | BuildFunction,
 ) -> set[str]:
     if isinstance(atom, BuildParenthetical):
         return _atom_proves_non_null(atom.content)  # type: ignore[arg-type]
@@ -780,6 +797,18 @@ def _atom_proves_non_null(
         # which — only concepts non-null under *every* disjunct are proven.
         sets = [condition_proves_non_null(d) for d in _non_null_or_disjuncts(atom)]
         return set.intersection(*sets) if sets else set()
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
+        # ``decompose_condition`` keeps an AND as one chunk when a child isn't
+        # in CONDITION_TYPES (e.g. ``BuildFunction(LIKE)``). Walk both sides
+        # to recover proofs that would otherwise be silently dropped.
+        return _atom_proves_non_null(atom.left) | _atom_proves_non_null(atom.right)  # type: ignore[arg-type]
+    if isinstance(atom, BuildFunction):
+        # Function-shaped null-propagating predicate (e.g. ``X LIKE 'y'``):
+        # the parser emits this as ``BuildFunction(LIKE)``, not as a
+        # ``BuildComparison`` with operator LIKE.
+        if atom.operator in NULL_REJECTING_FUNCTIONS:
+            return concepts_implied_non_null(atom)
+        return set()
     if not isinstance(atom, BuildComparison):
         return set()
     left, right, op = atom.left, atom.right, atom.operator

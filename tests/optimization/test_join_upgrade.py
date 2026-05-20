@@ -259,6 +259,49 @@ def test_proves_non_null_helpers():
     )
 
 
+def test_proves_non_null_function_shaped_like():
+    """A ``LIKE``-predicate parsed as ``Function(LIKE, [concept, lit])`` must
+    contribute its concept to the proof set, both standalone and when sitting
+    next to a Comparison atom inside an AND chain (q91-style)."""
+
+    env = Environment()
+    env.parse("key x int; property x.s string;")
+    build_env = env.materialize_for_select()
+    x = build_env.concepts["local.x"]
+    s = build_env.concepts["local.s"]
+
+    like = BuildFunction(
+        operator=FunctionType.LIKE,
+        arguments=[s, "Unknown%"],
+        output_data_type=DataType.BOOL,
+        output_purpose=Purpose.PROPERTY,
+        arg_count=2,
+    )
+
+    # Standalone Function-shaped LIKE proves its concept.
+    assert _proves_non_null(like) == {s.address}
+    assert _gather_proofs(like) == {s.address}
+
+    # AND(Function(LIKE), Comparison(EQ)) used to be opaque — decompose now
+    # splits it, so both atoms contribute.
+    cond = BuildConditional(
+        left=like,
+        right=BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ),
+        operator=BooleanOperator.AND,
+    )
+    assert _gather_proofs(cond) == {s.address, x.address}
+
+    # An opaque function (e.g. CASE) still proves nothing on its own.
+    case_fn = BuildFunction(
+        operator=FunctionType.CASE,
+        arguments=[s],
+        output_data_type=DataType.BOOL,
+        output_purpose=Purpose.PROPERTY,
+        arg_count=1,
+    )
+    assert _proves_non_null(case_fn) == set()
+
+
 def test_cte_addresses_none_returns_empty():
     """Defensive guard: a None CTE has no addresses."""
     assert _cte_addresses(None) == set()
