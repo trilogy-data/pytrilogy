@@ -61,6 +61,7 @@ from trilogy.core.processing.condition_utility import (
     _coalesce_primary_proves_non_null,
     _flip_op,
     concepts_implied_non_null,
+    condition_implies,
     decompose_condition,
     is_null_literal,
 )

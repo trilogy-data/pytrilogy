@@ -1,5 +1,5 @@
 query_id = "35"
-gen_length = 10095
+gen_length = 10096
 preql_size = 2164
 comp_size = 1745
 generated_sql = """
@@ -152,7 +152,7 @@ SELECT
     \"sparkling\".\"avg3\" as \"avg3\"
 FROM
     \"sweltering\"
-    FULL JOIN \"sparkling\" on \"sweltering\".\"customer_address_state\" is not distinct from \"sparkling\".\"customer_address_state\" AND \"sweltering\".\"customer_demographics_college_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_college_dependent_count\" AND \"sweltering\".\"customer_demographics_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_dependent_count\" AND \"sweltering\".\"customer_demographics_employed_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_employed_dependent_count\" AND \"sweltering\".\"customer_demographics_gender\" is not distinct from \"sparkling\".\"customer_demographics_gender\" AND \"sweltering\".\"customer_demographics_marital_status\" is not distinct from \"sparkling\".\"customer_demographics_marital_status\"
+    INNER JOIN \"sparkling\" on \"sweltering\".\"customer_address_state\" is not distinct from \"sparkling\".\"customer_address_state\" AND \"sweltering\".\"customer_demographics_college_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_college_dependent_count\" AND \"sweltering\".\"customer_demographics_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_dependent_count\" AND \"sweltering\".\"customer_demographics_employed_dependent_count\" is not distinct from \"sparkling\".\"customer_demographics_employed_dependent_count\" AND \"sweltering\".\"customer_demographics_gender\" is not distinct from \"sparkling\".\"customer_demographics_gender\" AND \"sweltering\".\"customer_demographics_marital_status\" is not distinct from \"sparkling\".\"customer_demographics_marital_status\"
 ORDER BY 
     coalesce(\"sparkling\".\"customer_address_state\",\"sweltering\".\"customer_address_state\") asc nulls first,
     coalesce(\"sparkling\".\"customer_demographics_gender\",\"sweltering\".\"customer_demographics_gender\") asc nulls first,
