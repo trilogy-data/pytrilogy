@@ -1,0 +1,29 @@
+query_id = "13"
+gen_length = 602
+preql_size = 302
+comp_size = 365
+generated_sql = """
+
+WITH 
+wakeful as (
+SELECT
+    \"customers\".\"c_custkey\" as \"id\",
+    coalesce(count(\"orders_orders\".\"o_orderkey\"),0) as \"c_count\"
+FROM
+    \"memory\".\"customer\" as \"customers\"
+    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
+WHERE
+    coalesce( CASE WHEN \"orders_orders\".\"o_comment\" like '%special%requests%' THEN True ELSE False END,False) = False
+
+GROUP BY
+    1)
+SELECT
+    \"wakeful\".\"c_count\" as \"c_count\",
+    count(\"wakeful\".\"id\") as \"custdist\"
+FROM
+    \"wakeful\"
+GROUP BY
+    1
+ORDER BY 
+    \"custdist\" desc,
+    \"wakeful\".\"c_count\" desc"""

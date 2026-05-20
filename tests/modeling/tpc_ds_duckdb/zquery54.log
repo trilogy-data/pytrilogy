@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 4258
+gen_length = 4179
 preql_size = 1374
 comp_size = 1665
 generated_sql = """
@@ -77,8 +77,7 @@ FROM
     INNER JOIN \"sparkling\" on \"concerned\".\"cust_ss_ss_cust_county\" = \"sparkling\".\"stores_cs_scs_county\" AND \"concerned\".\"cust_ss_ss_cust_state\" = \"sparkling\".\"stores_cs_scs_state\"
 GROUP BY
     1,
-    2,
-    \"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\"),
+    2),
 macho as (
 SELECT
     CASE WHEN \"late\".\"my_revenue_rev_cust_id\" IS NOT NULL THEN 1 ELSE 0 END as \"num_customers\"
@@ -86,17 +85,13 @@ FROM
     \"late\")
 SELECT
     \"sweltering\".\"segment\" as \"segment\",
-    \"macho\".\"num_customers\" as \"num_customers\",
+    coalesce(\"macho\".\"num_customers\",0) as \"num_customers\",
     \"sweltering\".\"segment_base\" as \"segment_base\"
 FROM
     \"macho\"
     FULL JOIN \"sweltering\" on 1=1
-GROUP BY
-    1,
-    2,
-    3
 ORDER BY 
     \"sweltering\".\"segment\" asc nulls first,
-    \"macho\".\"num_customers\" asc nulls first,
+    coalesce(\"macho\".\"num_customers\",0) asc nulls first,
     \"sweltering\".\"segment_base\" asc nulls first
 LIMIT (100)"""

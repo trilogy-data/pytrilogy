@@ -20,4 +20,4 @@ datasource customers (
     c_comment:comment
 )
 grain (id)
-address `https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/tpc_h/customer.parquet`;
+address memory.customer;

@@ -4,6 +4,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, FunctionType, SourceType
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.discovery_utility import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
@@ -76,12 +77,33 @@ def gen_basic_node(
                     found = True
                     synonyms.append(s_concept)
                     ignored_optional.add(x.address)
-    equivalent_optional = [
+    equivalent_candidates = [
         x
         for x in local_optional
         if is_equivalent_basic_function_lineage(concept, x)
         and x.address != concept.address
     ] + synonyms
+
+    # Expanding an equivalent optional to its parents drops the optional's
+    # own identity. If another requested concept depends on the optional
+    # (e.g. it's in an aggregate's `by` clause), that downstream consumer
+    # will then re-source the optional via its parents and force a regroup.
+    # Keep the optional intact in that case so it flows through directly.
+    comparison_set = [concept] + [
+        x for x in local_optional if x.address != concept.address
+    ]
+    equivalent_optional: list[BuildConcept] = []
+    for eo in equivalent_candidates:
+        if any(
+            eo.address in get_upstream_concepts(c)
+            for c in comparison_set
+            if c.address != eo.address
+        ):
+            logger.info(
+                f"{depth_prefix}{LOGGER_PREFIX} not expanding equivalent optional {eo.address} for {concept.address}; it is upstream of another requested concept"
+            )
+            continue
+        equivalent_optional.append(eo)
 
     if equivalent_optional:
         logger.info(

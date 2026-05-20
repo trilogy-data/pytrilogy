@@ -24,7 +24,7 @@ datasource part (
     p_comment:comment
 )
 grain(id)
-address `https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/tpc_h/partsupp.parquet`;
+address memory.part;
 
 property <id,supplier.id>.available_quantity float;
 property <id,supplier.id>.supply_cost float::usd;
@@ -38,4 +38,4 @@ datasource partsupp (
     ps_comment:supplier_comment
 )
 grain (id, supplier.id)
-address `https://shell.duckdb.org/data/tpch/0_01/parquet/partsupp.parquet`;
+address memory.partsupp;

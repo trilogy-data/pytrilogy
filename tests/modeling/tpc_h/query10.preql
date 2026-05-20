@@ -1,0 +1,18 @@
+import lineitem;
+
+where
+    order.date >= '1993-10-01'::date
+    and order.date < '1994-01-01'::date
+    and return_flag = 'R'
+select
+    order.customer.id,
+    order.customer.name,
+    sum(revenue) -> q_revenue,
+    order.customer.account_balance,
+    order.customer.nation.name,
+    order.customer.address,
+    order.customer.phone,
+    order.customer.comment
+order by
+    q_revenue desc
+limit 20;

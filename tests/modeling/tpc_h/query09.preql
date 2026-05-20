@@ -1,0 +1,10 @@
+import lineitem;
+
+where part.name like '%green%'
+select
+    part.supplier.nation.name -> nation,
+    year(order.date) -> o_year,
+    sum(extended_price * (1 - discount) - part.supply_cost * quantity) -> sum_profit
+order by
+    nation asc,
+    o_year desc;

@@ -1,0 +1,14 @@
+import lineitem;
+
+where
+    ship_mode in ('MAIL', 'SHIP')
+    and commit_date < receipt_date
+    and ship_date < commit_date
+    and receipt_date >= '1994-01-01'::date
+    and receipt_date < '1995-01-01'::date
+select
+    ship_mode,
+    count(row_key ? order.priority in ('1-URGENT', '2-HIGH')) -> high_line_count,
+    count(row_key ? order.priority not in ('1-URGENT', '2-HIGH')) -> low_line_count
+order by
+    ship_mode asc;

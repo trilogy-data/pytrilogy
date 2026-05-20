@@ -1,0 +1,41 @@
+query_id = "16"
+gen_length = 1105
+preql_size = 392
+comp_size = 552
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"part\".\"p_brand\" as \"brand\",
+    \"part\".\"p_size\" as \"size\",
+    \"part\".\"p_type\" as \"type\",
+    \"partsupp\".\"ps_suppkey\" as \"supplier_id\"
+FROM
+    \"memory\".\"partsupp\" as \"partsupp\"
+    INNER JOIN \"memory\".\"part\" as \"part\" on \"partsupp\".\"ps_partkey\" = \"part\".\"p_partkey\"
+    INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
+WHERE
+    \"part\".\"p_brand\" != 'Brand#45' and coalesce( CASE WHEN \"part\".\"p_type\" like 'MEDIUM POLISHED%' THEN True ELSE False END,False) = False and \"part\".\"p_size\" in (49,14,23,45,19,3,36,9) and coalesce( CASE WHEN \"supplier_supplier\".\"s_comment\" like '%Customer%Complaints%' THEN True ELSE False END,False) = False
+
+GROUP BY
+    1,
+    2,
+    3,
+    4)
+SELECT
+    \"cheerful\".\"brand\" as \"brand\",
+    \"cheerful\".\"type\" as \"type\",
+    \"cheerful\".\"size\" as \"size\",
+    count(distinct \"cheerful\".\"supplier_id\") as \"supplier_cnt\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    \"supplier_cnt\" desc,
+    \"cheerful\".\"brand\" asc,
+    \"cheerful\".\"type\" asc,
+    \"cheerful\".\"size\" asc"""

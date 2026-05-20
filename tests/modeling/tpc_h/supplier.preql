@@ -1,10 +1,11 @@
+import std.money;
 import nation as nation;
 
 key id int;
 property id.name string;
 property id.address string;
 property id.phone string;
-property id.account_balance string;
+property id.account_balance float::usd;
 property id.comment string;
 
 datasource supplier (
@@ -17,4 +18,4 @@ datasource supplier (
     s_comment:comment
 )
 grain (id)
-address `https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/tpc_h/supplier.parquet`;
+address memory.supplier;

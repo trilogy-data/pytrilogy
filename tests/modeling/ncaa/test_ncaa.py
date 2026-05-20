@@ -173,8 +173,12 @@ def test_adhoc08():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     env, queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
-    pattern = r'"(\w+)"\."shot_subtype" is not distinct from "(\w+)"\."shot_subtype"'
-    assert re.search(pattern, generated), generated
+    # The planner used to construct a FULL JOIN between a "dimensions" branch
+    # and a "counts" branch, joining on shot_display (nullable) with plain `=`,
+    # which produced spurious duplicate rows for shot_display IS NULL combos.
+    # The current planner sources both via a single GROUP BY, no FULL JOIN
+    # required. Guard against re-introducing the buggy shape.
+    assert "FULL JOIN" not in generated.upper(), generated
 
 
 def test_adhoc9():

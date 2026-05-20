@@ -1,0 +1,11 @@
+import lineitem;
+
+where
+    order.customer.nation.region.name = 'AMERICA'
+    and year(order.date) between 1995 and 1996
+    and part.type = 'ECONOMY ANODIZED STEEL'
+select
+    year(order.date) -> o_year,
+    sum(revenue ? part.supplier.nation.name = 'BRAZIL') / sum(revenue) -> mkt_share
+order by
+    o_year asc;

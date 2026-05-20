@@ -1,0 +1,10 @@
+import lineitem;
+
+auto avg_qty_per_part <- avg(quantity) by part.id;
+
+where
+    part.brand = 'Brand#23'
+    and part.container = 'MED BOX'
+    and quantity < 0.2 * avg_qty_per_part
+select
+    sum(extended_price) / 7.0 -> avg_yearly;

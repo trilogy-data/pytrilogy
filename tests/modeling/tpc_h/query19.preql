@@ -1,0 +1,25 @@
+import lineitem;
+
+where (
+    (part.brand = 'Brand#12'
+     and part.container in ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG')
+     and quantity >= 1 and quantity <= 11
+     and part.size between 1 and 5
+     and ship_mode in ('AIR', 'AIR REG')
+     and ship_instruct = 'DELIVER IN PERSON')
+    or
+    (part.brand = 'Brand#23'
+     and part.container in ('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK')
+     and quantity >= 10 and quantity <= 20
+     and part.size between 1 and 10
+     and ship_mode in ('AIR', 'AIR REG')
+     and ship_instruct = 'DELIVER IN PERSON')
+    or
+    (part.brand = 'Brand#34'
+     and part.container in ('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG')
+     and quantity >= 20 and quantity <= 30
+     and part.size between 1 and 15
+     and ship_mode in ('AIR', 'AIR REG')
+     and ship_instruct = 'DELIVER IN PERSON')
+)
+select sum(revenue) -> q_revenue;

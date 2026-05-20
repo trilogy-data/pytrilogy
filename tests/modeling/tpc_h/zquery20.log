@@ -1,0 +1,49 @@
+query_id = "20"
+gen_length = 1913
+preql_size = 395
+comp_size = 908
+generated_sql = """
+
+WITH 
+wakeful as (
+SELECT
+    \"part_partsupp\".\"ps_partkey\" as \"part_id\",
+    \"part_partsupp\".\"ps_suppkey\" as \"part_supplier_id\",
+    sum(\"lineitem\".\"l_quantity\") as \"qty_per_partsupp_1994\"
+FROM
+    \"memory\".\"partsupp\" as \"part_partsupp\"
+    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_partsupp\".\"ps_partkey\" = \"lineitem\".\"l_partkey\" AND \"part_partsupp\".\"ps_suppkey\" = \"lineitem\".\"l_suppkey\"
+WHERE
+    \"lineitem\".\"l_shipdate\" >= date '1994-01-01' and \"lineitem\".\"l_shipdate\" < date '1995-01-01'
+
+GROUP BY
+    1,
+    2),
+abundant as (
+SELECT
+    \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
+    \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
+    \"part_supplier_supplier\".\"s_suppkey\" as \"part_supplier_id\",
+    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\"
+FROM
+    \"memory\".\"nation\" as \"part_supplier_nation_nation\"
+    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"part_supplier_nation_nation\".\"n_nationkey\" = \"part_supplier_supplier\".\"s_nationkey\"
+WHERE
+    UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'CANADA'
+)
+SELECT
+    \"abundant\".\"part_supplier_name\" as \"part_supplier_name\",
+    \"abundant\".\"part_supplier_address\" as \"part_supplier_address\"
+FROM
+    \"memory\".\"partsupp\" as \"part_partsupp\"
+    INNER JOIN \"memory\".\"part\" as \"part_part\" on \"part_partsupp\".\"ps_partkey\" = \"part_part\".\"p_partkey\"
+    LEFT OUTER JOIN \"wakeful\" on \"part_part\".\"p_partkey\" = \"wakeful\".\"part_id\" AND \"part_partsupp\".\"ps_suppkey\" = \"wakeful\".\"part_supplier_id\"
+    LEFT OUTER JOIN \"abundant\" on \"wakeful\".\"part_supplier_id\" = \"abundant\".\"part_supplier_id\"
+WHERE
+     CASE WHEN \"part_part\".\"p_name\" like 'forest%' THEN True ELSE False END and \"part_partsupp\".\"ps_availqty\" > 0.5 * \"wakeful\".\"qty_per_partsupp_1994\" and \"abundant\".\"part_supplier_nation_name\" = 'CANADA'
+
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"abundant\".\"part_supplier_name\" asc"""

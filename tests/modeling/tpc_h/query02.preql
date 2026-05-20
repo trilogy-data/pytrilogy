@@ -1,0 +1,25 @@
+import part;
+
+auto min_supply_cost_in_europe <- min(supply_cost ? supplier.nation.region.name = 'EUROPE') by id;
+
+where
+    size = 15
+    and type like '%BRASS'
+    and supplier.nation.region.name = 'EUROPE'
+    and supply_cost = min_supply_cost_in_europe
+select
+    --supplier.id,
+    supplier.account_balance,
+    supplier.name,
+    supplier.nation.name,
+    id,
+    manufacturer,
+    supplier.address,
+    supplier.phone,
+    supplier.comment
+order by
+    supplier.account_balance desc,
+    supplier.nation.name asc,
+    supplier.name asc,
+    id asc
+limit 100;

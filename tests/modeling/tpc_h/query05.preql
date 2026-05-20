@@ -1,0 +1,12 @@
+import lineitem;
+
+where
+    part.supplier.nation.region.name = 'ASIA'
+    and order.customer.nation.id = part.supplier.nation.id
+    and order.date >= '1994-01-01'::date
+    and order.date < '1995-01-01'::date
+select
+    part.supplier.nation.name,
+    sum(revenue) -> q_revenue
+order by
+    q_revenue desc;

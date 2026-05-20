@@ -1,0 +1,17 @@
+import lineitem;
+
+WHERE ship_date <= '1998-09-02'::date
+SELECT
+    return_flag,
+    line_status,
+    sum(quantity) -> sum_qty,
+    sum(extended_price) -> sum_base_price,
+    sum(extended_price * (1 - discount)) -> sum_disc_price,
+    sum(extended_price * (1 - discount) * (1 + tax)) -> sum_charge,
+    avg(quantity) -> avg_qty,
+    avg(extended_price) -> avg_price,
+    avg(discount) -> avg_disc,
+    count(row_key) -> count_order
+ORDER BY
+    return_flag asc,
+    line_status asc;
