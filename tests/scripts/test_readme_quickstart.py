@@ -20,7 +20,7 @@ README = Path(__file__).resolve().parents[2] / "README.md"
 def _extract_quickstart_commands() -> list[str]:
     text = README.read_text(encoding="utf-8")
     match = re.search(
-        r"### Quick Start\b.*?```bash\n(.*?)\n```",
+        r"### Hello World\b.*?```bash\n(.*?)\n```",
         text,
         re.DOTALL,
     )
