@@ -3,14 +3,11 @@ from typing import List, Optional, Tuple
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, JoinType, SourceType
 from trilogy.core.models.build import (
-    BuildBetween,
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
-    BuildParenthetical,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
@@ -138,12 +135,8 @@ class MergeNode(StrategyNode):
         force_group: bool | None = None,
         depth: int = 0,
         grain: BuildGrain | None = None,
-        conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
-        ) = None,
-        preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
-        ) = None,
+        conditions: BoolExpr | None = None,
+        preexisting_conditions: BoolExpr | None = None,
         hidden_concepts: set[str] | None = None,
         virtual_output_concepts: List[BuildConcept] | None = None,
         existence_concepts: List[BuildConcept] | None = None,

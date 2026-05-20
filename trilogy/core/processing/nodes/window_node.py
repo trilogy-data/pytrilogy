@@ -2,12 +2,9 @@ from typing import List
 
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import (
-    BuildBetween,
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildOrderBy,
-    BuildParenthetical,
 )
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -25,9 +22,7 @@ class WindowNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         ordering: BuildOrderBy | None = None,
-        preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | BuildBetween | None
-        ) = None,
+        preexisting_conditions: BoolExpr | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,

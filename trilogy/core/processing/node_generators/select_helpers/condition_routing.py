@@ -2,12 +2,10 @@ from enum import Enum, auto
 
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.models.build import (
-    BuildBetween,
+    BoolExpr,
     BuildComparison,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
-    BuildParenthetical,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -22,8 +20,6 @@ from trilogy.core.processing.condition_utility import (
     merge_conditions_and_dedup,
 )
 
-ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
-
 
 class DatasourceConditionAtomState(Enum):
     KEEP = auto()
@@ -33,7 +29,7 @@ class DatasourceConditionAtomState(Enum):
 
 def datasource_condition_atom_state(
     datasource: BuildDatasource,
-    atom: ConditionExpression,
+    atom: BoolExpr,
 ) -> DatasourceConditionAtomState:
     if not isinstance(atom, BuildComparison):
         return DatasourceConditionAtomState.KEEP
@@ -65,9 +61,9 @@ def datasource_condition_atom_state(
 def datasource_conditions(
     datasource: BuildDatasource,
     conditions: BuildWhereClause | None,
-    injected_conditions: ConditionExpression | None,
+    injected_conditions: BoolExpr | None,
     partial_is_full: bool,
-) -> ConditionExpression | None:
+) -> BoolExpr | None:
     datasource_conditions = datasource.where.conditional if datasource.where else None
     if injected_conditions and datasource_conditions:
         datasource_conditions = datasource_conditions + injected_conditions
@@ -108,7 +104,7 @@ def preexisting_conditions(
     conditions: BuildWhereClause | None,
     partial_is_full: bool,
     satisfies_conditions: bool,
-) -> ConditionExpression | None:
+) -> BoolExpr | None:
     if not conditions:
         return None
     # partial_is_full only means non_partial_for conditions are satisfied;

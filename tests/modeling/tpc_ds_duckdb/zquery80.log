@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 7134
+gen_length = 7251
 preql_size = 1323
 comp_size = 3674
 generated_sql = """
@@ -67,7 +67,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_catalog_sales_unified\".\"CS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    cast(\"sales_date_date\".\"D_DATE\" as date) between date '2000-08-23' and date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 
 UNION ALL
 SELECT
@@ -83,7 +83,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_store_sales_unified\".\"SS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    cast(\"sales_date_date\".\"D_DATE\" as date) between date '2000-08-23' and date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 
 UNION ALL
 SELECT
@@ -99,7 +99,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"sales_web_sales_unified\".\"WS_PROMO_SK\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
-    cast(\"sales_date_date\".\"D_DATE\" as date) between date '2000-08-23' and date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
+    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"sales_promotion_promotion\".\"P_CHANNEL_TV\" = 'N'
 ),
 abhorrent as (
 SELECT

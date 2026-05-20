@@ -20,6 +20,7 @@ Top 5 queries where PreQL is longest vs reference SQL
 | Query | PreQL chars | Reference SQL chars | PreQL - Reference SQL |
 | --- | ---: | ---: | ---: |
 | 08 | 20,358 | 19,155 | +1,203 |
+| 28 | 2,667 | 2,056 | +611 |
 | 89 | 1,547 | 965 | +582 |
 | 76 | 2,275 | 1,708 | +567 |
 | 29 | 1,532 | 1,089 | +443 |

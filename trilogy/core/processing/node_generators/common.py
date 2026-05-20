@@ -6,16 +6,14 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildAggregateWrapper,
-    BuildBetween,
     BuildComparison,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
-    BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
     LooseBuildConceptList,
@@ -38,13 +36,12 @@ from trilogy.utility import unique
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 FUNCTION_TYPES = (BuildFunction,)
-ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
 PROPERTY_PURPOSES = (Purpose.PROPERTY, Purpose.UNIQUE_PROPERTY)
 
 
 def _node_has_preexisting_conditions(
     node: StrategyNode,
-    condition: ConditionExpression,
+    condition: BoolExpr,
 ) -> bool:
     return node.preexisting_conditions == condition or (
         node.preexisting_conditions is not None
@@ -55,7 +52,7 @@ def _node_has_preexisting_conditions(
 def _preexisting_conditions_from_parents(
     parents: list[StrategyNode],
     conditions: BuildWhereClause | None,
-) -> ConditionExpression | None:
+) -> BoolExpr | None:
     if conditions is None or not parents:
         return None
     if all(
@@ -68,7 +65,7 @@ def _preexisting_conditions_from_parents(
 
 def _condition_available_from_parents(
     parents: list[StrategyNode],
-    condition: ConditionExpression,
+    condition: BoolExpr,
 ) -> bool:
     available = {
         concept.canonical_address
@@ -87,7 +84,7 @@ def _local_property_conditions(
         return None, []
     available = {c.canonical_address for c in required}
     condition_concepts: list[BuildConcept] = []
-    atoms: list[ConditionExpression] = []
+    atoms: list[BoolExpr] = []
     for atom in decompose_condition(conditions.conditional):
         atom_concepts = [
             c for c in atom.row_arguments if c.derivation != Derivation.CONSTANT

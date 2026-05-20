@@ -578,7 +578,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
             return self
         elif isinstance(
             other,
-            (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween),
+            BoolExpr,
         ):
             return BuildConditional(
                 left=self, right=other, operator=BooleanOperator.AND
@@ -668,7 +668,7 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
             return self
         elif isinstance(
             other,
-            (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween),
+            BoolExpr,
         ):
             return BuildConditional(
                 left=self, right=other, operator=BooleanOperator.AND
@@ -849,7 +849,7 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
             return self
         if not isinstance(
             other,
-            (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween),
+            BoolExpr,
         ):
             raise ValueError(f"Cannot add {type(other)} to {__class__}")
         if other == self:
@@ -1012,7 +1012,7 @@ class BuildBetween(DataTyped, BuildConceptArgs, ConstantInlineable):
             return self
         if not isinstance(
             other,
-            (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween),
+            BoolExpr,
         ):
             raise ValueError(f"Cannot add {type(other)} to {__class__}")
         if other == self:
@@ -2042,6 +2042,11 @@ class BuildUnionDatasource:
         return []
 
 
+# Anything that can sit in a WHERE / HAVING / join condition. Subclasses of
+# BuildComparison (e.g. BuildSubselectComparison) are covered structurally.
+BoolExpr = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
+
+
 BuildExpr = (
     BuildWindowItem
     | BuildFilterItem
@@ -2639,7 +2644,7 @@ class Factory:
             )
         if isinstance(
             conditional,
-            (BuildComparison, BuildConditional, BuildParenthetical, BuildBetween),
+            BoolExpr,
         ):
             conditional = flatten_conditions(conditional)
         return BuildWhereClause(conditional=conditional)

@@ -1,5 +1,5 @@
 query_id = "32"
-gen_length = 1275
+gen_length = 1239
 preql_size = 388
 comp_size = 750
 generated_sql = """
@@ -14,12 +14,12 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"item_items\" on \"catalog_sales\".\"CS_ITEM_SK\" = \"item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
 WHERE
-    \"item_items\".\"I_MANUFACT_ID\" = 977 and cast(\"sold_date_date\".\"D_DATE\" as date) >= :start_date and cast(\"sold_date_date\".\"D_DATE\" as date) <= :end_date
+    \"item_items\".\"I_MANUFACT_ID\" = 977 and cast(\"sold_date_date\".\"D_DATE\" as date) between :start_date and :end_date
 ),
 thoughtful as (
 SELECT
     \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
-    avg(\"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\") as \"_virt_agg_avg_721736882945984\"
+    avg(\"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\") as \"_virt_agg_avg_5510773609506287\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
@@ -34,6 +34,6 @@ FROM
     \"thoughtful\"
     INNER JOIN \"cheerful\" on \"thoughtful\".\"item_id\" = \"cheerful\".\"item_id\"
 WHERE
-    \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_721736882945984\"
+    \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_5510773609506287\"
 
 LIMIT (100)"""

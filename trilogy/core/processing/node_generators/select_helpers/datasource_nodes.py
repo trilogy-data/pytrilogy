@@ -8,6 +8,7 @@ from trilogy.core.graph_models import (
     datasource_has_filter_sensitive_aggregate,
 )
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
@@ -24,7 +25,6 @@ from trilogy.core.processing.condition_utility import (
     filter_union_children,
 )
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
-    ConditionExpression,
     datasource_conditions,
     preexisting_conditions,
 )
@@ -251,7 +251,7 @@ def create_datasource_node(
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
-    injected_conditions: ConditionExpression | None = None,
+    injected_conditions: BoolExpr | None = None,
 ) -> tuple[StrategyNode, bool]:
     target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
     datasource_grain = BuildGrain.from_concepts(
@@ -404,7 +404,7 @@ def create_union_datasource_candidate(
         f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
     )
 
-    effective: list[tuple[BuildDatasource, ConditionExpression | None]]
+    effective: list[tuple[BuildDatasource, BoolExpr | None]]
     if conditions:
         qcond = conditions.conditional
         non_partial_map = {

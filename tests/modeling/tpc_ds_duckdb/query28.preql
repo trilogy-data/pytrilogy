@@ -1,37 +1,53 @@
 import store_sales as store_sales;
 
-def b_lp(qmin, qmax, lpmin, lpmax, camin, camax, wcmin, wcmax) -> CASE
-    WHEN store_sales.quantity >= qmin and store_sales.quantity <= qmax and (store_sales.list_price >= lpmin and store_sales.list_price <= lpmax or store_sales.coupon_amt >= camin and store_sales.coupon_amt <= camax or store_sales.wholesale_cost >= wcmin and store_sales.wholesale_cost <= wcmax) THEN store_sales.list_price
+# Quantity ranges are disjoint, so each row contributes to exactly one bucket.
+# Assigning bucket_id once and grouping lets a single scan + per-group
+# count(DISTINCT) replace six count(DISTINCT)s on overlapping CASE-filtered
+# subsets of the same column -- the outer max(CASE) pivots back to wide.
+auto bucket_id <- CASE
+    WHEN store_sales.quantity between 0 and 5  THEN 1
+    WHEN store_sales.quantity between 6 and 10 THEN 2
+    WHEN store_sales.quantity between 11 and 15 THEN 3
+    WHEN store_sales.quantity between 16 and 20 THEN 4
+    WHEN store_sales.quantity between 21 and 25 THEN 5
+    WHEN store_sales.quantity between 26 and 30 THEN 6
     ELSE null
 END;
 
-auto b1_lp <- @b_lp(0, 5, 8, 18, 459, 1459, 57, 77);
-auto b2_lp <- @b_lp(6, 10, 90, 100, 2323, 3323, 31, 51);
-auto b3_lp <- @b_lp(11, 15, 142, 152, 12214, 13214, 79, 99);
-auto b4_lp <- @b_lp(16, 20, 135, 145, 6071, 7071, 38, 58);
-auto b5_lp <- @b_lp(21, 25, 122, 132, 836, 1836, 17, 37);
-auto b6_lp <- @b_lp(26, 30, 154, 164, 7326, 8326, 7, 27);
+auto filtered_lp <- CASE
+    WHEN bucket_id = 1 and (store_sales.list_price between  8 and  18 or store_sales.coupon_amt between   459 and  1459 or store_sales.wholesale_cost between 57 and 77) THEN store_sales.list_price
+    WHEN bucket_id = 2 and (store_sales.list_price between 90 and 100 or store_sales.coupon_amt between  2323 and  3323 or store_sales.wholesale_cost between 31 and 51) THEN store_sales.list_price
+    WHEN bucket_id = 3 and (store_sales.list_price between 142 and 152 or store_sales.coupon_amt between 12214 and 13214 or store_sales.wholesale_cost between 79 and 99) THEN store_sales.list_price
+    WHEN bucket_id = 4 and (store_sales.list_price between 135 and 145 or store_sales.coupon_amt between  6071 and  7071 or store_sales.wholesale_cost between 38 and 58) THEN store_sales.list_price
+    WHEN bucket_id = 5 and (store_sales.list_price between 122 and 132 or store_sales.coupon_amt between   836 and  1836 or store_sales.wholesale_cost between 17 and 37) THEN store_sales.list_price
+    WHEN bucket_id = 6 and (store_sales.list_price between 154 and 164 or store_sales.coupon_amt between  7326 and  8326 or store_sales.wholesale_cost between  7 and 27) THEN store_sales.list_price
+    ELSE null
+END;
+
+auto lp_avg  <- avg(filtered_lp)            by bucket_id;
+auto lp_cnt  <- count(filtered_lp)          by bucket_id;
+auto lp_cntd <- count_distinct(filtered_lp) by bucket_id;
 
 WHERE
-    store_sales.quantity >= 0 and store_sales.quantity <= 30
+    store_sales.quantity between 0 and 30
 SELECT
-    avg(b1_lp) -> B1_LP,
-    count(b1_lp) -> B1_CNT,
-    count_distinct(b1_lp) -> B1_CNTD,
-    avg(b2_lp) -> B2_LP,
-    count(b2_lp) -> B2_CNT,
-    count_distinct(b2_lp) -> B2_CNTD,
-    avg(b3_lp) -> B3_LP,
-    count(b3_lp) -> B3_CNT,
-    count_distinct(b3_lp) -> B3_CNTD,
-    avg(b4_lp) -> B4_LP,
-    count(b4_lp) -> B4_CNT,
-    count_distinct(b4_lp) -> B4_CNTD,
-    avg(b5_lp) -> B5_LP,
-    count(b5_lp) -> B5_CNT,
-    count_distinct(b5_lp) -> B5_CNTD,
-    avg(b6_lp) -> B6_LP,
-    count(b6_lp) -> B6_CNT,
-    count_distinct(b6_lp) -> B6_CNTD,
+    max(lp_avg  ? bucket_id = 1) -> B1_LP,
+    max(lp_cnt  ? bucket_id = 1) -> B1_CNT,
+    max(lp_cntd ? bucket_id = 1) -> B1_CNTD,
+    max(lp_avg  ? bucket_id = 2) -> B2_LP,
+    max(lp_cnt  ? bucket_id = 2) -> B2_CNT,
+    max(lp_cntd ? bucket_id = 2) -> B2_CNTD,
+    max(lp_avg  ? bucket_id = 3) -> B3_LP,
+    max(lp_cnt  ? bucket_id = 3) -> B3_CNT,
+    max(lp_cntd ? bucket_id = 3) -> B3_CNTD,
+    max(lp_avg  ? bucket_id = 4) -> B4_LP,
+    max(lp_cnt  ? bucket_id = 4) -> B4_CNT,
+    max(lp_cntd ? bucket_id = 4) -> B4_CNTD,
+    max(lp_avg  ? bucket_id = 5) -> B5_LP,
+    max(lp_cnt  ? bucket_id = 5) -> B5_CNT,
+    max(lp_cntd ? bucket_id = 5) -> B5_CNTD,
+    max(lp_avg  ? bucket_id = 6) -> B6_LP,
+    max(lp_cnt  ? bucket_id = 6) -> B6_CNT,
+    max(lp_cntd ? bucket_id = 6) -> B6_CNTD,
 LIMIT 100
 ;
