@@ -51,6 +51,10 @@ def _read_import_text(
     )
 
 
+# Cache key for parsed import environments: (resolved target, config root).
+ImportEnvCacheKey = tuple[str, str | None]
+
+
 @dataclass
 class ImportHydrationService:
     """Owns recursive import parsing and the shared caches that make it idempotent."""
@@ -58,7 +62,9 @@ class ImportHydrationService:
     environment: Environment
     parse_config: Parsing | None = None
     max_parse_depth: int = 10
-    parsed_environments: dict[str, Environment] = field(default_factory=dict)
+    parsed_environments: dict[ImportEnvCacheKey, Environment] = field(
+        default_factory=dict
+    )
     text_lookup: dict[Path | str, str] = field(default_factory=dict)
     import_keys: list[str] = field(default_factory=list)
     # Target paths whose parse is currently on the call stack. Used to break
@@ -112,12 +118,19 @@ class ImportHydrationService:
             text = _read_import_text(request.target, environment, request.is_stdlib)
             self.text_lookup[request.token_lookup] = text
 
-        if cache_lookup in self.parsed_environments:
-            new_env = self.parsed_environments[cache_lookup]
+        # Cache parsed import environments by resolved file + config root rather
+        # than the alias chain: the parsed env is namespace-neutral and identical
+        # regardless of which alias imports it, so a file reachable via multiple
+        # import paths parses exactly once. add_import still applies the per-edge
+        # namespace downstream.
+        root = None
+        if "." in str(request.token_lookup):
+            root = str(request.token_lookup).rsplit(".", 1)[0]
+        env_cache_key: ImportEnvCacheKey = (str(request.target), root)
+
+        if env_cache_key in self.parsed_environments:
+            new_env = self.parsed_environments[env_cache_key]
         else:
-            root = None
-            if "." in str(request.token_lookup):
-                root = str(request.token_lookup).rsplit(".", 1)[0]
             self.in_flight_imports.add(target_key)
             try:
                 document = parse_syntax(text)
@@ -139,7 +152,7 @@ class ImportHydrationService:
                     in_flight_imports=self.in_flight_imports,
                 )
                 NativeHydrator(child_context).parse(document)
-                self.parsed_environments[cache_lookup] = new_env
+                self.parsed_environments[env_cache_key] = new_env
             except Exception as e:
                 raise ImportError(
                     f"Unable to import '{request.target}', parsing error: {e}"

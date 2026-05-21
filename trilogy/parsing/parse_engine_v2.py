@@ -11,6 +11,7 @@ from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.v2.errors import ERROR_CODES
 from trilogy.parsing.v2.hydration import HydrationContext, NativeHydrator
+from trilogy.parsing.v2.import_service import ImportEnvCacheKey
 from trilogy.parsing.v2.lark_backend import parse_lark
 from trilogy.parsing.v2.pest_backend import parse_pest
 from trilogy.parsing.v2.syntax import (
@@ -69,7 +70,7 @@ class TopLevelStatementParser:
         parsed: dict[str, Any] | None = None,
         tokens: dict[Path | str, SyntaxDocument] | None = None,
         text_lookup: dict[Path | str, str] | None = None,
-        environment_lookup: dict[str, Environment] | None = None,
+        environment_lookup: dict[ImportEnvCacheKey, Environment] | None = None,
         import_keys: list[str] | None = None,
         parse_config: Parsing | None = None,
         max_parse_depth: int = MAX_PARSE_DEPTH,
