@@ -68,8 +68,9 @@ nodes = create_script_nodes(files)
 resolver = DependencyResolver(strategy=ETLDependencyStrategy())
 graph = resolver.build_graph(nodes)
 
-# Get execution order
-import networkx as nx
+# Get execution order (graphs use the Rust-backed graph facade;
+# nodes are script-path strings)
+from trilogy.core import graph as nx
 execution_order = list(nx.topological_sort(graph))
 ```
 

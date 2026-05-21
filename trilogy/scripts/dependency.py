@@ -152,7 +152,7 @@ class ETLDependencyStrategy:
             folder: The folder containing script files.
 
         Returns:
-            A networkx DiGraph representing dependencies.
+            A DiGraph (string-keyed by script path) representing dependencies.
         """
 
         result = resolve_with_errors(folder)
@@ -264,8 +264,8 @@ class DependencyResolver:
     """
     Resolves execution order for scripts based on a pluggable dependency strategy.
 
-    Uses networkx for graph operations and provides utilities for both
-    level-based and eager BFS execution patterns.
+    Uses the Rust-backed graph facade for graph operations and provides
+    utilities for both level-based and eager BFS execution patterns.
     """
 
     def __init__(self, strategy: DependencyStrategy | None = None):
@@ -286,7 +286,7 @@ class DependencyResolver:
             folder: The folder containing script files.
 
         Returns:
-            A networkx DiGraph representing dependencies.
+            A DiGraph (string-keyed by script path) representing dependencies.
         """
         graph = self.strategy.build_folder_graph(folder)
         _validate_acyclic(graph)
@@ -300,7 +300,7 @@ class DependencyResolver:
             nodes: List of script nodes.
 
         Returns:
-            A networkx DiGraph representing dependencies.
+            A DiGraph (string-keyed by script path) representing dependencies.
 
         Raises:
             ValueError: If the graph contains cycles.
