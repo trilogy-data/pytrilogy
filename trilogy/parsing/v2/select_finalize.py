@@ -44,6 +44,7 @@ from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
+    ConceptRef,
     Function,
     Grain,
     UndefinedConcept,
@@ -115,21 +116,22 @@ def _calculate_grain(
 def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     line_no = select.meta.line_number if select.meta else None
     if select.where_clause:
+        replacements: list[tuple[str, ConceptRef]] = []
         for x in select.where_clause.concept_arguments:
             if isinstance(x, UndefinedConcept):
                 validate = context.concepts.get(x.address)
-                if validate and select.where_clause:
-                    select.where_clause = (
-                        select.where_clause.with_reference_replacement(
-                            x.address, validate.reference
-                        )
-                    )
+                if validate:
+                    replacements.append((x.address, validate.reference))
                 else:
                     _raise_undefined(
                         context,
                         x.address,
                         x.metadata.line_number if x.metadata else None,
                     )
+        if replacements:
+            select.where_clause = select.where_clause.with_reference_replacement(
+                replacements
+            )
     all_in_output = set(select.output_components)
     locally_derived = select.locally_derived
     if select.where_clause:
