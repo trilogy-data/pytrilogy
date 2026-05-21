@@ -283,6 +283,55 @@ class TestValidateStackScalarConditions:
         )
         assert result == ValidationResult.COMPLETE
 
+    def test_partially_applied_condition_atoms_pass_when_remaining_args_present(self):
+        customer_id = _concept("customer_id")
+        sales_channel = _concept("sales_channel")
+        year = _concept("year")
+        target_conditional = _and(
+            _eq(sales_channel, "STORE"),
+            _eq(year, "2000"),
+            _eq(customer_id, "known"),
+        )
+        # The channel filter has already been pushed into the node, so its
+        # row input no longer needs to remain in the discovery output.
+        node = _StackNode(
+            [customer_id, year],
+            preexisting_conditions=_eq(sales_channel, "STORE"),
+            label="partial",
+        )
+        result, _, _, _, _ = validate_stack(
+            environment=BuildEnvironment(),
+            stack=[node],
+            concepts=[customer_id],
+            mandatory_with_filter=[customer_id, sales_channel, year],
+            conditions=BuildWhereClause(conditional=target_conditional),
+            accept_partial=False,
+        )
+        assert result == ValidationResult.COMPLETE
+
+    def test_partially_applied_condition_atoms_fail_when_unapplied_arg_missing(self):
+        customer_id = _concept("customer_id")
+        sales_channel = _concept("sales_channel")
+        year = _concept("year")
+        target_conditional = _and(
+            _eq(sales_channel, "STORE"),
+            _eq(year, "2000"),
+        )
+        node = _StackNode(
+            [customer_id],
+            preexisting_conditions=_eq(sales_channel, "STORE"),
+            label="partial",
+        )
+        result, _, _, _, _ = validate_stack(
+            environment=BuildEnvironment(),
+            stack=[node],
+            concepts=[customer_id],
+            mandatory_with_filter=[customer_id, sales_channel, year],
+            conditions=BuildWhereClause(conditional=target_conditional),
+            accept_partial=False,
+        )
+        assert result == ValidationResult.INCOMPLETE_CONDITION
+
 
 # ---------------------------------------------------------------------------
 # RootNodeHandler._handle_expanded_node — preserves condition row args

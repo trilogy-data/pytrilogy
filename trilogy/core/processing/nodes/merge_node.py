@@ -36,6 +36,14 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
+def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
+    if isinstance(source, QueryDatasource):
+        return bool(source.condition) or any(
+            _has_applied_condition(parent) for parent in source.datasources
+        )
+    return bool(source.where)
+
+
 def deduplicate_nodes(
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
@@ -67,8 +75,8 @@ def deduplicate_nodes(
                 and merged[k1].grain.issubset(merged[k2].grain)
                 and not merged[k2].partial_concepts
                 and not merged[k1].partial_concepts
-                and not merged[k2].condition
-                and not merged[k1].condition
+                and not _has_applied_condition(merged[k2])
+                and not _has_applied_condition(merged[k1])
             ):
                 og = merged[k1]
                 subset_to = merged[k2]
@@ -302,6 +310,11 @@ class MergeNode(StrategyNode):
 
         # if we have multiple candidates, see if one is good enough
         for dataset in final_datasets:
+            if any(
+                other.identifier != dataset.identifier and _has_applied_condition(other)
+                for other in final_datasets
+            ):
+                continue
             output_set = set(
                 [
                     c.address

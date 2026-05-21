@@ -1,5 +1,5 @@
 query_id = "13"
-gen_length = 602
+gen_length = 566
 preql_size = 302
 comp_size = 365
 generated_sql = """
@@ -13,7 +13,7 @@ FROM
     \"memory\".\"customer\" as \"customers\"
     LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
 WHERE
-    coalesce( CASE WHEN \"orders_orders\".\"o_comment\" like '%special%requests%' THEN True ELSE False END,False) = False
+    coalesce(\"orders_orders\".\"o_comment\" like '%special%requests%',False) = False
 
 GROUP BY
     1)

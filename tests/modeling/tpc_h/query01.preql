@@ -11,7 +11,7 @@ SELECT
     avg(quantity) -> avg_qty,
     avg(extended_price) -> avg_price,
     avg(discount) -> avg_disc,
-    count(row_key) -> count_order
+    sum(row_counter) -> count_order
 ORDER BY
     return_flag asc,
     line_status asc;

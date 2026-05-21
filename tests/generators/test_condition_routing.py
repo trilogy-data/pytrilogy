@@ -4,6 +4,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Granularity,
     JoinType,
+    SourceType,
 )
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
@@ -15,6 +16,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.node_generators import select_merge_node
 from trilogy.core.processing.node_generators.common import (
@@ -39,6 +41,7 @@ from trilogy.core.processing.node_generators.select_merge_node import (
     _parents_apply_condition_atoms,
 )
 from trilogy.core.processing.nodes import StrategyNode
+from trilogy.core.processing.nodes.merge_node import deduplicate_nodes
 
 
 def _build_sales_environment():
@@ -614,6 +617,38 @@ def test_merge_condition_routing_forces_inner_only_when_one_parent_is_complete()
     assert join_type == JoinType.INNER
 
 
+def test_merge_condition_routing_keeps_filtered_key_parent():
+    build_env = _build_sales_environment()
+    price_cond = _condition(
+        build_env.concepts["item_price"], 100, ComparisonOperator.GT
+    )
+    where = BuildWhereClause(conditional=price_cond)
+    filtered_key_parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[build_env.concepts["item_id"]],
+        environment=build_env,
+        preexisting_conditions=price_cond,
+    )
+    dimension_parent = StrategyNode(
+        input_concepts=[],
+        output_concepts=[
+            build_env.concepts["item_id"],
+            build_env.concepts["item_price"],
+        ],
+        environment=build_env,
+    )
+
+    preexisting, merge_condition, join_type = _merge_condition_routing(
+        [filtered_key_parent, dimension_parent],
+        [build_env.concepts["item_id"], build_env.concepts["item_price"]],
+        where,
+    )
+
+    assert preexisting == price_cond
+    assert merge_condition is None
+    assert join_type == JoinType.INNER
+
+
 def test_condition_source_concepts_skips_missing_key_references():
     build_env = _build_sales_environment()
     item_price = build_env.concepts["item_price"]
@@ -644,6 +679,55 @@ def test_parents_apply_condition_atoms_rejects_empty_and_existence_conditions():
 
     assert not _parents_apply_condition_atoms([], where)
     assert not _parents_apply_condition_atoms([parent], where)
+
+
+def test_merge_dedup_keeps_parent_with_nested_condition():
+    build_env = _build_sales_environment()
+    ds = build_env.datasources["items"]
+    item_id = build_env.concepts["item_id"]
+    item_price = build_env.concepts["item_price"]
+    price_cond = _condition(item_price, 100, ComparisonOperator.GT)
+    filtered_leaf = QueryDatasource(
+        input_concepts=[item_id, item_price],
+        output_concepts=[item_id],
+        source_map={item_id.address: {ds}, item_price.address: {ds}},
+        datasources=[ds],
+        grain=BuildGrain.from_concepts([item_id, item_price]),
+        joins=[],
+        source_type=SourceType.DIRECT_SELECT,
+        condition=price_cond,
+    )
+    grouped_filtered = QueryDatasource(
+        input_concepts=[item_id],
+        output_concepts=[item_id],
+        source_map={item_id.address: {filtered_leaf}},
+        datasources=[filtered_leaf],
+        grain=BuildGrain.from_concepts([item_id]),
+        joins=[],
+        source_type=SourceType.GROUP,
+    )
+    plain_parent = QueryDatasource(
+        input_concepts=[item_id],
+        output_concepts=[item_id],
+        source_map={item_id.address: {ds}},
+        datasources=[ds],
+        grain=BuildGrain.from_concepts([item_id]),
+        joins=[],
+        source_type=SourceType.DIRECT_SELECT,
+    )
+
+    _, merged, removed = deduplicate_nodes(
+        {
+            grouped_filtered.identifier: grouped_filtered,
+            plain_parent.identifier: plain_parent,
+        },
+        "",
+        build_env,
+    )
+
+    assert grouped_filtered.identifier in merged
+    assert plain_parent.identifier in merged
+    assert not removed
 
 
 def test_missing_abstract_property_source_fails_after_normal_parent(monkeypatch):
