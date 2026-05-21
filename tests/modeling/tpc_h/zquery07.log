@@ -1,5 +1,5 @@
 query_id = "07"
-gen_length = 1472
+gen_length = 1450
 preql_size = 496
 comp_size = 953
 generated_sql = """
@@ -16,7 +16,7 @@ FROM
     INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
     INNER JOIN \"memory\".\"nation\" as \"order_customer_nation_nation\" on \"order_customer_customers\".\"c_nationkey\" = \"order_customer_nation_nation\".\"n_nationkey\"
 WHERE
-    ( ( UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'FRANCE' and UPPER(\"order_customer_nation_nation\".\"n_name\")  = 'GERMANY' ) or ( UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'GERMANY' and UPPER(\"order_customer_nation_nation\".\"n_name\")  = 'FRANCE' ) ) and \"lineitem\".\"l_shipdate\" >= date '1995-01-01' and \"lineitem\".\"l_shipdate\" <= date '1996-12-31'
+    ( ( UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'FRANCE' and UPPER(\"order_customer_nation_nation\".\"n_name\")  = 'GERMANY' ) or ( UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'GERMANY' and UPPER(\"order_customer_nation_nation\".\"n_name\")  = 'FRANCE' ) ) and \"lineitem\".\"l_shipdate\" BETWEEN date '1995-01-01' AND date '1996-12-31'
 
 GROUP BY
     1,
