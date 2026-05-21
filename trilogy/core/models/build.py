@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABC
 from collections import defaultdict
 from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
@@ -157,7 +156,7 @@ def generate_concept_name(parent: Any) -> str:
     return _gen_default_name(parent)
 
 
-class BuildConceptArgs(ABC):
+class BuildConceptArgs:
     @property
     def concept_arguments(self) -> Sequence["BuildConcept"]:
         raise NotImplementedError
@@ -179,8 +178,17 @@ def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],
 ) -> bool:
-    other_addresses = concept_collection_equivalent_addresses(others)
+    # ``other_addresses`` is invariant across the whole recursion; compute it
+    # once here rather than re-deriving it at every recursive node.
+    return _concept_is_relevant(
+        concept, concept_collection_equivalent_addresses(others)
+    )
 
+
+def _concept_is_relevant(
+    concept: BuildConcept,
+    other_addresses: set[str],
+) -> bool:
     if concept.is_aggregate and not (
         isinstance(concept.lineage, BuildAggregateWrapper) and concept.lineage.by
     ):
@@ -208,7 +216,8 @@ def concept_is_relevant(
             isinstance(concept.lineage, BuildAggregateWrapper)
             and concept.lineage.by
             and all(
-                c.address in other_addresses or not concept_is_relevant(c, others)
+                c.address in other_addresses
+                or not _concept_is_relevant(c, other_addresses)
                 for c in concept.lineage.by
             )
         ):
@@ -216,11 +225,15 @@ def concept_is_relevant(
     if concept.derivation in (Derivation.UNNEST,):
         return True
     if concept.derivation in (Derivation.BASIC,):
-        return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
+        return any(
+            _concept_is_relevant(c, other_addresses) for c in concept.concept_arguments
+        )
     if concept.derivation == Derivation.WINDOW:
         if all([c in other_addresses for c in concept.grain.components]):
             return False
-        return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
+        return any(
+            _concept_is_relevant(c, other_addresses) for c in concept.concept_arguments
+        )
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
     return True
@@ -386,7 +399,7 @@ class CanonicalBuildConceptList:
         return self.addresses.isdisjoint(other.addresses)
 
 
-class ConstantInlineable(ABC):
+class ConstantInlineable:
 
     def inline_constant(self, concept: BuildConcept):
         raise NotImplementedError
@@ -1952,8 +1965,12 @@ class BuildDatasource:
         return self.grain + BuildGrain(components=key_outputs)
 
     @property
-    def full_concepts(self) -> List[BuildConcept]:
-        return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
+    def full_concepts(self) -> set[str]:
+        return {
+            c.concept.address
+            for c in self.columns
+            if Modifier.PARTIAL not in c.modifiers
+        }
 
     @property
     def nullable_concepts(self) -> List[BuildConcept]:

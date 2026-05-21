@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-from abc import ABC
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import date, datetime
@@ -69,12 +68,12 @@ if TYPE_CHECKING:
     from trilogy.core.models.environment import Environment
 
 
-class Namespaced(ABC):
+class Namespaced:
     def with_namespace(self, namespace: str):
         raise NotImplementedError
 
 
-class Mergeable(ABC):
+class Mergeable:
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         raise NotImplementedError
 
@@ -82,7 +81,7 @@ class Mergeable(ABC):
         raise NotImplementedError(type(self))
 
 
-class ConceptArgs(ABC):
+class ConceptArgs:
     @property
     def concept_arguments(self) -> Sequence["ConceptRef"]:
         raise NotImplementedError
@@ -96,7 +95,7 @@ class ConceptArgs(ABC):
         return self.concept_arguments
 
 
-class HasUUID(ABC):
+class HasUUID:
     @property
     def uuid(self) -> str:
         return hashlib.md5(str(self).encode()).hexdigest()

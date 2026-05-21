@@ -932,12 +932,12 @@ class QueryDatasource:
         return self.identifier.replace(".", "_")
 
     @property
-    def full_concepts(self) -> List[BuildConcept]:
-        return [
-            c
+    def full_concepts(self) -> set[str]:
+        return {
+            c.address
             for c in self.output_concepts
-            if c.address not in [z.address for z in self.partial_concepts]
-        ]
+            if c.address not in {z.address for z in self.partial_concepts}
+        }
 
     def __str__(self):
         return self.__repr__()

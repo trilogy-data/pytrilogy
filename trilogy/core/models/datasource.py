@@ -326,7 +326,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
 
     @property
     def non_partial_concept_addresses(self) -> set[str]:
-        return set([c.address for c in self.full_concepts])
+        return self.full_concepts
 
     @field_validator("namespace", mode="plain")
     @classmethod
@@ -441,8 +441,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return False
 
     @property
-    def full_concepts(self) -> List[ConceptRef]:
-        return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
+    def full_concepts(self) -> set[str]:
+        return {c.concept.address for c in self.columns if Modifier.PARTIAL not in c.modifiers}
 
     @property
     def nullable_concepts(self) -> List[ConceptRef]:
