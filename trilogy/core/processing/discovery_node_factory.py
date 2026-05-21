@@ -321,6 +321,7 @@ def _generate_basic_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         depth=ctx.next_depth,
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
+        where_path=ctx.where_path,
     )
 
 

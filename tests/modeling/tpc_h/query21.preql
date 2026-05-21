@@ -9,11 +9,10 @@ where
     and receipt_date > commit_date
     and distinct_suppliers_per_order > 1
     and late_suppliers_per_order = 1
-SELECT
+select
     part.supplier.name,
-    sum(row_counter) -> numwait,
-ORDER BY
+    sum(row_counter) -> numwait
+order by
     numwait desc,
     part.supplier.name asc
-LIMIT 100
-;
+limit 100;

@@ -285,10 +285,12 @@ def test_twenty_one_pushes_first_where_before_order_aggregates(engine):
     engine.environment = Environment(working_path=working_path)
     query = engine.generate_sql((working_path / "query21.preql").read_text())[-1]
 
-    assert query.index('"order_orders"."o_orderstatus" = \'F\'') < query.index(
-        "count(distinct"
-    )
-    assert re.search(r'FROM\s+"[^"]+"\s+INNER JOIN "memory"\."lineitem"', query)
+    # the staged first WHERE must be evaluated upstream of the order-grain
+    # count aggregates rather than filtering their output
+    first_agg = re.search(r"\bcount\s*\(", query, re.IGNORECASE)
+    assert first_agg, "expected an order-grain count aggregate"
+    assert query.index("o_orderstatus") < first_agg.start()
+    assert query.index("SAUDI ARABIA") < first_agg.start()
 
 
 def test_twenty_two(engine):

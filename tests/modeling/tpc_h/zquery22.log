@@ -1,11 +1,21 @@
 query_id = "22"
-gen_length = 1477
+gen_length = 1520
 preql_size = 529
 comp_size = 806
 generated_sql = """
 
 WITH 
-cheerful as (
+quizzical as (
+SELECT
+    \"customers\".\"c_acctbal\" as \"account_balance\",
+    \"customers\".\"c_custkey\" as \"id\",
+    \"customers\".\"c_phone\" as \"phone\"
+FROM
+    \"memory\".\"customer\" as \"customers\"
+WHERE
+    \"customers\".\"c_acctbal\" > 0 and SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
+),
+thoughtful as (
 SELECT
     \"customers\".\"c_custkey\" as \"id\",
     count(\"orders_orders\".\"o_orderkey\") as \"order_count_per_customer\"
@@ -19,32 +29,29 @@ GROUP BY
     1),
 highfalutin as (
 SELECT
-    avg(\"customers\".\"c_acctbal\") as \"avg_bal_in_target\"
+    avg(\"quizzical\".\"account_balance\") as \"avg_bal_in_target\"
 FROM
-    \"memory\".\"customer\" as \"customers\"
-WHERE
-    \"customers\".\"c_acctbal\" > 0 and SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
-),
-cooperative as (
+    \"quizzical\"),
+questionable as (
 SELECT
-    \"customers\".\"c_acctbal\" as \"account_balance\",
-    \"customers\".\"c_custkey\" as \"id\",
-    \"customers\".\"c_phone\" as \"phone\"
+    \"quizzical\".\"account_balance\" as \"account_balance\",
+    \"quizzical\".\"id\" as \"id\",
+    \"quizzical\".\"phone\" as \"phone\"
 FROM
-    \"memory\".\"customer\" as \"customers\"
-    LEFT OUTER JOIN \"cheerful\" on \"customers\".\"c_custkey\" = \"cheerful\".\"id\"
+    \"quizzical\"
+    LEFT OUTER JOIN \"thoughtful\" on \"quizzical\".\"id\" = \"thoughtful\".\"id\"
 WHERE
-    \"customers\".\"c_acctbal\" > 0 and SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') and coalesce(coalesce(\"cheerful\".\"order_count_per_customer\",0),0) = 0
+    coalesce(coalesce(\"thoughtful\".\"order_count_per_customer\",0),0) = 0
 )
 SELECT
-    SUBSTRING(\"cooperative\".\"phone\",1,2) as \"cntrycode\",
-    count(\"cooperative\".\"id\") as \"numcust\",
-    sum(\"cooperative\".\"account_balance\") as \"totacctbal\"
+    SUBSTRING(\"questionable\".\"phone\",1,2) as \"cntrycode\",
+    count(\"questionable\".\"id\") as \"numcust\",
+    sum(\"questionable\".\"account_balance\") as \"totacctbal\"
 FROM
-    \"cooperative\"
+    \"questionable\"
     INNER JOIN \"highfalutin\" on 1=1
 WHERE
-    \"cooperative\".\"account_balance\" > \"highfalutin\".\"avg_bal_in_target\"
+    \"questionable\".\"account_balance\" > \"highfalutin\".\"avg_bal_in_target\"
 
 GROUP BY
     1

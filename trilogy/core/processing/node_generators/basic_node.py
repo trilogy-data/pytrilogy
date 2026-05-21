@@ -9,6 +9,7 @@ from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.processing.nodes import ConstantNode, History, StrategyNode
+from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
@@ -43,6 +44,7 @@ def gen_basic_node(
     source_concepts,
     history: History | None = None,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ):
     depth_prefix = "\t" * depth
     parent_concepts = resolve_function_parent_concepts(concept, environment=environment)
@@ -139,6 +141,7 @@ def gen_basic_node(
             depth=depth + 1,
             history=history,
             conditions=conditions,
+            where_path=where_path,
         )
 
         if not parent_node:
