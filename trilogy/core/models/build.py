@@ -2123,6 +2123,7 @@ class Factory:
         build_cache: dict[str, BuildConcept] | None = None,
         grain_build_cache: dict[tuple, "BuildGrain"] | None = None,
         canonical_build_cache: dict[str, BuildConcept] | None = None,
+        datasource_build_cache: dict[str, "BuildDatasource"] | None = None,
     ):
         self.grain = grain or Grain()
         self.environment = environment
@@ -2147,6 +2148,13 @@ class Factory:
         # the caller and threaded through.
         self.canonical_build_cache: dict[str, BuildConcept] = (
             {} if canonical_build_cache is None else canonical_build_cache
+        )
+        # Cache of fully-built BuildDatasources. A datasource builds with its
+        # own fixed grain and an empty local-concept scope, so the result is a
+        # pure function of (Datasource, environment) — safe to reuse across
+        # every sub-select in a resolution.
+        self.datasource_build_cache: dict[str, BuildDatasource] = (
+            {} if datasource_build_cache is None else datasource_build_cache
         )
         self.build_grain = self.build(self.grain) if self.grain else None
 
@@ -3260,9 +3268,15 @@ class Factory:
         return self._build_datasource(base)
 
     def _build_datasource(self, base: Datasource):
-        local_cache: dict[str, BuildConcept] = {}
         from trilogy.constants import CONFIG
 
+        use_cache = CONFIG.generation.datasource_build_cache
+        ds_key = f"{base.namespace}.{base.name}"
+        if use_cache:
+            cached_ds = self.datasource_build_cache.get(ds_key)
+            if cached_ds is not None:
+                return cached_ds
+        local_cache: dict[str, BuildConcept] = {}
         factory = Factory(
             grain=base.grain,
             environment=self.environment,
@@ -3285,7 +3299,7 @@ class Factory:
             for c in base.columns
             if (col := factory._build_column_assignment(c)) is not None
         ]
-        return BuildDatasource(
+        rval = BuildDatasource(
             name=base.name,
             columns=columns,
             address=base.address,
@@ -3298,6 +3312,9 @@ class Factory:
             ),
             column_level_partial_addresses=set(base.column_level_partial_addresses),
         )
+        if use_cache:
+            self.datasource_build_cache[ds_key] = rval
+        return rval
 
     def handle_constant(self, base):
         if (

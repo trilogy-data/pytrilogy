@@ -49,7 +49,7 @@ def gen_rowset_node(
     if cached is not None:
         node = cached.copy()
     else:
-        node = get_query_node(history.base_environment, select)
+        node = get_query_node(history.base_environment, select, history)
         if node is not None:
             history.rowset_history[rowset.name] = node.copy()
 

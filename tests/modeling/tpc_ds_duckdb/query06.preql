@@ -2,21 +2,18 @@
 #20% higher than the average price of items in the same category##
 
 import store_sales as store_sales;
-import item as item;
-
-merge store_sales.item.id into ~item.id; # merge models for this query to get avg price of all items, not just sold items
 
 WHERE
     store_sales.date.year=2001
     and store_sales.item.category is not null
     and store_sales.date.month_of_year=1
-    and store_sales.item.current_price > 1.2 * avg(item.current_price) by item.category
+    and store_sales.item.current_price > 1.2 * avg(store_sales.item.current_price) by store_sales.item.category
     and store_sales.customer.id is not null
     and store_sales.customer.address.id is not null
     
 SELECT
     store_sales.customer.address.state,
-    sum(group(1) by store_sales.ticket_number, store_sales.item.id) as customer_count
+    sum(store_sales.row_counter) as customer_count
 HAVING
     customer_count>=10
     

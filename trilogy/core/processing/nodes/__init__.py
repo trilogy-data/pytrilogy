@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from dataclasses import dataclass, field
 
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import Concept
@@ -18,14 +18,30 @@ from .unnest_node import UnnestNode
 from .window_node import WindowNode
 
 
-class History(BaseModel):
+@dataclass
+class BuildCaches:
+    """Factory build caches, threaded through every get_query_node call in a
+    resolution (the top-level select and each rowset/multiselect sub-select)
+    so the base environment's concepts are materialized once instead of once
+    per sub-select. All are keyed on grain/lineage/address identity, so reuse
+    is correct across sub-selects sharing the same base environment."""
+
+    build_cache: dict = field(default_factory=dict)
+    canonical_build_cache: dict = field(default_factory=dict)
+    grain_build_cache: dict = field(default_factory=dict)
+    datasource_build_cache: dict = field(default_factory=dict)
+    pseudonym_map: dict | None = None
+
+
+@dataclass
+class History:
     base_environment: Environment
-    local_base_concepts: dict[str, Concept] = Field(default_factory=dict)
-    history: dict[str, StrategyNode | None] = Field(default_factory=dict)
-    select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
-    rowset_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
-    started: dict[str, int] = Field(default_factory=dict)
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    local_base_concepts: dict[str, Concept] = field(default_factory=dict)
+    history: dict[str, StrategyNode | None] = field(default_factory=dict)
+    select_history: dict[str, StrategyNode | None] = field(default_factory=dict)
+    rowset_history: dict[str, StrategyNode | None] = field(default_factory=dict)
+    started: dict[str, int] = field(default_factory=dict)
+    build_caches: BuildCaches = field(default_factory=BuildCaches)
 
     def _concepts_to_lookup(
         self,
@@ -165,6 +181,7 @@ class History(BaseModel):
 
 
 __all__ = [
+    "BuildCaches",
     "FilterNode",
     "GroupNode",
     "MergeNode",
