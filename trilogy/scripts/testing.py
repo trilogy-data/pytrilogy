@@ -1,9 +1,10 @@
 """Testing commands (integration and unit) for Trilogy CLI."""
 
+from __future__ import annotations
+
 from dataclasses import replace as dataclass_replace
 from pathlib import Path as PathlibPath
 
-import networkx as nx
 from click import UNPROCESSED, Choice, Path, argument, option, pass_context
 from click.exceptions import Exit
 
@@ -11,6 +12,7 @@ from trilogy import Executor
 from trilogy.core.enums import AddressType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.dialect.enums import Dialects
+from trilogy.scripts._networkx import nx
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,

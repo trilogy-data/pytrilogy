@@ -8,10 +8,10 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-import networkx as nx
 from click.exceptions import Exit
 
 from trilogy import Executor
+from trilogy.scripts._networkx import nx
 from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshParams
 from trilogy.scripts.dependency import (
     DependencyResolver,

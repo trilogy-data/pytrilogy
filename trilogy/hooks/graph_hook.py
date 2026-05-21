@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import sys
 from os import environ
-
-import networkx as nx
+from typing import TYPE_CHECKING
 
 from trilogy.hooks.base_hook import BaseHook
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 
 class GraphHook(BaseHook):
@@ -27,6 +31,7 @@ class GraphHook(BaseHook):
         highlight_nodes: list[str] | None = None,
         remove_isolates: bool = True,
     ):
+        import networkx as nx
         from matplotlib import pyplot as plt
 
         graph = graph.copy()
@@ -72,7 +77,7 @@ class GraphHook(BaseHook):
             node_color=color_map,
             connectionstyle="arc3, rad = 0.1",
             with_labels=False,  # Important: don't draw labels with nx.draw
-            **kwargs
+            **kwargs,
         )
 
         # Draw labels with manual spacing
@@ -81,6 +86,7 @@ class GraphHook(BaseHook):
         plt.show()
 
     def _draw_labels_with_manual_spacing(self, graph, pos):
+        import networkx as nx
         import numpy as np
 
         pos_labels = {}

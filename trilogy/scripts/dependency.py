@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, Union
 
-import networkx as nx
 from typing_extensions import TypeAlias
 
 from trilogy.execution.state import StaleAsset
 from trilogy.parsing.exceptions import ParseError
+from trilogy.scripts._networkx import nx
 
 
 def normalize_path_variants(path: str) -> Path:

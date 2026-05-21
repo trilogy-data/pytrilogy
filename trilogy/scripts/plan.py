@@ -1,13 +1,15 @@
 """Plan command for Trilogy CLI - shows execution order without running."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path as PathlibPath
 from typing import Any
 
-import networkx as nx
 from click import Path, argument, option, pass_context
 from click.exceptions import Exit
 
+from trilogy.scripts._networkx import nx
 from trilogy.scripts.common import (
     handle_execution_exception,
     resolve_input_information,

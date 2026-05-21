@@ -1,12 +1,13 @@
 """Refresh command for Trilogy CLI - refreshes stale assets."""
 
+from __future__ import annotations
+
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
 from pathlib import Path
 
 import click
-import networkx as nx
 from click import UNPROCESSED, argument, option, pass_context
 from click import Path as ClickPath
 from click.exceptions import Exit
@@ -24,6 +25,7 @@ from trilogy.execution.state import (
     create_refresh_plan,
     execute_refresh_plan,
 )
+from trilogy.scripts._networkx import nx
 from trilogy.scripts.click_utils import validate_dialect
 from trilogy.scripts.common import (
     CLIRuntimeParams,
