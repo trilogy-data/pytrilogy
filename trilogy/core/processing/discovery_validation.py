@@ -20,6 +20,7 @@ from trilogy.core.processing.utility import (
     get_disconnected_components,
 )
 
+
 def _is_scalar_only(node: StrategyNode) -> bool:
     """A node whose visible outputs are all single-row scalars (e.g. a CTE
     aggregate referenced as a constant). Such nodes are cross-joined into the
