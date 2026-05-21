@@ -1478,6 +1478,7 @@ class UnionCTE:
                 )
         return self
 
+
 @dataclass
 class Join:
     right_cte: CTE | UnionCTE
