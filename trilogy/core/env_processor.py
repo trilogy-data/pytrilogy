@@ -205,13 +205,16 @@ def generate_adhoc_graph(
         ):
             eligible.append(derived)
 
+        # Collect this datasource's edges and inject them in one Rust call;
+        # the per-edge Python<->Rust crossing dominated otherwise. The core
+        # adds endpoint nodes as needed, so explicit add_node is unnecessary.
+        edges: list[tuple[str, str]] = []
         for concept in eligible:
             cnode = concept_to_node(concept, node_stash)
             g.concepts[cnode] = concept
 
-            g.add_node(cnode)
-            g.add_edge(node, cnode)
-            g.add_edge(cnode, node)
+            edges.append((node, cnode))
+            edges.append((cnode, node))
             # if there is a key on a table at a different grain
             # add an FK edge to the canonical source, if it exists
             # for example, order ID on order product table
@@ -221,9 +224,9 @@ def generate_adhoc_graph(
 
                 dcnode = concept_to_node(default, node_stash)
                 g.concepts[dcnode] = default
-                g.add_node(dcnode)
-                g.add_edge(cnode, dcnode)
-                g.add_edge(dcnode, cnode)
+                edges.append((cnode, dcnode))
+                edges.append((dcnode, cnode))
+        g.add_edges_from(edges)
     return g
 
 

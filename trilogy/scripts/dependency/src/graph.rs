@@ -99,6 +99,18 @@ impl GraphCore {
         self.insert_edge_ids(left_id, right_id);
     }
 
+    pub fn add_nodes(&mut self, nodes: Vec<String>) {
+        for node in nodes {
+            self.add_node(&node);
+        }
+    }
+
+    pub fn add_edges(&mut self, edges: Vec<(String, String)>) {
+        for (left, right) in edges {
+            self.add_edge(&left, &right);
+        }
+    }
+
     pub fn has_edge(&self, left: &str, right: &str) -> bool {
         let Some(left_id) = self.node_to_id.get(left).copied() else {
             return false;

@@ -53,6 +53,14 @@ impl PyGraphCore {
         self.graph.add_edge(left, right);
     }
 
+    fn add_nodes(&mut self, nodes: Vec<String>) {
+        self.graph.add_nodes(nodes);
+    }
+
+    fn add_edges(&mut self, edges: Vec<(String, String)>) {
+        self.graph.add_edges(edges);
+    }
+
     fn has_edge(&self, left: &str, right: &str) -> bool {
         self.graph.has_edge(left, right)
     }
