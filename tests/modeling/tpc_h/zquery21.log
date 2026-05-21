@@ -7,16 +7,18 @@ generated_sql = """
 WITH 
 highfalutin as (
 SELECT
+    \"lineitem\".\"l_commitdate\" as \"commit_date\",
     \"lineitem\".\"l_orderkey\" as \"order_id\",
-    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
-    CASE WHEN \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\" THEN \"lineitem\".\"l_suppkey\" ELSE NULL END as \"_virt_filter_id_1852383943558009\"
+    \"lineitem\".\"l_receiptdate\" as \"receipt_date\",
+    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 GROUP BY
     1,
     2,
-    3),
-uneven as (
+    3,
+    4),
+juicy as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
@@ -27,27 +29,61 @@ FROM
     INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"lineitem\".\"l_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
 WHERE
-    UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'SAUDI ARABIA' and \"order_orders\".\"o_orderstatus\" = 'F' and \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\"
+    \"order_orders\".\"o_orderstatus\" = 'F' and UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'SAUDI ARABIA' and \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\"
 ),
-thoughtful as (
+cooperative as (
 SELECT
-    \"highfalutin\".\"order_id\" as \"order_id\"
+    \"highfalutin\".\"order_id\" as \"relevant_orders\"
 FROM
     \"highfalutin\"
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"highfalutin\".\"order_id\" = \"order_orders\".\"o_orderkey\"
+    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"highfalutin\".\"part_supplier_id\" = \"part_supplier_supplier\".\"s_suppkey\"
+    INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
+WHERE
+    \"order_orders\".\"o_orderstatus\" = 'F' and UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'SAUDI ARABIA' and \"highfalutin\".\"receipt_date\" > \"highfalutin\".\"commit_date\"
+
+GROUP BY
+    1),
+questionable as (
+SELECT
+    \"highfalutin\".\"commit_date\" as \"commit_date\",
+    \"highfalutin\".\"order_id\" as \"order_id\",
+    \"highfalutin\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"highfalutin\".\"receipt_date\" as \"receipt_date\",
+    CASE WHEN \"highfalutin\".\"order_id\" in (select cooperative.\"relevant_orders\" from cooperative where cooperative.\"relevant_orders\" is not null) THEN \"highfalutin\".\"part_supplier_id\" ELSE NULL END as \"_virt_filter_id_8767115547539413\"
+FROM
+    \"highfalutin\"),
+abundant as (
+SELECT
+    \"questionable\".\"_virt_filter_id_8767115547539413\" as \"_virt_filter_id_8767115547539413\",
+    \"questionable\".\"order_id\" as \"order_id\",
+    CASE WHEN \"questionable\".\"order_id\" in (select cooperative.\"relevant_orders\" from cooperative where cooperative.\"relevant_orders\" is not null) and \"questionable\".\"receipt_date\" > \"questionable\".\"commit_date\" THEN \"questionable\".\"part_supplier_id\" ELSE NULL END as \"_virt_filter_id_2666263887931439\"
+FROM
+    \"questionable\"
+GROUP BY
+    1,
+    2,
+    3,
+    \"questionable\".\"part_supplier_id\"),
+yummy as (
+SELECT
+    \"abundant\".\"order_id\" as \"order_id\"
+FROM
+    \"abundant\"
 GROUP BY
     1
 HAVING
     count(\"highfalutin\".\"part_supplier_id\") > 1 and count(\"highfalutin\".\"_virt_filter_id_1852383943558009\") = 1
 )
 SELECT
-    \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
-    sum(\"uneven\".\"row_counter\") as \"numwait\"
+    \"juicy\".\"part_supplier_name\" as \"part_supplier_name\",
+    sum(\"juicy\".\"row_counter\") as \"numwait\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"uneven\" on \"thoughtful\".\"order_id\" = \"uneven\".\"order_id\"
+    \"yummy\"
+    INNER JOIN \"juicy\" on \"yummy\".\"order_id\" = \"juicy\".\"order_id\"
 GROUP BY
     1
 ORDER BY 
     \"numwait\" desc,
-    \"uneven\".\"part_supplier_name\" asc
+    \"juicy\".\"part_supplier_name\" asc
 LIMIT (100)"""

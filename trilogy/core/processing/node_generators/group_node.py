@@ -25,6 +25,7 @@ from trilogy.core.processing.node_generators.common import (
 )
 from trilogy.core.processing.nodes import GroupNode, History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import create_log_lambda, padding
+from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
@@ -45,6 +46,7 @@ class ParentResolution:
     parent_source: StrategyNode | None
     parent_output_addr: set[str]
     can_reuse_parent_for_enrichment: bool
+    preexisting_conditions: BuildWhereClause | None = None
 
 
 def _can_use_grouped_materialized_source(concept: BuildConcept) -> bool:
@@ -324,6 +326,7 @@ def _source_parent_concepts(
     source_concepts,
     history: History,
     conditions: BuildWhereClause | None,
+    where_path: BuildWherePath | None,
 ) -> StrategyNode | None:
     return source_concepts(
         mandatory_list=mandatory_list,
@@ -332,7 +335,23 @@ def _source_parent_concepts(
         depth=depth,
         history=history,
         conditions=conditions,
+        where_path=where_path,
     )
+
+
+def _group_parent_conditions(
+    concept: BuildConcept,
+    conditions: BuildWhereClause | None,
+    where_path: BuildWherePath | None,
+) -> tuple[BuildWhereClause | None, BuildWherePath | None]:
+    if where_path is None or where_path.applied_condition is None:
+        return conditions, where_path
+    current = where_path.current_condition
+    if current is None:
+        return conditions, where_path
+    if concept.address in {arg.address for arg in current.row_arguments}:
+        return where_path.applied_condition, None
+    return conditions, where_path
 
 
 def _resolve_parent_sources(
@@ -347,6 +366,7 @@ def _resolve_parent_sources(
     source_concepts,
     history: History,
     conditions: BuildWhereClause | None,
+    where_path: BuildWherePath | None,
 ) -> ParentResolution | None:
     parent_concepts = unique(
         [x for x in parent_concepts if not x.name == ALL_ROWS_CONCEPT], "address"
@@ -374,6 +394,11 @@ def _resolve_parent_sources(
         parent_input_concepts + (remaining_optional if can_try_wide_parent else []),
         "address",
     )
+    parent_conditions, parent_where_path = _group_parent_conditions(
+        concept=concept,
+        conditions=conditions,
+        where_path=where_path,
+    )
     parent_source = _source_parent_concepts(
         mandatory_list=mandatory_parent_concepts,
         environment=environment,
@@ -381,7 +406,8 @@ def _resolve_parent_sources(
         depth=depth,
         source_concepts=source_concepts,
         history=history,
-        conditions=conditions,
+        conditions=parent_conditions,
+        where_path=parent_where_path,
     )
     if not parent_source:
         logger.info(
@@ -421,7 +447,8 @@ def _resolve_parent_sources(
                 depth=depth,
                 source_concepts=source_concepts,
                 history=history,
-                conditions=conditions,
+                conditions=parent_conditions,
+                where_path=parent_where_path,
             )
             if not parent_source:
                 logger.info(
@@ -468,6 +495,7 @@ def _resolve_parent_sources(
         parent_source=parent_source,
         parent_output_addr=parent_output_addr,
         can_reuse_parent_for_enrichment=can_reuse_parent_for_enrichment,
+        preexisting_conditions=parent_conditions,
     )
 
 
@@ -479,6 +507,7 @@ def _empty_parent_resolution() -> ParentResolution:
         parent_source=None,
         parent_output_addr=set(),
         can_reuse_parent_for_enrichment=False,
+        preexisting_conditions=None,
     )
 
 
@@ -519,7 +548,11 @@ def _build_group_node(
             and isinstance(concept.lineage, BuildAggregateWrapper)
             and concept.lineage.grouping != AggregateGroupingMode.STANDARD
         ),
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            parent_resolution.preexisting_conditions.conditional
+            if parent_resolution.preexisting_conditions
+            else None
+        ),
         required_outputs=input_concepts,
     )
 
@@ -592,6 +625,7 @@ def gen_group_node(
     source_concepts,
     history: History,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     group_plan = _plan_group_outputs(
         concept=concept,
@@ -651,6 +685,7 @@ def gen_group_node(
             source_concepts=source_concepts,
             history=history,
             conditions=conditions,
+            where_path=where_path,
         )
         if not parent_resolution:
             return None

@@ -477,6 +477,15 @@ class HavingClause(WhereClause):
     pass
 
 
+def combine_where_clauses(clauses: Sequence[WhereClause]) -> WhereClause | None:
+    if not clauses:
+        return None
+    condition = clauses[0].conditional
+    for clause in clauses[1:]:
+        condition = condition + clause.conditional
+    return WhereClause(conditional=condition)
+
+
 @dataclass
 class Grain(Namespaced):
     components: set[str] = dc_field(default_factory=set)
@@ -2808,7 +2817,14 @@ class SelectLineage(Mergeable, Namespaced):
     meta: Metadata = dc_field(default_factory=lambda: Metadata())
     grain: Grain = dc_field(default_factory=Grain)
     where_clause: Optional[WhereClause] = None
+    where_clauses: list[WhereClause] = dc_field(default_factory=list)
     having_clause: Optional[HavingClause] = None
+
+    def __post_init__(self) -> None:
+        if self.where_clauses:
+            self.where_clause = combine_where_clauses(self.where_clauses)
+        elif self.where_clause:
+            self.where_clauses = [self.where_clause]
 
     @property
     def output_components(self) -> List[ConceptRef]:
@@ -2836,6 +2852,10 @@ class SelectLineage(Mergeable, Namespaced):
                 if self.where_clause
                 else None
             ),
+            where_clauses=[
+                clause.with_merge(source, target, modifiers)
+                for clause in self.where_clauses
+            ],
             having_clause=(
                 self.having_clause.with_merge(source, target, modifiers)
                 if self.having_clause
@@ -2859,6 +2879,9 @@ class SelectLineage(Mergeable, Namespaced):
                 if self.where_clause
                 else None
             ),
+            where_clauses=[
+                clause.with_namespace(namespace) for clause in self.where_clauses
+            ],
             having_clause=(
                 self.having_clause.with_namespace(namespace)
                 if self.having_clause
@@ -2876,8 +2899,15 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     where_clause: Optional[WhereClause] = None
+    where_clauses: list[WhereClause] = dc_field(default_factory=list)
     having_clause: Optional[HavingClause] = None
     derive: DeriveClause | None = None
+
+    def __post_init__(self) -> None:
+        if self.where_clauses:
+            self.where_clause = combine_where_clauses(self.where_clauses)
+        elif self.where_clause:
+            self.where_clauses = [self.where_clause]
 
     @property
     def grain(self):
@@ -2925,6 +2955,10 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
                 if self.where_clause
                 else None
             ),
+            where_clauses=[
+                clause.with_merge(source, target, modifiers)
+                for clause in self.where_clauses
+            ],
             having_clause=(
                 self.having_clause.with_merge(source, target, modifiers)
                 if self.having_clause
@@ -2947,6 +2981,9 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
                 if self.where_clause
                 else None
             ),
+            where_clauses=[
+                clause.with_namespace(namespace) for clause in self.where_clauses
+            ],
             having_clause=(
                 self.having_clause.with_namespace(namespace)
                 if self.having_clause

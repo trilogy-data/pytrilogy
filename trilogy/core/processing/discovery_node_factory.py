@@ -34,6 +34,7 @@ from trilogy.core.processing.nodes import (
     History,
     StrategyNode,
 )
+from trilogy.core.processing.where_path import BuildWherePath
 
 
 class SearchConceptsType(Protocol):
@@ -46,6 +47,7 @@ class SearchConceptsType(Protocol):
         g: ReferenceGraph,
         accept_partial: bool = False,
         conditions: Optional[BuildWhereClause] = None,
+        where_path: Optional[BuildWherePath] = None,
     ) -> Union[StrategyNode, None]: ...
 
 
@@ -62,6 +64,7 @@ class NodeGenerationContext:
     history: History
     accept_partial: bool = False
     conditions: Optional[BuildWhereClause] = None
+    where_path: Optional[BuildWherePath] = None
     required_concepts: List[BuildConcept] | None = None
 
     @property
@@ -247,6 +250,7 @@ def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         depth=ctx.next_depth,
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
+        where_path=ctx.where_path,
     )
 
 
@@ -468,6 +472,7 @@ def generate_node(
     history: History,
     accept_partial: bool,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
     required_concepts: List[BuildConcept] | None = None,
 ) -> StrategyNode | None:
 
@@ -481,6 +486,7 @@ def generate_node(
         history=history,
         accept_partial=accept_partial,
         conditions=conditions,
+        where_path=where_path,
         required_concepts=required_concepts,
     )
 

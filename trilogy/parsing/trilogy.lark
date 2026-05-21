@@ -120,10 +120,12 @@
     // select statement
     from_clause: "from"i IDENTIFIER ("," IDENTIFIER)* ","?
 
-    select_statement: from_clause? where? "select"i select_list where?  having?  order_by?  limit? 
+    _where_series: where ("then"i where)*
+
+    select_statement: from_clause? _where_series? "select"i select_list _where_series?  having?  order_by?  limit?
 
     // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  where? order_by?  limit? 
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  _where_series? order_by?  limit?
 
     align_item: select_hide_modifier? IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 

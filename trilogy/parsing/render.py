@@ -586,7 +586,13 @@ class Renderer:
                 self.indent_lines(self.to_string(c)) for c in arg.selection
             ]
             where_clause = None
-            if arg.where_clause:
+            if arg.where_clauses:
+                where_clause = self.indent_lines(
+                    "\nTHEN WHERE\n".join(
+                        self.to_string(clause) for clause in arg.where_clauses
+                    )
+                )
+            elif arg.where_clause:
                 where_clause = self.indent_lines(self.to_string(arg.where_clause))
             having_clause = None
             if arg.having_clause:
@@ -616,7 +622,12 @@ class Renderer:
 
         base = "\nMERGE\n".join(select_parts)
         base += self.to_string(arg.align)
-        if arg.where_clause:
+        if arg.where_clauses:
+            base += "\nWHERE\n"
+            base += "\nTHEN WHERE\n".join(
+                self.to_string(clause) for clause in arg.where_clauses
+            )
+        elif arg.where_clause:
             base += f"\nWHERE\n{self.to_string(arg.where_clause)}"
         if arg.order_by:
             base += f"\nORDER BY\n{self.to_string(arg.order_by)}"

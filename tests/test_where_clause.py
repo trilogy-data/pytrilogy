@@ -27,6 +27,97 @@ where
     BaseDialect().compile_statement(process_query(test_environment, select))
 
 
+def test_select_hierarchical_where_order(test_environment):
+    declarations = """
+where
+    order_id > 1
+then where
+    revenue > 0
+then where
+    total_revenue > 10
+select
+    total_revenue
+;
+"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+
+    assert len(select.where_clauses) == 3
+    assert [str(clause) for clause in select.where_clauses] == [
+        "ref:local.order_id > 1",
+        "ref:local.revenue > 0",
+        "ref:local.total_revenue > 10",
+    ]
+
+    query = BaseDialect().compile_statement(process_query(env, select))
+
+    assert "`revenue`.`order_id` > 1" in query
+    assert "`revenue`.`revenue` > 0" in query
+    assert "HAVING" in query
+    assert "sum(`revenue`.`revenue`) > 10" in query
+
+
+def test_select_hierarchical_where_matches_flat(test_environment):
+    staged = """
+where
+    order_id > 1
+then where
+    revenue > 0
+then where
+    total_revenue > 10
+select
+    total_revenue
+;
+"""
+    flat = """
+where
+    order_id > 1
+    and revenue > 0
+    and total_revenue > 10
+select
+    total_revenue
+;
+"""
+    staged_env, staged_parsed = parse(staged, environment=test_environment)
+    flat_env, flat_parsed = parse(flat, environment=test_environment)
+
+    staged_query = BaseDialect().compile_statement(
+        process_query(staged_env, staged_parsed[-1])
+    )
+    flat_query = BaseDialect().compile_statement(
+        process_query(flat_env, flat_parsed[-1])
+    )
+
+    assert "`order_id`" in staged_query
+    assert "`total_revenue`" in staged_query
+    assert len(staged_parsed[-1].where_clauses) == 3
+    assert len(flat_parsed[-1].where_clauses) == 1
+    assert staged_query
+    assert flat_query
+
+
+def test_pre_and_post_select_where_are_ordered(test_environment):
+    declarations = """
+where
+    category_id = 1
+select
+    category_id
+where
+    category_name like '%a%'
+;
+"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+
+    assert len(select.where_clauses) == 2
+    assert [str(clause) for clause in select.where_clauses] == [
+        "ref:local.category_id = 1",
+        "ref:local.category_name like %a%",
+    ]
+
+    BaseDialect().compile_statement(process_query(env, select))
+
+
 def test_select_where_or(test_environment):
     declarations = """
 

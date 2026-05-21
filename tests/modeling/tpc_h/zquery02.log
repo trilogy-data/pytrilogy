@@ -1,6 +1,6 @@
 query_id = "02"
-gen_length = 2679
-preql_size = 562
+gen_length = 2659
+preql_size = 508
 comp_size = 840
 generated_sql = """
 
@@ -23,12 +23,12 @@ FROM
     INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
     INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
 WHERE
-    \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS' and \"supplier_nation_region_region\".\"r_name\" = 'EUROPE'
+    \"supplier_nation_region_region\".\"r_name\" = 'EUROPE' and \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS'
 ),
 questionable as (
 SELECT
     \"partsupp\".\"ps_partkey\" as \"id\",
-    min(\"partsupp\".\"ps_supplycost\") as \"min_supply_cost_in_europe\"
+    min(\"partsupp\".\"ps_supplycost\") as \"min_supply_cost\"
 FROM
     \"memory\".\"supplier\" as \"supplier_supplier\"
     INNER JOIN \"memory\".\"partsupp\" as \"partsupp\" on \"supplier_supplier\".\"s_suppkey\" = \"partsupp\".\"ps_suppkey\"
@@ -52,7 +52,7 @@ FROM
     \"questionable\"
     INNER JOIN \"cooperative\" on \"questionable\".\"id\" = \"cooperative\".\"id\"
 WHERE
-    \"cooperative\".\"supply_cost\" = \"questionable\".\"min_supply_cost_in_europe\"
+    \"cooperative\".\"supply_cost\" = \"questionable\".\"min_supply_cost\"
 
 ORDER BY 
     \"cooperative\".\"supplier_account_balance\" desc,

@@ -12,6 +12,7 @@ from trilogy.core.models.author import (
 from trilogy.core.models.build import (
     BuildConcept,
     BuildWhereClause,
+    combine_build_where_clauses,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import condition_implies
@@ -33,6 +34,7 @@ from trilogy.core.processing.nodes import (
     MergeNode,
     StrategyNode,
 )
+from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 
@@ -77,9 +79,15 @@ def search_concepts(
     g: ReferenceGraph,
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
+    active_conditions = where_path.active_condition if where_path else conditions
+    condition_key = where_path.cache_key if where_path else None
     hist = history.get_history(
-        search=mandatory_list, accept_partial=accept_partial, conditions=conditions
+        search=mandatory_list,
+        accept_partial=accept_partial,
+        conditions=active_conditions,
+        condition_key=condition_key,
     )
     if hist is not False:
         logger.info(
@@ -95,14 +103,16 @@ def search_concepts(
         g=g,
         accept_partial=accept_partial,
         history=history,
-        conditions=conditions,
+        conditions=active_conditions,
+        where_path=where_path,
     )
     # a node may be mutated after be cached; always store a copy
     history.search_to_history(
         mandatory_list,
         accept_partial,
         result.copy() if result else None,
-        conditions=conditions,
+        conditions=active_conditions,
+        condition_key=condition_key,
     )
     return result
 
@@ -125,6 +135,7 @@ class LoopContext:
     accept_partial: bool = False
     must_evaluate_condition_on_this_level_not_push_down: bool = False
     conditions: BuildWhereClause | None = None
+    where_path: BuildWherePath | None = None
 
     @property
     def incomplete(self) -> bool:
@@ -139,6 +150,7 @@ def initialize_loop_context(
     history: History,
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ):
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
@@ -202,7 +214,71 @@ def initialize_loop_context(
         accept_partial=accept_partial,
         must_evaluate_condition_on_this_level_not_push_down=must_evaluate_condition_on_this_level_not_push_down,
         conditions=conditions,
+        where_path=where_path,
     )
+
+
+def _node_satisfies_condition(
+    node: StrategyNode,
+    condition: BuildWhereClause | None,
+) -> bool:
+    if condition is None:
+        return True
+    return node.preexisting_conditions == condition.conditional or (
+        node.preexisting_conditions is not None
+        and condition_implies(node.preexisting_conditions, condition.conditional)
+    )
+
+
+def _advance_where_path_result(
+    result: StrategyNode | None,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+    g: ReferenceGraph,
+    history: History,
+    accept_partial: bool,
+    where_path: BuildWherePath | None,
+) -> StrategyNode | None:
+    if result is None or where_path is None or where_path.is_complete:
+        return result
+    active = where_path.active_condition
+    if not _node_satisfies_condition(result, active):
+        return result
+    advanced = where_path.advance()
+    if advanced.is_complete:
+        return result
+    return search_concepts(
+        mandatory_list=mandatory_list,
+        environment=environment,
+        depth=depth,
+        g=g,
+        accept_partial=accept_partial,
+        history=history,
+        where_path=advanced,
+    )
+
+
+def _with_applied_where_path(
+    conditions: BuildWhereClause | None,
+    where_path: BuildWherePath | None,
+) -> BuildWhereClause | None:
+    if where_path is None:
+        return conditions
+    applied = where_path.applied_condition
+    if applied is None:
+        return conditions
+    if conditions is None:
+        return applied
+    return combine_build_where_clauses([applied, conditions])
+
+
+def _condition_references_node_output(
+    node: StrategyNode,
+    condition: BuildWhereClause,
+) -> bool:
+    output_addresses = {concept.address for concept in node.usable_outputs}
+    return any(arg.address in output_addresses for arg in condition.row_arguments)
 
 
 def check_for_early_exit(
@@ -289,6 +365,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
                 )
             )
             or _is_scalar_only(x)
+            and not _condition_references_node_output(x, context.conditions)
             for x in context.stack
         ]
     ):
@@ -369,7 +446,9 @@ def _search_concepts(
     history: History,
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
+    active_conditions = where_path.active_condition if where_path else conditions
     # check for direct materialization first
     candidate = history.gen_select_node(
         mandatory_list,
@@ -378,12 +457,21 @@ def _search_concepts(
         depth + 1,
         fail_if_not_found=False,
         accept_partial=accept_partial,
-        conditions=conditions,
+        conditions=active_conditions,
     )
 
     # if we get a can
     if candidate:
-        return candidate
+        return _advance_where_path_result(
+            candidate,
+            mandatory_list,
+            environment,
+            depth,
+            g,
+            history,
+            accept_partial,
+            where_path,
+        )
 
     context = initialize_loop_context(
         mandatory_list=mandatory_list,
@@ -392,7 +480,8 @@ def _search_concepts(
         g=g,
         history=history,
         accept_partial=accept_partial,
-        conditions=conditions,
+        conditions=active_conditions,
+        where_path=where_path,
     )
     partial: set[str] = set()
     virtual: set[str] = set()
@@ -420,6 +509,7 @@ def _search_concepts(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {priority_concept.address}, accept_partial {accept_partial}, optional {[v.address for v in candidate_list]}, exhausted {[c for c in context.skip]}"
         )
+        node_conditions = _with_applied_where_path(local_conditions, where_path)
         node = generate_node(
             priority_concept,
             candidate_list,
@@ -429,7 +519,8 @@ def _search_concepts(
             source_concepts=search_concepts,
             accept_partial=accept_partial,
             history=history,
-            conditions=local_conditions,
+            conditions=node_conditions,
+            where_path=where_path,
             required_concepts=context.mandatory_list,
         )
         if node:
@@ -460,7 +551,16 @@ def _search_concepts(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {context.found} from {[n for n in context.stack]} (missing {context.all_mandatory - context.found}), attempted {context.attempted}, virtual {virtual}"
     )
     if complete == ValidationResult.COMPLETE:
-        return generate_loop_completion(context, virtual)
+        return _advance_where_path_result(
+            generate_loop_completion(context, virtual),
+            mandatory_list,
+            environment,
+            depth,
+            g,
+            history,
+            accept_partial,
+            where_path,
+        )
 
     # if we can't find it after expanding to a merge, then
     # accept partials in join paths
@@ -477,6 +577,7 @@ def _search_concepts(
             accept_partial=True,
             history=history,
             conditions=conditions,
+            where_path=where_path,
         )
         if partial_search:
             logger.info(
@@ -496,12 +597,19 @@ def source_query_concepts(
     environment: BuildEnvironment,
     g: Optional[ReferenceGraph] = None,
     conditions: Optional[BuildWhereClause] = None,
+    where_clauses: list[BuildWhereClause] | None = None,
 ):
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
     if not g:
         g = generate_graph(environment)
 
+    where_path = None
+    if where_clauses:
+        if len(where_clauses) == 1 and conditions is None:
+            conditions = where_clauses[0]
+        elif len(where_clauses) > 1:
+            where_path = BuildWherePath.from_clauses(where_clauses)
     root = search_concepts(
         mandatory_list=output_concepts,
         environment=environment,
@@ -509,6 +617,7 @@ def source_query_concepts(
         depth=0,
         history=history,
         conditions=conditions,
+        where_path=where_path,
     )
     if not root:
         error_strings = [

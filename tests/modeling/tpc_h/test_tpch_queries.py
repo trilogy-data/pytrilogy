@@ -1,5 +1,6 @@
 import os
 import platform
+import re
 import time
 from pathlib import Path
 from typing import Callable, TypeVar
@@ -278,6 +279,16 @@ def test_twenty(engine):
 
 def test_twenty_one(engine):
     run_query(engine, 21)
+
+
+def test_twenty_one_pushes_first_where_before_order_aggregates(engine):
+    engine.environment = Environment(working_path=working_path)
+    query = engine.generate_sql((working_path / "query21.preql").read_text())[-1]
+
+    assert query.index('"order_orders"."o_orderstatus" = \'F\'') < query.index(
+        "count(distinct"
+    )
+    assert re.search(r'FROM\s+"[^"]+"\s+INNER JOIN "memory"\."lineitem"', query)
 
 
 def test_twenty_two(engine):

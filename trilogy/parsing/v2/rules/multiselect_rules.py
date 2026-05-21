@@ -13,6 +13,7 @@ from trilogy.core.models.author import (
     OrderBy,
     WhereClause,
     WindowItem,
+    combine_where_clauses,
 )
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.parsing.v2.concept_factory import (
@@ -91,7 +92,7 @@ def multi_select_statement(
     select_nodes: list[SyntaxNode] = []
     align_node: SyntaxNode | None = None
     derive_node: SyntaxNode | None = None
-    where_node: SyntaxNode | None = None
+    where_nodes: list[SyntaxNode] = []
     having_node: SyntaxNode | None = None
     order_by_node: SyntaxNode | None = None
     limit_node: SyntaxNode | None = None
@@ -104,7 +105,7 @@ def multi_select_statement(
         elif kind == SyntaxNodeKind.DERIVE_CLAUSE:
             derive_node = child
         elif kind == SyntaxNodeKind.WHERE:
-            where_node = child
+            where_nodes.append(child)
         elif kind == SyntaxNodeKind.HAVING:
             having_node = child
         elif kind == SyntaxNodeKind.ORDER_BY:
@@ -125,7 +126,8 @@ def multi_select_statement(
 
     # WHERE/LIMIT do not reference align-derived outputs, so hydrate them
     # up front and fold them into the align concepts' lineage.
-    where: WhereClause | None = hydrate(where_node) if where_node else None
+    where_clauses: list[WhereClause] = [hydrate(n) for n in where_nodes]
+    where: WhereClause | None = combine_where_clauses(where_clauses)
     limit_val: int | None = hydrate(limit_node).count if limit_node else None
 
     derived_concepts: list = []
@@ -158,7 +160,7 @@ def multi_select_statement(
         align=align_c,
         derive=derive,
         namespace=context.environment.namespace,
-        where_clause=where,
+        where_clauses=where_clauses,
         having_clause=having,
         limit=limit_val,
         hidden_components=multi_hidden,
@@ -181,7 +183,7 @@ def multi_select_statement(
         selects=selects,
         align=align_c,
         namespace=context.environment.namespace,
-        where_clause=where,
+        where_clauses=where_clauses,
         order_by=order_by_val,
         limit=limit_val,
         meta=metadata_from_meta(node.meta),

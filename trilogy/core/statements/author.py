@@ -41,6 +41,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
+    combine_where_clauses,
 )
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (
@@ -112,6 +113,7 @@ class FromClause:
 class SelectStatement(HasUUID, SelectTypeMixin):
     selection: List[SelectItem]
     where_clause: Optional[WhereClause] = None
+    where_clauses: list[WhereClause] = field(default_factory=list)
     having_clause: Optional[HavingClause] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -123,6 +125,10 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     grain: Grain = field(default_factory=Grain)
 
     def __post_init__(self):
+        if self.where_clauses:
+            self.where_clause = combine_where_clauses(self.where_clauses)
+        elif self.where_clause:
+            self.where_clauses = [self.where_clause]
         new = []
         for item in self.selection:
             if isinstance(item, (Concept, ConceptTransform)):
@@ -147,6 +153,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             order_by=self.order_by,
             limit=self.limit,
             where_clause=self.where_clause,
+            where_clauses=list(self.where_clauses),
             having_clause=self.having_clause,
             local_concepts={
                 k: v for k, v in self.local_concepts.items() if k in derived
@@ -164,12 +171,14 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         limit: int | None = None,
         meta: Metadata | None = None,
         where_clause: WhereClause | None = None,
+        where_clauses: list[WhereClause] | None = None,
         having_clause: HavingClause | None = None,
         eligible_datasources: list[str] | None = None,
     ) -> "SelectStatement":
         output = SelectStatement(
             selection=selection,
             where_clause=where_clause,
+            where_clauses=where_clauses or [],
             having_clause=having_clause,
             limit=limit,
             order_by=order_by,
@@ -383,6 +392,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
     namespace: str
     derived_concepts: List[Concept]
     where_clause: Optional[WhereClause] = None
+    where_clauses: list[WhereClause] = field(default_factory=list)
     having_clause: Optional[HavingClause] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -391,6 +401,12 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
         default_factory=EnvironmentConceptDict
     )
     derive: DeriveClause | None = None
+
+    def __post_init__(self) -> None:
+        if self.where_clauses:
+            self.where_clause = combine_where_clauses(self.where_clauses)
+        elif self.where_clause:
+            self.where_clauses = [self.where_clause]
 
     def as_lineage(self, environment: Environment):
         return MultiSelectLineage(
@@ -402,6 +418,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
             limit=self.limit,
             order_by=self.order_by,
             where_clause=self.where_clause,
+            where_clauses=list(self.where_clauses),
             having_clause=self.having_clause,
             hidden_components=self.hidden_components,
         )

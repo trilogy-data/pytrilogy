@@ -158,9 +158,10 @@ full_persist = {
 // SELECT
 // =============================================================================
 from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
+where_series = _{ where ~ (^"then" ~ where)* }
 
 select_statement = {
-    from_clause? ~ where? ~ ^"select" ~ select_list ~ where? ~ having? ~ order_by? ~ limit?
+    from_clause? ~ where_series? ~ ^"select" ~ select_list ~ where_series? ~ having? ~ order_by? ~ limit?
 }
 
 multi_select_statement = {
@@ -168,7 +169,7 @@ multi_select_statement = {
     ~ (^"merge" ~ select_statement)+
     ~ ^"align" ~ align_clause
     ~ (^"derive" ~ derive_clause)?
-    ~ where? ~ order_by? ~ limit?
+    ~ where_series? ~ order_by? ~ limit?
 }
 
 align_item   = { select_hide_modifier? ~ IDENTIFIER ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
@@ -764,7 +765,7 @@ ADDRESS             = { IDENTIFIER }
 // COMPARISON_OPERATOR / CONDITION_NOT / fnot / array_comparison all use
 // literal `^"not"` matches, which aren't affected by this reservation.
 RESERVED_KW = @{
-    (^"select" | ^"where" | ^"having" | ^"from" | ^"limit" | ^"and" | ^"or" | ^"not")
+    (^"select" | ^"where" | ^"then" | ^"having" | ^"from" | ^"limit" | ^"and" | ^"or" | ^"not")
     ~ !(ASCII_ALPHANUMERIC | "_" | ".")
 }
 

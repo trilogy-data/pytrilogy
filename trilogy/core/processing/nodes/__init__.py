@@ -48,8 +48,11 @@ class History:
         search: list[BuildConcept],
         accept_partial: bool,
         conditions: BuildWhereClause | None = None,
+        condition_key: str | None = None,
     ) -> str:
         base = sorted([c.address for c in search])
+        if condition_key:
+            return "-".join(base) + str(accept_partial) + condition_key
         if conditions:
             return "-".join(base) + str(accept_partial) + str(conditions)
         return "-".join(base) + str(accept_partial)
@@ -60,14 +63,21 @@ class History:
         accept_partial: bool,
         output: StrategyNode | None,
         conditions: BuildWhereClause | None = None,
+        condition_key: str | None = None,
     ):
         self.history[
-            self._concepts_to_lookup(search, accept_partial, conditions=conditions)
+            self._concepts_to_lookup(
+                search,
+                accept_partial,
+                conditions=conditions,
+                condition_key=condition_key,
+            )
         ] = output
         self.log_end(
             search,
             accept_partial=accept_partial,
             conditions=conditions,
+            condition_key=condition_key,
         )
 
     def get_history(
@@ -76,11 +86,13 @@ class History:
         conditions: BuildWhereClause | None = None,
         accept_partial: bool = False,
         parent_key: str = "",
+        condition_key: str | None = None,
     ) -> StrategyNode | None | bool:
         key = self._concepts_to_lookup(
             search,
             accept_partial,
             conditions,
+            condition_key=condition_key,
         )
         if parent_key and parent_key == key:
             raise ValueError(
@@ -98,11 +110,13 @@ class History:
         search: list[BuildConcept],
         accept_partial: bool = False,
         conditions: BuildWhereClause | None = None,
+        condition_key: str | None = None,
     ):
         key = self._concepts_to_lookup(
             search,
             accept_partial=accept_partial,
             conditions=conditions,
+            condition_key=condition_key,
         )
         if key in self.started:
             self.started[key] += 1
@@ -118,11 +132,13 @@ class History:
         search: list[BuildConcept],
         accept_partial: bool = False,
         conditions: BuildWhereClause | None = None,
+        condition_key: str | None = None,
     ):
         key = self._concepts_to_lookup(
             search,
             accept_partial=accept_partial,
             conditions=conditions,
+            condition_key=condition_key,
         )
         if key in self.started:
             del self.started[key]
@@ -132,12 +148,14 @@ class History:
         search: list[BuildConcept],
         accept_partial: bool = False,
         conditions: BuildWhereClause | None = None,
+        condition_key: str | None = None,
     ):
         return (
             self._concepts_to_lookup(
                 search,
                 accept_partial,
                 conditions=conditions,
+                condition_key=condition_key,
             )
             in self.started
         )

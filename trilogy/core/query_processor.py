@@ -513,6 +513,14 @@ def get_query_node(
             for arg in item.concept_arguments:
                 protected_addresses.add(arg.address)
                 protected_addresses.add(arg.canonical_address)
+    resolution_where_clauses = [
+        clause
+        for clause in (
+            strip_tautological_not_null(clause, build_environment, protected_addresses)
+            for clause in build_statement.where_clauses
+        )
+        if clause is not None
+    ]
     resolution_conditions = strip_tautological_not_null(
         build_statement.where_clause, build_environment, protected_addresses
     )
@@ -521,7 +529,8 @@ def get_query_node(
         output_concepts=search_concepts,
         environment=build_environment,
         g=graph,
-        conditions=resolution_conditions,
+        conditions=resolution_conditions if not resolution_where_clauses else None,
+        where_clauses=resolution_where_clauses,
         history=history,
     )
     if not ods:
