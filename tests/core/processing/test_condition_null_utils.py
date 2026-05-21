@@ -27,6 +27,7 @@ from trilogy.core.processing.condition_utility import (
     _flip_op,
     _literal_value,
     _not_null_concept,
+    conditions_cover_domain,
     strip_tautological_not_null,
 )
 
@@ -286,6 +287,10 @@ class TestCoalescePrimaryProvesNonNull:
         assert _coalesce_primary_proves_non_null(wrapped, ComparisonOperator.GT, 0) == {
             x.address
         }
+
+
+def test_conditions_cover_domain_empty_is_false():
+    assert conditions_cover_domain({}) is False
 
 
 def test_atom_proves_non_null_and_branch():
