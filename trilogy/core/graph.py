@@ -522,6 +522,63 @@ def topological_sort(graph: _GraphBase) -> Iterator[str]:
     return iter(order)
 
 
+def is_directed_acyclic_graph(graph: _GraphBase) -> bool:
+    if not graph.directed:
+        return False
+    try:
+        topological_sort(graph)
+    except NetworkXUnfeasible:
+        return False
+    return True
+
+
+def descendants(graph: _GraphBase, source: str) -> set[str]:
+    if source not in graph:
+        _raise_missing(source)
+    seen: set[str] = set()
+    stack = list(graph._core.successors(source))
+    while stack:
+        node = stack.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        stack.extend(graph._core.successors(node))
+    seen.discard(source)
+    return seen
+
+
+def _collect_cycles_from(
+    start: str,
+    node: str,
+    path: list[str],
+    on_path: set[str],
+    succ: Mapping[str, list[str]],
+    rank: Mapping[str, int],
+    out: list[list[str]],
+) -> None:
+    for nxt in succ[node]:
+        if nxt == start:
+            out.append(list(path))
+        elif rank[nxt] > rank[start] and nxt not in on_path:
+            path.append(nxt)
+            on_path.add(nxt)
+            _collect_cycles_from(start, nxt, path, on_path, succ, rank, out)
+            path.pop()
+            on_path.discard(nxt)
+
+
+def simple_cycles(graph: _GraphBase) -> Iterator[list[str]]:
+    # Each elementary cycle is enumerated exactly once, at its lowest-ranked
+    # node: the search from ``start`` only descends into higher-ranked nodes.
+    nodes = graph._ordered_nodes()
+    rank = {node: index for index, node in enumerate(nodes)}
+    succ = {node: list(graph._core.successors(node)) for node in nodes}
+    out: list[list[str]] = []
+    for start in nodes:
+        _collect_cycles_from(start, start, [start], {start}, succ, rank, out)
+    return iter(out)
+
+
 def shortest_path(graph: _GraphBase, source: str, target: str) -> list[str]:
     if source not in graph:
         _raise_missing(source)
@@ -542,6 +599,14 @@ def shortest_path_length(graph: _GraphBase, source: str, target: str) -> int:
     if length is None:
         raise NetworkXNoPath(f"No path between {source} and {target}")
     return length
+
+
+def has_path(graph: _GraphBase, source: str, target: str) -> bool:
+    try:
+        shortest_path(graph, source, target)
+    except (NetworkXNoPath, NodeNotFound):
+        return False
+    return True
 
 
 def ego_graph(graph: GraphT, center: str, radius: int) -> GraphT:

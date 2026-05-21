@@ -9,10 +9,10 @@ from click import UNPROCESSED, Choice, Path, argument, option, pass_context
 from click.exceptions import Exit
 
 from trilogy import Executor
+from trilogy.core import graph as nx
 from trilogy.core.enums import AddressType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.dialect.enums import Dialects
-from trilogy.scripts._networkx import nx
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -144,16 +144,16 @@ def _build_selected_script_graph(
         return graph
     if input_path.is_dir():
         full_graph = DependencyResolver().build_folder_graph(input_path)
-        return full_graph.subgraph(selected_nodes).copy()
+        return full_graph.subgraph(str(node.path) for node in selected_nodes).copy()
 
-    graph.add_nodes_from(selected_nodes)
+    graph.add_nodes_from(str(node.path) for node in selected_nodes)
     return graph
 
 
 def _build_initial_integration_graph(input_path: PathlibPath) -> nx.DiGraph | None:
     if input_path.is_file():
         graph = nx.DiGraph()
-        graph.add_node(ScriptNode(path=input_path))
+        graph.add_node(str(input_path))
         return graph
     return None
 

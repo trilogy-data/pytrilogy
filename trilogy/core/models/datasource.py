@@ -442,7 +442,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
 
     @property
     def full_concepts(self) -> set[str]:
-        return {c.concept.address for c in self.columns if Modifier.PARTIAL not in c.modifiers}
+        return {
+            c.concept.address
+            for c in self.columns
+            if Modifier.PARTIAL not in c.modifiers
+        }
 
     @property
     def nullable_concepts(self) -> List[ConceptRef]:

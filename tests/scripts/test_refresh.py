@@ -741,14 +741,13 @@ incremental by ev_ts;
     assert phys_graph.number_of_nodes() == 2
     assert phys_graph.number_of_edges() >= 1
 
-    # Edge must go from base_table node → derived_table node
-    nodes_by_addr = {n.address: n for n in phys_graph.nodes}
-    assert "base_table" in nodes_by_addr
-    assert "derived_table" in nodes_by_addr
-    base_node = nodes_by_addr["base_table"]
-    derived_node = nodes_by_addr["derived_table"]
-    assert phys_graph.has_edge(base_node, derived_node)
-    assert not phys_graph.has_edge(derived_node, base_node)
+    # Edge must go from base_table node → derived_table node.
+    # phys_graph is string-keyed by physical address.
+    addrs = set(phys_graph.nodes)
+    assert "base_table" in addrs
+    assert "derived_table" in addrs
+    assert phys_graph.has_edge("base_table", "derived_table")
+    assert not phys_graph.has_edge("derived_table", "base_table")
 
 
 def test_phys_graph_no_stale_script_excluded(tmp_path):
@@ -767,8 +766,7 @@ def test_phys_graph_no_stale_script_excluded(tmp_path):
     assert approved
     assert phys_graph is not None
     assert phys_graph.number_of_nodes() == 1
-    node = next(iter(phys_graph.nodes))
-    assert node.address == "base_table"
+    assert next(iter(phys_graph.nodes)) == "base_table"
 
 
 # Two scripts that define different ds_ids but share the same physical address
@@ -883,7 +881,7 @@ incremental by src.ev_ts;
 
     assert approved
     assert phys_graph is not None
-    assert {node.address for node in phys_graph.nodes} == {"target_events_table"}
+    assert set(phys_graph.nodes) == {"target_events_table"}
 
 
 def test_preview_directory_relative_input_matches_absolute_behavior(
@@ -915,7 +913,7 @@ incremental by src.ev_ts;
 
     assert approved
     assert phys_graph is not None
-    assert {node.address for node in phys_graph.nodes} == {"target_events_table"}
+    assert set(phys_graph.nodes) == {"target_events_table"}
 
 
 def test_preview_directory_fails_when_root_probe_coverage_is_missing(tmp_path, capsys):

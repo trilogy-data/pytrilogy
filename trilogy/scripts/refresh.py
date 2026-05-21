@@ -13,6 +13,7 @@ from click import Path as ClickPath
 from click.exceptions import Exit
 
 from trilogy import Executor
+from trilogy.core import graph as nx
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
 from trilogy.execution.state import (
@@ -25,7 +26,6 @@ from trilogy.execution.state import (
     create_refresh_plan,
     execute_refresh_plan,
 )
-from trilogy.scripts._networkx import nx
 from trilogy.scripts.click_utils import validate_dialect
 from trilogy.scripts.common import (
     CLIRuntimeParams,
@@ -316,11 +316,14 @@ def _preview_directory_refresh(
 
     validate_force_sources(force_sources, available_datasources)
 
-    # Build topo order so we can assign each physical address to its furthest-upstream owner
+    # Build topo order so we can assign each physical address to its furthest-upstream owner.
+    # script_graph is string-keyed (path strings); map back to ScriptNode for callers.
     resolver = DependencyResolver()
     script_graph = resolver.build_folder_graph(input_path)
     execution_order = list(nx.topological_sort(script_graph))
-    script_to_order = {node: i for i, node in enumerate(execution_order)}
+    script_to_order = {
+        ScriptNode(path=Path(key)): i for i, key in enumerate(execution_order)
+    }
 
     # Group unique ds_ids by physical address
     addr_to_ds_ids: dict[str, list[str]] = defaultdict(list)
@@ -507,20 +510,26 @@ def _preview_directory_refresh(
 
     stale_known = sum(1 for n in physical_nodes.values() if n.assets)
 
+    # phys_graph is string-keyed by physical address; the rich ManagedRefreshNode
+    # objects are carried in graph.graph['node_map'] so downstream execution
+    # (run_parallel_execution) can recover them.
     phys_graph = nx.DiGraph()
+    phys_graph.graph["node_map"] = physical_nodes
     for pnode in physical_nodes.values():
-        phys_graph.add_node(pnode)
+        phys_graph.add_node(pnode.address)
 
     for addr1, node1 in physical_nodes.items():
+        owner1_key = str(node1.owner_script.path)
         for addr2, node2 in physical_nodes.items():
             if addr1 == addr2:
                 continue
+            owner2_key = str(node2.owner_script.path)
             if (
-                node1.owner_script in script_graph
-                and node2.owner_script in script_graph
-                and nx.has_path(script_graph, node1.owner_script, node2.owner_script)
+                owner1_key in script_graph
+                and owner2_key in script_graph
+                and nx.has_path(script_graph, owner1_key, owner2_key)
             ):
-                phys_graph.add_edge(node1, node2)
+                phys_graph.add_edge(addr1, addr2)
 
     # "Unknown" nodes: descendants of any refreshable-root-stale node, since the
     # script's effect on downstream watermarks can't be predicted at preview.
@@ -532,9 +541,9 @@ def _preview_directory_refresh(
             if any(a.kind == RefreshKind.SCRIPT for a in n.assets)
         ]
         for sn in script_stale_nodes:
-            for desc in nx.descendants(phys_graph, sn):
-                if not desc.assets:  # not already classified stale
-                    unknown_addrs.add(desc.address)
+            for desc_addr in nx.descendants(phys_graph, sn.address):
+                if not physical_nodes[desc_addr].assets:  # not already stale
+                    unknown_addrs.add(desc_addr)
 
     if unknown_addrs:
         print_info(
@@ -551,9 +560,9 @@ def _preview_directory_refresh(
     relevant: set[str] = {
         addr for addr, n in physical_nodes.items() if n.assets
     } | unknown_addrs
-    for pnode in list(phys_graph.nodes):
-        if pnode.address not in relevant:
-            phys_graph.remove_node(pnode)
+    for addr in list(phys_graph.nodes):
+        if addr not in relevant:
+            phys_graph.remove_node(addr)
 
     merged_root_watermarks = _merge_watermarks(
         [plan.root_watermarks for _, plan in plans_by_node]

@@ -6,9 +6,9 @@ from typing import Protocol, Union
 
 from typing_extensions import TypeAlias
 
+from trilogy.core import graph as nx
 from trilogy.execution.state import StaleAsset
 from trilogy.parsing.exceptions import ParseError
-from trilogy.scripts._networkx import nx
 
 
 def normalize_path_variants(path: str) -> Path:
@@ -87,8 +87,8 @@ class DependencyStrategy(Protocol):
         This means: B must run before A.
 
         Returns:
-            A networkx DiGraph where nodes are ScriptNode instances and
-            edges point from dependencies to their dependents.
+            A DiGraph whose nodes are script path strings (``str(node.path)``)
+            and whose edges point from dependencies to their dependents.
         """
 
     def build_folder_graph(self, folder: Path) -> nx.DiGraph: ...
@@ -156,16 +156,16 @@ class ETLDependencyStrategy:
         """
 
         result = resolve_with_errors(folder)
-        nodes = result.get("files", [])
+        files = result.get("files", [])
         graph = nx.DiGraph()
-        path_to_node = {}
+        # path -> graph key (str). Keys are the canonical string of each path.
+        path_to_key: dict[Path, str] = {}
         edges = result.get("edges", [])
-        # Build the graph
-        for node in nodes:
-            normal_path = normalize_path_variants(node)
-            node = ScriptNode(path=normal_path)
-            path_to_node[normal_path] = node
-            graph.add_node(node)
+        for file in files:
+            normal_path = normalize_path_variants(file)
+            key = str(normal_path)
+            path_to_key[normal_path] = key
+            graph.add_node(key)
 
         # Build edges from the result
         for edge in edges:
@@ -173,8 +173,8 @@ class ETLDependencyStrategy:
             to_path = normalize_path_variants(edge["to"])
 
             # Only add edges for files we're managing
-            if from_path in path_to_node and to_path in path_to_node:
-                graph.add_edge(path_to_node[from_path], path_to_node[to_path])
+            if from_path in path_to_key and to_path in path_to_key:
+                graph.add_edge(path_to_key[from_path], path_to_key[to_path])
 
         return graph
 
@@ -192,9 +192,9 @@ class ETLDependencyStrategy:
 
         graph = nx.DiGraph()
 
-        # Add all nodes
+        # Add all nodes (graph keys are the canonical string of each path)
         for node in nodes:
-            graph.add_node(node)
+            graph.add_node(str(node.path))
 
         # If we only have one node, return early
         if len(nodes) <= 1:
@@ -208,13 +208,12 @@ class ETLDependencyStrategy:
                 f"Found files in {len(directories)} different directories. {directories}"
             )
 
-        # Build a mapping from absolute path to node
-        # We need to handle both regular paths and UNC paths from Rust
-        path_to_node = {}
+        # Map each node's resolved path to its graph key.
+        # We need to handle both regular paths and UNC paths from Rust.
+        path_to_key: dict[Path, str] = {}
         for node in nodes:
             resolved_path = str(node.path.resolve())
-            # Map all path variants to the same node
-            path_to_node[normalize_path_variants(resolved_path)] = node
+            path_to_key[normalize_path_variants(resolved_path)] = str(node.path)
 
         # Use directory resolver to get all edges at once
         directory = nodes[0].path.parent
@@ -229,12 +228,21 @@ class ETLDependencyStrategy:
             to_path = normalize_path_variants(edge["to"])
 
             # Only add edges for files we're managing
-            if from_path in path_to_node and to_path in path_to_node:
-                from_node = path_to_node[from_path]
-                to_node = path_to_node[to_path]
-                graph.add_edge(from_node, to_node)
+            if from_path in path_to_key and to_path in path_to_key:
+                graph.add_edge(path_to_key[from_path], path_to_key[to_path])
 
         return graph
+
+
+def _validate_acyclic(graph: nx.DiGraph) -> None:
+    """Raise ValueError if the (string-keyed) dependency graph has a cycle."""
+    if nx.is_directed_acyclic_graph(graph):
+        return
+    cycles = list(nx.simple_cycles(graph))
+    cycle_info = "; ".join(
+        " -> ".join(Path(key).name for key in cycle) for cycle in cycles[:3]
+    )
+    raise ValueError(f"Circular dependencies detected: {cycle_info}")
 
 
 class NoDependencyStrategy:
@@ -248,7 +256,7 @@ class NoDependencyStrategy:
         """Build a graph with no edges (all nodes independent)."""
         graph = nx.DiGraph()
         for node in nodes:
-            graph.add_node(node)
+            graph.add_node(str(node.path))
         return graph
 
 
@@ -281,15 +289,7 @@ class DependencyResolver:
             A networkx DiGraph representing dependencies.
         """
         graph = self.strategy.build_folder_graph(folder)
-
-        # Validate no cycles
-        if not nx.is_directed_acyclic_graph(graph):
-            cycles = list(nx.simple_cycles(graph))
-            cycle_info = "; ".join(
-                [" -> ".join(str(n.path.name) for n in cycle) for cycle in cycles[:3]]
-            )
-            raise ValueError(f"Circular dependencies detected: {cycle_info}")
-
+        _validate_acyclic(graph)
         return graph
 
     def build_graph(self, nodes: list[ScriptNode]) -> nx.DiGraph:
@@ -306,15 +306,7 @@ class DependencyResolver:
             ValueError: If the graph contains cycles.
         """
         graph = self.strategy.build_graph(nodes)
-
-        # Validate no cycles
-        if not nx.is_directed_acyclic_graph(graph):
-            cycles = list(nx.simple_cycles(graph))
-            cycle_info = "; ".join(
-                [" -> ".join(str(n.path.name) for n in cycle) for cycle in cycles[:3]]
-            )
-            raise ValueError(f"Circular dependencies detected: {cycle_info}")
-
+        _validate_acyclic(graph)
         return graph
 
     def get_root_nodes(self, graph: nx.DiGraph) -> list[ScriptNode]:
@@ -323,39 +315,34 @@ class DependencyResolver:
 
         These are the nodes that can be executed immediately.
 
-        Args:
-            graph: The dependency graph.
-
         Returns:
-            List of nodes with no incoming edges.
+            List of ScriptNodes with no incoming edges.
         """
-        return [node for node in graph.nodes() if graph.in_degree(node) == 0]
+        return [
+            ScriptNode(path=Path(key))
+            for key in graph.nodes()
+            if graph.in_degree(key) == 0
+        ]
 
     def get_dependents(self, graph: nx.DiGraph, node: ScriptNode) -> list[ScriptNode]:
         """
         Get nodes that directly depend on the given node.
 
-        Args:
-            graph: The dependency graph.
-            node: The node whose dependents to find.
-
         Returns:
-            List of nodes that have 'node' as a dependency.
+            List of ScriptNodes that have 'node' as a dependency.
         """
-        return list(graph.successors(node))
+        return [ScriptNode(path=Path(key)) for key in graph.successors(str(node.path))]
 
     def get_dependencies(self, graph: nx.DiGraph, node: ScriptNode) -> list[ScriptNode]:
         """
         Get nodes that the given node depends on.
 
-        Args:
-            graph: The dependency graph.
-            node: The node whose dependencies to find.
-
         Returns:
-            List of nodes that must run before 'node'.
+            List of ScriptNodes that must run before 'node'.
         """
-        return list(graph.predecessors(node))
+        return [
+            ScriptNode(path=Path(key)) for key in graph.predecessors(str(node.path))
+        ]
 
     def get_dependency_graph(
         self, nodes: list[ScriptNode]
@@ -367,7 +354,12 @@ class DependencyResolver:
             Dict mapping each node to its dependencies (predecessors).
         """
         graph = self.build_graph(nodes)
-        return {node: set(graph.predecessors(node)) for node in graph.nodes()}
+        return {
+            ScriptNode(path=Path(key)): {
+                ScriptNode(path=Path(dep)) for dep in graph.predecessors(key)
+            }
+            for key in graph.nodes()
+        }
 
 
 def create_script_nodes(files: list[Path]) -> list[ScriptNode]:

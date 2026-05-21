@@ -2,57 +2,62 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
-import networkx as nx
 import pytest
 
+from trilogy.core import graph as nx
+from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.parallel_execution import (
     ExecutionResult,
-    ScriptNode,
+    NodeMap,
     _get_next_ready,
     _is_execution_done,
     _mark_node_complete,
     _propagate_failure,
 )
 
-# Type aliases
-CompletedSet = set[ScriptNode]
-FailedSet = set[ScriptNode]
-InProgressSet = set[ScriptNode]
+# State-tracking collections are keyed by the graph's string node keys.
+CompletedSet = set[str]
+FailedSet = set[str]
+InProgressSet = set[str]
 ResultsList = list[ExecutionResult]
-RemainingDepsDict = dict[ScriptNode, int]
-ReadyList = list[ScriptNode]
+RemainingDepsDict = dict[str, int]
+ReadyList = list[str]
 OnCompleteCallback = Any  # Callable[[ExecutionResult], None] | None
 
 
 # ============================================================================
 # Fixtures
 # ============================================================================
+# Graph nodes are string keys (script paths); node_map recovers the ScriptNode.
 
 
 @pytest.fixture
-def node_a() -> ScriptNode:
-    return ScriptNode(path=Path("/scripts/a.sql"))
+def node_a() -> str:
+    return str(Path("/scripts/a.sql"))
 
 
 @pytest.fixture
-def node_b() -> ScriptNode:
-    return ScriptNode(path=Path("/scripts/b.sql"))
+def node_b() -> str:
+    return str(Path("/scripts/b.sql"))
 
 
 @pytest.fixture
-def node_c() -> ScriptNode:
-    return ScriptNode(path=Path("/scripts/c.sql"))
+def node_c() -> str:
+    return str(Path("/scripts/c.sql"))
 
 
 @pytest.fixture
-def node_d() -> ScriptNode:
-    return ScriptNode(path=Path("/scripts/d.sql"))
+def node_d() -> str:
+    return str(Path("/scripts/d.sql"))
 
 
 @pytest.fixture
-def linear_graph(
-    node_a: ScriptNode, node_b: ScriptNode, node_c: ScriptNode
-) -> nx.DiGraph:
+def node_map(node_a: str, node_b: str, node_c: str, node_d: str) -> NodeMap:
+    return {key: ScriptNode(path=Path(key)) for key in (node_a, node_b, node_c, node_d)}
+
+
+@pytest.fixture
+def linear_graph(node_a: str, node_b: str, node_c: str) -> nx.DiGraph:
     """Create a linear dependency graph: A -> B -> C"""
     graph = nx.DiGraph()
     graph.add_nodes_from([node_a, node_b, node_c])
@@ -63,10 +68,10 @@ def linear_graph(
 
 @pytest.fixture
 def diamond_graph(
-    node_a: ScriptNode,
-    node_b: ScriptNode,
-    node_c: ScriptNode,
-    node_d: ScriptNode,
+    node_a: str,
+    node_b: str,
+    node_c: str,
+    node_d: str,
 ) -> nx.DiGraph:
     """
     Create a diamond dependency graph:
@@ -92,7 +97,7 @@ def diamond_graph(
 
 class TestGetNextReady:
     def test_returns_first_item_from_non_empty_list(
-        self, node_a: ScriptNode, node_b: ScriptNode
+        self, node_a: str, node_b: str
     ) -> None:
         ready = [node_a, node_b]
         result = _get_next_ready(ready)
@@ -105,14 +110,12 @@ class TestGetNextReady:
         assert result is None
         assert ready == []
 
-    def test_removes_item_from_list(self, node_a: ScriptNode) -> None:
+    def test_removes_item_from_list(self, node_a: str) -> None:
         ready = [node_a]
         _get_next_ready(ready)
         assert ready == []
 
-    def test_fifo_order(
-        self, node_a: ScriptNode, node_b: ScriptNode, node_c: ScriptNode
-    ) -> None:
+    def test_fifo_order(self, node_a: str, node_b: str, node_c: str) -> None:
         ready = [node_a, node_b, node_c]
         assert _get_next_ready(ready) == node_a
         assert _get_next_ready(ready) == node_b
@@ -126,11 +129,11 @@ class TestGetNextReady:
 
 
 class TestIsExecutionDone:
-    def test_returns_true_when_all_complete(self, node_a: ScriptNode) -> None:
+    def test_returns_true_when_all_complete(self, node_a: str) -> None:
         completed = {node_a}
         assert _is_execution_done(completed, 1) is True
 
-    def test_returns_false_when_incomplete(self, node_a: ScriptNode) -> None:
+    def test_returns_false_when_incomplete(self, node_a: str) -> None:
         completed = {node_a}
         assert _is_execution_done(completed, 3) is False
 
@@ -138,9 +141,7 @@ class TestIsExecutionDone:
         completed: CompletedSet = set()
         assert _is_execution_done(completed, 0) is True
 
-    def test_returns_true_when_more_than_total(
-        self, node_a: ScriptNode, node_b: ScriptNode
-    ) -> None:
+    def test_returns_true_when_more_than_total(self, node_a: str, node_b: str) -> None:
         # Edge case: shouldn't happen, but function should handle it
         completed = {node_a, node_b}
         assert _is_execution_done(completed, 1) is True
@@ -153,7 +154,11 @@ class TestIsExecutionDone:
 
 class TestPropagateFailure:
     def test_marks_direct_dependent_as_failed(
-        self, linear_graph: nx.DiGraph, node_a: ScriptNode, node_b: ScriptNode
+        self,
+        linear_graph: nx.DiGraph,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
     ) -> None:
         completed: CompletedSet = {node_a}
         failed: FailedSet = {node_a}
@@ -161,7 +166,14 @@ class TestPropagateFailure:
         results: ResultsList = []
 
         _propagate_failure(
-            node_a, linear_graph, completed, in_progress, results, failed, None
+            node_a,
+            linear_graph,
+            node_map,
+            completed,
+            in_progress,
+            results,
+            failed,
+            None,
         )
 
         assert node_b in completed
@@ -171,9 +183,10 @@ class TestPropagateFailure:
     def test_recursively_marks_all_dependents(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         completed: CompletedSet = {node_a}
         failed: FailedSet = {node_a}
@@ -181,7 +194,14 @@ class TestPropagateFailure:
         results: ResultsList = []
 
         _propagate_failure(
-            node_a, linear_graph, completed, in_progress, results, failed, None
+            node_a,
+            linear_graph,
+            node_map,
+            completed,
+            in_progress,
+            results,
+            failed,
+            None,
         )
 
         assert node_b in failed
@@ -191,9 +211,10 @@ class TestPropagateFailure:
     def test_skips_already_completed_nodes(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         completed: CompletedSet = {node_a, node_b}  # B already done
         failed: FailedSet = {node_a}
@@ -201,17 +222,27 @@ class TestPropagateFailure:
         results: ResultsList = []
 
         _propagate_failure(
-            node_a, linear_graph, completed, in_progress, results, failed, None
+            node_a,
+            linear_graph,
+            node_map,
+            completed,
+            in_progress,
+            results,
+            failed,
+            None,
         )
 
         # B is skipped because it's already completed
         # C is NOT marked because propagate_failure only looks at direct successors
         # and B (the successor of A) is already completed, so recursion stops there
-        assert node_b not in results
         assert len(results) == 0  # No new failures - B was already done
 
     def test_skips_in_progress_nodes(
-        self, linear_graph: nx.DiGraph, node_a: ScriptNode, node_b: ScriptNode
+        self,
+        linear_graph: nx.DiGraph,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
     ) -> None:
         completed: CompletedSet = {node_a}
         failed: FailedSet = {node_a}
@@ -219,7 +250,14 @@ class TestPropagateFailure:
         results: ResultsList = []
 
         _propagate_failure(
-            node_a, linear_graph, completed, in_progress, results, failed, None
+            node_a,
+            linear_graph,
+            node_map,
+            completed,
+            in_progress,
+            results,
+            failed,
+            None,
         )
 
         # B should be skipped since it's in progress
@@ -229,7 +267,7 @@ class TestPropagateFailure:
         assert len(results) == 0
 
     def test_calls_callback_for_each_failed_node(
-        self, linear_graph: nx.DiGraph, node_a: ScriptNode
+        self, linear_graph: nx.DiGraph, node_map: NodeMap, node_a: str
     ) -> None:
         completed: CompletedSet = {node_a}
         failed: FailedSet = {node_a}
@@ -238,13 +276,20 @@ class TestPropagateFailure:
         callback = Mock()
 
         _propagate_failure(
-            node_a, linear_graph, completed, in_progress, results, failed, callback
+            node_a,
+            linear_graph,
+            node_map,
+            completed,
+            in_progress,
+            results,
+            failed,
+            callback,
         )
 
         assert callback.call_count == 2  # Called for B and C
 
     def test_sets_correct_error_message(
-        self, linear_graph: nx.DiGraph, node_a: ScriptNode
+        self, linear_graph: nx.DiGraph, node_map: NodeMap, node_a: str
     ) -> None:
         completed: CompletedSet = {node_a}
         failed: FailedSet = {node_a}
@@ -252,7 +297,14 @@ class TestPropagateFailure:
         results: ResultsList = []
 
         _propagate_failure(
-            node_a, linear_graph, completed, in_progress, results, failed, None
+            node_a,
+            linear_graph,
+            node_map,
+            completed,
+            in_progress,
+            results,
+            failed,
+            None,
         )
 
         for result in results:
@@ -261,7 +313,7 @@ class TestPropagateFailure:
             assert "Skipped due to failed dependency" in str(result.error)
             assert result.duration == 0.0
 
-    def test_handles_empty_graph(self, node_a: ScriptNode) -> None:
+    def test_handles_empty_graph(self, node_map: NodeMap, node_a: str) -> None:
         graph = nx.DiGraph()
         graph.add_node(node_a)  # No edges
         completed: CompletedSet = {node_a}
@@ -269,7 +321,9 @@ class TestPropagateFailure:
         in_progress: InProgressSet = set()
         results: ResultsList = []
 
-        _propagate_failure(node_a, graph, completed, in_progress, results, failed, None)
+        _propagate_failure(
+            node_a, graph, node_map, completed, in_progress, results, failed, None
+        )
 
         assert len(results) == 0  # No dependents to mark
 
@@ -282,9 +336,10 @@ class TestPropagateFailure:
 class TestMarkNodeComplete:
     def test_adds_node_to_completed(
         self,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
         linear_graph: nx.DiGraph,
     ) -> None:
         completed: CompletedSet = set()
@@ -298,6 +353,7 @@ class TestMarkNodeComplete:
             node_a,
             True,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -311,9 +367,10 @@ class TestMarkNodeComplete:
 
     def test_removes_node_from_in_progress(
         self,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
         linear_graph: nx.DiGraph,
     ) -> None:
         completed: CompletedSet = set()
@@ -327,6 +384,7 @@ class TestMarkNodeComplete:
             node_a,
             True,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -339,7 +397,7 @@ class TestMarkNodeComplete:
         assert node_a not in in_progress
 
     def test_adds_to_failed_on_failure(
-        self, node_a: ScriptNode, linear_graph: nx.DiGraph
+        self, node_map: NodeMap, node_a: str, linear_graph: nx.DiGraph
     ) -> None:
         completed: CompletedSet = set()
         failed: FailedSet = set()
@@ -352,6 +410,7 @@ class TestMarkNodeComplete:
             node_a,
             False,  # Failed
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -366,9 +425,10 @@ class TestMarkNodeComplete:
     def test_decrements_dependent_remaining_deps(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         completed: CompletedSet = set()
         failed: FailedSet = set()
@@ -381,6 +441,7 @@ class TestMarkNodeComplete:
             node_a,
             True,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -395,9 +456,10 @@ class TestMarkNodeComplete:
     def test_adds_to_ready_when_deps_satisfied(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         completed: CompletedSet = set()
         failed: FailedSet = set()
@@ -410,6 +472,7 @@ class TestMarkNodeComplete:
             node_a,
             True,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -424,9 +487,10 @@ class TestMarkNodeComplete:
     def test_propagates_failure_to_dependents(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         completed: CompletedSet = set()
         failed: FailedSet = set()
@@ -439,6 +503,7 @@ class TestMarkNodeComplete:
             node_a,
             False,  # Failed
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -455,9 +520,10 @@ class TestMarkNodeComplete:
     def test_skips_already_completed_dependents(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         completed: CompletedSet = {node_b}  # B already done
         failed: FailedSet = set()
@@ -470,6 +536,7 @@ class TestMarkNodeComplete:
             node_a,
             True,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -485,10 +552,11 @@ class TestMarkNodeComplete:
     def test_diamond_both_deps_must_complete(
         self,
         diamond_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
-        node_d: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
+        node_d: str,
     ) -> None:
         """D requires both B and C to complete."""
         completed: CompletedSet = {node_a}
@@ -503,6 +571,7 @@ class TestMarkNodeComplete:
             node_b,
             True,
             diamond_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -522,6 +591,7 @@ class TestMarkNodeComplete:
             node_c,
             True,
             diamond_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -538,10 +608,11 @@ class TestMarkNodeComplete:
     def test_diamond_one_path_fails(
         self,
         diamond_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
-        node_d: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
+        node_d: str,
     ) -> None:
         """If B fails in diamond, D should fail even though C succeeds."""
         completed: CompletedSet = {node_a}
@@ -556,6 +627,7 @@ class TestMarkNodeComplete:
             node_b,
             False,
             diamond_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -571,9 +643,10 @@ class TestMarkNodeComplete:
     def test_calls_callback_for_propagated_failures(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         completed: CompletedSet = set()
         failed: FailedSet = set()
@@ -587,6 +660,7 @@ class TestMarkNodeComplete:
             node_a,
             False,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -606,14 +680,19 @@ class TestMarkNodeComplete:
 
 
 class TestExecutionResult:
-    def test_default_values(self, node_a: ScriptNode) -> None:
-        result = ExecutionResult(node=node_a, success=True)
+    def test_default_values(self) -> None:
+        result = ExecutionResult(node=ScriptNode(path=Path("/a.sql")), success=True)
         assert result.error is None
         assert result.duration == 0.0
 
-    def test_with_error(self, node_a: ScriptNode) -> None:
+    def test_with_error(self) -> None:
         error = RuntimeError("Test error")
-        result = ExecutionResult(node=node_a, success=False, error=error, duration=1.5)
+        result = ExecutionResult(
+            node=ScriptNode(path=Path("/a.sql")),
+            success=False,
+            error=error,
+            duration=1.5,
+        )
         assert result.error == error
         assert result.duration == 1.5
 
@@ -640,9 +719,10 @@ class TestIntegration:
     def test_full_linear_execution_success(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         """Simulate successful execution of A -> B -> C."""
         completed: CompletedSet = set()
@@ -660,6 +740,7 @@ class TestIntegration:
             node,
             True,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -681,6 +762,7 @@ class TestIntegration:
             node,
             True,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -701,6 +783,7 @@ class TestIntegration:
             node,
             True,
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -718,9 +801,10 @@ class TestIntegration:
     def test_full_linear_execution_early_failure(
         self,
         linear_graph: nx.DiGraph,
-        node_a: ScriptNode,
-        node_b: ScriptNode,
-        node_c: ScriptNode,
+        node_map: NodeMap,
+        node_a: str,
+        node_b: str,
+        node_c: str,
     ) -> None:
         """Simulate A fails, B and C should be skipped."""
         completed: CompletedSet = set()
@@ -737,6 +821,7 @@ class TestIntegration:
             node,
             False,  # Failed!
             linear_graph,
+            node_map,
             completed,
             failed,
             in_progress,
@@ -760,9 +845,7 @@ class TestIntegration:
 class TestEagerBFSCallbackException:
     """on_script_complete raising must not kill the worker thread."""
 
-    def test_callback_exception_does_not_abort_execution(
-        self, node_a: ScriptNode
-    ) -> None:
+    def test_callback_exception_does_not_abort_execution(self, node_a: str) -> None:
         from trilogy.scripts.dependency import DependencyResolver
         from trilogy.scripts.parallel_execution import (
             EagerBFSStrategy,
@@ -785,7 +868,9 @@ class TestEagerBFSCallbackException:
         # without needing a real executor or file system.
         import unittest.mock as mock
 
-        successful_result = ExecutionResult(node=node_a, success=True)
+        successful_result = ExecutionResult(
+            node=ScriptNode(path=Path(node_a)), success=True
+        )
         resolver = Mock(spec=DependencyResolver)
 
         strategy = EagerBFSStrategy()

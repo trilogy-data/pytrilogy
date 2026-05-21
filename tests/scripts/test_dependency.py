@@ -1,9 +1,9 @@
 import tempfile
 from pathlib import Path
 
-import networkx as nx
 import pytest
 
+from trilogy.core import graph as nx
 from trilogy.parsing.exceptions import ParseError
 from trilogy.scripts.dependency import (
     ETLDependencyStrategy,
@@ -59,8 +59,10 @@ def test_etl_dependency_with_imports():
     base_node = next(n for n in nodes if n.path == base_file)
     consumer_node = next(n for n in nodes if n.path == consumer_file)
 
-    # Check if there's an edge from base to consumer
-    assert graph.has_edge(base_node, consumer_node), "base should run before consumer"
+    # Check if there's an edge from base to consumer (graph keys are path strings)
+    assert graph.has_edge(
+        str(base_node.path), str(consumer_node.path)
+    ), "base should run before consumer"
 
 
 def test_etl_dependency_with_persist():
@@ -89,7 +91,7 @@ def test_etl_dependency_with_persist():
 
     # Check if there's a path from updater to declarer (may be indirect through main)
     assert nx.has_path(
-        graph, updater_node, declarer_node
+        graph, str(updater_node.path), str(declarer_node.path)
     ), "updater should run before declarer (persist-before-declare rule)"
 
 
@@ -121,16 +123,16 @@ def test_etl_dependency_complex_chain():
     except nx.NetworkXError:
         raise AssertionError("Graph has cycles - dependency resolution failed")
 
-    # Find positions in execution order
+    # Find positions in execution order (order holds path-string keys)
     updater_node = next(n for n in nodes if n.path == updater_file)
     base_node = next(n for n in nodes if n.path == base_file)
     consumer_node = next(n for n in nodes if n.path == consumer_file)
     main_node = next(n for n in nodes if n.path == main_file)
 
-    updater_pos = order.index(updater_node)
-    base_pos = order.index(base_node)
-    consumer_pos = order.index(consumer_node)
-    main_pos = order.index(main_node)
+    updater_pos = order.index(str(updater_node.path))
+    base_pos = order.index(str(base_node.path))
+    consumer_pos = order.index(str(consumer_node.path))
+    main_pos = order.index(str(main_node.path))
 
     # Verify ordering constraints
     assert (
@@ -173,8 +175,8 @@ def test_etl_dependency_persist_imports_declarer():
     updater_node = next(n for n in nodes if n.path == updater_file)
     declarer_node = next(n for n in nodes if n.path == declarer_file)
 
-    updater_pos = order.index(updater_node)
-    declarer_pos = order.index(declarer_node)
+    updater_pos = order.index(str(updater_node.path))
+    declarer_pos = order.index(str(declarer_node.path))
 
     assert updater_pos < declarer_pos, (
         "updater must run before declarer (persist-before-declare takes precedence "
@@ -219,12 +221,12 @@ def test_etl_transitive_persist_order():
     updater_a_node = next(n for n in nodes if n.path == updater_a_file)
     updater_b_node = next(n for n in nodes if n.path == updater_b_file)
 
-    updater_a_pos = order.index(updater_a_node)
-    updater_b_pos = order.index(updater_b_node)
+    updater_a_pos = order.index(str(updater_a_node.path))
+    updater_b_pos = order.index(str(updater_b_node.path))
 
     assert updater_a_pos < updater_b_pos, (
         f"updater_a must run before updater_b (transitive persist order). "
-        f"Order was: {[n.path.name for n in order]}"
+        f"Order was: {[Path(key).name for key in order]}"
     )
 
 
