@@ -853,6 +853,15 @@ class QueryDatasource:
             unique_pairs.add(pairing)
         self.input_concepts = unique(self.input_concepts, "address")
         self.output_concepts = unique(self.output_concepts, "address")
+        # A base datasource surfaces nullable columns via ``nullable_concepts``;
+        # a derived output (e.g. a CASE with no ELSE) has no column, so its
+        # intrinsic nullability lives only on its own modifiers. Fold that in
+        # here so join planning and null-safe rendering see it uniformly.
+        intrinsic_nullable = [c for c in self.output_concepts if c.is_nullable]
+        if intrinsic_nullable:
+            self.nullable_concepts = unique(
+                self.nullable_concepts + intrinsic_nullable, "address"
+            )
         if CONFIG.validate_missing:
             all_concepts = self.input_concepts + self.output_concepts
             mapped_canonical = {

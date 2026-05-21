@@ -1129,6 +1129,11 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
 
+    @property
+    def is_nullable(self) -> bool:
+        """Intrinsic nullability — a column ``?`` or a nullable derivation."""
+        return Modifier.NULLABLE in self.modifiers
+
     @cached_property
     def hash(self) -> int:
         return hash(
