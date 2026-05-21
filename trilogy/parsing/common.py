@@ -1,9 +1,10 @@
 from datetime import date, datetime
-from typing import Any, Iterable, List, Mapping, Sequence, Tuple
+from typing import Any, Iterable, List, Mapping, Tuple
 
-from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
+    ComparisonOperator,
     Derivation,
     FunctionClass,
     FunctionType,
@@ -19,6 +20,7 @@ from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     CaseElse,
+    CaseSimpleWhen,
     CaseWhen,
     Comparison,
     Concept,
@@ -207,18 +209,235 @@ def process_function_args(
     return final
 
 
-def get_upstream_modifiers(
-    keys: Sequence[Concept | ConceptRef], environment: Environment
-) -> list[Modifier]:
-    modifiers = set()
-    for pkey in keys:
-        if isinstance(pkey, ConceptRef):
-            pkey = environment.concepts[pkey.address]
-        if isinstance(pkey, UndefinedConcept):
-            continue
-        if pkey.modifiers:
-            modifiers.update(pkey.modifiers)
-    return list(modifiers)
+# Function operators whose result is never NULL, regardless of how nullable
+# their arguments are (count of an empty group is 0, grouping flags are 0/1,
+# the clock functions and random() always return a value).
+NEVER_NULL_FUNCTIONS: frozenset[FunctionType] = frozenset(
+    {
+        FunctionType.COUNT,
+        FunctionType.COUNT_DISTINCT,
+        FunctionType.IS_NULL,
+        FunctionType.GROUPING,
+        FunctionType.GROUPING_ID,
+        FunctionType.CURRENT_DATE,
+        FunctionType.CURRENT_DATETIME,
+        FunctionType.CURRENT_TIMESTAMP,
+        FunctionType.RANDOM,
+    }
+)
+
+
+def _value_is_null_literal(value: Any) -> bool:
+    return value is None or value is MagicConstants.NULL
+
+
+# Sentinel: a comparison operand that is not a usable scalar literal.
+_NO_LITERAL = object()
+
+
+def _condition_literal(value: Any) -> Any:
+    """The scalar literal carried by a comparison operand, or ``_NO_LITERAL``."""
+    while isinstance(value, Parenthetical):
+        value = value.content
+    if isinstance(value, Function) and value.operator == FunctionType.CONSTANT:
+        if len(value.arguments) != 1:
+            return _NO_LITERAL
+        value = value.arguments[0]
+    if isinstance(value, (bool, int, float, str, date, datetime)):
+        return value
+    return _NO_LITERAL
+
+
+def _resolve_concept(ref: Any, environment: Environment) -> Concept | None:
+    if isinstance(ref, ConceptRef):
+        resolved: Concept | None = environment.concepts.get(ref.address)
+    elif isinstance(ref, Concept):
+        resolved = ref
+    else:
+        return None
+    if resolved is None or isinstance(resolved, UndefinedConcept):
+        return None
+    return resolved
+
+
+def _case_when_atoms(
+    operator: FunctionType, arguments: list[Any], environment: Environment
+) -> dict[str, tuple[Any, list[tuple[ComparisonOperator, Any]]]] | None:
+    """Per-concept ``(datatype, atoms)`` for a CASE's WHEN tests.
+
+    Returns None when any test isn't a simple ``concept <op> literal`` against a
+    *non-nullable* concept — a nullable concept can itself be NULL (a value no
+    WHEN represents), so coverage can never be proven in that case.
+    """
+    pairs: list[tuple[Any, ComparisonOperator, Any]] = []
+    if operator == FunctionType.SIMPLE_CASE:
+        if not arguments:
+            return None
+        switch = arguments[0]
+        for branch in arguments[1:]:
+            if not isinstance(branch, CaseSimpleWhen):
+                return None
+            pairs.append((switch, ComparisonOperator.EQ, branch.value_expr))
+    else:
+        for branch in arguments:
+            if not isinstance(branch, CaseWhen):
+                return None
+            cond = branch.comparison
+            if not isinstance(cond, Comparison) or isinstance(
+                cond, SubselectComparison
+            ):
+                return None
+            left_is_concept = isinstance(cond.left, (Concept, ConceptRef))
+            right_is_concept = isinstance(cond.right, (Concept, ConceptRef))
+            if left_is_concept and not right_is_concept:
+                pairs.append((cond.left, cond.operator, cond.right))
+            elif right_is_concept and not left_is_concept:
+                pairs.append((cond.right, cond.operator, cond.left))
+            else:
+                return None
+
+    grouped: dict[str, tuple[Any, list[tuple[ComparisonOperator, Any]]]] = {}
+    for ref, op, raw in pairs:
+        concept = _resolve_concept(ref, environment)
+        if concept is None or Modifier.NULLABLE in concept.modifiers:
+            return None
+        value = _condition_literal(raw)
+        if value is _NO_LITERAL:
+            return None
+        grouped.setdefault(concept.address, (concept.datatype, []))[1].append(
+            (op, value)
+        )
+    return grouped
+
+
+def _case_is_exhaustive(
+    operator: FunctionType, arguments: list[Any], environment: Environment
+) -> bool:
+    """True when a CASE's WHEN conditions provably cover the whole input
+    domain, so no row falls through to the (absent) ELSE.
+
+    Reuses the domain-coverage proof from datasource injection
+    (``conditions_cover_domain``)."""
+    from trilogy.core.processing.condition_utility import conditions_cover_domain
+
+    atoms = _case_when_atoms(operator, arguments, environment)
+    return atoms is not None and conditions_cover_domain(atoms)
+
+
+def _function_is_nullable(fn: Function, environment: Environment) -> bool:
+    op = fn.operator
+    arguments = list(fn.arguments)
+    if op in (FunctionType.CASE, FunctionType.SIMPLE_CASE):
+        branches = [
+            a for a in arguments if isinstance(a, (CaseWhen, CaseSimpleWhen, CaseElse))
+        ]
+        # A nullable branch *value* makes the whole expression nullable.
+        if any(_expr_is_nullable(b.expr, environment) for b in branches):
+            return True
+        if any(isinstance(a, CaseElse) for a in branches):
+            return False
+        # No ELSE: unmatched rows fall through to NULL — unless the WHEN
+        # conditions provably cover the domain (then no row is unmatched).
+        return not _case_is_exhaustive(op, arguments, environment)
+    if op == FunctionType.COALESCE:
+        # NULL only when every fallback is itself nullable.
+        return all(_expr_is_nullable(a, environment) for a in arguments)
+    if op == FunctionType.NULLIF:
+        # nullif(a, b) is NULL whenever a == b.
+        return True
+    if op in (FunctionType.CONSTANT, FunctionType.TYPED_CONSTANT):
+        return any(_value_is_null_literal(a) for a in arguments)
+    if op in NEVER_NULL_FUNCTIONS:
+        return False
+    if op == FunctionType.GROUP:
+        # group(expr, *grain): nullability tracks the wrapped expression.
+        return bool(arguments) and _expr_is_nullable(arguments[0], environment)
+    # Scalar functions and remaining aggregates propagate NULL from any input.
+    return any(_expr_is_nullable(a, environment) for a in arguments)
+
+
+def _expr_is_nullable(expr: Any, environment: Environment) -> bool:
+    """True when ``expr`` can evaluate to NULL.
+
+    Walks an authored expression tree. Concept leaves stop the recursion —
+    a referenced concept's own ``modifiers`` already encode (transitively)
+    whether it is nullable, so we never descend into its lineage.
+    """
+    if _value_is_null_literal(expr):
+        return True
+    if isinstance(
+        expr,
+        (int, float, str, bool, date, datetime, ListWrapper, TupleWrapper, MapWrapper),
+    ):
+        return False
+    if isinstance(expr, (ConceptRef, Concept)):
+        concept: Concept | None
+        if isinstance(expr, ConceptRef):
+            concept = environment.concepts.get(expr.address)
+        else:
+            concept = expr
+        if concept is None or isinstance(concept, UndefinedConcept):
+            return False
+        return Modifier.NULLABLE in concept.modifiers
+    if isinstance(expr, Parenthetical):
+        return _expr_is_nullable(expr.content, environment)
+    if isinstance(expr, FunctionCallWrapper):
+        return _expr_is_nullable(expr.content, environment)
+    if isinstance(expr, AggregateWrapper):
+        return _expr_is_nullable(expr.function, environment)
+    if isinstance(expr, FilterItem):
+        # A filtered value is NULL exactly when its source value is.
+        return _expr_is_nullable(expr.content, environment)
+    if isinstance(expr, NumberingWindowItem):
+        # row_number / rank / dense_rank always produce a value.
+        return False
+    if isinstance(expr, NavigationWindowItem):
+        if expr.type in (WindowType.COUNT, WindowType.COUNT_DISTINCT):
+            return False
+        # lag / lead yield NULL past the partition edge.
+        if expr.type in (WindowType.LAG, WindowType.LEAD):
+            return True
+        # sum / min / max / avg over a window follow their input.
+        return _expr_is_nullable(expr.content, environment)
+    if isinstance(expr, (CaseWhen, CaseSimpleWhen, CaseElse)):
+        return _expr_is_nullable(expr.expr, environment)
+    if isinstance(expr, Conditional):
+        return _expr_is_nullable(expr.left, environment) or _expr_is_nullable(
+            expr.right, environment
+        )
+    if isinstance(expr, Comparison):
+        # IS [NOT] NULL always yields a non-null boolean.
+        if expr.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
+            return False
+        return _expr_is_nullable(expr.left, environment) or _expr_is_nullable(
+            expr.right, environment
+        )
+    if isinstance(expr, Function):
+        return _function_is_nullable(expr, environment)
+    # Catch-all: any other concept-bearing node (Between, SubselectItem, ...)
+    # is nullable if any concept it references is.
+    if isinstance(expr, ConceptArgs):
+        return any(
+            _expr_is_nullable(arg, environment) for arg in expr.concept_arguments
+        )
+    return False
+
+
+def is_nullable_lineage(lineage: Any, environment: Environment) -> bool:
+    """Whether a derived concept with this lineage can produce NULL values."""
+    return _expr_is_nullable(lineage, environment)
+
+
+def get_lineage_modifiers(lineage: Any, environment: Environment) -> list[Modifier]:
+    """Modifiers a derived concept inherits from its ``lineage``.
+
+    Currently only nullability: a derivation is nullable when its expression
+    can yield NULL — a CASE with no ELSE, ``nullif``, an arithmetic op over a
+    nullable input, etc. See ``is_nullable_lineage``.
+    """
+    if is_nullable_lineage(lineage, environment):
+        return [Modifier.NULLABLE]
+    return []
 
 
 def get_purpose_and_keys(
@@ -517,7 +736,7 @@ def group_function_to_concept(
     ref_args, is_metric = get_relevant_parent_concepts(parent)
     concrete_args = [environment.concepts[c.address] for c in ref_args]
     pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
-    modifiers = get_upstream_modifiers(pkeys, environment)
+    modifiers = get_lineage_modifiers(parent, environment)
     key_grain: list[str] = []
     for x in pkeys:
         # for a group to, if we have a dynamic metric, ignore it
@@ -599,7 +818,7 @@ def function_to_concept(
     if parent.operator in FunctionClass.ONE_TO_MANY.value:
         # if the function will create more rows, we don't know what grain this is at
         grain = None
-    modifiers = get_upstream_modifiers(pkeys, environment)
+    modifiers = get_lineage_modifiers(parent, environment)
     key_grain: list[str] = []
     for x in pkeys:
         # metrics will group to keys, so do not do key traversal
@@ -711,9 +930,7 @@ def filter_item_to_concept(
         raise NotImplementedError(
             f"Filter item with non ref content {parent.content} ({type(parent.content)}) not yet supported"
         )
-    modifiers = get_upstream_modifiers(
-        cparent.concept_arguments, environment=environment
-    )
+    modifiers = get_lineage_modifiers(parent, environment)
     grain = cparent.grain if cparent.purpose == Purpose.PROPERTY else Grain()
     granularity = cparent.granularity
     return Concept(
@@ -779,7 +996,7 @@ def _numbering_window_to_concept(
         Grain.from_concepts(grain_components, environment) if arg_addresses else Grain()
     )
 
-    modifiers = get_upstream_modifiers(parent.concept_arguments, environment)
+    modifiers = get_lineage_modifiers(parent, environment)
     if parent.type in (WindowType.RANK, WindowType.DENSE_RANK):
         datatype: TraitDataType | DataType = TraitDataType(
             type=DataType.INTEGER, traits=["rank"]
@@ -850,7 +1067,7 @@ def _navigation_window_to_concept(
             grain_components += relevant
     final_grain = Grain.from_concepts(grain_components, environment)
 
-    modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
+    modifiers = get_lineage_modifiers(parent, environment)
     if parent.type in (WindowType.COUNT, WindowType.COUNT_DISTINCT):
         datatype: Any = DataType.INTEGER
     else:
@@ -903,7 +1120,7 @@ def agg_wrapper_to_concept(
     # at that grain
     fmetadata = metadata or Metadata()
     aggfunction = parent.function
-    modifiers = get_upstream_modifiers(parent.concept_arguments, environment)
+    modifiers = get_lineage_modifiers(parent, environment)
     grain = Grain.from_concepts(parent.by, environment) if parent.by else Grain()
     granularity = Concept.calculate_granularity(Derivation.AGGREGATE, grain, parent)
 
@@ -1039,7 +1256,7 @@ def subselect_to_concept(
     grain: Grain = Grain()
     for x in pkeys:
         grain += x.grain
-    modifiers = get_upstream_modifiers(pkeys, environment)
+    modifiers = get_lineage_modifiers(parent, environment)
     key_grain: list[str] = []
     for x in pkeys:
         if x.keys:
@@ -1108,7 +1325,7 @@ def comparison_to_concept(
     if parent.operator in FunctionClass.ONE_TO_MANY.value:
         # if the function will create more rows, we don't know what grain this is at
         grain = None
-    modifiers = get_upstream_modifiers(pkeys, environment)
+    modifiers = get_lineage_modifiers(parent, environment)
     key_grain: list[str] = []
     for x in pkeys:
         # metrics will group to keys, so do not do key traversal

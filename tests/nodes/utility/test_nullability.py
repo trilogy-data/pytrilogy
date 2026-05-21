@@ -1,8 +1,32 @@
 from trilogy import parse
-from trilogy.core.enums import JoinType, Modifier
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    JoinType,
+    Modifier,
+    Purpose,
+)
+from trilogy.core.models.author import (
+    CaseElse,
+    CaseWhen,
+    Comparison,
+    ConceptRef,
+    Conditional,
+    Function,
+    Parenthetical,
+)
 from trilogy.core.models.build import BuildGrain
+from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
 from trilogy.core.processing.utility import find_nullable_concepts
+from trilogy.parsing.common import (
+    _NO_LITERAL,
+    _case_when_atoms,
+    _condition_literal,
+    _expr_is_nullable,
+    _resolve_concept,
+)
 
 
 def test_find_nullable_concepts():
@@ -129,3 +153,314 @@ property order_id.ten_x<- cast(order_id / 10 as int) * 10;
     assert env.concepts["order_id"].modifiers == [Modifier.NULLABLE]
     assert env.concepts["ten_x_order"].modifiers == [Modifier.NULLABLE]
     assert env.concepts["ten_x"].modifiers == [Modifier.NULLABLE]
+
+
+def _is_nullable(env, name: str) -> bool:
+    return Modifier.NULLABLE in env.concepts[name].modifiers
+
+
+def test_case_derivation_nullability():
+    """A CASE that can fall through to NULL must be marked nullable; a fully
+    covered CASE whose branches are all non-null must not be."""
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int;
+
+auto no_else <- case when qty > 0 then 'in' when qty = 0 then 'out' end;
+auto with_else <- case when qty > 0 then 'in' else 'out' end;
+auto else_null <- case when qty > 0 then 'in' else null end;
+auto else_branch_nullable <- case when qty > 0 then 1 else nullif(qty, 0) end;
+""")
+    # no ELSE — unmatched rows fall through to NULL (the headline bug)
+    assert _is_nullable(env, "no_else")
+    # ELSE present, every branch value non-null — not nullable
+    assert not _is_nullable(env, "with_else")
+    # explicit ELSE NULL
+    assert _is_nullable(env, "else_null")
+    # ELSE present but a branch value is itself nullable
+    assert _is_nullable(env, "else_branch_nullable")
+
+
+def test_case_nullable_comparison_does_not_leak():
+    """A nullable concept used only in a WHEN *condition* (not a branch value)
+    does not make a covered CASE nullable."""
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int?;
+
+auto covered <- case when qty > 0 then 'in' else 'out' end;
+""")
+    assert env.concepts["qty"].modifiers == [Modifier.NULLABLE]
+    assert not _is_nullable(env, "covered")
+
+
+def test_coalesce_nullability():
+    """coalesce proves non-null when any fallback is non-null."""
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int?;
+
+auto rescued <- coalesce(qty, 0);
+auto still_null <- coalesce(qty, qty);
+""")
+    assert not _is_nullable(env, "rescued")
+    assert _is_nullable(env, "still_null")
+
+
+def test_nullif_nullability():
+    env, _ = parse("""
+key inv_id int;
+
+auto maybe <- nullif(inv_id, 0);
+""")
+    # inv_id is non-null, but nullif(a, b) is NULL whenever a == b
+    assert not _is_nullable(env, "inv_id")
+    assert _is_nullable(env, "maybe")
+
+
+def test_aggregate_nullability():
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int;
+property inv_id.qty_n int?;
+
+auto cnt <- count(inv_id);
+auto total_safe <- sum(qty);
+auto total_nullable <- sum(qty_n);
+""")
+    assert not _is_nullable(env, "cnt")
+    assert not _is_nullable(env, "total_safe")
+    assert _is_nullable(env, "total_nullable")
+
+
+def test_window_nullability():
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int;
+
+auto ranking <- rank inv_id order by qty desc;
+auto previous <- lag qty order by inv_id asc;
+""")
+    # rank always produces a value
+    assert not _is_nullable(env, "ranking")
+    # lag yields NULL past the partition edge
+    assert _is_nullable(env, "previous")
+
+
+def test_arithmetic_nullability_and_transitivity():
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int;
+property inv_id.qty_n int?;
+
+auto safe_math <- qty * 10;
+auto nullable_math <- qty_n * 10;
+auto downstream <- nullable_math + 1;
+""")
+    assert not _is_nullable(env, "safe_math")
+    assert _is_nullable(env, "nullable_math")
+    # nullability propagates transitively through a second derivation
+    assert _is_nullable(env, "downstream")
+
+
+def test_case_without_else_but_provably_complete_is_not_nullable():
+    """A CASE with no ELSE whose WHEN conditions provably cover the whole
+    domain cannot fall through to NULL — reuses the datasource-injection
+    completeness proof."""
+    env, _ = parse("""
+key inv_id int;
+property inv_id.flag bool;
+property inv_id.flag_n bool?;
+key raw_channel string;
+auto channel <- raw_channel::enum<string>['WEB','CATALOG','STORE'];
+
+auto bool_full <- case when flag = true then 1 when flag = false then 2 end;
+auto bool_partial <- case when flag = true then 1 end;
+auto bool_nullable_switch <- case
+    when flag_n = true then 1 when flag_n = false then 2 end;
+auto int_range_full <- case when inv_id >= 0 then 1 when inv_id < 0 then 2 end;
+auto enum_full <- case
+    when channel = 'WEB' then 1
+    when channel = 'CATALOG' then 2
+    when channel = 'STORE' then 3 end;
+auto enum_partial <- case
+    when channel = 'WEB' then 1 when channel = 'CATALOG' then 2 end;
+auto simple_enum_full <- case channel
+    when 'WEB' then 1 when 'CATALOG' then 2 when 'STORE' then 3 end;
+""")
+    # provably exhaustive — no fall-through possible
+    assert not _is_nullable(env, "bool_full")
+    assert not _is_nullable(env, "int_range_full")
+    assert not _is_nullable(env, "enum_full")
+    assert not _is_nullable(env, "simple_enum_full")
+    # not exhaustive — still nullable
+    assert _is_nullable(env, "bool_partial")
+    assert _is_nullable(env, "enum_partial")
+    # exhaustive over values, but a nullable switch can itself be NULL
+    assert _is_nullable(env, "bool_nullable_switch")
+
+
+def test_derived_nullable_folds_into_query_datasource():
+    """A QueryDatasource must report an intrinsically-nullable derived output
+    in ``nullable_concepts`` even though it is not a datasource column."""
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int;
+
+auto shelf_status <- case when qty > 0 then 'in' end;
+
+datasource inventory (
+    inv_id: inv_id,
+    qty: qty,
+)
+grain (inv_id)
+query '''select 1 as inv_id, 5 as qty''';
+""")
+    env = env.materialize_for_select()
+    inv_id = env.concepts["inv_id"]
+    qty = env.concepts["qty"]
+    shelf_status = env.concepts["shelf_status"]
+    assert Modifier.NULLABLE in shelf_status.modifiers
+    ds = env.datasources["inventory"]
+    qds = QueryDatasource(
+        input_concepts=[inv_id, qty],
+        output_concepts=[inv_id, qty, shelf_status],
+        datasources=[ds],
+        grain=BuildGrain(components={inv_id.address}),
+        joins=[],
+        source_map={
+            inv_id.address: {ds},
+            qty.address: {ds},
+            shelf_status.address: {ds},
+        },
+        nullable_concepts=[],
+    )
+    assert shelf_status.address in [c.address for c in qds.nullable_concepts]
+
+
+def _lineage_env():
+    env, _ = parse("""
+key inv_id int;
+property inv_id.qty int;
+property inv_id.qty2 int;
+property inv_id.qty_n int?;
+""")
+    return env
+
+
+def _abs(ref):
+    return Function(
+        operator=FunctionType.ABS,
+        output_datatype=DataType.INTEGER,
+        output_purpose=Purpose.PROPERTY,
+        arguments=[ref],
+        arg_count=1,
+    )
+
+
+def _const(*args):
+    return Function(
+        operator=FunctionType.CONSTANT,
+        output_datatype=DataType.INTEGER,
+        output_purpose=Purpose.CONSTANT,
+        arguments=list(args),
+        arg_count=len(args),
+    )
+
+
+def test_condition_literal_unwraps_and_rejects():
+    qty = _lineage_env().concepts["qty"].reference
+    assert _condition_literal(Parenthetical(content=7)) == 7
+    assert _condition_literal(_const(5)) == 5
+    assert _condition_literal(_const(1, 2)) is _NO_LITERAL
+    assert _condition_literal(qty) is _NO_LITERAL
+
+
+def test_resolve_concept():
+    env = _lineage_env()
+    qty = env.concepts["qty"]
+    assert _resolve_concept(qty.reference, env) is qty
+    assert _resolve_concept(qty, env) is qty
+    assert _resolve_concept(42, env) is None
+    assert (
+        _resolve_concept(
+            ConceptRef(address="local.does_not_exist", datatype=DataType.INTEGER), env
+        )
+        is None
+    )
+
+
+def test_case_when_atoms_simple_case_edge_cases():
+    env = _lineage_env()
+    qty = env.concepts["qty"].reference
+    assert _case_when_atoms(FunctionType.SIMPLE_CASE, [], env) is None
+    assert (
+        _case_when_atoms(FunctionType.SIMPLE_CASE, [qty, CaseElse(expr=1)], env) is None
+    )
+    assert _case_when_atoms(FunctionType.CASE, [CaseElse(expr=1)], env) is None
+
+
+def test_case_when_atoms_searched_case_shapes():
+    env = _lineage_env()
+    qty = env.concepts["qty"].reference
+    qty2 = env.concepts["qty2"].reference
+    nested = CaseWhen(
+        comparison=Conditional(
+            left=Comparison(left=qty, right=5, operator=ComparisonOperator.EQ),
+            right=Comparison(left=qty, right=9, operator=ComparisonOperator.LT),
+            operator=BooleanOperator.AND,
+        ),
+        expr=1,
+    )
+    assert _case_when_atoms(FunctionType.CASE, [nested], env) is None
+
+    flipped = CaseWhen(
+        comparison=Comparison(left=5, right=qty, operator=ComparisonOperator.EQ),
+        expr=1,
+    )
+    grouped = _case_when_atoms(FunctionType.CASE, [flipped], env)
+    assert grouped is not None and env.concepts["qty"].address in grouped
+
+    both = CaseWhen(
+        comparison=Comparison(left=qty, right=qty2, operator=ComparisonOperator.EQ),
+        expr=1,
+    )
+    assert _case_when_atoms(FunctionType.CASE, [both], env) is None
+
+    opaque = CaseWhen(
+        comparison=Comparison(
+            left=qty, right=_abs(qty2), operator=ComparisonOperator.EQ
+        ),
+        expr=1,
+    )
+    assert _case_when_atoms(FunctionType.CASE, [opaque], env) is None
+
+
+def test_expr_is_nullable_direct_nodes():
+    env = _lineage_env()
+    qty = env.concepts["qty"]
+    qty_n = env.concepts["qty_n"]
+    assert _expr_is_nullable(qty, env) is False
+    assert _expr_is_nullable(qty_n, env) is True
+    assert (
+        _expr_is_nullable(
+            ConceptRef(address="local.ghost", datatype=DataType.INTEGER), env
+        )
+        is False
+    )
+    assert _expr_is_nullable(CaseElse(expr=qty_n.reference), env) is True
+    assert (
+        _expr_is_nullable(
+            Conditional(
+                left=Comparison(
+                    left=qty_n.reference, right=0, operator=ComparisonOperator.GT
+                ),
+                right=Comparison(
+                    left=qty.reference, right=0, operator=ComparisonOperator.GT
+                ),
+                operator=BooleanOperator.AND,
+            ),
+            env,
+        )
+        is True
+    )

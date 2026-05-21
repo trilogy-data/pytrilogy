@@ -248,28 +248,30 @@ def is_scalar_condition(
 
 
 def reduce_expression(
-    var: BuildConcept, group_tuple: list[tuple[ComparisonOperator, Any]]
+    datatype: Any, group_tuple: list[tuple[ComparisonOperator, Any]]
 ) -> bool:
-    if isinstance(var.datatype, EnumType):
+    """True when ``group_tuple`` — ``(operator, value)`` atoms against a single
+    concept of type ``datatype`` — covers that type's entire domain."""
+    if isinstance(datatype, EnumType):
         covered = {
             str(v)
             for op, v in group_tuple
             if op in (ComparisonOperator.EQ, ComparisonOperator.IS)
         }
-        return covered >= {str(v) for v in var.datatype.values}
+        return covered >= {str(v) for v in datatype.values}
 
     lower_check: Any
     upper_check: Any
-    if var.datatype in (DataType.INTEGER, DataType.FLOAT):
+    if datatype in (DataType.INTEGER, DataType.FLOAT):
         lower_check = float("-inf")
         upper_check = float("inf")
-    elif var.datatype == DataType.DATE:
+    elif datatype == DataType.DATE:
         lower_check = date.min
         upper_check = date.max
-    elif var.datatype == DataType.DATETIME:
+    elif datatype == DataType.DATETIME:
         lower_check = datetime.min
         upper_check = datetime.max
-    elif var.datatype == DataType.BOOL:
+    elif datatype == DataType.BOOL:
         lower_check = False
         upper_check = True
     else:
@@ -334,12 +336,26 @@ def is_fully_covered(
     return current_end >= end
 
 
+def conditions_cover_domain(
+    grouped: dict[str, tuple[Any, list[tuple[ComparisonOperator, Any]]]],
+) -> bool:
+    """True when every concept's ``(operator, value)`` atoms span its whole
+    domain — i.e. the disjunction of all the atoms is a tautology.
+
+    ``grouped`` maps a concept identity to ``(datatype, atoms)``. Empty input
+    proves nothing, so returns False.
+    """
+    if not grouped:
+        return False
+    return all(reduce_expression(dt, atoms) for dt, atoms in grouped.values())
+
+
 def simplify_conditions(
     conditions: list[BoolExpr],
 ) -> bool:
     # Key by address string — concept objects from different datasources may not
     # hash/compare identically even when they represent the same concept.
-    grouped: dict[str, tuple[BuildConcept, list[tuple[ComparisonOperator, Any]]]] = {}
+    grouped: dict[str, tuple[Any, list[tuple[ComparisonOperator, Any]]]] = {}
     for condition in conditions:
         if not isinstance(condition, BuildComparison):
             return False
@@ -366,10 +382,10 @@ def simplify_conditions(
                 return False
             comparison = raw_comparison
 
-        entry = grouped.setdefault(concept.canonical_address, (concept, []))
+        entry = grouped.setdefault(concept.canonical_address, (concept.datatype, []))
         entry[1].append((condition.operator, comparison))
 
-    return all(reduce_expression(var, group) for var, group in grouped.values())
+    return conditions_cover_domain(grouped)
 
 
 def decompose_condition(
