@@ -1,30 +1,40 @@
 query_id = "04"
-gen_length = 682
-preql_size = 313
+gen_length = 1012
+preql_size = 320
 comp_size = 407
 generated_sql = """
 
 WITH 
-quizzical as (
+wakeful as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
-GROUP BY
-    1
-HAVING
-    count(CASE WHEN \"lineitem\".\"l_commitdate\" < \"lineitem\".\"l_receiptdate\" THEN \"lineitem\".\"l_linenumber\" ELSE NULL END) > 0
-)
-SELECT
-    \"order_orders\".\"o_orderpriority\" as \"order_priority\",
-    count(\"quizzical\".\"order_id\") as \"order_count\"
-FROM
-    \"quizzical\"
-    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"quizzical\".\"order_id\" = \"order_orders\".\"o_orderkey\"
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
 WHERE
-    \"order_orders\".\"o_orderdate\" >= date '1993-07-01' and \"order_orders\".\"o_orderdate\" < date '1993-10-01'
+    \"order_orders\".\"o_orderdate\" >= date '1993-07-01' and \"order_orders\".\"o_orderdate\" < date '1993-10-01' and \"lineitem\".\"l_commitdate\" < \"lineitem\".\"l_receiptdate\"
 
 GROUP BY
     1
+HAVING
+    count(\"lineitem\".\"l_linenumber\") > 0
+),
+thoughtful as (
+SELECT
+    \"order_orders\".\"o_orderkey\" as \"order_id\",
+    \"order_orders\".\"o_orderpriority\" as \"order_priority\"
+FROM
+    \"memory\".\"orders\" as \"order_orders\"
+WHERE
+    \"order_orders\".\"o_orderdate\" >= date '1993-07-01' and \"order_orders\".\"o_orderdate\" < date '1993-10-01'
+)
+SELECT
+    \"thoughtful\".\"order_priority\" as \"order_priority\",
+    count(\"wakeful\".\"order_id\") as \"order_count\"
+FROM
+    \"wakeful\"
+    INNER JOIN \"thoughtful\" on \"wakeful\".\"order_id\" = \"thoughtful\".\"order_id\"
+GROUP BY
+    1
 ORDER BY 
-    \"order_orders\".\"o_orderpriority\" asc"""
+    \"thoughtful\".\"order_priority\" asc"""
