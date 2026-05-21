@@ -310,6 +310,28 @@ def _source_concepts_via_graph(
             )
             for k, subgraph in sub_nodes.items()
         ]
+        covering_candidates = [
+            candidate
+            for candidate in candidates
+            if _candidate_satisfies_request(candidate, orig_concepts, select_conditions)
+        ]
+        if covering_candidates:
+            best = min(
+                covering_candidates,
+                key=lambda c: (
+                    c.group_source_count,
+                    len(c.node.usable_outputs),
+                    str(c.node),
+                ),
+            )
+            return [
+                finalize_select_node(
+                    best,
+                    environment=environment,
+                    depth=depth,
+                    requested_concepts=requested_concepts,
+                )
+            ]
         if conditions and len(sub_nodes) > 1:
             trial = [
                 create_select_node_candidate(
@@ -527,6 +549,23 @@ def _candidates_route_conditions(
         ]
     )
     return remaining is None or _condition_can_apply_after_merge(candidates, remaining)
+
+
+def _candidate_satisfies_request(
+    candidate: SourceNodeCandidate,
+    requested: list[BuildConcept],
+    conditions: BuildWhereClause | None,
+) -> bool:
+    if not conditions or candidate.node.preexisting_conditions is None:
+        return False
+    if not condition_implies(
+        candidate.node.preexisting_conditions, conditions.conditional
+    ):
+        return False
+    requested_addresses = {c.canonical_address for c in requested}
+    output_addresses = {c.canonical_address for c in candidate.node.usable_outputs}
+    partial_addresses = {c.canonical_address for c in candidate.node.partial_concepts}
+    return requested_addresses.issubset(output_addresses - partial_addresses)
 
 
 def _parents_apply_condition_atoms(

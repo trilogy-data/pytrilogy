@@ -1,5 +1,5 @@
 query_id = "76"
-gen_length = 7761
+gen_length = 7607
 preql_size = 2275
 comp_size = 1708
 generated_sql = """
@@ -13,7 +13,7 @@ SELECT
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
 WHERE
-    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
+    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
 ),
 concerned as (
 SELECT
@@ -23,7 +23,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
+    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
 ),
 quizzical as (
 SELECT
@@ -33,7 +33,7 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
 WHERE
-    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
+    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
 ),
 macho as (
 SELECT
