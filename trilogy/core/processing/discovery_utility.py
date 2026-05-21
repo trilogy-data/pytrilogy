@@ -285,20 +285,36 @@ def group_if_required_v2(
 
 
 def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
-    upstream = set()
+    return _upstream_concepts(base, nested, {})
+
+
+def _upstream_concepts(
+    base: BuildConcept, nested: bool, cache: dict[int, set[str]]
+) -> set[str]:
+    # Lineage DAGs are diamond-shaped: the same concept is reached via many
+    # paths, so an unmemoized recursion is exponential. BuildConcepts are
+    # immutable during resolution, so memoize the (nested=True) result by
+    # identity for the lifetime of the top-level call.
+    if nested:
+        memoized = cache.get(id(base))
+        if memoized is not None:
+            return memoized
+    upstream: set[str] = set()
     if nested:
         upstream.add(base.address)
-    if not base.lineage:
-        return upstream
-    for x in base.lineage.concept_arguments:
-        # if it's derived from any value in a rowset, ALL rowset items are upstream.
-        # use the rowset's already-namespaced derived_concepts rather than splicing
-        # `rowset.name` onto the underlying SELECT's addresses, which would produce
-        # nonsense like `deduped.local.group_key` and silently miss real upstreams.
-        if x.derivation == Derivation.ROWSET:
-            assert isinstance(x.lineage, BuildRowsetItem), type(x.lineage)
-            upstream.update(x.lineage.rowset.derived_concepts)
-        upstream = upstream.union(get_upstream_concepts(x, nested=True))
+    if base.lineage:
+        for x in base.lineage.concept_arguments:
+            # if it's derived from any value in a rowset, ALL rowset items are
+            # upstream. use the rowset's already-namespaced derived_concepts
+            # rather than splicing `rowset.name` onto the underlying SELECT's
+            # addresses, which would produce nonsense like
+            # `deduped.local.group_key` and silently miss real upstreams.
+            if x.derivation == Derivation.ROWSET:
+                assert isinstance(x.lineage, BuildRowsetItem), type(x.lineage)
+                upstream.update(x.lineage.rowset.derived_concepts)
+            upstream |= _upstream_concepts(x, True, cache)
+    if nested:
+        cache[id(base)] = upstream
     return upstream
 
 
@@ -446,18 +462,14 @@ def get_priority_concept(
     priority += [c for c in pass_one if c.address not in [x.address for x in priority]]
     final = []
     # if any thing is derived from another concept
-    # get the derived copy first
-    # as this will usually resolve cleaner
+    # get the derived copy first as this will usually resolve cleaner.
+    # get_upstream_concepts(c) depends only on c, so collect the union once
+    # rather than recomputing it per (x, c) pair.
+    all_upstream: set[str] = set()
+    for c in priority:
+        all_upstream |= get_upstream_concepts(c)
     for x in priority:
-        if any(
-            [
-                x.address
-                in get_upstream_concepts(
-                    c,
-                )
-                for c in priority
-            ]
-        ):
+        if x.address in all_upstream:
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
             )

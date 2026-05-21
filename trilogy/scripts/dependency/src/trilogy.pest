@@ -300,11 +300,27 @@ having = { ^"having" ~ conditional }
 // a OR b AND c  ->  conditional(a, OR, conditional(b, AND, c))
 conditional = { _and_conditional ~ (LOGICAL_OR ~ _and_conditional)* }
 _and_conditional = { _condition_unit ~ (LOGICAL_AND ~ _condition_unit)* }
-// expr first so `(x % 2) = 0` is parsed as a single comparison rather than
-// stopping at the parenthetical and leaving `= 0` for the outer rule.
-_condition_unit  = _{ expr | condition_parenthetical }
+// `(a and b)` can only ever match condition_parenthetical — `expr` has no
+// AND/OR — but trying `expr` first means every parenthesized boolean group
+// is parsed as `expr` (and discarded) 3-4x before the fallback fires. Try
+// the bare paren form first, guarded by `!_EXPR_CONTINUATION` so it does not
+// steal `(x) = 0`, `(x) + 1`, `(x).attr` etc., which are genuine `expr`s.
+// The `not (...)` form stays after `expr` so `not (single_expr)` keeps
+// resolving to `fnot` rather than a paren-condition.
+_condition_unit  = _{ condition_parenthetical | expr | condition_parenthetical_not }
 
-condition_parenthetical = { CONDITION_NOT? ~ "(" ~ conditional ~ ")" }
+condition_parenthetical     = { "(" ~ conditional ~ ")" ~ !_EXPR_CONTINUATION }
+condition_parenthetical_not = { CONDITION_NOT ~ "(" ~ conditional ~ ")" }
+
+// A `)` followed by any of these is the tail of an `expr`, not the end of a
+// parenthesized condition — defer to the `expr` alternative when seen.
+// BETWEEN_LA is atomic so the keyword-boundary check is applied immediately
+// after the word (a non-atomic sequence would skip whitespace before it).
+_EXPR_CONTINUATION = _{
+      COMPARISON_OPERATOR | PLUS_OR_MINUS | MULTIPLY_DIVIDE_PERCENT
+    | "." | "[" | "::" | BETWEEN_LA
+}
+BETWEEN_LA = @{ ^"between" ~ !(ASCII_ALPHANUMERIC | "_") }
 
 // Keyword boundary guard: not followed by identifier chars. Prevents `or`
 // from matching the "or" prefix of `order`, `and` from matching `android`, etc.

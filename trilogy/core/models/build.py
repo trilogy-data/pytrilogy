@@ -2181,11 +2181,27 @@ class Factory:
         self.local_non_build_concepts[name] = new
         return new, built
 
-    @singledispatchmethod
+    # Resolved build implementations keyed by input type. singledispatchmethod
+    # is too heavy for a method called hundreds of thousands of times per parse:
+    # its __get__ rebuilds a wrapper (via update_wrapper) on every access, and
+    # dispatch() does a weakref-cache lookup. We keep singledispatch only for
+    # registration/MRO resolution and cache the result on first sight.
+    _build_impl_cache: dict[type, Any] = {}
+
     def build(self, base):
+        impl = Factory._build_impl_cache.get(base.__class__)
+        if impl is None:
+            impl = Factory.__dict__["_build_dispatch"].dispatcher.dispatch(
+                base.__class__
+            )
+            Factory._build_impl_cache[base.__class__] = impl
+        return impl(self, base)
+
+    @singledispatchmethod
+    def _build_dispatch(self, base):
         raise NotImplementedError("Cannot build {}".format(type(base)))
 
-    @build.register
+    @_build_dispatch.register
     def _(
         self,
         base: (
@@ -2229,14 +2245,14 @@ class Factory:
             return ListWrapper([self.build(v) for v in base], type=base.type)
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: None) -> None:
         return self._build_none(base)
 
     def _build_none(self, base):
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Function) -> Any:
         return self._build_function(base)
 
@@ -2313,7 +2329,7 @@ class Factory:
         )
         return new
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: ConceptRef) -> BuildConcept:
         return self._build_concept_ref(base)
 
@@ -2330,7 +2346,7 @@ class Factory:
         # this will error by design - TODO - more helpful message?
         return self._build_concept(self.environment.concepts[base.address])
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: CaseWhen) -> BuildCaseWhen:
         return self._build_case_when(base)
 
@@ -2344,7 +2360,7 @@ class Factory:
             expr=self.build(expr),
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: CaseSimpleWhen) -> BuildCaseSimpleWhen:
         return self._build_simple_case_when(base)
 
@@ -2358,7 +2374,7 @@ class Factory:
             expr=self.build(expr),
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: CaseElse) -> BuildCaseElse:
         return self._build_case_else(base)
 
@@ -2369,7 +2385,7 @@ class Factory:
             expr, _ = self.instantiate_concept(validation)
         return BuildCaseElse(expr=self.build(expr))
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Concept) -> BuildConcept:
         return self._build_concept(base)
 
@@ -2536,7 +2552,7 @@ class Factory:
         self.build_cache[cache_address] = rval
         return rval
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
         return self._build_aggregate_wrapper(base)
 
@@ -2562,7 +2578,7 @@ class Factory:
             grouping_sets=grouping_sets,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: ColumnAssignment) -> BuildColumnAssignment | None:
         return self._build_column_assignment(base)
 
@@ -2597,14 +2613,14 @@ class Factory:
             modifiers=modifiers,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: OrderBy) -> BuildOrderBy:
         return self._build_order_by(base)
 
     def _build_order_by(self, base: OrderBy) -> BuildOrderBy:
         return BuildOrderBy(items=[self._build_order_item(x) for x in base.items])
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: FunctionCallWrapper) -> BuildExpr:
         return self._build_function_call_wrapper(base)
 
@@ -2617,7 +2633,7 @@ class Factory:
             return built
         return self.build(base.content)
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: OrderItem) -> BuildOrderItem:
         return self._build_order_item(base)
 
@@ -2633,7 +2649,7 @@ class Factory:
             order=base.order,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: WhereClause) -> BuildWhereClause:
         return self._build_where_clause(base)
 
@@ -2654,18 +2670,18 @@ class Factory:
             conditional = flatten_conditions(conditional)
         return BuildWhereClause(conditional=conditional)
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: HavingClause) -> BuildHavingClause:
         return self._build_having_clause(base)
 
     def _build_having_clause(self, base: HavingClause) -> BuildHavingClause:
         return BuildHavingClause(conditional=self.build(base.conditional))
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: NumberingWindowItem) -> BuildNumberingWindowItem:
         return self._build_numbering_window_item(base)
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: NavigationWindowItem) -> BuildNavigationWindowItem:
         return self._build_navigation_window_item(base)
 
@@ -2730,7 +2746,7 @@ class Factory:
             offset=base.offset,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Conditional) -> BuildConditional:
         return self._build_conditional(base)
 
@@ -2741,7 +2757,7 @@ class Factory:
             operator=base.operator,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: SubselectComparison) -> BuildSubselectComparison:
         return self._build_subselect_comparison(base)
 
@@ -2759,7 +2775,7 @@ class Factory:
             operator=base.operator,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Between) -> "BuildBetween | bool":
         return self._build_between(base)
 
@@ -2781,7 +2797,7 @@ class Factory:
             return loval <= lval <= hival
         return BuildBetween(left=left, low=low, high=high)
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Comparison) -> BuildComparison | bool:
         return self._build_comparison(base)
 
@@ -2824,7 +2840,7 @@ class Factory:
             operator=base.operator,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: AlignItem) -> BuildAlignItem:
         return self._build_align_item(base)
 
@@ -2836,14 +2852,14 @@ class Factory:
             hidden=base.hidden,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: AlignClause) -> BuildAlignClause:
         return self._build_align_clause(base)
 
     def _build_align_clause(self, base: AlignClause) -> BuildAlignClause:
         return BuildAlignClause(items=[self._build_align_item(x) for x in base.items])
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: DeriveItem) -> BuildDeriveItem:
         return self._build_derive_item(base)
 
@@ -2858,14 +2874,14 @@ class Factory:
             namespace=base.namespace,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: DeriveClause) -> BuildDeriveClause:
         return self._build_derive_clause(base)
 
     def _build_derive_clause(self, base: DeriveClause) -> BuildDeriveClause:
         return BuildDeriveClause(items=[self.build(x) for x in base.items])
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: RowsetItem) -> BuildRowsetItem:
         return self._build_rowset_item(base)
 
@@ -2884,7 +2900,7 @@ class Factory:
             rowset=factory._build_rowset_lineage(base.rowset),
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: SubselectItem) -> BuildSubselectItem:
         return self._build_subselect_item(base)
 
@@ -2897,7 +2913,7 @@ class Factory:
             outer_arguments=[self.build(x) for x in base.outer_arguments],
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: RowsetLineage) -> BuildRowsetLineage:
         return self._build_rowset_lineage(base)
 
@@ -2909,7 +2925,7 @@ class Factory:
         )
         return out
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Grain) -> BuildGrain:
         return self._build_grain(base)
 
@@ -2949,21 +2965,21 @@ class Factory:
                 normalized.add(c)
         return BuildGrain(components=normalized, where_clause=where)
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: TupleWrapper) -> TupleWrapper:
         return self._build_tuple_wrapper(base)
 
     def _build_tuple_wrapper(self, base: TupleWrapper) -> TupleWrapper:
         return TupleWrapper(val=[self.build(x) for x in base.val], type=base.type)
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: ListWrapper) -> ListWrapper:
         return self._build_list_wrapper(base)
 
     def _build_list_wrapper(self, base: ListWrapper) -> ListWrapper:
         return ListWrapper([self.build(x) for x in base], type=base.type)
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: FilterItem) -> BuildFilterItem:
         return self._build_filter_item(base)
 
@@ -2977,7 +2993,7 @@ class Factory:
             content=self.build(base.content), where=self.build(base.where)
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Parenthetical) -> BuildParenthetical:
         return self._build_parenthetical(base)
 
@@ -2989,7 +3005,7 @@ class Factory:
         else:
             return BuildParenthetical(content=self.build(base.content))
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: SelectLineage) -> BuildSelectLineage:
         return self._build_select_lineage(base)
 
@@ -3060,7 +3076,7 @@ class Factory:
             where_clause=where_clause,
         )
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: MultiSelectLineage) -> BuildMultiSelectLineage:
         return self._build_multi_select_lineage(base)
 
@@ -3155,7 +3171,7 @@ class Factory:
             local_build_cache[k].lineage = lineage
         return lineage
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Environment):
         return self._build_environment(base)
 
@@ -3190,56 +3206,56 @@ class Factory:
         new.gen_concept_list_caches()
         return new
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: TraitDataType):
         return self._build_trait_data_type(base)
 
     def _build_trait_data_type(self, base: TraitDataType):
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: EnumType):
         return self._build_enum_data_type(base)
 
     def _build_enum_data_type(self, base: EnumType):
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: ArrayType):
         return self._build_array_type(base)
 
     def _build_array_type(self, base: ArrayType):
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: StructType):
         return self._build_struct_type(base)
 
     def _build_struct_type(self, base: StructType):
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: MapType):
         return self._build_map_type(base)
 
     def _build_map_type(self, base: MapType):
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: ArgBinding):
         return self._build_arg_binding(base)
 
     def _build_arg_binding(self, base: ArgBinding):
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Ordering):
         return self._build_ordering(base)
 
     def _build_ordering(self, base: Ordering):
         return base
 
-    @build.register
+    @_build_dispatch.register
     def _(self, base: Datasource):
         return self._build_datasource(base)
 
