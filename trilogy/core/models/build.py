@@ -44,6 +44,7 @@ from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     ArgBinding,
+    Between,
     CaseElse,
     CaseSimpleWhen,
     CaseWhen,
@@ -575,7 +576,10 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
     def __add__(self, other) -> Union["BuildParenthetical", "BuildConditional"]:
         if other is None:
             return self
-        elif isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
+        elif isinstance(
+            other,
+            BoolExpr,
+        ):
             return BuildConditional(
                 left=self, right=other, operator=BooleanOperator.AND
             )
@@ -635,6 +639,7 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
         BuildConditional,
         BuildParenthetical,
         BuildSubselectComparison,
+        "BuildBetween",
         BuildFunction,
         BuildFilterItem,
     ]
@@ -650,6 +655,7 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
         BuildConditional,
         BuildParenthetical,
         BuildSubselectComparison,
+        "BuildBetween",
         BuildFunction,
         BuildFilterItem,
     ]
@@ -660,7 +666,10 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
             return self
         elif str(other) == str(self):
             return self
-        elif isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
+        elif isinstance(
+            other,
+            BoolExpr,
+        ):
             return BuildConditional(
                 left=self, right=other, operator=BooleanOperator.AND
             )
@@ -761,6 +770,7 @@ class BuildWhereClause(BuildConceptArgs):
         BuildComparison,
         BuildConditional,
         BuildParenthetical,
+        "BuildBetween",
     ]
 
     def __eq__(self, other):
@@ -838,7 +848,8 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
         if other is None:
             return self
         if not isinstance(
-            other, (BuildComparison, BuildConditional, BuildParenthetical)
+            other,
+            BoolExpr,
         ):
             raise ValueError(f"Cannot add {type(other)} to {__class__}")
         if other == self:
@@ -946,6 +957,130 @@ class BuildSubselectComparison(BuildComparison):
     @property
     def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
         return [tuple(get_concept_arguments(self.right))]
+
+
+@dataclass(slots=True)
+class BuildBetween(DataTyped, BuildConceptArgs, ConstantInlineable):
+    left: Union[
+        int,
+        str,
+        float,
+        bool,
+        datetime,
+        date,
+        BuildFunction,
+        BuildConcept,
+        DataType,
+        BuildParenthetical,
+        MagicConstants,
+        BuildWindowItem,
+        BuildAggregateWrapper,
+    ]
+    low: Union[
+        int,
+        str,
+        float,
+        bool,
+        date,
+        datetime,
+        BuildConcept,
+        BuildFunction,
+        DataType,
+        BuildParenthetical,
+        MagicConstants,
+        BuildWindowItem,
+        BuildAggregateWrapper,
+    ]
+    high: Union[
+        int,
+        str,
+        float,
+        bool,
+        date,
+        datetime,
+        BuildConcept,
+        BuildFunction,
+        DataType,
+        BuildParenthetical,
+        MagicConstants,
+        BuildWindowItem,
+        BuildAggregateWrapper,
+    ]
+
+    def __add__(self, other):
+        if other is None:
+            return self
+        if not isinstance(
+            other,
+            BoolExpr,
+        ):
+            raise ValueError(f"Cannot add {type(other)} to {__class__}")
+        if other == self:
+            return self
+        return BuildConditional(left=self, right=other, operator=BooleanOperator.AND)
+
+    def __repr__(self):
+        return f"{self.left} between {self.low} and {self.high}"
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __eq__(self, other):
+        if not isinstance(other, BuildBetween):
+            return False
+        return (
+            self.left == other.left
+            and self.low == other.low
+            and self.high == other.high
+        )
+
+    def __hash__(self):
+        return hash(repr(self))
+
+    def inline_constant(self, constant: BuildConcept) -> "BuildBetween":
+        assert isinstance(constant.lineage, BuildFunction)
+        new_val = constant.lineage.arguments[0]
+
+        def _replace(child):
+            if isinstance(child, ConstantInlineable):
+                return child.inline_constant(constant)
+            if isinstance(child, BuildConcept) and child.address == constant.address:
+                return new_val
+            return child
+
+        return BuildBetween(
+            left=_replace(self.left),
+            low=_replace(self.low),
+            high=_replace(self.high),
+        )
+
+    @cached_property
+    def concept_arguments(self) -> List[BuildConcept]:
+        return (
+            get_concept_arguments(self.left)
+            + get_concept_arguments(self.low)
+            + get_concept_arguments(self.high)
+        )
+
+    @property
+    def row_arguments(self) -> List[BuildConcept]:
+        return (
+            get_concept_row_arguments(self.left)
+            + get_concept_row_arguments(self.low)
+            + get_concept_row_arguments(self.high)
+        )
+
+    @property
+    def existence_arguments(self) -> List[Tuple[BuildConcept, ...]]:
+        output: List[Tuple[BuildConcept, ...]] = []
+        for child in (self.left, self.low, self.high):
+            if isinstance(child, BuildConceptArgs):
+                output += child.existence_arguments
+        return output
+
+    @property
+    def output_datatype(self):
+        return DataType.BOOL
 
 
 @dataclass(slots=True)
@@ -1317,7 +1452,9 @@ class BuildCaseSimpleWhen(DataTyped, BuildConceptArgs):
 
 @dataclass(slots=True)
 class BuildCaseWhen(DataTyped, BuildConceptArgs):
-    comparison: BuildConditional | BuildSubselectComparison | BuildComparison
+    comparison: (
+        BuildConditional | BuildSubselectComparison | BuildComparison | BuildBetween
+    )
     expr: "BuildExpr"
 
     def __str__(self):
@@ -1903,6 +2040,11 @@ class BuildUnionDatasource:
     @property
     def partial_concepts(self) -> List[BuildConcept]:
         return []
+
+
+# Anything that can sit in a WHERE / HAVING / join condition. Subclasses of
+# BuildComparison (e.g. BuildSubselectComparison) are covered structurally.
+BoolExpr = BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
 
 
 BuildExpr = (
@@ -2501,7 +2643,8 @@ class Factory:
                 )
             )
         if isinstance(
-            conditional, (BuildComparison, BuildConditional, BuildParenthetical)
+            conditional,
+            BoolExpr,
         ):
             conditional = flatten_conditions(conditional)
         return BuildWhereClause(conditional=conditional)
@@ -2610,6 +2753,28 @@ class Factory:
             right=self.handle_constant(self.build(right)),
             operator=base.operator,
         )
+
+    @build.register
+    def _(self, base: Between) -> "BuildBetween | bool":
+        return self._build_between(base)
+
+    def _build_between(self, base: Between) -> "BuildBetween | bool":
+        def _prep(value):
+            validation = requires_concept_nesting(value)
+            if validation:
+                vc, _ = self.instantiate_concept(validation)
+                value = vc
+            return self.handle_constant(self.build(value))
+
+        left = _prep(base.left)
+        low = _prep(base.low)
+        high = _prep(base.high)
+        if is_constant(left) and is_constant(low) and is_constant(high):
+            lval = materialize_constant(left)
+            loval = materialize_constant(low)
+            hival = materialize_constant(high)
+            return loval <= lval <= hival
+        return BuildBetween(left=left, low=low, high=high)
 
     @build.register
     def _(self, base: Comparison) -> BuildComparison | bool:

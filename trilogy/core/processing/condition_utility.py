@@ -14,7 +14,9 @@ from trilogy.core.enums import (
     FunctionType,
 )
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildAggregateWrapper,
+    BuildBetween,
     BuildCaseElse,
     BuildCaseWhen,
     BuildComparison,
@@ -50,6 +52,7 @@ FUNCTION_TYPES = (BuildFunction,)
 PARENTHETICAL_TYPES = (BuildParenthetical,)
 CONDITIONAL_TYPES = (BuildConditional,)
 CONCEPT_TYPES = (BuildConcept,)
+BETWEEN_TYPES = (BuildBetween,)
 WINDOW_TYPES = (BuildWindowItem,)
 
 CONDITION_TYPES = (
@@ -57,6 +60,7 @@ CONDITION_TYPES = (
     BuildComparison,
     BuildConditional,
     BuildParenthetical,
+    BuildBetween,
 )
 
 # Operators whose result is NULL (and therefore not TRUE) when either operand is
@@ -104,7 +108,7 @@ def _is_tautology(node: BuildComparison) -> bool:
 
 def _unwrap_condition_boolean_wrapper(
     conditional: BuildComparison,
-) -> BuildComparison | BuildConditional | BuildParenthetical | BuildSubselectComparison:
+) -> BoolExpr | BuildSubselectComparison:
     """Collapse redundant wrappers like ``(<condition>) = True``.
 
     The parser can wrap parenthesized boolean expressions in an equality-to-True
@@ -122,8 +126,8 @@ def _unwrap_condition_boolean_wrapper(
 
 
 def flatten_conditions(
-    conditional: BuildComparison | BuildConditional | BuildParenthetical,
-) -> BuildComparison | BuildConditional | BuildParenthetical:
+    conditional: BoolExpr,
+) -> BoolExpr:
     """Simplify a condition tree.
 
     - Unwraps parentheticals around leaf comparisons/subselects (not around
@@ -181,13 +185,12 @@ def is_scalar_condition(
         | BuildConcept
         | BuildWindowItem
         | BuildFilterItem
-        | BuildConditional
-        | BuildComparison
-        | BuildParenthetical
+        | BoolExpr
         | BuildFunction
         | BuildAggregateWrapper
         | BuildCaseWhen
         | BuildCaseElse
+        | BuildSubselectComparison
         | MagicConstants
         | TraitDataType
         | DataType
@@ -208,6 +211,12 @@ def is_scalar_condition(
     elif isinstance(element, COMPARISON_TYPES):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
+        )
+    elif isinstance(element, BETWEEN_TYPES):
+        return (
+            is_scalar_condition(element.left, materialized)
+            and is_scalar_condition(element.low, materialized)
+            and is_scalar_condition(element.high, materialized)
         )
     elif isinstance(element, FUNCTION_TYPES):
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
@@ -326,7 +335,7 @@ def is_fully_covered(
 
 
 def simplify_conditions(
-    conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
+    conditions: list[BoolExpr],
 ) -> bool:
     # Key by address string — concept objects from different datasources may not
     # hash/compare identically even when they represent the same concept.
@@ -364,16 +373,9 @@ def simplify_conditions(
 
 
 def decompose_condition(
-    conditional: BuildConditional | BuildComparison | BuildParenthetical,
-) -> list[
-    BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical
-]:
-    chunks: list[
-        BuildSubselectComparison
-        | BuildComparison
-        | BuildConditional
-        | BuildParenthetical
-    ] = []
+    conditional: BoolExpr,
+) -> list[BuildSubselectComparison | BoolExpr]:
+    chunks: list[BuildSubselectComparison | BoolExpr] = []
     if not isinstance(conditional, BuildConditional):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
@@ -397,9 +399,9 @@ def decompose_condition(
 
 
 def condition_implies_with_extras(
-    query: BuildComparison | BuildConditional | BuildParenthetical,
-    required: BuildComparison | BuildConditional | BuildParenthetical,
-) -> tuple[bool, list[BuildComparison | BuildConditional | BuildParenthetical]]:
+    query: BoolExpr,
+    required: BoolExpr,
+) -> tuple[bool, list[BoolExpr]]:
     """If required is a subset of query, returns (True, atoms in query not in required).
     Otherwise returns (False, [])."""
     query_atoms = decompose_condition(query)
@@ -410,8 +412,8 @@ def condition_implies_with_extras(
 
 
 def condition_implies(
-    query: BuildComparison | BuildConditional | BuildParenthetical,
-    required: BuildComparison | BuildConditional | BuildParenthetical,
+    query: BoolExpr,
+    required: BoolExpr,
 ) -> bool:
     """True if every AND-atom of required appears in query's AND-atoms (query is a superset)."""
     implied, _ = condition_implies_with_extras(query, required)
@@ -419,8 +421,8 @@ def condition_implies(
 
 
 def drop_covered_conditions(
-    conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
-) -> list[BuildComparison | BuildConditional | BuildParenthetical]:
+    conditions: list[BoolExpr],
+) -> list[BoolExpr]:
     """Remove conditions that are made redundant by a more general one in the same list.
 
     A condition C is dropped if another condition D exists (D != C) where
@@ -448,7 +450,7 @@ def _literal_values(value: object) -> set[object] | None:
 
 
 def _build_allowed_map(
-    atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
+    atoms: list[BoolExpr],
 ) -> dict[str, set[object]]:
     result: dict[str, set[object]] = {}
     for atom in atoms:
@@ -476,8 +478,8 @@ def _build_allowed_map(
 
 
 def conditions_mutually_exclusive(
-    a: BuildComparison | BuildConditional | BuildParenthetical,
-    b: BuildComparison | BuildConditional | BuildParenthetical,
+    a: BoolExpr,
+    b: BoolExpr,
 ) -> bool:
     """True if a and b cannot both be satisfied by allowed values for the same concept."""
     a_allowed = _build_allowed_map(decompose_condition(a))
@@ -489,8 +491,8 @@ def conditions_mutually_exclusive(
 
 
 def condition_value_implies(
-    constraint: BuildComparison | BuildConditional | BuildParenthetical,
-    candidate: BuildComparison | BuildConditional | BuildParenthetical,
+    constraint: BoolExpr,
+    candidate: BoolExpr,
 ) -> bool:
     """True if ``constraint`` value-wise guarantees ``candidate`` is true.
 
@@ -533,7 +535,7 @@ def condition_value_implies(
 
 
 def condition_required_addresses(
-    condition: BuildComparison | BuildConditional | BuildParenthetical,
+    condition: BoolExpr,
 ) -> set[str]:
     """Canonical addresses of the non-constant row concepts a condition references."""
     return {
@@ -544,21 +546,21 @@ def condition_required_addresses(
 
 
 def combine_condition_atoms(
-    atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
-) -> BuildComparison | BuildConditional | BuildParenthetical | None:
+    atoms: list[BoolExpr],
+) -> BoolExpr | None:
     """AND-combine atoms into a single left-associative condition (None if empty)."""
     if not atoms:
         return None
-    result: BuildComparison | BuildConditional | BuildParenthetical = atoms[0]
+    result: BoolExpr = atoms[0]
     for atom in atoms[1:]:
         result = result + atom  # type: ignore[operator]
     return result
 
 
 def merge_conditions_and_dedup(
-    conditions: BuildComparison | BuildConditional | BuildParenthetical,
-    preexisting: BuildComparison | BuildConditional | BuildParenthetical,
-) -> BuildComparison | BuildConditional | BuildParenthetical:
+    conditions: BoolExpr,
+    preexisting: BoolExpr,
+) -> BoolExpr:
     """AND-merge two conditions, deduplicating atoms from `conditions` already in `preexisting`.
 
     Returns `preexisting` unchanged when every atom of `conditions` is already present,
@@ -574,9 +576,9 @@ def merge_conditions_and_dedup(
 
 
 def strip_condition_atoms(
-    query: BuildComparison | BuildConditional | BuildParenthetical,
-    to_strip: BuildComparison | BuildConditional | BuildParenthetical,
-) -> BuildComparison | BuildConditional | BuildParenthetical | None:
+    query: BoolExpr,
+    to_strip: BoolExpr,
+) -> BoolExpr | None:
     """Remove atoms present in to_strip from query's AND-tree. Returns None if all atoms removed."""
     strip_atoms = decompose_condition(to_strip)
     return combine_condition_atoms(
@@ -585,8 +587,8 @@ def strip_condition_atoms(
 
 
 def merge_conditions(
-    conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
-) -> BuildComparison | BuildConditional | BuildParenthetical | None:
+    conditions: list[BoolExpr],
+) -> BoolExpr | None:
     """Merge a list of OR'd conditions into a minimal equivalent.
 
     Keeps atoms common to all conditions, then drops per-concept varying atoms
@@ -617,8 +619,8 @@ def merge_conditions(
 
 def filter_union_children(
     non_partial_map: dict[str, BuildWhereClause | None],
-    query_condition: BuildComparison | BuildConditional | BuildParenthetical,
-) -> dict[str, BuildComparison | BuildConditional | BuildParenthetical | None]:
+    query_condition: BoolExpr,
+) -> dict[str, BoolExpr | None]:
     """Filter union datasource children based on query conditions.
 
     Takes a mapping of child ID → non_partial_for clause and the query condition.
@@ -628,7 +630,10 @@ def filter_union_children(
     Children whose non_partial_for is implied by the query have redundant atoms stripped.
     Falls back to all children (with full condition) if filtering would drop everything.
     """
-    kept: dict[str, BuildComparison | BuildConditional | BuildParenthetical | None] = {}
+    kept: dict[
+        str,
+        BoolExpr | None,
+    ] = {}
     for child_id, non_partial_for in non_partial_map.items():
         if not non_partial_for:
             kept[child_id] = query_condition
@@ -650,7 +655,7 @@ def is_null_literal(value: object) -> bool:
 
 
 def _not_null_concept(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
+    atom: BuildSubselectComparison | BoolExpr,
 ) -> BuildConcept | None:
     """If ``atom`` is a plain ``X IS NOT NULL`` (either operand order), return X."""
     if isinstance(atom, BuildSubselectComparison) or not isinstance(
@@ -713,7 +718,7 @@ def strip_tautological_not_null(
         return None
     protected = protected_addresses or set()
     atoms = decompose_condition(where.conditional)
-    survivors: list[BuildComparison | BuildConditional | BuildParenthetical] = []
+    survivors: list[BuildSubselectComparison | BoolExpr] = []
     dropped = False
     for atom in atoms:
         concept = _not_null_concept(atom)
@@ -729,7 +734,7 @@ def strip_tautological_not_null(
         survivors.append(atom)
     if not dropped:
         return where
-    combined = combine_condition_atoms(survivors)
+    combined = combine_condition_atoms(survivors)  # type: ignore[arg-type]
     if combined is None:
         return None
     return BuildWhereClause(conditional=combined)
@@ -759,8 +764,8 @@ def concepts_implied_non_null(value: object) -> set[str]:
 
 
 def _non_null_or_disjuncts(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
-) -> list[BuildComparison | BuildConditional | BuildParenthetical]:
+    atom: BoolExpr,
+) -> list[BoolExpr]:
     if isinstance(atom, BuildParenthetical):
         return _non_null_or_disjuncts(atom.content)  # type: ignore[arg-type]
     if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
@@ -770,8 +775,116 @@ def _non_null_or_disjuncts(
     return [atom]
 
 
+def _flip_op(op: ComparisonOperator) -> ComparisonOperator | None:
+    """Mirror an asymmetric comparator so ``X <op> Y`` becomes ``Y <op'> X``.
+    Symmetric comparators (``=``/``!=``) mirror to themselves. Returns
+    ``None`` for operators we don't flip (``IN``, ``LIKE``, etc.)."""
+    if op == ComparisonOperator.LT:
+        return ComparisonOperator.GT
+    if op == ComparisonOperator.GT:
+        return ComparisonOperator.LT
+    if op == ComparisonOperator.LTE:
+        return ComparisonOperator.GTE
+    if op == ComparisonOperator.GTE:
+        return ComparisonOperator.LTE
+    if op == ComparisonOperator.EQ:
+        return ComparisonOperator.EQ
+    if op == ComparisonOperator.NE:
+        return ComparisonOperator.NE
+    return None
+
+
+def _literal_value(value: object) -> object | None:
+    """Return the Python literal carried by ``value``, unwrapping parens.
+
+    ``None`` is returned for anything that isn't a concrete literal (concepts,
+    functions, the NULL sentinel, etc.) — callers use that as "can't fold"."""
+    while isinstance(value, BuildParenthetical):
+        value = value.content  # type: ignore[assignment]
+    if is_null_literal(value):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float, str, date, datetime)):
+        return value
+    if isinstance(value, (ListWrapper, TupleWrapper)):
+        members: list[object] = []
+        for item in value:
+            literal = _literal_value(item)
+            if literal is None:
+                return None
+            members.append(literal)
+        return tuple(members)
+    return None
+
+
+def _eval_literal_comparison(
+    left: object, op: ComparisonOperator, right: object
+) -> bool | None:
+    """Statically evaluate a literal ``<op>`` comparison, or ``None`` if the
+    operator isn't one we fold or the types don't compare cleanly."""
+    try:
+        if op == ComparisonOperator.EQ or op == ComparisonOperator.IS:
+            return left == right
+        if op == ComparisonOperator.NE:
+            return left != right
+        if op == ComparisonOperator.LT:
+            return left < right  # type: ignore[operator]
+        if op == ComparisonOperator.GT:
+            return left > right  # type: ignore[operator]
+        if op == ComparisonOperator.LTE:
+            return left <= right  # type: ignore[operator]
+        if op == ComparisonOperator.GTE:
+            return left >= right  # type: ignore[operator]
+        if op == ComparisonOperator.IN:
+            if isinstance(right, tuple):
+                return left in right
+            return None
+        if op == ComparisonOperator.NOT_IN:
+            if isinstance(right, tuple):
+                return left not in right
+            return None
+    except TypeError:
+        return None
+    return None
+
+
+def _coalesce_primary_proves_non_null(
+    maybe_coalesce: object, op: ComparisonOperator, rhs: object
+) -> set[str]:
+    """``coalesce(PRIMARY, default1, default2, ...) <op> rhs``: when every
+    default is a literal that statically *fails* ``<op> rhs`` (and ``rhs`` is
+    itself a literal), the surviving rows can't have come from a default
+    branch — so the coalesce had to fall on ``PRIMARY``, proving PRIMARY's
+    concepts non-null.
+
+    Returns the implied non-null set, or empty when the pattern doesn't apply
+    (LHS isn't a coalesce, any default is a non-literal, any default survives
+    the comparison, or the comparator isn't statically foldable)."""
+    expr = maybe_coalesce
+    while isinstance(expr, BuildParenthetical):
+        expr = expr.content  # type: ignore[assignment]
+    if not isinstance(expr, BuildFunction):
+        return set()
+    if expr.operator != FunctionType.COALESCE:
+        return set()
+    if len(expr.arguments) < 2:
+        return set()
+    rhs_value = _literal_value(rhs)
+    if rhs_value is None:
+        return set()
+    for default in expr.arguments[1:]:
+        default_value = _literal_value(default)
+        if default_value is None:
+            return set()
+        outcome = _eval_literal_comparison(default_value, op, rhs_value)
+        if outcome is None or outcome is True:
+            return set()
+    return concepts_implied_non_null(expr.arguments[0])
+
+
 def _atom_proves_non_null(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
+    atom: BoolExpr,
 ) -> set[str]:
     if isinstance(atom, BuildParenthetical):
         return _atom_proves_non_null(atom.content)  # type: ignore[arg-type]
@@ -801,12 +914,23 @@ def _atom_proves_non_null(
         # `<expr> IS NULL` specifically wants NULLs — never proves non-null.
         return set()
     if op in NULL_PROPAGATING_OPS:
-        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
+        # default statically fails the comparison — surviving rows can only
+        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
+        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
+        # the "count-of-empty is 0, not NULL" convention; predicates like
+        # ``> 0`` over the wrapped column otherwise become opaque to us.
+        proofs |= _coalesce_primary_proves_non_null(left, op, right)
+        flipped = _flip_op(op)
+        if flipped is not None:
+            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
+        return proofs
     return set()
 
 
 def condition_proves_non_null(
-    condition: BuildComparison | BuildConditional | BuildParenthetical,
+    condition: BoolExpr,
 ) -> set[str]:
     """Concept addresses a *fully applied* condition forces non-null.
 

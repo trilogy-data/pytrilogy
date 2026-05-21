@@ -10,18 +10,20 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.build import (
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
-    BuildParenthetical,
     LooseBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
-from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+from trilogy.core.processing.condition_utility import (
+    condition_proves_non_null,
+    merge_conditions_and_dedup,
+)
 from trilogy.utility import unique
 
 
@@ -142,12 +144,8 @@ class StrategyNode:
         rollup_concepts: List[BuildConcept] | None = None,
         nullable_concepts: List[BuildConcept] | None = None,
         depth: int = 0,
-        conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
-        ) = None,
-        preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
-        ) = None,
+        conditions: BoolExpr | None = None,
+        preexisting_conditions: BoolExpr | None = None,
         force_group: bool | None = None,
         grain: Optional[BuildGrain] = None,
         hidden_concepts: set[str] | None = None,
@@ -173,6 +171,7 @@ class StrategyNode:
         self.ordering = ordering
         self.depth = depth
         self.conditions = conditions
+        self._refine_nullable_for_conditions()
         self.grain = grain
         self.force_group = force_group
         self.tainted = False
@@ -238,13 +237,15 @@ class StrategyNode:
         return self
 
     def set_preexisting_conditions(
-        self, conditions: BuildConditional | BuildComparison | BuildParenthetical
+        self,
+        conditions: BoolExpr,
     ):
         self.preexisting_conditions = conditions
         return self
 
     def add_condition(
-        self, condition: BuildConditional | BuildComparison | BuildParenthetical
+        self,
+        condition: BoolExpr,
     ):
         if self.conditions and condition == self.conditions:
             return self
@@ -255,8 +256,31 @@ class StrategyNode:
         else:
             self.conditions = condition
         self.set_preexisting_conditions(condition)
+        self._refine_nullable_for_conditions()
         self.rebuild_cache()
         return self
+
+    def _refine_nullable_for_conditions(self) -> None:
+        """Strip concepts from ``nullable_concepts`` that this node's own
+        ``conditions`` null-rejects.
+
+        Built-in propagation (``get_all_parent_nullable``) carries up every
+        parent's nullable column without inspecting the local WHERE — so a
+        union branch that filters ``customer_id is not null`` still claims
+        customer_id is nullable, and that pessimism poisons every downstream
+        consumer. Refining here means each node's ``nullable_concepts``
+        reflects the truth on its own rows, and downstream nodes inherit the
+        improved view via ``get_all_parent_nullable`` without ever looking
+        downstream themselves.
+        """
+        if not self.conditions or not self.nullable_concepts:
+            return
+        proven = condition_proves_non_null(self.conditions)
+        if not proven:
+            return
+        self.nullable_concepts = [
+            c for c in self.nullable_concepts if c.address not in proven
+        ]
 
     def derive_partials(
         self, partial_concepts: List[BuildConcept] | None = None

@@ -39,6 +39,8 @@ from trilogy.core.enums import (
     Modifier,
 )
 from trilogy.core.models.build import (
+    BoolExpr,
+    BuildBetween,
     BuildComparison,
     BuildConditional,
     BuildDatasource,
@@ -56,6 +58,8 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
+    _coalesce_primary_proves_non_null,
+    _flip_op,
     concepts_implied_non_null,
     decompose_condition,
     is_null_literal,
@@ -149,8 +153,8 @@ def _pair_can_match_nulls(
 
 
 def _or_disjuncts(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
-) -> list[BuildComparison | BuildConditional | BuildParenthetical]:
+    atom: BoolExpr,
+) -> list[BoolExpr]:
     """Flatten an OR tree (unwrapping parentheticals) into its disjuncts.
 
     A non-OR node returns ``[node]`` (a single "disjunct")."""
@@ -162,7 +166,7 @@ def _or_disjuncts(
 
 
 def _proves_non_null(
-    atom: BuildComparison | BuildConditional | BuildParenthetical,
+    atom: BoolExpr,
 ) -> set[str]:
     """Concept addresses that this AND-atom forces non-null in surviving rows."""
     if isinstance(atom, BuildParenthetical):
@@ -179,6 +183,14 @@ def _proves_non_null(
         # ordinary Comparison proofs sitting next to the opaque child still
         # contribute (q64 ``is_returned`` + ``C_CURRENT_ADDR_SK is not null``).
         return _proves_non_null(atom.left) | _proves_non_null(atom.right)  # type: ignore[arg-type]
+    if isinstance(atom, BuildBetween):
+        # `x BETWEEN low AND high` requires all three operands to be non-null
+        # for the row to survive.
+        return (
+            concepts_implied_non_null(atom.left)
+            | concepts_implied_non_null(atom.low)
+            | concepts_implied_non_null(atom.high)
+        )
     if not isinstance(atom, BuildComparison):
         return set()
 
@@ -198,13 +210,25 @@ def _proves_non_null(
         return set()
 
     if op in NULL_PROPAGATING_OPS:
-        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
+        # default statically fails the comparison — surviving rows can only
+        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
+        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
+        # the "count-of-empty is 0, not NULL" convention; predicates like
+        # ``> 0`` on the wrapped column otherwise become opaque to us, which
+        # blocks the OUTER → INNER upgrade on the producing join.
+        proofs |= _coalesce_primary_proves_non_null(left, op, right)
+        flipped = _flip_op(op)
+        if flipped is not None:
+            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
+        return proofs
 
     return set()
 
 
 def _gather_proofs(
-    cond: BuildComparison | BuildConditional | BuildParenthetical,
+    cond: BoolExpr,
 ) -> set[str]:
     return {
         addr for atom in decompose_condition(cond) for addr in _proves_non_null(atom)
@@ -212,7 +236,7 @@ def _gather_proofs(
 
 
 def _gather_or_groups(
-    cond: BuildComparison | BuildConditional | BuildParenthetical,
+    cond: BoolExpr,
 ) -> list[list[set[str]]]:
     """Per-OR-atom disjunct proof sets, for side-level (not concept-level)
     proofs. ``(a.x = 1 OR a.y = 2)`` proves no single concept non-null, but

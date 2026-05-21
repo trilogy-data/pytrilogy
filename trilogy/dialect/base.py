@@ -44,7 +44,9 @@ from trilogy.core.enums import (
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildAggregateWrapper,
+    BuildBetween,
     BuildCaseElse,
     BuildCaseSimpleWhen,
     BuildCaseWhen,
@@ -204,6 +206,7 @@ SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
 SUBSELECT_ITEMS = (BuildSubselectItem,)
 COMPARISON_ITEMS = (BuildComparison,)
 CONDITIONAL_ITEMS = (BuildConditional,)
+BETWEEN_ITEMS = (BuildBetween,)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -979,9 +982,8 @@ class BaseDialect:
             isinstance(c.lineage, BuildAggregateWrapper)
             and c.lineage.function.operator == FunctionType.COUNT
             and not cte.group_to_grain
-            and any(
-                n.address == c.address for n in getattr(cte, "nullable_concepts", [])
-            )
+            and isinstance(cte, CTE)
+            and any(n.address == c.address for n in cte.nullable_concepts)
         ):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])
         assert rval is not None
@@ -1098,6 +1100,7 @@ class BaseDialect:
             BuildConcept,
             BuildFunction,
             BuildConditional,
+            BuildBetween,
             BuildAggregateWrapper,
             BuildComparison,
             BuildCaseWhen,
@@ -1206,8 +1209,13 @@ class BaseDialect:
                 raise_invalid=raise_invalid,
             )
         elif isinstance(e, CONDITIONAL_ITEMS):
-            # conditions need to be nested in parentheses
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+        elif isinstance(e, BETWEEN_ITEMS):
+            return (
+                f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} "
+                f"BETWEEN {self.render_expr(e.low, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} "
+                f"AND {self.render_expr(e.high, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            )
         elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
                 f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid)} {x.order.value}"
@@ -1640,8 +1648,8 @@ class BaseDialect:
             final_joins = []
         else:
             final_joins = cte.joins or []
-        where: BuildConditional | BuildParenthetical | BuildComparison | None = None
-        having: BuildConditional | BuildParenthetical | BuildComparison | None = None
+        where: BoolExpr | None = None
+        having: BoolExpr | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
             if not cte.group_to_grain or is_scalar_condition(

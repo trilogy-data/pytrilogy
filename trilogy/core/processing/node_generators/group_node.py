@@ -5,6 +5,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import AggregateGroupingMode, Derivation, FunctionType
 from trilogy.core.internal import ALL_ROWS_CONCEPT
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildAggregateWrapper,
     BuildConcept,
     BuildFilterItem,
@@ -17,7 +18,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
-    ConditionExpression,
     _condition_available_from_parents,
     _preexisting_conditions_from_parents,
     gen_enrichment_node,
@@ -485,7 +485,7 @@ def _empty_parent_resolution() -> ParentResolution:
 def _group_conditions_to_apply(
     parents: List[StrategyNode],
     conditions: BuildWhereClause | None,
-) -> ConditionExpression | None:
+) -> BoolExpr | None:
     if conditions is None:
         return None
     if _preexisting_conditions_from_parents(parents, conditions):

@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 1736
+gen_length = 1703
 preql_size = 312
 comp_size = 949
 generated_sql = """
@@ -17,7 +17,7 @@ FROM
     INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"part_partsupp\".\"ps_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
 WHERE
-    \"order_customer_nation_region_region\".\"r_name\" = 'AMERICA' and year(\"order_orders\".\"o_orderdate\") >= 1995 and year(\"order_orders\".\"o_orderdate\") <= 1996 and \"part_part\".\"p_type\" = 'ECONOMY ANODIZED STEEL'
+    \"order_customer_nation_region_region\".\"r_name\" = 'AMERICA' and year(\"order_orders\".\"o_orderdate\") BETWEEN 1995 AND 1996 and \"part_part\".\"p_type\" = 'ECONOMY ANODIZED STEEL'
 
 GROUP BY
     1

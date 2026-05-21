@@ -4,11 +4,9 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.build import (
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildGrain,
-    BuildParenthetical,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -32,12 +30,8 @@ class FilterNode(StrategyNode):
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
-        ) = None,
-        preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
-        ) = None,
+        conditions: BoolExpr | None = None,
+        preexisting_conditions: BoolExpr | None = None,
         partial_concepts: List[BuildConcept] | None = None,
         force_group: bool | None = False,
         grain: BuildGrain | None = None,

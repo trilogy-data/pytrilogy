@@ -1,5 +1,5 @@
 query_id = "22"
-gen_length = 1610
+gen_length = 1533
 preql_size = 589
 comp_size = 806
 generated_sql = """
@@ -29,13 +29,12 @@ questionable as (
 SELECT
     \"customers\".\"c_acctbal\" as \"account_balance\",
     \"customers\".\"c_custkey\" as \"id\",
-    \"customers\".\"c_phone\" as \"phone\",
-    coalesce(\"thoughtful\".\"order_count_per_customer\",0) as \"order_count_per_customer\"
+    \"customers\".\"c_phone\" as \"phone\"
 FROM
     \"memory\".\"customer\" as \"customers\"
     LEFT OUTER JOIN \"thoughtful\" on \"customers\".\"c_custkey\" = \"thoughtful\".\"id\"
 WHERE
-    SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
+    SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') and coalesce(coalesce(\"thoughtful\".\"order_count_per_customer\",0),0) = 0
 )
 SELECT
     SUBSTRING(\"questionable\".\"phone\",1,2) as \"cntrycode\",
@@ -45,7 +44,7 @@ FROM
     \"questionable\"
     INNER JOIN \"highfalutin\" on 1=1
 WHERE
-    \"questionable\".\"account_balance\" > \"highfalutin\".\"avg_bal_in_target\" and coalesce(\"questionable\".\"order_count_per_customer\",0) = 0
+    \"questionable\".\"account_balance\" > \"highfalutin\".\"avg_bal_in_target\"
 
 GROUP BY
     1

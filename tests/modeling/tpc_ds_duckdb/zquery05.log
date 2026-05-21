@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 10516
+gen_length = 10353
 preql_size = 2305
 comp_size = 4238
 generated_sql = """
@@ -36,7 +36,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+    cast(\"sales_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06'
 
 UNION ALL
 SELECT
@@ -48,7 +48,7 @@ FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+    cast(\"sales_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06'
 
 UNION ALL
 SELECT
@@ -60,7 +60,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
 WHERE
-    cast(\"sales_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+    cast(\"sales_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06'
 ),
 cheerful as (
 SELECT
@@ -181,7 +181,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"abundant\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"cheerful\" on \"yummy\".\"sales_return_channel_dim_id\" = \"cheerful\".\"sales_return_channel_dim_id\" AND coalesce(\"yummy\".\"sales_sales_channel\", \"abundant\".\"sales_sales_channel\") = \"cheerful\".\"sales_sales_channel\"
 WHERE
-    \"cheerful\".\"sales_return_channel_dim_text_id\" is not null and cast(\"sales_return_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_return_date_date\".\"D_DATE\" as date) <= date '2000-09-06'
+    \"cheerful\".\"sales_return_channel_dim_text_id\" is not null and cast(\"sales_return_date_date\".\"D_DATE\" as date) BETWEEN date '2000-08-23' AND date '2000-09-06'
 ),
 divergent as (
 SELECT

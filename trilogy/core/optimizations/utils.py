@@ -2,14 +2,11 @@ from typing import cast
 
 from trilogy.core.enums import BooleanOperator
 from trilogy.core.models.build import (
-    BuildComparison,
+    BoolExpr,
     BuildConditional,
     BuildDatasource,
-    BuildParenthetical,
 )
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
-
-ConditionExpression = BuildComparison | BuildConditional | BuildParenthetical
 
 
 def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:
@@ -46,9 +43,9 @@ def condition_contains_atom(atom: object, condition: object | None) -> bool:
 
 
 def strip_condition_atom(
-    condition: ConditionExpression | None,
+    condition: BoolExpr | None,
     atom: object,
-) -> ConditionExpression | None:
+) -> BoolExpr | None:
     if condition is None or condition == atom:
         return None
     if not (
@@ -56,10 +53,8 @@ def strip_condition_atom(
         and condition.operator == BooleanOperator.AND
     ):
         return condition
-    left = strip_condition_atom(cast(ConditionExpression | None, condition.left), atom)
-    right = strip_condition_atom(
-        cast(ConditionExpression | None, condition.right), atom
-    )
+    left = strip_condition_atom(cast(BoolExpr | None, condition.left), atom)
+    right = strip_condition_atom(cast(BoolExpr | None, condition.right), atom)
     if left is None:
         return right
     if right is None:
@@ -68,9 +63,9 @@ def strip_condition_atom(
 
 
 def append_condition(
-    condition: ConditionExpression | None,
-    atom: ConditionExpression,
-) -> ConditionExpression:
+    condition: BoolExpr | None,
+    atom: BoolExpr,
+) -> BoolExpr:
     if condition is None:
         return atom
     return BuildConditional(
@@ -81,8 +76,8 @@ def append_condition(
 
 
 def rebuild_and_condition(
-    atoms: list[ConditionExpression],
-) -> ConditionExpression | None:
+    atoms: list[BoolExpr],
+) -> BoolExpr | None:
     if not atoms:
         return None
     condition = atoms[0]

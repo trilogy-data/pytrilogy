@@ -4,11 +4,8 @@ from typing import List
 
 from trilogy.core.enums import Granularity
 from trilogy.core.models.build import (
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
-    BuildConditional,
-    BuildParenthetical,
-    BuildSubselectComparison,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -21,10 +18,6 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.utility import (
     get_disconnected_components,
-)
-
-ConditionExpression = (
-    BuildComparison | BuildConditional | BuildParenthetical | BuildSubselectComparison
 )
 
 
@@ -44,7 +37,7 @@ def _is_scalar_only(node: StrategyNode) -> bool:
 
 def _node_condition_implies(
     node: StrategyNode,
-    condition: ConditionExpression,
+    condition: BoolExpr,
 ) -> bool:
     return node.preexisting_conditions == condition or (
         node.preexisting_conditions is not None
@@ -55,7 +48,7 @@ def _node_condition_implies(
 def _condition_atom_met(
     stack: List[StrategyNode],
     found_addresses: set[str],
-    condition: ConditionExpression,
+    condition: BoolExpr,
 ) -> bool:
     if all(c.address in found_addresses for c in condition.row_arguments):
         return True

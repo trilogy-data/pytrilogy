@@ -241,7 +241,7 @@ class Parenthetical(
     def __add__(self, other) -> Union["Parenthetical", "Conditional"]:
         if other is None:
             return self
-        elif isinstance(other, (Comparison, Conditional, Parenthetical)):
+        elif isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
@@ -324,7 +324,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped):
             return self
         elif str(other) == str(self):
             return self
-        elif isinstance(other, (Comparison, Conditional, Parenthetical)):
+        elif isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
@@ -436,7 +436,9 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped):
 
 @dataclass
 class WhereClause(Mergeable, ConceptArgs, Namespaced):
-    conditional: Union[SubselectComparison, Comparison, Conditional, Parenthetical]
+    conditional: Union[
+        SubselectComparison, Comparison, Conditional, Parenthetical, Between
+    ]
 
     def __repr__(self):
         return str(self.conditional)
@@ -753,7 +755,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced):
     def __add__(self, other):
         if other is None:
             return self
-        if not isinstance(other, (Comparison, Conditional, Parenthetical)):
+        if not isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
             raise ValueError("Cannot add Comparison to non-Comparison")
         if other == self:
             return self
@@ -858,6 +860,203 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced):
     @property
     def output_datatype(self):
         # a conditional is always a boolean
+        return DataType.BOOL
+
+
+@dataclass
+class Between(ConceptArgs, Mergeable, DataTyped, Namespaced):
+    left: Union[
+        int,
+        str,
+        float,
+        bool,
+        datetime,
+        date,
+        Function,
+        ConceptRef,
+        DataType,
+        FunctionCallWrapper,
+        Parenthetical,
+        MagicConstants,
+        WindowItem,
+        AggregateWrapper,
+        FilterItem,
+    ]
+    low: Union[
+        int,
+        str,
+        float,
+        bool,
+        date,
+        datetime,
+        ConceptRef,
+        Function,
+        DataType,
+        FunctionCallWrapper,
+        Parenthetical,
+        MagicConstants,
+        WindowItem,
+        AggregateWrapper,
+        FilterItem,
+    ]
+    high: Union[
+        int,
+        str,
+        float,
+        bool,
+        date,
+        datetime,
+        ConceptRef,
+        Function,
+        DataType,
+        FunctionCallWrapper,
+        Parenthetical,
+        MagicConstants,
+        WindowItem,
+        AggregateWrapper,
+        FilterItem,
+    ]
+
+    def __post_init__(self):
+        if isinstance(self.left, Concept):
+            self.left = self.left.reference
+        if isinstance(self.low, Concept):
+            self.low = self.low.reference
+        if isinstance(self.high, Concept):
+            self.high = self.high.reference
+        self._validate_types()
+
+    def _validate_types(self):
+        left_type = arg_to_datatype(self.left)
+        for bound, label in ((self.low, "low"), (self.high, "high")):
+            bound_type = arg_to_datatype(bound)
+            if not is_compatible_datatype(left_type, bound_type):
+                left_name = (
+                    left_type.name
+                    if isinstance(left_type, DataType)
+                    else str(left_type)
+                )
+                bound_name = (
+                    bound_type.name
+                    if isinstance(bound_type, DataType)
+                    else str(bound_type)
+                )
+                raise SyntaxError(
+                    f"Cannot use BETWEEN with incompatible types {left_name} and {bound_name} ({label})"
+                )
+
+    def __add__(self, other) -> "Conditional | Between":
+        if other is None:
+            return self
+        if not isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
+            raise ValueError(f"Cannot add Between to {type(other)}")
+        if other == self:
+            return self
+        return Conditional(left=self, right=other, operator=BooleanOperator.AND)
+
+    def __repr__(self):
+        return f"{self.left} between {self.low} and {self.high}"
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __eq__(self, other):
+        if not isinstance(other, Between):
+            return False
+        return (
+            self.left == other.left
+            and self.low == other.low
+            and self.high == other.high
+        )
+
+    def __hash__(self):
+        return hash(repr(self))
+
+    def with_namespace(self, namespace: str) -> "Between":
+        return self.__class__(
+            left=(
+                self.left.with_namespace(namespace)
+                if isinstance(self.left, Namespaced)
+                else self.left
+            ),
+            low=(
+                self.low.with_namespace(namespace)
+                if isinstance(self.low, Namespaced)
+                else self.low
+            ),
+            high=(
+                self.high.with_namespace(namespace)
+                if isinstance(self.high, Namespaced)
+                else self.high
+            ),
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "Between":
+        return self.__class__(
+            left=(
+                self.left.with_merge(source, target, modifiers)
+                if isinstance(self.left, Mergeable)
+                else self.left
+            ),
+            low=(
+                self.low.with_merge(source, target, modifiers)
+                if isinstance(self.low, Mergeable)
+                else self.low
+            ),
+            high=(
+                self.high.with_merge(source, target, modifiers)
+                if isinstance(self.high, Mergeable)
+                else self.high
+            ),
+        )
+
+    def with_reference_replacement(self, source, target) -> "Between":
+        return self.__class__(
+            left=(
+                self.left.with_reference_replacement(source, target)
+                if isinstance(self.left, Mergeable)
+                else self.left
+            ),
+            low=(
+                self.low.with_reference_replacement(source, target)
+                if isinstance(self.low, Mergeable)
+                else self.low
+            ),
+            high=(
+                self.high.with_reference_replacement(source, target)
+                if isinstance(self.high, Mergeable)
+                else self.high
+            ),
+        )
+
+    @property
+    def concept_arguments(self) -> List[ConceptRef]:
+        return (
+            get_concept_arguments(self.left)
+            + get_concept_arguments(self.low)
+            + get_concept_arguments(self.high)
+        )
+
+    @property
+    def row_arguments(self) -> List[ConceptRef]:
+        return (
+            get_concept_row_arguments(self.left)
+            + get_concept_row_arguments(self.low)
+            + get_concept_row_arguments(self.high)
+        )
+
+    @property
+    def existence_arguments(self) -> List[Tuple[ConceptRef, ...]]:
+        output: List[Tuple[ConceptRef, ...]] = []
+        for child in (self.left, self.low, self.high):
+            if isinstance(child, ConceptArgs):
+                output += child.existence_arguments
+        return output
+
+    @property
+    def output_datatype(self):
         return DataType.BOOL
 
 
@@ -1348,7 +1547,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
 
     def with_filter(
         self,
-        condition: Conditional | Comparison | Parenthetical,
+        condition: Conditional | Comparison | Parenthetical | Between,
         environment: Environment | None = None,
     ) -> "Concept":
         from trilogy.utility import string_to_hash
@@ -1723,7 +1922,7 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable):
 
 @dataclass
 class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable):
-    comparison: Conditional | SubselectComparison | Comparison
+    comparison: Conditional | SubselectComparison | Comparison | Between
     expr: "Expr"
 
     def __post_init__(self):
@@ -3064,6 +3263,7 @@ Expr = (
     | ConceptRef
     | Comparison
     | Conditional
+    | Between
     | FunctionCallWrapper
     | Parenthetical
     | Function
@@ -3101,6 +3301,7 @@ FuncArgs = (
     | TupleWrapper[Any]
     | Comparison
     | Conditional
+    | Between
     | MagicConstants
     | ArgBinding
     | Ordering

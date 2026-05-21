@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 7757
+gen_length = 7644
 preql_size = 1608
 comp_size = 2441
 generated_sql = """
@@ -82,12 +82,13 @@ HAVING
 ),
 late as (
 SELECT
-    \"abhorrent\".\"max_total_cmax\" as \"max_total_cmax\",
-    \"sweltering\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\",
-    \"sweltering\".\"customer_total_overall\" as \"customer_total_overall\"
+    \"sweltering\".\"_best_customers_best_customer_id\" as \"_best_customers_best_customer_id\"
 FROM
     \"sweltering\"
-    FULL JOIN \"abhorrent\" on 1=1),
+    INNER JOIN \"abhorrent\" on 1=1
+WHERE
+    \"sweltering\".\"customer_total_overall\" > 0.5 * \"abhorrent\".\"max_total_cmax\"
+),
 juicy as (
 SELECT
     \"yummy\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
@@ -99,10 +100,7 @@ macho as (
 SELECT
     \"late\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
 FROM
-    \"late\"
-WHERE
-    \"late\".\"customer_total_overall\" > 0.5 * \"late\".\"max_total_cmax\"
-),
+    \"late\"),
 cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",

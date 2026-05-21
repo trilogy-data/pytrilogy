@@ -1,5 +1,5 @@
 query_id = "97.2"
-gen_length = 2351
+gen_length = 2277
 preql_size = 1262
 comp_size = 1159
 generated_sql = """
@@ -15,7 +15,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"catalog_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"catalog_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
+    \"catalog_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
 
 GROUP BY
     1,
@@ -30,7 +30,7 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
 
 GROUP BY
     2,

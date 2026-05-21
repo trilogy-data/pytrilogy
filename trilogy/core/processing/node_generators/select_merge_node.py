@@ -14,6 +14,7 @@ from trilogy.core.graph_models import (
     prune_sources_for_conditions,
 )
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
@@ -39,7 +40,6 @@ from trilogy.core.processing.discovery_validation import (
 )
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
-    ConditionExpression,
     covered_conditions,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
@@ -435,7 +435,7 @@ def _conditions_can_be_sourced_by_components(
 def _sourceable_condition_atoms(
     conditions: BuildWhereClause,
     environment: BuildEnvironment,
-) -> list[ConditionExpression]:
+) -> list[BoolExpr]:
     datasources = [
         ds
         for ds in environment.datasources.values()
@@ -479,7 +479,7 @@ def _conditions_deferrable_to_merge(
 
 
 def _condition_source_concepts(
-    atoms: list[ConditionExpression],
+    atoms: list[BoolExpr],
     environment: BuildEnvironment,
 ) -> list[BuildConcept]:
     concepts = [c for atom in atoms for c in atom.row_arguments]
@@ -496,8 +496,8 @@ def _condition_source_concepts(
     return concepts
 
 
-def _node_condition_atoms(node: StrategyNode) -> list[ConditionExpression]:
-    atoms: list[ConditionExpression] = []
+def _node_condition_atoms(node: StrategyNode) -> list[BoolExpr]:
+    atoms: list[BoolExpr] = []
     for expr in (node.conditions, node.preexisting_conditions):
         if expr is not None:
             atoms.extend(decompose_condition(expr))
@@ -506,7 +506,7 @@ def _node_condition_atoms(node: StrategyNode) -> list[ConditionExpression]:
 
 def _condition_can_apply_after_node_merge(
     nodes: list[StrategyNode],
-    condition: ConditionExpression,
+    condition: BoolExpr,
 ) -> bool:
     if not is_scalar_condition(condition):
         return False
@@ -523,13 +523,13 @@ def _condition_can_apply_after_node_merge(
 
 def _condition_atoms_applied_by_candidates(
     candidates: list[SourceNodeCandidate],
-) -> list[ConditionExpression]:
+) -> list[BoolExpr]:
     return [a for c in candidates for a in _node_condition_atoms(c.node)]
 
 
 def _condition_can_apply_after_merge(
     candidates: list[SourceNodeCandidate],
-    condition: ConditionExpression,
+    condition: BoolExpr,
 ) -> bool:
     return _condition_can_apply_after_node_merge(
         [c.node for c in candidates], condition
@@ -586,7 +586,7 @@ def _parents_apply_condition_atoms(
 def _condition_remaining_after_parents(
     parents: list[StrategyNode],
     conditions: BuildWhereClause,
-) -> ConditionExpression | None:
+) -> BoolExpr | None:
     parent_atoms = [a for parent in parents for a in _node_condition_atoms(parent)]
     return combine_condition_atoms(
         [
@@ -599,7 +599,7 @@ def _condition_remaining_after_parents(
 
 def _condition_can_apply_after_parent_merge(
     parents: list[StrategyNode],
-    condition: ConditionExpression,
+    condition: BoolExpr,
 ) -> bool:
     return _condition_can_apply_after_node_merge(parents, condition)
 
@@ -608,7 +608,7 @@ def _merge_condition_routing(
     parents: list[StrategyNode],
     output_concepts: list[BuildConcept],
     conditions: BuildWhereClause | None,
-) -> tuple[ConditionExpression | None, ConditionExpression | None, JoinType | None]:
+) -> tuple[BoolExpr | None, BoolExpr | None, JoinType | None]:
     if conditions is None:
         return None, None, None
     condition = conditions.conditional

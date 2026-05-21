@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 3686
+gen_length = 3690
 preql_size = 1532
 comp_size = 1089
 generated_sql = """
@@ -24,13 +24,16 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MOY\" = 9 and \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_return_date_date\".\"D_MOY\" >= 9 and \"store_sales_return_date_date\".\"D_MOY\" <= 12 and \"store_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
+    \"store_sales_date_date\".\"D_MOY\" = 9 and \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_return_date_date\".\"D_MOY\" BETWEEN 9 AND 12 and \"store_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
 
 GROUP BY
     1,
     2,
     3,
-    4),
+    4
+HAVING
+    \"catalog_sales_quantity\" > 0
+),
 juicy as (
 SELECT
     \"uneven\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\",

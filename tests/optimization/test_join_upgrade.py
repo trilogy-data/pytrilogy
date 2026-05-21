@@ -258,6 +258,15 @@ def test_proves_non_null_helpers():
         == set()
     )
 
+    # BETWEEN proves every concept inside left/low/high non-null.
+    from trilogy.core.models.build import BuildBetween
+
+    assert _proves_non_null(BuildBetween(left=x, low=1, high=10)) == {x.address}
+    assert _proves_non_null(BuildBetween(left=x, low=y, high=10)) == {
+        x.address,
+        y.address,
+    }
+
 
 def test_proves_non_null_comparison_shaped_like():
     """``X LIKE 'lit'`` is parsed as a ``Comparison`` with ``operator=LIKE``
@@ -282,6 +291,116 @@ def test_proves_non_null_comparison_shaped_like():
         operator=BooleanOperator.AND,
     )
     assert _gather_proofs(cond) == {s.address, x.address}
+
+
+def test_proves_non_null_coalesce_default_rejection():
+    """``coalesce(PRIMARY, default) <op> rhs`` proves PRIMARY non-null when
+    every default is a literal that statically *fails* ``<op> rhs`` — the
+    surviving rows can only have come from the PRIMARY branch.
+
+    Reproduces the q41 pattern: ``count`` aggregates get wrapped in
+    ``coalesce(..., 0)`` to make ``count(empty)=0`` instead of NULL, and the
+    downstream filter ``... > 0`` then null-rejects the underlying column."""
+    env = Environment()
+    env.parse("key x int; key y int;")
+    build_env = env.materialize_for_select()
+    x = build_env.concepts["local.x"]
+    y = build_env.concepts["local.y"]
+
+    def coalesce(*args):
+        return BuildFunction(
+            operator=FunctionType.COALESCE,
+            arguments=list(args),
+            output_data_type=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=len(args),
+        )
+
+    # coalesce(x, 0) > 0 — 0 > 0 is FALSE, so x must be non-null.
+    assert _proves_non_null(
+        BuildComparison(left=coalesce(x, 0), right=0, operator=ComparisonOperator.GT)
+    ) == {x.address}
+
+    # coalesce(x, 0) >= 0 — 0 >= 0 is TRUE, so x-null rows survive: no proof.
+    assert (
+        _proves_non_null(
+            BuildComparison(
+                left=coalesce(x, 0), right=0, operator=ComparisonOperator.GTE
+            )
+        )
+        == set()
+    )
+
+    # coalesce(x, 100) > 0 — 100 > 0 is TRUE, so x-null rows survive: no proof.
+    assert (
+        _proves_non_null(
+            BuildComparison(
+                left=coalesce(x, 100), right=0, operator=ComparisonOperator.GT
+            )
+        )
+        == set()
+    )
+
+    # coalesce(x, 0) IS NOT NULL is a tautology (coalesce always non-null with
+    # non-null default) — must NOT claim x non-null. This goes through the
+    # IS_NOT branch, not the null-propagating one, so it stays opaque.
+    assert (
+        _proves_non_null(
+            BuildComparison(
+                left=coalesce(x, 0),
+                right=MagicConstants.NULL,
+                operator=ComparisonOperator.IS_NOT,
+            )
+        )
+        == set()
+    )
+
+    # coalesce(x, y) > 0 — non-literal default; can't fold, no proof.
+    assert (
+        _proves_non_null(
+            BuildComparison(
+                left=coalesce(x, y), right=0, operator=ComparisonOperator.GT
+            )
+        )
+        == set()
+    )
+
+    # Mirror form: 0 < coalesce(x, 0) — same proof via the flipped operator.
+    assert _proves_non_null(
+        BuildComparison(left=0, right=coalesce(x, 0), operator=ComparisonOperator.LT)
+    ) == {x.address}
+
+    # Multiple defaults, all literals, all failing: still proves PRIMARY.
+    assert _proves_non_null(
+        BuildComparison(
+            left=coalesce(x, 0, -1), right=0, operator=ComparisonOperator.GT
+        )
+    ) == {x.address}
+
+    # Multiple defaults, one of them satisfies the comparison → no proof.
+    assert (
+        _proves_non_null(
+            BuildComparison(
+                left=coalesce(x, 0, 5), right=0, operator=ComparisonOperator.GT
+            )
+        )
+        == set()
+    )
+
+    # Equality: coalesce(x, 0) = 5 — 0 = 5 is FALSE, so proves x non-null.
+    assert _proves_non_null(
+        BuildComparison(left=coalesce(x, 0), right=5, operator=ComparisonOperator.EQ)
+    ) == {x.address}
+
+    # Equality where default matches: coalesce(x, 5) = 5 — 5 = 5 TRUE, no proof.
+    assert (
+        _proves_non_null(
+            BuildComparison(
+                left=coalesce(x, 5), right=5, operator=ComparisonOperator.EQ
+            )
+        )
+        == set()
+    )
 
 
 def test_cte_addresses_none_returns_empty():

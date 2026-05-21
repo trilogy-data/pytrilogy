@@ -88,6 +88,23 @@ def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
     return is_child_of(condition, parent.condition)
 
 
+def _parent_materialized_addrs(parent: CTE | UnionCTE) -> set[str]:
+    """Addresses a parent CTE exposes as plain output columns.
+
+    For a plain ``CTE``, a non-empty ``source_map`` entry means the concept is
+    pulled in from upstream rather than derived inline — i.e. its value lives
+    in the CTE's projection as a column, not as an inline aggregate. A
+    ``UnionCTE`` exposes whatever appears in its output columns. We hand this
+    set to ``is_scalar_condition`` so an aggregate-derived concept that's
+    already materialized in the parent counts as scalar in *that* parent's
+    context, unblocking WHERE-pushdown of predicates the parent could
+    actually evaluate against a column reference.
+    """
+    if isinstance(parent, UnionCTE):
+        return {c.address for c in parent.output_columns}
+    return {addr for addr, sources in parent.source_map.items() if sources}
+
+
 def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
     """True if ``parent_name`` is on the nullable side of any outer join on
     ``cte``. A nullable parent can be NULL-padded by the join, so rows whose
@@ -530,20 +547,34 @@ class PredicatePushdown(OptimizationRule):
         )
         optimized = False
         for candidate in candidates:
-            if not is_scalar_condition(candidate):
-                # Aggregate-result predicate: can't push as WHERE, but a group
-                # parent can carry it as HAVING (alias-rendered, so no size
-                # blowup). Gated on the dialect supporting HAVING-by-alias.
-                if not self.having_alias:
-                    self.debug(
-                        f"Skipping non-scalar {candidate}; dialect has no "
-                        "HAVING-by-alias support"
+            # Scalarity is *parent-relative*: a candidate like
+            # ``manufact_matches > 0`` is non-scalar in the abstract (its concept
+            # has aggregate lineage) but becomes scalar inside a parent CTE that
+            # materializes ``manufact_matches`` as a plain output column — the
+            # aggregate has already been computed there, the parent just
+            # filters on its value. Pushing such filters as WHERE into a
+            # non-aggregating parent prunes rows earlier and (the case that
+            # motivated this) lets ``UpgradeJoinOnGuards`` see a
+            # null-rejecting predicate next to the producing outer join.
+            for parent_cte in parents:
+                parent_materialized = _parent_materialized_addrs(parent_cte)
+                if is_scalar_condition(candidate, materialized=parent_materialized):
+                    local_pushdown = self._check_parent(
+                        cte=cte,
+                        parent_cte=parent_cte,
+                        candidate=candidate,
+                        inverse_map=inverse_map,
                     )
-                    continue
-                self.debug(
-                    f"Non-scalar {candidate}; trying group-parent HAVING pushdown"
-                )
-                for parent_cte in parents:
+                    optimized = optimized or local_pushdown
+                    if local_pushdown:
+                        # taint a CTE again when something is pushed up to it.
+                        self.complete[parent_cte.name] = False
+                    self.debug(
+                        f"Pushed down {candidate} from {cte.name} to {parent_cte.name}"
+                    )
+                elif self.having_alias:
+                    # Non-scalar even for this parent: a true aggregate-result
+                    # predicate. Only a group parent can carry it as HAVING.
                     local = self._push_having_into_group_parent(
                         cte=cte,
                         parent_cte=parent_cte,
@@ -553,24 +584,11 @@ class PredicatePushdown(OptimizationRule):
                     optimized = optimized or local
                     if local:
                         self.complete[parent_cte.name] = False
-                continue
-            self.debug(
-                f"Checking candidate {candidate}, {type(candidate)}, scalar: {is_scalar_condition(candidate)}"
-            )
-            for parent_cte in parents:
-                local_pushdown = self._check_parent(
-                    cte=cte,
-                    parent_cte=parent_cte,
-                    candidate=candidate,
-                    inverse_map=inverse_map,
-                )
-                optimized = optimized or local_pushdown
-                if local_pushdown:
-                    # taint a CTE again when something is pushed up to it.
-                    self.complete[parent_cte.name] = False
-                self.debug(
-                    f"Pushed down {candidate} from {cte.name} to {parent_cte.name}"
-                )
+                else:
+                    self.debug(
+                        f"Skipping non-scalar {candidate} into {parent_cte.name}; "
+                        "dialect has no HAVING-by-alias support"
+                    )
 
         self.complete[cte.name] = True
         return optimized, None

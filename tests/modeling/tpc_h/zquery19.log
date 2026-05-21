@@ -1,5 +1,5 @@
 query_id = "19"
-gen_length = 1285
+gen_length = 1228
 preql_size = 870
 comp_size = 1042
 generated_sql = """
@@ -9,5 +9,5 @@ FROM
     \"memory\".\"part\" as \"part_part\"
     INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
 WHERE
-    ( ( \"part_part\".\"p_brand\" = 'Brand#12' and \"part_part\".\"p_container\" in ('SM CASE','SM BOX','SM PACK','SM PKG') and \"lineitem\".\"l_quantity\" >= 1 and \"lineitem\".\"l_quantity\" <= 11 and \"part_part\".\"p_size\" >= 1 and \"part_part\".\"p_size\" <= 5 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) or ( \"part_part\".\"p_brand\" = 'Brand#23' and \"part_part\".\"p_container\" in ('MED BAG','MED BOX','MED PKG','MED PACK') and \"lineitem\".\"l_quantity\" >= 10 and \"lineitem\".\"l_quantity\" <= 20 and \"part_part\".\"p_size\" >= 1 and \"part_part\".\"p_size\" <= 10 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) or ( \"part_part\".\"p_brand\" = 'Brand#34' and \"part_part\".\"p_container\" in ('LG CASE','LG BOX','LG PACK','LG PKG') and \"lineitem\".\"l_quantity\" >= 20 and \"lineitem\".\"l_quantity\" <= 30 and \"part_part\".\"p_size\" >= 1 and \"part_part\".\"p_size\" <= 15 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) )
+    ( ( \"part_part\".\"p_brand\" = 'Brand#12' and \"part_part\".\"p_container\" in ('SM CASE','SM BOX','SM PACK','SM PKG') and \"lineitem\".\"l_quantity\" >= 1 and \"lineitem\".\"l_quantity\" <= 11 and \"part_part\".\"p_size\" BETWEEN 1 AND 5 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) or ( \"part_part\".\"p_brand\" = 'Brand#23' and \"part_part\".\"p_container\" in ('MED BAG','MED BOX','MED PKG','MED PACK') and \"lineitem\".\"l_quantity\" >= 10 and \"lineitem\".\"l_quantity\" <= 20 and \"part_part\".\"p_size\" BETWEEN 1 AND 10 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) or ( \"part_part\".\"p_brand\" = 'Brand#34' and \"part_part\".\"p_container\" in ('LG CASE','LG BOX','LG PACK','LG PKG') and \"lineitem\".\"l_quantity\" >= 20 and \"lineitem\".\"l_quantity\" <= 30 and \"part_part\".\"p_size\" BETWEEN 1 AND 15 and \"lineitem\".\"l_shipmode\" in ('AIR','AIR REG') and \"lineitem\".\"l_shipinstruct\" = 'DELIVER IN PERSON' ) )
 """

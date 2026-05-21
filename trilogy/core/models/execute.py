@@ -24,18 +24,17 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildAggregateWrapper,
     BuildCaseElse,
     BuildCaseWhen,
     BuildComparison,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
     BuildParamaterizedConceptReference,
-    BuildParenthetical,
     BuildRowsetItem,
     DataType,
     LooseBuildConceptList,
@@ -84,9 +83,7 @@ class CTE:
     existence_source_map: Dict[str, list[str]] = field(default_factory=dict)
     parent_ctes: List[Union["CTE", "UnionCTE"]] = field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = field(default_factory=list)
-    condition: Optional[
-        Union[BuildComparison, BuildConditional, BuildParenthetical]
-    ] = None
+    condition: BoolExpr | None = None
     partial_concepts: List[BuildConcept] = field(default_factory=list)
     rollup_concepts: List[BuildConcept] = field(default_factory=list)
     nullable_concepts: List[BuildConcept] = field(default_factory=list)
@@ -826,9 +823,7 @@ class QueryDatasource:
     grain: BuildGrain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
-    condition: Optional[
-        Union[BuildConditional, BuildComparison, BuildParenthetical]
-    ] = None
+    condition: BoolExpr | None = None
     source_type: SourceType = field(default=SourceType.SELECT)
     partial_concepts: List[BuildConcept] = field(default_factory=list)
     rollup_concepts: List[BuildConcept] = field(default_factory=list)
@@ -1491,7 +1486,7 @@ class Join:
     left_cte: CTE | UnionCTE | None = None
     joinkey_pairs: List[CTEConceptPair] | None = None
     quote: str | None = None
-    condition: BuildConditional | BuildComparison | BuildParenthetical | None = None
+    condition: BoolExpr | None = None
     modifiers: List[Modifier] = field(default_factory=list)
     # Set by union_dim_pushdown when LHS join keys are local to the rendering
     # CTE rather than read from a parent alias.

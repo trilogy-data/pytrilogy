@@ -1,5 +1,5 @@
 query_id = "41"
-gen_length = 2558
+gen_length = 2460
 preql_size = 1587
 comp_size = 2745
 generated_sql = """
@@ -23,28 +23,24 @@ SELECT
 FROM
     \"memory\".\"item\" as \"item_items\"
 WHERE
-    \"item_items\".\"I_MANUFACT_ID\" >= 738 and \"item_items\".\"I_MANUFACT_ID\" <= 778
+    \"item_items\".\"I_MANUFACT_ID\" BETWEEN 738 AND 778
 
 GROUP BY
     1,
     2),
 cooperative as (
 SELECT
-    \"cheerful\".\"filtered_product_name\" as \"filtered_product_name\",
-    coalesce(\"highfalutin\".\"manufact_matches\",0) as \"manufact_matches\"
+    \"cheerful\".\"filtered_product_name\" as \"filtered_product_name\"
 FROM
     \"cheerful\"
-    LEFT OUTER JOIN \"highfalutin\" on \"cheerful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
+    INNER JOIN \"highfalutin\" on \"cheerful\".\"item_manufact\" is not distinct from \"highfalutin\".\"item_manufact\"
 WHERE
-    \"cheerful\".\"filtered_product_name\" is not null
+    \"cheerful\".\"filtered_product_name\" is not null and coalesce(\"highfalutin\".\"manufact_matches\",0) > 0
 )
 SELECT
     \"cooperative\".\"filtered_product_name\" as \"filtered_product_name\"
 FROM
     \"cooperative\"
-WHERE
-    \"cooperative\".\"manufact_matches\" > 0
-
 ORDER BY 
     \"cooperative\".\"filtered_product_name\" asc
 LIMIT (100)"""

@@ -9,6 +9,13 @@ non-null in its producing CTE the two forms are equivalent, so the modifier is
 dead weight (and ``IS NOT DISTINCT FROM`` is the slower, non-hash-joinable
 form). Once join types and CTE nullability have settled, strip the redundant
 modifier on INNER joins so plain ``=`` is emitted.
+
+A CTE is proven non-null for a column when (a) build-time
+``nullable_concepts`` tracking excludes it, (b) the CTE's own ``condition``
+null-rejects it (predicate pushdown migrates downstream ``IS NOT NULL`` /
+null-propagating filters into the producer's condition, so this picks them up
+without any optimizer looking at the consumer), or (c) for a ``UnionCTE``,
+every branch independently proves the column non-null.
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.processing.condition_utility import condition_proves_non_null
 
 
 def _equivalent_addrs(concepts: list[BuildConcept]) -> set[str]:
@@ -26,18 +34,98 @@ def _equivalent_addrs(concepts: list[BuildConcept]) -> set[str]:
     return out
 
 
-def _proven_non_null(concept: BuildConcept, cte: CTE | UnionCTE) -> bool:
+def _join_pads_null(cte: CTE, addrs: set[str]) -> bool:
+    """True when one of ``cte``'s own outer joins NULL-pads any address in
+    ``addrs``.
+
+    Used by the parent-walk in ``_proven_non_null`` to refuse a recursive
+    proof when a column that's non-null in some upstream producer is
+    re-introduced as nullable by ``cte``'s own join. The build-time
+    ``nullable_concepts`` already reflects this, so we only have to recurse
+    upstream when the local join can't be the source of the nullability."""
+    if not cte.joins:
+        return False
+    for join in cte.joins:
+        if not isinstance(join, Join) or join.jointype == JoinType.INNER:
+            continue
+        if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
+            right_outputs = _equivalent_addrs(list(join.right_cte.output_columns))
+            if not addrs.isdisjoint(right_outputs):
+                return True
+        if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            if join.left_cte is not None:
+                left_outputs = _equivalent_addrs(list(join.left_cte.output_columns))
+                if not addrs.isdisjoint(left_outputs):
+                    return True
+            for pair in join.joinkey_pairs or []:
+                if pair.cte is None:
+                    continue
+                pair_outputs = _equivalent_addrs(list(pair.cte.output_columns))
+                if not addrs.isdisjoint(pair_outputs):
+                    return True
+    return False
+
+
+def _proven_non_null(
+    concept: BuildConcept,
+    cte: CTE | UnionCTE,
+    _visited: frozenset[str] = frozenset(),
+) -> bool:
     """True when ``concept`` is sourced from ``cte`` and cannot be NULL there.
 
-    ``UnionCTE`` carries no nullability tracking, so it can never *prove*
-    non-null — stay conservative and keep the null-safe form there."""
+    The proof is layered, each layer reading only the local CTE or *upstream*
+    parents (never consumers):
+
+    1. ``UnionCTE``: every internal branch must independently prove the
+       concept non-null.
+    2. Plain CTE: the build-time ``nullable_concepts`` already excludes it
+       (no NULL anywhere upstream + no outer join here pads it).
+    3. The CTE's own ``condition`` null-rejects it (predicate pushdown will
+       have migrated downstream ``IS NOT NULL`` / null-propagating filters
+       into the producing CTE's condition).
+    4. The CTE pulls the concept from a parent CTE and *every* parent that
+       emits it proves it non-null, and no local outer join NULL-pads the
+       column. Walking the parent chain catches the common case where a
+       UNION ALL's branches each filter ``x is not null`` but the union
+       output and projection CTEs in between never re-derived their
+       ``nullable_concepts`` from the refined branches.
+    """
+    if isinstance(cte, UnionCTE):
+        branches = list(cte.internal_ctes)
+        if not branches:
+            return False
+        return all(_proven_non_null(concept, branch, _visited) for branch in branches)
     if not isinstance(cte, CTE):
         return False
     output = _equivalent_addrs(list(cte.output_columns))
     if concept.equivalent_addresses.isdisjoint(output):
         return False
     nullable = _equivalent_addrs(list(cte.nullable_concepts))
-    return concept.equivalent_addresses.isdisjoint(nullable)
+    if concept.equivalent_addresses.isdisjoint(nullable):
+        return True
+    if cte.condition is not None:
+        proven = condition_proves_non_null(cte.condition)
+        if not concept.equivalent_addresses.isdisjoint(proven):
+            return True
+    if cte.name in _visited:
+        return False
+    # An outer join here may itself introduce the NULL — don't claim a parent
+    # proof if our own join is the source of the nullability.
+    if _join_pads_null(cte, concept.equivalent_addresses):
+        return False
+    next_visited = _visited | {cte.name}
+    contributing = [
+        parent
+        for parent in cte.parent_ctes
+        if not concept.equivalent_addresses.isdisjoint(
+            _equivalent_addrs(list(parent.output_columns))
+        )
+    ]
+    if not contributing:
+        return False
+    return all(
+        _proven_non_null(concept, parent, next_visited) for parent in contributing
+    )
 
 
 class SimplifyNullSafeJoins(OptimizationRule):

@@ -1,5 +1,5 @@
 query_id = "53"
-gen_length = 2521
+gen_length = 2515
 preql_size = 1387
 comp_size = 1808
 generated_sql = """
@@ -34,19 +34,19 @@ SELECT
     \"cooperative\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
 FROM
     \"cooperative\"
-    INNER JOIN \"cheerful\" on \"cooperative\".\"store_sales_item_manufacturer_id\" = \"cheerful\".\"store_sales_item_manufacturer_id\")
+    INNER JOIN \"cheerful\" on \"cooperative\".\"store_sales_item_manufacturer_id\" = \"cheerful\".\"store_sales_item_manufacturer_id\"
+WHERE
+    CASE
+	WHEN \"cooperative\".\"avg_quarterly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_quarterly_sales\") / \"cooperative\".\"avg_quarterly_sales\"
+	ELSE null
+	END > 0.1
+)
 SELECT
     \"questionable\".\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
     \"questionable\".\"sum_sales\" as \"sum_sales\",
     \"questionable\".\"avg_quarterly_sales\" as \"avg_quarterly_sales\"
 FROM
     \"questionable\"
-WHERE
-    CASE
-	WHEN \"questionable\".\"avg_quarterly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"questionable\".\"avg_quarterly_sales\") / \"questionable\".\"avg_quarterly_sales\"
-	ELSE null
-	END > 0.1
-
 ORDER BY 
     \"questionable\".\"avg_quarterly_sales\" asc,
     \"questionable\".\"sum_sales\" asc,

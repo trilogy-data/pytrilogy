@@ -3,13 +3,11 @@ from typing import Callable
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import Modifier, UnnestMode
 from trilogy.core.models.build import (
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildFunction,
     BuildParamaterizedConceptReference,
-    BuildParenthetical,
 )
 from trilogy.core.models.execute import (
     CTE,
@@ -234,9 +232,7 @@ def render_join(
             BuildConcept
             | BuildParamaterizedConceptReference
             | BuildFunction
-            | BuildConditional
-            | BuildComparison
-            | BuildParenthetical,
+            | BoolExpr,
             CTE,
         ],
         str,

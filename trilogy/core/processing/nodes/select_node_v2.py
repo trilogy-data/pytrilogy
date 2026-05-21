@@ -4,14 +4,12 @@ from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Derivation, Purpose, SourceType
 from trilogy.core.models.build import (
-    BuildComparison,
+    BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
-    BuildParenthetical,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
@@ -43,12 +41,8 @@ class SelectNode(StrategyNode):
         accept_partial: bool = False,
         grain: Optional[BuildGrain] = None,
         force_group: bool | None = False,
-        conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
-        ) = None,
-        preexisting_conditions: (
-            BuildConditional | BuildComparison | BuildParenthetical | None
-        ) = None,
+        conditions: BoolExpr | None = None,
+        preexisting_conditions: BoolExpr | None = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
     ):

@@ -1,5 +1,5 @@
 query_id = "72"
-gen_length = 6292
+gen_length = 6293
 preql_size = 858
 comp_size = 1360
 generated_sql = """
@@ -112,7 +112,7 @@ SELECT
     coalesce(\"young\".\"total_cnt\",0) as \"total_cnt\"
 FROM
     \"vacuous\"
-    FULL JOIN \"young\" on \"vacuous\".\"cs_item_desc\" is not distinct from \"young\".\"cs_item_desc\" AND \"vacuous\".\"cs_sold_date_week_seq\" = \"young\".\"cs_sold_date_week_seq\" AND \"vacuous\".\"inv_warehouse_name\" is not distinct from \"young\".\"inv_warehouse_name\"
+    INNER JOIN \"young\" on \"vacuous\".\"cs_item_desc\" is not distinct from \"young\".\"cs_item_desc\" AND \"vacuous\".\"cs_sold_date_week_seq\" = \"young\".\"cs_sold_date_week_seq\" AND \"vacuous\".\"inv_warehouse_name\" is not distinct from \"young\".\"inv_warehouse_name\"
 ORDER BY 
     coalesce(\"young\".\"total_cnt\",0) desc nulls first,
     \"item_desc\" asc nulls first,
