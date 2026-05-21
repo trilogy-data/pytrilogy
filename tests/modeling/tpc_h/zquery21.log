@@ -1,6 +1,6 @@
 query_id = "21"
-gen_length = 1645
-preql_size = 530
+gen_length = 1627
+preql_size = 512
 comp_size = 802
 generated_sql = """
 
@@ -37,7 +37,7 @@ FROM
 GROUP BY
     1
 HAVING
-    count(distinct \"highfalutin\".\"part_supplier_id\") > 1 and count(distinct \"highfalutin\".\"_virt_filter_id_1852383943558009\") = 1
+    count(\"highfalutin\".\"part_supplier_id\") > 1 and count(\"highfalutin\".\"_virt_filter_id_1852383943558009\") = 1
 )
 SELECT
     \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
