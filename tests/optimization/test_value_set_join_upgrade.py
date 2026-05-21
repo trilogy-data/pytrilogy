@@ -20,6 +20,7 @@ from trilogy.core.models.execute import (
     CTEConceptPair,
     Join,
     QueryDatasource,
+    UnionCTE,
 )
 from trilogy.core.optimizations.value_set_join_upgrade import (
     UpgradeOuterFromKeySetEquivalence,
@@ -330,6 +331,69 @@ def test_partial_concept_blocks_upgrade():
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
     assert not changed
     assert root.joins[0].jointype == JoinType.FULL
+
+
+def _union_of(branches):
+    return UnionCTE(
+        name="union",
+        source=branches[0].source,
+        parent_ctes=list(branches),
+        internal_ctes=list(branches),
+        output_columns=list(branches[0].output_columns),
+        grain=branches[0].grain,
+    )
+
+
+def test_complete_distinct_false_without_grain_components():
+    """A side that groups to grain but carries no grain components can't claim
+    every distinct value."""
+    cls = _concept("CLASS")
+    cte = _datasource_cte("cte", [cls])
+    cte.group_to_grain = True
+    cte.grain = BuildGrain()
+    assert not _complete_distinct(cls, cte)
+
+
+def test_complete_distinct_false_when_key_outside_grain():
+    """The join key isn't part of the side's GROUP BY grain — distinctness of
+    that key is unknown."""
+    cls = _concept("CLASS")
+    other = _concept("OTHER")
+    source = _datasource_cte("source", [cls, other])
+    grouped = _grouped_child("grouped", source, other)
+    assert not _complete_distinct(cls, grouped)
+
+
+def test_complete_distinct_false_for_union_side():
+    cls = _concept("CLASS")
+    source = _datasource_cte("source", [cls])
+    grouped = _grouped_child("grouped", source, cls)
+    assert not _complete_distinct(cls, _union_of([grouped]))
+
+
+def test_accumulate_filter_none_for_union_side():
+    """A UnionCTE is opaque to filter accumulation — returns None."""
+    cls = _concept("CLASS")
+    source = _datasource_cte("source", [cls])
+    grouped = _grouped_child("grouped", source, cls)
+    assert _accumulate_filter(_union_of([grouped])) is None
+
+
+def test_accumulate_filter_cycle_safe():
+    """A self-referential parent chain terminates."""
+    cls = _concept("CLASS")
+    cte = _datasource_cte("cte", [cls])
+    cte.condition = BuildComparison(left=cls, right=1, operator=ComparisonOperator.EQ)
+    cte.parent_ctes = [cte]
+    acc = _accumulate_filter(cte)
+    assert acc == cte.condition
+
+
+def test_filters_equivalent_one_sided_none():
+    x = _concept("X")
+    a = BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ)
+    assert not _filters_equivalent(a, None)
+    assert not _filters_equivalent(None, a)
 
 
 def test_pair_helper_resolves_canonical_concept_aliases():
