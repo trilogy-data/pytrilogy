@@ -39,6 +39,8 @@ tests/scripts/test.db
 
 tests/modeling/tcp_ds_duckdb/memory/
 tests/modeling/tpc_ds_duckdb/memory/
+tests/modeling/tpc_h/memory/
+tests/modeling/tpc_h/memory_sf001/
 duckdb_temp_storage-*.tmp
 
 

@@ -4,11 +4,15 @@ from typing import List
 
 from trilogy.core.enums import Granularity
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import condition_implies
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    decompose_condition,
+)
 from trilogy.core.processing.nodes import (
     StrategyNode,
 )
@@ -29,6 +33,51 @@ def _is_scalar_only(node: StrategyNode) -> bool:
     if not visible:
         return False
     return all(c.granularity == Granularity.SINGLE_ROW for c in visible)
+
+
+def _node_condition_implies(
+    node: StrategyNode,
+    condition: BoolExpr,
+) -> bool:
+    return node.preexisting_conditions == condition or (
+        node.preexisting_conditions is not None
+        and condition_implies(node.preexisting_conditions, condition)
+    )
+
+
+def _condition_atom_met(
+    stack: List[StrategyNode],
+    found_addresses: set[str],
+    condition: BoolExpr,
+) -> bool:
+    if all(c.address in found_addresses for c in condition.row_arguments):
+        return True
+    return all(
+        _is_scalar_only(node) or _node_condition_implies(node, condition)
+        for node in stack
+    )
+
+
+def _conditions_met(
+    stack: List[StrategyNode],
+    found_addresses: set[str],
+    mandatory_with_filter: List[BuildConcept],
+    conditions: BuildWhereClause | None,
+) -> bool:
+    if not conditions:
+        return True
+    conditional = conditions.conditional
+    if all(
+        _is_scalar_only(node) or _node_condition_implies(node, conditional)
+        for node in stack
+    ):
+        return True
+    if all(c.address in found_addresses for c in mandatory_with_filter):
+        return True
+    return all(
+        _condition_atom_met(stack, found_addresses, atom)
+        for atom in decompose_condition(conditional)
+    )
 
 
 class ValidationResult(Enum):
@@ -140,22 +189,12 @@ def validate_stack(
                 continue
             found_addresses.add(concept.address)
             virtual_addresses.add(concept.address)
-    if not conditions:
-        conditions_met = True
-    else:
-        conditions_met = all(
-            [
-                node.preexisting_conditions == conditions.conditional
-                or (
-                    node.preexisting_conditions is not None
-                    and condition_implies(
-                        node.preexisting_conditions, conditions.conditional
-                    )
-                )
-                or _is_scalar_only(node)
-                for node in stack
-            ]
-        ) or all([c.address in found_addresses for c in mandatory_with_filter])
+    conditions_met = _conditions_met(
+        stack,
+        found_addresses,
+        mandatory_with_filter,
+        conditions,
+    )
     # zip in those we know we found
     if not all([c.address in found_addresses for c in concepts]) or not conditions_met:
         if not all([c.address in found_addresses for c in concepts]):

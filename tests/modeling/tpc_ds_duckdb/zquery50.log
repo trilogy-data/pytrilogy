@@ -1,5 +1,5 @@
 query_id = "50"
-gen_length = 6577
+gen_length = 6308
 preql_size = 1574
 comp_size = 1903
 generated_sql = """
@@ -55,9 +55,7 @@ GROUP BY
     8,
     9,
     10,
-    11,
-    \"store_sales_return_customer_customers\".\"C_CUSTOMER_SK\",
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\"),
+    11),
 abundant as (
 SELECT
     \"questionable\".\"store_sales_store_id\" as \"store_sales_store_id\",
@@ -102,23 +100,6 @@ SELECT
 FROM
     \"thoughtful\"
     LEFT OUTER JOIN \"yummy\" on \"thoughtful\".\"store_sales_store_id\" = \"yummy\".\"store_sales_store_id\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    \"thoughtful\".\"store_sales_store_id\"
 ORDER BY 
     \"thoughtful\".\"store_sales_store_name\" asc nulls first,
     \"thoughtful\".\"store_sales_store_company_id\" asc nulls first,

@@ -17,6 +17,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.null_safe_join import (
     SimplifyNullSafeJoins,
+    _join_pads_null,
     _proven_non_null,
 )
 

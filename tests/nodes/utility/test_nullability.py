@@ -1,8 +1,32 @@
 from trilogy import parse
-from trilogy.core.enums import JoinType, Modifier
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    JoinType,
+    Modifier,
+    Purpose,
+)
+from trilogy.core.models.author import (
+    CaseElse,
+    CaseWhen,
+    Comparison,
+    ConceptRef,
+    Conditional,
+    Function,
+    Parenthetical,
+)
 from trilogy.core.models.build import BuildGrain
+from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
 from trilogy.core.processing.utility import find_nullable_concepts
+from trilogy.parsing.common import (
+    _NO_LITERAL,
+    _case_when_atoms,
+    _condition_literal,
+    _expr_is_nullable,
+    _resolve_concept,
+)
 
 
 def test_find_nullable_concepts():

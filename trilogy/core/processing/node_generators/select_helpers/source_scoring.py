@@ -14,7 +14,11 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
 )
-from trilogy.core.processing.condition_utility import condition_implies
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    condition_required_addresses,
+    decompose_condition,
+)
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
@@ -201,6 +205,20 @@ def score_datasource_node(
     return (mat_score, grain_score, exact_score, concept_count, node)
 
 
+def _condition_atoms_sourceable_by_datasource(
+    ds: BuildDatasource | BuildUnionDatasource | None,
+    conditions: BuildWhereClause | None,
+) -> set[str]:
+    if conditions is None or not isinstance(ds, BuildDatasource):
+        return set()
+    outputs = {c.canonical_address for c in ds.output_concepts}
+    return {
+        str(atom)
+        for atom in decompose_condition(conditions.conditional)
+        if condition_required_addresses(atom).issubset(outputs)
+    }
+
+
 def _score_node(
     node: str,
     datasources: dict[str, BuildDatasource | BuildUnionDatasource],
@@ -293,6 +311,10 @@ def resolve_subgraphs(
         g, criteria, conditions, allow_filter_application=False
     )
     grain_length = get_graph_grains(g)
+    condition_atom_map = {
+        ds: _condition_atoms_sourceable_by_datasource(g.datasources.get(ds), conditions)
+        for ds in datasources
+    }
 
     concept_map: dict[str, set[str]] = {}
     non_partial_map: dict[str, set[str]] = {}
@@ -327,6 +349,8 @@ def resolve_subgraphs(
                 and value.issubset(other_value)
                 and all_concepts.issubset(other_all_concepts)
             ):
+                if not condition_atom_map[key].issubset(condition_atom_map[other_key]):
+                    continue
                 if len(value) < len(other_value):
                     is_subset = True
                     logger.info(

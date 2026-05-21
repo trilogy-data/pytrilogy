@@ -8,25 +8,42 @@ from trilogy.hooks import DebuggingHook
 
 
 def test_query_gen():
-    """Make sure we inject another group by when conditions forced an evaluation with an early grain"""
+    """Filtering below the carrier grain should still count carriers, not flights."""
     DebuggingHook()
     x = Environment(working_path=Path(__file__).parent)
 
     x = Dialects.DUCK_DB.default_executor(environment=x)
+    x.execute_raw_sql("""
+create or replace table flight (
+    id2 int,
+    carrier varchar,
+    dep_time timestamp
+);
+insert into flight values
+    (1, 'AA', timestamp '2002-01-05 08:00:00'),
+    (2, 'AA', timestamp '2002-02-05 08:00:00'),
+    (3, 'DL', timestamp '2002-03-05 08:00:00'),
+    (4, 'UA', timestamp '2002-05-05 08:00:00'),
+    (5, 'XX', timestamp '2002-01-05 08:00:00');
 
-    sql = x.generate_sql("""import flight;
+create or replace table carrier (
+    code varchar,
+    name varchar
+);
+insert into carrier values
+    ('AA', 'American Airlines'),
+    ('DL', 'Delta Air Lines'),
+    ('UA', 'United Airlines');
+""")
+
+    results = x.execute_text("""import flight;
 
 where date_trunc(local.dep_time, month) between '2001-12-31'::date and '2002-03-31'::date
 select
     count(carrier.name) as carrier_count;
-    """)[-1]
-    # if we don't have this group by, we will get the wrong result. The
-    # second key may render as positional (`2`) or as a qualified column
-    # name depending on whether HideUnusedConcepts left the grain column
-    # in the SELECT list — accept either form.
-    import re
+    """)[-1].fetchall()
 
-    assert re.search(r"GROUP BY\s+1,\s+(2|\"[^\"]+\"\.\"[^\"]+\")", sql), sql
+    assert results == [(2,)]
 
 
 def test_helpful_error():

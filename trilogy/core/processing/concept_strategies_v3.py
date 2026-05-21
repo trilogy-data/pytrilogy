@@ -430,6 +430,7 @@ def _search_concepts(
             accept_partial=accept_partial,
             history=history,
             conditions=local_conditions,
+            required_concepts=context.mandatory_list,
         )
         if node:
             context.stack.append(node)

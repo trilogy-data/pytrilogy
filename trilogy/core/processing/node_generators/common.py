@@ -343,13 +343,13 @@ def gen_property_enrichment_node(
         log_lambda(
             f"Generating property enrichment node for {root_key} with {sorted(properties)}"
         )
-        local_conditions, local_condition_concepts = _local_property_conditions(
+        local_conditions, _ = _local_property_conditions(
             conditions,
             required,
             _condition_key_addresses(required),
         )
         enrich_node: StrategyNode | None = source_concepts(
-            mandatory_list=unique(required + local_condition_concepts, "address"),
+            mandatory_list=required,
             environment=environment,
             g=g,
             depth=depth + 1,
@@ -360,7 +360,6 @@ def gen_property_enrichment_node(
             return None
         final_nodes.append(enrich_node)
         input_concepts.extend(required)
-        input_concepts.extend(local_condition_concepts)
 
     return MergeNode(
         input_concepts=unique(input_concepts, "address"),
