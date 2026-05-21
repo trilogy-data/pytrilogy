@@ -27,6 +27,7 @@ from trilogy.core.processing.aggregate_rollup import (
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
+    condition_implies,
     condition_required_addresses,
     decompose_condition,
     is_scalar_condition,
@@ -589,6 +590,19 @@ def _merge_condition_routing(
         parents, remaining_conditions
     ):
         return condition, remaining_conditions, None
+    if remaining_conditions is None:
+        output_addrs = {c.address for c in output_concepts}
+        for parent in parents:
+            if parent.preexisting_conditions is None:
+                continue
+            if not (
+                parent.preexisting_conditions == condition
+                or condition_implies(parent.preexisting_conditions, condition)
+            ):
+                continue
+            parent_addrs = {c.address for c in parent.usable_outputs}
+            if parent_addrs and parent_addrs.issubset(output_addrs):
+                return condition, None, JoinType.INNER
 
     # Filter applied at one parent (e.g. a partial-aggregate rollup) plus pure
     # enumerator joins: the conditioned parent already carries the merge output

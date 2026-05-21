@@ -9,6 +9,10 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    decompose_condition,
+)
 from trilogy.core.processing.discovery_utility import LOGGER_PREFIX, depth_to_prefix
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
@@ -58,6 +62,7 @@ class NodeGenerationContext:
     history: History
     accept_partial: bool = False
     conditions: Optional[BuildWhereClause] = None
+    required_concepts: List[BuildConcept] | None = None
 
     @property
     def next_depth(self) -> int:
@@ -107,6 +112,42 @@ def restrict_node_outputs_targets(
 
     node.set_output_concepts(base)
     return extra
+
+
+def _condition_arguments_still_required(
+    conditions: BuildWhereClause | None,
+    node: StrategyNode,
+) -> set[str]:
+    if not conditions:
+        return set()
+    applied = node.preexisting_conditions
+    required: set[str] = set()
+    for atom in decompose_condition(conditions.conditional):
+        if applied is not None and condition_implies(applied, atom):
+            continue
+        required.update(arg.address for arg in atom.row_arguments)
+    return required
+
+
+def _trim_applied_condition_outputs(
+    node: StrategyNode,
+    targets: list[BuildConcept],
+    ctx: NodeGenerationContext,
+) -> list[BuildConcept]:
+    if not ctx.conditions:
+        return restrict_node_outputs_targets(node, targets, ctx.depth)
+    requested = {c.address for c in ctx.required_concepts or []}
+    condition_args = {c.address for c in ctx.conditions.row_arguments}
+    still_required = _condition_arguments_still_required(ctx.conditions, node)
+    keep = [
+        c for c in targets if c.address in requested or c.address not in condition_args
+    ]
+    seen = {c.address for c in keep}
+    for arg in ctx.conditions.row_arguments:
+        if arg.address in still_required and arg.address not in seen:
+            keep.append(arg)
+            seen.add(arg.address)
+    return restrict_node_outputs_targets(node, keep, ctx.depth)
 
 
 # Simple factory functions for basic derivation types
@@ -364,7 +405,7 @@ class RootNodeHandler:
                 if arg.address not in seen:
                     keep.append(arg)
                     seen.add(arg.address)
-        extra = restrict_node_outputs_targets(expanded, keep, self.ctx.depth)
+        extra = _trim_applied_condition_outputs(expanded, keep, self.ctx)
 
         logger.info(
             f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
@@ -427,6 +468,7 @@ def generate_node(
     history: History,
     accept_partial: bool,
     conditions: BuildWhereClause | None = None,
+    required_concepts: List[BuildConcept] | None = None,
 ) -> StrategyNode | None:
 
     context = NodeGenerationContext(
@@ -439,6 +481,7 @@ def generate_node(
         history=history,
         accept_partial=accept_partial,
         conditions=conditions,
+        required_concepts=required_concepts,
     )
 
     # Try materialized concept first
@@ -454,6 +497,7 @@ def generate_node(
     )
 
     if candidate:
+        _trim_applied_condition_outputs(candidate, [concept] + local_optional, context)
         return candidate
 
     # Delegate to appropriate handler based on derivation
