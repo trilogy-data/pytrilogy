@@ -1,9 +1,11 @@
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 from trilogy.core.models.core import DataType, TraitDataType
 from trilogy.rendering.rich_types import (
     axis_label_expr,
     currency_symbol,
+    field_datatype,
     format_currency,
     format_value,
     is_numeric,
@@ -43,3 +45,13 @@ def test_is_numeric():
 def test_axis_label_expr():
     assert axis_label_expr(_USD) == "'$' + format(datum.value, ',.0f')"
     assert axis_label_expr(DataType.FLOAT) is None
+
+
+def test_field_datatype():
+    column = MagicMock(safe_address="revenue", datatype=_USD)
+    layer = MagicMock()
+    layer.query.output_columns = [column]
+    assert field_datatype(layer, "revenue") is _USD
+    assert field_datatype(layer, "missing") is None
+    layer.query = None
+    assert field_datatype(layer, "revenue") is None

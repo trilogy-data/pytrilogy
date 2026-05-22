@@ -1,8 +1,15 @@
 import json
+import sys
+import types
+from dataclasses import replace
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from trilogy.core.enums import ChartType
+from trilogy.core.statements.execute import ProcessedQuery
+from trilogy.dialect.results import ChartResult
 from trilogy.rendering.theme import (
     DEFAULT_THEME,
     EDITORIAL_THEME,
@@ -11,8 +18,14 @@ from trilogy.rendering.theme import (
     THEMES,
     get_theme,
 )
+from trilogy.report import render_report
 from trilogy.report.backends import available_formats, get_backend
-from trilogy.report.backends.html import build_css, build_html
+from trilogy.report.backends.html import (
+    _render_element,
+    _RenderState,
+    build_css,
+    build_html,
+)
 from trilogy.report.charts import style_chart
 from trilogy.report.document import (
     Chart,
@@ -24,7 +37,7 @@ from trilogy.report.document import (
     TrilogyBlock,
     parse_markdown,
 )
-from trilogy.report.runner import run_document
+from trilogy.report.runner import _column_types, _to_element, run_document
 from trilogy.report.tables import table_to_html, table_to_markdown
 
 _NUMS_SETUP = (
@@ -295,3 +308,142 @@ def test_style_chart_full_width(tmp_path):
     assert spec["width"] == REPORT_LAYOUT.chart_width
     container = style_chart(chart, INTER_THEME, REPORT_LAYOUT, interactive=True)
     assert container.to_dict()["width"] == "container"
+
+
+def test_render_report_to_html(tmp_path):
+    pytest.importorskip("markdown")
+    src = tmp_path / "report.md"
+    src.write_text("# Title\n\nbody text\n", encoding="utf-8")
+    out = render_report(src, output_format="html")
+    assert out == tmp_path / "report.html"
+    assert "body text" in out.read_text(encoding="utf-8")
+    explicit = tmp_path / "custom.html"
+    out2 = render_report(
+        src, output_format="html", output_path=explicit, theme="editorial"
+    )
+    assert out2 == explicit
+    assert explicit.exists()
+
+
+def test_build_html_interactive_chart(tmp_path):
+    pytest.importorskip("altair")
+    elements = run_document(parse_markdown(_CHART_BLOCK), working_path=tmp_path)
+    html = build_html(elements, interactive=True)
+    assert "vegaEmbed" in html
+    assert "report-chart-0" in html
+    assert "vega-lite" in html
+
+
+def test_build_html_error_box():
+    html = build_html([ErrorBox("boom <oops>")])
+    assert '<div class="report-error">boom &lt;oops&gt;</div>' in html
+
+
+def test_build_html_no_webfont():
+    theme = replace(INTER_THEME, webfont_url=None)
+    html = build_html([ErrorBox("x")], theme=theme)
+    assert "fonts.googleapis.com" not in html
+
+
+def test_render_element_unknown_returns_empty():
+    assert (
+        _render_element(object(), INTER_THEME, REPORT_LAYOUT, False, _RenderState())
+        == ""
+    )
+
+
+def test_parse_markdown_unterminated_row():
+    segments = parse_markdown("intro\n\n:::row\n```trilogy\nselect 1;\n```\n")
+    assert any(isinstance(s, RowBlock) for s in segments)
+
+
+def test_run_document_prose_passthrough(tmp_path):
+    elements = run_document(
+        parse_markdown("# Heading\n\ntext\n"), working_path=tmp_path
+    )
+    assert [type(e).__name__ for e in elements] == ["Prose"]
+
+
+def test_run_document_connects_unconnected_executor(monkeypatch):
+    fake_exec = MagicMock()
+    fake_exec.connected = False
+    fake_dialects = MagicMock()
+    fake_dialects.DUCK_DB.default_executor.return_value = fake_exec
+    monkeypatch.setattr("trilogy.report.runner.Dialects", fake_dialects)
+    assert run_document([], working_path=Path(".")) == []
+    fake_exec.connect.assert_called_once()
+
+
+def test_column_types_non_processed():
+    assert _column_types(None, ["a", "b"]) == [None, None]
+
+
+def test_column_types_by_name_fallback():
+    c1 = MagicMock(safe_address="a", address="ns.a", datatype="ta")
+    c2 = MagicMock(safe_address="b", address="ns.b", datatype="tb")
+    processed = MagicMock(spec=ProcessedQuery)
+    processed.output_columns = [c1, c2]
+    assert _column_types(processed, ["b", "x", "y"]) == ["tb", None, None]
+
+
+def test_to_element_none_result():
+    assert _to_element(None, None) is None
+
+
+def test_to_element_chart_missing():
+    result = MagicMock(spec=ChartResult)
+    result.chart = None
+    element = _to_element(None, result)
+    assert isinstance(element, ErrorBox)
+    assert "altair" in element.message
+
+
+def test_table_to_markdown_empty():
+    assert table_to_markdown(Table(columns=[], rows=[])) == ""
+
+
+def test_chart_box_multi_column():
+    single_w, _ = REPORT_LAYOUT.chart_box(1)
+    multi_w, multi_h = REPORT_LAYOUT.chart_box(2)
+    assert 0 < multi_w < single_w
+    assert multi_h > 0
+
+
+def test_png_backend_renders_via_playwright(tmp_path, monkeypatch):
+    package = types.ModuleType("playwright")
+    sync_api = types.ModuleType("playwright.sync_api")
+    package.sync_api = sync_api  # type: ignore[attr-defined]
+    cm = MagicMock()
+    sync_api.sync_playwright = MagicMock(return_value=cm)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", package)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+
+    out = tmp_path / "report.png"
+    get_backend("png").render([Table(["a"], [[1]])], out)
+
+    page = cm.__enter__.return_value.chromium.launch.return_value.new_page.return_value
+    page.set_content.assert_called_once()
+    page.screenshot.assert_called_once_with(path=str(out), full_page=True)
+
+
+def test_png_snapshot_requires_playwright(tmp_path, monkeypatch):
+    from trilogy.report.backends.png import _snapshot
+
+    monkeypatch.setitem(sys.modules, "playwright", None)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", None)
+    with pytest.raises(RuntimeError, match="requires playwright"):
+        _snapshot("<html></html>", tmp_path / "report.png")
+
+
+def test_png_snapshot_chromium_launch_failure(tmp_path, monkeypatch):
+    from trilogy.report.backends.png import _snapshot
+
+    package = types.ModuleType("playwright")
+    sync_api = types.ModuleType("playwright.sync_api")
+    cm = MagicMock()
+    cm.__enter__.return_value.chromium.launch.side_effect = Exception("no browser")
+    sync_api.sync_playwright = MagicMock(return_value=cm)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", package)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+    with pytest.raises(RuntimeError, match="Could not launch chromium"):
+        _snapshot("<html></html>", tmp_path / "report.png")
