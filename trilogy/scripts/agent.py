@@ -582,11 +582,6 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
         f"--- stdout ---\n{stdout}\n"
         f"--- stderr ---\n{stderr}"
     )
-    return (
-        result
-        + _raw_write_note(raw_args)
-        + _empty_write_note(raw_args, completed.stdout or "")
-    )
 
 
 def handle_todo(state: AgentState, args: dict) -> str:
