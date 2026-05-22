@@ -1,7 +1,6 @@
 lark
 jinja2
 sqlalchemy>=2.0.0
-networkx
 pydantic
 # temporary until extensions catch up
 duckdb<1.5.0

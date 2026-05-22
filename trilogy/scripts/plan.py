@@ -1,13 +1,15 @@
 """Plan command for Trilogy CLI - shows execution order without running."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path as PathlibPath
 from typing import Any
 
-import networkx as nx
 from click import Path, argument, option, pass_context
 from click.exceptions import Exit
 
+from trilogy.core import graph as nx
 from trilogy.scripts.common import (
     handle_execution_exception,
     resolve_input_information,
@@ -54,17 +56,20 @@ def safe_relative_path(path: PathlibPath, root: PathlibPath) -> str:
 
 
 def graph_to_json(graph: nx.DiGraph, root: PathlibPath) -> dict[str, Any]:
-    """Convert dependency graph to JSON-serializable dict."""
+    """Convert dependency graph to JSON-serializable dict.
+
+    Graph nodes are path strings, so each key is itself the node path.
+    """
     nodes = [
-        {"id": safe_relative_path(node.path, root), "path": str(node.path)}
-        for node in graph.nodes()
+        {"id": safe_relative_path(PathlibPath(key), root), "path": key}
+        for key in graph.nodes()
     ]
     edges = [
         {
-            "from": safe_relative_path(from_node.path, root),
-            "to": safe_relative_path(to_node.path, root),
+            "from": safe_relative_path(PathlibPath(from_key), root),
+            "to": safe_relative_path(PathlibPath(to_key), root),
         }
-        for from_node, to_node in graph.edges()
+        for from_key, to_key in graph.edges()
     ]
     return {"nodes": nodes, "edges": edges}
 
@@ -75,21 +80,21 @@ def get_execution_levels(graph: nx.DiGraph) -> list[list[ScriptNode]]:
         return []
 
     levels: list[list[ScriptNode]] = []
-    remaining_deps = {node: graph.in_degree(node) for node in graph.nodes()}
-    completed: set[ScriptNode] = set()
+    remaining_deps = {key: graph.in_degree(key) for key in graph.nodes()}
+    completed: set[str] = set()
 
     while len(completed) < len(graph.nodes()):
         ready = [
-            node
-            for node in graph.nodes()
-            if remaining_deps[node] == 0 and node not in completed
+            key
+            for key in graph.nodes()
+            if remaining_deps[key] == 0 and key not in completed
         ]
         if not ready:
             break
-        levels.append(ready)
-        for node in ready:
-            completed.add(node)
-            for dependent in graph.successors(node):
+        levels.append([ScriptNode(path=PathlibPath(key)) for key in ready])
+        for key in ready:
+            completed.add(key)
+            for dependent in graph.successors(key):
                 remaining_deps[dependent] -= 1
 
     return levels
@@ -99,13 +104,13 @@ def format_plan_text(
     graph: nx.DiGraph, root: PathlibPath
 ) -> tuple[list[str], list[tuple[str, str]], list[list[str]]]:
     """Format plan for text display."""
-    nodes = [safe_relative_path(node.path, root) for node in graph.nodes()]
+    nodes = [safe_relative_path(PathlibPath(key), root) for key in graph.nodes()]
     edges = [
         (
-            safe_relative_path(from_node.path, root),
-            safe_relative_path(to_node.path, root),
+            safe_relative_path(PathlibPath(from_key), root),
+            safe_relative_path(PathlibPath(to_key), root),
         )
-        for from_node, to_node in graph.edges()
+        for from_key, to_key in graph.edges()
     ]
     levels = get_execution_levels(graph)
     execution_order = [

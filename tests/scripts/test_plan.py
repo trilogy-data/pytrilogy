@@ -168,7 +168,7 @@ class TestGraphToJson:
 
     def test_graph_to_json_empty(self):
         """Test graph_to_json with empty graph."""
-        import networkx as nx
+        from trilogy.core import graph as nx
 
         graph = nx.DiGraph()
         result = graph_to_json(graph, Path("/root"))
@@ -180,7 +180,7 @@ class TestGetExecutionLevels:
 
     def test_get_execution_levels_empty(self):
         """Test get_execution_levels with empty graph."""
-        import networkx as nx
+        from trilogy.core import graph as nx
 
         graph = nx.DiGraph()
         result = get_execution_levels(graph)
@@ -192,7 +192,7 @@ class TestFormatPlanText:
 
     def test_format_plan_text_empty(self):
         """Test format_plan_text with empty graph."""
-        import networkx as nx
+        from trilogy.core import graph as nx
 
         graph = nx.DiGraph()
         nodes, edges, execution_order = format_plan_text(graph, Path("/root"))

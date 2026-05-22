@@ -31,6 +31,7 @@ from trilogy.core.models.build import (
     BuildParamaterizedConceptReference,
     BuildSelectLineage,
     Factory,
+    get_canonical_pseudonyms,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Address, Datasource
@@ -462,12 +463,19 @@ def get_query_node(
     logger.info(
         f"{LOGGER_PREFIX} building query node for {statement.output_components} grain {statement.grain}"
     )
-    build_cache: dict[str, BuildConcept] = {}
-    canonical_build_cache: dict[str, BuildConcept] = {}
+    # Caches live on History so every sub-select (rowsets, multiselect arms)
+    # in this resolution reuses the base environment's materialized concepts.
+    caches = history.build_caches
+    if caches.pseudonym_map is None:
+        caches.pseudonym_map = get_canonical_pseudonyms(environment)
+    build_cache: dict[str, BuildConcept] = caches.build_cache
+    canonical_build_cache: dict[str, BuildConcept] = caches.canonical_build_cache
     base_factory = Factory(
         environment=environment,
         build_cache=build_cache,
         canonical_build_cache=canonical_build_cache,
+        grain_build_cache=caches.grain_build_cache,
+        pseudonym_map=caches.pseudonym_map,
     )
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(
         statement
@@ -479,6 +487,7 @@ def get_query_node(
         pseudonym_map=base_factory.pseudonym_map,
         grain_build_cache=base_factory.grain_build_cache,
         canonical_build_cache=canonical_build_cache,
+        datasource_build_cache=caches.datasource_build_cache,
     )
 
     graph = generate_graph(build_environment)

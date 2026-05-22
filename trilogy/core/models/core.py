@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from abc import ABC
 from collections import UserDict, UserList
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -31,7 +30,7 @@ class DataTyped:
     output_datatype: CONCRETE_TYPES
 
 
-class Addressable(ABC):
+class Addressable:
 
     @property
     def _address(self):

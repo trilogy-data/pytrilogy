@@ -1,10 +1,10 @@
 from pathlib import Path
 from unittest.mock import Mock
 
-import networkx as nx
 from click.exceptions import Exit
 from click.testing import CliRunner
 
+from trilogy.core import graph as nx
 from trilogy.core.enums import AddressType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.dialect.enums import Dialects
@@ -211,32 +211,38 @@ def test_build_selected_script_graph_for_file_input(tmp_path):
     selected_nodes = [ScriptNode(tmp_path / "model.preql")]
     graph = testing._build_selected_script_graph(selected_nodes[0].path, selected_nodes)
 
-    assert list(graph.nodes) == selected_nodes
+    # Graphs are string-keyed by path.
+    assert list(graph.nodes) == [str(n.path) for n in selected_nodes]
     assert list(graph.edges) == []
 
 
 def test_build_selected_script_graph_for_directory_input(tmp_path, monkeypatch):
-    core_node = ScriptNode(tmp_path / "core.preql")
-    selected_node = ScriptNode(tmp_path / "selected.preql")
-    skipped_node = ScriptNode(tmp_path / "skipped.preql")
-    other_node = ScriptNode(tmp_path / "other.preql")
+    core_key = str(tmp_path / "core.preql")
+    selected_key = str(tmp_path / "selected.preql")
+    skipped_key = str(tmp_path / "skipped.preql")
+    other_key = str(tmp_path / "other.preql")
     full_graph = nx.DiGraph()
-    full_graph.add_edge(core_node, selected_node)
-    full_graph.add_edge(core_node, other_node)
-    full_graph.add_edge(selected_node, skipped_node)
+    full_graph.add_edge(core_key, selected_key)
+    full_graph.add_edge(core_key, other_key)
+    full_graph.add_edge(selected_key, skipped_key)
 
     resolver = Mock()
     resolver.build_folder_graph.return_value = full_graph
     monkeypatch.setattr(testing, "DependencyResolver", Mock(return_value=resolver))
 
     graph = testing._build_selected_script_graph(
-        tmp_path, [core_node, selected_node, skipped_node]
+        tmp_path,
+        [
+            ScriptNode(tmp_path / "core.preql"),
+            ScriptNode(tmp_path / "selected.preql"),
+            ScriptNode(tmp_path / "skipped.preql"),
+        ],
     )
 
-    assert set(graph.nodes) == {core_node, selected_node, skipped_node}
+    assert set(graph.nodes) == {core_key, selected_key, skipped_key}
     assert set(graph.edges) == {
-        (core_node, selected_node),
-        (selected_node, skipped_node),
+        (core_key, selected_key),
+        (selected_key, skipped_key),
     }
     resolver.build_folder_graph.assert_called_once_with(tmp_path)
 
@@ -256,7 +262,7 @@ def test_build_initial_integration_graph_only_for_file_input(tmp_path):
     directory_graph = testing._build_initial_integration_graph(tmp_path)
 
     assert file_graph is not None
-    assert list(file_graph.nodes) == [ScriptNode(test_file)]
+    assert list(file_graph.nodes) == [str(test_file)]
     assert directory_graph is None
 
 

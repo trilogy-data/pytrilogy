@@ -106,6 +106,9 @@ def get_disconnected_components(
     return len(sub_graphs), sub_graphs
 
 
+_EMPTY_ADDRS: frozenset[str] = frozenset()
+
+
 def find_nullable_concepts(
     source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
     datasources: list[BuildDatasource | QueryDatasource],
@@ -115,11 +118,18 @@ def find_nullable_concepts(
     that may contain nulls in the output set.
     """
     nullable_datasources = set()
-    datasource_map = {
-        x.identifier: x
-        for x in datasources
+    # ``identifier`` is an expensive recursive property; resolve it once per
+    # datasource and reuse it everywhere below. The source_map loop alone
+    # would otherwise re-derive it O(source_map x datasources) times.
+    ds_idents: list[tuple[BuildDatasource | QueryDatasource, str]] = [
+        (x, x.identifier) for x in datasources
+    ]
+    typed_idents = [
+        (x, i)
+        for x, i in ds_idents
         if isinstance(x, (BuildDatasource, QueryDatasource))
-    }
+    ]
+    datasource_map = {i: x for x, i in typed_idents}
 
     # pre-build address sets for O(1) lookup in inner loops. Include each
     # nullable concept's pseudonyms so a column whose ``Modifier.NULLABLE``
@@ -135,24 +145,21 @@ def find_nullable_concepts(
         return out
 
     nullable_addrs: dict[str, set[str]] = {
-        ds.identifier: _expanded_nullable_addrs(ds)
-        for ds in datasources
-        if isinstance(ds, (BuildDatasource, QueryDatasource))
+        i: _expanded_nullable_addrs(x) for x, i in typed_idents
     }
     output_addrs: dict[str, set[str]] = {
-        ds.identifier: {c.address for c in ds.output_concepts}
-        for ds in datasources
-        if isinstance(ds, (BuildDatasource, QueryDatasource))
+        i: {c.address for c in x.output_concepts} for x, i in typed_idents
     }
     for join in joins:
         is_on_nullable_condition = False
         if not isinstance(join, BaseJoin):
             continue
+        right_id = join.right_datasource.identifier
         # The JOIN type itself can introduce NULLs. LEFT/RIGHT/FULL outer
         # joins make the corresponding side's concepts nullable in the
         # output, regardless of the source's own nullability.
         if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
-            right_ds = datasource_map.get(join.right_datasource.identifier)
+            right_ds = datasource_map.get(right_id)
             if right_ds is not None:
                 nullable_datasources.add(right_ds)
         if (
@@ -164,31 +171,36 @@ def find_nullable_concepts(
                 nullable_datasources.add(left_ds)
         if not join.concept_pairs:
             continue
-        right_nullables = nullable_addrs.get(join.right_datasource.identifier, set())
+        # left_datasource is constant across the pair loop; identifier never
+        # returns None, so a None here means left_datasource itself is None.
+        left_id = (
+            join.left_datasource.identifier
+            if join.left_datasource is not None
+            else None
+        )
+        right_nullables = nullable_addrs.get(right_id, _EMPTY_ADDRS)
         for pair in join.concept_pairs:
             if pair.right.address in right_nullables:
                 is_on_nullable_condition = True
                 break
             left_check = (
-                join.left_datasource.identifier
-                if join.left_datasource is not None
-                else pair.existing_datasource.identifier
+                left_id if left_id is not None else pair.existing_datasource.identifier
             )
-            if pair.left.address in nullable_addrs.get(left_check, set()):
+            if pair.left.address in nullable_addrs.get(left_check, _EMPTY_ADDRS):
                 is_on_nullable_condition = True
                 break
         if is_on_nullable_condition:
-            nullable_datasources.add(datasource_map[join.right_datasource.identifier])
+            nullable_datasources.add(datasource_map[right_id])
     final_nullable = set()
 
     for k, v in source_map.items():
         local_nullable = [
-            x for x in datasources if k in nullable_addrs.get(x.identifier, set())
+            x for x, i in ds_idents if k in nullable_addrs.get(i, _EMPTY_ADDRS)
         ]
         nullable_matches = [
-            k in nullable_addrs.get(x.identifier, set())
-            for x in datasources
-            if k in output_addrs.get(x.identifier, set())
+            k in nullable_addrs.get(i, _EMPTY_ADDRS)
+            for x, i in ds_idents
+            if k in output_addrs.get(i, _EMPTY_ADDRS)
         ]
         if all(nullable_matches) and len(nullable_matches) > 0:
             final_nullable.add(k)

@@ -11,7 +11,10 @@ from trilogy.core.models.author import Comment
 from trilogy.core.models.environment import Environment, Import
 from trilogy.core.statements.author import ConceptDeclarationStatement
 from trilogy.parsing.helpers import comment_body
-from trilogy.parsing.v2.import_service import ImportHydrationService
+from trilogy.parsing.v2.import_service import (
+    ImportEnvCacheKey,
+    ImportHydrationService,
+)
 from trilogy.parsing.v2.rules.concept_rules import CONCEPT_NODE_HYDRATORS
 from trilogy.parsing.v2.rules.conditional_rules import CONDITIONAL_NODE_HYDRATORS
 from trilogy.parsing.v2.rules.expression_rules import EXPRESSION_NODE_HYDRATORS
@@ -102,7 +105,7 @@ class HydrationContext:
     token_address: Path | str = "root"
     parse_config: Parsing | None = None
     max_parse_depth: int = MAX_PARSE_DEPTH
-    parsed_environments: dict[str, Environment] | None = None
+    parsed_environments: dict[ImportEnvCacheKey, Environment] | None = None
     text_lookup: dict[Path | str, str] | None = None
     import_keys: list[str] | None = None
     symbol_table: SymbolTable | None = None
@@ -171,11 +174,11 @@ class NativeHydrator:
         self.import_service.max_parse_depth = value
 
     @property
-    def parsed_environments(self) -> dict[str, Environment]:
+    def parsed_environments(self) -> dict[ImportEnvCacheKey, Environment]:
         return self.import_service.parsed_environments
 
     @parsed_environments.setter
-    def parsed_environments(self, value: dict[str, Environment]) -> None:
+    def parsed_environments(self, value: dict[ImportEnvCacheKey, Environment]) -> None:
         self.import_service.parsed_environments = value
 
     @property

@@ -19,7 +19,11 @@ def _ensure_dataset(import_path: Path, sf: float) -> None:
     that IMPORT DATABASE replays."""
     import duckdb
 
-    if (import_path / "customer.parquet").exists():
+    # Regenerate unless every file IMPORT DATABASE needs is present: a dir with
+    # the parquet data but no schema.sql/load.sql (e.g. after a partial clean)
+    # must be rebuilt, not skipped.
+    required = ("customer.parquet", "schema.sql", "load.sql")
+    if all((import_path / name).exists() for name in required):
         return
     import_path.mkdir(parents=True, exist_ok=True)
     for stale in ("schema.sql", "load.sql"):

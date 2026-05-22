@@ -324,10 +324,6 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
 
-    @property
-    def non_partial_concept_addresses(self) -> set[str]:
-        return set([c.address for c in self.full_concepts])
-
     @field_validator("namespace", mode="plain")
     @classmethod
     def namespace_validation(cls, v):
@@ -439,10 +435,6 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     @property
     def group_required(self):
         return False
-
-    @property
-    def full_concepts(self) -> List[ConceptRef]:
-        return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
 
     @property
     def nullable_concepts(self) -> List[ConceptRef]:

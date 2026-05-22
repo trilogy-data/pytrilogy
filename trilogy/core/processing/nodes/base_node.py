@@ -41,10 +41,13 @@ def resolve_concept_map(
     full_addresses = {c.address for c in full_joins} if full_joins else set()
     inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
+        # ``full_concepts`` is a property that rebuilds an address set each
+        # call; bind it once instead of rescanning per output concept.
+        full_addr = input.full_concepts
         for concept in input.output_concepts:
             # skip partials unless they are full join keys
             if (
-                concept.address not in input.full_concepts
+                concept.address not in full_addr
                 and concept.address not in full_addresses
             ):
                 continue
@@ -83,24 +86,16 @@ def resolve_concept_map(
 def get_all_parent_partial(
     all_concepts: List[BuildConcept], parents: List["StrategyNode"]
 ) -> List[BuildConcept]:
+    # Index each parent's partial concepts by address once, rather than
+    # rebuilding the address list for every concept (was an O(n^2) rescan).
+    partial_addrs = [{x.address for x in p.partial_concepts} for p in parents]
     return unique(
         [
             c
             for c in all_concepts
-            if len(
-                [
-                    p
-                    for p in parents
-                    if c.address in [x.address for x in p.partial_concepts]
-                ]
-            )
-            >= 1
+            if any(c.address in addrs for addrs in partial_addrs)
             and all(
-                [
-                    c.address in p.partial_lcl
-                    for p in parents
-                    if c.address in p.output_lcl
-                ]
+                c.address in p.partial_lcl for p in parents if c.address in p.output_lcl
             )
         ],
         "address",
@@ -113,18 +108,14 @@ def get_all_parent_nullable(
     for x in parents:
         if not x:
             raise ValueError(parents)
+    # Index each parent's nullable concepts by address once (was an O(n^2)
+    # rescan rebuilding the address list per concept).
+    nullable_addrs = [{x.address for x in p.nullable_concepts} for p in parents]
     return unique(
         [
             c
             for c in all_concepts
-            if len(
-                [
-                    p
-                    for p in parents
-                    if c.address in [x.address for x in p.nullable_concepts]
-                ]
-            )
-            >= 1
+            if any(c.address in addrs for addrs in nullable_addrs)
         ],
         "address",
     )

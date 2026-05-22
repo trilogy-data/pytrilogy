@@ -133,7 +133,7 @@ class TestBetweenTransforms:
 
     def test_with_reference_replacement(self):
         b = Between(left=_ref("x"), low=1, high=10)
-        replaced = b.with_reference_replacement("nonexistent", 99)
+        replaced = b.with_reference_replacement([("nonexistent", 99)])
         assert isinstance(replaced, Between)
         assert replaced.left.address == "test.x"
 

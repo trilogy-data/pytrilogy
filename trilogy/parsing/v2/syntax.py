@@ -387,6 +387,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "having": SyntaxNodeKind.HAVING,
     "conditional": SyntaxNodeKind.CONDITIONAL,
     "condition_parenthetical": SyntaxNodeKind.CONDITION_PARENTHETICAL,
+    "condition_parenthetical_not": SyntaxNodeKind.CONDITION_PARENTHETICAL,
     "order_by": SyntaxNodeKind.ORDER_BY,
     "order_list": SyntaxNodeKind.ORDER_LIST,
     "ordering": SyntaxNodeKind.ORDERING,

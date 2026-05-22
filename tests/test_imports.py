@@ -168,6 +168,41 @@ from mylib as lib import id, name;
     assert "c.lib.internal_score" in env.concepts.hidden
 
 
+def test_imported_file_parsed_once_via_multiple_paths(monkeypatch):
+    """A file reached through several import paths is parsed exactly once.
+
+    Regression guard: the import cache must key on the resolved file, not the
+    alias chain, otherwise a diamond import re-parses shared dependencies.
+    """
+    import trilogy.parsing.parse_engine_v2 as engine
+
+    leaf = "key leaf_id int;"
+    config = EnvironmentConfig(
+        import_resolver=DictImportResolver(
+            content={
+                "leaf": leaf,
+                "mid_a": "import leaf as leaf;",
+                "mid_b": "import leaf as leaf;",
+            }
+        )
+    )
+    real_parse_syntax = engine.parse_syntax
+    parse_counts: dict[str, int] = {}
+
+    def counting_parse_syntax(text):
+        parse_counts[text] = parse_counts.get(text, 0) + 1
+        return real_parse_syntax(text)
+
+    monkeypatch.setattr(engine, "parse_syntax", counting_parse_syntax)
+
+    env = Environment(config=config)
+    env.parse("import mid_a as a; import mid_b as b;")
+
+    assert "a.leaf.leaf_id" in env.concepts
+    assert "b.leaf.leaf_id" in env.concepts
+    assert parse_counts[leaf] == 1, parse_counts
+
+
 def test_self_import_dict_resolver():
     self_content = """
 self import as parent;

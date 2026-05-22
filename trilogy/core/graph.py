@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 from typing import Iterable, Iterator, Mapping, MutableMapping, Self, TypeVar, cast
 
@@ -11,12 +10,6 @@ except ImportError as exc:  # pragma: no cover
         "Rust graph bindings are required but were not found. "
         "Build/install the local extension with `maturin develop` in the project venv."
     ) from exc
-
-_COMPARE_MODE = os.getenv("TRILOGY_GRAPH_COMPARE") == "1"
-if _COMPARE_MODE:  # pragma: no cover
-    import networkx as _shadow_nx
-else:  # pragma: no cover
-    _shadow_nx = None
 
 
 class NetworkXError(RuntimeError):
@@ -63,8 +56,6 @@ def _weight_triples(
     if edges is None:
         edges = graph._core.edges()
         graph._cached_edges = edges
-        if graph._shadow is not None:
-            graph._assert_equal("edges()", edges, list(graph._shadow.edges))
     edge_attrs = graph._edge_attrs
     # Fast path: when no edges carry attrs (the common case — only
     # node_merge_node sets weights, and only for BASIC non-ATTR_ACCESS
@@ -109,18 +100,12 @@ class _NodeView(Mapping[str, MutableMapping[str, object]]):
     def __contains__(self, node: object) -> bool:
         if not isinstance(node, str):
             raise TypeError(f"Graph nodes must be strings, got {type(node).__name__}")
-        present = self._graph._core.has_node(node)
-        self._graph._assert_shadow("nodes.__contains__", present, node)
-        return present
+        return self._graph._core.has_node(node)
 
     def __getitem__(self, node: str) -> MutableMapping[str, object]:
         if node not in self:
             _raise_missing(node)
-        attrs = self._graph._node_attrs.setdefault(node, {})
-        shadow_attrs = self._graph._shadow.nodes[node] if self._graph._shadow else None
-        if shadow_attrs is None:
-            return attrs
-        return _AttrProxy(attrs, shadow_attrs)
+        return self._graph._node_attrs.setdefault(node, {})
 
     def __call__(self) -> list[str]:
         return list(self)
@@ -142,9 +127,7 @@ class _EdgeView:
         left, right = edge
         if not isinstance(left, str) or not isinstance(right, str):
             raise TypeError("Graph edges must contain string nodes")
-        present = self._graph._core.has_edge(left, right)
-        self._graph._assert_shadow("edges.__contains__", present, edge)
-        return present
+        return self._graph._core.has_edge(left, right)
 
     def __getitem__(self, edge: tuple[str, str]) -> MutableMapping[str, object]:
         left, right = edge
@@ -154,12 +137,7 @@ class _EdgeView:
             if not self._graph._core.has_edge(left, right):
                 raise KeyError(edge)
             attrs = self._graph._edge_attrs.setdefault(key, {})
-        shadow_attrs = (
-            self._graph._shadow.edges[left, right] if self._graph._shadow else None
-        )
-        if shadow_attrs is None:
-            return attrs
-        return _AttrProxy(attrs, shadow_attrs)
+        return attrs
 
     def __call__(self) -> list[tuple[str, str]]:
         return list(self)
@@ -188,17 +166,9 @@ class _NeighborView(Mapping[str, MutableMapping[str, object]]):
         left, right = (
             (neighbor, self._node) if self._reverse else (self._node, neighbor)
         )
-        attrs = self._graph._edge_attrs.setdefault(
+        return self._graph._edge_attrs.setdefault(
             _edge_key(self._graph, left, right), {}
         )
-        shadow_attrs = None
-        if self._graph._shadow is not None and self._graph._shadow.has_edge(
-            left, right
-        ):
-            shadow_attrs = self._graph._shadow.edges[left, right]
-        if shadow_attrs is None:
-            return attrs
-        return _AttrProxy(attrs, shadow_attrs)
 
 
 class _AdjacencyView(Mapping[str, _NeighborView]):
@@ -230,7 +200,6 @@ class _GraphBase:
         self._cached_nodes: list[str] | None = None
         self._cached_edges: list[tuple[str, str]] | None = None
         self.graph: dict[str, object] = dict(attr)
-        self._shadow = self._make_shadow_graph()
 
         if incoming_graph_data is None:
             return
@@ -258,82 +227,12 @@ class _GraphBase:
             list(other._cached_edges) if other._cached_edges is not None else None
         )
         self.graph = other.graph.copy()
-        self._shadow = other._shadow.copy() if other._shadow is not None else None
-
-    def _make_shadow_graph(self):
-        if _shadow_nx is None:
-            return None
-        return _shadow_nx.DiGraph() if self.directed else _shadow_nx.Graph()
-
-    def _shadow_expected(self, op: str, value: object | None = None):
-        if self._shadow is None:
-            return None
-        if op == "node_in":
-            return bool(value in self._shadow)
-        if op == "edge_in":
-            return bool(value in self._shadow.edges)
-        if op == "has_edge" and isinstance(value, tuple):
-            return self._shadow.has_edge(value[0], value[1])
-        if op == "neighbors" and isinstance(value, str):
-            return list(self._shadow.neighbors(value))
-        if op == "successors" and isinstance(value, str):
-            return list(self._shadow.successors(value))
-        if op == "predecessors" and isinstance(value, str):
-            return list(self._shadow.predecessors(value))
-        if op == "in_degree" and isinstance(value, str):
-            return (
-                self._shadow.in_degree(value)
-                if self.directed
-                else self._shadow.degree(value)
-            )
-        if op == "out_degree" and isinstance(value, str):
-            return (
-                self._shadow.out_degree(value)
-                if self.directed
-                else self._shadow.degree(value)
-            )
-        return None
-
-    def _assert_equal(self, op: str, actual: object, expected: object) -> None:
-        if actual != expected:
-            raise AssertionError(
-                f"Graph parity mismatch for {op}: expected {expected!r}, got {actual!r}"
-            )
-
-    def _assert_shadow(
-        self, op: str, actual: object, value: object | None = None
-    ) -> None:
-        if self._shadow is None:
-            return
-        expected = self._shadow_expected(
-            {
-                "nodes.__contains__": "node_in",
-                "edges.__contains__": "edge_in",
-                "has_edge": "has_edge",
-                "neighbors": "neighbors",
-                "successors": "successors",
-                "predecessors": "predecessors",
-                "in_degree": "in_degree",
-                "out_degree": "out_degree",
-            }.get(op, ""),
-            value,
-        )
-        if expected is not None:
-            self._assert_equal(op, actual, expected)
-
-    def _assert_graph_parity(self, op: str) -> None:
-        if self._shadow is None:
-            return
-        self._assert_equal(f"{op}.nodes", self._core.nodes(), list(self._shadow.nodes))
-        self._assert_equal(f"{op}.edges", self._core.edges(), list(self._shadow.edges))
 
     def _ordered_nodes(self) -> list[str]:
         nodes = self._cached_nodes
         if nodes is None:
             nodes = self._core.nodes()
             self._cached_nodes = nodes
-        if self._shadow is not None:
-            self._assert_equal("nodes()", nodes, list(self._shadow.nodes))
         return nodes
 
     def _ordered_edges(self) -> list[tuple[str, str]]:
@@ -341,8 +240,6 @@ class _GraphBase:
         if edges is None:
             edges = self._core.edges()
             self._cached_edges = edges
-        if self._shadow is not None:
-            self._assert_equal("edges()", edges, list(self._shadow.edges))
         return edges
 
     def _invalidate_structure_cache(self) -> None:
@@ -352,9 +249,7 @@ class _GraphBase:
     def __contains__(self, node: object) -> bool:
         if not isinstance(node, str):
             raise TypeError(f"Graph nodes must be strings, got {type(node).__name__}")
-        present = self._core.has_node(node)
-        self._assert_shadow("nodes.__contains__", present, node)
-        return present
+        return self._core.has_node(node)
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.nodes)
@@ -381,14 +276,6 @@ class _GraphBase:
     @property
     def edges(self) -> _EdgeView:
         return _EdgeView(self)
-
-    def _ensure_node(self, node: str) -> None:
-        if self._core.has_node(node):
-            return
-        self._core.add_node(node)
-        self._invalidate_structure_cache()
-        if self._shadow is not None:
-            self._shadow.add_node(node)
 
     @property
     def adj(self) -> _AdjacencyView:
@@ -423,13 +310,10 @@ class _GraphBase:
         if attr:
             attrs = self._node_attrs.setdefault(node_for_adding, {})
             attrs.update(attr)
-        if self._shadow is not None:
-            self._shadow.add_node(node_for_adding, **attr)
-        self._assert_graph_parity("add_node")
 
     def add_edge(self, u_of_edge: str, v_of_edge: str, **attr: object) -> None:
-        self._ensure_node(u_of_edge)
-        self._ensure_node(v_of_edge)
+        # ``_core.add_edge`` creates endpoint nodes on demand, so no separate
+        # existence check / insert is needed here.
         self._core.add_edge(u_of_edge, v_of_edge)
         self._invalidate_structure_cache()
         if attr:
@@ -437,14 +321,28 @@ class _GraphBase:
                 _edge_key(self, u_of_edge, v_of_edge), {}
             )
             edge_attrs.update(attr)
-        if self._shadow is not None:
-            self._shadow.add_edge(u_of_edge, v_of_edge, **attr)
-        self._assert_graph_parity("add_edge")
+
+    def add_nodes_from(self, nodes: Iterable[str]) -> None:
+        """Batch ``add_node``: one Python->Rust crossing instead of one per
+        node. Attribute-free; callers needing node attrs use ``add_node``."""
+        node_list = list(nodes)
+        if not node_list:
+            return
+        self._core.add_nodes(node_list)
+        self._invalidate_structure_cache()
+
+    def add_edges_from(self, edges: Iterable[tuple[str, str]]) -> None:
+        """Batch ``add_edge``: one Python->Rust crossing instead of one per
+        edge. Edges are 2-tuples; the Rust core adds endpoint nodes as needed.
+        Attribute-free; callers needing edge attrs use ``add_edge``."""
+        edge_list = [(u, v) for u, v in edges]
+        if not edge_list:
+            return
+        self._core.add_edges(edge_list)
+        self._invalidate_structure_cache()
 
     def has_edge(self, left: str, right: str) -> bool:
-        present = self._core.has_edge(left, right)
-        self._assert_shadow("has_edge", present, (left, right))
-        return present
+        return self._core.has_edge(left, right)
 
     def copy(self) -> Self:
         new = self.__class__()
@@ -460,9 +358,6 @@ class _GraphBase:
         for edge in list(self._edge_attrs):
             if node in edge:
                 self._edge_attrs.pop(edge, None)
-        if self._shadow is not None:
-            self._shadow.remove_node(node)
-        self._assert_graph_parity("remove_node")
 
     def remove_nodes_from(self, nodes: Iterable[str]) -> None:
         normalized: list[str] = []
@@ -486,9 +381,6 @@ class _GraphBase:
         }
         self._core.remove_nodes(normalized)
         self._invalidate_structure_cache()
-        if self._shadow is not None:
-            self._shadow.remove_nodes_from(normalized)
-        self._assert_graph_parity("remove_nodes_from")
 
     def remove_edges_from(self, edges: Iterable[tuple[str, str]]) -> None:
         normalized: list[tuple[str, str]] = []
@@ -503,44 +395,31 @@ class _GraphBase:
                 self._edge_attrs.pop(_edge_key(self, left, right), None)
         self._core.remove_edges(normalized)
         self._invalidate_structure_cache()
-        if self._shadow is not None:
-            self._shadow.remove_edges_from(normalized)
-        self._assert_graph_parity("remove_edges_from")
 
     def neighbors(self, node: str) -> Iterator[str]:
         if node not in self:
             _raise_missing(node)
-        neighbors = self._core.neighbors(node)
-        self._assert_shadow("neighbors", neighbors, node)
-        return iter(neighbors)
+        return iter(self._core.neighbors(node))
 
     def successors(self, node: str) -> Iterator[str]:
         if node not in self:
             _raise_missing(node)
-        successors = self._core.successors(node)
-        self._assert_shadow("successors", successors, node)
-        return iter(successors)
+        return iter(self._core.successors(node))
 
     def predecessors(self, node: str) -> Iterator[str]:
         if node not in self:
             _raise_missing(node)
-        predecessors = self._core.predecessors(node)
-        self._assert_shadow("predecessors", predecessors, node)
-        return iter(predecessors)
+        return iter(self._core.predecessors(node))
 
     def in_degree(self, node: str) -> int:
         if node not in self:
             _raise_missing(node)
-        degree = self._core.in_degree(node)
-        self._assert_shadow("in_degree", degree, node)
-        return degree
+        return self._core.in_degree(node)
 
     def out_degree(self, node: str) -> int:
         if node not in self:
             _raise_missing(node)
-        degree = self._core.out_degree(node)
-        self._assert_shadow("out_degree", degree, node)
-        return degree
+        return self._core.out_degree(node)
 
     def subgraph(self, nodes: Iterable[str]) -> Self:
         keep_set: set[str] = set()
@@ -562,15 +441,6 @@ class _GraphBase:
             if left in keep_set and right in keep_set
         }
         new.graph = self.graph.copy()
-        if self._shadow is not None:
-            expected_shadow = self._shadow.subgraph(keep_set).copy()
-            new._shadow = expected_shadow
-            new._assert_equal(
-                "subgraph.nodes", list(new._core.nodes()), list(expected_shadow.nodes)
-            )
-            new._assert_equal(
-                "subgraph.edges", list(new._core.edges()), list(expected_shadow.edges)
-            )
         return new
 
     def to_undirected(self) -> "Graph":
@@ -588,9 +458,6 @@ class _GraphBase:
             for (left, right), attrs in self._edge_attrs.items()
         }
         new.graph = self.graph.copy()
-        if self._shadow is not None:
-            new._shadow = self._shadow.to_undirected()
-            new._assert_graph_parity("to_undirected")
         return new
 
 
@@ -637,18 +504,8 @@ def all_neighbors(graph: _GraphBase, node: str) -> Iterator[str]:
 
 
 def connected_components(graph: _GraphBase) -> Iterator[set[str]]:
-    components = [set(component) for component in graph._core.connected_components()]
-    if graph._shadow is not None:
-        expected = [
-            set(component)
-            for component in _shadow_nx.connected_components(graph._shadow)
-        ]
-        if components != expected:
-            raise AssertionError(
-                f"Graph parity mismatch for connected_components: expected {expected!r}, got {components!r}"
-            )
-    for component in components:
-        yield component
+    for component in graph._core.connected_components():
+        yield set(component)
 
 
 def isolates(graph: _GraphBase) -> Iterator[str]:
@@ -662,13 +519,64 @@ def topological_sort(graph: _GraphBase) -> Iterator[str]:
         order = graph._core.topological_sort()
     except ValueError as exc:
         raise NetworkXUnfeasible(str(exc)) from exc
-    if graph._shadow is not None:
-        expected = list(_shadow_nx.topological_sort(graph._shadow))
-        if order != expected:
-            raise AssertionError(
-                f"Graph parity mismatch for topological_sort: expected {expected!r}, got {order!r}"
-            )
     return iter(order)
+
+
+def is_directed_acyclic_graph(graph: _GraphBase) -> bool:
+    if not graph.directed:
+        return False
+    try:
+        topological_sort(graph)
+    except NetworkXUnfeasible:
+        return False
+    return True
+
+
+def descendants(graph: _GraphBase, source: str) -> set[str]:
+    if source not in graph:
+        _raise_missing(source)
+    seen: set[str] = set()
+    stack = list(graph._core.successors(source))
+    while stack:
+        node = stack.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        stack.extend(graph._core.successors(node))
+    seen.discard(source)
+    return seen
+
+
+def _collect_cycles_from(
+    start: str,
+    node: str,
+    path: list[str],
+    on_path: set[str],
+    succ: Mapping[str, list[str]],
+    rank: Mapping[str, int],
+    out: list[list[str]],
+) -> None:
+    for nxt in succ[node]:
+        if nxt == start:
+            out.append(list(path))
+        elif rank[nxt] > rank[start] and nxt not in on_path:
+            path.append(nxt)
+            on_path.add(nxt)
+            _collect_cycles_from(start, nxt, path, on_path, succ, rank, out)
+            path.pop()
+            on_path.discard(nxt)
+
+
+def simple_cycles(graph: _GraphBase) -> Iterator[list[str]]:
+    # Each elementary cycle is enumerated exactly once, at its lowest-ranked
+    # node: the search from ``start`` only descends into higher-ranked nodes.
+    nodes = graph._ordered_nodes()
+    rank = {node: index for index, node in enumerate(nodes)}
+    succ = {node: list(graph._core.successors(node)) for node in nodes}
+    out: list[list[str]] = []
+    for start in nodes:
+        _collect_cycles_from(start, start, [start], {start}, succ, rank, out)
+    return iter(out)
 
 
 def shortest_path(graph: _GraphBase, source: str, target: str) -> list[str]:
@@ -679,12 +587,6 @@ def shortest_path(graph: _GraphBase, source: str, target: str) -> list[str]:
     path = graph._core.shortest_path(source, target)
     if path is None:
         raise NetworkXNoPath(f"No path between {source} and {target}")
-    if graph._shadow is not None:
-        expected = _shadow_nx.shortest_path(graph._shadow, source, target)
-        if path != expected:
-            raise AssertionError(
-                f"Graph parity mismatch for shortest_path: expected {expected!r}, got {path!r}"
-            )
     return path
 
 
@@ -699,21 +601,18 @@ def shortest_path_length(graph: _GraphBase, source: str, target: str) -> int:
     return length
 
 
+def has_path(graph: _GraphBase, source: str, target: str) -> bool:
+    try:
+        shortest_path(graph, source, target)
+    except (NetworkXNoPath, NodeNotFound):
+        return False
+    return True
+
+
 def ego_graph(graph: GraphT, center: str, radius: int) -> GraphT:
     if center not in graph:
         _raise_missing(center)
-    ego = graph.subgraph(graph._core.ego_graph_nodes(center, radius))
-    if graph._shadow is not None:
-        expected = _shadow_nx.ego_graph(graph._shadow, center, radius)
-        if list(ego.nodes) != list(expected.nodes) or list(ego.edges) != list(
-            expected.edges
-        ):
-            raise AssertionError(
-                "Graph parity mismatch for ego_graph: "
-                f"expected nodes={list(expected.nodes)!r} edges={list(expected.edges)!r}, "
-                f"got nodes={list(ego.nodes)!r} edges={list(ego.edges)!r}"
-            )
-    return ego
+    return graph.subgraph(graph._core.ego_graph_nodes(center, radius))
 
 
 def multi_source_dijkstra_path(
@@ -732,45 +631,7 @@ def multi_source_dijkstra_path(
         if "Node not found" in message:
             raise NodeNotFound(message) from exc
         raise NetworkXError(message) from exc
-    result = dict(pairs)
-    if graph._shadow is not None:
-        expected = _shadow_nx.multi_source_dijkstra_path(
-            graph._shadow, source_nodes, weight=weight
-        )
-        if result != expected:
-            raise AssertionError(
-                f"Graph parity mismatch for multi_source_dijkstra_path: expected {expected!r}, got {result!r}"
-            )
-    return result
-
-
-class _AttrProxy(MutableMapping[str, object]):
-    def __init__(
-        self,
-        attrs: dict[str, object],
-        shadow_attrs: MutableMapping[str, object] | None,
-    ) -> None:
-        self._attrs = attrs
-        self._shadow_attrs = shadow_attrs
-
-    def __getitem__(self, key: str) -> object:
-        return self._attrs[key]
-
-    def __setitem__(self, key: str, value: object) -> None:
-        self._attrs[key] = value
-        if self._shadow_attrs is not None:
-            self._shadow_attrs[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self._attrs[key]
-        if self._shadow_attrs is not None and key in self._shadow_attrs:
-            del self._shadow_attrs[key]
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._attrs)
-
-    def __len__(self) -> int:
-        return len(self._attrs)
+    return dict(pairs)
 
 
 def is_weakly_connected(graph: _GraphBase) -> bool:

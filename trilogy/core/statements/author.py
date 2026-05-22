@@ -236,19 +236,20 @@ class SelectStatement(HasUUID, SelectTypeMixin):
 
     def validate_syntax(self, environment: Environment):
         if self.where_clause:
+            replacements: list[tuple[str, ConceptRef]] = []
             for x in self.where_clause.concept_arguments:
                 if isinstance(x, UndefinedConcept):
                     validate = environment.concepts.get(x.address)
-                    if validate and self.where_clause:
-                        self.where_clause = (
-                            self.where_clause.with_reference_replacement(
-                                x.address, validate.reference
-                            )
-                        )
+                    if validate:
+                        replacements.append((x.address, validate.reference))
                     else:
                         environment.concepts.raise_undefined(
                             x.address, x.metadata.line_number if x.metadata else None
                         )
+            if replacements:
+                self.where_clause = self.where_clause.with_reference_replacement(
+                    replacements
+                )
         all_in_output = [x for x in self.output_components]
         if self.where_clause:
             for cref in self.where_clause.concept_arguments:

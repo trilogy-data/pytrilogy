@@ -8,10 +8,10 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-import networkx as nx
 from click.exceptions import Exit
 
 from trilogy import Executor
+from trilogy.core import graph as nx
 from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshParams
 from trilogy.scripts.dependency import (
     DependencyResolver,
@@ -78,19 +78,35 @@ class ExecutionStrategy(Protocol):
         ...
 
 
-# Type aliases for cleaner signatures
-CompletedSet = set[ExecutionNode]
-FailedSet = set[ExecutionNode]
-InProgressSet = set[ExecutionNode]
+# State-tracking sets/dicts are keyed by the graph's string node keys.
+CompletedSet = set[str]
+FailedSet = set[str]
+InProgressSet = set[str]
 ResultsList = list[ExecutionResult]
-RemainingDepsDict = dict[ExecutionNode, int]
-ReadyList = list[ExecutionNode]
+RemainingDepsDict = dict[str, int]
+ReadyList = list[str]
 OnCompleteCallback = Callable[[ExecutionResult], None] | None
+# Maps each string graph key back to its rich ScriptNode/ManagedRefreshNode.
+NodeMap = dict[str, ExecutionNode]
+
+
+def build_node_map(graph: nx.DiGraph) -> NodeMap:
+    """Recover the rich node object for each string key in a graph.
+
+    Graphs of ManagedRefreshNode carry their map under ``graph.graph['node_map']``
+    (ManagedRefreshNode is not reconstructable from its key). ScriptNode graphs
+    have no map; each key is a path and the node is rebuilt from it.
+    """
+    stored = graph.graph.get("node_map")
+    if isinstance(stored, dict):
+        return {key: stored[key] for key in graph.nodes() if key in stored}
+    return {key: ScriptNode(path=Path(key)) for key in graph.nodes()}
 
 
 def _propagate_failure(
-    failed_node: ExecutionNode,
+    failed_key: str,
     graph: nx.DiGraph,
+    node_map: NodeMap,
     completed: CompletedSet,
     in_progress: InProgressSet,
     results: ResultsList,
@@ -100,10 +116,10 @@ def _propagate_failure(
     """
     Recursively mark all *unstarted* dependents of a failed node as failed and skipped.
     """
-    for dependent in graph.successors(failed_node):
+    for dependent in graph.successors(failed_key):
         if dependent not in completed and dependent not in in_progress:
             skip_result = ExecutionResult(
-                node=dependent,
+                node=node_map[dependent],
                 success=False,
                 error=RuntimeError("Skipped due to failed dependency"),
                 duration=0.0,
@@ -116,6 +132,7 @@ def _propagate_failure(
             _propagate_failure(
                 dependent,
                 graph,
+                node_map,
                 completed,
                 in_progress,
                 results,
@@ -124,17 +141,18 @@ def _propagate_failure(
             )
 
 
-def _get_next_ready(ready: ReadyList) -> Any | None:
-    """Get next ready node from the queue."""
+def _get_next_ready(ready: ReadyList) -> str | None:
+    """Get next ready node key from the queue."""
     if ready:
         return ready.pop(0)
     return None
 
 
 def _mark_node_complete(
-    node: Any,
+    node_key: str,
     success: bool,
     graph: nx.DiGraph,
+    node_map: NodeMap,
     completed: CompletedSet,
     failed: FailedSet,
     in_progress: InProgressSet,
@@ -146,13 +164,13 @@ def _mark_node_complete(
     """
     Mark a node as complete, update dependent counts, and add newly ready/skipped nodes.
     """
-    in_progress.discard(node)
-    completed.add(node)
+    in_progress.discard(node_key)
+    completed.add(node_key)
     if not success:
-        failed.add(node)
+        failed.add(node_key)
 
     # Update dependents
-    for dependent in graph.successors(node):
+    for dependent in graph.successors(node_key):
         if dependent in completed or dependent in in_progress:
             continue
 
@@ -164,7 +182,7 @@ def _mark_node_complete(
                 if deps & failed:
                     # Skip this node - dependency failed
                     skip_result = ExecutionResult(
-                        node=dependent,
+                        node=node_map[dependent],
                         success=False,
                         error=RuntimeError("Skipped due to failed dependency"),
                         duration=0.0,
@@ -178,6 +196,7 @@ def _mark_node_complete(
                     _propagate_failure(
                         dependent,
                         graph,
+                        node_map,
                         completed,
                         in_progress,
                         results,
@@ -190,7 +209,7 @@ def _mark_node_complete(
             # Current node failed - mark this dependent as skipped
             if dependent not in failed:
                 skip_result = ExecutionResult(
-                    node=dependent,
+                    node=node_map[dependent],
                     success=False,
                     error=RuntimeError("Skipped due to failed dependency"),
                     duration=0.0,
@@ -204,6 +223,7 @@ def _mark_node_complete(
                 _propagate_failure(
                     dependent,
                     graph,
+                    node_map,
                     completed,
                     in_progress,
                     results,
@@ -253,6 +273,7 @@ def _execute_single(
 
 def _create_worker(
     graph: nx.DiGraph,
+    node_map: NodeMap,
     lock: threading.Lock,
     work_available: threading.Condition,
     completed: CompletedSet,
@@ -273,7 +294,7 @@ def _create_worker(
 
     def worker() -> None:
         while True:
-            node = None
+            node_key = None
 
             with work_available:
                 # Wait for work or global completion
@@ -283,15 +304,16 @@ def _create_worker(
                 if _is_execution_done(completed, total_count):
                     return
 
-                node = _get_next_ready(ready)
-                if node is None:
+                node_key = _get_next_ready(ready)
+                if node_key is None:
                     # Should be impossible if total_count check is correct, but handles race condition safety
                     continue
 
-                in_progress.add(node)
+                in_progress.add(node_key)
 
             # Execute outside the lock
-            if node is not None:
+            if node_key is not None:
+                node = node_map[node_key]
                 if on_script_start:
                     on_script_start(node)
                 result = _execute_single(node, executor_factory, execution_fn)
@@ -307,9 +329,10 @@ def _create_worker(
                             pass  # display errors must not kill the worker or skip _mark_node_complete
 
                     _mark_node_complete(
-                        node,
+                        node_key,
                         result.success,
                         graph,
+                        node_map,
                         completed,
                         failed,
                         in_progress,
@@ -345,6 +368,8 @@ class EagerBFSStrategy:
         if not graph.nodes():
             return []
 
+        node_map = build_node_map(graph)
+
         lock = threading.Lock()
         work_available = threading.Condition(lock)
 
@@ -356,17 +381,18 @@ class EagerBFSStrategy:
 
         # Calculate in-degrees (number of incomplete dependencies)
         remaining_deps: RemainingDepsDict = {
-            node: graph.in_degree(node) for node in graph.nodes()
+            key: graph.in_degree(key) for key in graph.nodes()
         }
 
-        # Ready queue - nodes with all dependencies satisfied initially (in-degree 0)
-        ready: ReadyList = [node for node in graph.nodes() if remaining_deps[node] == 0]
+        # Ready queue - keys with all dependencies satisfied initially (in-degree 0)
+        ready: ReadyList = [key for key in graph.nodes() if remaining_deps[key] == 0]
 
         total_count = len(graph.nodes())
 
         # Create the worker function
         worker = _create_worker(
             graph=graph,
+            node_map=node_map,
             lock=lock,
             work_available=work_available,
             completed=completed,

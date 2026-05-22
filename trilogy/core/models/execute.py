@@ -888,6 +888,15 @@ class QueryDatasource:
                     f"Missing source map entry for {concept.address} with pseudonyms {concept.pseudonyms}, have map: {self.source_map}"
                 )
 
+    def __setattr__(self, name: str, value: object) -> None:
+        # ``identifier`` is an expensive recursive property memoized in
+        # ``_identifier_cache``. Optimization passes mutate QDS fields after
+        # construction (datasources/condition/source_type/...), so drop the
+        # cache on any field write to keep the memo correct.
+        if name != "_identifier_cache":
+            self.__dict__["_identifier_cache"] = None
+        object.__setattr__(self, name, value)
+
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
 
@@ -923,12 +932,12 @@ class QueryDatasource:
         return self.identifier.replace(".", "_")
 
     @property
-    def full_concepts(self) -> List[BuildConcept]:
-        return [
-            c
+    def full_concepts(self) -> set[str]:
+        return {
+            c.address
             for c in self.output_concepts
-            if c.address not in [z.address for z in self.partial_concepts]
-        ]
+            if c.address not in {z.address for z in self.partial_concepts}
+        }
 
     def __str__(self):
         return self.__repr__()
@@ -1063,6 +1072,14 @@ class QueryDatasource:
 
     @property
     def identifier(self) -> str:
+        cached = self.__dict__.get("_identifier_cache")
+        if cached is not None:
+            return cached
+        result = self._compute_identifier()
+        self.__dict__["_identifier_cache"] = result
+        return result
+
+    def _compute_identifier(self) -> str:
         if self.source_type == SourceType.UNION:
             # The arms — each addressable by their underlying base table — are
             # what make a union unique. Two unions over the same arms can be

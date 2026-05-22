@@ -657,13 +657,18 @@ class UnionDimPushdown(OptimizationRule):
         add_datasource_sorted(branch, d.dim_qds)
         existing_input = {c.address for c in branch.source.input_concepts}
         existing_qds_out = {c.address for c in branch.source.output_concepts}
+        new_outputs: list[BuildConcept] = []
         for c in d.dim_concepts:
             if c.address not in existing_input:
                 branch.source.input_concepts.append(c)
                 existing_input.add(c.address)
             if c.address not in existing_qds_out:
-                branch.source.output_concepts.append(c)
+                new_outputs.append(c)
                 existing_qds_out.add(c.address)
+        if new_outputs:
+            # Reassign (not append) so QueryDatasource.__setattr__ drops the
+            # memoized identifier — output_concepts feeds the group-by key.
+            branch.source.output_concepts = branch.source.output_concepts + new_outputs
         for c in d.dim_concepts:
             branch.source.source_map.setdefault(c.address, set()).add(d.dim_qds)
         cte_pairs = [

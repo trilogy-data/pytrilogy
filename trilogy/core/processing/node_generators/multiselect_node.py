@@ -107,7 +107,7 @@ def gen_multiselect_node(
     partial = []
     for select in lineage.selects:
 
-        snode: StrategyNode = get_query_node(history.base_environment, select)
+        snode: StrategyNode = get_query_node(history.base_environment, select, history)
 
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Fetched parent node with outputs {select.output_components}"

@@ -81,8 +81,22 @@ def test_subselect_item_with_reference_replacement():
     ref = ConceptRef(address="local.val", datatype=DataType.INTEGER)
     replacement = ConceptRef(address="local.new_val", datatype=DataType.INTEGER)
     item = SubselectItem(content=ref, limit=2)
-    replaced = item.with_reference_replacement(ref, replacement)
+    replaced = item.with_reference_replacement([("local.val", replacement)])
     assert replaced.limit == 2
+    assert replaced.content.address == "local.new_val"
+
+
+def test_subselect_item_bulk_reference_replacement():
+    ref = ConceptRef(address="local.val", datatype=DataType.INTEGER)
+    other = ConceptRef(address="local.cat", datatype=DataType.STRING)
+    new_val = ConceptRef(address="local.new_val", datatype=DataType.INTEGER)
+    new_cat = ConceptRef(address="local.new_cat", datatype=DataType.STRING)
+    item = SubselectItem(content=ref, outer_arguments=[other])
+    replaced = item.with_reference_replacement(
+        [("local.val", new_val), ("local.cat", new_cat)]
+    )
+    assert replaced.content.address == "local.new_val"
+    assert replaced.outer_arguments[0].address == "local.new_cat"
 
 
 def test_resolve_subselect_parent_concepts_wrong_lineage():

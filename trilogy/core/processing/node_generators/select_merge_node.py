@@ -98,6 +98,7 @@ def create_pruned_concept_graph(
     union_options = get_union_sources(datasources, all_concepts)
     concepts_by_address = {c.address: c for c in orig_g.concepts.values()}
     target_grain = BuildGrain.from_concepts(all_concepts)
+    rollup_edges: list[tuple[str, str]] = []
     for node_address, datasource in list(g.datasources.items()):
         if not isinstance(datasource, BuildDatasource):
             continue
@@ -111,10 +112,11 @@ def create_pruned_concept_graph(
         ):
             cnode = concept_to_node(concept)
             g.concepts[cnode] = concept
-            g.add_node(cnode)
-            g.add_edge(node_address, cnode)
-            g.add_edge(cnode, node_address)
+            rollup_edges.append((node_address, cnode))
+            rollup_edges.append((cnode, node_address))
+    g.add_edges_from(rollup_edges)
 
+    union_edges: list[tuple[str, str]] = []
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
         _merged = merge_conditions(
@@ -138,8 +140,9 @@ def create_pruned_concept_graph(
         )
         for c in common:
             cnode = concept_to_node(c)
-            g.add_edge(node_address, cnode)
-            g.add_edge(cnode, node_address)
+            union_edges.append((node_address, cnode))
+            union_edges.append((cnode, node_address))
+    g.add_edges_from(union_edges)
 
     prune_sources_for_conditions(
         g,
@@ -211,9 +214,9 @@ def create_pruned_concept_graph(
 
     # add back any relevant edges that might have been partially filtered
     relevant = set(relevant_concepts + relevant_datasets)
-    for edge in orig_g.edges():
-        if edge[0] in relevant and edge[1] in relevant:
-            g.add_edge(edge[0], edge[1])
+    g.add_edges_from(
+        edge for edge in orig_g.edges() if edge[0] in relevant and edge[1] in relevant
+    )
 
     if not any(n.startswith("ds~") for n in g.nodes):
         logger.info(
