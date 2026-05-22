@@ -20,13 +20,13 @@ from trilogy.core.models.build import (
     concept_is_relevant,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
     condition_required_addresses,
     decompose_condition,
 )
-from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,
@@ -381,8 +381,9 @@ def gen_property_enrichment_node(
             base_node,
         ]
         + final_nodes,
-        preexisting_conditions=_preexisting_conditions_from_parents(
-            [base_node, *final_nodes], conditions
+        preexisting_conditions=(
+            base_node.preexisting_conditions
+            or _preexisting_conditions_from_parents([base_node, *final_nodes], conditions)
         ),
     )
 

@@ -1,5 +1,5 @@
-from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.models.build import Factory
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.parser import parse
 
 
@@ -106,6 +106,28 @@ then where
     assert "revenue > 0" in str(child.active_where)
     assert "total_revenue" not in str(child.active_where)
     assert "revenue < 100" not in str(child.active_where)
+
+
+def test_condition_context_for_child_drops_same_stage_row_atoms_for_sibling_aggregate(
+    test_environment,
+):
+    context = _context(
+        test_environment,
+        """
+where
+    order_id > 1
+then where
+    total_revenue > 10
+    and revenue < 100
+""",
+    ).advance()
+    owner = test_environment.concepts["order_count"]
+
+    child = context.for_child(owner)
+    assert child is not None
+    assert "order_id" in str(child.active_where)
+    assert "revenue < 100" not in str(child.active_where)
+    assert "total_revenue" not in str(child.active_where)
 
 
 def test_condition_context_for_child_removes_repeated_owner_atoms(test_environment):

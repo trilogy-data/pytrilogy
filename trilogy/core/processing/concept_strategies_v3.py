@@ -10,15 +10,16 @@ from trilogy.core.models.author import (
     UndefinedConcept,
 )
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import condition_implies
 from trilogy.core.processing.condition_context import (
     BuildConditionContext,
     ConditionInput,
 )
+from trilogy.core.processing.condition_utility import condition_implies
 from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 from trilogy.core.processing.discovery_node_factory import generate_node
 from trilogy.core.processing.discovery_utility import (
@@ -32,7 +33,12 @@ from trilogy.core.processing.discovery_validation import (
     _is_scalar_only,
     validate_stack,
 )
+from trilogy.core.processing.node_generators.common import (
+    gen_enrichment_node,
+    resolve_function_parent_concepts,
+)
 from trilogy.core.processing.nodes import (
+    GroupNode,
     History,
     MergeNode,
     StrategyNode,
@@ -83,9 +89,6 @@ def search_concepts(
     conditions: ConditionInput = None,
 ) -> StrategyNode | None:
     condition_context = BuildConditionContext.normalize(conditions)
-    active_conditions = (
-        condition_context.active_where if condition_context is not None else None
-    )
     hist = history.get_history(
         search=mandatory_list,
         accept_partial=accept_partial,
@@ -236,6 +239,125 @@ def _node_satisfies_condition(
     )
 
 
+def _condition_aggregate_grain_inputs(
+    condition_inputs: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    grain_inputs: list[BuildConcept] = []
+    for concept in condition_inputs:
+        if not concept.is_aggregate or concept.grain.abstract:
+            continue
+        grain_inputs += [
+            environment.concepts[address]
+            for address in concept.grain.components
+            if address in environment.concepts
+        ]
+    return unique(grain_inputs, "address")
+
+
+def _row_inputs_for_mixed_stage_outputs(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    row_inputs: list[BuildConcept] = []
+    for concept in mandatory_list:
+        if concept.is_aggregate:
+            row_inputs += resolve_function_parent_concepts(concept, environment)
+        else:
+            row_inputs.append(concept)
+    return unique(row_inputs, "address")
+
+
+def _condition_context_from_atoms(
+    atoms: tuple[BoolExpr, ...],
+) -> BuildConditionContext | None:
+    if not atoms:
+        return None
+    return BuildConditionContext(pending=(atoms,))
+
+
+def _stage_has_mixed_condition_atom(stage: tuple[BoolExpr, ...]) -> bool:
+    for atom in stage:
+        has_aggregate = any(arg.is_aggregate for arg in atom.row_arguments)
+        has_row = any(not arg.is_aggregate for arg in atom.row_arguments)
+        if has_aggregate and has_row:
+            return True
+    return False
+
+
+def _aggregate_condition_inputs(where: BuildWhereClause) -> list[BuildConcept]:
+    return unique(
+        [arg for arg in where.row_arguments if arg.is_aggregate],
+        "address",
+    )
+
+
+def _branch_history(history: History) -> History:
+    return History(
+        base_environment=history.base_environment,
+        local_base_concepts=history.local_base_concepts,
+        build_caches=history.build_caches,
+    )
+
+
+def _source_condition_node(
+    condition_inputs: list[BuildConcept],
+    condition_join_inputs: list[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+    g: ReferenceGraph,
+    history: History,
+    accept_partial: bool,
+    applied: BuildConditionContext,
+) -> StrategyNode | None:
+    condition_mandatory = unique(
+        condition_inputs + condition_join_inputs,
+        "address",
+    )
+    condition_node = search_concepts(
+        mandatory_list=condition_mandatory,
+        environment=environment,
+        depth=depth,
+        g=g,
+        accept_partial=accept_partial,
+        history=_branch_history(history),
+        conditions=applied,
+    )
+    if condition_node or len(condition_inputs) <= 1:
+        return condition_node
+
+    parents: list[StrategyNode] = []
+    merged_inputs: list[BuildConcept] = []
+    for concept in condition_inputs:
+        concept_join_inputs = _condition_aggregate_grain_inputs([concept], environment)
+        parent_mandatory = unique([concept] + concept_join_inputs, "address")
+        parent = search_concepts(
+            mandatory_list=parent_mandatory,
+            environment=environment,
+            depth=depth,
+            g=g,
+            accept_partial=accept_partial,
+            history=_branch_history(history),
+            conditions=applied,
+        )
+        if not parent:
+            return None
+        parents.append(parent)
+        merged_inputs += parent_mandatory
+
+    merged_outputs = unique(condition_mandatory + merged_inputs, "address")
+    return MergeNode(
+        input_concepts=merged_outputs,
+        output_concepts=merged_outputs,
+        environment=environment,
+        parents=parents,
+        depth=depth,
+        preexisting_conditions=(
+            applied.active_where.conditional if applied.active_where else None
+        ),
+    )
+
+
 def _advance_condition_result(
     result: StrategyNode | None,
     mandatory_list: list[BuildConcept],
@@ -254,6 +376,121 @@ def _advance_condition_result(
     if advanced.is_complete:
         return result
     stage_where = advanced.current_where
+    row_where = advanced.current_row_where
+    aggregate_where = advanced.current_aggregate_where
+    if stage_where is not None and row_where is not None and aggregate_where is None:
+        flattened = BuildConditionContext(pending=(advanced.active_atoms,))
+        row_result = search_concepts(
+            mandatory_list=mandatory_list,
+            environment=environment,
+            depth=depth,
+            g=g,
+            accept_partial=accept_partial,
+            history=history,
+            conditions=flattened,
+        )
+        return _advance_condition_result(
+            row_result,
+            mandatory_list,
+            environment,
+            depth,
+            g,
+            history,
+            accept_partial,
+            advanced,
+        )
+    if (
+        stage_where is not None
+        and aggregate_where is not None
+        and any(concept.is_aggregate for concept in mandatory_list)
+        and (
+            row_where is not None
+            or _stage_has_mixed_condition_atom(advanced.current_stage)
+        )
+    ):
+        row_context = _condition_context_from_atoms(
+            (*advanced.applied_atoms, *advanced.current_row_stage)
+        )
+        condition_inputs = _aggregate_condition_inputs(aggregate_where)
+        condition_join_inputs = _condition_aggregate_grain_inputs(
+            condition_inputs,
+            environment,
+        )
+        row_mandatory = unique(
+            _row_inputs_for_mixed_stage_outputs(mandatory_list, environment)
+            + condition_join_inputs,
+            "address",
+        )
+        row_node = search_concepts(
+            mandatory_list=row_mandatory,
+            environment=environment,
+            depth=depth,
+            g=g,
+            accept_partial=accept_partial,
+            history=history,
+            conditions=row_context,
+        )
+        applied = BuildConditionContext()
+        condition_node = _source_condition_node(
+            condition_inputs=condition_inputs,
+            condition_join_inputs=condition_join_inputs,
+            environment=environment,
+            depth=depth,
+            g=g,
+            history=history,
+            accept_partial=accept_partial,
+            applied=applied,
+        )
+        if row_node and condition_node:
+            merged_outputs = unique(
+                row_mandatory + condition_inputs + condition_join_inputs,
+                "address",
+            )
+            merged = MergeNode(
+                input_concepts=merged_outputs,
+                output_concepts=merged_outputs,
+                environment=environment,
+                parents=[row_node, condition_node],
+                depth=depth,
+                preexisting_conditions=(
+                    row_context.active_where.conditional
+                    if row_context and row_context.active_where
+                    else None
+                ),
+            )
+            merged.add_condition(aggregate_where.conditional)
+            if advanced.active_where:
+                merged.set_preexisting_conditions(advanced.active_where.conditional)
+            if aggregate_where.existence_arguments:
+                append_existence_check(
+                    merged,
+                    environment,
+                    g,
+                    where=aggregate_where,
+                    history=history,
+                )
+            return _advance_condition_result(
+                GroupNode(
+                    input_concepts=row_mandatory,
+                    output_concepts=mandatory_list,
+                    environment=environment,
+                    parents=[merged],
+                    depth=depth,
+                    preexisting_conditions=(
+                        advanced.active_where.conditional
+                        if advanced.active_where
+                        else None
+                    ),
+                    required_outputs=row_mandatory,
+                ),
+                mandatory_list,
+                environment,
+                depth,
+                g,
+                history,
+                accept_partial,
+                advanced,
+            )
     can_merge_stage_inputs = bool(
         stage_where
         and stage_where.row_arguments
@@ -262,26 +499,75 @@ def _advance_condition_result(
     if stage_where is not None and can_merge_stage_inputs:
         applied = BuildConditionContext(applied=advanced.applied)
         condition_inputs = unique(list(stage_where.row_arguments), "address")
-        condition_node = search_concepts(
-            mandatory_list=condition_inputs,
+        condition_join_inputs = _condition_aggregate_grain_inputs(
+            condition_inputs,
+            environment,
+        )
+        condition_node = _source_condition_node(
+            condition_inputs=condition_inputs,
+            condition_join_inputs=condition_join_inputs,
             environment=environment,
             depth=depth,
             g=g,
-            accept_partial=accept_partial,
             history=history,
-            conditions=applied,
+            accept_partial=accept_partial,
+            applied=applied,
         )
         if condition_node:
-            merged_outputs = unique(mandatory_list + condition_inputs, "address")
+            condition_outputs = {concept.address for concept in condition_node.usable_outputs}
+            if all(
+                concept.address in condition_outputs
+                for concept in mandatory_list
+                if concept.is_aggregate
+            ):
+                filtered_base = condition_node
+                filtered_base.add_condition(stage_where.conditional)
+                if advanced.active_where:
+                    filtered_base.set_preexisting_conditions(
+                        advanced.active_where.conditional
+                    )
+                missing_mandatory = [
+                    concept
+                    for concept in mandatory_list
+                    if concept.address not in condition_outputs
+                ]
+                if missing_mandatory:
+                    filtered_base = gen_enrichment_node(
+                        filtered_base,
+                        join_keys=condition_join_inputs,
+                        local_optional=missing_mandatory,
+                        environment=environment,
+                        g=g,
+                        depth=depth,
+                        source_concepts=search_concepts,
+                        log_lambda=logger.info,
+                        history=history,
+                        conditions=advanced,
+                    )
+                if filtered_base:
+                    return _advance_condition_result(
+                        filtered_base,
+                        mandatory_list,
+                        environment,
+                        depth,
+                        g,
+                        history,
+                        accept_partial,
+                        advanced,
+                    )
+            merged_outputs = unique(
+                mandatory_list + condition_inputs + condition_join_inputs,
+                "address",
+            )
             merged = MergeNode(
                 input_concepts=merged_outputs,
                 output_concepts=merged_outputs,
                 environment=environment,
                 parents=[result, condition_node],
                 depth=depth,
-                preexisting_conditions=applied.active_where.conditional
-                if applied.active_where
-                else None,
+                preexisting_conditions=(
+                    applied.active_where.conditional if applied.active_where else None
+                ),
             )
             merged.add_condition(stage_where.conditional)
             if advanced.active_where:

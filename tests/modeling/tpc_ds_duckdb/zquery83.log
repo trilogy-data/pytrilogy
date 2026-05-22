@@ -1,6 +1,6 @@
 query_id = "83"
-gen_length = 10249
-preql_size = 1429
+gen_length = 9499
+preql_size = 1433
 comp_size = 2195
 generated_sql = """
 
@@ -181,16 +181,13 @@ GROUP BY
     \"juicy\".\"sales_sales_channel\"),
 kaput as (
 SELECT
-    \"friendly\".\"sales_item_name\" as \"sales_item_name\",
-    count(\"friendly\".\"_virt_filter_order_id_4128599423878258\") as \"wr_item_present\",
-    count(\"friendly\".\"_virt_filter_order_id_5282889778133979\") as \"sr_item_present\",
-    count(\"friendly\".\"_virt_filter_order_id_7518965045904948\") as \"cr_item_present\"
+    \"friendly\".\"sales_item_name\" as \"sales_item_name\"
 FROM
     \"friendly\"
 GROUP BY
     1
 HAVING
-    \"sr_item_present\" > 0
+    count(\"friendly\".\"_virt_filter_order_id_5282889778133979\") > 0 and count(\"friendly\".\"_virt_filter_order_id_7518965045904948\") > 0 and count(\"friendly\".\"_virt_filter_order_id_4128599423878258\") > 0
 ),
 sparkling as (
 SELECT
@@ -201,38 +198,20 @@ SELECT
 FROM
     \"young\"
 GROUP BY
-    1),
-divergent as (
+    1)
 SELECT
-    \"kaput\".\"cr_item_present\" as \"cr_item_present\",
-    \"kaput\".\"sr_item_present\" as \"sr_item_present\",
-    \"kaput\".\"wr_item_present\" as \"wr_item_present\",
-    \"sparkling\".\"cr_item_qty\" as \"cr_item_qty\",
     \"sparkling\".\"sales_item_name\" as \"item_id\",
     \"sparkling\".\"sr_item_qty\" as \"sr_item_qty\",
-    \"sparkling\".\"wr_item_qty\" as \"wr_item_qty\",
-    ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) / 3.0 as \"average\",
-    ( ( (\"sparkling\".\"cr_item_qty\" * 1.0) / ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"cr_dev\",
     ( ( (\"sparkling\".\"sr_item_qty\" * 1.0) / ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"sr_dev\",
-    ( ( (\"sparkling\".\"wr_item_qty\" * 1.0) / ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"wr_dev\"
+    \"sparkling\".\"cr_item_qty\" as \"cr_item_qty\",
+    ( ( (\"sparkling\".\"cr_item_qty\" * 1.0) / ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"cr_dev\",
+    \"sparkling\".\"wr_item_qty\" as \"wr_item_qty\",
+    ( ( (\"sparkling\".\"wr_item_qty\" * 1.0) / ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"wr_dev\",
+    ( ( \"sparkling\".\"sr_item_qty\" + \"sparkling\".\"cr_item_qty\" ) + \"sparkling\".\"wr_item_qty\" ) / 3.0 as \"average\"
 FROM
     \"kaput\"
-    INNER JOIN \"sparkling\" on \"kaput\".\"sales_item_name\" = \"sparkling\".\"sales_item_name\")
-SELECT
-    \"divergent\".\"item_id\" as \"item_id\",
-    \"divergent\".\"sr_item_qty\" as \"sr_item_qty\",
-    \"divergent\".\"sr_dev\" as \"sr_dev\",
-    \"divergent\".\"cr_item_qty\" as \"cr_item_qty\",
-    \"divergent\".\"cr_dev\" as \"cr_dev\",
-    \"divergent\".\"wr_item_qty\" as \"wr_item_qty\",
-    \"divergent\".\"wr_dev\" as \"wr_dev\",
-    \"divergent\".\"average\" as \"average\"
-FROM
-    \"divergent\"
-WHERE
-    \"divergent\".\"sr_item_present\" > 0 and \"divergent\".\"cr_item_present\" > 0 and \"divergent\".\"wr_item_present\" > 0
-
+    INNER JOIN \"sparkling\" on \"kaput\".\"sales_item_name\" = \"sparkling\".\"sales_item_name\"
 ORDER BY 
-    \"divergent\".\"item_id\" asc nulls first,
-    \"divergent\".\"sr_item_qty\" asc nulls first
+    \"item_id\" asc nulls first,
+    \"sparkling\".\"sr_item_qty\" asc nulls first
 LIMIT (100)"""

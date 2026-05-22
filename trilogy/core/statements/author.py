@@ -255,9 +255,10 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                             x.address, x.metadata.line_number if x.metadata else None
                         )
             if replacements:
-                self.where_clause = self.where_clause.with_reference_replacement(
-                    replacements
-                )
+                self.where_clauses = [
+                    clause.with_reference_replacement(replacements)
+                    for clause in self.where_clauses
+                ]
         all_in_output = [x for x in self.output_components]
         if self.where_clause:
             for cref in self.where_clause.concept_arguments:

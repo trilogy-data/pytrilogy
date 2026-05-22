@@ -19,11 +19,11 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     decompose_condition,
 )
-from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.node_generators.common import (
     reinject_common_join_keys_v2,
 )
@@ -586,7 +586,9 @@ def gen_merge_node(
     # it's important to include them so the base discovery loop that was generating
     # the merge node can then add them automatically
     # so we should not return a node with preexisting conditions
-    active_search_conditions = search_conditions.active_where if search_conditions else None
+    active_search_conditions = (
+        search_conditions.active_where if search_conditions else None
+    )
     if active_search_conditions:
         all_search_concepts = unique(
             all_concepts + list(active_search_conditions.row_arguments), "address"
@@ -606,7 +608,9 @@ def gen_merge_node(
         # Skip condition pruning only when conditions are "owned" by a partial datasource;
         # otherwise retain normal pruning so regular WHERE conditions still gate resolution.
         resolved_search_conditions = (
-            None if effective_search_conditions is not None else search_conditions
+            None
+            if effective_search_conditions is not None
+            else active_search_conditions
         )
         weak_resolve = resolve_weak_components(
             all_search_concepts,

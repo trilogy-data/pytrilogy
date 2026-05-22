@@ -362,6 +362,8 @@ def _resolve_parent_sources(
         parent_input_concepts,
         conditions.active_where if conditions else None,
     )
+    if conditions and conditions.current_has_aggregate_atoms:
+        can_try_wide_parent = False
     if remaining_optional and not can_try_wide_parent:
         narrow_reason = (
             "no conditions to reuse"

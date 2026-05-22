@@ -8,7 +8,10 @@ from trilogy.core.models.build import (
     BuildConcept,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_context import BuildConditionContext, ConditionInput
+from trilogy.core.processing.condition_context import (
+    BuildConditionContext,
+    ConditionInput,
+)
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     decompose_condition,
@@ -400,7 +403,9 @@ class RootNodeHandler:
     def _try_condition_input_resolution(
         self, root_targets: List[BuildConcept]
     ) -> Optional[StrategyNode]:
-        active_conditions = self.ctx.conditions.active_where if self.ctx.conditions else None
+        active_conditions = (
+            self.ctx.conditions.active_where if self.ctx.conditions else None
+        )
         if active_conditions is None:
             return None
         condition_targets = unique(

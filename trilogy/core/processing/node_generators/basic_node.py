@@ -2,7 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, FunctionType, SourceType
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.discovery_utility import get_upstream_concepts

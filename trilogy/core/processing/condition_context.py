@@ -59,6 +59,10 @@ def _atom_has_row_argument(atom: BoolExpr) -> bool:
     return any(not getattr(arg, "is_aggregate", False) for arg in atom.row_arguments)
 
 
+def _row_atoms(stage: tuple[BoolExpr, ...]) -> tuple[BoolExpr, ...]:
+    return tuple(atom for atom in stage if not _atom_has_aggregate_argument(atom))
+
+
 def _filter_owner_atoms(
     stage: tuple[BoolExpr, ...],
     owner: BuildConcept,
@@ -70,6 +74,7 @@ def _filter_owner_atoms(
 class BuildConditionContext:
     applied: tuple[tuple[BoolExpr, ...], ...] = ()
     pending: tuple[tuple[BoolExpr, ...], ...] = ()
+    expose_applied: bool = False
 
     @classmethod
     def from_where_clause(
@@ -84,7 +89,9 @@ class BuildConditionContext:
     def from_where_clauses(
         cls, clauses: Sequence[BuildWhereClause]
     ) -> "BuildConditionContext | None":
-        stages = tuple(stage for stage in (_atomize(clause) for clause in clauses) if stage)
+        stages = tuple(
+            stage for stage in (_atomize(clause) for clause in clauses) if stage
+        )
         if not stages:
             return None
         return cls(pending=stages)
@@ -108,7 +115,31 @@ class BuildConditionContext:
         return _combine_atoms(self.current_stage)
 
     @property
+    def current_has_aggregate_atoms(self) -> bool:
+        return any(_atom_has_aggregate_argument(atom) for atom in self.current_stage)
+
+    @property
+    def current_row_stage(self) -> tuple[BoolExpr, ...]:
+        return _row_atoms(self.current_stage)
+
+    @property
+    def current_aggregate_stage(self) -> tuple[BoolExpr, ...]:
+        return tuple(
+            atom for atom in self.current_stage if _atom_has_aggregate_argument(atom)
+        )
+
+    @property
+    def current_row_where(self) -> BuildWhereClause | None:
+        return _combine_atoms(self.current_row_stage)
+
+    @property
+    def current_aggregate_where(self) -> BuildWhereClause | None:
+        return _combine_atoms(self.current_aggregate_stage)
+
+    @property
     def discovery_where(self) -> BuildWhereClause | None:
+        if self.expose_applied:
+            return self.active_where
         if self.pending:
             return self.current_where
         return self.active_where
@@ -117,7 +148,9 @@ class BuildConditionContext:
     def active_atoms(self) -> tuple[BoolExpr, ...]:
         if not self.pending:
             return tuple(atom for stage in self.applied for atom in stage)
-        return tuple(atom for stage in (*self.applied, self.pending[0]) for atom in stage)
+        return tuple(
+            atom for stage in (*self.applied, self.pending[0]) for atom in stage
+        )
 
     @property
     def applied_atoms(self) -> tuple[BoolExpr, ...]:
@@ -172,7 +205,10 @@ class BuildConditionContext:
                 " && ".join(str(atom) for atom in stage) for stage in stages
             )
 
-        return f"applied=[{render(self.applied)}]|pending=[{render(self.pending)}]"
+        return (
+            f"applied=[{render(self.applied)}]|pending=[{render(self.pending)}]"
+            f"|expose_applied={self.expose_applied}"
+        )
 
     def advance(self) -> "BuildConditionContext":
         if not self.pending:
@@ -180,14 +216,31 @@ class BuildConditionContext:
         return BuildConditionContext(
             applied=(*self.applied, self.pending[0]),
             pending=self.pending[1:],
+            expose_applied=self.expose_applied,
         )
 
-    def focus(self, local_where: BuildWhereClause | None) -> "BuildConditionContext | None":
-        stage = _atomize(local_where)
+    def focus(
+        self, local_where: BuildWhereClause | None
+    ) -> "BuildConditionContext | None":
+        local_atoms = _atomize(local_where)
+        applied_keys = {str(atom) for atom in self.applied_atoms}
+        stage_atoms: list[BoolExpr] = []
+        seen: set[str] = set()
+        for atom in local_atoms:
+            key = str(atom)
+            if key in applied_keys or key in seen:
+                continue
+            stage_atoms.append(atom)
+            seen.add(key)
+        stage = tuple(stage_atoms)
         if not self.applied and not stage:
             return None
         pending = (stage,) if stage else ()
-        return BuildConditionContext(applied=self.applied, pending=pending)
+        return BuildConditionContext(
+            applied=self.applied,
+            pending=pending,
+            expose_applied=self.expose_applied,
+        )
 
     def for_child(self, owner: BuildConcept) -> "BuildConditionContext | None":
         applied = tuple(
@@ -199,21 +252,17 @@ class BuildConditionContext:
         current_has_aggregate_filter = any(
             _atom_has_aggregate_argument(atom) for atom in current
         )
-        current_has_row_filter = any(_atom_has_row_argument(atom) for atom in current)
-        if current and (
-            any(_atom_depends_on(atom, owner) for atom in current)
-            or (
-                owner.is_aggregate
-                and current_has_aggregate_filter
-                and not current_has_row_filter
-            )
-        ):
+        if current and any(_atom_depends_on(atom, owner) for atom in current):
             pending: tuple[tuple[BoolExpr, ...], ...] = ()
+        elif current and owner.is_aggregate and current_has_aggregate_filter:
+            pending = ()
         else:
             pending = (current,) if current else ()
         if not applied and not pending:
             return None
-        return BuildConditionContext(applied=applied, pending=pending)
+        return BuildConditionContext(
+            applied=applied, pending=pending, expose_applied=True
+        )
 
     def for_children(
         self,
@@ -237,11 +286,19 @@ class BuildConditionContext:
                 if all(c.address in addresses for c in atom.concept_arguments)
             )
 
-        applied = tuple(stage for stage in (filter_stage(s) for s in self.applied) if stage)
-        pending = tuple(stage for stage in (filter_stage(s) for s in self.pending) if stage)
+        applied = tuple(
+            stage for stage in (filter_stage(s) for s in self.applied) if stage
+        )
+        pending = tuple(
+            stage for stage in (filter_stage(s) for s in self.pending) if stage
+        )
         if not applied and not pending:
             return None
-        return BuildConditionContext(applied=applied, pending=pending)
+        return BuildConditionContext(
+            applied=applied,
+            pending=pending,
+            expose_applied=self.expose_applied,
+        )
 
     def __repr__(self) -> str:
         active = self.active_where

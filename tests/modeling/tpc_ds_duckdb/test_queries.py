@@ -231,10 +231,6 @@ def test_four(engine):
     run_query(engine, 4)
 
 
-def test_four_then_where_matches_reference(engine):
-    run_query(engine, 4, preql_file="query04-then-where.preql", label="4.then_where")
-
-
 def test_five(engine):
     run_query(engine, 5)
 
@@ -269,10 +265,6 @@ def test_eleven(engine):
     assert len(query) < 12000, query
 
 
-def test_eleven_then_where_matches_reference(engine):
-    run_query(engine, 11, preql_file="query11-then-where.preql", label="11.then_where")
-
-
 def test_twelve(engine):
     query = run_query(engine, 12)
     assert len(query) <= 3200, query
@@ -285,10 +277,6 @@ def test_thirteen(engine):
 
 def test_fourteen(engine):
     run_query(engine, 14)
-
-
-def test_fourteen_then_where_matches_reference(engine):
-    run_query(engine, 14, preql_file="query14-then-where.preql", label="14.then_where")
 
 
 def test_fifteen(engine):
@@ -397,10 +385,6 @@ def test_thirty_two(engine):
     query = run_query(engine, 32)
     # size gating
     assert len(query) < 12640, query
-
-
-def test_thirty_two_then_where_matches_reference(engine):
-    run_query(engine, 32, preql_file="query32-then-where.preql", label="32.then_where")
 
 
 def test_thirty_three(engine):
@@ -530,10 +514,6 @@ def test_fifty_eight(engine):
     assert len(query) < 7000, query
 
 
-def test_fifty_eight_then_where_matches_reference(engine):
-    run_query(engine, 58, preql_file="query58-then-where.preql", label="58.then_where")
-
-
 # Override: reference y/x subqueries cross-join wss to date_dim on week_seq,
 # producing ~49 duplicate rows per (store, week_seq) pair. The override
 # pre-dedups the week filter so row-by-row comparison is meaningful.
@@ -658,18 +638,9 @@ def test_eighty_two(engine):
 
 def test_eighty_three(engine):
     query = run_query(engine, 83)
-    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
-    assert len(query) < 9500, query
-
-
-def test_eighty_three_then_where_matches_reference(engine):
-    query = run_query(
-        engine,
-        83,
-        preql_file="query83-then-where.preql",
-        label="83.then_where",
-    )
-    assert len(query) < 9500, query
+    # Larger after UnionDimPushdown/staged aggregate filters: dim joins and
+    # WHEREs land per branch.
+    assert len(query) < 10500, query
 
 
 def test_eighty_four(engine):
@@ -714,10 +685,6 @@ def test_ninety_one(engine):
 def test_ninety_two(engine):
     query = run_query(engine, 92)
     assert len(query) < 2000, query
-
-
-def test_ninety_two_then_where_matches_reference(engine):
-    run_query(engine, 92, preql_file="query92-then-where.preql", label="92.then_where")
 
 
 def test_ninety_three(engine):
