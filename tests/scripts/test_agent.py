@@ -20,7 +20,10 @@ from trilogy.scripts.agent import (
     TodoItem,
     _build_provider,
     _dispatch,
+    _empty_write_note,
     _format_call,
+    _maybe_flag_loop,
+    _raw_write_note,
     _run_turn,
     _status_message,
     handle_return_control,
@@ -133,6 +136,79 @@ def test_todo_complete_requires_valid_id():
         AgentState(todos=[TodoItem(id="a", description="x")]),
         {"action": "complete", "id": "missing"},
     )
+
+
+def test_todo_complete_without_id_lists_existing_ids():
+    state = AgentState(todos=[TodoItem(id="abc123", description="x")])
+    result = handle_todo(state, {"action": "complete"})
+    assert "'id' is required" in result
+    assert "abc123" in result
+
+
+def test_todo_complete_accepts_list_of_ids():
+    state = AgentState(
+        todos=[TodoItem(id="aa", description="x"), TodoItem(id="bb", description="y")]
+    )
+    result = handle_todo(state, {"action": "complete", "id": ["aa", "bb"]})
+    assert "todo completed: aa, bb" in result
+    assert all(t.completed for t in state.todos)
+
+
+def test_todo_complete_list_reports_missing_ids():
+    state = AgentState(todos=[TodoItem(id="aa", description="x")])
+    result = handle_todo(state, {"action": "complete", "id": ["aa", "zz"]})
+    assert "todo completed: aa" in result
+    assert "no item with id: zz" in result
+
+
+# --- light hardening: loop flagging + raw/ write guidance ---
+
+
+def test_maybe_flag_loop_escalates_after_repeats():
+    state = AgentState()
+    call = LLMToolCall(name="show_message", arguments={"message": "x"})
+    assert "[guidance]" not in _maybe_flag_loop(state, call, "ok")
+    assert "[guidance]" not in _maybe_flag_loop(state, call, "ok")
+    flagged = _maybe_flag_loop(state, call, "ok")
+    assert "[guidance]" in flagged and "3 times" in flagged
+
+
+def test_maybe_flag_loop_resets_on_different_call():
+    state = AgentState()
+    a = LLMToolCall(name="todo", arguments={"action": "list"})
+    b = LLMToolCall(name="todo", arguments={"action": "add", "description": "x"})
+    for _ in range(3):
+        _maybe_flag_loop(state, a, "ok")
+    assert "[guidance]" not in _maybe_flag_loop(state, b, "ok")
+
+
+def test_raw_write_note_flags_writes_into_raw():
+    assert "raw/" in _raw_write_note(["file", "write", "raw/store.preql"])
+    assert "raw/" in _raw_write_note(["file", "write", "raw\\store.preql"])
+    assert _raw_write_note(["file", "write", "query01.preql"]) == ""
+    assert _raw_write_note(["run", "query01.preql"]) == ""
+
+
+def test_empty_write_note_flags_zero_byte_writes():
+    args = ["file", "write", "query01.preql"]
+    assert "EMPTY" in _empty_write_note(args, "Wrote 0 byte(s) to query01.preql")
+    assert _empty_write_note(args, "Wrote 412 byte(s) to query01.preql") == ""
+    assert _empty_write_note(["run", "query01.preql"], "Wrote 0 byte(s)") == ""
+
+
+def test_handle_trilogy_refuses_empty_overwrite_of_nonempty_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "query01.preql").write_text("select 1 -> x;", encoding="utf-8")
+    result = handle_trilogy(AgentState(), {"args": ["file", "write", "query01.preql"]})
+    assert "refused" in result
+    assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
+
+
+def test_handle_trilogy_allows_empty_write_of_new_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = handle_trilogy(AgentState(), {"args": ["file", "write", "new.preql"]})
+    assert "refused" not in result
+    assert "exit_code: 0" in result
 
 
 # --- return_control_to_user gating ---
@@ -354,6 +430,25 @@ def test_run_turn_handles_unknown_tool_and_continues():
     _run_turn(conv, state, max_iterations=5)
     assert state.done is True
     assert provider.call_count == 2
+
+
+def test_run_turn_surfaces_malformed_tool_call_to_model():
+    bad = LLMToolCall(name="todo", parse_error="invalid tool arguments: boom")
+    provider = ScriptedProvider(
+        responses=[
+            make_response(bad),
+            make_response(call("return_control_to_user", message="ok")),
+        ]
+    )
+    conv = make_conv(provider)
+    state = AgentState()
+    _run_turn(conv, state, max_iterations=5)
+    assert state.done is True
+    assert any(
+        "Re-issue the call with valid JSON" in m.content
+        for m in conv.messages
+        if m.role == "user"
+    )
 
 
 # --- _build_provider ---

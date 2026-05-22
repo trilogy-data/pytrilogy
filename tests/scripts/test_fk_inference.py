@@ -1,0 +1,356 @@
+import tempfile
+from pathlib import Path
+
+from click.testing import CliRunner
+
+from trilogy.dialect.enums import Dialects
+from trilogy.scripts.ingest_helpers.fk_inference import (
+    FKCandidate,
+    TableFKInfo,
+    generate_candidates,
+    infer_foreign_keys,
+    measure_overlap,
+    merge_fk_maps,
+)
+from trilogy.scripts.ingest_helpers.formatting import canonicalize_names
+from trilogy.scripts.trilogy import cli
+
+
+def _info(name, columns, key_columns, relation=None):
+    return TableFKInfo(
+        name=name,
+        sql_relation=relation or f'"{name}"',
+        raw_columns=columns,
+        raw_to_canonical=canonicalize_names(columns),
+        key_raw_columns=key_columns,
+    )
+
+
+def _targets(candidates, from_table, from_column):
+    return {(c.to_table, c.to_column) for c in candidates[(from_table, from_column)]}
+
+
+class TestCandidateGeneration:
+    """Stage 1 — fuzzy name matching on canonical (prefix-stripped) names."""
+
+    def test_tpcds_store_returns(self):
+        store_returns = _info(
+            "store_returns",
+            [
+                "sr_returned_date_sk",
+                "sr_return_time_sk",
+                "sr_item_sk",
+                "sr_customer_sk",
+                "sr_store_sk",
+                "sr_ticket_number",
+            ],
+            ["sr_return_time_sk", "sr_ticket_number"],
+        )
+        date_dim = _info("date_dim", ["d_date_sk", "d_year"], ["d_date_sk"])
+        time_dim = _info("time_dim", ["t_time_sk", "t_hour"], ["t_time_sk"])
+        store = _info("store", ["s_store_sk", "s_market_id"], ["s_store_sk"])
+        customer = _info(
+            "customer", ["c_customer_sk", "c_first_name"], ["c_customer_sk"]
+        )
+        item = _info("item", ["i_item_sk", "i_brand"], ["i_item_sk"])
+        candidates = generate_candidates(
+            [store_returns, date_dim, time_dim, store, customer, item]
+        )
+
+        # Exact canonical matches.
+        assert ("store", "s_store_sk") in _targets(
+            candidates, "store_returns", "sr_store_sk"
+        )
+        assert ("customer", "c_customer_sk") in _targets(
+            candidates, "store_returns", "sr_customer_sk"
+        )
+        assert ("item", "i_item_sk") in _targets(
+            candidates, "store_returns", "sr_item_sk"
+        )
+        # Suffix match: returned_date_sk -> date_sk.
+        assert ("date_dim", "d_date_sk") in _targets(
+            candidates, "store_returns", "sr_returned_date_sk"
+        )
+        # Composite-key member that is also an FK: return_time_sk -> time_sk.
+        assert ("time_dim", "t_time_sk") in _targets(
+            candidates, "store_returns", "sr_return_time_sk"
+        )
+
+    def test_match_kinds(self):
+        store_returns = _info(
+            "store_returns",
+            ["sr_store_sk", "sr_returned_date_sk", "sr_ticket_number"],
+            ["sr_ticket_number"],
+        )
+        store = _info("store", ["s_store_sk", "s_market_id"], ["s_store_sk"])
+        date_dim = _info("date_dim", ["d_date_sk", "d_year"], ["d_date_sk"])
+        candidates = generate_candidates([store_returns, store, date_dim])
+
+        store_edge = candidates[("store_returns", "sr_store_sk")][0]
+        assert store_edge.match_kind == "exact"
+        date_edge = candidates[("store_returns", "sr_returned_date_sk")][0]
+        assert date_edge.match_kind == "suffix"
+
+    def test_tpch_exact_after_prefix_strip(self):
+        orders = _info(
+            "orders",
+            ["o_orderkey", "o_custkey", "o_orderdate"],
+            ["o_orderkey"],
+        )
+        customer = _info(
+            "customer", ["c_custkey", "c_name", "c_nationkey"], ["c_custkey"]
+        )
+        nation = _info(
+            "nation", ["n_nationkey", "n_name", "n_regionkey"], ["n_nationkey"]
+        )
+        region = _info("region", ["r_regionkey", "r_name"], ["r_regionkey"])
+        candidates = generate_candidates([orders, customer, nation, region])
+
+        assert ("customer", "c_custkey") in _targets(candidates, "orders", "o_custkey")
+        assert ("nation", "n_nationkey") in _targets(
+            candidates, "customer", "c_nationkey"
+        )
+        assert ("region", "r_regionkey") in _targets(
+            candidates, "nation", "n_regionkey"
+        )
+
+    def test_own_key_is_not_a_candidate(self):
+        orders = _info("orders", ["order_id", "total"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        candidates = generate_candidates([orders, customers])
+        # order_id is the table's own identity, not an FK.
+        assert ("orders", "order_id") not in candidates
+
+    def test_generic_id_suffix_does_not_overmatch(self):
+        # order_id must NOT suffix-match a table merely keyed `id`.
+        orders = _info("orders", ["order_id", "shipped"], [])
+        customers = _info("customers", ["id", "name"], ["id"])
+        candidates = generate_candidates([orders, customers])
+        assert ("orders", "order_id") not in candidates
+
+    def test_stem_to_table_name_match(self):
+        # customer_id -> customers.id via stem<->table-name (plural) match.
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        candidates = generate_candidates([orders, customers])
+        assert ("customers", "id") in _targets(candidates, "orders", "customer_id")
+
+    def test_abbreviation_substring_match(self):
+        # addr_sk -> customer_address.address_sk via stem substring (addr <- address).
+        store_returns = _info(
+            "store_returns", ["sr_addr_sk", "sr_ticket_number"], ["sr_ticket_number"]
+        )
+        customer_address = _info(
+            "customer_address",
+            ["ca_address_sk", "ca_state"],
+            ["ca_address_sk"],
+        )
+        candidates = generate_candidates([store_returns, customer_address])
+        assert ("customer_address", "ca_address_sk") in _targets(
+            candidates, "store_returns", "sr_addr_sk"
+        )
+
+
+class TestValueOverlap:
+    """Stage 2 — value-overlap verification on synthetic DuckDB tables."""
+
+    def _executor(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        exec.execute_raw_sql("CREATE TABLE dim(id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO dim VALUES (1),(2),(3),(4)")
+        return exec
+
+    def test_complete_containment(self):
+        exec = self._executor()
+        exec.execute_raw_sql("CREATE TABLE fact(dim_id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO fact VALUES (1),(2),(1),(3)")
+        src = _info("fact", ["dim_id"], [])
+        target = _info("dim", ["id"], ["id"])
+        candidate = FKCandidate("fact", "dim_id", "dim", "id", "exact")
+        assert measure_overlap(exec, src, candidate, target) == 1.0
+
+    def test_no_overlap(self):
+        exec = self._executor()
+        exec.execute_raw_sql("CREATE TABLE fact(dim_id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO fact VALUES (90),(91),(92)")
+        src = _info("fact", ["dim_id"], [])
+        target = _info("dim", ["id"], ["id"])
+        candidate = FKCandidate("fact", "dim_id", "dim", "id", "exact")
+        assert measure_overlap(exec, src, candidate, target) == 0.0
+
+    def test_subset_overlap(self):
+        exec = self._executor()
+        exec.execute_raw_sql("CREATE TABLE fact(dim_id INTEGER)")
+        # 3 of 4 distinct values present in dim.
+        exec.execute_raw_sql("INSERT INTO fact VALUES (1),(2),(3),(99)")
+        src = _info("fact", ["dim_id"], [])
+        target = _info("dim", ["id"], ["id"])
+        candidate = FKCandidate("fact", "dim_id", "dim", "id", "exact")
+        assert measure_overlap(exec, src, candidate, target) == 0.75
+
+    def test_all_null_column_unverifiable(self):
+        exec = self._executor()
+        exec.execute_raw_sql("CREATE TABLE fact(dim_id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO fact VALUES (NULL),(NULL)")
+        src = _info("fact", ["dim_id"], [])
+        target = _info("dim", ["id"], ["id"])
+        candidate = FKCandidate("fact", "dim_id", "dim", "id", "exact")
+        assert measure_overlap(exec, src, candidate, target) is None
+
+
+class TestInferForeignKeys:
+    """End-to-end of the inference engine (Stage 1 + Stage 2)."""
+
+    def _two_table_db(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        exec.execute_raw_sql("CREATE TABLE customers(id INTEGER, name VARCHAR)")
+        exec.execute_raw_sql("INSERT INTO customers VALUES (1,'a'),(2,'b'),(3,'c')")
+        exec.execute_raw_sql(
+            "CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)"
+        )
+        exec.execute_raw_sql("INSERT INTO orders VALUES (10,1),(11,2),(12,1)")
+        return exec
+
+    def test_full_level_accepts_verified_edge(self):
+        exec = self._two_table_db()
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        inferred = infer_foreign_keys([orders, customers], exec, "full")
+        assert len(inferred) == 1
+        edge = inferred[0]
+        assert edge.from_table == "orders"
+        assert edge.from_column == "customer_id"
+        assert edge.target_ref == "customers.id"
+        assert edge.overlap == 1.0
+
+    def test_full_level_rejects_unverified_edge(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        exec.execute_raw_sql("CREATE TABLE customers(id INTEGER, name VARCHAR)")
+        exec.execute_raw_sql("INSERT INTO customers VALUES (1,'a'),(2,'b')")
+        exec.execute_raw_sql(
+            "CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)"
+        )
+        # customer_id values are not contained in customers.id at all.
+        exec.execute_raw_sql("INSERT INTO orders VALUES (10,77),(11,88)")
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        inferred = infer_foreign_keys([orders, customers], exec, "full")
+        assert inferred == []
+
+    def test_fast_level_skips_sniffing(self):
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        assert len(inferred) == 1
+        assert inferred[0].overlap is None
+
+    def test_off_level_returns_nothing(self):
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        assert infer_foreign_keys([orders, customers], None, "off") == []
+
+
+class TestMergeFKMaps:
+    def test_explicit_overrides_inferred(self):
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        explicit = {"orders": {"customer_id": "people.id"}}
+        merged = merge_fk_maps(inferred, explicit)
+        assert merged["orders"]["customer_id"] == "people.id"
+
+    def test_inferred_used_when_no_explicit(self):
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        merged = merge_fk_maps(inferred, {})
+        assert merged["orders"]["customer_id"] == "customers.id"
+
+
+def _fk_config(tmppath: Path) -> Path:
+    setup_sql = tmppath / "setup.sql"
+    setup_sql.write_text(
+        "CREATE TABLE customers (id INTEGER PRIMARY KEY, name VARCHAR);\n"
+        "CREATE TABLE orders (\n"
+        "  order_id INTEGER PRIMARY KEY,\n"
+        "  customer_id INTEGER,\n"
+        "  total DOUBLE\n"
+        ");\n"
+        "INSERT INTO customers VALUES (1,'alice'),(2,'bob');\n"
+        "INSERT INTO orders VALUES (10,1,99.5),(11,2,42.0),(12,1,10.0);"
+    )
+    config_file = tmppath / "trilogy.toml"
+    config_file.write_text(
+        '[engine]\ndialect = "duckdb"\n\n'
+        f'[setup]\nsql = ["{setup_sql.as_posix()}"]\n'
+    )
+    return config_file
+
+
+def test_ingest_infers_fk_and_cross_table_query_resolves():
+    """ingest with no --fks links the tables; a cross-table query then runs."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = _fk_config(tmppath)
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "customers,orders",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        orders_preql = (out_dir / "orders.preql").read_text()
+        assert "import customers" in orders_preql
+
+        query = tmppath / "query.preql"
+        query.write_text(
+            "import raw.orders as orders;\n\n"
+            "select orders.customers.name, orders.total\n"
+            "order by orders.total desc;\n"
+        )
+        result = runner.invoke(
+            cli, ["run", str(query), "duckdb", "--config", str(config_file)]
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+
+def test_ingest_no_infer_fks_leaves_tables_disconnected():
+    """--fk-infer-level off keeps the historical independent-datasource output."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = _fk_config(tmppath)
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "customers,orders",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+                "--fk-infer-level",
+                "off",
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert "import customers" not in (out_dir / "orders.preql").read_text()

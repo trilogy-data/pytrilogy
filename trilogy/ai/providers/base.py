@@ -3,7 +3,12 @@ from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
 from trilogy.ai.enums import Provider
-from trilogy.ai.models import LLMMessage, LLMRequestOptions, LLMResponse
+from trilogy.ai.models import (
+    LLMMessage,
+    LLMRequestOptions,
+    LLMResponse,
+    LLMToolCall,
+)
 
 RETRYABLE_CODES = [429, 500, 502, 503, 504]
 
@@ -36,3 +41,15 @@ def parse_tool_arguments(arguments: str | dict[str, Any] | None) -> dict[str, An
     if not isinstance(parsed, dict):
         raise ValueError(f"Tool arguments must decode to an object, got {type(parsed)}")
     return parsed
+
+
+def build_tool_call(
+    name: str, raw_arguments: str | dict[str, Any] | None
+) -> LLMToolCall:
+    """Build an LLMToolCall, tolerating malformed argument JSON. A model that
+    emits invalid JSON yields a tool call carrying ``parse_error`` rather than
+    raising; the agent loop surfaces that to the model so it can retry."""
+    try:
+        return LLMToolCall(name=name, arguments=parse_tool_arguments(raw_arguments))
+    except (json.JSONDecodeError, ValueError) as exc:
+        return LLMToolCall(name=name, parse_error=f"invalid tool arguments: {exc}")

@@ -5,7 +5,7 @@ from datetime import datetime
 from itertools import combinations
 from pathlib import Path as PathlibPath
 
-from click import UNPROCESSED, Path, argument, option, pass_context
+from click import UNPROCESSED, Choice, Path, argument, option, pass_context
 from click.exceptions import Exit
 
 from trilogy.authoring import (
@@ -33,8 +33,15 @@ from trilogy.scripts.common import (
 from trilogy.scripts.display import print_error, print_info, print_warning
 from trilogy.scripts.display_ingest import (
     ingest_progress,
+    show_fk_summary,
     show_ingest_header,
     show_ingest_summary,
+)
+from trilogy.scripts.ingest_helpers.fk_inference import (
+    InferredFK,
+    build_table_fk_info,
+    infer_foreign_keys,
+    merge_fk_maps,
 )
 from trilogy.scripts.ingest_helpers.foreign_keys import (
     apply_foreign_key_references,
@@ -520,10 +527,17 @@ def _grain_label(datasource: Datasource) -> str:
     return ", ".join(c.split(".", 1)[-1] for c in components)
 
 
-@argument("sources", type=str)
+@argument("sources", type=str, required=False, default="")
 @argument("dialect", type=str, required=False)
 @option("--output", "-o", type=Path(), help="Output path for generated scripts")
 @option("--schema", "-s", type=str, help="Schema/database to ingest from")
+@option(
+    "--all",
+    "all_tables",
+    is_flag=True,
+    default=False,
+    help="Ingest every table in the database (table mode; no SOURCES needed).",
+)
 @option(
     "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
@@ -531,6 +545,17 @@ def _grain_label(datasource: Datasource) -> str:
     "--fks",
     type=str,
     help="Foreign key relationships in format: table.column:ref_table.column (comma-separated)",
+)
+@option(
+    "--fk-infer-level",
+    type=Choice(["off", "fast", "full"]),
+    default="full",
+    show_default=True,
+    help=(
+        "Infer foreign keys to link the generated datasources: 'off' disables "
+        "it, 'fast' matches on column names only, 'full' also verifies matches "
+        "with value sniffing. Explicit --fks always override inferred relationships."
+    ),
 )
 @option(
     "--env",
@@ -551,8 +576,10 @@ def ingest(
     dialect: str | None,
     output: str | None,
     schema: str | None,
+    all_tables: bool,
     config,
     fks: str | None,
+    fk_infer_level: str,
     env,
     name: str | None,
     conn_args,
@@ -569,8 +596,14 @@ def ingest(
     tables.
     """
     source_list = [s.strip() for s in sources.split(",") if s.strip()]
-    if not source_list:
-        print_error("No sources specified")
+    if all_tables and source_list:
+        print_error("Pass either explicit SOURCES or --all, not both.")
+        raise Exit(1)
+    if all_tables and name:
+        print_error("--name cannot be combined with --all.")
+        raise Exit(1)
+    if not source_list and not all_tables:
+        print_error("No sources specified (pass table names or --all).")
         raise Exit(1)
 
     file_sources = [s for s in source_list if _looks_like_file_source(s)]
@@ -580,7 +613,7 @@ def ingest(
         print_error("--name can only be set when ingesting a single source")
         raise Exit(1)
 
-    fk_map = parse_foreign_keys(fks) if fks else {}
+    explicit_fk_map = parse_foreign_keys(fks) if fks else {}
 
     # Determine output directory.
     if output:
@@ -633,13 +666,6 @@ def ingest(
             raise Exit(1) from e
         apply_env_vars(cli_env_vars)
 
-    show_ingest_header(
-        sources=source_list,
-        output_dir=str(output_dir),
-        dialect=edialect.value,
-        config_path=str(config) if config else None,
-    )
-
     try:
         exec = create_executor(
             param=(),
@@ -652,6 +678,22 @@ def ingest(
         )
     except Exception as e:
         handle_execution_exception(e, debug=ctx.obj["DEBUG"])
+
+    if all_tables:
+        try:
+            source_list = [t[0] for t in exec.generator.list_tables(exec, schema)]
+        except Exception as e:
+            handle_execution_exception(e, debug=ctx.obj["DEBUG"])
+        if not source_list:
+            print_error("No tables found in the database.")
+            raise Exit(1)
+
+    show_ingest_header(
+        sources=source_list,
+        output_dir=str(output_dir),
+        dialect=edialect.value,
+        config_path=str(config) if config else None,
+    )
 
     # Pre-load httpfs once if any source is remote — avoids re-installing per
     # source and avoids the install landing in an aborted transaction after a
@@ -723,6 +765,32 @@ def ingest(
                 continue
             progress.advance()
 
+    # Second pass: infer foreign keys across the just-introspected tables, then
+    # merge with any explicit --fks (explicit wins per column).
+    inferred_fks: list[InferredFK] = []
+    if fk_infer_level != "off":
+        table_records = [
+            rec for rec in ingested.values() if not _looks_like_file_source(rec.source)
+        ]
+        if len(table_records) >= 2:
+            try:
+                fk_infos = [
+                    build_table_fk_info(rec.source, rec.datasource, exec.generator)
+                    for rec in table_records
+                ]
+                inferred_fks = infer_foreign_keys(fk_infos, exec, fk_infer_level)
+            except Exception as e:
+                print_warning(f"Foreign-key inference failed: {e}")
+                if ctx.obj["DEBUG"]:
+                    import traceback
+
+                    print_warning(traceback.format_exc())
+                try:
+                    exec.connection.rollback()
+                except Exception:
+                    pass
+    fk_map = merge_fk_maps(inferred_fks, explicit_fk_map)
+
     if fk_map:
         print_info("Processing foreign key relationships...")
 
@@ -750,6 +818,7 @@ def ingest(
 
     exec.close()
     show_ingest_summary(summary_rows)
+    show_fk_summary(inferred_fks, explicit_fk_map)
 
     if not ingested_files:
         raise Exit(1)

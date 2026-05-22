@@ -1,0 +1,3 @@
+# Generated TPC-DS databases (regenerated on demand) and per-run output.
+.cache/
+results/

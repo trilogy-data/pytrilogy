@@ -81,6 +81,23 @@ def test_parse_tool_arguments_variants():
         parse_tool_arguments("[]")
 
 
+def test_build_tool_call_parses_valid_arguments():
+    from trilogy.ai.providers.base import build_tool_call
+
+    call = build_tool_call("todo", '{"action":"add"}')
+    assert call.arguments == {"action": "add"}
+    assert call.parse_error is None
+
+
+def test_build_tool_call_tolerates_malformed_json():
+    from trilogy.ai.providers.base import build_tool_call
+
+    call = build_tool_call("todo", '{"action":"add"')  # truncated JSON
+    assert call.arguments == {}
+    assert call.parse_error is not None
+    assert "invalid tool arguments" in call.parse_error
+
+
 def test_openai_provider_builds_required_tool_payload(monkeypatch):
     import httpx
 

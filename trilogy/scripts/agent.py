@@ -18,6 +18,7 @@ from click import argument, option, pass_context
 from trilogy.ai.conversation import Conversation
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMRequestOptions, LLMToolCall, LLMToolDefinition
+from trilogy.ai.prompts import get_trilogy_prompt
 from trilogy.ai.providers.anthropic import AnthropicProvider
 from trilogy.ai.providers.base import LLMProvider
 from trilogy.ai.providers.google import GoogleProvider
@@ -45,13 +46,24 @@ PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
     Provider.OPENROUTER: OpenRouterProvider,
 }
 
-SYSTEM_PROMPT = """You are the Trilogy CLI agent. You operate by calling tools.
+_AGENT_INSTRUCTIONS = """You are the Trilogy CLI agent. You operate by calling tools.
 
 Available tools:
 - show_message(message): print a message to the user.
 - trilogy(args, stdin=None): invoke the `trilogy` CLI as a subprocess. `args` is a
-  list of string arguments (e.g. ["run", "query.preql"]). Output is captured and
-  returned; large outputs are truncated from the middle.
+  list of string arguments. Output is captured and returned; large outputs are
+  truncated from the middle. Common uses:
+    * ["agent-info"] — prints the full CLI docs AND the Trilogy language
+      syntax reference. Run this first, and read the language section before
+      writing any .preql file.
+    * ["database", "list"] — list the tables in the configured database.
+      ["database", "describe", "<table>"] — show a table's columns and types.
+    * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
+      under raw/) for every table in the database, in one step.
+    * Write a file: ["file", "write", "<path>"] with the file's full contents
+      passed as `stdin`. Read a file: ["file", "read", "<path>"].
+    * Run a Trilogy script: ["run", "<path.preql>"].
+  Creating or editing files is ONLY possible via ["file", "write", ...].
 - todo(action, id=None, description=None): manage a scratch TODO list. Actions:
   "add" (requires description; returns new id), "complete" (requires id),
   "remove" (requires id), "list" (returns all items).
@@ -59,10 +71,28 @@ Available tools:
   any TODOs are not completed — either complete or remove them first.
 
 Discipline:
-1. Plan the work as TODO items before acting on anything non-trivial.
-2. Mark items complete as you finish them. Remove items you decide not to do.
-3. Use `trilogy` for any CLI work — never shell out through `show_message`.
-4. Only call `return_control_to_user` when the task is done or you are blocked."""
+1. Bias toward action — every turn should make concrete progress with the
+   `trilogy` tool. Never repeat exploration you have already done.
+2. The TODO list is optional and for your own tracking only. Keep it short;
+   never let managing todos substitute for doing the real work.
+3. Use `show_message` rarely — only for a genuine status change, never to
+   narrate intent or restate the plan.
+4. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
+   the task is fully done or you are genuinely blocked."""
+
+
+# The Trilogy language reference has one source of truth, get_trilogy_prompt()
+# (also used by `trilogy agent-info`); never paraphrase it here.
+SYSTEM_PROMPT = (
+    _AGENT_INSTRUCTIONS
+    + "\n\n"
+    + get_trilogy_prompt(
+        intro=(
+            "When you write a Trilogy query file (.preql), follow this syntax "
+            "reference exactly — Trilogy is NOT SQL:"
+        )
+    )
+)
 
 
 @dataclass
@@ -78,6 +108,7 @@ class AgentState:
     tool_output_limit: int = 8192
     done: bool = False
     farewell: str = ""
+    recent_signatures: list[str] = field(default_factory=list)
 
 
 MARKER_TEMPLATE = "\n...[truncated {n} bytes]...\n"
@@ -120,7 +151,12 @@ TRILOGY_TOOL = LLMToolDefinition(
             },
             "stdin": {
                 "type": ["string", "null"],
-                "description": "Optional stdin to pipe into the subprocess.",
+                "description": (
+                    "Text piped to the subprocess stdin. REQUIRED when "
+                    "writing a file — put the file's full contents here, "
+                    "e.g. args ['file','write','query01.preql'] with the "
+                    "query text as stdin."
+                ),
             },
         },
         "required": ["args"],
@@ -129,7 +165,11 @@ TRILOGY_TOOL = LLMToolDefinition(
 
 TODO_TOOL = LLMToolDefinition(
     name="todo",
-    description="CRUD on the agent's TODO list. Actions: add, complete, remove, list.",
+    description=(
+        "Manage a scratch TODO list. action 'add' requires `description` and "
+        "returns a new id; 'complete' and 'remove' take `id` — a single id or "
+        "a list of ids — of existing item(s); 'list' returns all items."
+    ),
     input_schema={
         "type": "object",
         "properties": {
@@ -137,8 +177,18 @@ TODO_TOOL = LLMToolDefinition(
                 "type": "string",
                 "enum": ["add", "complete", "remove", "list"],
             },
-            "id": {"type": ["string", "null"]},
-            "description": {"type": ["string", "null"]},
+            "id": {
+                "type": ["string", "array", "null"],
+                "items": {"type": "string"},
+                "description": (
+                    "An item id, or a list of ids, from prior 'add' calls. "
+                    "Required for 'complete' and 'remove'."
+                ),
+            },
+            "description": {
+                "type": ["string", "null"],
+                "description": "Task text. Required for 'add'.",
+            },
         },
         "required": ["action"],
     },
@@ -182,6 +232,56 @@ def handle_show_message(state: AgentState, args: dict) -> str:
     return "show_message: ok"
 
 
+def _raw_write_note(raw_args: list[str]) -> str:
+    """Escalating guidance (not a block) when the agent writes into raw/, which
+    holds the generated data model — query files belong in the working dir."""
+    if (
+        len(raw_args) >= 3
+        and raw_args[0] == "file"
+        and raw_args[1] == "write"
+        and raw_args[2].replace("\\", "/").startswith("raw/")
+    ):
+        return (
+            "\n\n[guidance] You wrote into raw/, which holds the generated data "
+            "model. Query files belong in the working directory, not raw/. Only "
+            "edit raw/ to deliberately fix a model definition."
+        )
+    return ""
+
+
+_CONTENT_FLAGS = {"-c", "--content", "--from-file", "--from-url"}
+
+
+def _would_clobber_with_empty(raw_args: list[str], stdin_value: str | None) -> bool:
+    """True if this is a `file write` with no content source that would erase an
+    existing non-empty file — a destructive accident worth refusing outright."""
+    if not (len(raw_args) >= 3 and raw_args[0] == "file" and raw_args[1] == "write"):
+        return False
+    if stdin_value or any(a in _CONTENT_FLAGS for a in raw_args):
+        return False
+    try:
+        target = Path(raw_args[2])
+        return target.is_file() and target.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _empty_write_note(raw_args: list[str], stdout: str) -> str:
+    """Escalating guidance when `file write` produced a 0-byte file — the agent
+    forgot to pass content via the trilogy tool's `stdin` argument."""
+    if (
+        len(raw_args) >= 2
+        and raw_args[0] == "file"
+        and raw_args[1] == "write"
+        and "Wrote 0 byte" in stdout
+    ):
+        return (
+            "\n\n[guidance] That wrote an EMPTY file. Pass the file's full "
+            "contents in the `stdin` argument of the trilogy tool."
+        )
+    return ""
+
+
 def handle_trilogy(state: AgentState, args: dict) -> str:
     raw_args = args.get("args")
     if not isinstance(raw_args, list) or not all(isinstance(a, str) for a in raw_args):
@@ -189,6 +289,12 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     stdin_value = args.get("stdin")
     if stdin_value is not None and not isinstance(stdin_value, str):
         return "trilogy error: 'stdin' must be a string or null."
+    if _would_clobber_with_empty(raw_args, stdin_value):
+        return (
+            f"trilogy file write refused: stdin is empty and '{raw_args[2]}' "
+            "already has content — an empty write would erase it. Re-issue the "
+            "call with the file's full contents in the `stdin` argument."
+        )
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
     child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     try:
@@ -206,10 +312,15 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
         return "trilogy error: subprocess timed out after 600s."
     stdout = truncate_middle(completed.stdout or "", state.tool_output_limit)
     stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
-    return (
+    result = (
         f"exit_code: {completed.returncode}\n"
         f"--- stdout ---\n{stdout}\n"
         f"--- stderr ---\n{stderr}"
+    )
+    return (
+        result
+        + _raw_write_note(raw_args)
+        + _empty_write_note(raw_args, completed.stdout or "")
     )
 
 
@@ -225,17 +336,38 @@ def handle_todo(state: AgentState, args: dict) -> str:
         state.todos.append(item)
         return f"todo added: {item.id}\n{_render_todos(state.todos)}"
     if action in ("complete", "remove"):
-        target_id = args.get("id")
-        if not isinstance(target_id, str) or not target_id:
-            return f"todo error: 'id' is required for {action}."
-        for idx, item in enumerate(state.todos):
-            if item.id == target_id:
-                if action == "complete":
-                    item.completed = True
-                else:
-                    state.todos.pop(idx)
-                return f"todo {action}d: {target_id}\n{_render_todos(state.todos)}"
-        return f"todo error: no item with id {target_id}."
+        raw_id = args.get("id")
+        if isinstance(raw_id, str):
+            ids = [raw_id] if raw_id else []
+        elif isinstance(raw_id, list):
+            ids = [i for i in raw_id if isinstance(i, str) and i]
+        else:
+            ids = []
+        if not ids:
+            open_ids = ", ".join(t.id for t in state.todos) or "(list is empty)"
+            return (
+                f"todo error: 'id' is required for {action} — pass one id or "
+                f"a list of ids. Existing ids: {open_ids}."
+            )
+        by_id = {t.id: t for t in state.todos}
+        done: list[str] = []
+        missing: list[str] = []
+        for tid in ids:
+            todo = by_id.get(tid)
+            if todo is None:
+                missing.append(tid)
+            elif action == "complete":
+                todo.completed = True
+                done.append(tid)
+            else:
+                state.todos.remove(todo)
+                done.append(tid)
+        if not done:
+            return f"todo error: no item with id: {', '.join(missing)}."
+        summary = f"todo {action}d: {', '.join(done)}"
+        if missing:
+            summary += f" (no item with id: {', '.join(missing)})"
+        return f"{summary}\n{_render_todos(state.todos)}"
     return f"todo error: unknown action '{action}'."
 
 
@@ -327,6 +459,26 @@ def _dispatch(state: AgentState, call: LLMToolCall) -> str:
         return f"{call.name} raised {type(exc).__name__}: {exc}"
 
 
+def _maybe_flag_loop(state: AgentState, call: LLMToolCall, result: str) -> str:
+    """Append escalating guidance when the agent repeats an identical call. The
+    call still runs — this only surfaces that it is not making progress."""
+    sig = f"{call.name}:{json.dumps(call.arguments, sort_keys=True, default=str)}"
+    state.recent_signatures.append(sig)
+    del state.recent_signatures[:-12]
+    repeats = 0
+    for prev in reversed(state.recent_signatures):
+        if prev != sig:
+            break
+        repeats += 1
+    if repeats >= 3:
+        return (
+            f"{result}\n\n[guidance] You have issued this identical call "
+            f"{repeats} times in a row with the same result — it is not making "
+            "progress. Stop repeating it and take a different action."
+        )
+    return result
+
+
 ARG_PREVIEW_LIMIT = 80
 
 
@@ -394,8 +546,15 @@ def _run_turn(
                 log_path,
                 {"type": "tool_call", "name": call.name, "arguments": call.arguments},
             )
-            with with_status(_status_message(call)):
-                result = _dispatch(state, call)
+            if call.parse_error:
+                result = (
+                    f"Tool call '{call.name}' rejected: {call.parse_error}. "
+                    "Re-issue the call with valid JSON arguments."
+                )
+            else:
+                with with_status(_status_message(call)):
+                    result = _dispatch(state, call)
+            result = _maybe_flag_loop(state, call, result)
             _log_event(
                 log_path,
                 {"type": "tool_result", "name": call.name, "result": result},
