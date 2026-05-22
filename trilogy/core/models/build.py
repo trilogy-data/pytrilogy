@@ -815,6 +815,8 @@ def combine_build_where_clauses(
 ) -> BuildWhereClause | None:
     if not clauses:
         return None
+    if len(clauses) == 1:
+        return clauses[0]
     condition = clauses[0].conditional
     for clause in clauses[1:]:
         condition = condition + clause.conditional
@@ -1794,15 +1796,12 @@ class BuildSelectLineage:
     limit: Optional[int] = None
     meta: Metadata = field(default_factory=lambda: Metadata())
     grain: BuildGrain = field(default_factory=BuildGrain)
-    where_clause: BuildWhereClause | None = field(default=None)
     where_clauses: list[BuildWhereClause] = field(default_factory=list)
     having_clause: BuildHavingClause | None = field(default=None)
 
-    def __post_init__(self) -> None:
-        if self.where_clauses:
-            self.where_clause = combine_build_where_clauses(self.where_clauses)
-        elif self.where_clause:
-            self.where_clauses = [self.where_clause]
+    @property
+    def where_clause(self) -> BuildWhereClause | None:
+        return combine_build_where_clauses(self.where_clauses)
 
     @property
     def output_components(self) -> List[BuildConcept]:
@@ -1821,16 +1820,13 @@ class BuildMultiSelectLineage(BuildConceptArgs):
     hidden_components: set[str]
     order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
-    where_clause: Union["BuildWhereClause", None] = field(default=None)
     where_clauses: list[BuildWhereClause] = field(default_factory=list)
     having_clause: Union["BuildHavingClause", None] = field(default=None)
     derive: BuildDeriveClause | None = None
 
-    def __post_init__(self) -> None:
-        if self.where_clauses:
-            self.where_clause = combine_build_where_clauses(self.where_clauses)
-        elif self.where_clause:
-            self.where_clauses = [self.where_clause]
+    @property
+    def where_clause(self) -> "BuildWhereClause | None":
+        return combine_build_where_clauses(self.where_clauses)
 
     @property
     def derived_concepts(self) -> set[str]:
@@ -3087,7 +3083,6 @@ class Factory:
             canonical_build_cache=self.canonical_build_cache,
         )
         where_clauses = [where_factory.build(x) for x in base.where_clauses]
-        where_clause = combine_build_where_clauses(where_clauses)
         # if the where clause derives new concepts
         # we need to ensure these are accessible from the general factory
         # post resolution
@@ -3122,7 +3117,6 @@ class Factory:
                 factory.build(base.having_clause) if base.having_clause else None
             ),
             # this uses a different grain factory
-            where_clause=where_clause,
             where_clauses=where_clauses,
         )
 

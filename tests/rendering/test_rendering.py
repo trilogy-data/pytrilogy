@@ -60,7 +60,6 @@ from trilogy.parsing.render import Renderer, render_environment, render_query
 def test_basic_query(test_environment):
     query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
-        where_clause=None,
         order_by=OrderBy(
             items=[
                 OrderItem(
@@ -105,11 +104,9 @@ def test_multi_select(test_environment):
         selects=[
             SelectStatement(
                 selection=[test_environment.concepts["order_id"]],
-                where_clause=None,
             ),
             SelectStatement(
                 selection=[test_environment.concepts["order_id"]],
-                where_clause=None,
             ),
         ],
         derived_concepts=[test_environment.concepts["order_id"]],
@@ -146,21 +143,23 @@ ORDER BY
 def test_full_query(test_environment):
     query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
-        where_clause=WhereClause(
-            conditional=Conditional(
-                left=Comparison(
-                    left=test_environment.concepts["order_id"],
-                    right=123,
-                    operator=ComparisonOperator.EQ,
+        where_clauses=[
+            WhereClause(
+                conditional=Conditional(
+                    left=Comparison(
+                        left=test_environment.concepts["order_id"],
+                        right=123,
+                        operator=ComparisonOperator.EQ,
+                    ),
+                    right=Comparison(
+                        left=test_environment.concepts["order_id"],
+                        right=456,
+                        operator=ComparisonOperator.EQ,
+                    ),
+                    operator=BooleanOperator.OR,
                 ),
-                right=Comparison(
-                    left=test_environment.concepts["order_id"],
-                    right=456,
-                    operator=ComparisonOperator.EQ,
-                ),
-                operator=BooleanOperator.OR,
-            ),
-        ),
+            )
+        ],
         order_by=OrderBy(
             items=[
                 OrderItem(
@@ -190,7 +189,6 @@ def test_environment_rendering(test_environment):
 def test_persist(test_environment: Environment):
     select = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
-        where_clause=None,
         order_by=OrderBy(
             items=[
                 OrderItem(
@@ -302,7 +300,6 @@ def test_render_constant(test_environment: Environment):
 def test_render_rowset(test_environment: Environment):
     query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
-        where_clause=None,
         order_by=OrderBy(
             items=[
                 OrderItem(
@@ -958,7 +955,6 @@ key id list<int>;
 def test_render_copy_statement(test_environment):
     select = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
-        where_clause=None,
         order_by=OrderBy(
             items=[
                 OrderItem(

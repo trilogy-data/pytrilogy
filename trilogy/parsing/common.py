@@ -1166,7 +1166,7 @@ def align_item_to_concept(
         selects=new_selects,
         align=align_clause,
         namespace=align.namespace,
-        where_clause=where,
+        where_clauses=[where] if where else [],
         having_clause=having,
         limit=limit,
         hidden_components=set(y for x in new_selects for y in x.hidden_components),

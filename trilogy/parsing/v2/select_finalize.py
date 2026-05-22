@@ -49,7 +49,6 @@ from trilogy.core.models.author import (
     Grain,
     UndefinedConcept,
     UndefinedConceptFull,
-    combine_where_clauses,
 )
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (

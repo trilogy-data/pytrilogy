@@ -5,6 +5,7 @@ from typing import Any, List, Literal, Mapping, Optional, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
+    BooleanOperator,
     ChartPlaceKind,
     ChartType,
     ConceptSource,
@@ -23,6 +24,7 @@ from trilogy.core.models.author import (
     ArgBinding,
     Concept,
     ConceptRef,
+    Conditional,
     CustomType,
     DeriveClause,
     Expr,
@@ -112,7 +114,6 @@ class FromClause:
 @dataclass
 class SelectStatement(HasUUID, SelectTypeMixin):
     selection: List[SelectItem]
-    where_clause: Optional[WhereClause] = None
     where_clauses: list[WhereClause] = field(default_factory=list)
     having_clause: Optional[HavingClause] = None
     order_by: Optional[OrderBy] = None
@@ -124,11 +125,11 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     )
     grain: Grain = field(default_factory=Grain)
 
+    @property
+    def where_clause(self) -> WhereClause | None:
+        return combine_where_clauses(self.where_clauses)
+
     def __post_init__(self):
-        if self.where_clauses:
-            self.where_clause = combine_where_clauses(self.where_clauses)
-        elif self.where_clause:
-            self.where_clauses = [self.where_clause]
         new = []
         for item in self.selection:
             if isinstance(item, (Concept, ConceptTransform)):
@@ -152,7 +153,6 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             ],
             order_by=self.order_by,
             limit=self.limit,
-            where_clause=self.where_clause,
             where_clauses=list(self.where_clauses),
             having_clause=self.having_clause,
             local_concepts={
@@ -177,8 +177,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     ) -> "SelectStatement":
         output = SelectStatement(
             selection=selection,
-            where_clause=where_clause,
-            where_clauses=where_clauses or [],
+            where_clauses=where_clauses or ([where_clause] if where_clause else []),
             having_clause=having_clause,
             limit=limit,
             order_by=order_by,
@@ -299,6 +298,24 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                         f"Cannot order by column {cref.address} that is not in the output projection; line: {self.meta.line_number}"
                     )
 
+    def add_base_condition(self, condition: WhereClause) -> None:
+        """AND an extra filter into the query's base WHERE clause.
+
+        ANDs ``condition`` into the last clause of ``where_clauses`` (or adds
+        it as the only clause when there is none), wrapping each side in a
+        Parenthetical so AND/OR precedence is preserved. Used to append a
+        filter (e.g. a UI facet selection) onto an already-parsed query.
+        """
+        if not self.where_clauses:
+            self.where_clauses = [condition]
+            return
+        last = self.where_clauses[-1]
+        last.conditional = Conditional(
+            left=Parenthetical(content=last.conditional),
+            right=Parenthetical(content=condition.conditional),
+            operator=BooleanOperator.AND,
+        )
+
     def __str__(self):
         from trilogy.parsing.render import render_query
 
@@ -391,7 +408,6 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
     align: AlignClause
     namespace: str
     derived_concepts: List[Concept]
-    where_clause: Optional[WhereClause] = None
     where_clauses: list[WhereClause] = field(default_factory=list)
     having_clause: Optional[HavingClause] = None
     order_by: Optional[OrderBy] = None
@@ -402,11 +418,9 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
     )
     derive: DeriveClause | None = None
 
-    def __post_init__(self) -> None:
-        if self.where_clauses:
-            self.where_clause = combine_where_clauses(self.where_clauses)
-        elif self.where_clause:
-            self.where_clauses = [self.where_clause]
+    @property
+    def where_clause(self) -> WhereClause | None:
+        return combine_where_clauses(self.where_clauses)
 
     def as_lineage(self, environment: Environment):
         return MultiSelectLineage(
@@ -417,7 +431,6 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
             # derived_concepts = self.derived_concepts,
             limit=self.limit,
             order_by=self.order_by,
-            where_clause=self.where_clause,
             where_clauses=list(self.where_clauses),
             having_clause=self.having_clause,
             hidden_components=self.hidden_components,

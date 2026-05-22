@@ -1,5 +1,5 @@
 # from trilogy.compiler import compile
-from trilogy.core.models.author import Grain, Parenthetical
+from trilogy.core.models.author import Conditional, Grain, Parenthetical
 from trilogy.core.models.build import Factory
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
@@ -366,3 +366,43 @@ where
 
     # check to make sure our subselect is well-formed
     assert "`category_id` not in (select" in query, query
+
+
+def test_add_base_condition(test_environment):
+    env, parsed = parse(
+        "select order_id where order_id in (1,2,3);", environment=test_environment
+    )
+    select: SelectStatement = parsed[-1]
+    _, fparsed = parse("where order_id > 5 select order_id;", environment=env)
+    extra = fparsed[-1].where_clause
+    assert extra is not None
+
+    last = select.where_clauses[-1]
+    select.add_base_condition(extra)
+
+    assert len(select.where_clauses) == 1
+    assert select.where_clauses[-1] is last
+    cond = select.where_clauses[-1].conditional
+    assert isinstance(cond, Conditional)
+    assert isinstance(cond.left, Parenthetical)
+    assert isinstance(cond.right, Parenthetical)
+    rendered = str(select.where_clause)
+    assert "1, 2, 3" in rendered and "order_id > 5" in rendered
+    BaseDialect().compile_statement(process_query(env, select))
+
+
+def test_add_base_condition_no_existing_where(test_environment):
+    env, parsed = parse("select order_id;", environment=test_environment)
+    select: SelectStatement = parsed[-1]
+    assert select.where_clauses == []
+
+    _, fparsed = parse("where order_id > 5 select order_id;", environment=env)
+    extra = fparsed[-1].where_clause
+    assert extra is not None
+
+    select.add_base_condition(extra)
+
+    assert select.where_clauses == [extra]
+    assert select.where_clause is not None
+    assert "order_id > 5" in str(select.where_clause)
+    BaseDialect().compile_statement(process_query(env, select))
