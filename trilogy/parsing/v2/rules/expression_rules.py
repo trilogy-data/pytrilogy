@@ -205,8 +205,10 @@ def comparison(
                 isinstance(value_side, (str, int))
                 and value_side not in concept_side.datatype.values
             ):
+                allowed = ", ".join(repr(v) for v in concept_side.datatype.values)
                 raise InvalidSyntaxException(
-                    f"Value {value_side!r} is not a valid member of enum {concept_side.datatype} for '{concept_side.address}'"
+                    f"Value {value_side!r} is not valid for enum field "
+                    f"'{concept_side.address}'. Allowed values: {allowed}."
                 )
     return Comparison(left=left, right=right, operator=operator)
 

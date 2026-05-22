@@ -66,9 +66,12 @@ Execute a Trilogy script or all scripts in a directory.
 - `--parallelism N`, `-p N`: Max parallel workers for directory execution
 - `--config PATH`: Path to trilogy.toml configuration file
 - `--env KEY=VALUE`, `-e KEY=VALUE`: Set env vars (or pass an env file path)
-- `--import MODULE`: Prepend `import <module>;` to an inline query. Repeatable.
+- `--import MODULE[:ALIAS]`: Prepend an `import` to an inline query. Repeatable.
   Accepts bare names (`flight`), filenames (`flight.preql`), or relative paths
-  (`root/flight.preql`, converted to dotted form).
+  (`root/flight.preql`, converted to dotted form). Append `:ALIAS` to namespace
+  the import so the query reaches its concepts as `ALIAS.*` — e.g.
+  `--import raw/item:item` matches a file's `import raw.item as item;` and lets
+  you write `item.current_price`. Without an alias, concepts import unprefixed.
 
 **Examples:**
 ```bash
@@ -84,8 +87,8 @@ trilogy run jobs/ duckdb -p 4
 # Run with parameters
 trilogy run report.preql duckdb --param date=2024-01-01 --param region=US
 
-# Inline query against a file's concepts (no manual `import` in the query)
-trilogy run --import flight.preql "select carrier, count(id);" duckdb
+# Inline query against a file's concepts — `:alias` namespaces them as alias.*
+trilogy run --import flight.preql:flight "select flight.carrier, count(flight.id);" duckdb
 ```
 
 ---

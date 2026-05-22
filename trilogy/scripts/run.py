@@ -41,6 +41,22 @@ def _normalize_import(value: str) -> str:
     return stripped.replace("/", ".")
 
 
+def _format_import(value: str) -> str:
+    """Render a --import value as an ``import ...;`` statement line.
+
+    ``module:alias`` namespaces the import so its concepts are reached as
+    ``alias.*``, matching file-based ``import ... as ...``. A bare value
+    imports without a namespace prefix.
+    """
+    spec, sep, alias = value.partition(":")
+    # A lone leading drive letter (Windows path) is not an alias separator.
+    if sep and len(spec) == 1 and spec.isalpha():
+        spec, alias = value, ""
+    module = _normalize_import(spec)
+    alias = alias.strip()
+    return f"import {module} as {alias};\n" if alias else f"import {module};\n"
+
+
 @argument("input", type=Path(), default=".")
 @argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
@@ -64,9 +80,11 @@ def _normalize_import(value: str) -> str:
     "imports",
     multiple=True,
     help=(
-        "Prepend 'import <module>;' to an inline query. Accepts bare module "
-        "names (flight), filenames (flight.preql), or relative paths "
-        "(root/flight.preql). Repeatable."
+        "Prepend an import to an inline query. Accepts bare module names "
+        "(flight), filenames (flight.preql), or relative paths "
+        "(root/flight.preql). Append ':alias' to namespace the import so its "
+        "concepts are reached as alias.* (e.g. raw/item:item), matching "
+        "file-based 'import ... as ...'. Repeatable."
     ),
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
@@ -85,17 +103,23 @@ def run(
     """Execute a Trilogy script or query."""
     validate_dialect(dialect, "run")
 
+    is_inline = not PathlibPath(input).exists()
+
     if imports:
-        pathlib_input = PathlibPath(input)
-        if pathlib_input.exists():
+        if not is_inline:
             from trilogy.scripts.display import print_error
 
             print_error(
                 "--import only applies to inline queries, not file/directory inputs."
             )
             raise Exit(2)
-        prefix = "".join(f"import {_normalize_import(v)};\n" for v in imports)
-        input = prefix + input
+        input = "".join(_format_import(v) for v in imports) + input
+
+    if is_inline:
+        # Inline queries may omit the trailing terminator; the parser needs it.
+        stripped = input.rstrip()
+        if stripped and not stripped.endswith(";"):
+            input = stripped + ";"
 
     cli_params = CLIRuntimeParams(
         input=input,

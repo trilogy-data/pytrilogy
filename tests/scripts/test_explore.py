@@ -6,7 +6,7 @@ from textwrap import dedent
 import pytest
 from click.testing import CliRunner
 
-from trilogy.scripts.run import _normalize_import
+from trilogy.scripts.run import _format_import, _normalize_import
 from trilogy.scripts.trilogy import cli
 
 
@@ -136,3 +136,37 @@ def test_run_import_rejects_on_file_input(runner, sample_preql: Path):
     )
     assert result.exit_code == 2
     assert "only applies to inline queries" in result.output
+
+
+def test_format_import_bare():
+    assert _format_import("flight") == "import flight;\n"
+    assert _format_import("root/flight.preql") == "import root.flight;\n"
+
+
+def test_format_import_alias():
+    assert _format_import("raw/item:item") == "import raw.item as item;\n"
+    assert _format_import("root/flight.preql:f") == "import root.flight as f;\n"
+
+
+def test_run_import_alias_namespaces(
+    runner, monkeypatch, tmp_path: Path, sample_preql: Path
+):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        ["run", "--import", "flight.preql:flight", "select flight.id;", "duckdb"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_run_inline_appends_missing_terminator(
+    runner, monkeypatch, tmp_path: Path, sample_preql: Path
+):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        ["run", "--import", "flight.preql:flight", "select flight.id", "duckdb"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output

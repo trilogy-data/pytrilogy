@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 """Post-run analysis for the tpcds_agent eval.
 
-Reads a run's report.json + agent_log.jsonl and renders a dashboard PNG for
-tracking harness and prompt improvements over time. The PNG is written under
-charts/ and is meant to be committed.
+Reads a run's report.json + agent_log.jsonl and writes two artifacts under
+charts/ (meant to be committed) for tracking harness and prompt improvements
+over time:
+
+  - dashboard.png        — tool calls, per-query attempts, outcomes, metrics
+  - trilogy_failures.md  — every failed `trilogy` call, bucketed by category
 
     python evals/tpcds_agent/analyze_run.py [run_dir] [--out PATH]
 """
@@ -83,6 +86,122 @@ def query_run_attempts(events: list[dict]) -> Counter[int]:
                         attempts[int(m.group(1))] += 1
                         break
     return attempts
+
+
+# Ordered most-specific first: the first matching rule wins.
+FAILURE_RULES: list[tuple[str, list[str]]] = [
+    # CLI-level — the agent invoked the `trilogy` command itself wrongly.
+    (
+        "cli-misuse",
+        [
+            "looks like a flag",
+            "try 'python -m",
+            "usage: python -m",
+            "no such option",
+            "unexpected extra argument",
+            "invalid value for",
+        ],
+    ),
+    ("file-not-found", ["does not exist"]),
+    # Semantic — the query parsed but could not be resolved or typed.
+    ("enum-value", ["not a valid member of enum"]),
+    ("undefined-concept", ["is undefined", "undefinedconcept"]),
+    (
+        "join-resolution",
+        ["could not resolve connections", "no datasource", "unresolvable"],
+    ),
+    ("type-error", ["invalid argument type", "not compatible", "incompatible type"]),
+    # Syntax — the query failed to parse.
+    ("syntax-missing-alias", ["missing alias", "alias must be specified"]),
+    (
+        "syntax-parse",
+        ["syntax [", "expected eoi", "parsing error", "-->", "unexpected token"],
+    ),
+]
+
+
+def categorize_failure(result: str) -> str:
+    low = " ".join(result.split()).lower()
+    for category, needles in FAILURE_RULES:
+        if any(n in low for n in needles):
+            return category
+    return "other"
+
+
+def _error_snippet(result: str, limit: int = 220) -> str:
+    """The meaningful error text from a `trilogy` tool result."""
+    flat = " ".join(result.split())
+    for marker in ("Unexpected error:", "Error:"):
+        if marker in flat:
+            flat = flat.split(marker, 1)[1].strip()
+            break
+    return flat[:limit] + ("…" if len(flat) > limit else "")
+
+
+def collect_failures(events: list[dict]) -> list[dict]:
+    """Failed `trilogy` calls, each tagged with a category and error snippet."""
+    failures: list[dict] = []
+    pending: list | None = None
+    for e in events:
+        if e.get("type") == "tool_call" and e.get("name") == "trilogy":
+            pending = (e.get("arguments") or {}).get("args") or []
+        elif e.get("type") == "tool_result" and e.get("name") == "trilogy":
+            if pending is not None:
+                result = str(e.get("result") or "")
+                head = result.splitlines()[0].strip() if result.strip() else ""
+                if head != "exit_code: 0":
+                    failures.append(
+                        {
+                            "args": [str(a) for a in pending],
+                            "category": categorize_failure(result),
+                            "error": _error_snippet(result),
+                        }
+                    )
+                pending = None
+    return failures
+
+
+def write_failures_report(
+    run_dir: Path, report: dict, failures: list[dict], out_path: Path
+) -> Path:
+    meta = report["meta"]
+    trilogy_calls = report["agent"]["tool_calls_by_name"].get("trilogy", 0)
+    by_cat = Counter(f["category"] for f in failures)
+    n = len(failures)
+
+    rate = f" ({n / trilogy_calls * 100:.0f}%)" if trilogy_calls else ""
+    lines = [
+        f"# Trilogy failure analysis — {meta['timestamp']}",
+        "",
+        f"- Run `{run_dir.name}` | `{meta['provider']}/{meta['model']}` "
+        f"| sf={meta['scale_factor']:g}",
+        f"- `trilogy` calls: {trilogy_calls} | failed: {n}{rate}",
+        "",
+        "## Categories",
+        "",
+        "| Category | Count | Share |",
+        "|---|---:|---:|",
+    ]
+    for cat, count in by_cat.most_common():
+        share = f"{count / n * 100:.0f}%" if n else "—"
+        lines.append(f"| `{cat}` | {count} | {share} |")
+
+    lines += ["", "## Detail", ""]
+    for cat, _ in by_cat.most_common():
+        lines.append(f"### `{cat}`")
+        lines.append("")
+        for f in failures:
+            if f["category"] == cat:
+                args = " ".join(f["args"])
+                args = args if len(args) <= 120 else args[:117] + "…"
+                lines.append(f"- `trilogy {args}`")
+                lines.append(f"  - {f['error']}")
+        lines.append("")
+    if not failures:
+        lines += ["_No `trilogy` calls failed in this run._", ""]
+
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    return out_path
 
 
 def _plot_tool_calls(ax, outcomes: dict[str, list[int]]) -> None:
@@ -216,7 +335,12 @@ def main() -> int:
     run_dir = args.run_dir or latest_run_dir()
     report, events = load_run(run_dir)
     out = render(report, events, args.out)
+    failures = collect_failures(events)
+    md = write_failures_report(
+        run_dir, report, failures, args.out.parent / "trilogy_failures.md"
+    )
     print(f"Wrote {out}  (run: {run_dir.name})")
+    print(f"Wrote {md}  ({len(failures)} trilogy failures)")
     return 0
 
 
