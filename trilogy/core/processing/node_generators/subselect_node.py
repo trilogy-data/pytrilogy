@@ -8,8 +8,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
-    _preexisting_conditions_from_parents,
-    child_source_conditions,
     concepts_to_grain_concepts,
     gen_enrichment_node,
 )
@@ -19,7 +17,6 @@ from trilogy.core.processing.nodes import (
     SubselectNode,
 )
 from trilogy.core.processing.utility import create_log_lambda, padding
-from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_SUBSELECT_NODE]"
@@ -56,7 +53,6 @@ def gen_subselect_node(
     source_concepts,
     history: History,
     conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     parent_concepts = resolve_subselect_parent_concepts(concept, environment, depth)
     logger.info(
@@ -74,9 +70,6 @@ def gen_subselect_node(
             targets.append(environment.concepts[item])
 
     lineage: BuildSubselectItem = concept.lineage  # type: ignore
-    child_conditions, child_where_path = child_source_conditions(
-        concept, conditions, where_path
-    )
     # Cross-datasource: inner concepts resolved separately from outer
     if lineage.outer_arguments:
         inner_concepts = unique(list(lineage.inner_concept_arguments), "address")
@@ -90,8 +83,7 @@ def gen_subselect_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=child_conditions,
-            where_path=child_where_path,
+            conditions=conditions,
         )
         if not inner_node:
             logger.info(f"{padding(depth)}{LOGGER_PREFIX} inner concepts unresolvable")
@@ -104,8 +96,7 @@ def gen_subselect_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=child_conditions,
-            where_path=child_where_path,
+            conditions=conditions,
         )
         if not outer_node:
             logger.info(f"{padding(depth)}{LOGGER_PREFIX} outer concepts unresolvable")
@@ -120,8 +111,7 @@ def gen_subselect_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=child_conditions,
-            where_path=child_where_path,
+            conditions=conditions,
         )
         if not parent_node:
             logger.info(
@@ -138,10 +128,7 @@ def gen_subselect_node(
         environment=environment,
         parents=parents,
         depth=depth,
-        preexisting_conditions=_preexisting_conditions_from_parents(
-            parents,
-            conditions,
-        ),
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
     _subselect_node.rebuild_cache()
     _subselect_node.resolve()
@@ -185,6 +172,5 @@ def gen_subselect_node(
         source_concepts=source_concepts,
         log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
         history=history,
-        conditions=child_conditions,
-        where_path=child_where_path,
+        conditions=conditions,
     )

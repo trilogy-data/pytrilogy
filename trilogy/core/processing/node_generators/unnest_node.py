@@ -7,7 +7,6 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.node_generators.common import child_source_conditions
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -16,7 +15,6 @@ from trilogy.core.processing.nodes import (
     WhereSafetyNode,
 )
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.where_path import BuildWherePath
 
 LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 
@@ -30,7 +28,6 @@ def get_pseudonym_parents(
     depth,
     history,
     conditions,
-    where_path,
 ) -> List[StrategyNode]:
     for x in concept.pseudonyms:
         attempt = source_concepts(
@@ -40,7 +37,6 @@ def get_pseudonym_parents(
             depth=depth + 1,
             history=history,
             conditions=conditions,
-            where_path=where_path,
             accept_partial=True,
         )
         if not attempt:
@@ -58,16 +54,12 @@ def gen_unnest_node(
     depth: int,
     source_concepts,
     conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     arguments = []
     join_nodes: list[StrategyNode] = []
     depth_prefix = "\t" * depth
     if isinstance(concept.lineage, BuildFunction):
         arguments = concept.lineage.concept_arguments
-    child_conditions, child_where_path = child_source_conditions(
-        concept, conditions, where_path
-    )
     search_optional = local_optional
     if (not arguments) and (local_optional and concept.pseudonyms):
         logger.info(
@@ -81,8 +73,7 @@ def gen_unnest_node(
             g,
             depth,
             history,
-            child_conditions,
-            child_where_path,
+            conditions,
         )
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} unnest node for {concept} got join nodes {join_nodes}"
@@ -108,8 +99,7 @@ def gen_unnest_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=child_conditions,
-            where_path=child_where_path,
+            conditions=conditions,
         )
         if not parent:
             logger.info(
@@ -129,8 +119,7 @@ def gen_unnest_node(
                 g=g,
                 depth=depth + 1,
                 history=history,
-                conditions=child_conditions,
-                where_path=child_where_path,
+                conditions=conditions,
             )
             if not parent:
                 logger.info(

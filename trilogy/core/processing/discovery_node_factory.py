@@ -165,7 +165,6 @@ def _generate_window_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         depth=ctx.next_depth,
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -180,7 +179,6 @@ def _generate_filter_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         depth=ctx.next_depth,
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -195,7 +193,6 @@ def _generate_unnest_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         depth=ctx.next_depth,
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -210,7 +207,6 @@ def _generate_recursive_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         depth=ctx.next_depth,
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -225,7 +221,6 @@ def _generate_union_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         ctx.source_concepts,
         ctx.history,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -270,7 +265,6 @@ def _generate_rowset_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         ctx.source_concepts,
         ctx.history,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -285,7 +279,6 @@ def _generate_subselect_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         ctx.source_concepts,
         ctx.history,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -300,7 +293,6 @@ def _generate_multiselect_node(ctx: NodeGenerationContext) -> StrategyNode | Non
         ctx.source_concepts,
         ctx.history,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -315,7 +307,6 @@ def _generate_group_to_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         ctx.source_concepts,
         ctx.history,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -346,7 +337,6 @@ def _generate_constant_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
         accept_partial=ctx.accept_partial,
-        where_path=ctx.where_path,
     )
 
 
@@ -392,7 +382,6 @@ class RootNodeHandler:
                 source_concepts=self.ctx.source_concepts,
                 history=self.ctx.history,
                 search_conditions=self.ctx.conditions,
-                where_path=self.ctx.where_path,
                 accept_partial=accept_partial,
             )
 
@@ -456,7 +445,6 @@ class RootNodeHandler:
                 source_concepts=self.ctx.source_concepts,
                 history=self.ctx.history,
                 conditions=self.ctx.conditions,
-                where_path=self.ctx.where_path,
                 accept_partial=self.ctx.accept_partial,
             )
 

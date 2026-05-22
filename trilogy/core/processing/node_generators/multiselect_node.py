@@ -11,11 +11,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair
-from trilogy.core.processing.node_generators.common import child_source_conditions
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
-from trilogy.core.processing.where_path import BuildWherePath
 
 LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
@@ -95,7 +93,6 @@ def gen_multiselect_node(
     source_concepts,
     history: History,
     conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
 ) -> MergeNode | None:
     from trilogy.core.query_processor import get_query_node
 
@@ -212,9 +209,6 @@ def gen_multiselect_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} Missing required concepts {[x for x in local_optional if x.address not in [y.address for y in node.output_concepts]]}"
     )
-    child_conditions, child_where_path = child_source_conditions(
-        concept, conditions, where_path
-    )
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=additional_relevant + local_optional,
@@ -222,8 +216,7 @@ def gen_multiselect_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=child_conditions,
-        where_path=child_where_path,
+        conditions=conditions,
     )
     if not enrich_node:
         logger.info(

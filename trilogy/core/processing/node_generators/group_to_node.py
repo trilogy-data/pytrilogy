@@ -5,10 +5,6 @@ from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereCla
 from trilogy.core.models.build_environment import BuildEnvironment
 
 # C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\node_generators\group_to_node.py
-from trilogy.core.processing.node_generators.common import (
-    _preexisting_conditions_from_parents,
-    child_source_conditions,
-)
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
@@ -16,7 +12,6 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.where_path import BuildWherePath
 
 LOGGER_PREFIX = "[GEN_GROUP_TO_NODE]"
 
@@ -30,7 +25,6 @@ def gen_group_to_node(
     source_concepts,
     history: History | None = None,
     conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
     if not isinstance(concept.lineage, BuildFunction):
@@ -43,9 +37,6 @@ def gen_group_to_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
     )
-    child_conditions, child_where_path = child_source_conditions(
-        concept, conditions, where_path
-    )
     parents: List[StrategyNode] = [
         source_concepts(
             mandatory_list=parent_concepts,
@@ -53,8 +44,7 @@ def gen_group_to_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=child_conditions,
-            where_path=child_where_path,
+            conditions=conditions,
         )
     ]
     outputs = parent_concepts + [concept]
@@ -64,10 +54,7 @@ def gen_group_to_node(
         environment=environment,
         parents=parents,
         depth=depth,
-        preexisting_conditions=_preexisting_conditions_from_parents(
-            parents,
-            conditions,
-        ),
+        preexisting_conditions=conditions.conditional if conditions else None,
         hidden_concepts=set(
             [
                 x.address
@@ -102,8 +89,7 @@ def gen_group_to_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=child_conditions,
-        where_path=child_where_path,
+        conditions=conditions,
     )
     if not enrich_node:
         logger.info(
@@ -127,8 +113,5 @@ def gen_group_to_node(
         ],
         whole_grain=True,
         depth=depth,
-        preexisting_conditions=_preexisting_conditions_from_parents(
-            [group_node, enrich_node],
-            conditions,
-        ),
+        preexisting_conditions=conditions.conditional if conditions else None,
     )

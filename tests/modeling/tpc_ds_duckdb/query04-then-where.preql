@@ -1,0 +1,38 @@
+import unified_sales as sales;
+
+const first_year <- 2001;
+const second_year <- 2002;
+
+def channel_year_total(channel, year) -> sum(
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / 2
+    ? sales.sales_channel = channel and sales.date.year = year
+) by sales.customer.id;
+
+auto store_first_year <- @channel_year_total('STORE', first_year);
+auto store_second_year <- @channel_year_total('STORE', second_year);
+auto catalog_first_year <- @channel_year_total('CATALOG', first_year);
+auto catalog_second_year <- @channel_year_total('CATALOG', second_year);
+auto web_first_year <- @channel_year_total('WEB', first_year);
+auto web_second_year <- @channel_year_total('WEB', second_year);
+
+WHERE
+    sales.date.year in (first_year, second_year)
+THEN WHERE
+    store_first_year > 0
+    and catalog_first_year > 0
+    and web_first_year > 0
+    and (case when catalog_first_year > 0 then catalog_second_year / catalog_first_year else null end)
+        > (case when store_first_year > 0 then store_second_year / store_first_year else null end)
+    and (case when catalog_first_year > 0 then catalog_second_year / catalog_first_year else null end)
+        > (case when web_first_year > 0 then web_second_year / web_first_year else null end)
+SELECT
+    sales.customer.text_id as customer_id,
+    sales.customer.first_name as customer_first_name,
+    sales.customer.last_name as customer_last_name,
+    sales.customer.preferred_cust_flag as customer_preferred_cust_flag,
+ORDER BY
+    customer_id asc nulls first,
+    customer_first_name asc nulls first,
+    customer_last_name asc nulls first,
+    customer_preferred_cust_flag asc nulls first
+LIMIT 100;

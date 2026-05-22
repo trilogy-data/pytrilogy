@@ -14,8 +14,6 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.node_generators.common import (
-    _preexisting_conditions_from_parents,
-    child_source_conditions,
     resolve_filter_parent_concepts,
     resolve_function_parent_concepts,
 )
@@ -28,7 +26,6 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
@@ -433,7 +430,6 @@ def gen_filter_node(
     source_concepts,
     history: History | None = None,
     conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     if not isinstance(concept.lineage, FILTER_TYPES):
         raise SyntaxError('Filter node must have a filter type lineage"')
@@ -454,17 +450,13 @@ def gen_filter_node(
     grouped_pushdown = parent_plan.grouped_pushdown
     global_filter_is_local_filter = parent_plan.global_filter_is_local_filter
 
-    child_conditions, child_where_path = child_source_conditions(
-        concept, conditions, where_path
-    )
     row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
         environment=environment,
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=child_conditions,
-        where_path=child_where_path,
+        conditions=conditions,
     )
 
     core_parent_nodes: list[StrategyNode] = []
@@ -500,10 +492,7 @@ def gen_filter_node(
             environment=environment,
             parents=[row_parent],
             conditions=where.conditional,
-            preexisting_conditions=_preexisting_conditions_from_parents(
-                [row_parent],
-                conditions,
-            ),
+            preexisting_conditions=conditions.conditional if conditions else None,
             force_group=True,
         )
     if global_filter_is_local_filter:
@@ -568,10 +557,7 @@ def gen_filter_node(
             output_concepts=[concept] + same_filter_optional + row_output_concepts,
             environment=environment,
             parents=core_parent_nodes,
-            preexisting_conditions=_preexisting_conditions_from_parents(
-                core_parent_nodes,
-                conditions,
-            ),
+            preexisting_conditions=conditions.conditional if conditions else None,
         )
 
     if not local_optional or _concepts_cover_optional(
@@ -601,8 +587,7 @@ def gen_filter_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=child_conditions,
-        where_path=child_where_path,
+        conditions=conditions,
     )
     if not enrich_node:
         logger.error(
@@ -623,8 +608,5 @@ def gen_filter_node(
             filter_node,
             enrich_node,
         ],
-        preexisting_conditions=_preexisting_conditions_from_parents(
-            [filter_node, enrich_node],
-            conditions,
-        ),
+        preexisting_conditions=conditions.conditional if conditions else None,
     )

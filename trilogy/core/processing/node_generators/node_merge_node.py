@@ -28,7 +28,6 @@ from trilogy.core.processing.node_generators.common import (
 )
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
@@ -444,7 +443,6 @@ def subgraphs_to_merge_node(
     output_concepts: List[BuildConcept],
     search_conditions: BuildWhereClause | None = None,
     filter_conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
     enable_early_exit: bool = True,
 ):
 
@@ -466,7 +464,6 @@ def subgraphs_to_merge_node(
             if applicable_conditions
             else None
         )
-        subgraph_where_path = _where_path_for_subgraph(where_path, subgraph_addrs)
         parent: StrategyNode | None = source_concepts(
             mandatory_list=graph,
             environment=environment,
@@ -474,7 +471,6 @@ def subgraphs_to_merge_node(
             depth=depth + 1,
             history=history,
             conditions=subgraph_conditions,
-            where_path=subgraph_where_path,
         )
         if not parent:
             logger.info(
@@ -572,33 +568,6 @@ def _conditions_for_subgraph(
     return BuildWhereClause(conditional=cond)
 
 
-def _where_path_for_subgraph(
-    where_path: BuildWherePath | None,
-    subgraph_addrs: set[str],
-) -> BuildWherePath | None:
-    if where_path is None:
-        return None
-    applied = tuple(
-        clause
-        for clause in (
-            _conditions_for_subgraph(clause, subgraph_addrs)
-            for clause in where_path.applied
-        )
-        if clause is not None
-    )
-    pending = tuple(
-        clause
-        for clause in (
-            _conditions_for_subgraph(clause, subgraph_addrs)
-            for clause in where_path.pending
-        )
-        if clause is not None
-    )
-    if not applied and not pending:
-        return None
-    return BuildWherePath(applied=applied, pending=pending)
-
-
 def gen_merge_node(
     all_concepts: List[BuildConcept],
     g: ReferenceGraph,
@@ -609,7 +578,6 @@ def gen_merge_node(
     history: History | None = None,
     conditions: BuildConditional | None = None,
     search_conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
 ) -> Optional[MergeNode]:
 
     # we do not actually APPLY these conditions anywhere
@@ -673,7 +641,6 @@ def gen_merge_node(
             conditions=conditions,
             search_conditions=effective_search_conditions,
             filter_conditions=search_conditions,
-            where_path=where_path,
             output_concepts=all_concepts,
         )
     return None

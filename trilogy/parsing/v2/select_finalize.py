@@ -129,10 +129,9 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                         x.metadata.line_number if x.metadata else None,
                     )
         if replacements:
-            select.where_clauses = [
-                clause.with_reference_replacement(replacements)
-                for clause in select.where_clauses
-            ]
+            select.where_clause = select.where_clause.with_reference_replacement(
+                replacements
+            )
     all_in_output = set(select.output_components)
     locally_derived = select.locally_derived
     if select.where_clause:

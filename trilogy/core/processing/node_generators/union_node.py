@@ -3,13 +3,8 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
-from trilogy.core.processing.node_generators.common import (
-    _preexisting_conditions_from_parents,
-    child_source_conditions,
-)
 from trilogy.core.processing.nodes import History, StrategyNode, UnionNode
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.where_path import BuildWherePath
 
 LOGGER_PREFIX = "[GEN_UNION_NODE]"
 
@@ -62,15 +57,11 @@ def gen_union_node(
     source_concepts,
     history: History | None = None,
     conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     all_unions = [x for x in local_optional if is_union(x)] + [concept]
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} found unions {all_unions}")
     parent_nodes = []
     layers, resolved = build_layers(all_unions)
-    child_conditions, child_where_path = child_source_conditions(
-        concept, conditions, where_path
-    )
     for layer in layers:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} fetching layer {layer} with resolved {resolved}"
@@ -81,8 +72,7 @@ def gen_union_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=child_conditions,
-            where_path=child_where_path,
+            conditions=conditions,
         )
 
         parent.add_output_concepts(resolved)
@@ -98,8 +88,5 @@ def gen_union_node(
         output_concepts=resolved,
         environment=environment,
         parents=parent_nodes,
-        preexisting_conditions=_preexisting_conditions_from_parents(
-            parent_nodes,
-            conditions,
-        ),
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
