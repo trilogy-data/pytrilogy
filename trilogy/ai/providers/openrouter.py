@@ -82,7 +82,8 @@ class OpenRouterProvider(LLMProvider):
         try:
 
             def make_request():
-                with httpx.Client(timeout=30) as client:
+                timeout = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=10.0)
+                with httpx.Client(timeout=timeout) as client:
                     payload = {
                         "model": self.model,
                         "messages": messages,
