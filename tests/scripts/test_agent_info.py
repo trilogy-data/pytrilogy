@@ -24,6 +24,7 @@ def test_agent_info():
     assert "### trilogy unit" in result.output
     assert "### trilogy integration" in result.output
     assert "### trilogy fmt" in result.output
+    assert "### trilogy render" in result.output
     assert "### trilogy ingest" in result.output
     assert "### trilogy serve" in result.output
     assert "### trilogy agent" in result.output
@@ -39,6 +40,19 @@ def test_agent_info():
 
     # Check common workflows
     assert "## Common Workflows" in result.output
+
+
+def test_agent_info_report_subcommand():
+    """Test that `agent-info report` prints the report format reference."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "report"])
+
+    assert result.exit_code == 0
+    assert "# Trilogy Report Format" in result.output
+    assert ":::row" in result.output
+    assert "trilogy render" in result.output
+    # The general guide should not leak into the focused reference.
+    assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
 
 
 def test_cli_help_contains_agent_notice():

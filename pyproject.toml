@@ -41,6 +41,7 @@ ai = ["httpx"]
 cli = ["rich", "plotext"]
 serve = ["fastapi", "uvicorn"]
 analysis = ["altair", "vl-convert-python"]
+report = ["markdown", "altair", "vl-convert-python", "playwright"]
 
 
 [tool.setuptools.dynamic]
