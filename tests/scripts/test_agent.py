@@ -20,7 +20,6 @@ from trilogy.scripts.agent import (
     TodoItem,
     _build_provider,
     _dispatch,
-    _empty_write_note,
     _format_call,
     _maybe_flag_loop,
     _run_turn,
