@@ -607,30 +607,62 @@ class TestRichTypeDetection:
         )
 
     def test_email_detection(self):
-        assert detect_rich_type("email", DataType.STRING) == (
+        emails = ["a@x.com", "b@y.org"]
+        assert detect_rich_type("email", DataType.STRING, emails) == (
             "std.net",
             "email_address",
         )
-        assert detect_rich_type("email_address", DataType.STRING) == (
+        assert detect_rich_type("email_address", DataType.STRING, emails) == (
             "std.net",
             "email_address",
         )
-        assert detect_rich_type("user_email", DataType.STRING) == (
+        assert detect_rich_type("user_email", DataType.STRING, emails) == (
             "std.net",
             "email_address",
         )
 
     def test_url_detection(self):
-        assert detect_rich_type("url", DataType.STRING) == ("std.net", "url")
-        assert detect_rich_type("website", DataType.STRING) == ("std.net", "url")
+        urls = ["https://example.com", "http://x.org/p"]
+        assert detect_rich_type("url", DataType.STRING, urls) == ("std.net", "url")
+        assert detect_rich_type("website", DataType.STRING, urls) == ("std.net", "url")
 
     def test_ip_detection(self):
-        assert detect_rich_type("ip", DataType.STRING) == ("std.net", "ipv4_address")
-        assert detect_rich_type("ipv4", DataType.STRING) == ("std.net", "ipv4_address")
-        assert detect_rich_type("ip_address", DataType.STRING) == (
+        ips = ["10.0.0.1", "192.168.1.255"]
+        assert detect_rich_type("ip", DataType.STRING, ips) == (
             "std.net",
             "ipv4_address",
         )
+        assert detect_rich_type("ipv4", DataType.STRING, ips) == (
+            "std.net",
+            "ipv4_address",
+        )
+        assert detect_rich_type("ip_address", DataType.STRING, ips) == (
+            "std.net",
+            "ipv4_address",
+        )
+
+    def test_value_gate_rejects_name_only_match(self):
+        # Named like a rich type, but the values aren't — the gate rejects it.
+        assert detect_rich_type("channel_email", DataType.STRING, ["N", "Y"]) == (
+            None,
+            None,
+        )
+        assert detect_rich_type("ip_address", DataType.STRING, ["unknown"]) == (
+            None,
+            None,
+        )
+        # A value-gated type also needs values to confirm against.
+        assert detect_rich_type("email", DataType.STRING) == (None, None)
+        assert detect_rich_type("email", DataType.STRING, []) == (None, None)
+
+    def test_value_gate_does_not_affect_ungated_types(self):
+        # Geography types have no value gate — name-based detection still works
+        # with no sample values supplied.
+        assert detect_rich_type("latitude", DataType.FLOAT) == (
+            "std.geography",
+            "latitude",
+        )
+        assert detect_rich_type("city", DataType.STRING) == ("std.geography", "city")
 
     def test_wrong_datatype(self):
         # Latitude should be FLOAT, not STRING
@@ -1070,7 +1102,7 @@ class TestProcessColumn:
         """Test rich type detection for email."""
         col = ("user_email", "VARCHAR(255)", "YES", None)
         grain_components = []
-        sample_rows = []
+        sample_rows = [("a@x.com",), ("b@y.org",)]
         concept_mapping = _make_concept_mapping(["user_email"])
 
         concept, column_assignment, rich_import = _process_column(
@@ -1159,11 +1191,11 @@ class TestProcessColumn:
         assert rich_import is None
 
     def test_enum_combined_with_rich_type(self):
-        """A column that is both enum-constrained and a rich type gets a trait
-        wrapping the enum, and still reports the trait's import."""
+        """A column that is both enum-constrained and a rich type whose values
+        confirm it gets a trait wrapping the enum, plus the trait's import."""
         col = ("user_email", "VARCHAR", "NO", None)
         concept_mapping = _make_concept_mapping(["user_email"])
-        enum = EnumType(type=DataType.STRING, values=["N", "Y"])
+        enum = EnumType(type=DataType.STRING, values=["a@x.com", "b@y.com"])
 
         concept, _, rich_import = _process_column(
             0, col, [], [], concept_mapping, _DIALECT, enum
@@ -1171,9 +1203,23 @@ class TestProcessColumn:
 
         assert isinstance(concept.datatype, TraitDataType)
         assert isinstance(concept.datatype.type, EnumType)
-        assert concept.datatype.type.values == ["N", "Y"]
+        assert concept.datatype.type.values == ["a@x.com", "b@y.com"]
         assert "email_address" in concept.datatype.traits
         assert rich_import == "std.net"
+
+    def test_enum_named_like_rich_type_but_values_dont_match(self):
+        """A Y/N flag named 'channel_email' is an enum only — the value gate
+        keeps it from being misclassified as an email address."""
+        col = ("channel_email", "VARCHAR", "NO", None)
+        concept_mapping = _make_concept_mapping(["channel_email"])
+        enum = EnumType(type=DataType.STRING, values=["N", "Y"])
+
+        concept, _, rich_import = _process_column(
+            0, col, [], [], concept_mapping, _DIALECT, enum
+        )
+
+        assert concept.datatype is enum
+        assert rich_import is None
 
 
 class TestFindCommonPrefix:
