@@ -22,6 +22,7 @@ fastapi
 uvicorn
 altair
 vl-convert-python
+markdown
 plotext
 # chdb has no Windows wheels (macOS + Linux only); skip on win32
 chdb; sys_platform != "win32"

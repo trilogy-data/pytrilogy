@@ -1,6 +1,6 @@
-"""Agent info command - outputs AGENTS.md-style usage guide for AI agents."""
+﻿"""Agent info command - outputs AGENTS.md-style usage guide for AI agents."""
 
-from click import pass_context
+import click
 
 from trilogy.ai.prompts import get_trilogy_prompt
 
@@ -176,6 +176,32 @@ Format a Trilogy script file.
 ```bash
 trilogy fmt messy_script.preql
 ```
+
+---
+
+### trilogy render <input> [options]
+
+Render a markdown *report* — prose mixed with embedded ```trilogy code blocks —
+to a polished PNG or HTML file. `select` statements become tables and `chart`
+statements become charts; setup blocks (declarations only) produce no output.
+
+**Arguments:**
+- `input` (required): Path to a markdown (`.md`) report file.
+
+**Options:**
+- `--to {png|html}`: Output format (default: `png`).
+- `--theme {inter|editorial}`: Visual theme — font and colors (default: `inter`).
+- `--out PATH`, `-o PATH`: Output path (default: input path with the format's extension).
+
+**Examples:**
+```bash
+trilogy render quarterly.md --to png
+trilogy render quarterly.md --to html --theme editorial
+```
+
+Run `trilogy agent-info report` for the full report markdown format reference.
+Requires the `report` extra (`pip install pytrilogy[report]`); PNG output also
+needs `playwright install chromium`.
 
 ---
 
@@ -667,6 +693,143 @@ trilogy --debug run query.preql duckdb
 """
 
 
+REPORT_FORMAT_DOC = """# Trilogy Report Format - AI Agent Reference
+
+## Overview
+
+A Trilogy *report* is a standard markdown file with embedded Trilogy. Author it
+as normal markdown, then run `trilogy render <file.md>` to produce a polished
+PNG or HTML artifact. Fenced ```trilogy code blocks are executed and replaced
+by their output:
+
+- a `select` statement -> a formatted table
+- a `chart` statement  -> a rendered chart
+- declarations only (key / property / datasource / import / ...) -> no output
+
+All other markdown (headings, prose, lists, links) renders normally. This lets
+an agent author one markdown file mixing narrative with live query results and
+hand back a finished report.
+
+## Rendering
+
+```bash
+trilogy render report.md                     # -> report.png (default)
+trilogy render report.md --to html           # -> report.html (interactive charts)
+trilogy render report.md --theme editorial   # font + color theme
+trilogy render report.md -o out/q3.png       # explicit output path
+```
+
+- `--to`: `png` (default) or `html`.
+- `--theme`: `inter` (default) or `editorial`.
+
+## Trilogy code blocks
+
+Tag a fenced block `trilogy` to have it executed:
+
+```trilogy
+select region, revenue order by revenue desc;
+```
+
+Every trilogy block in the document runs against ONE shared executor, in
+document order. Declarations in an earlier block are visible to later blocks, so
+a report typically opens with a setup block that defines the data model:
+
+```trilogy
+key region string;
+property region.revenue float;
+property region.units int;
+
+datasource sales (r: region, rev: revenue, u: units)
+  grain (region)
+  query '''
+  select 'North' as r, 120000.0 as rev, 340 as u
+  union all select 'South', 98000.0, 280
+  ''';
+```
+
+Later blocks query the model:
+
+```trilogy
+select region, revenue, units order by revenue desc;
+```
+
+A block may hold multiple statements; each result-producing statement renders
+in order. If a statement errors, the error is shown inline and the rest of the
+report still renders.
+
+## Charts
+
+A `chart` statement renders as a chart in place:
+
+```trilogy
+chart layer bar ( x_axis <- region, y_axis <- revenue );
+```
+
+Full chart-statement syntax (layers, encodings, placements) is in the main
+syntax reference — run `trilogy agent-info`.
+
+## Side-by-side layout
+
+By default each block spans the full content width. To place outputs in a row,
+wrap blocks in a `:::row` container (a pandoc-style fenced div). Open with
+`:::row` on its own line and close with `:::` on its own line; each block
+inside becomes one equal-width column, and charts are sized to fit:
+
+:::row
+```trilogy
+chart layer bar ( x_axis <- region, y_axis <- revenue );
+```
+```trilogy
+chart layer bar ( x_axis <- region, y_axis <- units );
+```
+:::
+
+## Complete example
+
+A full report file (`quarterly.md`), shown indented:
+
+    # Quarterly Sales
+
+    ```trilogy
+    key region string;
+    property region.revenue float;
+    datasource sales (r: region, rev: revenue)
+      grain (region)
+      query '''
+      select 'North' as r, 120000.0 as rev
+      union all select 'South', 98000.0
+      ''';
+    ```
+
+    ## Revenue by region
+
+    ```trilogy
+    select region, revenue order by revenue desc;
+    ```
+
+    ## Visualized
+
+    :::row
+    ```trilogy
+    chart layer bar ( x_axis <- region, y_axis <- revenue );
+    ```
+    ```trilogy
+    chart layer line ( x_axis <- region, y_axis <- revenue );
+    ```
+    :::
+
+Render: `trilogy render quarterly.md --to png`
+
+## Notes
+
+- Reports need the `report` extra: `pip install pytrilogy[report]`. PNG output
+  additionally needs a browser: `playwright install chromium`.
+- Reports execute on DuckDB. Make a report self-contained by declaring
+  datasources with inline `query '''...'''` blocks or `file` clauses.
+- Non-trilogy fenced blocks (python, sql, ...) are passed through unchanged.
+"""
+
+
 def get_agent_info_output() -> str:
     """Build the complete agent info output with CLI docs and syntax reference."""
     syntax_section = get_trilogy_prompt(
@@ -675,11 +838,19 @@ def get_agent_info_output() -> str:
     return AGENT_INFO_OUTPUT + "\n" + syntax_section
 
 
-@pass_context
-def agent_info(ctx):
+@click.group(invoke_without_command=True)
+@click.pass_context
+def agent_info(ctx: click.Context) -> None:
     """Output comprehensive CLI documentation for AI agents.
 
-    Prints an AGENTS.md-style guide with all commands, options,
-    and usage examples optimized for AI agent consumption.
+    With no subcommand, prints the full AGENTS.md-style guide. Subcommands
+    print focused references — e.g. `trilogy agent-info report`.
     """
-    print(get_agent_info_output())
+    if ctx.invoked_subcommand is None:
+        print(get_agent_info_output())
+
+
+@agent_info.command("report")
+def agent_info_report() -> None:
+    """Print the Trilogy markdown report format reference."""
+    print(REPORT_FORMAT_DOC)

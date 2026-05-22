@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 pytest.importorskip("altair")
@@ -49,7 +51,7 @@ def test_altair_chart_types(chart_type):
     assert chart is not None
 
 
-def test_altair_barh_encoding_swaps_axes():
+def test_altair_barh_uses_literal_axes():
     statement = _statement(
         ChartType.BARH,
         x_fields=["value"],
@@ -60,11 +62,26 @@ def test_altair_barh_encoding_swaps_axes():
     data = [[{"value": 10, "category": "a", "region": "n", "count": 3}]]
     chart = AltairRenderer().render(statement, data)
     spec = chart.to_dict()
-    # barh swaps: x_axis field goes to y, y_axis field goes to x
-    assert spec["encoding"]["x"]["field"] == "category"
-    assert spec["encoding"]["y"]["field"] == "value"
+    # barh maps axes literally: x_axis -> x, y_axis -> y (no swap)
+    assert spec["encoding"]["x"]["field"] == "value"
+    assert spec["encoding"]["y"]["field"] == "category"
     assert spec["encoding"]["color"]["field"] == "region"
     assert spec["encoding"]["size"]["field"] == "count"
+
+
+def test_altair_headline_renders_number_and_title():
+    statement = _statement(ChartType.HEADLINE, x_fields=["total_revenue"])
+    data = [[{"total_revenue": 437000.0}]]
+    spec = AltairRenderer().render(statement, data).to_dict()
+    assert "layer" in spec
+    assert all(layer["mark"]["type"] == "text" for layer in spec["layer"])
+    assert "TOTAL REVENUE" in json.dumps(spec)
+
+
+def test_altair_headline_requires_x_axis():
+    statement = _statement(ChartType.HEADLINE)
+    with pytest.raises(ValueError, match="headline"):
+        AltairRenderer().render(statement, [[]])
 
 
 def test_altair_size_field_encoded():

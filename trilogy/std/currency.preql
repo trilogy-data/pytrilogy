@@ -1,0 +1,67 @@
+# generic currency types
+
+# Major global currencies
+type usd numeric;  # US Dollar
+type eur numeric;  # Euro
+type gbp numeric;  # British Pound Sterling
+type jpy numeric;  # Japanese Yen
+type chf numeric;  # Swiss Franc
+type cad numeric;  # Canadian Dollar
+type aud numeric;  # Australian Dollar
+type nzd numeric;  # New Zealand Dollar
+
+# Asian currencies
+type cny numeric;  # Chinese Yuan
+type hkd numeric;  # Hong Kong Dollar
+type sgd numeric;  # Singapore Dollar
+type krw numeric;  # South Korean Won
+type inr numeric;  # Indian Rupee
+type thb numeric;  # Thai Baht
+type php numeric;  # Philippine Peso
+type myr numeric;  # Malaysian Ringgit
+type idr numeric;  # Indonesian Rupiah
+type vnd numeric;  # Vietnamese Dong
+
+# European currencies (non-Euro)
+type sek numeric;  # Swedish Krona
+type nok numeric;  # Norwegian Krone
+type dkk numeric;  # Danish Krone
+type pln numeric;  # Polish Zloty
+type czk numeric;  # Czech Koruna
+type huf numeric;  # Hungarian Forint
+type ron numeric;  # Romanian Leu
+type bgn numeric;  # Bulgarian Lev
+type rub numeric;  # Russian Ruble
+
+# Middle Eastern currencies
+type aed numeric;  # UAE Dirham
+type sar numeric;  # Saudi Riyal
+type qar numeric;  # Qatari Riyal
+type kwd numeric;  # Kuwaiti Dinar
+type bhd numeric;  # Bahraini Dinar
+type omr numeric;  # Omani Rial
+type jod numeric;  # Jordanian Dinar
+type ils numeric;  # Israeli Shekel
+type try numeric;  # Turkish Lira
+
+# African currencies
+type zar numeric;  # South African Rand
+type egp numeric;  # Egyptian Pound
+type ngn numeric;  # Nigerian Naira
+type mad numeric;  # Moroccan Dirham
+type kes numeric;  # Kenyan Shilling
+type ghs numeric;  # Ghanaian Cedi
+
+# Latin American currencies
+type mxn numeric;  # Mexican Peso
+type brl numeric;  # Brazilian Real
+type ars numeric;  # Argentine Peso
+type cop numeric;  # Colombian Peso
+type pen numeric;  # Peruvian Sol
+type clp numeric;  # Chilean Peso
+type uyu numeric;  # Uruguayan Peso
+
+# Other notable currencies
+type isk numeric;  # Icelandic Krona
+type xof numeric;  # West African CFA Franc
+type xaf numeric;  # Central African CFA Franc
