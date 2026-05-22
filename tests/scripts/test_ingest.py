@@ -3,9 +3,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from trilogy import Dialects
 from trilogy.authoring import DataType
 from trilogy.core.enums import Modifier, Purpose
-from trilogy.core.models.core import EnumType
+from trilogy.core.models.core import EnumType, TraitDataType
 from trilogy.dialect.base import BaseDialect
 from trilogy.scripts.ingest import (
     _check_column_combination_uniqueness,
@@ -20,7 +21,11 @@ from trilogy.scripts.ingest_helpers.formatting import (
     canonicolize_name,
     find_common_prefix,
 )
-from trilogy.scripts.ingest_helpers.typing import detect_enum_type
+from trilogy.scripts.ingest_helpers.typing import (
+    MAX_ENUM_VALUE_LENGTH,
+    _enum_from_values,
+    detect_enum_types,
+)
 from trilogy.scripts.trilogy import cli
 
 _DIALECT = BaseDialect()
@@ -810,53 +815,75 @@ class TestDetectUniqueKeyCombinations:
         assert result == []
 
 
-class TestDetectEnumType:
-    """Test enum detection from sampled column values."""
+class TestEnumFromValues:
+    """Test the enum decision logic over a column's distinct values."""
 
-    def test_constrained_string_column_is_enum(self):
-        rows = [("active",) if i % 2 else ("inactive",) for i in range(40)]
-        result = detect_enum_type(0, DataType.STRING, rows)
+    def test_constrained_string_values(self):
+        result = _enum_from_values(DataType.STRING, ["open", "closed"], 10)
         assert isinstance(result, EnumType)
         assert result.type == DataType.STRING
-        assert result.values == ["active", "inactive"]
+        assert result.values == ["closed", "open"]
 
-    def test_integer_column_is_enum(self):
-        rows = [(i % 3,) for i in range(40)]
-        result = detect_enum_type(0, DataType.INTEGER, rows)
+    def test_integer_values(self):
+        result = _enum_from_values(DataType.INTEGER, [2, 0, 1], 10)
         assert isinstance(result, EnumType)
         assert result.values == [0, 1, 2]
 
-    def test_high_cardinality_is_not_enum(self):
-        rows = [(f"v{i}",) for i in range(40)]
-        assert detect_enum_type(0, DataType.STRING, rows) is None
+    def test_too_many_values(self):
+        vals = [f"v{i}" for i in range(11)]
+        assert _enum_from_values(DataType.STRING, vals, 10) is None
 
-    def test_sample_not_larger_than_cutoff_is_not_enum(self):
-        # A tiny table must not have every column promoted to an enum.
-        rows = [("a",), ("b",), ("a",)]
-        assert detect_enum_type(0, DataType.STRING, rows) is None
+    def test_empty_values(self):
+        assert _enum_from_values(DataType.STRING, [], 10) is None
 
-    def test_ineligible_base_type_is_not_enum(self):
-        rows = [(1.0,) if i % 2 else (2.0,) for i in range(40)]
-        assert detect_enum_type(0, DataType.FLOAT, rows) is None
+    def test_ineligible_base_type(self):
+        assert _enum_from_values(DataType.FLOAT, [1.0, 2.0], 10) is None
 
-    def test_nulls_excluded_from_values(self):
-        rows = [
-            (None,) if i % 5 == 0 else (("a",) if i % 2 else ("b",)) for i in range(40)
-        ]
-        result = detect_enum_type(0, DataType.STRING, rows)
+    def test_long_text_value_rejected(self):
+        # A single long free-text value disqualifies the whole column.
+        vals = ["short", "x" * (MAX_ENUM_VALUE_LENGTH + 1)]
+        assert _enum_from_values(DataType.STRING, vals, 10) is None
+
+    def test_single_value_allowed(self):
+        result = _enum_from_values(DataType.STRING, ["only"], 10)
         assert isinstance(result, EnumType)
-        assert result.values == ["a", "b"]
+        assert result.values == ["only"]
 
-    def test_all_null_column_is_not_enum(self):
-        rows = [(None,) for _ in range(40)]
-        assert detect_enum_type(0, DataType.STRING, rows) is None
+    def test_values_sorted_consistently(self):
+        result = _enum_from_values(DataType.STRING, ["c", "a", "b"], 10)
+        assert result is not None
+        assert result.values == ["a", "b", "c"]
 
     def test_custom_cutoff(self):
-        rows = [(i % 5,) for i in range(40)]
-        assert detect_enum_type(0, DataType.INTEGER, rows, max_distinct=3) is None
-        assert isinstance(
-            detect_enum_type(0, DataType.INTEGER, rows, max_distinct=5), EnumType
+        vals = [str(i) for i in range(5)]
+        assert _enum_from_values(DataType.STRING, vals, 3) is None
+        assert isinstance(_enum_from_values(DataType.STRING, vals, 5), EnumType)
+
+
+class TestDetectEnumTypes:
+    """Test SQL-based enum detection over a live source."""
+
+    def test_detects_over_full_table(self):
+        exc = Dialects.DUCK_DB.default_executor()
+        exc.execute_raw_sql(
+            "CREATE TABLE t AS SELECT i AS id, "
+            "['open', 'closed'][i % 2 + 1] AS status FROM range(200) tbl(i)"
         )
+        result = detect_enum_types(
+            exc, "t", [("id", DataType.INTEGER), ("status", DataType.STRING)]
+        )
+        assert set(result) == {"status"}
+        assert result["status"].values == ["closed", "open"]
+
+    def test_full_table_distinct_not_head_sample(self):
+        # Leading rows are uniform but the column is high-cardinality overall;
+        # a head-sample heuristic would wrongly promote it to an enum.
+        exc = Dialects.DUCK_DB.default_executor()
+        exc.execute_raw_sql(
+            "CREATE TABLE t AS SELECT "
+            "CASE WHEN i < 150 THEN 0 ELSE i END AS v FROM range(300) tbl(i)"
+        )
+        assert detect_enum_types(exc, "t", [("v", DataType.INTEGER)]) == {}
 
 
 class TestDetectNullabilityFromSample:
@@ -1118,35 +1145,35 @@ class TestProcessColumn:
         assert Modifier.NULLABLE in concept.modifiers
         assert concept.metadata.description is None
 
-    def test_enum_type_detection(self):
-        """A low-cardinality column is promoted to an enum datatype."""
+    def test_enum_type_applied(self):
+        """A precomputed enum is applied as the column datatype."""
         col = ("status", "VARCHAR", "NO", None)
-        grain_components = []
-        sample_rows = [("open",) if i % 2 else ("closed",) for i in range(40)]
         concept_mapping = _make_concept_mapping(["status"])
+        enum = EnumType(type=DataType.STRING, values=["closed", "open"])
 
-        concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+        concept, _, rich_import = _process_column(
+            0, col, [], [], concept_mapping, _DIALECT, enum
         )
 
-        assert isinstance(concept.datatype, EnumType)
-        assert concept.datatype.type == DataType.STRING
-        assert concept.datatype.values == ["closed", "open"]
+        assert concept.datatype is enum
         assert rich_import is None
 
-    def test_rich_type_takes_precedence_over_enum(self):
-        """Rich-type detection wins even when values look enum-constrained."""
+    def test_enum_combined_with_rich_type(self):
+        """A column that is both enum-constrained and a rich type gets a trait
+        wrapping the enum, and still reports the trait's import."""
         col = ("user_email", "VARCHAR", "NO", None)
-        grain_components = []
-        sample_rows = [(f"user{i % 4}@test.com",) for i in range(40)]
         concept_mapping = _make_concept_mapping(["user_email"])
+        enum = EnumType(type=DataType.STRING, values=["N", "Y"])
 
-        concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+        concept, _, rich_import = _process_column(
+            0, col, [], [], concept_mapping, _DIALECT, enum
         )
 
+        assert isinstance(concept.datatype, TraitDataType)
+        assert isinstance(concept.datatype.type, EnumType)
+        assert concept.datatype.type.values == ["N", "Y"]
+        assert "email_address" in concept.datatype.traits
         assert rich_import == "std.net"
-        assert hasattr(concept.datatype, "traits")
 
 
 class TestFindCommonPrefix:
@@ -1735,12 +1762,10 @@ def test_ingest_local_csv_file():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         csv_path = tmppath / "orders.csv"
-        csv_path.write_text(
-            "order_id,customer_email,total\n"
-            "1,alice@test.com,99.50\n"
-            "2,bob@test.com,42.00\n"
-            "3,carol@test.com,17.25\n"
-        )
+        # Distinct, high-cardinality emails so the column stays a rich type
+        # rather than being promoted to an enum.
+        rows = "\n".join(f"{i},user{i}@test.com,{i * 10}.50" for i in range(1, 16))
+        csv_path.write_text(f"order_id,customer_email,total\n{rows}\n")
         out_dir = tmppath / "raw"
 
         runner = CliRunner()
@@ -1958,6 +1983,41 @@ def test_ingest_csv_detects_enum_and_round_trips():
         concept = env.concepts["local.status"]
         assert isinstance(concept.datatype, EnumType)
         assert set(concept.datatype.values) == {"open", "closed", "pending"}
+
+
+def test_ingest_csv_enum_with_rich_trait_round_trips():
+    """A column that is both enum-constrained and a rich type renders as
+    enum<...>[...]::trait and reparses into a TraitDataType wrapping the enum."""
+    import tempfile
+
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "contacts.csv"
+        # `email` matches the email rich type; only 2 distinct values -> also enum.
+        lines = ["id,email"] + [
+            f"{i},{'a@x.com' if i % 2 else 'b@x.com'}" for i in range(30)
+        ]
+        csv_path.write_text("\n".join(lines) + "\n")
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["ingest", str(csv_path), "--output", str(out_dir)])
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        content = (out_dir / "contacts.preql").read_text()
+        assert "enum<string>[" in content
+        assert "::email_address" in content
+
+        env, _ = parse_text(content)
+        datatype = env.concepts["local.email"].datatype
+        assert isinstance(datatype, TraitDataType)
+        assert isinstance(datatype.type, EnumType)
+        assert datatype.type.values == ["a@x.com", "b@x.com"]
+        assert "email_address" in datatype.traits
 
 
 def test_parse_foreign_keys():

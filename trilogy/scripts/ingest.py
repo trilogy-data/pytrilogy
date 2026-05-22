@@ -45,7 +45,7 @@ from trilogy.scripts.ingest_helpers.formatting import (
     canonicolize_name,
 )
 from trilogy.scripts.ingest_helpers.typing import (
-    detect_enum_type,
+    detect_enum_types,
     detect_rich_type,
 )
 
@@ -187,6 +187,12 @@ def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) 
     return False
 
 
+def _base_datatype(dialect: BaseDialect, sql_type: str) -> DataType:
+    """Resolve a DB type string to a Trilogy DataType, defaulting unknowns to STRING."""
+    resolved = dialect.normalize_db_type(sql_type)
+    return DataType.STRING if resolved == DataType.UNKNOWN else resolved
+
+
 def _process_column(
     idx: int,
     col: tuple[str, str, str | None, str | None],
@@ -194,6 +200,7 @@ def _process_column(
     sample_rows: list[tuple],
     concept_mapping: dict[str, str],
     dialect: BaseDialect,
+    enum_type: EnumType | None = None,
 ) -> tuple[Concept, ColumnAssignment, str | None]:
 
     column_name = col[0]
@@ -203,27 +210,33 @@ def _process_column(
     # Apply prefix stripping if mapping provided
     concept_name = concept_mapping[column_name]
 
-    # Infer Trilogy datatype via the dialect's type map — the same mapping the
-    # datasource validation schema-drift check uses (see dialect.normalize_db_type).
-    trilogy_type = dialect.normalize_db_type(data_type_str)
-    if trilogy_type == DataType.UNKNOWN:
-        trilogy_type = DataType.STRING
+    # Infer the base Trilogy datatype via the dialect's type map — the same
+    # mapping datasource validation's schema-drift check uses (normalize_db_type).
+    trilogy_type = _base_datatype(dialect, data_type_str)
 
-    # Try to detect a rich type; otherwise fall back to enum detection from the
-    # sample data when the column holds a small, constrained set of values.
-    trait_import, trait_type_name = detect_rich_type(concept_name, trilogy_type)
+    # A column can be both an enum (a constrained domain, detected from the
+    # source's true distinct values) and a rich type (a name-based trait). When
+    # both apply, the trait wraps the enum — e.g. enum<string>['x@y.com']::email_address.
+    # Rich types are validated against the column's actual values so a column
+    # merely named like one (a Y/N "channel_email" flag) isn't misclassified;
+    # an enum already carries its full distinct value set.
+    if enum_type is not None:
+        rich_values: list = list(enum_type.values)
+    else:
+        rich_values = list({row[idx] for row in sample_rows if row[idx] is not None})
+    trait_import, trait_type_name = detect_rich_type(
+        concept_name, trilogy_type, rich_values
+    )
+    base: DataType | EnumType = trilogy_type if enum_type is None else enum_type
     final_datatype: TraitDataType | DataType | EnumType
     if trait_import and trait_type_name:
-        final_datatype = TraitDataType(type=trilogy_type, traits=[trait_type_name])
+        final_datatype = TraitDataType(type=base, traits=[trait_type_name])
         print_info(f"Detected rich type for '{concept_name}': {trait_type_name}")
     else:
         trait_import = None
-        enum_type = detect_enum_type(idx, trilogy_type, sample_rows)
-        if enum_type is not None:
-            final_datatype = enum_type
-            print_info(f"Detected enum type for '{concept_name}': {enum_type}")
-        else:
-            final_datatype = trilogy_type
+        final_datatype = base
+    if enum_type is not None:
+        print_info(f"Detected enum type for '{concept_name}': {enum_type}")
 
     # Determine purpose based on grain
     if concept_name in grain_components or not grain_components:
@@ -336,6 +349,12 @@ def create_datasource_from_file(
         print_info("No primary key or unique grain detected; defaulting to no grain")
     grain_components = [column_concept_mapping.get(k, k) for k in keys]
 
+    enum_map = detect_enum_types(
+        exec,
+        source_expr,
+        [(c[0], _base_datatype(exec.generator, c[1])) for c in columns],
+    )
+
     required_imports: set[str] = set()
     column_assignments = []
     concepts: list[Concept] = []
@@ -347,6 +366,7 @@ def create_datasource_from_file(
             sample_rows,
             column_concept_mapping,
             exec.generator,
+            enum_map.get(col[0]),
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)
@@ -426,6 +446,12 @@ def create_datasource_from_table(
         stripped = column_concept_mapping.get(key, key)
         grain_components.append(stripped)
 
+    enum_map = detect_enum_types(
+        exec,
+        dialect.safe_quote(qualified_name),
+        [(c[0], _base_datatype(dialect, c[1])) for c in columns],
+    )
+
     # Track required imports for rich types
     required_imports: set[str] = set()
 
@@ -440,6 +466,7 @@ def create_datasource_from_table(
             sample_rows,
             column_concept_mapping,
             exec.generator,
+            enum_map.get(col[0]),
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)
