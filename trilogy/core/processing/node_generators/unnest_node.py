@@ -4,9 +4,9 @@ from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
     BuildFunction,
-    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import (
     History,
     MergeNode,
@@ -27,7 +27,7 @@ def get_pseudonym_parents(
     g,
     depth,
     history,
-    conditions,
+    conditions: BuildConditionContext | None,
 ) -> List[StrategyNode]:
     for x in concept.pseudonyms:
         attempt = source_concepts(
@@ -53,7 +53,7 @@ def gen_unnest_node(
     g,
     depth: int,
     source_concepts,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     arguments = []
     join_nodes: list[StrategyNode] = []
@@ -99,7 +99,7 @@ def gen_unnest_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=conditions,
+            conditions=conditions.for_child(concept) if conditions else None,
         )
         if not parent:
             logger.info(
@@ -114,12 +114,12 @@ def gen_unnest_node(
             local_conditions = True
         else:
             parent = source_concepts(
-                mandatory_list=conditions.conditional.row_arguments,
+                mandatory_list=list(conditions.row_arguments),
                 environment=environment,
                 g=g,
                 depth=depth + 1,
                 history=history,
-                conditions=conditions,
+                conditions=conditions.for_child(concept) if conditions else None,
             )
             if not parent:
                 logger.info(
@@ -139,7 +139,8 @@ def gen_unnest_node(
         parents=([parent] if parent else []),
     )
 
-    conditional = conditions.conditional if conditions else None
+    active_conditions = conditions.active_where if conditions else None
+    conditional = active_conditions.conditional if active_conditions else None
     if join_nodes:
         logger.info(
             f"{depth_prefix}{LOGGER_PREFIX} unnest node for {concept} needs to merge with join nodes {join_nodes}"

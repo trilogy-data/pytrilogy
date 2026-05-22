@@ -1,8 +1,9 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 
 # C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\node_generators\group_to_node.py
 from trilogy.core.processing.nodes import (
@@ -24,7 +25,7 @@ def gen_group_to_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
     if not isinstance(concept.lineage, BuildFunction):
@@ -44,7 +45,7 @@ def gen_group_to_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=conditions,
+            conditions=conditions.for_child(concept) if conditions else None,
         )
     ]
     outputs = parent_concepts + [concept]
@@ -54,7 +55,11 @@ def gen_group_to_node(
         environment=environment,
         parents=parents,
         depth=depth,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            conditions.active_where.conditional
+            if conditions and conditions.active_where
+            else None
+        ),
         hidden_concepts=set(
             [
                 x.address
@@ -89,7 +94,7 @@ def gen_group_to_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        conditions=conditions.for_child(concept) if conditions else None,
     )
     if not enrich_node:
         logger.info(
@@ -113,5 +118,9 @@ def gen_group_to_node(
         ],
         whole_grain=True,
         depth=depth,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            conditions.active_where.conditional
+            if conditions and conditions.active_where
+            else None
+        ),
     )

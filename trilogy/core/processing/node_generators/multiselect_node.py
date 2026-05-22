@@ -7,10 +7,10 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
     BuildMultiSelectLineage,
-    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -92,7 +92,7 @@ def gen_multiselect_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> MergeNode | None:
     from trilogy.core.query_processor import get_query_node
 
@@ -216,7 +216,7 @@ def gen_multiselect_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        conditions=conditions.for_child(concept) if conditions else None,
     )
     if not enrich_node:
         logger.info(

@@ -26,6 +26,7 @@ from trilogy.core.processing.condition_utility import (
     condition_required_addresses,
     decompose_condition,
 )
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,
@@ -51,15 +52,20 @@ def _node_has_preexisting_conditions(
 
 def _preexisting_conditions_from_parents(
     parents: list[StrategyNode],
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | BuildWhereClause | None,
 ) -> BoolExpr | None:
-    if conditions is None or not parents:
+    active_conditions = (
+        conditions.active_where
+        if isinstance(conditions, BuildConditionContext)
+        else conditions
+    )
+    if active_conditions is None or not parents:
         return None
     if all(
-        _node_has_preexisting_conditions(parent, conditions.conditional)
+        _node_has_preexisting_conditions(parent, active_conditions.conditional)
         for parent in parents
     ):
-        return conditions.conditional
+        return active_conditions.conditional
     return None
 
 
@@ -326,11 +332,14 @@ def gen_property_enrichment_node(
     depth: int,
     source_concepts,
     log_lambda: Callable,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     roots = _base_lookup_keys(base_node)
     if not roots or not extra_properties:
         return None
+    enrichment_conditions = (
+        conditions.for_children(list(base_node.usable_outputs)) if conditions else None
+    )
     closure = _lookup_closure(roots, environment)
     lookup_groups = _property_lookup_groups(extra_properties, closure)
     if not lookup_groups:
@@ -343,8 +352,11 @@ def gen_property_enrichment_node(
         log_lambda(
             f"Generating property enrichment node for {root_key} with {sorted(properties)}"
         )
+        active_conditions = (
+            enrichment_conditions.active_where if enrichment_conditions else None
+        )
         local_conditions, _ = _local_property_conditions(
-            conditions,
+            active_conditions,
             required,
             _condition_key_addresses(required),
         )
@@ -369,7 +381,9 @@ def gen_property_enrichment_node(
             base_node,
         ]
         + final_nodes,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=_preexisting_conditions_from_parents(
+            [base_node, *final_nodes], conditions
+        ),
     )
 
 
@@ -396,7 +410,7 @@ def gen_enrichment_node(
     source_concepts,
     log_lambda,
     history: History,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ):
     local_opts = LooseBuildConceptList(concepts=local_optional)
 
@@ -423,6 +437,9 @@ def gen_enrichment_node(
                 f"{str(type(base_node).__name__)} returning property enrichment node"
             )
             return property_node
+    enrichment_conditions = (
+        conditions.for_children(list(base_node.usable_outputs)) if conditions else None
+    )
     log_lambda(
         f"{str(type(base_node).__name__)} searching for join keys {LooseBuildConceptList(concepts=join_keys)} and extra required {local_opts}"
     )
@@ -433,7 +450,7 @@ def gen_enrichment_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        conditions=enrichment_conditions,
     )
     if not enrich_node:
         log_lambda(
@@ -454,7 +471,9 @@ def gen_enrichment_node(
         environment=environment,
         parents=[enrich_node, base_node],
         force_group=False,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=_preexisting_conditions_from_parents(
+            [enrich_node, base_node], conditions
+        ),
         depth=depth,
     )
 

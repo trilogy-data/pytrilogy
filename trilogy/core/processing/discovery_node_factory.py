@@ -6,9 +6,9 @@ from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext, ConditionInput
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     decompose_condition,
@@ -34,7 +34,7 @@ from trilogy.core.processing.nodes import (
     History,
     StrategyNode,
 )
-from trilogy.core.processing.where_path import BuildWherePath
+from trilogy.utility import unique
 
 
 class SearchConceptsType(Protocol):
@@ -46,8 +46,7 @@ class SearchConceptsType(Protocol):
         depth: int,
         g: ReferenceGraph,
         accept_partial: bool = False,
-        conditions: Optional[BuildWhereClause] = None,
-        where_path: Optional[BuildWherePath] = None,
+        conditions: ConditionInput = None,
     ) -> Union[StrategyNode, None]: ...
 
 
@@ -63,8 +62,7 @@ class NodeGenerationContext:
     source_concepts: SearchConceptsType
     history: History
     accept_partial: bool = False
-    conditions: Optional[BuildWhereClause] = None
-    where_path: Optional[BuildWherePath] = None
+    conditions: Optional[BuildConditionContext] = None
     required_concepts: List[BuildConcept] | None = None
 
     @property
@@ -118,14 +116,17 @@ def restrict_node_outputs_targets(
 
 
 def _condition_arguments_still_required(
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
     node: StrategyNode,
 ) -> set[str]:
     if not conditions:
         return set()
     applied = node.preexisting_conditions
     required: set[str] = set()
-    for atom in decompose_condition(conditions.conditional):
+    active = conditions.active_where
+    if active is None:
+        return set()
+    for atom in decompose_condition(active.conditional):
         if applied is not None and condition_implies(applied, atom):
             continue
         required.update(arg.address for arg in atom.row_arguments)
@@ -250,7 +251,6 @@ def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         depth=ctx.next_depth,
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -321,7 +321,6 @@ def _generate_basic_node(ctx: NodeGenerationContext) -> StrategyNode | None:
         depth=ctx.next_depth,
         source_concepts=ctx.source_concepts,
         conditions=ctx.conditions,
-        where_path=ctx.where_path,
     )
 
 
@@ -359,6 +358,9 @@ class RootNodeHandler:
         expanded_node = self._try_merge_expansion(root_targets)
         if expanded_node:
             return expanded_node
+        condition_input_node = self._try_condition_input_resolution(root_targets)
+        if condition_input_node:
+            return condition_input_node
         if self.ctx.accept_partial:
             synonym_node = self._try_synonym_resolution(root_targets)
             if synonym_node:
@@ -394,6 +396,38 @@ class RootNodeHandler:
             f"could not find additional concept(s) to inject"
         )
         return None
+
+    def _try_condition_input_resolution(
+        self, root_targets: List[BuildConcept]
+    ) -> Optional[StrategyNode]:
+        active_conditions = self.ctx.conditions.active_where if self.ctx.conditions else None
+        if active_conditions is None:
+            return None
+        condition_targets = unique(
+            root_targets + list(active_conditions.row_arguments),
+            "address",
+        )
+        if len(condition_targets) == len(root_targets):
+            return None
+        if self.ctx.history.check_started(
+            condition_targets,
+            accept_partial=self.ctx.accept_partial,
+            conditions=None,
+        ):
+            return None
+        resolved = self.ctx.source_concepts(
+            mandatory_list=condition_targets,
+            environment=self.ctx.environment,
+            g=self.ctx.g,
+            depth=self.ctx.next_depth,
+            history=self.ctx.history,
+            accept_partial=self.ctx.accept_partial,
+            conditions=None,
+        )
+        if not resolved:
+            return None
+        self._handle_expanded_node(resolved, root_targets)
+        return resolved
 
     def _handle_expanded_node(
         self, expanded: StrategyNode, root_targets: List[BuildConcept]
@@ -472,10 +506,10 @@ def generate_node(
     source_concepts: SearchConceptsType,
     history: History,
     accept_partial: bool,
-    conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
+    conditions: ConditionInput = None,
     required_concepts: List[BuildConcept] | None = None,
 ) -> StrategyNode | None:
+    condition_context = BuildConditionContext.normalize(conditions)
 
     context = NodeGenerationContext(
         concept=concept,
@@ -486,8 +520,7 @@ def generate_node(
         source_concepts=source_concepts,
         history=history,
         accept_partial=accept_partial,
-        conditions=conditions,
-        where_path=where_path,
+        conditions=condition_context,
         required_concepts=required_concepts,
     )
 
@@ -500,7 +533,7 @@ def generate_node(
         depth + 1,
         fail_if_not_found=False,
         accept_partial=accept_partial,
-        conditions=conditions,
+        conditions=condition_context.active_where if condition_context else None,
     )
 
     if candidate:

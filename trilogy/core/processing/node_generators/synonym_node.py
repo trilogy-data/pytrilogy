@@ -4,8 +4,9 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.core.processing.utility import padding
 
@@ -19,7 +20,7 @@ def gen_synonym_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
     accept_partial: bool = False,
 ) -> StrategyNode | None:
     local_prefix = f"{padding(depth)}[GEN_SYNONYM_NODE]"

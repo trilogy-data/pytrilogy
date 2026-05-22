@@ -176,6 +176,53 @@ order by
     assert results.fetchall() == [("A", 10, 20, 30)]
 
 
+def test_hierarchical_where_repeated_concepts_stay_ordered():
+    executor = Dialects.DUCK_DB.default_executor()
+    results = executor.execute_text("""
+key item string;
+key return_id int;
+property return_id.week int;
+property return_id.channel_name string;
+
+datasource returns(
+    item: item,
+    return_id: return_id,
+    week: week,
+    channel_name: channel_name
+)
+grain (return_id)
+query '''
+select 'A' as item, 1 as return_id, 1 as week, 'S' as channel_name
+union all select 'A', 2, 1, 'C'
+union all select 'B', 3, 1, 'S'
+union all select 'B', 4, 2, 'S'
+union all select 'C', 5, 1, 'C'
+union all select 'D', 6, 1, 'S'
+union all select 'D', 7, 1, 'S'
+''';
+
+def channel_present(ch) -> count(return_id ? channel_name = ch) by item;
+
+auto s_present <- @channel_present('S');
+
+where
+    week in (1, 2)
+then where
+    week = 1
+then where
+    s_present > 0
+then where
+    s_present < 2
+select
+    item,
+    --s_present
+order by
+    item asc;
+""")[-1]
+
+    assert results.fetchall() == [("A",), ("B",)]
+
+
 def test_select_where_or(test_environment):
     declarations = """
 

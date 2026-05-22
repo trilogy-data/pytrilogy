@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
     resolve_concepts_with_equivalents,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -429,17 +430,18 @@ def gen_filter_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     if not isinstance(concept.lineage, FILTER_TYPES):
         raise SyntaxError('Filter node must have a filter type lineage"')
     where = concept.lineage.where
+    active_conditions = conditions.active_where if conditions else None
 
     parent_plan = build_parent_concepts(
         concept,
         environment=environment,
         local_optional=local_optional,
-        conditions=conditions,
+        conditions=conditions.active_where if conditions else None,
         depth=depth,
     )
     parent_row_concepts = parent_plan.parent_row_concepts
@@ -456,7 +458,7 @@ def gen_filter_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        conditions=conditions.for_child(concept) if conditions else None,
     )
 
     core_parent_nodes: list[StrategyNode] = []
@@ -492,7 +494,11 @@ def gen_filter_node(
             environment=environment,
             parents=[row_parent],
             conditions=where.conditional,
-            preexisting_conditions=conditions.conditional if conditions else None,
+            preexisting_conditions=(
+                conditions.active_where.conditional
+                if conditions and conditions.active_where
+                else None
+            ),
             force_group=True,
         )
     if global_filter_is_local_filter:
@@ -540,6 +546,8 @@ def gen_filter_node(
             parent.add_condition(where.conditional)
             if prior_pre is not None:
                 parent.set_preexisting_conditions(prior_pre)
+            elif active_conditions is not None:
+                parent.set_preexisting_conditions(active_conditions.conditional)
         parent.add_existence_concepts(flattened_existence, False)
         # parent.grain = BuildGrain.from_concepts(
         #     parent.output_concepts,
@@ -557,7 +565,11 @@ def gen_filter_node(
             output_concepts=[concept] + same_filter_optional + row_output_concepts,
             environment=environment,
             parents=core_parent_nodes,
-            preexisting_conditions=conditions.conditional if conditions else None,
+            preexisting_conditions=(
+                conditions.active_where.conditional
+                if conditions and conditions.active_where
+                else None
+            ),
         )
 
     if not local_optional or _concepts_cover_optional(
@@ -587,7 +599,7 @@ def gen_filter_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        conditions=conditions.for_child(concept) if conditions else None,
     )
     if not enrich_node:
         logger.error(
@@ -608,5 +620,9 @@ def gen_filter_node(
             filter_node,
             enrich_node,
         ],
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            conditions.active_where.conditional
+            if conditions and conditions.active_where
+            else None
+        ),
     )

@@ -4,10 +4,10 @@ from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
-    BuildWhereClause,
     BuildWindowItem,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.node_generators.common import (
     concepts_to_grain_concepts,
     gen_enrichment_node,
@@ -68,7 +68,7 @@ def gen_window_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     parent_concepts = resolve_window_parent_concepts(concept, environment, depth)
     parent_addresses = {p.address for p in parent_concepts}
@@ -120,7 +120,7 @@ def gen_window_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        conditions=conditions.for_child(concept) if conditions else None,
     )
     if not parent_node:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
@@ -149,7 +149,11 @@ def gen_window_node(
             parent_node,
         ],
         depth=depth,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            conditions.active_where.conditional
+            if conditions and conditions.active_where
+            else None
+        ),
     )
     _window_node.rebuild_cache()
     _window_node.resolve()
@@ -159,7 +163,11 @@ def gen_window_node(
         output_concepts=output_targets,
         environment=environment,
         parents=[_window_node],
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            conditions.active_where.conditional
+            if conditions and conditions.active_where
+            else None
+        ),
         grain=BuildGrain.from_concepts(
             concepts=parent_concepts + output_targets,
             environment=environment,

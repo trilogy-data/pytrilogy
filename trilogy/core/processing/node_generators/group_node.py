@@ -17,6 +17,7 @@ from trilogy.core.models.build import (
     resolve_concepts_with_equivalents,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.node_generators.common import (
     _condition_available_from_parents,
     _preexisting_conditions_from_parents,
@@ -25,7 +26,6 @@ from trilogy.core.processing.node_generators.common import (
 )
 from trilogy.core.processing.nodes import GroupNode, History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import create_log_lambda, padding
-from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
@@ -325,8 +325,7 @@ def _source_parent_concepts(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None,
-    where_path: BuildWherePath | None,
+    conditions: BuildConditionContext | None,
 ) -> StrategyNode | None:
     return source_concepts(
         mandatory_list=mandatory_list,
@@ -335,23 +334,7 @@ def _source_parent_concepts(
         depth=depth,
         history=history,
         conditions=conditions,
-        where_path=where_path,
     )
-
-
-def _group_parent_conditions(
-    concept: BuildConcept,
-    conditions: BuildWhereClause | None,
-    where_path: BuildWherePath | None,
-) -> tuple[BuildWhereClause | None, BuildWherePath | None]:
-    if where_path is None or where_path.applied_condition is None:
-        return conditions, where_path
-    current = where_path.current_condition
-    if current is None:
-        return conditions, where_path
-    if concept.address in {arg.address for arg in current.row_arguments}:
-        return where_path.applied_condition, None
-    return conditions, where_path
 
 
 def _resolve_parent_sources(
@@ -365,8 +348,7 @@ def _resolve_parent_sources(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None,
-    where_path: BuildWherePath | None,
+    conditions: BuildConditionContext | None,
 ) -> ParentResolution | None:
     parent_concepts = unique(
         [x for x in parent_concepts if not x.name == ALL_ROWS_CONCEPT], "address"
@@ -376,7 +358,9 @@ def _resolve_parent_sources(
         local_optional, parent_input_concepts, output_concepts
     )
     can_try_wide_parent = _can_try_wide_parent(
-        remaining_optional, parent_input_concepts, conditions
+        remaining_optional,
+        parent_input_concepts,
+        conditions.active_where if conditions else None,
     )
     if remaining_optional and not can_try_wide_parent:
         narrow_reason = (
@@ -394,11 +378,7 @@ def _resolve_parent_sources(
         parent_input_concepts + (remaining_optional if can_try_wide_parent else []),
         "address",
     )
-    parent_conditions, parent_where_path = _group_parent_conditions(
-        concept=concept,
-        conditions=conditions,
-        where_path=where_path,
-    )
+    parent_conditions = conditions.for_child(concept) if conditions else None
     parent_source = _source_parent_concepts(
         mandatory_list=mandatory_parent_concepts,
         environment=environment,
@@ -407,7 +387,6 @@ def _resolve_parent_sources(
         source_concepts=source_concepts,
         history=history,
         conditions=parent_conditions,
-        where_path=parent_where_path,
     )
     if not parent_source:
         logger.info(
@@ -448,7 +427,6 @@ def _resolve_parent_sources(
                 source_concepts=source_concepts,
                 history=history,
                 conditions=parent_conditions,
-                where_path=parent_where_path,
             )
             if not parent_source:
                 logger.info(
@@ -475,7 +453,7 @@ def _resolve_parent_sources(
                 depth=depth,
                 conditions=_group_conditions_to_apply([parent_source], conditions),
                 preexisting_conditions=_preexisting_conditions_from_parents(
-                    [parent_source], conditions
+                    [parent_source], conditions.active_where if conditions else None
                 ),
             )
         else:
@@ -495,7 +473,9 @@ def _resolve_parent_sources(
         parent_source=parent_source,
         parent_output_addr=parent_output_addr,
         can_reuse_parent_for_enrichment=can_reuse_parent_for_enrichment,
-        preexisting_conditions=parent_conditions,
+        preexisting_conditions=(
+            parent_conditions.active_where if parent_conditions else None
+        ),
     )
 
 
@@ -513,14 +493,19 @@ def _empty_parent_resolution() -> ParentResolution:
 
 def _group_conditions_to_apply(
     parents: List[StrategyNode],
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | BuildWhereClause | None,
 ) -> BoolExpr | None:
-    if conditions is None:
+    active_conditions = (
+        conditions.active_where
+        if isinstance(conditions, BuildConditionContext)
+        else conditions
+    )
+    if active_conditions is None:
         return None
-    if _preexisting_conditions_from_parents(parents, conditions):
+    if _preexisting_conditions_from_parents(parents, active_conditions):
         return None
-    if _condition_available_from_parents(parents, conditions.conditional):
-        return conditions.conditional
+    if _condition_available_from_parents(parents, active_conditions.conditional):
+        return active_conditions.conditional
     return None
 
 
@@ -530,7 +515,7 @@ def _build_group_node(
     parent_resolution: ParentResolution,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
 ) -> GroupNode:
     input_concepts = (
         parent_resolution.parent_input_concepts
@@ -566,7 +551,7 @@ def _reuse_wide_parent_for_enrichment(
     parent_resolution: ParentResolution,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
 ) -> StrategyNode | None:
     if (
         not parent_resolution.can_reuse_parent_for_enrichment
@@ -594,7 +579,7 @@ def _reuse_wide_parent_for_enrichment(
             depth=depth,
             conditions=_group_conditions_to_apply([parent_source], conditions),
             preexisting_conditions=_preexisting_conditions_from_parents(
-                [parent_source], conditions
+                [parent_source], conditions.active_where if conditions else None
             ),
         )
     else:
@@ -611,7 +596,8 @@ def _reuse_wide_parent_for_enrichment(
         parents=[group_node, enrichment_node],
         depth=depth,
         preexisting_conditions=_preexisting_conditions_from_parents(
-            [group_node, enrichment_node], conditions
+            [group_node, enrichment_node],
+            conditions.active_where if conditions else None,
         ),
     )
 
@@ -624,8 +610,7 @@ def gen_group_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None = None,
-    where_path: BuildWherePath | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     group_plan = _plan_group_outputs(
         concept=concept,
@@ -652,7 +637,7 @@ def gen_group_node(
             g=g,
             depth=depth,
             history=history,
-            conditions=conditions,
+            conditions=conditions.active_where if conditions else None,
         )
         if materialized:
             return materialized
@@ -669,7 +654,7 @@ def gen_group_node(
                 g=g,
                 depth=depth,
                 history=history,
-                conditions=conditions,
+                conditions=conditions.active_where if conditions else None,
             )
             if materialized:
                 return materialized
@@ -685,7 +670,6 @@ def gen_group_node(
             source_concepts=source_concepts,
             history=history,
             conditions=conditions,
-            where_path=where_path,
         )
         if not parent_resolution:
             return None

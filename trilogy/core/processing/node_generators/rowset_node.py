@@ -9,10 +9,10 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildRowsetItem,
     BuildRowsetLineage,
-    BuildWhereClause,
     Factory,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
@@ -27,7 +27,7 @@ def gen_rowset_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
@@ -144,7 +144,7 @@ def gen_rowset_node(
         environment=environment,
         g=g,
         depth=depth + 1,
-        conditions=conditions,
+        conditions=conditions.for_child(concept) if conditions else None,
         history=history,
     )
     if not enrich_node:
@@ -174,5 +174,9 @@ def gen_rowset_node(
             node,
             enrich_node,
         ],
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            conditions.active_where.conditional
+            if conditions and conditions.active_where
+            else None
+        ),
     )
