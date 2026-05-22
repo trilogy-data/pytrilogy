@@ -57,17 +57,28 @@ main {
   box-shadow: $card_shadow;
 }
 
-h1, h2, h3 {
-  color: $text_primary;
-  letter-spacing: $heading_tracking;
-  line-height: $heading_line_height;
+h1, h2, h3 { color: $text_primary; }
+h1 {
+  font-size: ${title_size}px;
+  font-weight: $title_weight;
+  letter-spacing: $title_tracking;
+  line-height: $title_line_height;
+  margin: 0 0 ${heading_gap}px;
 }
-h1 { font-size: ${title_size}px; font-weight: $title_weight;
-  margin: 0 0 ${block_gap}px; }
-h2 { font-size: ${section_size}px; font-weight: $section_weight;
-  margin: ${section_gap}px 0 ${block_gap}px; }
-h3 { font-size: ${subsection_size}px; font-weight: $subsection_weight;
-  margin: ${section_gap_half}px 0 ${block_gap}px; }
+h2 {
+  font-size: ${section_size}px;
+  font-weight: $section_weight;
+  letter-spacing: $section_tracking;
+  line-height: $section_line_height;
+  margin: ${section_gap}px 0 ${heading_gap}px;
+}
+h3 {
+  font-size: ${subsection_size}px;
+  font-weight: $subsection_weight;
+  letter-spacing: $subsection_tracking;
+  line-height: $subsection_line_height;
+  margin: ${section_gap_half}px 0 ${block_gap}px;
+}
 
 p { margin: 0 0 ${block_gap}px; }
 strong { color: $text_primary; font-weight: 600; }
@@ -96,7 +107,8 @@ table.report-table tr:nth-child(even) td { background: rgba(0,0,0,0.012); }
 table.report-table th.num, table.report-table td.num { text-align: right; }
 
 .report-chart { width: 100%; margin: ${section_gap_half}px 0; }
-.report-chart svg { max-width: 100%; height: auto; display: block; }
+.report-chart svg { max-width: 100%; height: auto; display: block;
+  margin: 0 auto; }
 
 .report-row {
   display: flex;
@@ -172,11 +184,16 @@ def build_css(theme: Theme, layout: Layout) -> str:
         section_weight=layout.section_weight,
         subsection_weight=layout.subsection_weight,
         body_weight=layout.body_weight,
-        heading_tracking=layout.heading_tracking,
-        heading_line_height=layout.heading_line_height,
+        title_tracking=layout.title_tracking,
+        title_line_height=layout.title_line_height,
+        section_tracking=layout.section_tracking,
+        section_line_height=layout.section_line_height,
+        subsection_tracking=layout.subsection_tracking,
+        subsection_line_height=layout.subsection_line_height,
         body_line_height=layout.body_line_height,
         section_gap=layout.section_gap,
         section_gap_half=layout.section_gap // 2,
+        heading_gap=layout.heading_gap,
         block_gap=layout.block_gap,
         table_padding=layout.table_padding,
         table_line_height=layout.table_line_height,

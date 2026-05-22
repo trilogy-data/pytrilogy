@@ -23,17 +23,20 @@ def style_chart(
     container; static charts get explicit px. Axes are thinned, gridlines muted,
     and colors drawn from the theme.
     """
-    width_px, height_px = layout.chart_box(columns)
-    if chart_type == ChartType.HEADLINE:
-        height_px = layout.headline_height
-    width: Any = "container" if interactive else width_px
+    is_headline = chart_type == ChartType.HEADLINE
+    properties: dict[str, Any] = {"background": "transparent"}
+    if is_headline:
+        # Width is content-driven (set by the renderer): the headline keeps its
+        # natural size and the column scales the whole SVG via CSS max-width.
+        properties["height"] = layout.headline_height
+    else:
+        width_px, height_px = layout.chart_box(columns)
+        properties["width"] = "container" if interactive else width_px
+        properties["height"] = height_px
+        # axis charts need breathing room; a headline is just centered text
+        properties["padding"] = {"top": 16, "left": 12, "right": 16, "bottom": 8}
     return (
-        chart.properties(
-            width=width,
-            height=height_px,
-            background="transparent",
-            padding={"top": 16, "left": 12, "right": 16, "bottom": 8},
-        )
+        chart.properties(**properties)
         .configure_view(stroke=None)
         .configure_axis(
             grid=True,

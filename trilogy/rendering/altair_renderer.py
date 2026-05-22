@@ -148,7 +148,8 @@ class AltairRenderer(BaseRenderer):
         field = layer.x_fields[0]
         title = (prettify_label(field) or field).upper()
         positioned = data.reset_index(drop=True).assign(_headline_pos=range(len(data)))
-        font_size = max(20, min(46, round(150 / max(len(positioned), 1))))
+        count = max(len(positioned), 1)
+        font_size = max(22, min(52, round(165 / count)))
         symbol = currency_symbol(field_datatype(layer, field))
         if symbol is not None:
             positioned = positioned.assign(
@@ -167,7 +168,7 @@ class AltairRenderer(BaseRenderer):
                 fontWeight=700,
                 color="#1f1f1c",
                 baseline="middle",
-                dy=14,
+                dy=8,
             )
             .encode(
                 x=alt.X("_headline_pos:O", axis=None),
@@ -177,12 +178,15 @@ class AltairRenderer(BaseRenderer):
         label = (
             alt.Chart(pd.DataFrame({"_headline_title": [title]}))
             .mark_text(
+                align="left",
+                x=0,
                 fontSize=12,
                 fontWeight=600,
                 color="#8a8a83",
                 baseline="middle",
-                dy=-24,
+                dy=-28,
             )
             .encode(text=alt.Text("_headline_title:N"))
         )
-        return alt.layer(number, label).properties(height=140)
+        # content-driven width so the report can scale the headline to fit
+        return alt.layer(number, label).properties(width=count * 240, height=100)

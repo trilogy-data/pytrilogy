@@ -50,21 +50,28 @@ class Layout:
     card_radius: int = 18
     card_shadow: str = "0 1px 2px rgba(0,0,0,0.03), 0 8px 24px rgba(0,0,0,0.04)"
     # type scale (px)
-    title_size: int = 40
-    section_size: int = 26
-    subsection_size: int = 17
-    body_size: int = 15
+    title_size: int = 48
+    section_size: int = 32
+    subsection_size: int = 20
+    body_size: int = 16
     caption_size: int = 12
     # weights
-    title_weight: int = 700
-    section_weight: int = 650
+    title_weight: int = 750
+    section_weight: int = 700
     subsection_weight: int = 600
     body_weight: int = 420
-    # vertical rhythm
-    heading_tracking: str = "-0.02em"
-    heading_line_height: float = 1.2
+    # letter-spacing — tighter for larger display type
+    title_tracking: str = "-0.04em"
+    section_tracking: str = "-0.03em"
+    subsection_tracking: str = "-0.02em"
+    # line heights
+    title_line_height: float = 1.0
+    section_line_height: float = 1.15
+    subsection_line_height: float = 1.3
     body_line_height: float = 1.65
-    section_gap: int = 56
+    # vertical rhythm
+    section_gap: int = 72
+    heading_gap: int = 20
     block_gap: int = 18
     table_padding: str = "14px 18px"
     table_line_height: float = 1.45
@@ -72,7 +79,7 @@ class Layout:
     chart_height: int = 380
     chart_axis_allowance: int = 84
     row_gap: int = 28
-    headline_height: int = 140
+    headline_height: int = 100
 
     @property
     def inner_width(self) -> int:
@@ -102,7 +109,7 @@ INTER_THEME = Theme(
     font_stack='"Inter", "IBM Plex Sans", "SF Pro Display", system-ui, sans-serif',
     webfont_url="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap",
     text_primary="#1f1f1c",
-    text_secondary="#5f5f58",
+    text_secondary="#5f5c56",
     text_muted="#77736b",
     page_background="#f5f5f3",
     card_background="#fbfbf9",
