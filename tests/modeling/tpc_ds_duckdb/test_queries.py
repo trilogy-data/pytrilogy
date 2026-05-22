@@ -642,6 +642,16 @@ def test_eighty_three(engine):
     assert len(query) < 9500, query
 
 
+def test_eighty_three_then_where_matches_reference(engine):
+    query = run_query(
+        engine,
+        83,
+        preql_file="query83-then-where.preql",
+        label="83.then_where",
+    )
+    assert len(query) < 9500, query
+
+
 def test_eighty_four(engine):
     query = run_query(engine, 84)
     assert len(query) < 4000, query

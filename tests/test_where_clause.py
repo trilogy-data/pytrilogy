@@ -1,4 +1,5 @@
 # from trilogy.compiler import compile
+from trilogy import Dialects
 from trilogy.core.models.author import Conditional, Grain, Parenthetical
 from trilogy.core.models.build import Factory
 from trilogy.core.processing.condition_utility import is_scalar_condition
@@ -116,6 +117,63 @@ where
     ]
 
     BaseDialect().compile_statement(process_query(env, select))
+
+
+def test_hierarchical_where_bounds_hidden_aggregate_filter_results():
+    executor = Dialects.DUCK_DB.default_executor()
+    results = executor.execute_text("""
+key item string;
+key return_id int;
+property return_id.week int;
+property return_id.channel_name string;
+property return_id.return_qty int;
+
+datasource returns(
+    item: item,
+    return_id: return_id,
+    week: week,
+    channel_name: channel_name,
+    return_qty: return_qty
+)
+grain (return_id)
+query '''
+select 'A' as item, 1 as return_id, 1 as week, 'S' as channel_name, 10 as return_qty
+union all select 'A', 2, 1, 'C', 20
+union all select 'A', 3, 1, 'W', 30
+union all select 'B', 4, 1, 'S', 5
+union all select 'B', 5, 2, 'C', 6
+union all select 'B', 6, 2, 'W', 7
+''';
+
+def channel_qty(ch) -> sum(return_qty ? channel_name = ch) by item;
+def channel_present(ch) -> count(return_id ? channel_name = ch) by item;
+
+auto s_qty <- @channel_qty('S');
+auto c_qty <- @channel_qty('C');
+auto w_qty <- @channel_qty('W');
+auto s_present <- @channel_present('S');
+auto c_present <- @channel_present('C');
+auto w_present <- @channel_present('W');
+
+where
+    week = 1
+then where
+    s_present > 0
+    and c_present > 0
+    and w_present > 0
+select
+    item,
+    s_qty,
+    c_qty,
+    w_qty,
+    --s_present,
+    --c_present,
+    --w_present
+order by
+    item asc;
+""")[-1]
+
+    assert results.fetchall() == [("A", 10, 20, 30)]
 
 
 def test_select_where_or(test_environment):

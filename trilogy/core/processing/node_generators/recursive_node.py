@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, RecursiveNode, StrategyNode
 from trilogy.core.processing.utility import padding
+from trilogy.core.processing.where_path import BuildWherePath
 
 LOGGER_PREFIX = "[GEN_RECURSIVE_NODE]"
 
@@ -39,6 +40,7 @@ def gen_recursive_node(
     depth: int,
     source_concepts,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     arguments = []
     if isinstance(concept.lineage, BuildFunction):

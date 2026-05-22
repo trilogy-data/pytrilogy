@@ -6,8 +6,10 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.node_generators.common import child_source_conditions
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.core.processing.utility import padding
+from trilogy.core.processing.where_path import BuildWherePath
 
 LOGGER_PREFIX = "[GEN_SYNONYM_NODE]"
 
@@ -20,6 +22,7 @@ def gen_synonym_node(
     source_concepts,
     history: History | None = None,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
     accept_partial: bool = False,
 ) -> StrategyNode | None:
     local_prefix = f"{padding(depth)}[GEN_SYNONYM_NODE]"
@@ -83,12 +86,21 @@ def gen_synonym_node(
         logger.info(
             f"{local_prefix} checking combination {fingerprint} with {len(combo)} concepts"
         )
+        child_conditions = conditions
+        child_where_path = where_path
+        for source_concept in combo:
+            child_conditions, child_where_path = child_source_conditions(
+                source_concept,
+                child_conditions,
+                child_where_path,
+            )
         attempt: StrategyNode | None = source_concepts(
             list(combo),
             history=history,
             environment=environment,
             depth=depth,
-            conditions=conditions,
+            conditions=child_conditions,
+            where_path=child_where_path,
             g=g,
             accept_partial=accept_partial,
         )

@@ -13,8 +13,13 @@ from trilogy.core.models.build import (
     Factory,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.node_generators.common import (
+    _preexisting_conditions_from_parents,
+    child_source_conditions,
+)
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
+from trilogy.core.processing.where_path import BuildWherePath
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
@@ -28,6 +33,7 @@ def gen_rowset_node(
     source_concepts,
     history: History,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
@@ -138,14 +144,18 @@ def gen_rowset_node(
         )
         return node
     logger.info([x.address for x in possible_joins + local_optional])
+    child_conditions, child_where_path = child_source_conditions(
+        concept, conditions, where_path
+    )
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=possible_joins + remaining,
         environment=environment,
         g=g,
         depth=depth + 1,
-        conditions=conditions,
+        conditions=child_conditions,
         history=history,
+        where_path=child_where_path,
     )
     if not enrich_node:
         logger.info(
@@ -174,5 +184,8 @@ def gen_rowset_node(
             node,
             enrich_node,
         ],
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=_preexisting_conditions_from_parents(
+            [node, enrich_node],
+            conditions,
+        ),
     )

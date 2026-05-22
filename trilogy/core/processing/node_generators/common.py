@@ -32,6 +32,7 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes.merge_node import MergeNode
+from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
@@ -61,6 +62,89 @@ def _preexisting_conditions_from_parents(
     ):
         return conditions.conditional
     return None
+
+
+def _concept_dependency_addresses(
+    concept: BuildConcept,
+    seen: set[str] | None = None,
+) -> set[str]:
+    seen = seen if seen is not None else set()
+    if concept.address in seen:
+        return seen
+    seen.add(concept.address)
+    for source in concept.sources:
+        _concept_dependency_addresses(source, seen)
+    for argument in concept.concept_arguments:
+        _concept_dependency_addresses(argument, seen)
+    return seen
+
+
+def _condition_argument_addresses(condition: BoolExpr) -> set[str]:
+    addresses: set[str] = set()
+    for arg in condition.row_arguments:
+        addresses.update(_concept_dependency_addresses(arg))
+    return addresses
+
+
+def child_source_conditions(
+    concept: BuildConcept,
+    conditions: BuildWhereClause | None,
+    where_path: BuildWherePath | None,
+) -> tuple[BuildWhereClause | None, BuildWherePath | None]:
+    if where_path is None:
+        return conditions, None
+    current = where_path.current_condition
+    if current is None:
+        return conditions, where_path
+    if concept.address in _condition_argument_addresses(current.conditional):
+        return where_path.applied_condition, None
+    return conditions, BuildWherePath(
+        applied=where_path.applied,
+        pending=(current,),
+    )
+
+
+def conditions_for_addresses(
+    conditions: BuildWhereClause | None,
+    addresses: set[str],
+) -> BuildWhereClause | None:
+    if conditions is None:
+        return None
+    condition = combine_condition_atoms(
+        [
+            atom
+            for atom in decompose_condition(conditions.conditional)
+            if all(c.address in addresses for c in atom.concept_arguments)
+        ]
+    )
+    if condition is None:
+        return None
+    return BuildWhereClause(conditional=condition)
+
+
+def where_path_for_addresses(
+    where_path: BuildWherePath | None,
+    addresses: set[str],
+) -> BuildWherePath | None:
+    if where_path is None:
+        return None
+    applied = tuple(
+        clause
+        for clause in (
+            conditions_for_addresses(clause, addresses) for clause in where_path.applied
+        )
+        if clause is not None
+    )
+    pending = tuple(
+        clause
+        for clause in (
+            conditions_for_addresses(clause, addresses) for clause in where_path.pending
+        )
+        if clause is not None
+    )
+    if not applied and not pending:
+        return None
+    return BuildWherePath(applied=applied, pending=pending)
 
 
 def _condition_available_from_parents(
@@ -327,6 +411,7 @@ def gen_property_enrichment_node(
     source_concepts,
     log_lambda: Callable,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     roots = _base_lookup_keys(base_node)
     if not roots or not extra_properties:
@@ -348,6 +433,10 @@ def gen_property_enrichment_node(
             required,
             _condition_key_addresses(required),
         )
+        local_where_path = where_path_for_addresses(
+            where_path,
+            {concept.address for concept in required},
+        )
         enrich_node: StrategyNode | None = source_concepts(
             mandatory_list=required,
             environment=environment,
@@ -355,6 +444,7 @@ def gen_property_enrichment_node(
             depth=depth + 1,
             history=history,
             conditions=local_conditions,
+            where_path=local_where_path,
         )
         if not enrich_node:
             return None
@@ -369,7 +459,10 @@ def gen_property_enrichment_node(
             base_node,
         ]
         + final_nodes,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=_preexisting_conditions_from_parents(
+            [base_node] + final_nodes,
+            conditions,
+        ),
     )
 
 
@@ -397,6 +490,7 @@ def gen_enrichment_node(
     log_lambda,
     history: History,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ):
     local_opts = LooseBuildConceptList(concepts=local_optional)
 
@@ -416,6 +510,7 @@ def gen_enrichment_node(
             source_concepts=source_concepts,
             history=history,
             conditions=conditions,
+            where_path=where_path,
             log_lambda=log_lambda,
         )
         if property_node:
@@ -434,6 +529,7 @@ def gen_enrichment_node(
         depth=depth + 1,
         history=history,
         conditions=conditions,
+        where_path=where_path,
     )
     if not enrich_node:
         log_lambda(
@@ -454,7 +550,10 @@ def gen_enrichment_node(
         environment=environment,
         parents=[enrich_node, base_node],
         force_group=False,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=_preexisting_conditions_from_parents(
+            [enrich_node, base_node],
+            conditions,
+        ),
         depth=depth,
     )
 

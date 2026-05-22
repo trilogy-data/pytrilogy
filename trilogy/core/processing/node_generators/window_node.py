@@ -9,6 +9,8 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
+    _preexisting_conditions_from_parents,
+    child_source_conditions,
     concepts_to_grain_concepts,
     gen_enrichment_node,
 )
@@ -19,6 +21,7 @@ from trilogy.core.processing.nodes import (
     WindowNode,
 )
 from trilogy.core.processing.utility import create_log_lambda, padding
+from trilogy.core.processing.where_path import BuildWherePath
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
@@ -69,6 +72,7 @@ def gen_window_node(
     source_concepts,
     history: History,
     conditions: BuildWhereClause | None = None,
+    where_path: BuildWherePath | None = None,
 ) -> StrategyNode | None:
     parent_concepts = resolve_window_parent_concepts(concept, environment, depth)
     parent_addresses = {p.address for p in parent_concepts}
@@ -114,13 +118,17 @@ def gen_window_node(
         f"{padding(depth)}{LOGGER_PREFIX} resolving final parents {parent_concepts + output_targets}"
     )
 
+    child_conditions, child_where_path = child_source_conditions(
+        concept, conditions, where_path
+    )
     parent_node: StrategyNode = source_concepts(
         mandatory_list=parent_concepts,
         environment=environment,
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        conditions=child_conditions,
+        where_path=child_where_path,
     )
     if not parent_node:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
@@ -149,7 +157,10 @@ def gen_window_node(
             parent_node,
         ],
         depth=depth,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=_preexisting_conditions_from_parents(
+            [parent_node],
+            conditions,
+        ),
     )
     _window_node.rebuild_cache()
     _window_node.resolve()
@@ -159,7 +170,10 @@ def gen_window_node(
         output_concepts=output_targets,
         environment=environment,
         parents=[_window_node],
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=_preexisting_conditions_from_parents(
+            [_window_node],
+            conditions,
+        ),
         grain=BuildGrain.from_concepts(
             concepts=parent_concepts + output_targets,
             environment=environment,
@@ -198,5 +212,6 @@ def gen_window_node(
         source_concepts=source_concepts,
         log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
         history=history,
-        conditions=conditions,
+        conditions=child_conditions,
+        where_path=child_where_path,
     )

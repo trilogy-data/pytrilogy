@@ -20,6 +20,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     _condition_available_from_parents,
     _preexisting_conditions_from_parents,
+    child_source_conditions,
     gen_enrichment_node,
     resolve_function_parent_concepts,
 )
@@ -344,14 +345,7 @@ def _group_parent_conditions(
     conditions: BuildWhereClause | None,
     where_path: BuildWherePath | None,
 ) -> tuple[BuildWhereClause | None, BuildWherePath | None]:
-    if where_path is None or where_path.applied_condition is None:
-        return conditions, where_path
-    current = where_path.current_condition
-    if current is None:
-        return conditions, where_path
-    if concept.address in {arg.address for arg in current.row_arguments}:
-        return where_path.applied_condition, None
-    return conditions, where_path
+    return child_source_conditions(concept, conditions, where_path)
 
 
 def _resolve_parent_sources(
@@ -731,6 +725,9 @@ def gen_group_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group node for {concept.address} requires enrichment, missing {[x.address for x in missing_optional]}"
     )
+    enrichment_conditions, enrichment_where_path = child_source_conditions(
+        concept, conditions, where_path
+    )
     return gen_enrichment_node(
         group_node,
         join_keys=grain_components,
@@ -743,5 +740,6 @@ def gen_group_node(
             LOGGER_PREFIX + f" for {concept.address}", depth, logger
         ),
         history=history,
-        conditions=conditions,
+        conditions=enrichment_conditions,
+        where_path=enrichment_where_path,
     )
