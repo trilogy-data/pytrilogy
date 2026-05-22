@@ -375,10 +375,15 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
         return "trilogy error: subprocess timed out after 600s."
     stdout = truncate_middle(completed.stdout or "", state.tool_output_limit)
     stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
-    return (
+    result = (
         f"exit_code: {completed.returncode}\n"
         f"--- stdout ---\n{stdout}\n"
         f"--- stderr ---\n{stderr}"
+    )
+    return (
+        result
+        + _raw_write_note(raw_args)
+        + _empty_write_note(raw_args, completed.stdout or "")
     )
 
 
