@@ -527,12 +527,17 @@ class Renderer:
             prop_lines = []
             for c in concepts:
                 nullable = "?" if Modifier.NULLABLE in c.modifiers else ""
-                prop_lines.append(
-                    self.indent_lines(
-                        f"{namespace_prefix}{c.name} {self.to_string(c.datatype)}{nullable}"
-                    )
+                line = (
+                    f"{namespace_prefix}{c.name} "
+                    f"{self.to_string(c.datatype)}{nullable},"
                 )
-        return "properties {} (\n{},\n);".format(key_str, ",\n".join(prop_lines))
+                # Descriptions ride as a trailing comment — the grammar captures
+                # PARSE_COMMENT inside inline_property_list, so this round-trips.
+                if c.metadata and c.metadata.description:
+                    desc = " ".join(c.metadata.description.splitlines())
+                    line += f" #{desc}"
+                prop_lines.append(self.indent_lines(line))
+        return "properties {} (\n{}\n);".format(key_str, "\n".join(prop_lines))
 
     @to_string.register
     def _(self, arg: ArrayType):

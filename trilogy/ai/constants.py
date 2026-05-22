@@ -3,7 +3,7 @@ from trilogy.core.functions import FUNCTION_REGISTRY
 
 RULE_PROMPT = """Trilogy statements define a semantic model or query. If a user is asking for data, they want a SELECT.
 Semantic model statements:
-- import <> imports a model to reuse. The output of imports will be visible in fields available to use.
+- import <> imports a model to reuse; its fields become available. Imports CHAIN: when an imported model itself imports others (e.g. a fact table foreign-key-linked to its dimensions), reach those by chaining the path — after `import orders as orders;` write `orders.customer.name`. Import only the model(s) you take measures from; do NOT separately import a model already reachable by chaining (a separate import is a disconnected copy that will not join). A field belongs to exactly one model — never invent intermediate nesting: it is `orders.amount`, never `orders.date.amount`.
 - key|property|auto|metric defines fields locally. The output will also be visible in fields available to use, so you generally don't need to edit these unless requested.
 - datasource statements define a datasource, which is a mapping of fields to a SQL database table. The left side is the SQL column name, the right side is the field name.
 
@@ -18,7 +18,13 @@ SELECT RULES:
 - You can dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
 - Count must specify a field (no `count(*)`) Counts are automatically deduplicated. Do not ever use DISTINCT.
 - Since there are no underlying tables, sum/count of a constant should always specify a grain field (e.g. `sum(1) by x as count`). 
-- Aggregates in SELECT must be filtered via HAVING. Use WHERE for pre-aggregation filters.
+- Filtering on aggregates:
+  * HAVING filters on an aggregate that IS in the SELECT output. HAVING can ONLY reference fields that appear in the SELECT projection — select the aggregate with an alias, then reference that alias:
+      select customer.state, sum(sales.amount) as total_sales
+      having total_sales > 1000
+  * To filter rows by an aggregate condition that is NOT in the output, write the aggregate directly in WHERE using inline grouping `agg(x) by grain`:
+      where item.price > 1.2 * avg(item.price) by item.category
+      select item.name, item.price
 - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
 - Always use a reasonable `LIMIT` for final queries unless the request is for a time series or line chart.
 - Window functions: `rank entity [optional over group] by field desc` (e.g. `rank name over state by sum(births) desc as top_name`) Do not use parentheses for over.

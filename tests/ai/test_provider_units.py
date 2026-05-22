@@ -98,43 +98,72 @@ def test_build_tool_call_tolerates_malformed_json():
     assert "invalid tool arguments" in call.parse_error
 
 
-def test_history_to_api_messages_threads_tool_calls():
+def _tool_history():
     from trilogy.ai.models import LLMMessage
-    from trilogy.ai.providers.openrouter import _history_to_api_messages
 
-    history = [
+    return [
         LLMMessage(role="system", content="sys"),
         LLMMessage(role="user", content="do it"),
         LLMMessage(
             role="assistant",
             content="",
             model_info={
-                "tool_calls": [{"name": "trilogy", "arguments": {"args": ["run"]}}]
+                "tool_calls": [{"name": "todo", "arguments": {"action": "list"}}]
             },
         ),
-        LLMMessage(role="user", content='{"tool":"trilogy","result":"ok"}'),
+        LLMMessage(role="user", content="todo result"),
     ]
-    msgs = _history_to_api_messages(history)
+
+
+def test_to_openai_messages_threads_tool_calls():
+    from trilogy.ai.providers.base import to_openai_messages
+
+    msgs = to_openai_messages(_tool_history())
     assert [m["role"] for m in msgs] == ["system", "user", "assistant", "tool"]
     call = msgs[2]["tool_calls"][0]
-    assert call["function"]["name"] == "trilogy"
-    assert call["function"]["arguments"] == '{"args": ["run"]}'
+    assert call["function"]["name"] == "todo"
+    assert call["function"]["arguments"] == '{"action": "list"}'
     assert msgs[3]["tool_call_id"] == call["id"]
-    assert msgs[3]["content"] == '{"tool":"trilogy","result":"ok"}'
+    assert msgs[3]["content"] == "todo result"
 
 
-def test_history_to_api_messages_plain_when_no_tool_calls():
+def test_to_openai_messages_plain_when_no_tool_calls():
     from trilogy.ai.models import LLMMessage
-    from trilogy.ai.providers.openrouter import _history_to_api_messages
+    from trilogy.ai.providers.base import to_openai_messages
 
     history = [
         LLMMessage(role="user", content="hi"),
         LLMMessage(role="assistant", content="hello"),
     ]
-    assert _history_to_api_messages(history) == [
+    assert to_openai_messages(history) == [
         {"role": "user", "content": "hi"},
         {"role": "assistant", "content": "hello"},
     ]
+
+
+def test_to_anthropic_messages_threads_tool_calls():
+    from trilogy.ai.providers.anthropic import _to_anthropic_messages
+
+    msgs = _to_anthropic_messages(_tool_history())
+    assert [m["role"] for m in msgs] == ["user", "assistant", "user"]
+    use = msgs[1]["content"][0]
+    assert use["type"] == "tool_use" and use["name"] == "todo"
+    result = msgs[2]["content"][0]
+    assert result["type"] == "tool_result"
+    assert result["tool_use_id"] == use["id"]
+    assert result["content"] == "todo result"
+
+
+def test_gemini_history_threads_tool_calls():
+    from trilogy.ai.providers.google import GoogleProvider
+
+    provider = GoogleProvider(name="t", model="m", api_key="fake-key")
+    contents = provider._convert_to_gemini_history(_tool_history())
+    assert [c["role"] for c in contents] == ["user", "model", "user"]
+    fc = contents[1]["parts"][0]["functionCall"]
+    assert fc["name"] == "todo" and fc["args"] == {"action": "list"}
+    fr = contents[2]["parts"][0]["functionResponse"]
+    assert fr["name"] == "todo" and fr["response"] == {"result": "todo result"}
 
 
 def test_openai_provider_builds_required_tool_payload(monkeypatch):

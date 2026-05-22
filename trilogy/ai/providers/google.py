@@ -6,7 +6,7 @@ from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
+from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, iter_history_turns
 from .utils import RetryOptions, fetch_with_retry
 
 
@@ -74,14 +74,50 @@ class GoogleProvider(LLMProvider):
     def _convert_to_gemini_history(
         self, messages: List[LLMMessage]
     ) -> List[Dict[str, Any]]:
-        """Convert standard message format to Gemini format."""
-        return [
-            {
-                "role": "model" if msg.role == "assistant" else "user",
-                "parts": [{"text": msg.content}],
-            }
-            for msg in messages
-        ]
+        """Convert message history to Gemini `contents`, threading assistant
+        tool calls as `functionCall` parts and their results as `functionResponse`
+        parts. System messages are skipped (handled separately by the caller)."""
+        contents: List[Dict[str, Any]] = []
+        for msg, tool_calls, results in iter_history_turns(messages):
+            if msg.role == "system":
+                continue
+            if tool_calls:
+                contents.append(
+                    {
+                        "role": "model",
+                        "parts": [
+                            {
+                                "functionCall": {
+                                    "name": tc.get("name", ""),
+                                    "args": tc.get("arguments") or {},
+                                }
+                            }
+                            for tc in tool_calls
+                        ],
+                    }
+                )
+                contents.append(
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "functionResponse": {
+                                    "name": tool_calls[j].get("name", ""),
+                                    "response": {"result": res.content or ""},
+                                }
+                            }
+                            for j, res in enumerate(results)
+                        ],
+                    }
+                )
+            else:
+                contents.append(
+                    {
+                        "role": "model" if msg.role == "assistant" else "user",
+                        "parts": [{"text": msg.content}],
+                    }
+                )
+        return contents
 
     def generate_completion(
         self, options: LLMRequestOptions, history: List[LLMMessage]
@@ -93,17 +129,13 @@ class GoogleProvider(LLMProvider):
                 "Missing httpx. Install pytrilogy[ai] to use GoogleProvider."
             )
 
-        # Convert messages to Gemini format
-        gemini_history = self._convert_to_gemini_history(history)
+        # Convert messages to Gemini format (system messages are skipped here).
+        contents = self._convert_to_gemini_history(history)
 
-        # Separate system message if present
+        # The system message, if present, becomes a top-level instruction.
         system_instruction = None
-        contents = gemini_history
-
-        # Check if first message is a system message
         if history and history[0].role == "system":
             system_instruction = {"parts": [{"text": history[0].content}]}
-            contents = gemini_history[1:]  # Remove system message from history
 
         # Build the request URL
         url = f"{self.base_completion_url}/models/{self.model}:generateContent"

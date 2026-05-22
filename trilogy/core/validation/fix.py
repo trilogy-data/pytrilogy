@@ -3,7 +3,11 @@ from pathlib import Path
 from typing import Any
 
 from trilogy import Environment, Executor
-from trilogy.authoring import ConceptDeclarationStatement, Datasource
+from trilogy.authoring import (
+    ConceptDeclarationStatement,
+    Datasource,
+    PropertiesDeclarationStatement,
+)
 from trilogy.core.enums import Modifier
 from trilogy.core.exceptions import DatasourceColumnBindingError
 from trilogy.core.models.author import ConceptRef
@@ -159,6 +163,36 @@ def apply_fixes_to_statements(
             for concept_fix in concept_fixes:
                 if statement.concept.address == concept_fix.concept_address:
                     statement.concept.datatype = concept_fix.new_type
+
+        elif isinstance(statement, PropertiesDeclarationStatement):
+            kept: list[Any] = []
+            for concept in statement.concepts:
+                # Concepts replaced by an imported reference drop out of the
+                # group, mirroring the ConceptDeclarationStatement skip above.
+                if concept.address in replaced_concept_addresses:
+                    continue
+                new_keys = set()
+                replace_keys = False
+                for x in concept.keys or set():
+                    if safe_address(x) in replaced_concept_addresses:
+                        replace_keys = True
+                        new_keys.add(
+                            replaced_concept_addresses[safe_address(x)].address
+                        )
+                    else:
+                        new_keys.add(x)
+                if replace_keys:
+                    concept.keys = new_keys
+                for concept_fix in concept_fixes:
+                    if concept.address == concept_fix.concept_address:
+                        concept.datatype = concept_fix.new_type
+                kept.append(concept)
+            if not kept:
+                continue
+            if len(kept) == 1:
+                output.append(ConceptDeclarationStatement(concept=kept[0]))
+                continue
+            statement.concepts = kept
 
         output.append(statement)
 

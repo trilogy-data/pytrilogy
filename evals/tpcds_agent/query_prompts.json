@@ -1,7 +1,7 @@
 [
   {
     "id": 1,
-    "prompt": "Report customers who, in their store returns for a given year, accumulated a total return amount more than 20% above the average customer's total return amount at the same store. Only consider stores located in the state of Tennessee (TN) and returns made in the year 2000. Return the customer ID, ordered ascending, limited to 100 rows."
+    "prompt": "Report customers who, in their store returns for a given year, accumulated a total return amount more than 20% above the average  total return amount by customer at the same store. Only consider stores located in the state of Tennessee (TN) and returns made in the year 2000. Return the customer ID, ordered ascending, limited to 100 rows."
   },
   {
     "id": 2,

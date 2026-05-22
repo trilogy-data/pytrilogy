@@ -5,10 +5,52 @@ from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
+from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, iter_history_turns
 from .utils import RetryOptions, fetch_with_retry
 
 DEFAULT_MAX_TOKENS = 10000
+
+
+def _to_anthropic_messages(history: List[LLMMessage]) -> list[dict]:
+    """Anthropic Messages-format conversation (system messages are handled
+    separately by the caller). Assistant tool calls become ``tool_use`` content
+    blocks and their results become a following user message of ``tool_result``
+    blocks — so the model sees its own prior tool calls."""
+    messages: list[dict] = []
+    for idx, (msg, tool_calls, results) in enumerate(iter_history_turns(history)):
+        if msg.role == "system":
+            continue
+        if tool_calls:
+            ids = [f"call_{idx}_{j}" for j in range(len(tool_calls))]
+            blocks: list[dict] = []
+            if msg.content:
+                blocks.append({"type": "text", "text": msg.content})
+            for j, tc in enumerate(tool_calls):
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": ids[j],
+                        "name": tc.get("name", ""),
+                        "input": tc.get("arguments") or {},
+                    }
+                )
+            messages.append({"role": "assistant", "content": blocks})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": ids[j],
+                            "content": res.content or "",
+                        }
+                        for j, res in enumerate(results)
+                    ],
+                }
+            )
+        else:
+            messages.append({"role": msg.role, "content": msg.content})
+    return messages
 
 
 class AnthropicProvider(LLMProvider):
@@ -48,13 +90,10 @@ class AnthropicProvider(LLMProvider):
                 "Missing httpx. Install pytrilogy[ai] to use AnthropicProvider."
             )
 
-        # Separate system messages from user/assistant messages
+        # System messages go to the top-level `system` param; the rest are
+        # threaded (tool calls included) into Anthropic Messages format.
         system_messages = [msg.content for msg in history if msg.role == "system"]
-        conversation_messages = [
-            {"role": msg.role, "content": msg.content}
-            for msg in history
-            if msg.role != "system"
-        ]
+        conversation_messages = _to_anthropic_messages(history)
 
         try:
 

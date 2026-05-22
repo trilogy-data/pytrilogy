@@ -5,7 +5,13 @@ from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, build_tool_call
+from .base import (
+    RETRYABLE_CODES,
+    LLMProvider,
+    LLMRequestOptions,
+    build_tool_call,
+    to_openai_messages,
+)
 from .utils import RetryOptions, fetch_with_retry
 
 
@@ -47,8 +53,7 @@ class OpenAIProvider(LLMProvider):
                 "Missing httpx. Install pytrilogy[ai] to use OpenAIProvider."
             )
 
-        messages: List[dict] = []
-        messages = [{"role": msg.role, "content": msg.content} for msg in history]
+        messages = to_openai_messages(history)
         try:
 
             def make_request():

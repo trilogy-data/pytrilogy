@@ -190,6 +190,16 @@ def finalize_select_statement(
         if x.is_undefined:
             _raise_undefined(context, x.concept.address, line_no)
         elif isinstance(x.content, ConceptTransform):
+            # Validate transform inputs: an undefined concept used only as a
+            # function argument (e.g. `sum(missing) as foo`) has a defined
+            # output alias, so it would otherwise slip past to SQL generation.
+            for arg in x.content.function.concept_arguments:
+                if isinstance(arg, (UndefinedConcept, UndefinedConceptFull)):
+                    resolved = context.concepts.get(arg.address)
+                    if resolved is None or isinstance(
+                        resolved, (UndefinedConcept, UndefinedConceptFull)
+                    ):
+                        _raise_undefined(context, arg.address, line_no)
             if isinstance(x.content.output, UndefinedConcept):
                 continue
             if CONFIG.parsing.select_as_definition and not context.environment.frozen:

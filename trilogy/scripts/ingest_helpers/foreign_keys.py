@@ -5,6 +5,7 @@ from trilogy.authoring import (
     ConceptDeclarationStatement,
     Datasource,
     ImportStatement,
+    PropertiesDeclarationStatement,
 )
 from trilogy.core.validation.fix import (
     DatasourceReferenceFix,
@@ -50,7 +51,11 @@ def apply_foreign_key_references(
     datasource: Datasource,
     datasources: dict[str, Datasource],
     script_content: list[
-        Datasource | Comment | ConceptDeclarationStatement | ImportStatement
+        Datasource
+        | Comment
+        | ConceptDeclarationStatement
+        | PropertiesDeclarationStatement
+        | ImportStatement
     ],
     column_mappings: dict[str, str],
 ) -> str:

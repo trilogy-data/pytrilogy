@@ -1,5 +1,6 @@
 """Ingest command for Trilogy CLI - bootstraps datasources from warehouse tables or files."""
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import combinations
@@ -14,6 +15,7 @@ from trilogy.authoring import (
     ConceptDeclarationStatement,
     DataType,
     ImportStatement,
+    PropertiesDeclarationStatement,
 )
 from trilogy.constants import REMOTE_PREFIXES
 from trilogy.core.enums import AddressType, Modifier, Purpose
@@ -64,7 +66,13 @@ _FILE_EXT_TO_TYPE: dict[str, AddressType] = {
     ".parquet": AddressType.PARQUET,
 }
 
-ScriptStatement = Datasource | Comment | ConceptDeclarationStatement | ImportStatement
+ScriptStatement = (
+    Datasource
+    | Comment
+    | ConceptDeclarationStatement
+    | PropertiesDeclarationStatement
+    | ImportStatement
+)
 
 
 @dataclass
@@ -514,8 +522,20 @@ def _build_script_content(
                 path=PathlibPath(file_path),
             )
         )
+    # Keys render individually; properties sharing a key are emitted as a single
+    # grouped `properties <key> (...)` declaration.
+    keys = [c for c in concepts if c.purpose == Purpose.KEY]
+    grouped: dict[frozenset, list[Concept]] = defaultdict(list)
     for concept in concepts:
+        if concept.purpose == Purpose.PROPERTY:
+            grouped[frozenset(concept.keys or [])].append(concept)
+    for concept in keys:
         script_content.append(ConceptDeclarationStatement(concept=concept))
+    for group in grouped.values():
+        if len(group) > 1:
+            script_content.append(PropertiesDeclarationStatement(concepts=group))
+        else:
+            script_content.append(ConceptDeclarationStatement(concept=group[0]))
     script_content.append(datasource)
     return script_content
 

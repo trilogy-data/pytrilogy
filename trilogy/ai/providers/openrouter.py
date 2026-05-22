@@ -6,7 +6,13 @@ from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, build_tool_call
+from .base import (
+    RETRYABLE_CODES,
+    LLMProvider,
+    LLMRequestOptions,
+    build_tool_call,
+    to_openai_messages,
+)
 from .utils import RetryOptions, fetch_with_retry
 
 
@@ -28,58 +34,6 @@ def _load_provider_routing() -> Optional[dict]:
     if not isinstance(parsed, dict):
         raise ValueError("OPENROUTER_PROVIDER must be a JSON object")
     return parsed
-
-
-def _history_to_api_messages(history: List[LLMMessage]) -> list[dict]:
-    """Reconstruct an OpenAI-format message list from conversation history.
-
-    Assistant turns that made tool calls (recorded in ``model_info``) are
-    re-emitted with real ``tool_calls``, and the result messages that follow
-    them are re-emitted as ``role: "tool"`` replies keyed by ``tool_call_id``.
-    Without this the model never sees its own prior tool calls and loops.
-    """
-    messages: list[dict] = []
-    i = 0
-    while i < len(history):
-        msg = history[i]
-        tool_calls = None
-        if msg.role == "assistant":
-            tool_calls = (getattr(msg, "model_info", None) or {}).get("tool_calls")
-        if tool_calls:
-            ids = [f"call_{i}_{j}" for j in range(len(tool_calls))]
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": msg.content or None,
-                    "tool_calls": [
-                        {
-                            "id": ids[j],
-                            "type": "function",
-                            "function": {
-                                "name": tc.get("name", ""),
-                                "arguments": json.dumps(tc.get("arguments") or {}),
-                            },
-                        }
-                        for j, tc in enumerate(tool_calls)
-                    ],
-                }
-            )
-            # The next len(tool_calls) messages are this turn's tool results.
-            for j in range(len(tool_calls)):
-                i += 1
-                if i < len(history):
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": ids[j],
-                            "content": history[i].content or "",
-                        }
-                    )
-            i += 1
-        else:
-            messages.append({"role": msg.role, "content": msg.content})
-            i += 1
-    return messages
 
 
 class OpenRouterProvider(LLMProvider):
@@ -124,7 +78,7 @@ class OpenRouterProvider(LLMProvider):
                 "Missing httpx. Install pytrilogy[ai] to use OpenRouterProvider."
             )
 
-        messages = _history_to_api_messages(history)
+        messages = to_openai_messages(history)
         try:
 
             def make_request():

@@ -163,7 +163,11 @@ def properties_declaration(
         parents = [context.concepts.require(str(parents_arg))]
 
     grain_components = {x.address for x in parents}
-    namespace = parents[0].namespace
+    # Bare property names belong to the declaring file's namespace, not the
+    # namespace of a grain key — a fact file keying properties on an imported
+    # dimension (e.g. `<date_dim.date_sk, amount>`) must still expose them
+    # locally so the datasource binding can resolve them.
+    namespace = context.environment.namespace or DEFAULT_NAMESPACE
     all_rows_addr = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
     is_abstract_grain = grain_components == {all_rows_addr}
 

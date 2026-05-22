@@ -35,16 +35,21 @@ Write one query file per question in the working directory itself — alongside
 `trilogy.toml`, NOT inside `raw/` — named with a zero-padded index:
 `query01.preql`, `query02.preql`, ... `query{nn:02d}.preql`.
 
-A query imports the datasources it needs from the `raw/` model and selects from
-them. Read a model file first (e.g. `read_file` on `raw/store_returns.preql`)
-to learn its exact concept names, then write a query like:
+Import ONLY the fact table the question is about — `ingest --all` linked its
+foreign keys, so its dimension tables are reached by chaining through it
+(`store_returns.store.state`, `store_returns.date_dim.year`). Do NOT separately
+import dimension tables — a separate import is a disconnected copy that will not
+join. Read the fact's model file first (e.g. `read_file` on
+`raw/store_returns.preql`) for exact concept names, then write a query like:
 
     import raw.store_returns as store_returns;
 
+    where store_returns.store.state = 'TN'
+      and store_returns.date_dim.year = 2000
     select
-        store_returns.<some_concept>,
-        sum(store_returns.<some_measure>) -> total
-    order by total desc
+        store_returns.customer.customer_id,
+        sum(store_returns.return_amt) as total_returns
+    order by total_returns desc
     limit 100;
 
 Each file must be a complete, runnable Trilogy query that returns the answer to

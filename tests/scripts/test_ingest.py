@@ -2066,6 +2066,98 @@ def test_ingest_csv_enum_with_rich_trait_round_trips():
         assert "email_address" in datatype.traits
 
 
+def test_ingest_groups_properties_declaration():
+    """Properties sharing a grain key render as one grouped declaration."""
+    import tempfile
+
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        setup_sql = tmppath / "setup.sql"
+        setup_sql.write_text(
+            "CREATE TABLE customer_demographics (\n"
+            "  cd_demo_sk INTEGER PRIMARY KEY,\n"
+            "  cd_gender VARCHAR,\n"
+            "  cd_marital_status VARCHAR,\n"
+            "  cd_purchase_estimate INTEGER\n"
+            ");\n"
+            "INSERT INTO customer_demographics VALUES "
+            "(1,'M','S',5000),(2,'F','M',3000);"
+        )
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n'
+            f'[setup]\nsql = ["{setup_sql.as_posix()}"]\n'
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "customer_demographics",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        content = (out_dir / "customer_demographics.preql").read_text()
+        assert "properties demo_sk (" in content
+        assert content.count("property ") == 0
+
+        env, _ = parse_text(content)
+        for name in ("gender", "marital_status", "purchase_estimate"):
+            assert env.concepts[f"local.{name}"].purpose == Purpose.PROPERTY
+
+
+def test_ingest_single_property_not_grouped():
+    """A lone property stays an individual declaration, not a grouped block."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        setup_sql = tmppath / "setup.sql"
+        setup_sql.write_text(
+            "CREATE TABLE solo (id INTEGER PRIMARY KEY, name VARCHAR);\n"
+            "INSERT INTO solo VALUES (1,'a'),(2,'b');"
+        )
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n'
+            f'[setup]\nsql = ["{setup_sql.as_posix()}"]\n'
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "solo",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        content = (out_dir / "solo.preql").read_text()
+        assert "properties " not in content
+        assert "property id.name" in content
+
+
 def test_parse_foreign_keys():
     """Test parsing of foreign key specifications."""
     # Single FK
