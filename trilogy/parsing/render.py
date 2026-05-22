@@ -47,6 +47,7 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
+    EnumType,
     ListWrapper,
     MapWrapper,
     NumericType,
@@ -375,6 +376,11 @@ class Renderer:
     @to_string.register
     def _(self, arg: "NumericType"):
         return f"""Numeric({arg.precision},{arg.scale})"""
+
+    @to_string.register
+    def _(self, arg: EnumType):
+        members = ", ".join(self.to_string(v) for v in arg.values)
+        return f"enum<{self.to_string(arg.type)}>[{members}]"
 
     @to_string.register
     def _(self, arg: TraitDataType):

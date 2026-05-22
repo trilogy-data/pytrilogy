@@ -1,11 +1,11 @@
 # Datasource ingested from users_with_pk
-# Generated on 2026-05-21 20:57:18.475836
+# Generated on 2026-05-22 09:55:08.374393
 import std.net;
 
-key user_id int;
-property user_id.username string;
-property user_id.email string::email_address;
-property user_id.created_at timestamp;
+key user_id enum<int>[1, 2, 3];
+property user_id.username enum<string>['alice', 'bob', 'charlie'];
+property user_id.email enum<string>['alice@example.com', 'bob@example.com', 'charlie@example.com']::email_address;
+property user_id.created_at datetime;
 
 root datasource users_with_pk (
     user_id,

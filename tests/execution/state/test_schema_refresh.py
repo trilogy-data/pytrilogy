@@ -267,6 +267,56 @@ def test_bigquery_normalize_db_type():
     assert dialect.normalize_db_type("NUMERIC") == DataType.NUMERIC
 
 
+def test_postgres_normalize_db_type():
+    """Postgres has no dialect override and relies entirely on the shared base map."""
+    from trilogy.dialect.postgres import PostgresDialect
+
+    dialect = PostgresDialect()
+    assert dialect.normalize_db_type("integer") == DataType.INTEGER
+    assert dialect.normalize_db_type("bigint") == DataType.BIGINT
+    assert dialect.normalize_db_type("smallint") == DataType.INTEGER
+    assert dialect.normalize_db_type("character varying") == DataType.STRING
+    assert dialect.normalize_db_type("character varying(255)") == DataType.STRING
+    assert dialect.normalize_db_type("text") == DataType.STRING
+    assert dialect.normalize_db_type("boolean") == DataType.BOOL
+    assert dialect.normalize_db_type("numeric(10,2)") == DataType.NUMERIC
+    assert dialect.normalize_db_type("double precision") == DataType.FLOAT
+    assert dialect.normalize_db_type("real") == DataType.FLOAT
+    assert dialect.normalize_db_type("date") == DataType.DATE
+    assert dialect.normalize_db_type("timestamp without time zone") == DataType.DATETIME
+    assert dialect.normalize_db_type("timestamp with time zone") == DataType.TIMESTAMP
+    assert dialect.normalize_db_type("bytea") == DataType.BYTES
+    assert dialect.normalize_db_type("uuid") == DataType.STRING
+    assert dialect.normalize_db_type("json") == DataType.UNKNOWN
+
+
+def test_sqlite_normalize_db_type():
+    """SQLite declared types (from PRAGMA table_info) resolve via the base map."""
+    from trilogy.dialect.sqlite import SQLiteDialect
+
+    dialect = SQLiteDialect()
+    assert dialect.normalize_db_type("INTEGER") == DataType.INTEGER
+    assert dialect.normalize_db_type("BIGINT") == DataType.BIGINT
+    assert dialect.normalize_db_type("TEXT") == DataType.STRING
+    assert dialect.normalize_db_type("VARCHAR(100)") == DataType.STRING
+    assert dialect.normalize_db_type("REAL") == DataType.FLOAT
+    assert dialect.normalize_db_type("NUMERIC") == DataType.NUMERIC
+    assert dialect.normalize_db_type("BLOB") == DataType.BYTES
+    assert dialect.normalize_db_type("BOOLEAN") == DataType.BOOL
+    assert dialect.normalize_db_type("DATETIME") == DataType.DATETIME
+    assert dialect.normalize_db_type("") == DataType.UNKNOWN
+
+
+def test_base_normalize_db_type_fixes_bigint():
+    """The shared base map resolves BIGINT distinctly from INTEGER."""
+    from trilogy.dialect.base import BaseDialect
+
+    dialect = BaseDialect()
+    assert dialect.normalize_db_type("BIGINT") == DataType.BIGINT
+    assert dialect.normalize_db_type("INT") == DataType.INTEGER
+    assert dialect.normalize_db_type("CUSTOM_TYPE") == DataType.UNKNOWN
+
+
 @pytest.mark.skip(
     reason="Requires BigQuery write credentials and BQ_TEST_DATASET env var"
 )
