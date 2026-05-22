@@ -118,13 +118,16 @@ class SnowflakeDialect(BaseDialect):
         return rows
 
     # Snowflake information_schema reports internal type names that differ from DDL tokens.
-    # e.g. INTEGER/NUMBER → "NUMBER", VARCHAR/TEXT → "TEXT", TIMESTAMP_NTZ → "TIMESTAMP_NTZ"
+    # e.g. INTEGER/NUMBER → "NUMBER", VARCHAR/TEXT → "TEXT", TIMESTAMP_NTZ → "TIMESTAMP_NTZ".
+    # Extends the shared base map; bare TIMESTAMP defaults to TIMESTAMP_NTZ semantics.
     DB_COLUMN_TYPE_MAP = {
+        **BaseDialect.DB_COLUMN_TYPE_MAP,
         "text": DataType.STRING,
         "number": DataType.INTEGER,
         "float": DataType.FLOAT,
         "boolean": DataType.BOOL,
         "date": DataType.DATE,
+        "timestamp": DataType.DATETIME,
         "timestamp_ntz": DataType.DATETIME,
         "timestamp_ltz": DataType.TIMESTAMP,
         "timestamp_tz": DataType.TIMESTAMP,

@@ -5,6 +5,8 @@ from click.testing import CliRunner
 
 from trilogy.authoring import DataType
 from trilogy.core.enums import Modifier, Purpose
+from trilogy.core.models.core import EnumType
+from trilogy.dialect.base import BaseDialect
 from trilogy.scripts.ingest import (
     _check_column_combination_uniqueness,
     _process_column,
@@ -12,14 +14,16 @@ from trilogy.scripts.ingest import (
     detect_nullability_from_sample,
     detect_rich_type,
     detect_unique_key_combinations,
-    infer_datatype_from_sql_type,
 )
 from trilogy.scripts.ingest_helpers.foreign_keys import parse_foreign_keys
 from trilogy.scripts.ingest_helpers.formatting import (
     canonicolize_name,
     find_common_prefix,
 )
+from trilogy.scripts.ingest_helpers.typing import detect_enum_type
 from trilogy.scripts.trilogy import cli
+
+_DIALECT = BaseDialect()
 
 
 def test_ingest():
@@ -806,89 +810,53 @@ class TestDetectUniqueKeyCombinations:
         assert result == []
 
 
-class TestInferDatatypeFromSqlType:
-    """Test SQL type to Trilogy datatype inference."""
+class TestDetectEnumType:
+    """Test enum detection from sampled column values."""
 
-    def test_integer_types(self):
-        """Test integer type detection."""
-        assert infer_datatype_from_sql_type("INT") == DataType.INTEGER
-        assert infer_datatype_from_sql_type("INTEGER") == DataType.INTEGER
-        assert infer_datatype_from_sql_type("SMALLINT") == DataType.INTEGER
-        assert infer_datatype_from_sql_type("TINYINT") == DataType.INTEGER
-        assert infer_datatype_from_sql_type("MEDIUMINT") == DataType.INTEGER
+    def test_constrained_string_column_is_enum(self):
+        rows = [("active",) if i % 2 else ("inactive",) for i in range(40)]
+        result = detect_enum_type(0, DataType.STRING, rows)
+        assert isinstance(result, EnumType)
+        assert result.type == DataType.STRING
+        assert result.values == ["active", "inactive"]
 
-    def test_bigint_types(self):
-        """Test bigint type detection."""
-        # Note: bigint must come before int in the check, otherwise "int" matches
-        # The actual implementation checks bigint first, so this should work
-        assert infer_datatype_from_sql_type("BIGINT") in [
-            DataType.BIGINT,
-            DataType.INTEGER,
+    def test_integer_column_is_enum(self):
+        rows = [(i % 3,) for i in range(40)]
+        result = detect_enum_type(0, DataType.INTEGER, rows)
+        assert isinstance(result, EnumType)
+        assert result.values == [0, 1, 2]
+
+    def test_high_cardinality_is_not_enum(self):
+        rows = [(f"v{i}",) for i in range(40)]
+        assert detect_enum_type(0, DataType.STRING, rows) is None
+
+    def test_sample_not_larger_than_cutoff_is_not_enum(self):
+        # A tiny table must not have every column promoted to an enum.
+        rows = [("a",), ("b",), ("a",)]
+        assert detect_enum_type(0, DataType.STRING, rows) is None
+
+    def test_ineligible_base_type_is_not_enum(self):
+        rows = [(1.0,) if i % 2 else (2.0,) for i in range(40)]
+        assert detect_enum_type(0, DataType.FLOAT, rows) is None
+
+    def test_nulls_excluded_from_values(self):
+        rows = [
+            (None,) if i % 5 == 0 else (("a",) if i % 2 else ("b",)) for i in range(40)
         ]
-        assert infer_datatype_from_sql_type("LONG") == DataType.BIGINT
-        assert infer_datatype_from_sql_type("INT64") in [
-            DataType.BIGINT,
-            DataType.INTEGER,
-        ]
+        result = detect_enum_type(0, DataType.STRING, rows)
+        assert isinstance(result, EnumType)
+        assert result.values == ["a", "b"]
 
-    def test_float_types(self):
-        """Test float/numeric type detection."""
-        assert infer_datatype_from_sql_type("FLOAT") == DataType.FLOAT
-        assert infer_datatype_from_sql_type("DOUBLE") == DataType.FLOAT
-        assert infer_datatype_from_sql_type("REAL") == DataType.FLOAT
-        assert infer_datatype_from_sql_type("FLOAT64") == DataType.FLOAT
+    def test_all_null_column_is_not_enum(self):
+        rows = [(None,) for _ in range(40)]
+        assert detect_enum_type(0, DataType.STRING, rows) is None
 
-    def test_numeric_types(self):
-        """Test numeric/decimal type detection."""
-        assert infer_datatype_from_sql_type("NUMERIC") == DataType.NUMERIC
-        assert infer_datatype_from_sql_type("DECIMAL") == DataType.NUMERIC
-        assert infer_datatype_from_sql_type("MONEY") == DataType.NUMERIC
-
-    def test_string_types(self):
-        """Test string type detection."""
-        assert infer_datatype_from_sql_type("CHAR") == DataType.STRING
-        assert infer_datatype_from_sql_type("VARCHAR") == DataType.STRING
-        assert infer_datatype_from_sql_type("TEXT") == DataType.STRING
-        assert infer_datatype_from_sql_type("STRING") == DataType.STRING
-        assert infer_datatype_from_sql_type("CLOB") == DataType.STRING
-        assert infer_datatype_from_sql_type("NCHAR") == DataType.STRING
-        assert infer_datatype_from_sql_type("NVARCHAR") == DataType.STRING
-
-    def test_boolean_types(self):
-        """Test boolean type detection."""
-        assert infer_datatype_from_sql_type("BOOL") == DataType.BOOL
-        assert infer_datatype_from_sql_type("BOOLEAN") == DataType.BOOL
-        assert infer_datatype_from_sql_type("BIT") == DataType.BOOL
-
-    def test_timestamp_types(self):
-        """Test timestamp type detection."""
-        assert infer_datatype_from_sql_type("TIMESTAMP") == DataType.TIMESTAMP
-
-    def test_datetime_types(self):
-        """Test datetime type detection."""
-        assert infer_datatype_from_sql_type("DATETIME") == DataType.DATETIME
-
-    def test_date_types(self):
-        """Test date type detection."""
-        assert infer_datatype_from_sql_type("DATE") == DataType.DATE
-
-    def test_case_insensitive(self):
-        """Test that type detection is case-insensitive."""
-        assert infer_datatype_from_sql_type("varchar") == DataType.STRING
-        assert infer_datatype_from_sql_type("VARCHAR") == DataType.STRING
-        assert infer_datatype_from_sql_type("VarChar") == DataType.STRING
-
-    def test_with_size_specifications(self):
-        """Test types with size specifications."""
-        assert infer_datatype_from_sql_type("VARCHAR(255)") == DataType.STRING
-        assert infer_datatype_from_sql_type("DECIMAL(10,2)") == DataType.NUMERIC
-        assert infer_datatype_from_sql_type("CHAR(10)") == DataType.STRING
-
-    def test_unknown_type_defaults_to_string(self):
-        """Test that unknown types default to STRING."""
-        assert infer_datatype_from_sql_type("UNKNOWN") == DataType.STRING
-        assert infer_datatype_from_sql_type("CUSTOM_TYPE") == DataType.STRING
-        assert infer_datatype_from_sql_type("") == DataType.STRING
+    def test_custom_cutoff(self):
+        rows = [(i % 5,) for i in range(40)]
+        assert detect_enum_type(0, DataType.INTEGER, rows, max_distinct=3) is None
+        assert isinstance(
+            detect_enum_type(0, DataType.INTEGER, rows, max_distinct=5), EnumType
+        )
 
 
 class TestDetectNullabilityFromSample:
@@ -951,7 +919,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Check concept
@@ -977,7 +945,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["first_name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should be a property, not a key
@@ -992,7 +960,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should be nullable based on schema
@@ -1007,7 +975,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should not be nullable
@@ -1022,7 +990,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should be nullable based on sample data, overriding schema
@@ -1036,7 +1004,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should not be nullable based on sample data, overriding schema
@@ -1050,7 +1018,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should have metadata with description
@@ -1065,7 +1033,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should not have description for whitespace comment
@@ -1079,7 +1047,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["user_email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should detect email rich type
@@ -1095,7 +1063,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["location_lat"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should detect latitude rich type
@@ -1111,7 +1079,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["UserFirstName"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Concept name should be snake_case
@@ -1127,7 +1095,7 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["User-ID"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Concept name is normalized
@@ -1143,12 +1111,42 @@ class TestProcessColumn:
         concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Should default to nullable when not specified
         assert Modifier.NULLABLE in concept.modifiers
         assert concept.metadata.description is None
+
+    def test_enum_type_detection(self):
+        """A low-cardinality column is promoted to an enum datatype."""
+        col = ("status", "VARCHAR", "NO", None)
+        grain_components = []
+        sample_rows = [("open",) if i % 2 else ("closed",) for i in range(40)]
+        concept_mapping = _make_concept_mapping(["status"])
+
+        concept, column_assignment, rich_import = _process_column(
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+        )
+
+        assert isinstance(concept.datatype, EnumType)
+        assert concept.datatype.type == DataType.STRING
+        assert concept.datatype.values == ["closed", "open"]
+        assert rich_import is None
+
+    def test_rich_type_takes_precedence_over_enum(self):
+        """Rich-type detection wins even when values look enum-constrained."""
+        col = ("user_email", "VARCHAR", "NO", None)
+        grain_components = []
+        sample_rows = [(f"user{i % 4}@test.com",) for i in range(40)]
+        concept_mapping = _make_concept_mapping(["user_email"])
+
+        concept, column_assignment, rich_import = _process_column(
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+        )
+
+        assert rich_import == "std.net"
+        assert hasattr(concept.datatype, "traits")
 
 
 class TestFindCommonPrefix:
@@ -1270,7 +1268,7 @@ class TestProcessColumnWithPrefixStripping:
         prefix_mapping = {"ss_sold_date_sk": "sold_date_sk"}
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, prefix_mapping
+            0, col, grain_components, sample_rows, prefix_mapping, _DIALECT
         )
 
         # Concept name should have prefix stripped
@@ -1286,7 +1284,7 @@ class TestProcessColumnWithPrefixStripping:
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping
+            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
         )
 
         # Concept name should be normalized without stripping
@@ -1301,7 +1299,7 @@ class TestProcessColumnWithPrefixStripping:
         prefix_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, prefix_mapping
+            0, col, grain_components, sample_rows, prefix_mapping, _DIALECT
         )
 
         # Should work normally
@@ -1928,6 +1926,38 @@ def test_ingest_file_round_trips_through_parser():
         ds = next(s for s in stmts if isinstance(s, ParsedDatasource))
         assert isinstance(ds.address, ParsedAddress)
         assert ds.address.location.endswith("round.csv")
+
+
+def test_ingest_csv_detects_enum_and_round_trips():
+    """A low-cardinality column is ingested as an enum and the .preql reparses."""
+    import tempfile
+
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "tickets.csv"
+        statuses = ["open", "closed", "pending"]
+        lines = ["ticket_id,status"] + [f"{i},{statuses[i % 3]}" for i in range(30)]
+        csv_path.write_text("\n".join(lines) + "\n")
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["ingest", str(csv_path), "--output", str(out_dir)],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        content = (out_dir / "tickets.preql").read_text()
+        assert "enum<string>[" in content
+
+        env, _ = parse_text(content)
+        concept = env.concepts["local.status"]
+        assert isinstance(concept.datatype, EnumType)
+        assert set(concept.datatype.values) == {"open", "closed", "pending"}
 
 
 def test_parse_foreign_keys():

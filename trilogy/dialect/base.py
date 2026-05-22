@@ -279,10 +279,80 @@ COMPLEX_DATATYPE_MAP = {
     DataType.ARRAY: lambda x: f"{x}[]",
 }
 
-# Reverse of DATATYPE_MAP: maps the DB type strings returned by information_schema
-# back to DataType. Dialects merge in their own entries (e.g. "integer" → INTEGER
-# for DuckDB) the same way they extend DATATYPE_MAP.
-DB_COLUMN_TYPE_MAP: dict[str, DataType] = {v: k for k, v in DATATYPE_MAP.items()}
+# Maps lowercased DB type names (as returned by information_schema, SQLite's
+# PRAGMA table_info, or DuckDB's DESCRIBE) to DataType. `normalize_db_type`
+# strips any "(...)" precision suffix before lookup. These are the cross-dialect
+# standard SQL spellings, so dialects without an override (Postgres, SQLite,
+# Presto, SQL Server) still resolve common columns; dialects with engine-specific
+# spellings extend or override this map.
+DB_COLUMN_TYPE_MAP: dict[str, DataType] = {
+    # integer
+    "int": DataType.INTEGER,
+    "integer": DataType.INTEGER,
+    "int4": DataType.INTEGER,
+    "int2": DataType.INTEGER,
+    "smallint": DataType.INTEGER,
+    "tinyint": DataType.INTEGER,
+    "mediumint": DataType.INTEGER,
+    "signed": DataType.INTEGER,
+    # bigint
+    "bigint": DataType.BIGINT,
+    "int8": DataType.BIGINT,
+    "long": DataType.BIGINT,
+    # float
+    "float": DataType.FLOAT,
+    "float4": DataType.FLOAT,
+    "float8": DataType.FLOAT,
+    "real": DataType.FLOAT,
+    "double": DataType.FLOAT,
+    "double precision": DataType.FLOAT,
+    # numeric / decimal
+    "numeric": DataType.NUMERIC,
+    "decimal": DataType.NUMERIC,
+    "money": DataType.NUMERIC,
+    # string
+    "string": DataType.STRING,
+    "char": DataType.STRING,
+    "nchar": DataType.STRING,
+    "varchar": DataType.STRING,
+    "nvarchar": DataType.STRING,
+    "character": DataType.STRING,
+    "character varying": DataType.STRING,
+    "varying character": DataType.STRING,
+    "bpchar": DataType.STRING,
+    "text": DataType.STRING,
+    "ntext": DataType.STRING,
+    "tinytext": DataType.STRING,
+    "mediumtext": DataType.STRING,
+    "longtext": DataType.STRING,
+    "clob": DataType.STRING,
+    "uuid": DataType.STRING,
+    "uniqueidentifier": DataType.STRING,
+    # boolean
+    "bool": DataType.BOOL,
+    "boolean": DataType.BOOL,
+    "bit": DataType.BOOL,
+    # bytes
+    "bytes": DataType.BYTES,
+    "blob": DataType.BYTES,
+    "bytea": DataType.BYTES,
+    "binary": DataType.BYTES,
+    "varbinary": DataType.BYTES,
+    # date / time
+    "date": DataType.DATE,
+    "datetime": DataType.DATETIME,
+    "datetime2": DataType.DATETIME,
+    "smalldatetime": DataType.DATETIME,
+    "timestamp": DataType.TIMESTAMP,
+    "timestamp without time zone": DataType.DATETIME,
+    "timestamp with time zone": DataType.TIMESTAMP,
+    "timestamptz": DataType.TIMESTAMP,
+    "datetimeoffset": DataType.TIMESTAMP,
+    # complex
+    "map": DataType.MAP,
+    "array": DataType.ARRAY,
+    "list": DataType.ARRAY,
+}
 
 
 def render_case(args):

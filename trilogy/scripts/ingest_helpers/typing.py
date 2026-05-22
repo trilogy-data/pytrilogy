@@ -1,9 +1,7 @@
 import re
 from typing import Any
 
-from trilogy.authoring import (
-    DataType,
-)
+from trilogy.core.models.core import DataType, EnumType
 
 # Rich type detection mappings
 RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
@@ -119,43 +117,38 @@ def detect_rich_type(
     return None, None
 
 
-def infer_datatype_from_sql_type(sql_type: str) -> DataType:
-    """Infer Trilogy datatype from SQL type string."""
-    sql_type_lower = sql_type.lower()
+# Columns whose sampled values form a fixed set no larger than this are
+# promoted to an enum datatype during ingest.
+DEFAULT_ENUM_MAX_DISTINCT = 10
 
-    # Integer types
-    if any(
-        t in sql_type_lower
-        for t in ["int", "integer", "smallint", "tinyint", "mediumint"]
-    ):
-        return DataType.INTEGER
-    if any(t in sql_type_lower for t in ["bigint", "long", "int64"]):
-        return DataType.BIGINT
+# Base types eligible for enum promotion — the grammar's enum_type rule only
+# accepts string or integer literal members.
+_ENUM_ELIGIBLE_TYPES = frozenset({DataType.STRING, DataType.INTEGER, DataType.BIGINT})
 
-    # Numeric/decimal types
-    if any(t in sql_type_lower for t in ["numeric", "decimal", "money"]):
-        return DataType.NUMERIC
-    if any(t in sql_type_lower for t in ["float", "double", "real", "float64"]):
-        return DataType.FLOAT
 
-    # String types
-    if any(
-        t in sql_type_lower
-        for t in ["char", "varchar", "text", "string", "clob", "nchar", "nvarchar"]
-    ):
-        return DataType.STRING
+def detect_enum_type(
+    column_index: int,
+    base_datatype: DataType,
+    sample_rows: list[tuple],
+    max_distinct: int = DEFAULT_ENUM_MAX_DISTINCT,
+) -> EnumType | None:
+    """Promote a column to an enum when its sampled values form a small fixed set.
 
-    # Boolean
-    if any(t in sql_type_lower for t in ["bool", "boolean", "bit"]):
-        return DataType.BOOL
-
-    # Date/Time types
-    if "timestamp" in sql_type_lower:
-        return DataType.TIMESTAMP
-    if "datetime" in sql_type_lower:
-        return DataType.DATETIME
-    if "date" in sql_type_lower:
-        return DataType.DATE
-
-    # Default to string for unknown types
-    return DataType.STRING
+    Requires a sample larger than the cutoff so a low distinct count reflects a
+    real constraint rather than a tiny table (this also excludes unique keys).
+    """
+    if base_datatype not in _ENUM_ELIGIBLE_TYPES or len(sample_rows) <= max_distinct:
+        return None
+    distinct: set[Any] = set()
+    for row in sample_rows:
+        value = row[column_index]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (str, int)):
+            return None
+        distinct.add(value)
+        if len(distinct) > max_distinct:
+            return None
+    if not distinct:
+        return None
+    return EnumType(type=base_datatype, values=sorted(distinct))

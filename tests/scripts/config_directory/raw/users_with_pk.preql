@@ -1,11 +1,11 @@
 # Datasource ingested from users_with_pk
-# Generated on 2026-05-21 20:57:18.475836
+# Generated on 2026-05-22 09:09:03.727070
 import std.net;
 
 key user_id int;
 property user_id.username string;
 property user_id.email string::email_address;
-property user_id.created_at timestamp;
+property user_id.created_at datetime;
 
 root datasource users_with_pk (
     user_id,
