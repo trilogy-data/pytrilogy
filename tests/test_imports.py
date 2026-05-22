@@ -138,6 +138,27 @@ address sales;
     assert "sales.ext_price" in bound
 
 
+def test_property_derivation_namespace_uses_local_not_grain_key():
+    """`property <imported.key>.name <- expr` declares the derived concept in
+    the declaring file's namespace, consistent with the other `<...>` property
+    forms — never pushed up into the grain key's (imported) namespace."""
+    date_content = "key date_sk int;\nproperty date_sk.day_offset int;"
+    sales_content = """
+import date_dim as date_dim;
+property <date_dim.date_sk>.shifted <- date_dim.day_offset + 1;
+"""
+    config = EnvironmentConfig(
+        import_resolver=DictImportResolver(
+            content={"date_dim": date_content, "sales": sales_content}
+        )
+    )
+    env = Environment(config=config)
+    env.parse("import sales as sales;")
+
+    assert "sales.shifted" in env.concepts
+    assert "sales.date_dim.shifted" not in env.concepts
+
+
 def test_selective_import():
     lib_content = """
 key id int;

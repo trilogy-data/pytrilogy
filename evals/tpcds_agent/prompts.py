@@ -32,14 +32,18 @@ missing, you may edit the `raw/` model files to bind a foreign-key column to the
 referenced table's key concept.
 
 Write one query file per question in the working directory itself — alongside
-`trilogy.toml`, NOT inside `raw/` — named with a zero-padded index:
-`query01.preql`, `query02.preql`, ... `query{nn:02d}.preql`.
+`trilogy.toml`, NOT inside `raw/`. Each question below states its exact filename
+(`queryNN.preql`, where NN is that question's number).
 
 Import ONLY the fact table the question is about — `ingest --all` linked its
 foreign keys, so its dimension tables are reached by chaining through it
 (`store_returns.store.state`, `store_returns.date_dim.year`). Do NOT separately
 import dimension tables — a separate import is a disconnected copy that will not
-join. Read the fact's model file first (e.g. `read_file` on
+join. If a question genuinely spans two fact tables (e.g. store_sales and
+inventory), import both and `merge` them on their shared dimension key — mark
+the superset side with `~`: `merge inventory.item.id into ~store_sales.item.id;`
+(a plain merge with no `~` asserts strict equivalence). Do not edit the `raw/`
+model files. Read the fact's model file first (e.g. `read_file` on
 `raw/store_returns.preql`) for exact concept names, then write a query like:
 
     import raw.store_returns as store_returns;
@@ -53,8 +57,8 @@ join. Read the fact's model file first (e.g. `read_file` on
     limit 100;
 
 Each file must be a complete, runnable Trilogy query that returns the answer to
-its question. Validate each one with `trilogy run query01.preql` before moving
-on to the next.
+its question. Validate each one with `trilogy run <file>` before moving on to
+the next.
 
 Business questions
 ==================
@@ -66,10 +70,15 @@ def load_prompts() -> list[dict]:
     return json.loads(PROMPTS_FILE.read_text(encoding="utf-8"))
 
 
+def selected_ids(num_queries: int) -> list[int]:
+    """TPC-DS query ids the eval is running, in order."""
+    return [p["id"] for p in load_prompts()[:num_queries]]
+
+
 def build_task(num_queries: int) -> str:
     prompts = load_prompts()[:num_queries]
     questions = "\n\n".join(
         f"Question {p['id']} -> write `query{p['id']:02d}.preql`\n{p['prompt']}"
         for p in prompts
     )
-    return TASK_TEMPLATE.format(n=num_queries, nn=num_queries, questions=questions)
+    return TASK_TEMPLATE.format(n=len(prompts), questions=questions)

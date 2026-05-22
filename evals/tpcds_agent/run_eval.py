@@ -206,13 +206,14 @@ def build_report(
 ) -> dict:
     statuses: Counter[str] = Counter(q.status for q in query_results)
     pass_count = statuses.get("pass", 0)
+    total = len(query_results)
     return {
         "meta": {
             "timestamp": timestamp,
             "model": args.model,
             "provider": args.provider,
             "scale_factor": args.scale_factor,
-            "num_queries": args.num_queries,
+            "num_queries": total,
             "max_iterations": args.max_iterations,
             "trilogy_version": _trilogy_version(),
             "openrouter_routing": os.environ.get("OPENROUTER_PROVIDER"),
@@ -238,9 +239,7 @@ def build_report(
         "queries": [dataclasses.asdict(q) for q in query_results],
         "summary": {
             "pass_count": pass_count,
-            "pass_rate": (
-                round(pass_count / args.num_queries, 3) if args.num_queries else 0.0
-            ),
+            "pass_rate": round(pass_count / total, 3) if total else 0.0,
             "status_breakdown": dict(statuses),
         },
     }
@@ -371,6 +370,7 @@ def main() -> int:
     workspace_db = db.copy_database(cached, workspace / "tpcds.duckdb")
 
     write_trilogy_toml(workspace, args.provider, args.model, args.max_iterations)
+    query_ids = prompts.selected_ids(args.num_queries)
     task = prompts.build_task(args.num_queries)
     (run_dir / "task.txt").write_text(task, encoding="utf-8")
 
@@ -386,15 +386,15 @@ def main() -> int:
     )
     (run_dir / "agent_output.txt").write_text(agent_run["output"], encoding="utf-8")
 
-    print(f"[3/4] Scoring {args.num_queries} queries against TPC-DS reference ...")
+    print(f"[3/4] Scoring {len(query_ids)} queries against TPC-DS reference ...")
     metrics = scoring.parse_agent_log(log_path)
     try:
-        query_results = scoring.score_queries(workspace_db, workspace, args.num_queries)
+        query_results = scoring.score_queries(workspace_db, workspace, query_ids)
     except Exception as exc:
         print(f"  scoring aborted: {type(exc).__name__}: {exc}", file=sys.stderr)
         query_results = [
             scoring.QueryResult(id=i, status="error", detail="scoring aborted")
-            for i in range(1, args.num_queries + 1)
+            for i in query_ids
         ]
 
     report = build_report(args, timestamp, agent_run, metrics, query_results)

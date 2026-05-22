@@ -115,11 +115,10 @@ def _find_query_file(workspace: Path, idx: int) -> Path | None:
     return None
 
 
-def score_queries(
-    db_path: Path, workspace: Path, num_queries: int
-) -> list[QueryResult]:
+def score_queries(db_path: Path, workspace: Path, ids: list[int]) -> list[QueryResult]:
     """Run each agent-produced query against ``db_path`` and compare results to
-    the TPC-DS reference for that query index."""
+    the TPC-DS reference for that query id (``query<id>.preql`` vs
+    ``PRAGMA tpcds(<id>)``)."""
     from trilogy import Dialects
     from trilogy.core.models.environment import Environment
     from trilogy.dialect.config import DuckDBConfig
@@ -130,10 +129,7 @@ def score_queries(
     )
     engine.execute_raw_sql("INSTALL tpcds; LOAD tpcds;")
 
-    results: list[QueryResult] = []
-    for idx in range(1, num_queries + 1):
-        results.append(_score_one(engine, workspace, idx))
-    return results
+    return [_score_one(engine, workspace, idx) for idx in ids]
 
 
 def _score_one(engine, workspace: Path, idx: int) -> QueryResult:

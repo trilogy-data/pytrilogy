@@ -107,6 +107,20 @@ def test_todo_add_assigns_id_and_lists():
     assert state.todos[0].description == "step one"
 
 
+def test_todo_add_accepts_list_of_descriptions():
+    state = AgentState()
+    result = handle_todo(
+        state, {"action": "add", "description": ["step one", "step two", "step three"]}
+    )
+    assert "todo added" in result
+    assert len(state.todos) == 3
+    assert [t.description for t in state.todos] == [
+        "step one",
+        "step two",
+        "step three",
+    ]
+
+
 def test_todo_complete_marks_item():
     state = AgentState(todos=[TodoItem(id="aaa", description="x")])
     handle_todo(state, {"action": "complete", "id": "aaa"})

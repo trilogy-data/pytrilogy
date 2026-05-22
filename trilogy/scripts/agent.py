@@ -65,8 +65,8 @@ Available tools:
   exact, full file text. This is how you create every .preql query file.
 - read_file(path): return the text content of a file.
 - todo(action, id=None, description=None): manage a scratch TODO list. Actions:
-  "add" (requires description; returns new id), "complete" (requires id),
-  "remove" (requires id), "list" (returns all items).
+  "add" (description: one string, or a list of strings to add several at once),
+  "complete"/"remove" (id: one id or a list of ids), "list". Plan in one `add`.
 - return_control_to_user(message): hand control back to the user. This FAILS if
   any TODOs are not completed — either complete or remove them first.
 
@@ -200,9 +200,10 @@ READ_FILE_TOOL = LLMToolDefinition(
 TODO_TOOL = LLMToolDefinition(
     name="todo",
     description=(
-        "Manage a scratch TODO list. action 'add' requires `description` and "
-        "returns a new id; 'complete' and 'remove' take `id` — a single id or "
-        "a list of ids — of existing item(s); 'list' returns all items."
+        "Manage a scratch TODO list. action 'add' takes `description` — a "
+        "single task string or a list of strings to add several at once — and "
+        "returns the new id(s); 'complete' and 'remove' take `id` — a single "
+        "id or a list of ids — of existing item(s); 'list' returns all items."
     ),
     input_schema={
         "type": "object",
@@ -220,8 +221,12 @@ TODO_TOOL = LLMToolDefinition(
                 ),
             },
             "description": {
-                "type": ["string", "null"],
-                "description": "Task text. Required for 'add'.",
+                "type": ["string", "array", "null"],
+                "items": {"type": "string"},
+                "description": (
+                    "Task text — a single string, or a list of strings to "
+                    "add several at once. Required for 'add'."
+                ),
             },
         },
         "required": ["action"],
@@ -365,12 +370,26 @@ def handle_todo(state: AgentState, args: dict) -> str:
     if action == "list":
         return _render_todos(state.todos)
     if action == "add":
-        description = args.get("description")
-        if not isinstance(description, str) or not description.strip():
-            return "todo error: 'description' is required for add."
-        item = TodoItem(id=uuid.uuid4().hex[:8], description=description.strip())
-        state.todos.append(item)
-        return f"todo added: {item.id}\n{_render_todos(state.todos)}"
+        raw_desc = args.get("description")
+        if isinstance(raw_desc, str):
+            descriptions = [raw_desc.strip()] if raw_desc.strip() else []
+        elif isinstance(raw_desc, list):
+            descriptions = [
+                d.strip() for d in raw_desc if isinstance(d, str) and d.strip()
+            ]
+        else:
+            descriptions = []
+        if not descriptions:
+            return (
+                "todo error: 'description' is required for add — a non-empty "
+                "string, or a list of strings to add several at once."
+            )
+        added = []
+        for desc in descriptions:
+            item = TodoItem(id=uuid.uuid4().hex[:8], description=desc)
+            state.todos.append(item)
+            added.append(item.id)
+        return f"todo added: {', '.join(added)}\n{_render_todos(state.todos)}"
     if action in ("complete", "remove"):
         raw_id = args.get("id")
         if isinstance(raw_id, str):

@@ -278,6 +278,17 @@ def get_map_value_type(arg):
     return ArrayType(type=DataType.STRING)
 
 
+# Numeric argument types accepted by math / aggregate functions. SQL backends
+# coerce freely across this family, so a function that accepts one accepts all.
+NUMERIC_INPUT_TYPES: Set[VALID_INPUT_ITEM] = {
+    DataType.INTEGER,
+    DataType.BIGINT,
+    DataType.FLOAT,
+    DataType.NUMBER,
+    DataType.NUMERIC,
+}
+
+
 FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ALIAS: FunctionConfig(
         arg_count=1,
@@ -332,27 +343,14 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MAX: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.DATE,
-            DataType.DATETIME,
-            DataType.TIMESTAMP,
-            DataType.BOOL,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES
+        | {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP, DataType.BOOL},
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),
     FunctionType.MIN: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.DATE,
-            DataType.DATETIME,
-            DataType.TIMESTAMP,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES
+        | {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP},
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),
@@ -454,6 +452,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ARRAY_SUM: FunctionConfig(
         valid_inputs={
             ArrayType(type=DataType.INTEGER),
+            ArrayType(type=DataType.BIGINT),
             ArrayType(type=DataType.FLOAT),
             ArrayType(type=DataType.NUMBER),
             ArrayType(type=DataType.NUMERIC),
@@ -488,7 +487,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=2,
     ),
     FunctionType.ABS: FunctionConfig(
-        valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
         arg_count=1,
     ),
@@ -506,30 +505,16 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type_function=get_coalesce_output_type,
     ),
     FunctionType.GREATEST: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.DATE,
-            DataType.DATETIME,
-            DataType.TIMESTAMP,
-            DataType.STRING,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES
+        | {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP, DataType.STRING},
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=-1,
         output_type_function=lambda args: get_output_type_at_index(args, 0),
     ),
     FunctionType.LEAST: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.DATE,
-            DataType.DATETIME,
-            DataType.TIMESTAMP,
-            DataType.STRING,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES
+        | {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP, DataType.STRING},
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=-1,
@@ -898,58 +883,33 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.ADD: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.SUBTRACT: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MULTIPLY: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.POWER: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
         arg_count=2,
     ),
     FunctionType.DIVIDE: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MOD: FunctionConfig(
         valid_inputs=[
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            NUMERIC_INPUT_TYPES,
             {DataType.INTEGER},
         ],
         output_purpose=Purpose.PROPERTY,
@@ -958,7 +918,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.SQRT: FunctionConfig(
         valid_inputs=[
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            NUMERIC_INPUT_TYPES,
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
@@ -966,7 +926,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.LOG: FunctionConfig(
         valid_inputs=[
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            NUMERIC_INPUT_TYPES,
             {DataType.INTEGER},
         ],
         output_purpose=Purpose.PROPERTY,
@@ -981,7 +941,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.ROUND: FunctionConfig(
         valid_inputs=[
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            NUMERIC_INPUT_TYPES,
             {DataType.INTEGER},
         ],
         output_purpose=Purpose.PROPERTY,
@@ -990,7 +950,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.FLOOR: FunctionConfig(
         valid_inputs=[
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            NUMERIC_INPUT_TYPES,
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
@@ -998,7 +958,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.CEIL: FunctionConfig(
         valid_inputs=[
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            NUMERIC_INPUT_TYPES,
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
@@ -1060,13 +1020,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.SUM: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-            DataType.BOOL,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES | {DataType.BOOL},
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),
@@ -1096,39 +1050,24 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.AVG: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),
     FunctionType.STDDEV: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.METRIC,
         output_type=DataType.FLOAT,
         arg_count=1,
     ),
     FunctionType.VARIANCE: FunctionConfig(
-        valid_inputs={
-            DataType.INTEGER,
-            DataType.FLOAT,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        },
+        valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.METRIC,
         output_type=DataType.FLOAT,
         arg_count=1,
     ),
     FunctionType.UNIX_TO_TIMESTAMP: FunctionConfig(
-        valid_inputs={DataType.INTEGER},
+        valid_inputs={DataType.INTEGER, DataType.BIGINT},
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.TIMESTAMP,
         arg_count=1,
@@ -1186,8 +1125,8 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.GEO_TRANSFORM: FunctionConfig(
         valid_inputs=[
             {DataType.GEOGRAPHY},
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            NUMERIC_INPUT_TYPES,
+            NUMERIC_INPUT_TYPES,
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.GEOGRAPHY,
