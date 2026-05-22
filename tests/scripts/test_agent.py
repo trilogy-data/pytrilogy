@@ -21,6 +21,7 @@ from trilogy.scripts.agent import (
     MAX_SUBMIT_KICKBACKS,
     _build_provider,
     _dispatch,
+    _empty_write_note,
     _format_call,
     _maybe_flag_loop,
     _render_reviewer_transcript,
