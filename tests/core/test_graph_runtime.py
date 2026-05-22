@@ -325,7 +325,136 @@ def test_contract_errors_raise_loudly():
     with pytest.raises(rust_nx.NetworkXNoPath):
         rust_nx.shortest_path_length(native, "b", "a")
     with pytest.raises(rust_nx.NodeNotFound):
+        rust_nx.shortest_path_length(native, "a", "missing")
+    with pytest.raises(rust_nx.NodeNotFound):
         rust_nx.ego_graph(native, "missing", 1)
+    with pytest.raises(KeyError):
+        native.edges[("a", "missing")]
+    with pytest.raises(KeyError):
+        native["a"]["missing"]
+
+
+def test_is_directed_acyclic_graph_parity():
+    native, reference = build_weighted_directed_pair()
+    assert rust_nx.is_directed_acyclic_graph(native) is True
+    assert nx.is_directed_acyclic_graph(reference) is True
+
+    native.add_edge("d", "a")
+    reference.add_edge("d", "a")
+    assert rust_nx.is_directed_acyclic_graph(native) is False
+    assert nx.is_directed_acyclic_graph(reference) is False
+
+    # an undirected graph is never a DAG
+    assert rust_nx.is_directed_acyclic_graph(rust_nx.Graph([("a", "b")])) is False
+
+
+def test_descendants_parity():
+    native, reference = build_weighted_directed_pair()
+    # diamond graph exercises the already-seen branch (d reached via b and c)
+    assert rust_nx.descendants(native, "a") == nx.descendants(reference, "a")
+    assert rust_nx.descendants(native, "d") == nx.descendants(reference, "d") == set()
+
+    native.add_edge("d", "a")
+    reference.add_edge("d", "a")
+    # source is excluded from its own descendants even when a cycle reaches it
+    assert rust_nx.descendants(native, "a") == nx.descendants(reference, "a")
+
+    with pytest.raises(rust_nx.NodeNotFound):
+        rust_nx.descendants(native, "missing")
+
+
+def test_has_path_parity():
+    native, reference = build_weighted_directed_pair()
+    assert (
+        rust_nx.has_path(native, "a", "d") is nx.has_path(reference, "a", "d") is True
+    )
+    assert (
+        rust_nx.has_path(native, "d", "a") is nx.has_path(reference, "d", "a") is False
+    )
+    # missing endpoints return False rather than raising
+    assert rust_nx.has_path(native, "a", "missing") is False
+    assert rust_nx.has_path(native, "missing", "a") is False
+
+
+def _canonical_cycles(cycles: object) -> set[tuple[str, ...]]:
+    out: set[tuple[str, ...]] = set()
+    for cycle in cycles:  # type: ignore[attr-defined]
+        pivot = cycle.index(min(cycle))
+        out.add(tuple(cycle[pivot:] + cycle[:pivot]))
+    return out
+
+
+def test_simple_cycles_parity():
+    native = rust_nx.DiGraph()
+    reference = nx.DiGraph()
+    for graph in [native, reference]:
+        graph.add_edges_from(
+            [("a", "b"), ("b", "c"), ("c", "a"), ("c", "d"), ("d", "c"), ("e", "e")]
+        )
+    assert _canonical_cycles(rust_nx.simple_cycles(native)) == _canonical_cycles(
+        nx.simple_cycles(reference)
+    )
+
+    # an acyclic graph yields no cycles
+    dag, _ = build_weighted_directed_pair()
+    assert list(rust_nx.simple_cycles(dag)) == []
+
+
+def test_facade_mutation_and_view_branches():
+    g = rust_nx.DiGraph()
+    g.add_nodes_from(["a", "b", "c"])
+    g.add_nodes_from([])  # empty batch is a no-op
+    g.add_edges_from([("a", "b"), ("b", "c")])
+    g.add_edges_from([])  # empty batch is a no-op
+
+    # the callable form of the node/edge views
+    assert g.nodes() == ["a", "b", "c"]
+    assert g.edges() == [("a", "b"), ("b", "c")]
+    assert g.has_edge("a", "b") is True
+    assert g.has_edge("a", "c") is False
+
+    # edge- and neighbor-attribute access
+    g.edges["a", "b"]["weight"] = 5
+    assert g.edges[("a", "b")]["weight"] == 5
+    assert g["a"]["b"]["weight"] == 5
+    assert g.pred["b"]["a"]["weight"] == 5
+
+    # subgraph silently drops nodes that are not present
+    assert set(g.subgraph(["a", "b", "missing"]).nodes) == {"a", "b"}
+
+    # remove_node also drops attrs of incident edges
+    g.remove_node("b")
+    assert "b" not in g
+    assert ("a", "b") not in g.edges
+
+    # to_undirected on a directed graph yields an undirected copy;
+    # on an already-undirected graph it returns a plain copy
+    assert rust_nx.DiGraph([("x", "y")]).to_undirected().is_directed() is False
+    assert rust_nx.Graph([("x", "y")]).to_undirected().is_directed() is False
+
+    # remove_nodes_from also prunes the attrs of incident edges
+    weighted = rust_nx.DiGraph()
+    weighted.add_edge("p", "q", weight=9)
+    weighted.remove_nodes_from(["nonexistent"])  # nothing to remove -> early return
+    weighted.remove_nodes_from(["p"])
+    assert ("p", "q") not in weighted.edges
+
+
+def test_facade_constructor_rejects_bad_edges():
+    with pytest.raises(TypeError):
+        rust_nx.DiGraph(["ab"])  # not a 2-tuple
+    with pytest.raises(TypeError):
+        rust_nx.DiGraph([("a",)])  # wrong arity
+    with pytest.raises(TypeError):
+        rust_nx.DiGraph([("a", 1)])  # non-string node
+
+
+def test_multi_source_dijkstra_missing_source_raises():
+    g = rust_nx.Graph()
+    g.add_edge("a", "b")
+    g.add_edge("b", "c", weight=2)  # mixed weighted / unweighted edges
+    with pytest.raises(rust_nx.NodeNotFound):
+        rust_nx.multi_source_dijkstra_path(g, ["missing"], weight="weight")
 
 
 def test_invalid_facade_inputs_raise_type_error():

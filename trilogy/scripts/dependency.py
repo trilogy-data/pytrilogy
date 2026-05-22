@@ -309,58 +309,6 @@ class DependencyResolver:
         _validate_acyclic(graph)
         return graph
 
-    def get_root_nodes(self, graph: nx.DiGraph) -> list[ScriptNode]:
-        """
-        Get nodes with no dependencies (in-degree 0).
-
-        These are the nodes that can be executed immediately.
-
-        Returns:
-            List of ScriptNodes with no incoming edges.
-        """
-        return [
-            ScriptNode(path=Path(key))
-            for key in graph.nodes()
-            if graph.in_degree(key) == 0
-        ]
-
-    def get_dependents(self, graph: nx.DiGraph, node: ScriptNode) -> list[ScriptNode]:
-        """
-        Get nodes that directly depend on the given node.
-
-        Returns:
-            List of ScriptNodes that have 'node' as a dependency.
-        """
-        return [ScriptNode(path=Path(key)) for key in graph.successors(str(node.path))]
-
-    def get_dependencies(self, graph: nx.DiGraph, node: ScriptNode) -> list[ScriptNode]:
-        """
-        Get nodes that the given node depends on.
-
-        Returns:
-            List of ScriptNodes that must run before 'node'.
-        """
-        return [
-            ScriptNode(path=Path(key)) for key in graph.predecessors(str(node.path))
-        ]
-
-    def get_dependency_graph(
-        self, nodes: list[ScriptNode]
-    ) -> dict[ScriptNode, set[ScriptNode]]:
-        """
-        Get the raw dependency graph as a dict for inspection/debugging.
-
-        Returns:
-            Dict mapping each node to its dependencies (predecessors).
-        """
-        graph = self.build_graph(nodes)
-        return {
-            ScriptNode(path=Path(key)): {
-                ScriptNode(path=Path(dep)) for dep in graph.predecessors(key)
-            }
-            for key in graph.nodes()
-        }
-
 
 def create_script_nodes(files: list[Path]) -> list[ScriptNode]:
     """
