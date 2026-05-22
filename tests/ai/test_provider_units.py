@@ -98,6 +98,45 @@ def test_build_tool_call_tolerates_malformed_json():
     assert "invalid tool arguments" in call.parse_error
 
 
+def test_history_to_api_messages_threads_tool_calls():
+    from trilogy.ai.models import LLMMessage
+    from trilogy.ai.providers.openrouter import _history_to_api_messages
+
+    history = [
+        LLMMessage(role="system", content="sys"),
+        LLMMessage(role="user", content="do it"),
+        LLMMessage(
+            role="assistant",
+            content="",
+            model_info={
+                "tool_calls": [{"name": "trilogy", "arguments": {"args": ["run"]}}]
+            },
+        ),
+        LLMMessage(role="user", content='{"tool":"trilogy","result":"ok"}'),
+    ]
+    msgs = _history_to_api_messages(history)
+    assert [m["role"] for m in msgs] == ["system", "user", "assistant", "tool"]
+    call = msgs[2]["tool_calls"][0]
+    assert call["function"]["name"] == "trilogy"
+    assert call["function"]["arguments"] == '{"args": ["run"]}'
+    assert msgs[3]["tool_call_id"] == call["id"]
+    assert msgs[3]["content"] == '{"tool":"trilogy","result":"ok"}'
+
+
+def test_history_to_api_messages_plain_when_no_tool_calls():
+    from trilogy.ai.models import LLMMessage
+    from trilogy.ai.providers.openrouter import _history_to_api_messages
+
+    history = [
+        LLMMessage(role="user", content="hi"),
+        LLMMessage(role="assistant", content="hello"),
+    ]
+    assert _history_to_api_messages(history) == [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+
+
 def test_openai_provider_builds_required_tool_payload(monkeypatch):
     import httpx
 

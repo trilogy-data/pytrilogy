@@ -26,18 +26,17 @@ Your goal:
    deliberately correcting a model definition.
 2. Answer each of the {n} business questions below by writing a Trilogy query.
 
-`ingest --all` emits each table as a standalone datasource — foreign-key columns
-are not linked, so a query spanning several tables fails to resolve until the
-datasources share key concepts. You may edit the `raw/` model files to bind a
-foreign-key column to the referenced table's key concept; modifying the model
-for that purpose is expected.
+`ingest --all` infers foreign keys and links the datasources, so the generated
+model can be queried across tables directly. If a specific join is still
+missing, you may edit the `raw/` model files to bind a foreign-key column to the
+referenced table's key concept.
 
 Write one query file per question in the working directory itself — alongside
 `trilogy.toml`, NOT inside `raw/` — named with a zero-padded index:
 `query01.preql`, `query02.preql`, ... `query{nn:02d}.preql`.
 
 A query imports the datasources it needs from the `raw/` model and selects from
-them. Read a model file first (e.g. `trilogy file read raw/store_returns.preql`)
+them. Read a model file first (e.g. `read_file` on `raw/store_returns.preql`)
 to learn its exact concept names, then write a query like:
 
     import raw.store_returns as store_returns;

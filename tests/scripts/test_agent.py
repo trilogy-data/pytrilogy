@@ -20,16 +20,16 @@ from trilogy.scripts.agent import (
     TodoItem,
     _build_provider,
     _dispatch,
-    _empty_write_note,
     _format_call,
     _maybe_flag_loop,
-    _raw_write_note,
     _run_turn,
     _status_message,
+    handle_read_file,
     handle_return_control,
     handle_show_message,
     handle_todo,
     handle_trilogy,
+    handle_write_file,
     truncate_middle,
 )
 
@@ -182,33 +182,43 @@ def test_maybe_flag_loop_resets_on_different_call():
     assert "[guidance]" not in _maybe_flag_loop(state, b, "ok")
 
 
-def test_raw_write_note_flags_writes_into_raw():
-    assert "raw/" in _raw_write_note(["file", "write", "raw/store.preql"])
-    assert "raw/" in _raw_write_note(["file", "write", "raw\\store.preql"])
-    assert _raw_write_note(["file", "write", "query01.preql"]) == ""
-    assert _raw_write_note(["run", "query01.preql"]) == ""
+def test_write_file_creates_and_overwrites(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = handle_write_file(
+        AgentState(), {"path": "query01.preql", "content": "select 1 -> x;"}
+    )
+    assert "wrote 14 chars" in result
+    assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
 
 
-def test_empty_write_note_flags_zero_byte_writes():
-    args = ["file", "write", "query01.preql"]
-    assert "EMPTY" in _empty_write_note(args, "Wrote 0 byte(s) to query01.preql")
-    assert _empty_write_note(args, "Wrote 412 byte(s) to query01.preql") == ""
-    assert _empty_write_note(["run", "query01.preql"], "Wrote 0 byte(s)") == ""
-
-
-def test_handle_trilogy_refuses_empty_overwrite_of_nonempty_file(tmp_path, monkeypatch):
+def test_write_file_refuses_empty_overwrite_of_nonempty_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "query01.preql").write_text("select 1 -> x;", encoding="utf-8")
-    result = handle_trilogy(AgentState(), {"args": ["file", "write", "query01.preql"]})
+    result = handle_write_file(AgentState(), {"path": "query01.preql", "content": ""})
     assert "refused" in result
     assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
 
 
-def test_handle_trilogy_allows_empty_write_of_new_file(tmp_path, monkeypatch):
+def test_write_file_flags_writes_into_raw(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    result = handle_trilogy(AgentState(), {"args": ["file", "write", "new.preql"]})
-    assert "refused" not in result
-    assert "exit_code: 0" in result
+    result = handle_write_file(
+        AgentState(), {"path": "raw/store.preql", "content": "key x int;"}
+    )
+    assert "[guidance]" in result and "raw/" in result
+
+
+def test_read_file_returns_content_and_reports_missing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "q.preql").write_text("select 1 -> x;", encoding="utf-8")
+    assert handle_read_file(AgentState(), {"path": "q.preql"}) == "select 1 -> x;"
+    assert "no such file" in handle_read_file(AgentState(), {"path": "missing.preql"})
+
+
+def test_handle_trilogy_redirects_file_write_and_read():
+    write = handle_trilogy(AgentState(), {"args": ["file", "write", "q.preql"]})
+    assert "write_file" in write
+    read = handle_trilogy(AgentState(), {"args": ["file", "read", "q.preql"]})
+    assert "read_file" in read
 
 
 # --- return_control_to_user gating ---
@@ -712,7 +722,14 @@ def test_env_flag_invalid_value_raises_click_exception(monkeypatch):
 
 def test_all_tools_registered():
     names = {t.name for t in ALL_TOOLS}
-    assert names == {"show_message", "trilogy", "todo", "return_control_to_user"}
+    assert names == {
+        "show_message",
+        "trilogy",
+        "write_file",
+        "read_file",
+        "todo",
+        "return_control_to_user",
+    }
     assert set(agent_mod.TOOL_HANDLERS) == names
 
 

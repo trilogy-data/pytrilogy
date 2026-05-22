@@ -60,10 +60,10 @@ Available tools:
       ["database", "describe", "<table>"] — show a table's columns and types.
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
       under raw/) for every table in the database, in one step.
-    * Write a file: ["file", "write", "<path>"] with the file's full contents
-      passed as `stdin`. Read a file: ["file", "read", "<path>"].
     * Run a Trilogy script: ["run", "<path.preql>"].
-  Creating or editing files is ONLY possible via ["file", "write", ...].
+- write_file(path, content): create or overwrite a text file; `content` is the
+  exact, full file text. This is how you create every .preql query file.
+- read_file(path): return the text content of a file.
 - todo(action, id=None, description=None): manage a scratch TODO list. Actions:
   "add" (requires description; returns new id), "complete" (requires id),
   "remove" (requires id), "list" (returns all items).
@@ -163,6 +163,40 @@ TRILOGY_TOOL = LLMToolDefinition(
     },
 )
 
+WRITE_FILE_TOOL = LLMToolDefinition(
+    name="write_file",
+    description=(
+        "Create or overwrite a text file. Writes the exact text in `content` "
+        "to `path`. This is how you create every .preql query file."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Path to write, e.g. 'query01.preql'.",
+            },
+            "content": {
+                "type": "string",
+                "description": "The complete, exact text content of the file.",
+            },
+        },
+        "required": ["path", "content"],
+    },
+)
+
+READ_FILE_TOOL = LLMToolDefinition(
+    name="read_file",
+    description="Return the text content of the file at `path`.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Path of the file to read."},
+        },
+        "required": ["path"],
+    },
+)
+
 TODO_TOOL = LLMToolDefinition(
     name="todo",
     description=(
@@ -210,6 +244,8 @@ RETURN_CONTROL_TOOL = LLMToolDefinition(
 ALL_TOOLS: list[LLMToolDefinition] = [
     SHOW_MESSAGE_TOOL,
     TRILOGY_TOOL,
+    WRITE_FILE_TOOL,
+    READ_FILE_TOOL,
     TODO_TOOL,
     RETURN_CONTROL_TOOL,
 ]
@@ -232,15 +268,10 @@ def handle_show_message(state: AgentState, args: dict) -> str:
     return "show_message: ok"
 
 
-def _raw_write_note(raw_args: list[str]) -> str:
-    """Escalating guidance (not a block) when the agent writes into raw/, which
-    holds the generated data model — query files belong in the working dir."""
-    if (
-        len(raw_args) >= 3
-        and raw_args[0] == "file"
-        and raw_args[1] == "write"
-        and raw_args[2].replace("\\", "/").startswith("raw/")
-    ):
+def _raw_path_note(path: str) -> str:
+    """Guidance (not a block) when writing into raw/, which holds the generated
+    data model — query files belong in the working directory."""
+    if path.replace("\\", "/").startswith("raw/"):
         return (
             "\n\n[guidance] You wrote into raw/, which holds the generated data "
             "model. Query files belong in the working directory, not raw/. Only "
@@ -249,37 +280,44 @@ def _raw_write_note(raw_args: list[str]) -> str:
     return ""
 
 
-_CONTENT_FLAGS = {"-c", "--content", "--from-file", "--from-url"}
-
-
-def _would_clobber_with_empty(raw_args: list[str], stdin_value: str | None) -> bool:
-    """True if this is a `file write` with no content source that would erase an
-    existing non-empty file — a destructive accident worth refusing outright."""
-    if not (len(raw_args) >= 3 and raw_args[0] == "file" and raw_args[1] == "write"):
-        return False
-    if stdin_value or any(a in _CONTENT_FLAGS for a in raw_args):
-        return False
+def handle_write_file(state: AgentState, args: dict) -> str:
+    path = args.get("path")
+    content = args.get("content")
+    if not isinstance(path, str) or not path:
+        return "write_file error: 'path' must be a non-empty string."
+    if not isinstance(content, str):
+        return "write_file error: 'content' must be a string."
+    target = Path(path)
     try:
-        target = Path(raw_args[2])
-        return target.is_file() and target.stat().st_size > 0
+        clobbers = target.is_file() and target.stat().st_size > 0
     except OSError:
-        return False
-
-
-def _empty_write_note(raw_args: list[str], stdout: str) -> str:
-    """Escalating guidance when `file write` produced a 0-byte file — the agent
-    forgot to pass content via the trilogy tool's `stdin` argument."""
-    if (
-        len(raw_args) >= 2
-        and raw_args[0] == "file"
-        and raw_args[1] == "write"
-        and "Wrote 0 byte" in stdout
-    ):
+        clobbers = False
+    if not content and clobbers:
         return (
-            "\n\n[guidance] That wrote an EMPTY file. Pass the file's full "
-            "contents in the `stdin` argument of the trilogy tool."
+            f"write_file refused: 'content' is empty and '{path}' already has "
+            "content — that would erase it. Pass the file's full text in "
+            "'content'."
         )
-    return ""
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        return f"write_file error: {exc}"
+    return f"write_file: wrote {len(content)} chars to {path}" + _raw_path_note(path)
+
+
+def handle_read_file(state: AgentState, args: dict) -> str:
+    path = args.get("path")
+    if not isinstance(path, str) or not path:
+        return "read_file error: 'path' must be a non-empty string."
+    target = Path(path)
+    if not target.is_file():
+        return f"read_file error: no such file: {path}"
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"read_file error: {exc}"
+    return truncate_middle(text, state.tool_output_limit)
 
 
 def handle_trilogy(state: AgentState, args: dict) -> str:
@@ -289,11 +327,14 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     stdin_value = args.get("stdin")
     if stdin_value is not None and not isinstance(stdin_value, str):
         return "trilogy error: 'stdin' must be a string or null."
-    if _would_clobber_with_empty(raw_args, stdin_value):
+    if len(raw_args) >= 2 and raw_args[0] == "file" and raw_args[1] == "write":
         return (
-            f"trilogy file write refused: stdin is empty and '{raw_args[2]}' "
-            "already has content — an empty write would erase it. Re-issue the "
-            "call with the file's full contents in the `stdin` argument."
+            "Use the `write_file(path, content)` tool to write files, not "
+            "`trilogy file write`."
+        )
+    if len(raw_args) >= 2 and raw_args[0] == "file" and raw_args[1] == "read":
+        return (
+            "Use the `read_file(path)` tool to read files, not " "`trilogy file read`."
         )
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
     child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
@@ -312,15 +353,10 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
         return "trilogy error: subprocess timed out after 600s."
     stdout = truncate_middle(completed.stdout or "", state.tool_output_limit)
     stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
-    result = (
+    return (
         f"exit_code: {completed.returncode}\n"
         f"--- stdout ---\n{stdout}\n"
         f"--- stderr ---\n{stderr}"
-    )
-    return (
-        result
-        + _raw_write_note(raw_args)
-        + _empty_write_note(raw_args, completed.stdout or "")
     )
 
 
@@ -390,6 +426,8 @@ def handle_return_control(state: AgentState, args: dict) -> str:
 TOOL_HANDLERS: dict[str, Callable[[AgentState, dict], str]] = {
     SHOW_MESSAGE_TOOL.name: handle_show_message,
     TRILOGY_TOOL.name: handle_trilogy,
+    WRITE_FILE_TOOL.name: handle_write_file,
+    READ_FILE_TOOL.name: handle_read_file,
     TODO_TOOL.name: handle_todo,
     RETURN_CONTROL_TOOL.name: handle_return_control,
 }
@@ -488,6 +526,22 @@ def _log_event(log_path: Path | None, event: dict[str, Any]) -> None:
     event = {"ts": datetime.now(timezone.utc).isoformat(), **event}
     with log_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, default=str) + "\n")
+
+
+def _dump_conversation(conv: Conversation, log_path: Path) -> None:
+    """Write the full final message list to a `<log>.conversation.txt` sidecar —
+    every message in order, with model_info (tool calls) shown — so the exact
+    history sent to the model can be inspected for append bugs."""
+    dump_path = log_path.with_suffix(".conversation.txt")
+    blocks: list[str] = []
+    for i, msg in enumerate(conv.messages):
+        block = [f"===== message {i} [{msg.role}] ====="]
+        block.append(msg.content if msg.content else "(empty content)")
+        info = getattr(msg, "model_info", None)
+        if info:
+            block.append(f"[model_info] {json.dumps(info, default=str)}")
+        blocks.append("\n".join(block))
+    dump_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
 
 
 def _format_call(call: LLMToolCall) -> str:
@@ -655,7 +709,11 @@ def agent(
     initial = f"{context_block}\n\n{command}" if context_block else command
     conv.add_message(initial, role="user")
 
-    _run_turn(conv, state, cfg.max_iterations, log_path)
+    try:
+        _run_turn(conv, state, cfg.max_iterations, log_path)
+    finally:
+        if log_path:
+            _dump_conversation(conv, log_path)
     if state.farewell:
         print_success(state.farewell)
 
@@ -675,6 +733,10 @@ def agent(
         state.farewell = ""
         state.todos = []
         conv.add_message(next_command, role="user")
-        _run_turn(conv, state, cfg.max_iterations, log_path)
+        try:
+            _run_turn(conv, state, cfg.max_iterations, log_path)
+        finally:
+            if log_path:
+                _dump_conversation(conv, log_path)
         if state.farewell:
             print_success(state.farewell)
