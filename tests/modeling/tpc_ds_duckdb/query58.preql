@@ -13,9 +13,9 @@ property ss_dev <- ss_item_rev / avg_rev * 100;
 property cs_dev <- cs_item_rev / avg_rev * 100;
 property ws_dev <- ws_item_rev / avg_rev * 100;
 
-WHERE
+where
     sales.date.week_seq in target_week_seq
-SELECT
+select
     sales.item.name as item_id,
     ss_item_rev,
     ss_dev,
@@ -24,7 +24,7 @@ SELECT
     ws_item_rev,
     ws_dev,
     avg_rev,
-HAVING
+having
     ss_item_rev between 0.9 * cs_item_rev and 1.1 * cs_item_rev
     and ss_item_rev between 0.9 * ws_item_rev and 1.1 * ws_item_rev
     and cs_item_rev between 0.9 * ss_item_rev and 1.1 * ss_item_rev
@@ -32,8 +32,8 @@ HAVING
     and ws_item_rev between 0.9 * ss_item_rev and 1.1 * ss_item_rev
     and ws_item_rev between 0.9 * cs_item_rev and 1.1 * cs_item_rev
 
-ORDER BY
+order by
     item_id asc nulls first,
     ss_item_rev asc nulls first
-LIMIT 100
+limit 100
 ;

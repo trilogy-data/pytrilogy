@@ -1,17 +1,17 @@
 import store_sales as store_sales;
 
-WHERE
+where
     store_sales.item.manager_id = 1
     and store_sales.date.month_of_year = 11
     and store_sales.date.year = 2000
-SELECT
+select
     store_sales.date.year,
     store_sales.item.brand_id,
     store_sales.item.brand_name,
     sum(store_sales.ext_sales_price) as ext_price,
-ORDER BY
+order by
     store_sales.date.year asc,
     ext_price desc,
     store_sales.item.brand_id asc
-LIMIT 100
+limit 100
 ;

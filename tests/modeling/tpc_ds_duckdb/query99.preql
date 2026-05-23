@@ -6,19 +6,19 @@ import catalog_sales;
 property warehouse_short_name <- substring(warehouse.name, 1, 20);
 
 # we can statically evaluate the case statement to prune to
-def catalog_in_range(start, end) -> CASE
-    WHEN start is null THEN count(row_counter ? days_to_ship <= end)
-    WHEN end is not null THEN count(row_counter ? days_to_ship > start and days_to_ship <= end)
-    ELSE count(row_counter ? days_to_ship > start)
-END;
+def catalog_in_range(start, end) -> case
+    when start is null then count(row_counter ? days_to_ship <= end)
+    when end is not null then count(row_counter ? days_to_ship > start and days_to_ship <= end)
+    else count(row_counter ? days_to_ship > start)
+end;
 
-WHERE
+where
     ship_date.month_seq between 1200 and 1211
     and order_number is not null
     and call_center.id is not null
     and warehouse.id is not null
     and ship_mode.id is not null
-SELECT
+select
     warehouse_short_name,
     ship_mode.type,
     lower(call_center.name) as cc_name_lower,
@@ -27,9 +27,9 @@ SELECT
     @catalog_in_range(60, 90) as between_61_and_90_days,
     @catalog_in_range(90, 120) as between_91_and_120_days,
     @catalog_in_range(120, null) as over_120_days,
-ORDER BY
+order by
     warehouse_short_name asc nulls first,
     ship_mode.type asc nulls first,
     cc_name_lower asc nulls first
-LIMIT 100
+limit 100
 ;

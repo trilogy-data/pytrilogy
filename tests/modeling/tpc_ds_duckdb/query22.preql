@@ -1,19 +1,19 @@
 import inventory as inventory;
 
-WHERE
+where
     inventory.date.month_seq between 1200 and 1211
-SELECT
+select
     inventory.item.product_name,
     inventory.item.brand_name,
     inventory.item.class,
     inventory.item.category,
     avg(inventory.quantity_on_hand)
             by rollup inventory.item.product_name, inventory.item.brand_name, inventory.item.class, inventory.item.category as qoh,
-ORDER BY
+order by
     qoh asc nulls first,
     inventory.item.product_name asc nulls first,
     inventory.item.brand_name asc nulls first,
     inventory.item.class asc nulls first,
     inventory.item.category asc nulls first
-LIMIT 100
+limit 100
 ;

@@ -12,17 +12,17 @@ metric store_daily <- sum(sales.sales_price ? sales.sales_channel = 'STORE') by 
 # whenever a sale exists on this (item, date), even if sales_price is NULL —
 # can't use `daily IS NOT NULL` since SUM of NULL prices yields NULL.
 metric web_has_row <- max(
-    CASE
-    WHEN sales.sales_channel = 'WEB' THEN 1
-    ELSE 0
-END
+    case
+    when sales.sales_channel = 'WEB' then 1
+    else 0
+end
 )
     by sales.item.id, sales.date.date;
 metric store_has_row <- max(
-    CASE
-    WHEN sales.sales_channel = 'STORE' THEN 1
-    ELSE 0
-END
+    case
+    when sales.sales_channel = 'STORE' then 1
+    else 0
+end
 )
     by sales.item.id, sales.date.date;
 
@@ -34,31 +34,31 @@ auto store_cume <- sum(store_daily) over (partition by sales.item.id order by sa
 
 # Reference's `web_sales` column is NULL on (item, date) rows where web had no
 # sale row at all — distinct from `web_cumulative` (which forward-fills).
-auto web_sales_visible <- CASE
-    WHEN web_has_row = 1 THEN web_cume
-    ELSE null
-END;
-auto store_sales_visible <- CASE
-    WHEN store_has_row = 1 THEN store_cume
-    ELSE null
-END;
+auto web_sales_visible <- case
+    when web_has_row = 1 then web_cume
+    else null
+end;
+auto store_sales_visible <- case
+    when store_has_row = 1 then store_cume
+    else null
+end;
 
-WHERE
+where
     sales.date.month_seq between 1200 and 1211
     and sales.item.id is not null
     and sales.sales_channel in ('WEB', 'STORE')
-SELECT
+select
     sales.item.id as item_sk,
     sales.date.date as d_date,
     web_sales_visible as web_sales,
     store_sales_visible as store_sales,
     web_cume as web_cumulative,
     store_cume as store_cumulative,
-HAVING
+having
     web_cumulative > store_cumulative
 
-ORDER BY
+order by
     item_sk asc nulls first,
     d_date asc nulls first
-LIMIT 100
+limit 100
 ;

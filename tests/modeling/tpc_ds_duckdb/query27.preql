@@ -1,12 +1,12 @@
 import store_sales as store_sales;
 
-WHERE
+where
     store_sales.customer_demographic.gender = 'M'
     and store_sales.customer_demographic.marital_status = 'S'
     and store_sales.customer_demographic.education_status = 'College'
     and store_sales.date.year = 2002
     and store_sales.store.state = 'TN'
-SELECT
+select
     store_sales.item.name,
     store_sales.store.state,
     grouping(store_sales.store.state) by rollup store_sales.item.name, store_sales.store.state as g_state,
@@ -18,8 +18,8 @@ SELECT
             by rollup store_sales.item.name, store_sales.store.state as agg3,
     avg(store_sales.sales_price::numeric(12,2))
             by rollup store_sales.item.name, store_sales.store.state as agg4,
-ORDER BY
+order by
     store_sales.item.name asc nulls first,
     store_sales.store.state asc nulls first
-LIMIT 100
+limit 100
 ;

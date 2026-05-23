@@ -20,11 +20,11 @@ auto store_q2_q3_increase <- ss_q3 / ss_q2;
 auto web_q1_q2_increase <- ws_q2 / ws_q1;
 auto web_q2_q3_increase <- ws_q3 / ws_q2;
 
-WHERE
+where
     sales.date.year = 2000
     and sales.sales_channel in ('STORE', 'WEB')
     and sales.date.quarter in (1, 2, 3)
-SELECT
+select
     sales.bill_address.county,
     sales.date.year,
     web_q1_q2_increase,
@@ -37,28 +37,28 @@ SELECT
     --ws_q1,
     --ws_q2,
     --ws_q3,
-HAVING
+having
     ss_q1 > 0
     and ss_q2 > 0
     and (
-        CASE
-            WHEN ws_q1 > 0 THEN ws_q2 / ws_q1
-            ELSE null
-        END > CASE
-            WHEN ss_q1 > 0 THEN ss_q2 / ss_q1
-            ELSE null
-        END
+        case
+            when ws_q1 > 0 then ws_q2 / ws_q1
+            else null
+        end > case
+            when ss_q1 > 0 then ss_q2 / ss_q1
+            else null
+        end
     )
     and (
-        CASE
-            WHEN ws_q2 > 0 THEN ws_q3 / ws_q2
-            ELSE null
-        END > CASE
-            WHEN ss_q2 > 0 THEN ss_q3 / ss_q2
-            ELSE null
-        END
+        case
+            when ws_q2 > 0 then ws_q3 / ws_q2
+            else null
+        end > case
+            when ss_q2 > 0 then ss_q3 / ss_q2
+            else null
+        end
     )
 
-ORDER BY
+order by
     sales.bill_address.county asc nulls first
 ;

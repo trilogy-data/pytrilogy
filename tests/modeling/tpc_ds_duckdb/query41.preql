@@ -53,13 +53,13 @@ or (
 )
     by item.manufact;
 
-SELECT
+select
     item.product_name ? item.manufacturer_id between 738 and 778 as filtered_product_name,
     --manufact_matches,
-HAVING
+having
     filtered_product_name is not null and manufact_matches > 0
 
-ORDER BY
+order by
     filtered_product_name asc
-LIMIT 100
+limit 100
 ;

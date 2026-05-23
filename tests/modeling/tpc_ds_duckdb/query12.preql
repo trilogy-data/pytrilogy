@@ -1,9 +1,9 @@
 import web_sales as web_sales;
 
-WHERE
+where
     web_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
     and web_sales.item.category in ('Sports', 'Books', 'Home')
-SELECT
+select
     web_sales.item.name,
     web_sales.item.desc,
     web_sales.item.category,
@@ -12,11 +12,11 @@ SELECT
     sum(web_sales.ext_sales_price) as itemrevenue,
     --sum(itemrevenue) by web_sales.item.class as itemclassrevenue,
     (itemrevenue * 100.0) / itemclassrevenue as revenueratio,
-ORDER BY
+order by
     web_sales.item.category asc,
     web_sales.item.class asc,
     web_sales.item.name asc,
     web_sales.item.desc asc,
     revenueratio asc
-LIMIT 100
+limit 100
 ;

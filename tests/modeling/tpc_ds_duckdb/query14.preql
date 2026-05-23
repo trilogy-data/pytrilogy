@@ -14,41 +14,41 @@ metric fact_row_one <- count(sales.order_id) by sales.sales_channel, sales.order
 # cross_tuples: tuples sold in all 3 channels during 1999-2001. Equivalent to
 # the reference's 3-way INTERSECT on (i_brand_id, i_class_id, i_category_id)
 # across store/catalog/web sales.
-rowset cross_tuples <- WHERE
+rowset cross_tuples <- where
     sales.date.year between 1999 and 2001
-SELECT
+select
     tuple_key as ci_tuple_key,
     --cross_channel_count,
-HAVING
+having
     cross_channel_count = 3
 
 ;
 
 # avg_sales: scalar avg(quantity * list_price) over all 3 channels for 1999-2001.
-rowset avg_sales <- WHERE
+rowset avg_sales <- where
     sales.date.year between 1999 and 2001
-SELECT
+select
     avg(sales.quantity * sales.list_price) as average_sales,
 ;
 
 # One per fact row (unified_sales grain is (sales_channel, order_id, item.id)).
-property channel_label <- CASE
-    WHEN sales.sales_channel = 'STORE' THEN 'store'
-    WHEN sales.sales_channel = 'CATALOG' THEN 'catalog'
-    WHEN sales.sales_channel = 'WEB' THEN 'web'
-    ELSE null
-END;
+property channel_label <- case
+    when sales.sales_channel = 'STORE' then 'store'
+    when sales.sales_channel = 'CATALOG' then 'catalog'
+    when sales.sales_channel = 'WEB' then 'web'
+    else null
+end;
 
 # Map unified_sales' uppercase channel codes to the reference's lowercase labels.
 metric cross_channel_count <- count_distinct(sales.sales_channel) by tuple_key;
 
 # Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items in
 # cross_tuples, HAVING sum(quantity*list_price) > avg_sales.
-rowset l0_filtered <- WHERE
+rowset l0_filtered <- where
     sales.date.year = 2001
     and sales.date.month_of_year = 11
     and tuple_key in cross_tuples.ci_tuple_key
-SELECT
+select
     channel_label as channel_l0,
     sales.item.brand_id as brand_l0,
     sales.item.class_id as class_l0,
@@ -56,13 +56,13 @@ SELECT
     sum(sales.quantity * sales.list_price) as bucket_sum_l0,
     sum(fact_row_one) as bucket_count_l0,
     --avg_sales.average_sales,
-HAVING
+having
     bucket_sum_l0 > avg_sales.average_sales
 
 ;
 
 # Final ROLLUP(channel, brand_id, class_id, category_id) over the per-channel L0.
-SELECT
+select
     l0_filtered.channel_l0 as channel,
     l0_filtered.brand_l0 as i_brand_id,
     l0_filtered.class_l0 as i_class_id,
@@ -71,10 +71,10 @@ SELECT
             by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 as sum_sales,
     sum(l0_filtered.bucket_count_l0)
             by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 as sum_number_sales,
-ORDER BY
+order by
     channel asc nulls first,
     i_brand_id asc nulls first,
     i_class_id asc nulls first,
     i_category_id asc nulls first
-LIMIT 100
+limit 100
 ;

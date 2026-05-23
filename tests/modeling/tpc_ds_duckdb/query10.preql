@@ -6,9 +6,9 @@ import catalog_sales as catalog_sales;
 #Count the customers with the same gender, marital status, education status, purchase estimate, credit rating,
 #dependent count, employed dependent count and college dependent count who live in certain counties and who
 # have purchased from both stores and another sales channel during a three month time period of a given year.
-MERGE catalog_sales.customer.id into ~customer.id;
-MERGE web_sales.customer.id into ~customer.id;
-MERGE store_sales.customer.id into ~customer.id;
+merge catalog_sales.customer.id into ~customer.id;
+merge web_sales.customer.id into ~customer.id;
+merge store_sales.customer.id into ~customer.id;
 
 property relevant_customers <- customer.id
     ? store_sales.date.year = 2002
@@ -19,9 +19,9 @@ and (
     or (catalog_sales.date.year = 2002 and catalog_sales.date.month_of_year in (1, 2, 3, 4))
 );
 
-WHERE
+where
     customer.id in relevant_customers and customer.demographics.gender is not null
-SELECT
+select
     customer.demographics.gender,
     customer.demographics.marital_status,
     customer.demographics.education_status,
@@ -36,7 +36,7 @@ SELECT
     count(customer.id) as cnt5,
     customer.demographics.college_dependent_count,
     count(customer.id) as cnt6,
-ORDER BY
+order by
     customer.demographics.gender asc,
     customer.demographics.marital_status asc,
     customer.demographics.education_status asc,

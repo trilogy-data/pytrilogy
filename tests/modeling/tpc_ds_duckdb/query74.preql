@@ -14,23 +14,23 @@ metric store_second_year <- sum(sales.net_paid ? sales.sales_channel = 'STORE' a
 metric web_second_year <- sum(sales.net_paid ? sales.sales_channel = 'WEB' and sales.date.year = second_year)
     by sales.customer.id;
 
-WHERE
+where
     sales.sales_channel in ('STORE', 'WEB')
     and sales.customer.id is not null
     and store_first_year > 0
     and web_first_year > 0
-    and (CASE
-            WHEN web_first_year > 0 THEN web_second_year / web_first_year
-            ELSE null
-        END) > (CASE
-            WHEN store_first_year > 0 THEN store_second_year / store_first_year
-            ELSE null
-        END)
-SELECT
+    and (case
+            when web_first_year > 0 then web_second_year / web_first_year
+            else null
+        end) > (case
+            when store_first_year > 0 then store_second_year / store_first_year
+            else null
+        end)
+select
     sales.customer.text_id as customer_id,
     sales.customer.first_name as customer_first_name,
     sales.customer.last_name as customer_last_name,
-ORDER BY
+order by
     customer_id asc nulls first
-LIMIT 100
+limit 100
 ;

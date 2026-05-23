@@ -6,14 +6,14 @@ metric zip_p_count <- count(customer.id ? customer.preferred_cust_flag = 'Y') by
 property p_cust_zip <- customer.address.zip ? zip_p_count > 10;
 auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);
 
-WHERE
+where
     store_sales.date.quarter = 2
     and store_sales.date.year = 1998
     and substring(store_sales.store.zip, 1, 2) in final_zips
-SELECT
+select
     store_sales.store.name,
     sum(store_sales.net_profit) as store_net_profit,
-ORDER BY
+order by
     store_sales.store.name asc
-LIMIT 100
+limit 100
 ;

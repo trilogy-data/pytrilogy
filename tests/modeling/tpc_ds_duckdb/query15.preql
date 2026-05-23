@@ -1,6 +1,6 @@
 import catalog_sales as catalog_sales;
 
-WHERE
+where
     catalog_sales.date.quarter = 2
     and catalog_sales.date.year = 2001
     and (
@@ -8,10 +8,10 @@ WHERE
         or catalog_sales.sales_price > 500
         or substring(catalog_sales.bill_customer.address.zip, 1, 5) in ('85669', '86197', '88274', '83405', '86475', '85392', '85460', '80348', '81792')
     )
-SELECT
+select
     catalog_sales.bill_customer.address.zip,
     sum(catalog_sales.sales_price) as sales,
-ORDER BY
+order by
     catalog_sales.bill_customer.address.zip asc nulls first
-LIMIT 100
+limit 100
 ;

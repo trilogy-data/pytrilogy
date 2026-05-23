@@ -8,11 +8,11 @@ metric customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.
     by cr.return_address.state, cr.customer.id;
 metric scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
 
-WHERE
+where
     customer_state > scaled_state
     and cr.customer.address.state = 'GA'
     and cr.return_address.state is not null
-SELECT
+select
     --cr.customer.id,
     cr.customer.text_id,
     cr.customer.salutation,
@@ -30,7 +30,7 @@ SELECT
     cr.customer.address.gmt_offset,
     cr.customer.address.location_type,
     customer_state,
-ORDER BY
+order by
     cr.customer.text_id asc nulls first,
     cr.customer.salutation asc nulls first,
     cr.customer.first_name asc nulls first,
@@ -47,5 +47,5 @@ ORDER BY
     cr.customer.address.gmt_offset asc nulls first,
     cr.customer.address.location_type asc nulls first,
     customer_state asc nulls first
-LIMIT 100
+limit 100
 ;

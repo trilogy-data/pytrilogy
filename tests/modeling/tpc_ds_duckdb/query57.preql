@@ -16,14 +16,14 @@ auto nsum <- lead(sum_sales, 1)
         order by catalog_sales.date.year asc, catalog_sales.date.month_of_year asc);
 auto sum_minus_avg <- sum_sales - avg_monthly_sales;
 
-WHERE
+where
     catalog_sales.call_center.id is not null
     and (
         catalog_sales.date.year = 1999
         or (catalog_sales.date.year = 1998 and catalog_sales.date.month_of_year = 12)
         or (catalog_sales.date.year = 2000 and catalog_sales.date.month_of_year = 1)
     )
-SELECT
+select
     catalog_sales.item.category,
     catalog_sales.item.brand_name,
     catalog_sales.call_center.name,
@@ -34,15 +34,15 @@ SELECT
     psum,
     nsum,
     --sum_minus_avg,
-HAVING
+having
     catalog_sales.date.year = 1999
     and avg_monthly_sales > 0
-    and CASE
-            WHEN avg_monthly_sales > 0 THEN abs(sum_sales - avg_monthly_sales) / avg_monthly_sales
-            ELSE null
-        END > 0.1
+    and case
+            when avg_monthly_sales > 0 then abs(sum_sales - avg_monthly_sales) / avg_monthly_sales
+            else null
+        end > 0.1
 
-ORDER BY
+order by
     sum_minus_avg asc nulls first,
     catalog_sales.item.category asc,
     catalog_sales.item.brand_name asc,
@@ -53,5 +53,5 @@ ORDER BY
     sum_sales asc,
     psum asc,
     nsum asc
-LIMIT 100
+limit 100
 ;

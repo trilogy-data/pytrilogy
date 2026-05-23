@@ -1,60 +1,60 @@
 import store_sales as store_sales;
 
 def bucket_count(low, high) -> sum(
-    CASE
-    WHEN store_sales.quantity between low and high THEN 1
-    ELSE 0
-END
+    case
+    when store_sales.quantity between low and high then 1
+    else 0
+end
 );
-def bucket_pick(cnt, threshold, low, high) -> CASE
-    WHEN cnt > threshold THEN avg(
-            CASE
-            WHEN store_sales.quantity between low and high THEN store_sales.ext_discount_amount
-            ELSE null
-        END
+def bucket_pick(cnt, threshold, low, high) -> case
+    when cnt > threshold then avg(
+            case
+            when store_sales.quantity between low and high then store_sales.ext_discount_amount
+            else null
+        end
         )
-    ELSE avg(
-            CASE
-            WHEN store_sales.quantity between low and high THEN store_sales.net_paid
-            ELSE null
-        END
+    else avg(
+            case
+            when store_sales.quantity between low and high then store_sales.net_paid
+            else null
+        end
         )
-END;
+end;
 
 metric count1 <- sum(
-    CASE
-    WHEN store_sales.quantity between 1 and 20 THEN 1
-    ELSE 0
-END
+    case
+    when store_sales.quantity between 1 and 20 then 1
+    else 0
+end
 );
 metric count2 <- sum(
-    CASE
-    WHEN store_sales.quantity between 21 and 40 THEN 1
-    ELSE 0
-END
+    case
+    when store_sales.quantity between 21 and 40 then 1
+    else 0
+end
 );
 metric count3 <- sum(
-    CASE
-    WHEN store_sales.quantity between 41 and 60 THEN 1
-    ELSE 0
-END
+    case
+    when store_sales.quantity between 41 and 60 then 1
+    else 0
+end
 );
 metric count4 <- sum(
-    CASE
-    WHEN store_sales.quantity between 61 and 80 THEN 1
-    ELSE 0
-END
+    case
+    when store_sales.quantity between 61 and 80 then 1
+    else 0
+end
 );
 metric count5 <- sum(
-    CASE
-    WHEN store_sales.quantity between 81 and 100 THEN 1
-    ELSE 0
-END
+    case
+    when store_sales.quantity between 81 and 100 then 1
+    else 0
+end
 );
 
-WHERE
+where
     store_sales.quantity between 1 and 100
-SELECT
+select
     @bucket_pick(count1, 74129, 1, 20) as bucket1,
     @bucket_pick(count2, 122840, 21, 40) as bucket2,
     @bucket_pick(count3, 56580, 41, 60) as bucket3,

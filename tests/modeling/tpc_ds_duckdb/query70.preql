@@ -4,12 +4,12 @@ import store_sales as ss;
 metric state_total <- sum(ss.net_profit ? ss.date.month_seq between 1200 and 1211) by ss.store.state;
 property state_rnk <- rank(ss.store.state) over (order by state_total desc);
 
-rowset top_states <- WHERE
+rowset top_states <- where
     ss.date.month_seq between 1200 and 1211
-SELECT
+select
     ss.store.state as ts_state,
     --state_rnk,
-HAVING
+having
     state_rnk <= 5
 
 ;
@@ -23,25 +23,25 @@ HAVING
 # from the rollup-output NULL pattern: store rows always have non-null
 # state/county in source, so a NULL in the rollup output unambiguously means
 # "rolled up at that level".
-rowset q70_rolled <- WHERE
+rowset q70_rolled <- where
     ss.date.month_seq between 1200 and 1211 and ss.store.state in top_states.ts_state
-SELECT
+select
     sum(ss.net_profit) by rollup ss.store.state, ss.store.county as total_sum,
     ss.store.state as r_state,
     ss.store.county as r_county,
 ;
 
-def loc_level(state, county) -> CASE
-    WHEN county is not null THEN 0
-    WHEN state is not null THEN 1
-    ELSE 2
-END;
-def partition_state(state, county) -> CASE
-    WHEN county is not null THEN state
-    ELSE null
-END;
+def loc_level(state, county) -> case
+    when county is not null then 0
+    when state is not null then 1
+    else 2
+end;
+def partition_state(state, county) -> case
+    when county is not null then state
+    else null
+end;
 
-SELECT
+select
     q70_rolled.total_sum,
     q70_rolled.r_state as s_state,
     q70_rolled.r_county as s_county,
@@ -50,12 +50,12 @@ SELECT
             over (partition by @loc_level(q70_rolled.r_state, q70_rolled.r_county),
                     @partition_state(q70_rolled.r_state, q70_rolled.r_county)
                 order by q70_rolled.total_sum desc) as rank_within_parent,
-ORDER BY
+order by
     lochierarchy desc nulls first,
-    CASE
-            WHEN lochierarchy = 0 THEN s_state
-            ELSE null
-        END asc nulls first,
+    case
+            when lochierarchy = 0 then s_state
+            else null
+        end asc nulls first,
     rank_within_parent asc nulls first
-LIMIT 100
+limit 100
 ;

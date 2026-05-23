@@ -1,16 +1,16 @@
 import store_returns as returns;
 
-WHERE
+where
     returns.store.state = 'TN' and returns.return_date.year = 2000
-SELECT
+select
     returns.customer.text_id,
     --sum(returns.return_amount) by returns.customer.id, returns.store.id as total_returns,
     --returns.store.id,
     --avg(total_returns) by returns.store.id as avg_store_returns,
-HAVING
+having
     total_returns > (1.2 * avg_store_returns)
 
-ORDER BY
+order by
     returns.customer.text_id asc
-LIMIT 100
+limit 100
 ;

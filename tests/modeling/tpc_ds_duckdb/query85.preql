@@ -1,6 +1,6 @@
 import web_returns as wr;
 
-WHERE
+where
     wr.web_sales.date.year = 2000
     and (
         (
@@ -42,16 +42,16 @@ WHERE
             and wr.web_sales.net_profit between 50 and 250
         )
     )
-SELECT
+select
     --wr.reason.desc,
     substring(wr.reason.desc, 1, 20) as reason_desc,
     avg(wr.web_sales.quantity) as avg1,
     avg(wr.refunded_cash) as avg2,
     avg(wr.fee) as avg3,
-ORDER BY
+order by
     reason_desc asc,
     avg1 asc,
     avg2 asc,
     avg3 asc
-LIMIT 100
+limit 100
 ;

@@ -11,11 +11,11 @@ metric customer_state_returns_2002 <- sum(
     by web_returns.return_address.state, web_returns.customer.id;
 metric scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;
 
-WHERE
+where
     customer_state_returns_2002 > scaled_state_returns_2002
     and web_returns.customer.address.state = 'GA'
     and web_returns.return_address.state is not null
-SELECT
+select
     --web_returns.customer.id,
     web_returns.customer.text_id,
     web_returns.customer.salutation,
@@ -30,7 +30,7 @@ SELECT
     web_returns.customer.email_address,
     web_returns.customer.last_review_date,
     customer_state_returns_2002,
-ORDER BY
+order by
     web_returns.customer.text_id asc nulls first,
     web_returns.customer.salutation asc nulls first,
     web_returns.customer.first_name asc nulls first,
@@ -44,5 +44,5 @@ ORDER BY
     web_returns.customer.email_address asc nulls first,
     web_returns.customer.last_review_date asc nulls first,
     customer_state_returns_2002 asc nulls first
-LIMIT 100
+limit 100
 ;

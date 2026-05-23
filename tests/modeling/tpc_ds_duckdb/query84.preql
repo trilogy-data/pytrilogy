@@ -2,20 +2,20 @@ import customer as customer;
 import store_returns as returns;
 
 # sr_cdemo_sk = cd_demo_sk in the reference; cross-table value join.
-MERGE customer.demographics.id into returns.customer_demographic.id;
+merge customer.demographics.id into returns.customer_demographic.id;
 
-WHERE
+where
     customer.address.city = 'Edgewood'
     and returns.customer_demographic.id is not null
     and customer.household_demographic.id is not null
     and customer.household_demographic.income_band.lower_bound >= 38128
     and customer.household_demographic.income_band.upper_bound <= 38128 + 50000
-SELECT
+select
     customer.text_id,
     concat(coalesce(customer.last_name, ''), ', ', coalesce(customer.first_name, '')) as customername,
     --returns.store_sales.ticket_number,
     --returns.item.id,
-ORDER BY
+order by
     customer.text_id asc nulls first
-LIMIT 100
+limit 100
 ;

@@ -10,23 +10,21 @@ def cat_month_sum(metric, month) -> sum(metric * sales.quantity ? sales.sales_ch
     by sales.warehouse.id, sales.date.year;
 def channel_total(ws, cs) -> coalesce(ws, 0) + coalesce(cs, 0);
 def per_sqft(ws, cs) -> coalesce(ws, 0) / sales.warehouse.square_feet + coalesce(cs, 0) / sales.warehouse.square_feet;
-
 def ws_sales(month) -> @web_month_sum(sales.ext_sales_price, month);
 def cs_sales(month) -> @cat_month_sum(sales.sales_price, month);
 def ws_net(month) -> @web_month_sum(sales.net_paid, month);
 def cs_net(month) -> @cat_month_sum(sales.net_paid_inc_tax, month);
-
 def month_sales(month) -> @channel_total(@ws_sales(month), @cs_sales(month));
 def month_net(month) -> @channel_total(@ws_net(month), @cs_net(month));
 def month_sales_per_sqft(month) -> @per_sqft(@ws_sales(month), @cs_sales(month));
 
-WHERE
+where
     sales.sales_channel in ('WEB', 'CATALOG')
     and sales.date.year = 2001
     and sales.time.time between 30838 and 59638
     and sales.ship_mode.carrier in ('DHL', 'BARIAN')
     and sales.warehouse.id is not null
-SELECT
+select
     --sales.warehouse.id,
     sales.warehouse.name as w_warehouse_name,
     sales.warehouse.square_feet as w_warehouse_sq_ft,
@@ -72,8 +70,8 @@ SELECT
     @month_net(10) as oct_net,
     @month_net(11) as nov_net,
     @month_net(12) as dec_net,
-ORDER BY
+order by
     w_warehouse_name asc nulls first,
     year_ asc nulls first
-LIMIT 100
+limit 100
 ;

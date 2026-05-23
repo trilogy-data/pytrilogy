@@ -1,6 +1,6 @@
 import store_sales as store_sales;
 
-WHERE
+where
     store_sales.date.year = 2001
     and (
         (
@@ -39,7 +39,7 @@ WHERE
             and store_sales.net_profit between 50 and 250
         )
     )
-SELECT
+select
     avg(store_sales.quantity) as avg1,
     avg(store_sales.ext_sales_price) as avg2,
     avg(store_sales.ext_wholesale_cost) as avg3,

@@ -1,6 +1,6 @@
 import store_sales as store_sales;
 
-WHERE
+where
     store_sales.date.year = 2000
     and store_sales.store.id is not null
     and (
@@ -37,6 +37,6 @@ WHERE
             and store_sales.net_profit between 50 and 25000
         )
     )
-SELECT
+select
     sum(store_sales.quantity) as total_quantity,
 ;

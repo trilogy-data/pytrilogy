@@ -1,11 +1,11 @@
 import store_sales as store_sales;
 
-WHERE
+where
     store_sales.store.market = 8
     and store_sales.customer.birth_country != upper(store_sales.customer.address.country)
     and store_sales.is_returned is True
     and store_sales.store.zip = store_sales.customer.address.zip
-SELECT
+select
     store_sales.customer.last_name,
     store_sales.customer.first_name,
     store_sales.store.name,
@@ -14,7 +14,7 @@ SELECT
         )
             by * as avg_store_customer_sales,
     sum(store_sales.net_paid ? store_sales.item.color = 'peach') as peach_sales,
-HAVING
+having
     peach_sales > 0.05 * avg_store_customer_sales
 
 ;

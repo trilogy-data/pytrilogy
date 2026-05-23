@@ -89,9 +89,9 @@ SELECT
     id;
 """)
     rendered = Renderer().to_string(queries[-1])
-    expected = """WHERE
+    expected = """where
     gender = 'M' and marital = 'S' and education = 'College' and year = 2000
-SELECT
+select
     id,
 ;"""
     assert rendered == expected, rendered
@@ -204,7 +204,7 @@ select id;
     # ConceptDeclaration directly followed by Datasource (different types) → blank line.
     assert "key id int;\n\ndatasource d" in rendered
     # Datasource → SelectStatement: blank line.
-    assert ";\n\nSELECT\n    id," in rendered
+    assert ";\n\nselect\n    id," in rendered
 
 
 def test_statement_spacing_tight_runs():

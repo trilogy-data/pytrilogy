@@ -1,17 +1,17 @@
 import unified_sales as sales;
 
-WHERE
+where
     sales.date.year = 1999
     and sales.date.month_of_year = 11
     and sales.item.manager_id = 1
     and (sales.time.meal_time = 'breakfast' or sales.time.meal_time = 'dinner')
-SELECT
+select
     sales.item.brand_id as brand_id,
     sales.item.brand_name as brand,
     sales.time.hour as t_hour,
     sales.time.minute as t_minute,
     sum(sales.ext_sales_price) as ext_price,
-ORDER BY
+order by
     ext_price desc nulls first,
     brand_id asc nulls first,
     t_hour asc nulls first,

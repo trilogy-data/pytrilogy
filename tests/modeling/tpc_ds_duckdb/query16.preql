@@ -3,17 +3,17 @@ import catalog_returns as cr;
 
 property multi_warehouse_sales <- cs.order_number ? count(cs.warehouse.id) by cs.order_number > 1;
 
-WHERE
+where
     cs.ship_date.date between '2002-02-01'::date and '2002-04-02'::date
     and cs.customer_address.state = 'GA'
     and cs.call_center.county = 'Williamson County'
     and cs.order_number not in cr.order_number
     and cs.order_number in multi_warehouse_sales
-SELECT
+select
     count_distinct(cs.order_number) as order_count,
     sum(cs.ext_ship_cost) as total_shipping_cost,
     sum(cs.net_profit) as total_net_profit,
-ORDER BY
+order by
     order_count desc
-LIMIT 100
+limit 100
 ;

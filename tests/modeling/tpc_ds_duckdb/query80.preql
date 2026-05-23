@@ -1,33 +1,33 @@
 import unified_sales as sales;
 
-property channel_label <- CASE
-    WHEN sales.sales_channel = 'STORE' THEN 'store channel'
-    WHEN sales.sales_channel = 'CATALOG' THEN 'catalog channel'
-    WHEN sales.sales_channel = 'WEB' THEN 'web channel'
-    ELSE null
-END;
-property id_label <- CASE
-    WHEN sales.sales_channel = 'STORE' THEN concat('store', sales.channel_dim_text_id)
-    WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page', sales.channel_dim_text_id)
-    WHEN sales.sales_channel = 'WEB' THEN concat('web_site', sales.channel_dim_text_id)
-    ELSE null
-END;
+property channel_label <- case
+    when sales.sales_channel = 'STORE' then 'store channel'
+    when sales.sales_channel = 'CATALOG' then 'catalog channel'
+    when sales.sales_channel = 'WEB' then 'web channel'
+    else null
+end;
+property id_label <- case
+    when sales.sales_channel = 'STORE' then concat('store', sales.channel_dim_text_id)
+    when sales.sales_channel = 'CATALOG' then concat('catalog_page', sales.channel_dim_text_id)
+    when sales.sales_channel = 'WEB' then concat('web_site', sales.channel_dim_text_id)
+    else null
+end;
 auto profit_minus_loss <- sales.net_profit - coalesce(sales.return_net_loss, 0);
 
-WHERE
+where
     sales.date.date >= '2000-08-23'::date
     and sales.date.date <= '2000-09-22'::date
     and sales.item.current_price > 50
     and sales.promotion.channel_tv = 'N'
     and sales.channel_dim_text_id is not null
-SELECT
+select
     channel_label as channel,
     id_label as id,
     sum(sales.ext_sales_price) by rollup channel_label, id_label as sales_total,
     sum(coalesce(sales.return_amount, 0)) by rollup channel_label, id_label as returns_total,
     sum(profit_minus_loss) by rollup channel_label, id_label as profit_total,
-ORDER BY
+order by
     channel asc nulls first,
     id asc nulls first
-LIMIT 100
+limit 100
 ;

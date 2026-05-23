@@ -25,28 +25,28 @@ metric web_second_year <- sum(
 )
     by sales.customer.id;
 
-WHERE
+where
     sales.sales_channel in ('STORE', 'WEB')
     and sales.date.year in (first_year, second_year)
     and sales.customer.id is not null
     and store_first_year > 0
     and web_first_year > 0
-    and (CASE
-            WHEN web_first_year > 0 THEN (web_second_year * 1.0) / web_first_year
-            ELSE 0.0
-        END) > (CASE
-            WHEN store_first_year > 0 THEN (store_second_year * 1.0) / store_first_year
-            ELSE 0.0
-        END)
-SELECT
+    and (case
+            when web_first_year > 0 then (web_second_year * 1.0) / web_first_year
+            else 0.0
+        end) > (case
+            when store_first_year > 0 then (store_second_year * 1.0) / store_first_year
+            else 0.0
+        end)
+select
     sales.customer.text_id,
     sales.customer.first_name,
     sales.customer.last_name,
     sales.customer.preferred_cust_flag,
-ORDER BY
+order by
     sales.customer.text_id asc nulls first,
     sales.customer.first_name asc nulls first,
     sales.customer.last_name asc nulls first,
     sales.customer.preferred_cust_flag asc nulls first
-LIMIT 100
+limit 100
 ;
