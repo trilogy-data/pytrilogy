@@ -1,8 +1,7 @@
 import store_sales as ss;
 
 WHERE
-    ss.date.month_seq BETWEEN 1200 AND 1211
-    AND ss.store.id is not null
+    ss.date.month_seq between 1200 and 1211 and ss.store.id is not null
 SELECT
     ss.item.category,
     ss.item.class,
@@ -12,10 +11,11 @@ SELECT
     ss.date.quarter,
     ss.date.month_of_year,
     ss.store.text_id,
-    sum(coalesce(ss.sales_price * ss.quantity, 0)) by rollup() as sumsales,
-    rank() over (partition by ss.item.category order by sumsales desc) as rk,
+    sum(coalesce(ss.sales_price * ss.quantity,0)) -> sumsales,
+    rank() over (partition by ss.item.category order by sumsales desc) -> rk,
 HAVING
     rk <= 100
+
 ORDER BY
     ss.item.category asc nulls first,
     ss.item.class asc nulls first,
@@ -27,4 +27,5 @@ ORDER BY
     ss.store.text_id asc nulls first,
     sumsales asc nulls first,
     rk asc nulls first
-LIMIT 100;
+LIMIT 100
+;

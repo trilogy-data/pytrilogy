@@ -1,39 +1,42 @@
 import unified_sales as sales;
 
-# Per-(channel, item) ratios. Filter requires a returns row with return_amount > 10000
-# (acts as INNER on LEFT JOIN to returns), and Dec 2001.
-def in_window(metric) -> sum(metric 
-) by sales.sales_channel, sales.item.id;
+def in_window(metric) -> sum(metric) by sales.sales_channel, sales.item.id;
 
-auto return_qty <- @in_window(sales.return_quantity);
-auto sale_qty <- @in_window(sales.quantity);
-auto return_amt <- @in_window(sales.return_amount);
-auto sale_paid <- @in_window(sales.net_paid);
-auto return_ratio <- cast(return_qty as numeric(15,4)) / cast(sale_qty as numeric(15,4));
-auto currency_ratio <- cast(return_amt as numeric(15,4)) / cast(sale_paid as numeric(15,4));
-auto return_rank <- rank sales.item.id over sales.sales_channel by return_ratio asc;
-auto currency_rank <- rank sales.item.id over sales.sales_channel by currency_ratio asc;
-
-auto channel_label <- CASE
+metric return_qty <- sum(sales.return_quantity) by sales.sales_channel, sales.item.id;
+metric sale_qty <- sum(sales.quantity) by sales.sales_channel, sales.item.id;
+metric return_amt <- sum(sales.return_amount) by sales.sales_channel, sales.item.id;
+metric sale_paid <- sum(sales.net_paid) by sales.sales_channel, sales.item.id;
+property <sales.item.id, sales.sales_channel>.return_rank <- rank(sales.item.id) over (partition by sales.sales_channel order by return_ratio asc);
+property <sales.item.id, sales.sales_channel>.currency_rank <- rank(sales.item.id) over (partition by sales.sales_channel order by currency_ratio asc);
+property channel_label <- CASE
     WHEN sales.sales_channel = 'WEB' THEN 'web'
     WHEN sales.sales_channel = 'CATALOG' THEN 'catalog'
     WHEN sales.sales_channel = 'STORE' THEN 'store'
     ELSE null
 END;
+property <sales.item.id, sales.sales_channel>.return_ratio <- return_qty::Numeric(15,4) / sale_qty::Numeric(15,4);
+property <sales.item.id, sales.sales_channel>.currency_ratio <- return_amt::Numeric(15,4) / sale_paid::Numeric(15,4);
 
 WHERE
-    sales.return_amount > 10000 and sales.net_profit > 1 and sales.net_paid > 0 and sales.quantity > 0 and sales.date.year = 2001 and sales.date.month_of_year = 12
+    sales.return_amount > 10000
+    and sales.net_profit > 1
+    and sales.net_paid > 0
+    and sales.quantity > 0
+    and sales.date.year = 2001
+    and sales.date.month_of_year = 12
 SELECT
-    channel_label as channel,
-    sales.item.id as item,
+    channel_label -> channel,
+    sales.item.id -> item,
     return_ratio,
     return_rank,
     currency_rank,
 HAVING
     return_rank <= 10 or currency_rank <= 10
+
 ORDER BY
     channel asc nulls first,
     return_rank asc nulls first,
     currency_rank asc nulls first,
     item asc nulls first
-LIMIT 100;
+LIMIT 100
+;

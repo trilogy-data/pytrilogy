@@ -1,33 +1,29 @@
 import unified_sales as sales;
 
-# For each (customer.last_name, customer.first_name, date.date) tuple,
-# count rows present in each channel within month_seq 1200..1211.
-auto store_in_window <- sum(
-    CASE WHEN sales.sales_channel = 'STORE'
-              and sales.date.month_seq between 1200 and 1200 + 11
-              and sales.customer.id is not null
-         THEN 1 ELSE 0 END
-) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
-
-auto catalog_in_window <- sum(
-    CASE WHEN sales.sales_channel = 'CATALOG'
-              and sales.date.month_seq between 1200 and 1200 + 11
-              and sales.customer.id is not null
-         THEN 1 ELSE 0 END
-) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
-
-auto web_in_window <- sum(
-    CASE WHEN sales.sales_channel = 'WEB'
-              and sales.date.month_seq between 1200 and 1200 + 11
-              and sales.customer.id is not null
-         THEN 1 ELSE 0 END
-) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+metric store_in_window <- sum(CASE
+    WHEN sales.sales_channel = 'STORE'
+    and sales.date.month_seq between 1200 and 1200 + 11
+    and sales.customer.id is not null THEN 1
+    ELSE 0
+END) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+metric catalog_in_window <- sum(CASE
+    WHEN sales.sales_channel = 'CATALOG'
+    and sales.date.month_seq between 1200 and 1200 + 11
+    and sales.customer.id is not null THEN 1
+    ELSE 0
+END) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+metric web_in_window <- sum(CASE
+    WHEN sales.sales_channel = 'WEB'
+    and sales.date.month_seq between 1200 and 1200 + 11
+    and sales.customer.id is not null THEN 1
+    ELSE 0
+END) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
 
 WHERE
     sales.date.month_seq between 1200 and 1200 + 11
 SELECT
-    sum(CASE WHEN store_in_window > 0
-              and catalog_in_window = 0
-              and web_in_window = 0
-         THEN 1 ELSE 0 END) as cnt
+    sum(CASE
+            WHEN store_in_window > 0 and catalog_in_window = 0 and web_in_window = 0 THEN 1
+            ELSE 0
+        END) -> cnt,
 ;

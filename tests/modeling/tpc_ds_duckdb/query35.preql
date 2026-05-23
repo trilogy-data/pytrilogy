@@ -1,68 +1,56 @@
 import customer as customer;
 import unified_sales as sales;
 
-# TPC-DS q35 uses cs_ship_customer_sk for the catalog EXISTS branch and
-# ws_bill_customer_sk for web, so:
-#   - store/web filters use sales.customer.id (= SS_CUSTOMER_SK / WS_BILL_CUSTOMER_SK)
-#   - catalog filter uses sales.ship_customer.id (= CS_SHIP_CUSTOMER_SK)
-
-with store_buyers as
-WHERE
+rowset store_buyers <- WHERE
     sales.sales_channel = 'STORE'
     and sales.date.year = 2002
     and sales.date.quarter < 4
     and sales.customer.id is not null
 SELECT
-    sales.customer.id as store_cust_id
+    sales.customer.id -> store_cust_id,
 ;
 
-with web_buyers as
-WHERE
+rowset web_buyers <- WHERE
     sales.sales_channel = 'WEB'
     and sales.date.year = 2002
     and sales.date.quarter < 4
     and sales.customer.id is not null
 SELECT
-    sales.customer.id as web_cust_id
+    sales.customer.id -> web_cust_id,
 ;
 
-with catalog_buyers as
-WHERE
+rowset catalog_buyers <- WHERE
     sales.sales_channel = 'CATALOG'
     and sales.date.year = 2002
     and sales.date.quarter < 4
     and sales.ship_customer.id is not null
 SELECT
-    sales.ship_customer.id as cat_cust_id
+    sales.ship_customer.id -> cat_cust_id,
 ;
 
 WHERE
     customer.id in store_buyers.store_cust_id
-    and (customer.id in web_buyers.web_cust_id
-         or customer.id in catalog_buyers.cat_cust_id)
-    # reference equi-joins customer_demographics on cd_demo_sk =
-    # c_current_cdemo_sk (INNER); state it explicitly now the model no
-    # longer (incorrectly) declares the FK non-null
+    and (customer.id in web_buyers.web_cust_id or customer.id in catalog_buyers.cat_cust_id)
     and customer.demographics.id is not null
 SELECT
     customer.address.state,
     customer.demographics.gender,
     customer.demographics.marital_status,
     customer.demographics.dependent_count,
-    count(customer.id) as cnt1,
-    min(customer.demographics.dependent_count) as min1,
-    max(customer.demographics.dependent_count) as max1,
-    avg(customer.demographics.dependent_count) as avg1,
+    count(customer.id) -> cnt1,
+    min(customer.demographics.dependent_count) -> min1,
+    max(customer.demographics.dependent_count) -> max1,
+    avg(customer.demographics.dependent_count) -> avg1,
     customer.demographics.employed_dependent_count,
-    count(customer.id) as cnt2,
-    min(customer.demographics.employed_dependent_count) as min2,
-    max(customer.demographics.employed_dependent_count) as max2,
-    avg(customer.demographics.employed_dependent_count) as avg2,
+    count(customer.id) -> cnt2,
+    min(customer.demographics.employed_dependent_count) -> min2,
+    max(customer.demographics.employed_dependent_count) -> max2,
+    avg(customer.demographics.employed_dependent_count) -> avg2,
     customer.demographics.college_dependent_count,
-    count(customer.id) as cnt3,
-    min(customer.demographics.college_dependent_count) as min3,
-    max(customer.demographics.college_dependent_count) as max3,
-    avg(customer.demographics.college_dependent_count) as avg3,
+    count(customer.id) -> cnt3,
+    min(customer.demographics.college_dependent_count) -> min3,
+    max(customer.demographics.college_dependent_count) -> max3,
+    avg(customer.demographics.college_dependent_count) -> avg3,
 ORDER BY
     customer.address.state asc nulls first,
     customer.demographics.gender asc nulls first,
@@ -70,4 +58,5 @@ ORDER BY
     customer.demographics.dependent_count asc nulls first,
     customer.demographics.employed_dependent_count asc nulls first,
     customer.demographics.college_dependent_count asc nulls first
-LIMIT 100;
+LIMIT 100
+;

@@ -1,28 +1,16 @@
 import store_sales as store_sales;
 import catalog_sales as catalog_sales;
 
-merge catalog_sales.bill_customer.id into store_sales.return_customer.id;
-merge catalog_sales.item.id into store_sales.item.id;
+MERGE catalog_sales.bill_customer.id into store_sales.return_customer.id;
+MERGE catalog_sales.item.id into store_sales.item.id;
 
-# RC-A correlated-grain shape (2026-05-20). Reference q29 has ONE source
-# grain — the joined rowset of store_sales ⋈ store_returns ⋈
-# catalog_sales on (customer, item) — at effective grain
-# (ss.ticket_number, item.id, catalog_sales.order_number). The
-# generator correctly refuses to co-group additive aggregates whose
-# declared per-fact grains differ; we give it a single source grain
-# explicitly by projecting all three correlation keys + dim cols + the
-# raw measures in one rowset, then SUM out at the requested output
-# grain. Selecting `catalog_sales.order_number` alongside
-# `store_sales.ticket_number` forces the cross-fact join and pins the
-# grain.
-with correlated as
-WHERE
+rowset correlated <- WHERE
     store_sales.date.month_of_year = 9
     and store_sales.date.year = 1999
     and store_sales.return_date.month_of_year between 9 and 12
     and store_sales.return_date.year = 1999
     and catalog_sales.date.year in (1999, 2000, 2001)
-    and catalog_sales.quantity>0
+    and catalog_sales.quantity > 0
     and store_sales.is_returned
     and store_sales.customer.id = store_sales.return_customer.id
 SELECT
@@ -39,18 +27,20 @@ SELECT
 ;
 
 SELECT
-    correlated.store_sales.item.name as store_sales_item_name,
-    correlated.store_sales.item.desc as store_sales_item_desc,
-    correlated.store_sales.store.text_id as store_sales_store_text_id,
-    correlated.store_sales.store.name as store_name,
-    sum(correlated.store_sales.quantity) as store_sales_quantity,
-    sum(correlated.store_sales.return_quantity) as store_returns_quantity,
-    sum(correlated.catalog_sales.quantity) as catalog_sales_quantity,
+    correlated.store_sales.item.name -> store_sales_item_name,
+    correlated.store_sales.item.desc -> store_sales_item_desc,
+    correlated.store_sales.store.text_id -> store_sales_store_text_id,
+    correlated.store_sales.store.name -> store_name,
+    sum(correlated.store_sales.quantity) -> store_sales_quantity,
+    sum(correlated.store_sales.return_quantity) -> store_returns_quantity,
+    sum(correlated.catalog_sales.quantity) -> catalog_sales_quantity,
 HAVING
     catalog_sales_quantity > 0
+
 ORDER BY
     store_sales_item_name asc,
     store_sales_item_desc asc,
     store_sales_store_text_id asc,
     store_name asc
-LIMIT 100;
+LIMIT 100
+;

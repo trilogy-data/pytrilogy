@@ -9,27 +9,13 @@ WHERE
 SELECT
     store_sales.item.name,
     store_sales.store.state,
-    grouping(store_sales.store.state) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as g_state,
-    avg(cast(store_sales.quantity as numeric(12, 2))) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as agg1,
-    avg(cast(store_sales.list_price as numeric(12, 2))) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as agg2,
-    avg(cast(store_sales.coupon_amt as numeric(12, 2))) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as agg3,
-    avg(cast(store_sales.sales_price as numeric(12, 2))) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as agg4,
+    grouping(store_sales.store.state) by rollup store_sales.item.name, store_sales.store.state -> g_state,
+    avg(store_sales.quantity::Numeric(12,2)) by rollup store_sales.item.name, store_sales.store.state -> agg1,
+    avg(store_sales.list_price::Numeric(12,2)) by rollup store_sales.item.name, store_sales.store.state -> agg2,
+    avg(store_sales.coupon_amt::Numeric(12,2)) by rollup store_sales.item.name, store_sales.store.state -> agg3,
+    avg(store_sales.sales_price::Numeric(12,2)) by rollup store_sales.item.name, store_sales.store.state -> agg4,
 ORDER BY
     store_sales.item.name asc nulls first,
     store_sales.store.state asc nulls first
-LIMIT 100;
+LIMIT 100
+;

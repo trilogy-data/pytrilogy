@@ -1,32 +1,34 @@
 #For catalog sales, create a report showing the counts of orders shipped within 30 days, from 31 to 60 days, from
 #61 to 90 days, from 91 to 120 days and over 120 days within a given year, grouped by warehouse, call center
 # and shipping mode.
-
 import catalog_sales;
 
-auto warehouse_short_name <- substring(warehouse.name, 1, 20);
+property warehouse_short_name <- substring(warehouse.name,1,20);
 
+def catalog_in_range(start, end) -> CASE
+    WHEN start is null THEN count(filter row_counter where days_to_ship <= end)
+    WHEN end is not null THEN count(filter row_counter where days_to_ship > start and days_to_ship <= end)
+    ELSE count(filter row_counter where days_to_ship > start)
+END;
 
-# we can statically evaluate the case statement to prune to 
-def catalog_in_range(start, end) -> CASE 
-    WHEN start IS NULL THEN COUNT(row_counter ? days_to_ship <= end)
-    WHEN end IS NOT NULL THEN COUNT(row_counter ? days_to_ship> start AND days_to_ship <= end)  
-    ELSE COUNT(row_counter ? days_to_ship > start) 
-    END;
-
-WHERE ship_date.month_seq BETWEEN 1200 and 1211 and order_number is not null 
-    and call_center.id is not null and warehouse.id is not null and ship_mode.id is not null
+WHERE
+    ship_date.month_seq between 1200 and 1211
+    and order_number is not null
+    and call_center.id is not null
+    and warehouse.id is not null
+    and ship_mode.id is not null
 SELECT
     warehouse_short_name,
     ship_mode.type,
-    lower(call_center.name) ->cc_name_lower,
-    @catalog_in_range(null, 30) AS less_than_30_days,
-    @catalog_in_range(30, 60) AS between_31_and_60_days,
-    @catalog_in_range(60, 90) AS between_61_and_90_days,
-    @catalog_in_range(90, 120) AS between_91_and_120_days,
-    @catalog_in_range(120, null) AS over_120_days
+    lower(call_center.name) -> cc_name_lower,
+    @catalog_in_range(null, 30) -> less_than_30_days,
+    @catalog_in_range(30, 60) -> between_31_and_60_days,
+    @catalog_in_range(60, 90) -> between_61_and_90_days,
+    @catalog_in_range(90, 120) -> between_91_and_120_days,
+    @catalog_in_range(120, null) -> over_120_days,
 ORDER BY
     warehouse_short_name asc nulls first,
     ship_mode.type asc nulls first,
     cc_name_lower asc nulls first
-limit 100;
+LIMIT 100
+;
