@@ -3,7 +3,7 @@ from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
     BuildDatasource,
     BuildGrain,
     CanonicalBuildConceptList,
@@ -65,7 +65,7 @@ def gen_select_node(
     depth: int,
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     build_datasources = [
         ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)

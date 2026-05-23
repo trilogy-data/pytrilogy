@@ -11,7 +11,6 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildCondition,
     BuildConditionContext,
     BuildWhereClause,
 )
@@ -54,7 +53,7 @@ def append_existence_check(
     node: StrategyNode,
     environment: BuildEnvironment,
     graph: ReferenceGraph,
-    where: BuildCondition,
+    where: BuildConditionContext,
     history: History,
 ):
     # we if we have a where clause doing an existence check

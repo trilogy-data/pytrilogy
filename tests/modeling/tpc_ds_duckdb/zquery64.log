@@ -1,6 +1,6 @@
 query_id = "64"
-gen_length = 16647
-preql_size = 4268
+gen_length = 16675
+preql_size = 4434
 comp_size = 3783
 generated_sql = """
 
@@ -29,7 +29,7 @@ GROUP BY
 cheerful as (
 SELECT
     \"cr_sales_catalog_sales\".\"CS_ITEM_SK\" as \"cr_sales_item_id\",
-    ( coalesce(\"quizzical\".\"cr_refunded_cash\",0) + coalesce(\"quizzical\".\"cr_reversed_charge\",0) ) + coalesce(\"quizzical\".\"cr_store_credit\",0) as \"cs_ui_refund_amt\"
+    ( coalesce(\"quizzical\".\"cr_refunded_cash\",0) + coalesce(\"quizzical\".\"cr_reversed_charge\",0) ) + coalesce(\"quizzical\".\"cr_store_credit\",0) as \"cr_sales_item_cs_ui_refund_amt\"
 FROM
     \"quizzical\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"cr_sales_catalog_sales\" on \"quizzical\".\"cr_sales_order_number\" = \"cr_sales_catalog_sales\".\"CS_ORDER_NUMBER\"
@@ -38,8 +38,8 @@ GROUP BY
     2),
 thoughtful as (
 SELECT
-    \"cheerful\".\"cr_sales_item_id\" as \"cr_sales_item_id\",
-    \"cheerful\".\"cs_ui_refund_amt\" as \"cs_ui_refund\"
+    \"cheerful\".\"cr_sales_item_cs_ui_refund_amt\" as \"cs_ui_refund\",
+    \"cheerful\".\"cr_sales_item_id\" as \"cr_sales_item_id\"
 FROM
     \"cheerful\"),
 questionable as (

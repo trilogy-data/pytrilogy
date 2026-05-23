@@ -4,7 +4,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, FunctionType, SourceType
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
     BuildFunction,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -46,7 +46,7 @@ def gen_basic_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
 ):
     depth_prefix = "\t" * depth
     parent_concepts = resolve_function_parent_concepts(concept, environment=environment)

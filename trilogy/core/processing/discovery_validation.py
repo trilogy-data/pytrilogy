@@ -6,7 +6,7 @@ from trilogy.core.enums import Granularity
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
@@ -62,7 +62,7 @@ def _conditions_met(
     stack: List[StrategyNode],
     found_addresses: set[str],
     mandatory_with_filter: List[BuildConcept],
-    conditions: BuildCondition | None,
+    conditions: BuildConditionContext | None,
 ) -> bool:
     if not conditions:
         return True
@@ -155,7 +155,7 @@ def validate_stack(
     stack: List[StrategyNode],
     concepts: List[BuildConcept],
     mandatory_with_filter: List[BuildConcept],
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
     found_map: dict[str, set[BuildConcept]] = defaultdict(set)

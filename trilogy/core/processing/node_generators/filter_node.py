@@ -6,7 +6,7 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
     BuildFilterItem,
     BuildFunction,
     BuildWhereClause,
@@ -187,7 +187,7 @@ def pushdown_filter_to_parent(
     concept: BuildConcept,
     environment: BuildEnvironment,
     local_optional: List[BuildConcept],
-    conditions: BuildCondition | None,
+    conditions: BuildConditionContext | None,
     filter_where: BuildWhereClause,
     same_filter_optional: list[BuildConcept],
     depth: int,
@@ -197,7 +197,7 @@ def pushdown_filter_to_parent(
         optimized_pushdown = False
     elif not local_optional:
         optimized_pushdown = True
-    elif conditions and conditions == filter_where:
+    elif conditions and conditions.conditional == filter_where.conditional:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
         )
@@ -294,7 +294,7 @@ def build_parent_concepts(
     concept: BuildConcept,
     environment: BuildEnvironment,
     local_optional: List[BuildConcept],
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
     depth: int = 0,
 ) -> FilterParentPlan:
     parent_row_concepts, parent_existence_concepts = resolve_filter_parent_concepts(
@@ -307,7 +307,9 @@ def build_parent_concepts(
     same_filter_optional: list[BuildConcept] = []
     # mypy struggled here? we shouldn't need explicit bools
     global_filter_is_local_filter: bool = (
-        True if (conditions and conditions == filter_where) else False
+        True
+        if (conditions and conditions.conditional == filter_where.conditional)
+        else False
     )
 
     exact_partial_matches = True
@@ -430,7 +432,7 @@ def gen_filter_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     if not isinstance(concept.lineage, FILTER_TYPES):
         raise SyntaxError('Filter node must have a filter type lineage"')

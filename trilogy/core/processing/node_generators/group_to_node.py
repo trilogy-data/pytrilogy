@@ -3,7 +3,7 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
     BuildFunction,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -28,7 +28,7 @@ def gen_group_to_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
     if not isinstance(concept.lineage, BuildFunction):

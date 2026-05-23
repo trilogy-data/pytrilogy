@@ -3,7 +3,7 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
     BuildSubselectItem,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -52,7 +52,7 @@ def gen_subselect_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     parent_concepts = resolve_subselect_parent_concepts(concept, environment, depth)
     logger.info(

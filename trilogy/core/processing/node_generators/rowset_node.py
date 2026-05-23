@@ -6,7 +6,7 @@ from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
     BuildGrain,
     BuildRowsetItem,
     BuildRowsetLineage,
@@ -27,7 +27,7 @@ def gen_rowset_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 

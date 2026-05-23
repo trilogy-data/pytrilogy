@@ -3,7 +3,7 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
     BuildGrain,
     BuildWindowItem,
 )
@@ -68,7 +68,7 @@ def gen_window_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildCondition | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     parent_concepts = resolve_window_parent_concepts(concept, environment, depth)
     parent_addresses = {p.address for p in parent_concepts}

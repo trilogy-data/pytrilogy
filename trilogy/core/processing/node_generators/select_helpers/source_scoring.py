@@ -10,7 +10,7 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     Address,
     BuildConcept,
-    BuildCondition,
+    BuildConditionContext,
     BuildDatasource,
     BuildUnionDatasource,
 )
@@ -39,7 +39,7 @@ def _structural_partial_concepts(
 
 
 def get_graph_partial_nodes(
-    g: ReferenceGraph, conditions: BuildCondition | None
+    g: ReferenceGraph, conditions: BuildConditionContext | None
 ) -> dict[str, list[str]]:
     partial: dict[str, list[str]] = {}
     for node, ds in g.datasources.items():
@@ -62,7 +62,7 @@ def get_graph_partial_nodes(
 
 
 def get_graph_partial_canonical(
-    g: ReferenceGraph, conditions: BuildCondition | None
+    g: ReferenceGraph, conditions: BuildConditionContext | None
 ) -> dict[str, set[str]]:
     partial: dict[str, set[str]] = {}
     for node, ds in g.datasources.items():
@@ -207,7 +207,7 @@ def score_datasource_node(
 
 def _condition_atoms_sourceable_by_datasource(
     ds: BuildDatasource | BuildUnionDatasource | None,
-    conditions: BuildCondition | None,
+    conditions: BuildConditionContext | None,
 ) -> set[str]:
     if conditions is None or not isinstance(ds, BuildDatasource):
         return set()
@@ -287,7 +287,7 @@ def resolve_subgraphs(
     g: ReferenceGraph,
     relevant: list[BuildConcept],
     criteria: SearchCriteria,
-    conditions: BuildCondition | None,
+    conditions: BuildConditionContext | None,
     depth: int = 0,
 ) -> dict[str, list[str]]:
     """Resolve competing datasource subgraphs to the preferred source set."""
