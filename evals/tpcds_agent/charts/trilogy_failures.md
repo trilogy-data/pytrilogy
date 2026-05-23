@@ -67,7 +67,7 @@
 - `trilogy database query duckdb --param SELECT DISTINCT p_channel_email, p_channel_event FROM promotion LIMIT 10`
   - No such command 'query'.
 
-### `syntax-missing-alias`
+### `undefined-concept`
 
 - `trilogy run --import raw/catalog_sales:catalog_sales select distinct catalog_sales.promotion.channel_email, catalog_sales.pro…`
   - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...atalog_sales; select distinct ??? catalog_sales.promotion.channe... --- stderr ---
