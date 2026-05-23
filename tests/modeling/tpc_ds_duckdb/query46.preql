@@ -16,11 +16,11 @@ WHERE
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.city in ('Fairview', 'Midway')
 SELECT
-    store_sales.sale_address.city -> bought_city,
+    store_sales.sale_address.city as bought_city,
     store_sales.ticket_number,
     --store_sales.customer.id,
-    sum(store_sales.coupon_amt) -> amt,
-    sum(store_sales.net_profit) -> profit,
+    sum(store_sales.coupon_amt) as amt,
+    sum(store_sales.net_profit) as profit,
 ALIGN
     --customer_id: store_sales.customer.id, customer.id
 WHERE

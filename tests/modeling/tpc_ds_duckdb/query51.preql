@@ -1,15 +1,21 @@
 import unified_sales as sales;
 
-metric web_daily <- sum(filter sales.sales_price where sales.sales_channel = 'WEB') by sales.item.id, sales.date.date;
-metric store_daily <- sum(filter sales.sales_price where sales.sales_channel = 'STORE') by sales.item.id, sales.date.date;
-metric web_has_row <- max(CASE
+metric web_daily <- sum(sales.sales_price ? sales.sales_channel = 'WEB') by sales.item.id, sales.date.date;
+metric store_daily <- sum(sales.sales_price ? sales.sales_channel = 'STORE') by sales.item.id, sales.date.date;
+metric web_has_row <- max(
+    CASE
     WHEN sales.sales_channel = 'WEB' THEN 1
     ELSE 0
-END) by sales.item.id, sales.date.date;
-metric store_has_row <- max(CASE
+END
+)
+    by sales.item.id, sales.date.date;
+metric store_has_row <- max(
+    CASE
     WHEN sales.sales_channel = 'STORE' THEN 1
     ELSE 0
-END) by sales.item.id, sales.date.date;
+END
+)
+    by sales.item.id, sales.date.date;
 property <sales.date.date, sales.item.id>.web_cume <- sum(web_daily) over (partition by sales.item.id order by sales.date.date asc);
 property <sales.date.date, sales.item.id>.store_cume <- sum(store_daily) over (partition by sales.item.id order by sales.date.date asc);
 property <sales.date.date, sales.item.id>.web_sales_visible <- CASE
@@ -26,12 +32,12 @@ WHERE
     and sales.item.id is not null
     and sales.sales_channel in ('WEB', 'STORE')
 SELECT
-    sales.item.id -> item_sk,
-    sales.date.date -> d_date,
-    web_sales_visible -> web_sales,
-    store_sales_visible -> store_sales,
-    web_cume -> web_cumulative,
-    store_cume -> store_cumulative,
+    sales.item.id as item_sk,
+    sales.date.date as d_date,
+    web_sales_visible as web_sales,
+    store_sales_visible as store_sales,
+    web_cume as web_cumulative,
+    store_cume as store_cumulative,
 HAVING
     web_cumulative > store_cumulative
 

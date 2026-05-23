@@ -1,7 +1,7 @@
 import web_sales as ws;
 
-metric amc <- sum(filter ws.row_counter where ws.time.hour between 8 and 9);
-metric pmc <- sum(filter ws.row_counter where ws.time.hour between 19 and 20);
+metric amc <- sum(ws.row_counter ? ws.time.hour between 8 and 9);
+metric pmc <- sum(ws.row_counter ? ws.time.hour between 19 and 20);
 
 WHERE
     ws.ship_household_demographic.dependent_count = 6
@@ -10,8 +10,8 @@ WHERE
 SELECT
     CASE
             WHEN pmc = 0 THEN null
-            ELSE amc::Numeric(15,4) / pmc::Numeric(15,4)
-        END -> am_pm_ratio,
+            ELSE amc::numeric(15,4) / pmc::numeric(15,4)
+        END as am_pm_ratio,
 ORDER BY
     am_pm_ratio asc nulls first
 LIMIT 100

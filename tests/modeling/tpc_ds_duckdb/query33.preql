@@ -1,7 +1,7 @@
 import unified_sales as sales;
 import item as items;
 
-property electronics_manuf_ids <- filter items.manufacturer_id where items.category = 'Electronics';
+property electronics_manuf_ids <- items.manufacturer_id ? items.category = 'Electronics';
 
 WHERE
     sales.item.manufacturer_id in electronics_manuf_ids
@@ -10,7 +10,7 @@ WHERE
     and sales.bill_address.gmt_offset = -5
 SELECT
     sales.item.manufacturer_id,
-    sum(sales.ext_sales_price) -> total_sales,
+    sum(sales.ext_sales_price) as total_sales,
 ORDER BY
     total_sales asc nulls first,
     sales.item.manufacturer_id asc nulls first

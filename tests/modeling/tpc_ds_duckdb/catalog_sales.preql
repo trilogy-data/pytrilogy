@@ -17,7 +17,7 @@ import address as bill_address;
 
 key warehouse_id int;
 key order_number int;
-property <item.id, order_number>.days_to_ship <- date_diff(sold_date.date,ship_date.date,day);
+property <item.id, order_number>.days_to_ship <- date_diff(sold_date.date, ship_date.date, day);
 
 properties <order_number, item.id> (
     quantity int,
@@ -25,7 +25,7 @@ properties <order_number, item.id> (
     list_price float,
     wholesale_cost float,
     discount_amount float,
-    ext_sales_price Numeric(15,2),
+    ext_sales_price numeric(15,2),
     ext_list_price float,
     ext_ship_cost float,
     ext_wholesale_cost float,

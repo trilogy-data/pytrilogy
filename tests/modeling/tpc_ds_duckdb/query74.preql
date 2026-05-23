@@ -3,12 +3,16 @@ import unified_sales as sales;
 const first_year <- 2001;
 const second_year <- 2002;
 
-def channel_year_total(channel, year) -> sum(filter sales.net_paid where sales.sales_channel = channel and sales.date.year = year) by sales.customer.id;
+def channel_year_total(channel, year) -> sum(sales.net_paid ? sales.sales_channel = channel and sales.date.year = year) by sales.customer.id;
 
-metric store_first_year <- sum(filter sales.net_paid where sales.sales_channel = 'STORE' and sales.date.year = first_year) by sales.customer.id;
-metric web_first_year <- sum(filter sales.net_paid where sales.sales_channel = 'WEB' and sales.date.year = first_year) by sales.customer.id;
-metric store_second_year <- sum(filter sales.net_paid where sales.sales_channel = 'STORE' and sales.date.year = second_year) by sales.customer.id;
-metric web_second_year <- sum(filter sales.net_paid where sales.sales_channel = 'WEB' and sales.date.year = second_year) by sales.customer.id;
+metric store_first_year <- sum(sales.net_paid ? sales.sales_channel = 'STORE' and sales.date.year = first_year)
+    by sales.customer.id;
+metric web_first_year <- sum(sales.net_paid ? sales.sales_channel = 'WEB' and sales.date.year = first_year)
+    by sales.customer.id;
+metric store_second_year <- sum(sales.net_paid ? sales.sales_channel = 'STORE' and sales.date.year = second_year)
+    by sales.customer.id;
+metric web_second_year <- sum(sales.net_paid ? sales.sales_channel = 'WEB' and sales.date.year = second_year)
+    by sales.customer.id;
 
 WHERE
     sales.sales_channel in ('STORE', 'WEB')
@@ -23,9 +27,9 @@ WHERE
             ELSE null
         END)
 SELECT
-    sales.customer.text_id -> customer_id,
-    sales.customer.first_name -> customer_first_name,
-    sales.customer.last_name -> customer_last_name,
+    sales.customer.text_id as customer_id,
+    sales.customer.first_name as customer_first_name,
+    sales.customer.last_name as customer_last_name,
 ORDER BY
     customer_id asc nulls first
 LIMIT 100

@@ -1,19 +1,19 @@
 import web_sales as web_sales;
 import item as item2;
 
-property special_item_ids <- filter item2.name where item2.id in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
+property special_item_ids <- item2.name ? item2.id in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
 
 WHERE
     web_sales.date.quarter = 2
     and web_sales.date.year = 2001
     and (
-        substring(web_sales.customer.address.zip,1,5) in ('85669', '86197', '88274', '83405', '86475', '85392', '85460', '80348', '81792')
+        substring(web_sales.customer.address.zip, 1, 5) in ('85669', '86197', '88274', '83405', '86475', '85392', '85460', '80348', '81792')
         or web_sales.item.name in special_item_ids
     )
 SELECT
     web_sales.customer.address.zip,
     web_sales.customer.address.city,
-    sum(web_sales.sales_price) -> total_sales,
+    sum(web_sales.sales_price) as total_sales,
 ORDER BY
     web_sales.customer.address.zip asc,
     web_sales.customer.address.city asc

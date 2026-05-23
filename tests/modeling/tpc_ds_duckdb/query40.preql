@@ -14,14 +14,18 @@ WHERE
 SELECT
     catalog_sales.warehouse.state,
     catalog_sales.item.name,
-    sum(CASE
-            WHEN catalog_sales.sold_date.date < cutoff THEN catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash,0.0)
+    sum(
+            CASE
+            WHEN catalog_sales.sold_date.date < cutoff THEN catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash, 0.0)
             ELSE 0.0
-        END) -> sales_before,
-    sum(CASE
-            WHEN catalog_sales.sold_date.date >= cutoff THEN catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash,0.0)
+        END
+        ) as sales_before,
+    sum(
+            CASE
+            WHEN catalog_sales.sold_date.date >= cutoff THEN catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash, 0.0)
             ELSE 0.0
-        END) -> sales_after,
+        END
+        ) as sales_after,
 ORDER BY
     catalog_sales.warehouse.state asc,
     catalog_sales.item.name asc

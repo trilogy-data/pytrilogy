@@ -20,25 +20,31 @@ ALIGN
 ;
 
 SELECT
-    sum(CASE
+    sum(
+            CASE
             WHEN merged.store_sales.customer.id is not null
             and merged.store_sales.item.id is not null
             and merged.catalog_sales.bill_customer.id is null
             and merged.catalog_sales.item.id is null THEN 1
             ELSE 0
-        END) -> store_sale_count,
-    sum(CASE
+        END
+        ) as store_sale_count,
+    sum(
+            CASE
             WHEN merged.store_sales.customer.id is null
             and merged.store_sales.item.id is null
             and merged.catalog_sales.bill_customer.id is not null
             and merged.catalog_sales.item.id is not null THEN 1
             ELSE 0
-        END) -> catalog_sale_count,
-    sum(CASE
+        END
+        ) as catalog_sale_count,
+    sum(
+            CASE
             WHEN merged.store_sales.customer.id is not null
             and merged.store_sales.item.id is not null
             and merged.catalog_sales.bill_customer.id is not null
             and merged.catalog_sales.item.id is not null THEN 1
             ELSE 0
-        END) -> both_sale_count,
+        END
+        ) as both_sale_count,
 ;

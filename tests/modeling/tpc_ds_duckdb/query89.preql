@@ -1,7 +1,9 @@
 import store_sales as store_sales;
 
-metric sum_sales <- sum(store_sales.sales_price) by store_sales.item.category, store_sales.item.class, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.date.month_of_year;
-metric avg_monthly_sales <- avg(sum_sales) by store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name;
+metric sum_sales <- sum(store_sales.sales_price)
+    by store_sales.item.category, store_sales.item.class, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.date.month_of_year;
+metric avg_monthly_sales <- avg(sum_sales)
+    by store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name;
 
 WHERE
     store_sales.date.year = 1999

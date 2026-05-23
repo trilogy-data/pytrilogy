@@ -1,6 +1,6 @@
 import unified_sales as sales;
 
-property color_ids <- filter sales.item.name where sales.item.color in ('slate', 'blanched', 'burnished');
+property color_ids <- sales.item.name ? sales.item.color in ('slate', 'blanched', 'burnished');
 
 WHERE
     sales.item.name in color_ids
@@ -9,7 +9,7 @@ WHERE
     and sales.bill_address.gmt_offset = -5
 SELECT
     sales.item.name,
-    sum(sales.ext_sales_price) -> total_sales,
+    sum(sales.ext_sales_price) as total_sales,
 ORDER BY
     total_sales asc nulls first,
     sales.item.name asc nulls first

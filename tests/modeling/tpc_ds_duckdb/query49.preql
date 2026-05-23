@@ -14,8 +14,8 @@ property channel_label <- CASE
     WHEN sales.sales_channel = 'STORE' THEN 'store'
     ELSE null
 END;
-property <sales.item.id, sales.sales_channel>.return_ratio <- return_qty::Numeric(15,4) / sale_qty::Numeric(15,4);
-property <sales.item.id, sales.sales_channel>.currency_ratio <- return_amt::Numeric(15,4) / sale_paid::Numeric(15,4);
+property <sales.item.id, sales.sales_channel>.return_ratio <- return_qty::numeric(15,4) / sale_qty::numeric(15,4);
+property <sales.item.id, sales.sales_channel>.currency_ratio <- return_amt::numeric(15,4) / sale_paid::numeric(15,4);
 
 WHERE
     sales.return_amount > 10000
@@ -25,8 +25,8 @@ WHERE
     and sales.date.year = 2001
     and sales.date.month_of_year = 12
 SELECT
-    channel_label -> channel,
-    sales.item.id -> item,
+    channel_label as channel,
+    sales.item.id as item,
     return_ratio,
     return_rank,
     currency_rank,

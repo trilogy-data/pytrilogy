@@ -7,7 +7,8 @@ SELECT
     inventory.item.brand_name,
     inventory.item.class,
     inventory.item.category,
-    avg(inventory.quantity_on_hand) by rollup inventory.item.product_name, inventory.item.brand_name, inventory.item.class, inventory.item.category -> qoh,
+    avg(inventory.quantity_on_hand)
+            by rollup inventory.item.product_name, inventory.item.brand_name, inventory.item.class, inventory.item.category as qoh,
 ORDER BY
     qoh asc nulls first,
     inventory.item.product_name asc nulls first,

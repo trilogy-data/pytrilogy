@@ -6,7 +6,7 @@ SELECT
     store_sales.date.year,
     store_sales.item.brand_id,
     store_sales.item.brand_name,
-    sum(store_sales.ext_sales_price) -> sum_agg,
+    sum(store_sales.ext_sales_price) as sum_agg,
 ORDER BY
     store_sales.date.year asc,
     sum_agg desc,

@@ -7,7 +7,7 @@ rowset store_buyers <- WHERE
     and sales.date.quarter < 4
     and sales.customer.id is not null
 SELECT
-    sales.customer.id -> store_cust_id,
+    sales.customer.id as store_cust_id,
 ;
 
 rowset web_buyers <- WHERE
@@ -16,7 +16,7 @@ rowset web_buyers <- WHERE
     and sales.date.quarter < 4
     and sales.customer.id is not null
 SELECT
-    sales.customer.id -> web_cust_id,
+    sales.customer.id as web_cust_id,
 ;
 
 rowset catalog_buyers <- WHERE
@@ -25,7 +25,7 @@ rowset catalog_buyers <- WHERE
     and sales.date.quarter < 4
     and sales.ship_customer.id is not null
 SELECT
-    sales.ship_customer.id -> cat_cust_id,
+    sales.ship_customer.id as cat_cust_id,
 ;
 
 WHERE
@@ -37,20 +37,20 @@ SELECT
     customer.demographics.gender,
     customer.demographics.marital_status,
     customer.demographics.dependent_count,
-    count(customer.id) -> cnt1,
-    min(customer.demographics.dependent_count) -> min1,
-    max(customer.demographics.dependent_count) -> max1,
-    avg(customer.demographics.dependent_count) -> avg1,
+    count(customer.id) as cnt1,
+    min(customer.demographics.dependent_count) as min1,
+    max(customer.demographics.dependent_count) as max1,
+    avg(customer.demographics.dependent_count) as avg1,
     customer.demographics.employed_dependent_count,
-    count(customer.id) -> cnt2,
-    min(customer.demographics.employed_dependent_count) -> min2,
-    max(customer.demographics.employed_dependent_count) -> max2,
-    avg(customer.demographics.employed_dependent_count) -> avg2,
+    count(customer.id) as cnt2,
+    min(customer.demographics.employed_dependent_count) as min2,
+    max(customer.demographics.employed_dependent_count) as max2,
+    avg(customer.demographics.employed_dependent_count) as avg2,
     customer.demographics.college_dependent_count,
-    count(customer.id) -> cnt3,
-    min(customer.demographics.college_dependent_count) -> min3,
-    max(customer.demographics.college_dependent_count) -> max3,
-    avg(customer.demographics.college_dependent_count) -> avg3,
+    count(customer.id) as cnt3,
+    min(customer.demographics.college_dependent_count) as min3,
+    max(customer.demographics.college_dependent_count) as max3,
+    avg(customer.demographics.college_dependent_count) as avg3,
 ORDER BY
     customer.address.state asc nulls first,
     customer.demographics.gender asc nulls first,

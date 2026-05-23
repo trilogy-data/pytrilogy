@@ -11,10 +11,10 @@ WHERE
     and cs.date.year = 2000
 SELECT
     cs.item.name,
-    avg(cs.quantity) -> agg1,
-    avg(cs.list_price) -> agg2,
-    avg(cs.coupon_amt) -> agg3,
-    avg(cs.sales_price) -> agg4,
+    avg(cs.quantity) as agg1,
+    avg(cs.list_price) as agg2,
+    avg(cs.coupon_amt) as agg3,
+    avg(cs.sales_price) as agg4,
 ORDER BY
     cs.item.name asc
 LIMIT 100

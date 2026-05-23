@@ -7,7 +7,7 @@ rowset store_buyers <- WHERE
     and sales.date.month_of_year between 4 and 6
     and sales.customer.id is not null
 SELECT
-    sales.customer.id -> store_cust_id,
+    sales.customer.id as store_cust_id,
 ;
 
 rowset web_buyers <- WHERE
@@ -16,7 +16,7 @@ rowset web_buyers <- WHERE
     and sales.date.month_of_year between 4 and 6
     and sales.customer.id is not null
 SELECT
-    sales.customer.id -> web_cust_id,
+    sales.customer.id as web_cust_id,
 ;
 
 rowset catalog_buyers <- WHERE
@@ -25,7 +25,7 @@ rowset catalog_buyers <- WHERE
     and sales.date.month_of_year between 4 and 6
     and sales.ship_customer.id is not null
 SELECT
-    sales.ship_customer.id -> cat_cust_id,
+    sales.ship_customer.id as cat_cust_id,
 ;
 
 WHERE
@@ -37,11 +37,11 @@ SELECT
     customer.demographics.gender,
     customer.demographics.marital_status,
     customer.demographics.education_status,
-    count(customer.id) -> cnt1,
+    count(customer.id) as cnt1,
     customer.demographics.purchase_estimate,
-    count(customer.id) -> cnt2,
+    count(customer.id) as cnt2,
     customer.demographics.credit_rating,
-    count(customer.id) -> cnt3,
+    count(customer.id) as cnt3,
 ORDER BY
     customer.demographics.gender asc,
     customer.demographics.marital_status asc,

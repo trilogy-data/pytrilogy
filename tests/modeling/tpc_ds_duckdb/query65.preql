@@ -8,7 +8,7 @@ WHERE
 SELECT
     store_sales.store.name,
     store_sales.item.desc,
-    item_revenue -> revenue,
+    item_revenue as revenue,
     store_sales.item.current_price,
     store_sales.item.wholesale_cost,
     store_sales.item.brand_name,

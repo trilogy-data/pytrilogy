@@ -25,7 +25,7 @@ SELECT
     store_sales.customer.salutation,
     store_sales.customer.preferred_cust_flag,
     store_sales.ticket_number,
-    sum(store_sales.row_counter) by store_sales.customer.id, store_sales.ticket_number -> cnt,
+    sum(store_sales.row_counter) by store_sales.customer.id, store_sales.ticket_number as cnt,
 HAVING
     cnt between 15 and 20
 

@@ -27,7 +27,7 @@ properties <order_number, item.id> (
     list_price float,
     net_profit float,
     net_paid float,
-    ext_sales_price Numeric(15,2),
+    ext_sales_price numeric(15,2),
     ext_ship_cost float,
     ext_discount_amount float?,
     return_amount float,

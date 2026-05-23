@@ -11,7 +11,7 @@ WHERE
     and store_sales.customer.address.id is not null
 SELECT
     store_sales.customer.address.state,
-    sum(store_sales.row_counter) -> customer_count,
+    sum(store_sales.row_counter) as customer_count,
 HAVING
     customer_count >= 10
 

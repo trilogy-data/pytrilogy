@@ -27,13 +27,13 @@ SELECT
 ;
 
 SELECT
-    correlated.store_sales.item.name -> store_sales_item_name,
-    correlated.store_sales.item.desc -> store_sales_item_desc,
-    correlated.store_sales.store.text_id -> store_sales_store_text_id,
-    correlated.store_sales.store.name -> store_name,
-    sum(correlated.store_sales.quantity) -> store_sales_quantity,
-    sum(correlated.store_sales.return_quantity) -> store_returns_quantity,
-    sum(correlated.catalog_sales.quantity) -> catalog_sales_quantity,
+    correlated.store_sales.item.name as store_sales_item_name,
+    correlated.store_sales.item.desc as store_sales_item_desc,
+    correlated.store_sales.store.text_id as store_sales_store_text_id,
+    correlated.store_sales.store.name as store_name,
+    sum(correlated.store_sales.quantity) as store_sales_quantity,
+    sum(correlated.store_sales.return_quantity) as store_returns_quantity,
+    sum(correlated.catalog_sales.quantity) as catalog_sales_quantity,
 HAVING
     catalog_sales_quantity > 0
 

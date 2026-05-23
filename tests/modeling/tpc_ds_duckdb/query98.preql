@@ -9,8 +9,8 @@ SELECT
     store_sales.item.category,
     store_sales.item.class,
     store_sales.item.current_price,
-    sum(store_sales.ext_sales_price) -> item_revenue,
-    sum(store_sales.ext_sales_price) * 100.0 / (sum(store_sales.ext_sales_price) by store_sales.item.class) -> revenueratio,
+    sum(store_sales.ext_sales_price) as item_revenue,
+    sum(store_sales.ext_sales_price) * 100.0 / (sum(store_sales.ext_sales_price) by store_sales.item.class) as revenueratio,
 ORDER BY
     store_sales.item.category asc nulls first,
     store_sales.item.class asc nulls first,

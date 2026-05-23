@@ -19,7 +19,7 @@ properties <ticket_number, item.id> (
     quantity int,
     sales_price float,
     list_price float,
-    ext_sales_price Numeric(15,2),
+    ext_sales_price numeric(15,2),
     ext_wholesale_cost float,
     ext_list_price float,
     ext_discount_amount float,

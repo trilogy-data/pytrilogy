@@ -7,12 +7,12 @@ property channel_label <- CASE
     ELSE null
 END;
 property id_label <- CASE
-    WHEN sales.sales_channel = 'STORE' THEN concat('store',sales.channel_dim_text_id)
-    WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page',sales.channel_dim_text_id)
-    WHEN sales.sales_channel = 'WEB' THEN concat('web_site',sales.channel_dim_text_id)
+    WHEN sales.sales_channel = 'STORE' THEN concat('store', sales.channel_dim_text_id)
+    WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page', sales.channel_dim_text_id)
+    WHEN sales.sales_channel = 'WEB' THEN concat('web_site', sales.channel_dim_text_id)
     ELSE null
 END;
-property <sales.item.id, sales.order_id, sales.sales_channel>.profit_minus_loss <- sales.net_profit - coalesce(sales.return_net_loss,0);
+property <sales.item.id, sales.order_id, sales.sales_channel>.profit_minus_loss <- sales.net_profit - coalesce(sales.return_net_loss, 0);
 
 WHERE
     sales.date.date >= '2000-08-23'::date
@@ -21,11 +21,11 @@ WHERE
     and sales.promotion.channel_tv = 'N'
     and sales.channel_dim_text_id is not null
 SELECT
-    channel_label -> channel,
-    id_label -> id,
-    sum(sales.ext_sales_price) by rollup channel_label, id_label -> sales_total,
-    sum(coalesce(sales.return_amount,0)) by rollup channel_label, id_label -> returns_total,
-    sum(profit_minus_loss) by rollup channel_label, id_label -> profit_total,
+    channel_label as channel,
+    id_label as id,
+    sum(sales.ext_sales_price) by rollup channel_label, id_label as sales_total,
+    sum(coalesce(sales.return_amount, 0)) by rollup channel_label, id_label as returns_total,
+    sum(profit_minus_loss) by rollup channel_label, id_label as profit_total,
 ORDER BY
     channel asc nulls first,
     id asc nulls first

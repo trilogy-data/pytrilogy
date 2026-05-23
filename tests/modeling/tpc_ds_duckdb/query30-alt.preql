@@ -1,6 +1,10 @@
 import web_returns as web_returns;
 
-metric customer_state_returns_2002 <- sum(filter web_returns.return_amount where web_returns.return_date.year = 2002 and web_returns.return_address.state is not null) by web_returns.return_address.state, web_returns.customer.id;
+metric customer_state_returns_2002 <- sum(
+    web_returns.return_amount
+    ? web_returns.return_date.year = 2002 and web_returns.return_address.state is not null
+)
+    by web_returns.return_address.state, web_returns.customer.id;
 metric scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;
 
 WHERE

@@ -3,7 +3,8 @@ import catalog_sales as cs;
 property <cs.bill_customer.birth_year, cs.item.id, cs.order_number>.row_birth_year <- group(cs.bill_customer.birth_year) by cs.order_number, cs.item.id;
 property <cs.bill_customer_demographic.dependent_count, cs.item.id, cs.order_number>.row_dep_count <- group(cs.bill_customer_demographic.dependent_count) by cs.order_number, cs.item.id;
 
-def rollup_avg(metric) -> avg(metric::Numeric(12,2)) by rollup cs.item.name, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
+def rollup_avg(metric) -> avg(metric::numeric(12,2))
+    by rollup cs.item.name, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
 
 WHERE
     cs.bill_customer_demographic.gender = 'F'
@@ -17,13 +18,13 @@ SELECT
     cs.bill_customer.address.country,
     cs.bill_customer.address.state,
     cs.bill_customer.address.county,
-    @rollup_avg(cs.quantity) -> agg1,
-    @rollup_avg(cs.list_price) -> agg2,
-    @rollup_avg(cs.coupon_amt) -> agg3,
-    @rollup_avg(cs.sales_price) -> agg4,
-    @rollup_avg(cs.net_profit) -> agg5,
-    @rollup_avg(row_birth_year) -> agg6,
-    @rollup_avg(row_dep_count) -> agg7,
+    @rollup_avg(cs.quantity) as agg1,
+    @rollup_avg(cs.list_price) as agg2,
+    @rollup_avg(cs.coupon_amt) as agg3,
+    @rollup_avg(cs.sales_price) as agg4,
+    @rollup_avg(cs.net_profit) as agg5,
+    @rollup_avg(row_birth_year) as agg6,
+    @rollup_avg(row_dep_count) as agg7,
 ORDER BY
     cs.bill_customer.address.country asc nulls first,
     cs.bill_customer.address.state asc nulls first,

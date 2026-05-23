@@ -8,21 +8,25 @@ WHERE
     and cs.bill_household_demographic.buy_potential = '>10000'
     and cs.bill_customer_demographic.marital_status = 'D'
     and inv.date.week_seq = cs.sold_date.week_seq
-    and date_diff(cs.sold_date.date,cs.ship_date.date,day) > 5
+    and date_diff(cs.sold_date.date, cs.ship_date.date, day) > 5
     and inv.quantity_on_hand < cs.quantity
 SELECT
-    cs.item.desc -> item_desc,
-    inv.warehouse.name -> warehouse_name,
-    cs.sold_date.week_seq -> week_seq,
-    sum(CASE
+    cs.item.desc as item_desc,
+    inv.warehouse.name as warehouse_name,
+    cs.sold_date.week_seq as week_seq,
+    sum(
+            CASE
             WHEN cs.promotion.id is null THEN 1
             ELSE 0
-        END) -> no_promo,
-    sum(CASE
+        END
+        ) as no_promo,
+    sum(
+            CASE
             WHEN cs.promotion.id is not null THEN 1
             ELSE 0
-        END) -> promo,
-    count(cs.order_number) -> total_cnt,
+        END
+        ) as promo,
+    count(cs.order_number) as total_cnt,
 ORDER BY
     total_cnt desc nulls first,
     item_desc asc nulls first,

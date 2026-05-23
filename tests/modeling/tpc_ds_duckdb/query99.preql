@@ -3,12 +3,12 @@
 # and shipping mode.
 import catalog_sales;
 
-property warehouse_short_name <- substring(warehouse.name,1,20);
+property warehouse_short_name <- substring(warehouse.name, 1, 20);
 
 def catalog_in_range(start, end) -> CASE
-    WHEN start is null THEN count(filter row_counter where days_to_ship <= end)
-    WHEN end is not null THEN count(filter row_counter where days_to_ship > start and days_to_ship <= end)
-    ELSE count(filter row_counter where days_to_ship > start)
+    WHEN start is null THEN count(row_counter ? days_to_ship <= end)
+    WHEN end is not null THEN count(row_counter ? days_to_ship > start and days_to_ship <= end)
+    ELSE count(row_counter ? days_to_ship > start)
 END;
 
 WHERE
@@ -20,12 +20,12 @@ WHERE
 SELECT
     warehouse_short_name,
     ship_mode.type,
-    lower(call_center.name) -> cc_name_lower,
-    @catalog_in_range(null, 30) -> less_than_30_days,
-    @catalog_in_range(30, 60) -> between_31_and_60_days,
-    @catalog_in_range(60, 90) -> between_61_and_90_days,
-    @catalog_in_range(90, 120) -> between_91_and_120_days,
-    @catalog_in_range(120, null) -> over_120_days,
+    lower(call_center.name) as cc_name_lower,
+    @catalog_in_range(null, 30) as less_than_30_days,
+    @catalog_in_range(30, 60) as between_31_and_60_days,
+    @catalog_in_range(60, 90) as between_61_and_90_days,
+    @catalog_in_range(90, 120) as between_91_and_120_days,
+    @catalog_in_range(120, null) as over_120_days,
 ORDER BY
     warehouse_short_name asc nulls first,
     ship_mode.type asc nulls first,
