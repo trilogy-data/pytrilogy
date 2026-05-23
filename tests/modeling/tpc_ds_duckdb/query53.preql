@@ -1,7 +1,7 @@
 import store_sales as store_sales;
 
-auto sum_sales <- sum(store_sales.sales_price) by store_sales.item.manufacturer_id, store_sales.date.quarter;
-auto avg_quarterly_sales <- avg sum_sales over store_sales.item.manufacturer_id;
+metric sum_sales <- sum(store_sales.sales_price) by store_sales.item.manufacturer_id, store_sales.date.quarter;
+metric avg_quarterly_sales <- avg(sum_sales) by store_sales.item.manufacturer_id;
 
 WHERE
     store_sales.date.month_seq in (1200, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208, 1209, 1210, 1211)
@@ -21,14 +21,16 @@ WHERE
 SELECT
     store_sales.item.manufacturer_id,
     sum_sales,
-    avg_quarterly_sales
+    avg_quarterly_sales,
 HAVING
-    CASE WHEN avg_quarterly_sales > 0
-         THEN abs(sum_sales - avg_quarterly_sales) / avg_quarterly_sales
-         ELSE NULL
-    END > 0.1
+    CASE
+            WHEN avg_quarterly_sales > 0 THEN abs(sum_sales - avg_quarterly_sales) / avg_quarterly_sales
+            ELSE null
+        END > 0.1
+
 ORDER BY
     avg_quarterly_sales asc,
     sum_sales asc,
     store_sales.item.manufacturer_id asc
-LIMIT 100;
+LIMIT 100
+;

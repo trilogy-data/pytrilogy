@@ -1,6 +1,6 @@
 const _trilogyt._created_at <- current_datetime();
 
-import ..store_sales as store_sales;
+import store_sales as store_sales;
 
 # WHERE
 #     store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
@@ -15,8 +15,8 @@ import ..store_sales as store_sales;
 #     store_sales.item.brand_id asc
 # LIMIT 100
 # ;
-
-auto sum_agg<- sum(store_sales.ext_sales_price) by store_sales.date.year, store_sales.item.brand_id, store_sales.item.brand_name;
+metric sum_agg <- sum(store_sales.ext_sales_price)
+    by store_sales.date.year, store_sales.item.brand_id, store_sales.item.brand_name;
 
 partial datasource dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id (
     store_sales_date_month_of_year: store_sales.date.month_of_year,
@@ -26,16 +26,9 @@ partial datasource dsstore_sales_date_month_of_year_store_sales_date_year_store_
     store_sales_item_brand_name: store_sales.item.brand_name,
     store_sales_item_id: store_sales.item.id,
     store_sales_item_manufacturer_id: store_sales.item.manufacturer_id,
-    store_sales_ticket_number: store_sales.ticket_number
+    store_sales_ticket_number: store_sales.ticket_number,
 )
-# grain (
-#     store_sales.date.month_of_year,
-#     store_sales.date.year,
-#     store_sales.item.brand_id,
-#     store_sales.item.id,
-#     store_sales.item.manufacturer_id,
-#     store_sales.ticket_number
-# )
+
 complete where store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
 address dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id;
 
@@ -52,5 +45,3 @@ address dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_
 # )
 # complete where store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
 # address dsstore_sales_date_year_store_sales_item_brand_id_store_sales_item_brand_name_a595e281;
-
-

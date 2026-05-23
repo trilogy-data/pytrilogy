@@ -1,11 +1,10 @@
-
 key id int;
+
 properties id (
     string_id string,
     type string,
     carrier string?,
 );
-
 
 datasource ship_mode (
     SM_SHIP_MODE_SK: id,
@@ -14,5 +13,4 @@ datasource ship_mode (
     SM_CARRIER: carrier,
 )
 grain (id)
-address memory.ship_mode
-;
+address memory.ship_mode;

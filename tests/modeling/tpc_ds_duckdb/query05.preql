@@ -1,49 +1,44 @@
 import unified_sales as sales;
 
-auto channel_label <- CASE
+property channel_label <- CASE
     WHEN sales.sales_channel = 'STORE' THEN 'store channel'
     WHEN sales.sales_channel = 'CATALOG' THEN 'catalog channel'
     WHEN sales.sales_channel = 'WEB' THEN 'web channel'
     ELSE null
 END;
-
-auto sales_id_label <- CASE
+property sales_id_label <- CASE
     WHEN sales.sales_channel = 'STORE' THEN concat('store', sales.channel_dim_text_id)
     WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page', sales.channel_dim_text_id)
     WHEN sales.sales_channel = 'WEB' THEN concat('web_site', sales.channel_dim_text_id)
     ELSE null
 END;
-
-auto return_id_label <- CASE
+property return_id_label <- CASE
     WHEN sales.sales_channel = 'STORE' THEN concat('store', sales.return_channel_dim_text_id)
     WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page', sales.return_channel_dim_text_id)
     WHEN sales.sales_channel = 'WEB' THEN concat('web_site', sales.return_channel_dim_text_id)
     ELSE null
 END;
 
-with q5_results as
-# Sales side, rollup over (channel, id)
-WHERE
+rowset q5_results <- WHERE
     sales.channel_dim_text_id is not null
-    and sales.date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)
+    and sales.date.date between '2000-08-23'::date and '2000-09-06'::date
 SELECT
     channel_label as s_channel,
     sales_id_label as s_id,
     sum(sales.ext_sales_price) by rollup channel_label, sales_id_label as sales_total_a,
     sum(sales.net_profit) by rollup channel_label, sales_id_label as profit_only_a,
 MERGE
-# Returns side, rollup over (channel, id)
 WHERE
     sales.return_channel_dim_text_id is not null
-    and sales.return_date.date between cast('2000-08-23' as date) and cast('2000-09-06' as date)
+    and sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date
 SELECT
     channel_label as r_channel,
     return_id_label as r_id,
     sum(coalesce(sales.return_amount, 0)) by rollup channel_label, return_id_label as returns_total_b,
     sum(coalesce(sales.return_net_loss, 0)) by rollup channel_label, return_id_label as loss_only_b,
-align
+ALIGN
     channel: s_channel, r_channel
-    AND id: s_id, r_id
+    and id: s_id, r_id
 derive
     coalesce(q5_results.sales_total_a, 0.0) -> sales_metric,
     coalesce(q5_results.returns_total_b, 0.0) -> returns_metric,
@@ -59,4 +54,5 @@ SELECT
 ORDER BY
     q5_results.channel asc nulls first,
     q5_results.id asc nulls first
-LIMIT 100;
+LIMIT 100
+;

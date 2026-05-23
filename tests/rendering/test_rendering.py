@@ -22,6 +22,7 @@ from trilogy.core.models.author import (
     AlignItem,
     CaseElse,
     CaseWhen,
+    Comment,
     Comparison,
     Concept,
     ConceptRef,
@@ -1180,6 +1181,47 @@ select
     for idx, cmd in enumerate(commands):
         rendered = Renderer().to_string(cmd)
         assert rendered == expected[idx], rendered
+
+
+def test_parse_preserves_leading_comments():
+    """Standalone comments preceding a statement must survive parse.
+
+    Regression: the pest gobbler parks leading-comment tokens on the
+    *previous* block, and ``trailing_description`` only attaches comments
+    on the statement's end line. Anything past the first line break used
+    to be silently dropped during hydration, causing ``trilogy fmt`` to
+    strip leading comments. The planner now peels detached comments off
+    each block and emits them as standalone CommentStatementPlans.
+    """
+    src = """
+key id int;
+# leading comment for next field
+# second line of that comment
+property id.x int;
+
+# new section
+property id.y int;
+"""
+    env, queries = Environment().parse(src)
+    kinds = [type(q).__name__ for q in queries]
+    assert kinds == [
+        "ConceptDeclarationStatement",
+        "Comment",
+        "Comment",
+        "ConceptDeclarationStatement",
+        "Comment",
+        "ConceptDeclarationStatement",
+    ], kinds
+    comments = [q.text.strip() for q in queries if isinstance(q, Comment)]
+    assert comments == [
+        "# leading comment for next field",
+        "# second line of that comment",
+        "# new section",
+    ]
+    # Round-trip: rendering and re-parsing must yield the same shape.
+    rendered = Renderer().render_statement_string(queries)
+    _, queries2 = Environment().parse(rendered)
+    assert [type(q).__name__ for q in queries2] == kinds
 
 
 def test_render_function_trailing_comment():

@@ -2319,8 +2319,20 @@ class FunctionCallWrapper(
         )
 
     def with_reference_replacement(self, replacements: ReferenceReplacements):
-        raise NotImplementedError("Cannot reference replace")
-        return self
+        return FunctionCallWrapper(
+            content=(
+                self.content.with_reference_replacement(replacements)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
+            name=self.name,
+            args=[
+                x.with_reference_replacement(replacements)
+                if isinstance(x, Mergeable)
+                else x
+                for x in self.args
+            ],
+        )
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]

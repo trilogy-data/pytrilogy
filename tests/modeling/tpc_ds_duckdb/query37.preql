@@ -2,9 +2,10 @@ import item as items;
 import inventory as inv;
 import catalog_sales as cs;
 
-auto cs_item_ids <- cs.item.id ? True;
-auto inv_item_ids <- inv.item.id ? inv.date.date between '2000-02-01'::date and '2000-04-01'::date
-                                  and inv.quantity_on_hand between 100 and 500;
+property cs_item_ids <- cs.item.id ? True = True;
+property inv_item_ids <- inv.item.id
+    ? inv.date.date between '2000-02-01'::date and '2000-04-01'::date
+and inv.quantity_on_hand between 100 and 500;
 
 WHERE
     items.current_price between 68 and 98
@@ -14,7 +15,8 @@ WHERE
 SELECT
     items.name,
     items.desc,
-    items.current_price
+    items.current_price,
 ORDER BY
     items.name asc nulls first
-LIMIT 100;
+LIMIT 100
+;

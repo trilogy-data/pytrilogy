@@ -1,7 +1,7 @@
 import web_sales as web_sales;
 import item as item2;
 
-auto special_item_ids <- item2.name ? item2.id in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
+property special_item_ids <- item2.name ? item2.id in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
 
 WHERE
     web_sales.date.quarter = 2
@@ -13,8 +13,9 @@ WHERE
 SELECT
     web_sales.customer.address.zip,
     web_sales.customer.address.city,
-    sum(web_sales.sales_price) -> total_sales
+    sum(web_sales.sales_price) as total_sales,
 ORDER BY
     web_sales.customer.address.zip asc,
     web_sales.customer.address.city asc
-LIMIT 100;
+LIMIT 100
+;

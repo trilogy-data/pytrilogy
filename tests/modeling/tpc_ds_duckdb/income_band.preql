@@ -1,10 +1,9 @@
-
 key id int;
+
 properties id (
     lower_bound int,
     upper_bound int,
 );
-
 
 datasource income_band (
     IB_INCOME_BAND_SK: id,

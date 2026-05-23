@@ -1,8 +1,7 @@
 import store_sales as store_sales;
 
 WHERE
-    store_sales.store.gmt_offset = -5
-    and store_sales.date.year = 2000
+    store_sales.store.gmt_offset = -5 and store_sales.date.year = 2000
 SELECT
     store_sales.store.name,
     store_sales.store.text_id,
@@ -12,7 +11,7 @@ SELECT
     sum(store_sales.sales_price ? store_sales.date.day_name = 'Wednesday') as wed_sales,
     sum(store_sales.sales_price ? store_sales.date.day_name = 'Thursday') as thu_sales,
     sum(store_sales.sales_price ? store_sales.date.day_name = 'Friday') as fri_sales,
-    sum(store_sales.sales_price ? store_sales.date.day_name = 'Saturday') as sat_sales
+    sum(store_sales.sales_price ? store_sales.date.day_name = 'Saturday') as sat_sales,
 ORDER BY
     store_sales.store.name asc,
     store_sales.store.text_id asc,
@@ -23,4 +22,5 @@ ORDER BY
     thu_sales asc,
     fri_sales asc,
     sat_sales asc
-LIMIT 100;
+LIMIT 100
+;

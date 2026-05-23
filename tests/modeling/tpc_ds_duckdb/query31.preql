@@ -1,20 +1,24 @@
 import unified_sales as sales;
 
-def channel_qtr(channel, qtr) -> sum(sales.ext_sales_price ?
-    sales.sales_channel = channel and sales.date.quarter = qtr
-) by sales.bill_address.county, sales.date.year;
+def channel_qtr(channel, qtr) -> sum(sales.ext_sales_price ? sales.sales_channel = channel and sales.date.quarter = qtr)
+    by sales.bill_address.county, sales.date.year;
 
-auto ss_q1 <- @channel_qtr('STORE', 1);
-auto ss_q2 <- @channel_qtr('STORE', 2);
-auto ss_q3 <- @channel_qtr('STORE', 3);
-auto ws_q1 <- @channel_qtr('WEB', 1);
-auto ws_q2 <- @channel_qtr('WEB', 2);
-auto ws_q3 <- @channel_qtr('WEB', 3);
-
-auto web_q1_q2_increase <- ws_q2 / ws_q1;
+metric ss_q1 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 1)
+    by sales.bill_address.county, sales.date.year;
+metric ss_q2 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 2)
+    by sales.bill_address.county, sales.date.year;
+metric ss_q3 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 3)
+    by sales.bill_address.county, sales.date.year;
+metric ws_q1 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 1)
+    by sales.bill_address.county, sales.date.year;
+metric ws_q2 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 2)
+    by sales.bill_address.county, sales.date.year;
+metric ws_q3 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 3)
+    by sales.bill_address.county, sales.date.year;
 auto store_q1_q2_increase <- ss_q2 / ss_q1;
-auto web_q2_q3_increase <- ws_q3 / ws_q2;
 auto store_q2_q3_increase <- ss_q3 / ss_q2;
+auto web_q1_q2_increase <- ws_q2 / ws_q1;
+auto web_q2_q3_increase <- ws_q3 / ws_q2;
 
 WHERE
     sales.date.year = 2000
@@ -36,10 +40,25 @@ SELECT
 HAVING
     ss_q1 > 0
     and ss_q2 > 0
-    and (CASE WHEN ws_q1 > 0 THEN ws_q2 / ws_q1 ELSE NULL END
-         > CASE WHEN ss_q1 > 0 THEN ss_q2 / ss_q1 ELSE NULL END)
-    and (CASE WHEN ws_q2 > 0 THEN ws_q3 / ws_q2 ELSE NULL END
-         > CASE WHEN ss_q2 > 0 THEN ss_q3 / ss_q2 ELSE NULL END)
+    and (
+        CASE
+            WHEN ws_q1 > 0 THEN ws_q2 / ws_q1
+            ELSE null
+        END > CASE
+            WHEN ss_q1 > 0 THEN ss_q2 / ss_q1
+            ELSE null
+        END
+    )
+    and (
+        CASE
+            WHEN ws_q2 > 0 THEN ws_q3 / ws_q2
+            ELSE null
+        END > CASE
+            WHEN ss_q2 > 0 THEN ss_q3 / ss_q2
+            ELSE null
+        END
+    )
+
 ORDER BY
     sales.bill_address.county asc nulls first
 ;

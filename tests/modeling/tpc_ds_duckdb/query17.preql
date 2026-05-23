@@ -20,9 +20,10 @@ SELECT
     count(analysis.catalog_quantity) as catalog_sales_quantitycount,
     avg(analysis.catalog_quantity) as catalog_sales_quantityave,
     stddev(analysis.catalog_quantity) as catalog_sales_quantitystdev,
-    stddev(analysis.catalog_quantity) / avg(analysis.catalog_quantity) as catalog_sales_quantitycov
+    stddev(analysis.catalog_quantity) / avg(analysis.catalog_quantity) as catalog_sales_quantitycov,
 ORDER BY
     analysis.item.name asc nulls first,
     analysis.item.desc asc nulls first,
     analysis.store.state asc nulls first
-LIMIT 100;
+LIMIT 100
+;
