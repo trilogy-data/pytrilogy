@@ -137,7 +137,7 @@ MERGE
 SELECT
     order_id,
 ALIGN
-    merge:order_id
+    merge: order_id
 ORDER BY
     order_id asc
 ;""", string_query

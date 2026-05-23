@@ -68,6 +68,7 @@ datasource dim_y (
 grain (y)
 query '''
 select 1 as y union all select 2 as y union all select 3 as y''';
+
 datasource example (
     x: ?x,
     y: ~?y
