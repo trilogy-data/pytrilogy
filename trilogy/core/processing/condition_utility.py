@@ -22,6 +22,7 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
+    BuildConditionLayer,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
@@ -391,27 +392,10 @@ def simplify_conditions(
 def decompose_condition(
     conditional: BoolExpr,
 ) -> list[BuildSubselectComparison | BoolExpr]:
-    chunks: list[BuildSubselectComparison | BoolExpr] = []
-    if not isinstance(conditional, BuildConditional):
-        return [conditional]
-    if conditional.operator == BooleanOperator.AND:
-        if not (
-            isinstance(conditional.left, CONDITION_TYPES)
-            and isinstance(
-                conditional.right,
-                CONDITION_TYPES,
-            )
-        ):
-            chunks.append(conditional)
-        else:
-            for val in [conditional.left, conditional.right]:
-                if isinstance(val, BuildConditional):
-                    chunks.extend(decompose_condition(val))
-                else:
-                    chunks.append(val)
-    else:
-        chunks.append(conditional)
-    return chunks
+    return [
+        atom.conditional
+        for atom in BuildConditionLayer.from_conditional(conditional).atoms
+    ]
 
 
 def condition_implies_with_extras(

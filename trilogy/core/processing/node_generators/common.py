@@ -10,6 +10,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildComparison,
     BuildConcept,
+    BuildCondition,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
@@ -51,7 +52,7 @@ def _node_has_preexisting_conditions(
 
 def _preexisting_conditions_from_parents(
     parents: list[StrategyNode],
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> BoolExpr | None:
     if conditions is None or not parents:
         return None
@@ -76,7 +77,7 @@ def _condition_available_from_parents(
 
 
 def _local_property_conditions(
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
     required: list[BuildConcept],
     key_addresses: set[str],
 ) -> tuple[BuildWhereClause | None, list[BuildConcept]]:
@@ -326,7 +327,7 @@ def gen_property_enrichment_node(
     depth: int,
     source_concepts,
     log_lambda: Callable,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ) -> StrategyNode | None:
     roots = _base_lookup_keys(base_node)
     if not roots or not extra_properties:
@@ -396,7 +397,7 @@ def gen_enrichment_node(
     source_concepts,
     log_lambda,
     history: History,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ):
     local_opts = LooseBuildConceptList(concepts=local_optional)
 

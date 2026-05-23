@@ -13,6 +13,7 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildCondition,
     BuildConditional,
     BuildDatasource,
     BuildFunction,
@@ -306,7 +307,7 @@ def resolve_weak_components(
     environment_graph: ReferenceGraph,
     filter_downstream: bool = True,
     accept_partial: bool = False,
-    search_conditions: BuildWhereClause | None = None,
+    search_conditions: BuildCondition | None = None,
 ) -> list[list[BuildConcept]] | None:
     break_flag = False
     found = []
@@ -441,8 +442,8 @@ def subgraphs_to_merge_node(
     history,
     conditions,
     output_concepts: List[BuildConcept],
-    search_conditions: BuildWhereClause | None = None,
-    filter_conditions: BuildWhereClause | None = None,
+    search_conditions: BuildCondition | None = None,
+    filter_conditions: BuildCondition | None = None,
     enable_early_exit: bool = True,
 ):
 
@@ -517,7 +518,7 @@ def subgraphs_to_merge_node(
 
 
 def _preserved_conditions(
-    conditions: BuildWhereClause, environment: BuildEnvironment
+    conditions: BuildCondition, environment: BuildEnvironment
 ) -> BuildWhereClause | None:
     """Return only condition atoms covered by some datasource's complete_where.
 
@@ -550,7 +551,7 @@ def _preserved_conditions(
 
 
 def _conditions_for_subgraph(
-    conditions: BuildWhereClause,
+    conditions: BuildCondition,
     subgraph_addrs: set[str],
 ) -> BuildWhereClause | None:
     """Return condition atoms whose concepts are all present in the subgraph."""
@@ -577,7 +578,7 @@ def gen_merge_node(
     accept_partial: bool = False,
     history: History | None = None,
     conditions: BuildConditional | None = None,
-    search_conditions: BuildWhereClause | None = None,
+    search_conditions: BuildCondition | None = None,
 ) -> Optional[MergeNode]:
 
     # we do not actually APPLY these conditions anywhere

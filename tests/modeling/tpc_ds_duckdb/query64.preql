@@ -11,7 +11,7 @@ metric cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
 metric cs_ui_refund <- sum(cr.sales.item.cs_ui_refund_amt) by cr.sales.item.id;
 
 auto cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
-auto cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.id;
+auto cs_ui_refund <- sum(cr.sales.item.id.cs_ui_refund_amt) by cr.sales.item.id;
 
 with cs_ui as
 WHERE cs_ui_sale > 2 * cs_ui_refund

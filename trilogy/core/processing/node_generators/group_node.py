@@ -8,10 +8,10 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
     BuildConcept,
+    BuildCondition,
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
-    BuildWhereClause,
     LooseBuildConceptList,
     concept_is_relevant,
     resolve_concepts_with_equivalents,
@@ -271,7 +271,7 @@ def _try_materialized_group_source(
     g,
     depth: int,
     history: History,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> StrategyNode | None:
     materialized = history.gen_select_node(
         output_concepts,
@@ -302,7 +302,7 @@ def _remaining_optional_outputs(
 def _can_try_wide_parent(
     remaining_optional: List[BuildConcept],
     parent_input_concepts: List[BuildConcept],
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> bool:
     return (
         bool(remaining_optional)
@@ -323,7 +323,7 @@ def _source_parent_concepts(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> StrategyNode | None:
     return source_concepts(
         mandatory_list=mandatory_list,
@@ -346,7 +346,7 @@ def _resolve_parent_sources(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> ParentResolution | None:
     parent_concepts = unique(
         [x for x in parent_concepts if not x.name == ALL_ROWS_CONCEPT], "address"
@@ -484,7 +484,7 @@ def _empty_parent_resolution() -> ParentResolution:
 
 def _group_conditions_to_apply(
     parents: List[StrategyNode],
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> BoolExpr | None:
     if conditions is None:
         return None
@@ -501,7 +501,7 @@ def _build_group_node(
     parent_resolution: ParentResolution,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> GroupNode:
     input_concepts = (
         parent_resolution.parent_input_concepts
@@ -533,7 +533,7 @@ def _reuse_wide_parent_for_enrichment(
     parent_resolution: ParentResolution,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> StrategyNode | None:
     if (
         not parent_resolution.can_reuse_parent_for_enrichment
@@ -591,7 +591,7 @@ def gen_group_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ) -> StrategyNode | None:
     group_plan = _plan_group_outputs(
         concept=concept,

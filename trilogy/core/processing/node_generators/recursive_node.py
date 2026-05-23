@@ -4,9 +4,9 @@ from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT, logge
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
+    BuildCondition,
     BuildFunction,
     BuildGrain,
-    BuildWhereClause,
     ComparisonOperator,
     DataType,
     Derivation,
@@ -38,7 +38,7 @@ def gen_recursive_node(
     g,
     depth: int,
     source_concepts,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ) -> StrategyNode | None:
     arguments = []
     if isinstance(concept.lineage, BuildFunction):

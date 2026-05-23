@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildConditional,
+    BuildConditionContext,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
@@ -320,11 +321,11 @@ def _upstream_concepts(
 
 def evaluate_loop_condition_pushdown(
     mandatory: list[BuildConcept],
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
     depth: int,
     force_no_condition_pushdown: bool,
     forced_pushdown: list[BuildConcept],
-) -> BuildWhereClause | None:
+) -> BuildConditionContext | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
     # or there are any non-filter complex types
@@ -496,7 +497,7 @@ def is_pushdown_aliased_concept(c: BuildConcept) -> bool:
 
 
 def get_inputs_that_require_pushdown(
-    conditions: BuildWhereClause | None, mandatory: list[BuildConcept]
+    conditions: BuildConditionContext | None, mandatory: list[BuildConcept]
 ) -> list[BuildConcept]:
     if not conditions:
         return []
@@ -512,8 +513,8 @@ def get_inputs_that_require_pushdown(
 
 
 def _extract_routing_atoms(
-    conditions: BuildWhereClause, environment: BuildEnvironment
-) -> BuildWhereClause | None:
+    conditions: BuildConditionContext, environment: BuildEnvironment
+) -> BuildConditionContext | None:
     """Return the subset of condition atoms implied by a datasource's non_partial_for.
 
     Preserved as WHERE filters (not flattened into projections) so that
@@ -540,19 +541,19 @@ def _extract_routing_atoms(
     cond = preserved[0]
     for a in preserved[1:]:
         cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
-    return BuildWhereClause(conditional=cond)
+    return BuildConditionContext.from_where_clause(BuildWhereClause(conditional=cond))
 
 
 def _resolve_condition_disposition(
-    conditions: BuildWhereClause | None,
-    original_conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
+    original_conditions: BuildConditionContext | None,
     remaining: list[BuildConcept],
     materialized_canonical: set[str],
     force_conditions: bool,
     force_pushdown_to_complex_input: bool,
     environment: BuildEnvironment | None,
     depth: int,
-) -> tuple[bool, BuildWhereClause | None]:
+) -> tuple[bool, BuildConditionContext | None]:
     """Decide whether to inject condition row args and what conditions to push down.
 
     Returns (inject_row_args, routing_conditions).
@@ -594,7 +595,7 @@ def _resolve_condition_disposition(
 
 def get_loop_iteration_targets(
     mandatory: list[BuildConcept],
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
     attempted: set[str],
     force_conditions: bool,
     found: set[str],
@@ -602,7 +603,7 @@ def get_loop_iteration_targets(
     depth: int,
     materialized_canonical: set[str],
     environment: BuildEnvironment | None = None,
-) -> tuple[BuildConcept, List[BuildConcept], BuildWhereClause | None]:
+) -> tuple[BuildConcept, List[BuildConcept], BuildConditionContext | None]:
     # objectives
     # 1. if we have complex types; push any conditions further up until we only have roots
     # 2. if we only have roots left, push all condition inputs into the candidate list

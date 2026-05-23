@@ -5,6 +5,7 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildComparison,
     BuildConcept,
+    BuildCondition,
     BuildDatasource,
     BuildWhereClause,
 )
@@ -60,7 +61,7 @@ def datasource_condition_atom_state(
 
 def datasource_conditions(
     datasource: BuildDatasource,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
     injected_conditions: BoolExpr | None,
     partial_is_full: bool,
 ) -> BoolExpr | None:
@@ -101,7 +102,7 @@ def datasource_conditions(
 
 def preexisting_conditions(
     datasource: BuildDatasource,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
     partial_is_full: bool,
     satisfies_conditions: bool,
 ) -> BoolExpr | None:
@@ -117,7 +118,7 @@ def preexisting_conditions(
 
 
 def covered_conditions(
-    conditions: BuildWhereClause, environment: BuildEnvironment
+    conditions: BuildCondition, environment: BuildEnvironment
 ) -> BuildWhereClause | None:
     """Return condition atoms covered by a datasource's complete_where."""
     query_condition = flatten_conditions(conditions.conditional)

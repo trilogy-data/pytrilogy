@@ -6,6 +6,7 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
+    BuildCondition,
     BuildFilterItem,
     BuildFunction,
     BuildWhereClause,
@@ -186,7 +187,7 @@ def pushdown_filter_to_parent(
     concept: BuildConcept,
     environment: BuildEnvironment,
     local_optional: List[BuildConcept],
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
     filter_where: BuildWhereClause,
     same_filter_optional: list[BuildConcept],
     depth: int,
@@ -293,7 +294,7 @@ def build_parent_concepts(
     concept: BuildConcept,
     environment: BuildEnvironment,
     local_optional: List[BuildConcept],
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
     depth: int = 0,
 ) -> FilterParentPlan:
     parent_row_concepts, parent_existence_concepts = resolve_filter_parent_concepts(
@@ -429,7 +430,7 @@ def gen_filter_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ) -> StrategyNode | None:
     if not isinstance(concept.lineage, FILTER_TYPES):
         raise SyntaxError('Filter node must have a filter type lineage"')

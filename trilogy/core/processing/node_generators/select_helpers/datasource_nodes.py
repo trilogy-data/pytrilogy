@@ -11,10 +11,10 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
     BuildConcept,
+    BuildCondition,
     BuildDatasource,
     BuildGrain,
     BuildUnionDatasource,
-    BuildWhereClause,
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -146,7 +146,7 @@ def create_select_node_candidate(
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ) -> SourceNodeCandidate:
     all_concepts = [
         environment.canonical_concepts[extract_address(c)]
@@ -229,7 +229,7 @@ def create_select_node(
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
     defer_group: bool = False,
 ) -> StrategyNode:
     candidate = create_select_node_candidate(
@@ -250,7 +250,7 @@ def create_datasource_node(
     accept_partial: bool,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
     injected_conditions: BoolExpr | None = None,
 ) -> tuple[StrategyNode, bool]:
     target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
@@ -396,7 +396,7 @@ def create_union_datasource_candidate(
     accept_partial: bool,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ) -> tuple["UnionNode", bool, int]:
     from trilogy.core.processing.nodes.union_node import UnionNode
 
@@ -516,7 +516,7 @@ def create_union_datasource(
     accept_partial: bool,
     environment: BuildEnvironment,
     depth: int,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ) -> tuple["UnionNode", bool]:
     node, force_group, _ = create_union_datasource_candidate(
         datasource,

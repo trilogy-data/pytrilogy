@@ -3,8 +3,8 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildCondition,
     BuildFunction,
-    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
@@ -53,7 +53,7 @@ def gen_unnest_node(
     g,
     depth: int,
     source_concepts,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildCondition | None = None,
 ) -> StrategyNode | None:
     arguments = []
     join_nodes: list[StrategyNode] = []
