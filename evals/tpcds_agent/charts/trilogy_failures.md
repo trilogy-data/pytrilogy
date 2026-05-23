@@ -486,7 +486,7 @@ import catalog_ret…`
 - `trilogy run query89.preql`
   - exit_code: 2 --- stdout --- Input 'query89.preql' does not exist. --- stderr ---
 
-### `syntax-missing-alias`
+### `undefined-concept`
 
 - `trilogy run --import raw/web_sales.preql:ws --import raw/catalog_sales.preql:cs --import raw/date_dim.preql:d merge ws.sold_d…`
   - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...te_sk; select count(d.date_sk) ??? , d.year from d where d.year i... --- stderr ---
