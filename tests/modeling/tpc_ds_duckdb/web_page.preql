@@ -1,5 +1,4 @@
 key id int;
-
 properties id (
     string_id string,
     char_count int?,

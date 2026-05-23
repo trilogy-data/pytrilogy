@@ -1,31 +1,25 @@
 import inventory as inventory;
 
-WHERE
-    inventory.date.date between '2000-02-10'::date and '2000-04-10'::date
-    and inventory.item.current_price between 0.99 and 1.49
 SELECT
-    inventory.warehouse.name,
+    inventory.warehouse.name,     
     inventory.item.name,
-    sum(
-            CASE
-            WHEN inventory.date.date < '2000-03-11'::date THEN inventory.quantity_on_hand
+        sum(CASE
+        WHEN inventory.date.date < CAST ('2000-03-11' AS date) THEN inventory.quantity_on_hand
+        ELSE 0
+    END) AS inv_before,
+        sum(CASE
+            WHEN inventory.date.date >= CAST ('2000-03-11' AS date) THEN inventory.quantity_on_hand
             ELSE 0
-        END
-        ) as inv_before,
-    sum(
-            CASE
-            WHEN inventory.date.date >= '2000-03-11'::date THEN inventory.quantity_on_hand
-            ELSE 0
-        END
-        ) as inv_after,
+        END) AS inv_after
+WHERE
+    inventory.date.date BETWEEN CAST ('2000-02-10' AS date) AND CAST ('2000-04-10' AS date)
+    and inventory.item.current_price BETWEEN 0.99 AND 1.49
 HAVING
     CASE
-            WHEN inv_before > 0 THEN (inv_after * 1.0) / inv_before
-            ELSE null
-        END between 2.0 / 3.0 and 3.0 / 2.0
-
-ORDER BY
-    inventory.warehouse.name asc nulls first,
-    inventory.item.name asc nulls first
-LIMIT 100
-;
+        WHEN inv_before > 0 THEN (inv_after*1.000) / inv_before
+        ELSE NULL
+    END BETWEEN 2.000/3.000 AND 3.000/2.000
+ORDER BY 
+    inventory.warehouse.name ASC NULLS FIRST,
+    inventory.item.name ASC NULLS FIRST
+LIMIT 100;

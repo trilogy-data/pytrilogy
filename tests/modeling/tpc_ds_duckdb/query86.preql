@@ -1,17 +1,24 @@
 import web_sales as web_sales;
 
-rowset q86_rolled <- WHERE
-    web_sales.date.month_seq between 1200 and 1211
+# Single ROLLUP(category, class) with rank() over (partition by lochierarchy,
+# partition_cat order by total_sum desc). Mirrors the reference's
+# GROUP BY ROLLUP + rank() OVER (PARTITION BY ...).
+#
+# Same pattern as query36.preql: all aggregates + grouping bits + CASE WHEN
+# derivations are computed inside the rowset and the underlying `sum`/
+# `grouping` rows are hidden so trilogy's planner doesn't split them across
+# CTEs. Real `grouping()` (not the rollup-NULL-pattern trick from q70)
+# because items can have NULL category/class.
+with q86_rolled as
+WHERE
+    web_sales.date.month_seq BETWEEN 1200 AND 1211
 SELECT
     --sum(web_sales.net_paid) by rollup web_sales.item.category, web_sales.item.class as total_sum_raw,
     --grouping(web_sales.item.category) by rollup web_sales.item.category, web_sales.item.class as g_cat,
     --grouping(web_sales.item.class) by rollup web_sales.item.category, web_sales.item.class as g_class,
     total_sum_raw as total_sum,
     g_cat + g_class as lochierarchy,
-    CASE
-            WHEN g_class = 0 THEN web_sales.item.category
-            ELSE null
-        END as partition_cat,
+    CASE WHEN g_class = 0 THEN web_sales.item.category ELSE null END as partition_cat,
     web_sales.item.category as r_category,
     web_sales.item.class as r_class,
 ;
@@ -21,13 +28,12 @@ SELECT
     q86_rolled.r_category as i_category,
     q86_rolled.r_class as i_class,
     q86_rolled.lochierarchy,
-    rank(q86_rolled.r_class,q86_rolled.r_category) over (partition by q86_rolled.lochierarchy,q86_rolled.partition_cat order by q86_rolled.total_sum desc) as rank_within_parent,
+    rank(q86_rolled.r_class, q86_rolled.r_category) over (
+        partition by q86_rolled.lochierarchy, q86_rolled.partition_cat
+        order by q86_rolled.total_sum desc
+    ) as rank_within_parent,
 ORDER BY
     q86_rolled.lochierarchy desc nulls first,
-    CASE
-            WHEN q86_rolled.lochierarchy = 0 THEN i_category
-            ELSE null
-        END asc nulls first,
+    CASE WHEN q86_rolled.lochierarchy = 0 THEN i_category ELSE null END asc nulls first,
     rank_within_parent asc nulls first
-LIMIT 100
-;
+LIMIT 100;

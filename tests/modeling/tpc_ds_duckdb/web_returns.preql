@@ -11,13 +11,13 @@ import address as refunded_address;
 import reason as reason;
 import web_page as web_page;
 
-property <web_sales.item.id, web_sales.order_number>.return_amount float;
-property <web_sales.item.id, web_sales.order_number>.return_quantity int;
-property <web_sales.item.id, web_sales.order_number>.refunded_cash float;
-property <web_sales.item.id, web_sales.order_number>.fee float;
-property <web_sales.item.id, web_sales.order_number>.net_loss float;
+property <web_sales.order_number, web_sales.item.id>.return_amount float;
+property <web_sales.order_number, web_sales.item.id>.return_quantity int?;
+property <web_sales.order_number, web_sales.item.id>.refunded_cash float?;
+property <web_sales.order_number, web_sales.item.id>.fee float?;
+property <web_sales.order_number, web_sales.item.id>.net_loss float?;
 
-datasource web_returns (
+datasource web_returns(
     WR_RETURNED_DATE_SK: return_date.id,
     WR_RETURN_TIME_SK: time.id,
     WR_ITEM_SK: web_sales.item.id,
@@ -37,5 +37,5 @@ datasource web_returns (
     WR_ORDER_NUMBER: web_sales.order_number,
     WR_STORE_SK: store.id,
 )
-grain (web_sales.item.id, web_sales.order_number)
+grain (web_sales.order_number, web_sales.item.id)
 address memory.web_returns;

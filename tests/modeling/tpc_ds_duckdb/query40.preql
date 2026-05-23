@@ -1,8 +1,8 @@
 import catalog_sales as catalog_sales;
 import catalog_returns as catalog_returns;
 
-MERGE catalog_returns.item.id into ~catalog_sales.item.id;
-MERGE catalog_returns.order_number into ~catalog_sales.order_number;
+merge catalog_returns.item.id into ~catalog_sales.item.id;
+merge catalog_returns.order_number into ~catalog_sales.order_number;
 
 const cutoff <- '2000-03-11'::date;
 const start_date <- '2000-02-10'::date;
@@ -14,20 +14,13 @@ WHERE
 SELECT
     catalog_sales.warehouse.state,
     catalog_sales.item.name,
-    sum(
-            CASE
-            WHEN catalog_sales.sold_date.date < cutoff THEN catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash, 0.0)
-            ELSE 0.0
-        END
-        ) as sales_before,
-    sum(
-            CASE
-            WHEN catalog_sales.sold_date.date >= cutoff THEN catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash, 0.0)
-            ELSE 0.0
-        END
-        ) as sales_after,
+    sum(case when catalog_sales.sold_date.date < cutoff
+             then catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash, 0.0)
+             else 0.0 end) as sales_before,
+    sum(case when catalog_sales.sold_date.date >= cutoff
+             then catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash, 0.0)
+             else 0.0 end) as sales_after
 ORDER BY
     catalog_sales.warehouse.state asc,
     catalog_sales.item.name asc
-LIMIT 100
-;
+LIMIT 100;

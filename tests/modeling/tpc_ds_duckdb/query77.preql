@@ -4,10 +4,16 @@ import store_sales as ss;
 import web_sales as ws;
 import web_returns as wr;
 
-const period_start <- '2000-08-23'::date;
-const period_end <- '2000-09-22'::date;
+const period_start <- cast('2000-08-23' as date);
+const period_end <- cast('2000-09-22' as date);
 
-rowset cr_grouped <- WHERE
+# Catalog returns aggregated per call_center (NULL group included via
+# coalesce sentinel), then folded to a 1-row scalar so the catalog branch
+# can broadcast: per-id sales/profit get multiplied by N_cr_groups, per-id
+# returns/loss broadcast as the total. This replicates the reference's
+# `FROM cs , cr` (CROSS JOIN with no key) catalog branch.
+with cr_grouped as
+WHERE
     cr.date.date between period_start and period_end
 SELECT
     coalesce(cr.call_center.id, -1) as cr_cc_key,
@@ -15,13 +21,16 @@ SELECT
     sum(cr.net_loss) as cr_loss_per_cc,
 ;
 
-rowset cr_totals <- SELECT
+with cr_totals as
+SELECT
     count(cr_grouped.cr_cc_key) as cr_n_groups,
     sum(cr_grouped.cr_returns_per_cc) as cr_total_returns,
     sum(cr_grouped.cr_loss_per_cc) as cr_total_loss,
 ;
 
-rowset ss_grouped <- WHERE
+# Store-side per-store_sk aggregations.
+with ss_grouped as
+WHERE
     ss.date.date between period_start and period_end
 SELECT
     ss.store.id as ss_store_id,
@@ -29,17 +38,19 @@ SELECT
     sum(ss.net_profit) as ss_profit,
 ;
 
-rowset sr_grouped <- WHERE
+with sr_grouped as
+WHERE
     ss.return_date.date between period_start and period_end
 SELECT
     ss.return_store.id as sr_store_id,
     sum(ss.return_amount) as sr_returns,
     sum(ss.return_net_loss) as sr_loss,
 ;
+merge sr_grouped.sr_store_id into ss_grouped.ss_store_id;
 
-MERGE sr_grouped.sr_store_id into ss_grouped.ss_store_id;
-
-rowset ws_grouped <- WHERE
+# Web-side per-web_page_sk aggregations.
+with ws_grouped as
+WHERE
     ws.date.date between period_start and period_end
 SELECT
     ws.web_page.id as ws_wp_id,
@@ -47,46 +58,52 @@ SELECT
     sum(ws.net_profit) as ws_profit,
 ;
 
-rowset wr_grouped <- WHERE
+with wr_grouped as
+WHERE
     wr.return_date.date between period_start and period_end
 SELECT
     wr.web_page.id as wr_wp_id,
     sum(wr.return_amount) as wr_returns,
     sum(wr.net_loss) as wr_loss,
 ;
+merge wr_grouped.wr_wp_id into ws_grouped.ws_wp_id;
 
-MERGE wr_grouped.wr_wp_id into ws_grouped.ws_wp_id;
-
-rowset l0_union <- WHERE
-    cs.date.date between period_start and period_end
+# UNION the 3 branches via multi-select with align. The catalog branch is
+# inlined (rather than wrapped in its own rowset) to keep the force_group
+# flag uniform across all multi-select branches — wrapping the cross-join
+# in a rowset hits "can only merge two datasources if the force_group
+# flag is the same" during planning.
+with l0_union as
+WHERE cs.date.date between period_start and period_end
 SELECT
     'catalog channel' as u_channel_c,
     cs.call_center.id as u_id_c,
-    sum(cs.ext_sales_price) * cr_totals.cr_n_groups::numeric(15,2) as u_sales_c,
-    cr_totals.cr_total_returns::numeric(15,2) as u_returns_c,
-    sum(cs.net_profit) * cr_totals.cr_n_groups - cr_totals.cr_total_loss::numeric(15,2) as u_profit_c,
+    cast(sum(cs.ext_sales_price) * cr_totals.cr_n_groups as numeric(15, 2)) as u_sales_c,
+    cast(cr_totals.cr_total_returns as numeric(15, 2)) as u_returns_c,
+    cast(sum(cs.net_profit) * cr_totals.cr_n_groups - cr_totals.cr_total_loss as numeric(15, 2)) as u_profit_c,
 MERGE
 SELECT
     'store channel' as u_channel_s,
     ss_grouped.ss_store_id as u_id_s,
-    ss_grouped.ss_sales::numeric(15,2) as u_sales_s,
-    coalesce(sr_grouped.sr_returns, 0)::numeric(15,2) as u_returns_s,
-    ss_grouped.ss_profit - coalesce(sr_grouped.sr_loss, 0)::numeric(15,2) as u_profit_s,
+    cast(ss_grouped.ss_sales as numeric(15, 2)) as u_sales_s,
+    cast(coalesce(sr_grouped.sr_returns, 0) as numeric(15, 2)) as u_returns_s,
+    cast(ss_grouped.ss_profit - coalesce(sr_grouped.sr_loss, 0) as numeric(15, 2)) as u_profit_s,
 MERGE
 SELECT
     'web channel' as u_channel_w,
     ws_grouped.ws_wp_id as u_id_w,
-    ws_grouped.ws_sales::numeric(15,2) as u_sales_w,
-    coalesce(wr_grouped.wr_returns, 0)::numeric(15,2) as u_returns_w,
-    ws_grouped.ws_profit - coalesce(wr_grouped.wr_loss, 0)::numeric(15,2) as u_profit_w,
-ALIGN
+    cast(ws_grouped.ws_sales as numeric(15, 2)) as u_sales_w,
+    cast(coalesce(wr_grouped.wr_returns, 0) as numeric(15, 2)) as u_returns_w,
+    cast(ws_grouped.ws_profit - coalesce(wr_grouped.wr_loss, 0) as numeric(15, 2)) as u_profit_w,
+align
     u_channel: u_channel_c, u_channel_s, u_channel_w
-    and u_id: u_id_c, u_id_s, u_id_w
-    and u_sales: u_sales_c, u_sales_s, u_sales_w
-    and u_returns: u_returns_c, u_returns_s, u_returns_w
-    and u_profit: u_profit_c, u_profit_s, u_profit_w
+    AND u_id: u_id_c, u_id_s, u_id_w
+    AND u_sales: u_sales_c, u_sales_s, u_sales_w
+    AND u_returns: u_returns_c, u_returns_s, u_returns_w
+    AND u_profit: u_profit_c, u_profit_s, u_profit_w
 ;
 
+# Final ROLLUP(channel, id) over the unioned L0.
 SELECT
     l0_union.u_channel as channel,
     l0_union.u_id as id,
@@ -97,5 +114,4 @@ ORDER BY
     channel asc nulls first,
     id asc nulls first,
     returns_ desc
-LIMIT 100
-;
+LIMIT 100;

@@ -2,30 +2,24 @@ import store_sales as ss;
 import catalog_sales as cs;
 import web_sales as ws;
 
-metric ss_row_flag <- sum(
-    CASE
-    WHEN ss.store.id is null THEN 1
-    ELSE 0
-END
-)
+# Row-grain 0/1 flag that sums to the row count without count()'s COALESCE-to-0 wrapping
+# (which breaks the multi-branch coalesce(cnt_a, cnt_b, cnt_c) derive).
+auto ss_row_flag <- sum(case when ss.store.id is null then 1 else 0 end)
     by ss.ticket_number, ss.item.id;
-metric ws_row_flag <- sum(
-    CASE
-    WHEN ws.ship_customer.id is null THEN 1
-    ELSE 0
-END
-)
+auto ws_row_flag <- sum(case when ws.ship_customer.id is null then 1 else 0 end)
     by ws.order_number, ws.item.id;
-metric cs_row_flag <- sum(
-    CASE
-    WHEN cs.customer_address.id is null THEN 1
-    ELSE 0
-END
-)
+auto cs_row_flag <- sum(case when cs.customer_address.id is null then 1 else 0 end)
     by cs.order_number, cs.item.id;
 
-rowset q76_results <- WHERE
-    ss.store.id is null and ss.ticket_number is not null and ss.date.id is not null
+with q76_results as
+# Store branch: rows where ss_store_sk IS NULL.
+# The fact-grain-not-null + date-not-null filter is the trilogy
+# equivalent of the reference's `WHERE ss_sold_date_sk=d_date_sk
+# AND ss_item_sk=i_item_sk` INNER joins: drop any row whose required
+# downstream join key is NULL.
+WHERE ss.store.id is null
+    and ss.ticket_number is not null
+    and ss.date.id is not null
 SELECT
     'store' as channel_a,
     'ss_store_sk' as col_name_a,
@@ -35,8 +29,10 @@ SELECT
     sum(ss_row_flag) as cnt_a,
     sum(ss.ext_sales_price) as amt_a,
 MERGE
-WHERE
-    ws.ship_customer.id is null and ws.order_number is not null and ws.date.id is not null
+# Web branch: rows where ws_ship_customer_sk IS NULL.
+WHERE ws.ship_customer.id is null
+    and ws.order_number is not null
+    and ws.date.id is not null
 SELECT
     'web' as channel_b,
     'ws_ship_customer_sk' as col_name_b,
@@ -46,8 +42,10 @@ SELECT
     sum(ws_row_flag) as cnt_b,
     sum(ws.ext_sales_price) as amt_b,
 MERGE
-WHERE
-    cs.customer_address.id is null and cs.order_number is not null and cs.date.id is not null
+# Catalog branch: rows where cs_ship_addr_sk IS NULL.
+WHERE cs.customer_address.id is null
+    and cs.order_number is not null
+    and cs.date.id is not null
 SELECT
     'catalog' as channel_c,
     'cs_ship_addr_sk' as col_name_c,
@@ -56,12 +54,12 @@ SELECT
     cs.item.category as category_c,
     sum(cs_row_flag) as cnt_c,
     sum(cs.ext_sales_price) as amt_c,
-ALIGN
+align
     channel: channel_a, channel_b, channel_c
-    and col_name: col_name_a, col_name_b, col_name_c
-    and d_year: year_a, year_b, year_c
-    and d_qoy: qoy_a, qoy_b, qoy_c
-    and i_category: category_a, category_b, category_c
+    AND col_name: col_name_a, col_name_b, col_name_c
+    AND d_year: year_a, year_b, year_c
+    AND d_qoy: qoy_a, qoy_b, qoy_c
+    AND i_category: category_a, category_b, category_c
 derive
     coalesce(q76_results.cnt_a, q76_results.cnt_b, q76_results.cnt_c) -> sales_cnt,
     coalesce(q76_results.amt_a, q76_results.amt_b, q76_results.amt_c) -> sales_amt
@@ -81,5 +79,4 @@ ORDER BY
     q76_results.d_year asc nulls first,
     q76_results.d_qoy asc nulls first,
     q76_results.i_category asc nulls first
-LIMIT 100
-;
+LIMIT 100;

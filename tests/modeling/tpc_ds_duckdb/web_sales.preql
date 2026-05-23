@@ -20,8 +20,7 @@ import household_demographic as bill_household_demographic;
 
 key order_number int;
 key return_order_number int;
-
-properties <order_number, item.id> (
+properties <order_number,item.id> (
     quantity int,
     sales_price float,
     list_price float,
@@ -33,8 +32,9 @@ properties <order_number, item.id> (
     return_amount float,
     return_quantity int?,
     is_returned bool,
-    row_counter int,
+        row_counter int
 );
+
 
 datasource web_sales (
     raw('''1'''): row_counter,
@@ -44,7 +44,7 @@ datasource web_sales (
     WS_BILL_CUSTOMER_SK: ?customer.id,
     WS_SHIP_CUSTOMER_SK: ?ship_customer.id,
     WS_ORDER_NUMBER: order_number,
-    WS_ITEM_SK: item.id,
+    WS_ITEM_SK:item.id,
     WS_QUANTITY: quantity,
     WS_SALES_PRICE: sales_price,
     WS_EXT_SALES_PRICE: ext_sales_price,
@@ -63,20 +63,22 @@ datasource web_sales (
     WS_NET_PAID: net_paid,
     WS_LIST_PRICE: list_price,
 )
-grain (item.id, order_number)
-address memory.web_sales;
+grain (order_number, item.id)
+address memory.web_sales
+;
 
 datasource web_returns (
     WR_RETURNED_DATE_SK: return_date.id,
     WR_RETURNED_TIME_SK: return_time.id,
-    WR_ITEM_SK: ~item.id,
+    WR_ITEM_SK:~item.id,
     WR_RETURNING_CUSTOMER_SK: return_customer.id,
     WR_REFUNDED_CUSTOMER_SK: return_refund_customer.id,
     WR_ORDER_NUMBER: ~order_number,
     WR_RETURN_AMT: return_amount,
     WR_RETURN_QUANTITY: return_quantity,
     raw('''CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END'''): is_returned,
+
 )
-grain (item.id, order_number)
+grain (order_number, item.id)
 complete where is_returned is True
 address memory.web_returns;

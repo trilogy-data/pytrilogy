@@ -6,8 +6,7 @@ WHERE
     and store_sales.household_demographic.dependent_count = 7
     and store_sales.store.name = 'ese'
 SELECT
-    count(concat(store_sales.ticket_number::string, '-', store_sales.item.id::string)) as ct,
+    count(concat(cast(store_sales.ticket_number as string), '-', cast(store_sales.item.id as string))) as ct
 ORDER BY
     ct asc
-LIMIT 100
-;
+LIMIT 100;

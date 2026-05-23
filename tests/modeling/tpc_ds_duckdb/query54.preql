@@ -2,7 +2,10 @@ import unified_sales as sales;
 import store_sales as ss;
 import store as store;
 
-rowset my_customers <- WHERE
+# my_customers: customers who bought i_category='Women' & i_class='maternity'
+# from catalog or web in Dec 1998
+with my_customers as
+WHERE
     sales.sales_channel in ('CATALOG', 'WEB')
     and sales.item.category = 'Women'
     and sales.item.class = 'maternity'
@@ -10,10 +13,15 @@ rowset my_customers <- WHERE
     and sales.date.month_of_year = 12
     and sales.customer.id is not null
 SELECT
-    sales.customer.id as my_cust_id,
+    sales.customer.id as my_cust_id
 ;
 
-rowset cust_ss <- WHERE
+# Reference q54 cross-joins each ss row with every store matching the
+# customer-address county/state. Compute as (ss revenue per customer) *
+# (count of stores in customer's county/state), via 2 rowsets keyed on
+# (county, state) and merged.
+with cust_ss as
+WHERE
     ss.customer.id in my_customers.my_cust_id
     and ss.date.month_seq >= 1188
     and ss.date.month_seq <= 1190
@@ -22,24 +30,28 @@ SELECT
     ss.customer.id as ss_cust_id,
     ss.customer.address.county as ss_cust_county,
     ss.customer.address.state as ss_cust_state,
-    sum(ss.ext_sales_price) as ss_revenue,
+    sum(ss.ext_sales_price) as ss_revenue
 ;
 
-rowset stores_cs <- SELECT
+with stores_cs as
+SELECT
     store.county as scs_county,
     store.state as scs_state,
-    count(store.id) as scs_count,
+    count(store.id) as scs_count
 ;
 
-MERGE cust_ss.ss_cust_county into stores_cs.scs_county;
-MERGE cust_ss.ss_cust_state into stores_cs.scs_state;
+merge cust_ss.ss_cust_county into stores_cs.scs_county;
+merge cust_ss.ss_cust_state into stores_cs.scs_state;
 
-rowset my_revenue <- SELECT
+# Materialize per-customer revenue at the (cust, county, state, count) grain
+# so the downstream count is over the post-join row set.
+with my_revenue as
+SELECT
     cust_ss.ss_cust_id as rev_cust_id,
-    cust_ss.ss_revenue * stores_cs.scs_count as revenue,
+    cust_ss.ss_revenue * stores_cs.scs_count as revenue
 ;
 
-property segment <- round(my_revenue.revenue / 50, 0)::int;
+auto segment <- cast(round(my_revenue.revenue / 50) as int);
 
 SELECT
     segment,
@@ -49,5 +61,4 @@ ORDER BY
     segment asc nulls first,
     num_customers asc nulls first,
     segment_base asc nulls first
-LIMIT 100
-;
+LIMIT 100;

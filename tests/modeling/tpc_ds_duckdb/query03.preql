@@ -1,15 +1,18 @@
 import store_sales as store_sales;
 
-WHERE
-    store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+
+#Report the total extended sales price per item brand of a specific manufacturer for all sales in a specific month
+# of the year
+
 SELECT
     store_sales.date.year,
     store_sales.item.brand_id,
     store_sales.item.brand_name,
-    sum(store_sales.ext_sales_price) as sum_agg,
-ORDER BY
+    sum(store_sales.ext_sales_price)->sum_agg
+WHERE 
+    store_sales.date.month_of_year=11 and store_sales.item.manufacturer_id=128
+ORDER BY 
     store_sales.date.year asc,
     sum_agg desc,
     store_sales.item.brand_id asc
-LIMIT 100
-;
+limit 100;

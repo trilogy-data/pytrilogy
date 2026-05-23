@@ -1,5 +1,4 @@
 key id int;
-
 properties id (
     text_id string,
     department string?,
