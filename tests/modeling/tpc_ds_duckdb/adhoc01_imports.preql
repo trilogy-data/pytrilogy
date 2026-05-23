@@ -11,55 +11,55 @@ property zips_pre.zips <- substring(zips_pre::string, 1, 5);
 property p_cust_zip <- customer.address.zip ? zip_p_count > 10;
 auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);
 
-WHERE
+where
     store_sales.date.quarter = 2
     and store_sales.date.year = 1998
     and substring(store_sales.store.zip, 1, 2) in final_zips
-SELECT
+select
     store_sales.store.name,
     sum(store_sales.net_profit) as store_net_profit,
-ORDER BY
+order by
     store_sales.store.name asc
-LIMIT 100
+limit 100
 ;
 
-OVERWRITE default.ds3d60a895d47b2d5a4b3de249fab042433012318d00218d2c1a472d0ea25e6601 INTO ds3d60a895d47b2d5a4b3de249fab042433012318d00218d2c1a472d0ea25e6601 FROM SELECT
+overwrite default.ds3d60a895d47b2d5a4b3de249fab042433012318d00218d2c1a472d0ea25e6601 into ds3d60a895d47b2d5a4b3de249fab042433012318d00218d2c1a472d0ea25e6601 from select
     customer.id,
     customer.preferred_cust_flag,
     customer.address.zip,
 ;
 
-OVERWRITE default.dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d42 INTO dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d42 FROM SELECT
+overwrite default.dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d42 into dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d42 from select
     zips_pre,
 ;
 
-OVERWRITE default.dsa64ed6cb660b9991057f2b2bff5ce6d65eaa6df6d1917a13cb81be745022edcb INTO dsa64ed6cb660b9991057f2b2bff5ce6d65eaa6df6d1917a13cb81be745022edcb FROM SELECT
+overwrite default.dsa64ed6cb660b9991057f2b2bff5ce6d65eaa6df6d1917a13cb81be745022edcb into dsa64ed6cb660b9991057f2b2bff5ce6d65eaa6df6d1917a13cb81be745022edcb from select
     zip_p_count,
     customer.address.zip,
 ;
 
-OVERWRITE default.ds3b9fb8e69758b8b30a28c4b08666f4eda66ecfef91c38b07ddc9e789fb16e893 INTO ds3b9fb8e69758b8b30a28c4b08666f4eda66ecfef91c38b07ddc9e789fb16e893 FROM SELECT
+overwrite default.ds3b9fb8e69758b8b30a28c4b08666f4eda66ecfef91c38b07ddc9e789fb16e893 into ds3b9fb8e69758b8b30a28c4b08666f4eda66ecfef91c38b07ddc9e789fb16e893 from select
     customer.address.zip,
     customer.address.id,
     zip_p_count,
 ;
 
-OVERWRITE default.ds919671dbbd0d5a7992b04850b050127c7d4747da70dbf3c68a3149050f06d634 INTO ds919671dbbd0d5a7992b04850b050127c7d4747da70dbf3c68a3149050f06d634 FROM SELECT
+overwrite default.ds919671dbbd0d5a7992b04850b050127c7d4747da70dbf3c68a3149050f06d634 into ds919671dbbd0d5a7992b04850b050127c7d4747da70dbf3c68a3149050f06d634 from select
     final_zips,
 ;
 
-OVERWRITE default.dse88a2d960609f6f0eafa587b8ddffedd5456b4c892a59675a930b4fad8963029_filtered_on_quarter_year_zip_final_zips INTO dse88a2d960609f6f0eafa587b8ddffedd5456b4c892a59675a930b4fad8963029_filtered_on_quarter_year_zip_final_zips FROM WHERE
+overwrite default.dse88a2d960609f6f0eafa587b8ddffedd5456b4c892a59675a930b4fad8963029_filtered_on_quarter_year_zip_final_zips into dse88a2d960609f6f0eafa587b8ddffedd5456b4c892a59675a930b4fad8963029_filtered_on_quarter_year_zip_final_zips from where
     store_sales.date.quarter = 2
     and store_sales.date.year = 1998
     and substring(store_sales.store.zip, 1, 2) in final_zips
-SELECT
+select
     store_sales.item.id,
     store_sales.net_profit,
     store_sales.store.name,
     store_sales.ticket_number,
 ;
 
-OVERWRITE default.ds2b1ac618399dc1c0e796d4352205b315568130177560608a5b6bde0f228fce67 INTO ds2b1ac618399dc1c0e796d4352205b315568130177560608a5b6bde0f228fce67 FROM SELECT
+overwrite default.ds2b1ac618399dc1c0e796d4352205b315568130177560608a5b6bde0f228fce67 into ds2b1ac618399dc1c0e796d4352205b315568130177560608a5b6bde0f228fce67 from select
     store_net_profit,
     store_sales.store.name,
 ;

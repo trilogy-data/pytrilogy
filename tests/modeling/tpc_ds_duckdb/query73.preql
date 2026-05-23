@@ -12,18 +12,18 @@ and (
     or store_sales.household_demographic.buy_potential = 'Unknown'
 )
 and store_sales.household_demographic.vehicle_count > 0
-and (CASE
-    WHEN store_sales.household_demographic.vehicle_count > 0 THEN (store_sales.household_demographic.dependent_count * 1.0) / store_sales.household_demographic.vehicle_count
-    ELSE null
-END) > 1
+and (case
+    when store_sales.household_demographic.vehicle_count > 0 then (store_sales.household_demographic.dependent_count * 1.0) / store_sales.household_demographic.vehicle_count
+    else null
+end) > 1
 and store_sales.date.year in (1999, 2000, 2001)
 and store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')
 )
     by store_sales.ticket_number, store_sales.customer.id;
 
-WHERE
+where
     store_sales.customer.id is not null
-SELECT
+select
     --store_sales.customer.id,
     store_sales.customer.last_name,
     store_sales.customer.first_name,
@@ -31,10 +31,10 @@ SELECT
     store_sales.customer.preferred_cust_flag,
     store_sales.ticket_number,
     ticket_cnt,
-HAVING
+having
     ticket_cnt >= 1 and ticket_cnt <= 5
 
-ORDER BY
+order by
     ticket_cnt desc,
     store_sales.customer.last_name asc,
     store_sales.ticket_number asc,

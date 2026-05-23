@@ -1,6 +1,6 @@
 import store_sales as store_sales;
 
-WHERE
+where
     (
         store_sales.date.day_of_month between 1 and 3
         or store_sales.date.day_of_month between 25 and 28
@@ -10,15 +10,15 @@ WHERE
         or store_sales.household_demographic.buy_potential = 'Unknown'
     )
     and store_sales.household_demographic.vehicle_count > 0
-    and (CASE
-            WHEN store_sales.household_demographic.vehicle_count > 0 THEN (store_sales.household_demographic.dependent_count * 1.0) / store_sales.household_demographic.vehicle_count
-            ELSE null
-        END) > 1.2
+    and (case
+            when store_sales.household_demographic.vehicle_count > 0 then (store_sales.household_demographic.dependent_count * 1.0) / store_sales.household_demographic.vehicle_count
+            else null
+        end) > 1.2
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.county = 'Williamson County'
     and store_sales.customer.id is not null
     and store_sales.ticket_number is not null
-SELECT
+select
     --store_sales.customer.id,
     store_sales.customer.last_name,
     store_sales.customer.first_name,
@@ -26,10 +26,10 @@ SELECT
     store_sales.customer.preferred_cust_flag,
     store_sales.ticket_number,
     sum(store_sales.row_counter) by store_sales.customer.id, store_sales.ticket_number as cnt,
-HAVING
+having
     cnt between 15 and 20
 
-ORDER BY
+order by
     store_sales.customer.last_name asc nulls first,
     store_sales.customer.first_name asc nulls first,
     store_sales.customer.salutation asc nulls first,

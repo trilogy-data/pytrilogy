@@ -89,16 +89,16 @@ from trilogy.core.statements.author import (
 from trilogy.parsing.pretty import Break, DocPart
 from trilogy.parsing.pretty import render as pretty_render
 
-QUERY_TEMPLATE = Template("""{% if where %}WHERE
+QUERY_TEMPLATE = Template("""{% if where %}where
 {{ where }}
-{% endif %}SELECT{%- for select in select_columns %}
+{% endif %}select{%- for select in select_columns %}
 {{ select }},{% endfor %}{% if having %}
-HAVING
+having
 {{ having }}
 {% endif %}{%- if order_by %}
-ORDER BY{% for order in order_by %}
+order by{% for order in order_by %}
 {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
-LIMIT {{ limit }}{% endif %}
+limit {{ limit }}{% endif %}
 ;""")
 
 
@@ -567,16 +567,16 @@ class Renderer:
     @to_string.register
     def _(self, arg: "CaseWhen"):
         return (
-            f"""WHEN {self.to_string(arg.comparison)} THEN {self.to_string(arg.expr)}"""
+            f"""when {self.to_string(arg.comparison)} then {self.to_string(arg.expr)}"""
         )
 
     @to_string.register
     def _(self, arg: "CaseSimpleWhen"):
-        return f""" WHEN {self.to_string(arg.value_expr)} THEN {self.to_string(arg.expr)}"""
+        return f""" when {self.to_string(arg.value_expr)} then {self.to_string(arg.expr)}"""
 
     @to_string.register
     def _(self, arg: "CaseElse"):
-        return f"""ELSE {self.to_string(arg.expr)}"""
+        return f"""else {self.to_string(arg.expr)}"""
 
     @to_string.register
     def _(self, arg: "FunctionCallWrapper"):
@@ -852,15 +852,15 @@ class Renderer:
     @to_string.register
     def _(self, arg: PersistStatement):
         if arg.persist_mode == PersistMode.APPEND:
-            keyword = "APPEND"
+            keyword = "append"
         else:
-            keyword = "OVERWRITE"
+            keyword = "overwrite"
         if arg.partition_by:
             partition_by = (
-                f"BY {', '.join(self.to_string(x) for x in arg.partition_by)}"
+                f"by {', '.join(self.to_string(x) for x in arg.partition_by)}"
             )
-            return f"{keyword} {arg.identifier} INTO {arg.address.location} {partition_by} FROM {self.to_string(arg.select)}"
-        return f"{keyword} {arg.identifier} INTO {arg.address.location} FROM {self.to_string(arg.select)}"
+            return f"{keyword} {arg.identifier} into {arg.address.location} {partition_by} from {self.to_string(arg.select)}"
+        return f"{keyword} {arg.identifier} into {arg.address.location} from {self.to_string(arg.select)}"
 
     @to_string.register
     def _(self, arg: SelectItem):
@@ -924,16 +924,16 @@ class Renderer:
                 self.to_string(select)[:-2]
             )  # Remove the trailing ";\n"
 
-        base = "\nMERGE\n".join(select_parts)
+        base = "\nmerge\n".join(select_parts)
         base += self.to_string(arg.align)
         if arg.derive:
             base += self.to_string(arg.derive)
         if arg.where_clause:
-            base += f"\nWHERE\n{self.to_string(arg.where_clause)}"
+            base += f"\nwhere\n{self.to_string(arg.where_clause)}"
         if arg.order_by:
-            base += f"\nORDER BY\n{self.to_string(arg.order_by)}"
+            base += f"\norder by\n{self.to_string(arg.order_by)}"
         if arg.limit:
-            base += f"\nLIMIT {arg.limit}"
+            base += f"\nlimit {arg.limit}"
         base += "\n;"
         return base
 
@@ -949,7 +949,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: CopyStatement):
-        return f"COPY INTO {arg.target_type.value.upper()} '{arg.target}' FROM {self.to_string(arg.select)}"
+        return f"copy into {arg.target_type.value} '{arg.target}' from {self.to_string(arg.select)}"
 
     @to_string.register
     def _(self, arg: AlignClause):
@@ -957,7 +957,7 @@ class Renderer:
         joined = "\nand ".join(self.to_string(c) for c in arg.items)
         with self.indented():
             joined = self.indent_lines(joined)
-        return "\nALIGN\n" + joined
+        return "\nalign\n" + joined
 
     @to_string.register
     def _(self, arg: AlignItem):
@@ -1121,12 +1121,12 @@ class Renderer:
                         # Extract the right side of the comparison (the value)
                         val = self.to_string(case_arg.value_expr)
                         result = self.to_string(case_arg.expr)
-                        when_strs.append(self.indent_lines(f"WHEN {val} THEN {result}"))
+                        when_strs.append(self.indent_lines(f"when {val} then {result}"))
                     elif isinstance(case_arg, CaseElse):
                         when_strs.append(self.indent_lines(self.to_string(case_arg)))
             inputs = "\n".join(when_strs)
             return (
-                f"CASE {switch_expr}\n{inputs}\n{self.indent_context.current_indent}END"
+                f"case {switch_expr}\n{inputs}\n{self.indent_context.current_indent}end"
             )
         if arg.operator == FunctionType.CASE:
             with self.indented():
@@ -1134,7 +1134,7 @@ class Renderer:
                     self.indent_lines(self.to_string(a)) for a in arg.arguments
                 ]
             inputs = "\n".join(indented_args)
-            return f"CASE\n{inputs}\n{self.indent_context.current_indent}END"
+            return f"case\n{inputs}\n{self.indent_context.current_indent}end"
 
         if arg.operator == FunctionType.STRUCT:
             # zip arguments to pairs
@@ -1177,13 +1177,13 @@ class Renderer:
     @to_string.register
     def _(self, arg: MergeStatementV2):
         if len(arg.sources) == 1:
-            return f"MERGE {self.to_string(arg.sources[0])} into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{self.to_string(arg.targets[arg.sources[0].address])};"
-        return f"MERGE {arg.source_wildcard}.* into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{arg.target_wildcard}.*;"
+            return f"merge {self.to_string(arg.sources[0])} into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{self.to_string(arg.targets[arg.sources[0].address])};"
+        return f"merge {arg.source_wildcard}.* into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{arg.target_wildcard}.*;"
 
     @to_string.register
     def _(self, arg: KeyMergeStatement):
         keys = ", ".join(sorted(list(arg.keys)))
-        return f"MERGE PROPERTY <{keys}> from {arg.target.address};"
+        return f"merge property <{keys}> from {arg.target.address};"
 
     @to_string.register
     def _(self, arg: Modifier):

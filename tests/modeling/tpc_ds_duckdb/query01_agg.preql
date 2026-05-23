@@ -1,11 +1,11 @@
 import store_returns as returns;
 
-show WHERE
+show where
     returns.store.state = 'TN' and returns.return_date.year = 2000
-SELECT
+select
     returns.customer.text_id,
     --sum(returns.return_amount) as total_returns,
-ORDER BY
+order by
     returns.customer.text_id asc
-LIMIT 100
+limit 100
 ;

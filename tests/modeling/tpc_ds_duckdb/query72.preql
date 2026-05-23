@@ -1,36 +1,36 @@
 import catalog_sales as cs;
 import inventory as inv;
 
-MERGE inv.item.id into cs.item.id;
+merge inv.item.id into cs.item.id;
 
-WHERE
+where
     cs.sold_date.year = 1999
     and cs.bill_household_demographic.buy_potential = '>10000'
     and cs.bill_customer_demographic.marital_status = 'D'
     and inv.date.week_seq = cs.sold_date.week_seq
     and date_diff(cs.sold_date.date, cs.ship_date.date, day) > 5
     and inv.quantity_on_hand < cs.quantity
-SELECT
+select
     cs.item.desc as item_desc,
     inv.warehouse.name as warehouse_name,
     cs.sold_date.week_seq as week_seq,
     sum(
-            CASE
-            WHEN cs.promotion.id is null THEN 1
-            ELSE 0
-        END
+            case
+            when cs.promotion.id is null then 1
+            else 0
+        end
         ) as no_promo,
     sum(
-            CASE
-            WHEN cs.promotion.id is not null THEN 1
-            ELSE 0
-        END
+            case
+            when cs.promotion.id is not null then 1
+            else 0
+        end
         ) as promo,
     count(cs.order_number) as total_cnt,
-ORDER BY
+order by
     total_cnt desc nulls first,
     item_desc asc nulls first,
     warehouse_name asc nulls first,
     week_seq asc nulls first
-LIMIT 100
+limit 100
 ;

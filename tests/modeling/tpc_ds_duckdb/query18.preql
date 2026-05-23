@@ -8,14 +8,14 @@ auto row_dep_count <- group(cs.bill_customer_demographic.dependent_count) by cs.
 def rollup_avg(metric) -> avg(metric::numeric(12,2))
     by rollup cs.item.name, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
 
-WHERE
+where
     cs.bill_customer_demographic.gender = 'F'
     and cs.bill_customer_demographic.education_status = 'Unknown'
     and cs.bill_customer.demographics.id is not null
     and cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
     and cs.date.year = 1998
     and cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
-SELECT
+select
     cs.item.name,
     cs.bill_customer.address.country,
     cs.bill_customer.address.state,
@@ -27,10 +27,10 @@ SELECT
     @rollup_avg(cs.net_profit) as agg5,
     @rollup_avg(row_birth_year) as agg6,
     @rollup_avg(row_dep_count) as agg7,
-ORDER BY
+order by
     cs.bill_customer.address.country asc nulls first,
     cs.bill_customer.address.state asc nulls first,
     cs.bill_customer.address.county asc nulls first,
     cs.item.name asc nulls first
-LIMIT 100
+limit 100
 ;

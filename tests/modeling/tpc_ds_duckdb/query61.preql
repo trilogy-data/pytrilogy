@@ -7,18 +7,18 @@ or ss.promotion.channel_email = 'Y'
 or ss.promotion.channel_tv = 'Y'
 );
 
-WHERE
+where
     ss.date.year = 1998
     and ss.date.month_of_year = 11
     and ss.item.category = 'Jewelry'
     and ss.customer.address.gmt_offset = -5
     and ss.store.gmt_offset = -5
-SELECT
+select
     promotional_sales as promotions,
     sum(ss.ext_sales_price) as total,
     promotional_sales::numeric(15,4) / total::numeric(15,4) * 100 as ratio,
-ORDER BY
+order by
     promotions asc nulls first,
     total asc nulls first
-LIMIT 100
+limit 100
 ;

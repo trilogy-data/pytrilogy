@@ -2,26 +2,26 @@ import catalog_sales as catalog_sales;
 import web_sales as web_sales;
 import date as date;
 
-MERGE catalog_sales.date.* into ~date.*;
-MERGE web_sales.date.* into ~date.*;
+merge catalog_sales.date.* into ~date.*;
+merge web_sales.date.* into ~date.*;
 
 property relevent_week_seq <- date.week_seq ? date.year in (2001, 2002);
 
 def weekday_sales(weekday) -> sum(
-    CASE
-    WHEN date.day_of_week = weekday THEN web_sales.ext_sales_price
-    ELSE 0.0::numeric(15,2)
-END
+    case
+    when date.day_of_week = weekday then web_sales.ext_sales_price
+    else 0.0::numeric(15,2)
+end
 ) + sum(
-    CASE
-    WHEN date.day_of_week = weekday THEN catalog_sales.ext_sales_price
-    ELSE 0.0::numeric(15,2)
-END
+    case
+    when date.day_of_week = weekday then catalog_sales.ext_sales_price
+    else 0.0::numeric(15,2)
+end
 );
 
-rowset yearly_agg <- WHERE
+rowset yearly_agg <- where
     date.week_seq in relevent_week_seq
-SELECT
+select
     date.week_seq,
     @weekday_sales(0) as sunday_sales,
     @weekday_sales(1) as monday_sales,
@@ -34,7 +34,7 @@ SELECT
 
 def round_lag(sales) -> round(sales / (lead(sales, 53) over (order by yearly_agg.date.week_seq asc)), 2);
 
-SELECT
+select
     yearly_agg.date.week_seq,
     @round_lag(yearly_agg.sunday_sales) as sunday_increase,
     @round_lag(yearly_agg.monday_sales) as monday_increase,
@@ -43,10 +43,10 @@ SELECT
     @round_lag(yearly_agg.thursday_sales) as thursday_increase,
     @round_lag(yearly_agg.friday_sales) as friday_increase,
     @round_lag(yearly_agg.saturday_sales) as saturday_increase,
-HAVING
+having
     sunday_increase is not null
 
-ORDER BY
+order by
     yearly_agg.date.week_seq asc nulls first
-LIMIT 100
+limit 100
 ;

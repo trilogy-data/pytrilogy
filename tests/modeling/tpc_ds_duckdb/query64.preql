@@ -35,9 +35,9 @@ and ss.customer.address.id is not null;
 
 # Row-grain projection for each year. Both marital_status columns are
 # selected here so the outer aggregate can apply the inequality.
-rowset ss_rows_99 <- WHERE
+rowset ss_rows_99 <- where
     @year_row_filter(1999) = True
-SELECT
+select
     ss.ticket_number,
     ss.item.id,
     ss.item.product_name,
@@ -61,9 +61,9 @@ SELECT
     ss.customer.demographics.marital_status,
 ;
 
-rowset ss_rows_00 <- WHERE
+rowset ss_rows_00 <- where
     @year_row_filter(2000) = True
-SELECT
+select
     ss.ticket_number,
     ss.item.id,
     ss.store.name,
@@ -76,9 +76,9 @@ SELECT
     ss.customer.demographics.marital_status,
 ;
 
-rowset q64_results <- WHERE
+rowset q64_results <- where
     ss_rows_99.ss.customer_demographic.marital_status != ss_rows_99.ss.customer.demographics.marital_status
-SELECT
+select
     ss_rows_99.ss.item.id as item_sk_99,
     ss_rows_99.ss.store.name as s_name_99,
     ss_rows_99.ss.store.zip as s_zip_99,
@@ -98,10 +98,10 @@ SELECT
     sum(ss_rows_99.ss.wholesale_cost) as s1_99,
     sum(ss_rows_99.ss.list_price) as s2_99,
     sum(ss_rows_99.ss.coupon_amt) as s3_99,
-MERGE
-WHERE
+merge
+where
     ss_rows_00.ss.customer_demographic.marital_status != ss_rows_00.ss.customer.demographics.marital_status
-SELECT
+select
     ss_rows_00.ss.item.id as item_sk_00,
     ss_rows_00.ss.store.name as s_name_00,
     ss_rows_00.ss.store.zip as s_zip_00,
@@ -110,15 +110,15 @@ SELECT
     sum(ss_rows_00.ss.wholesale_cost) as s1_00,
     sum(ss_rows_00.ss.list_price) as s2_00,
     sum(ss_rows_00.ss.coupon_amt) as s3_00,
-ALIGN
+align
     item_sk: item_sk_99, item_sk_00
     and s_name: s_name_99, s_name_00
     and s_zip: s_zip_99, s_zip_00
 ;
 
-WHERE
+where
     q64_results.cnt_00 <= q64_results.cnt_99
-SELECT
+select
     q64_results.p_name_99,
     q64_results.s_name,
     q64_results.s_zip,
@@ -140,7 +140,7 @@ SELECT
     q64_results.s3_00,
     q64_results.syear_00,
     q64_results.cnt_00,
-ORDER BY
+order by
     q64_results.p_name_99 asc nulls first,
     q64_results.s_name asc nulls first,
     q64_results.cnt_00 asc nulls first,

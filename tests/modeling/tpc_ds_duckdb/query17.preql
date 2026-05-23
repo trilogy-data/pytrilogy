@@ -1,11 +1,11 @@
 import catalog_store_returns as analysis;
 
-WHERE
+where
     analysis.store_sale_date.quarter_name = '2001Q1'
     and analysis.store_return_date.quarter_name in ('2001Q1', '2001Q2', '2001Q3')
     and analysis.catalog_date.quarter_name in ('2001Q1', '2001Q2', '2001Q3')
     and analysis.is_returned
-SELECT
+select
     analysis.item.name,
     analysis.item.desc,
     analysis.store.state,
@@ -21,9 +21,9 @@ SELECT
     avg(analysis.catalog_quantity) as catalog_sales_quantityave,
     stddev(analysis.catalog_quantity) as catalog_sales_quantitystdev,
     stddev(analysis.catalog_quantity) / avg(analysis.catalog_quantity) as catalog_sales_quantitycov,
-ORDER BY
+order by
     analysis.item.name asc nulls first,
     analysis.item.desc asc nulls first,
     analysis.store.state asc nulls first
-LIMIT 100
+limit 100
 ;

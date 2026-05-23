@@ -88,8 +88,7 @@ class StatementPlanner:
         attached = True
         for child in block.children[1:]:
             if not (
-                isinstance(child, SyntaxToken)
-                and child.kind == SyntaxTokenKind.COMMENT
+                isinstance(child, SyntaxToken) and child.kind == SyntaxTokenKind.COMMENT
             ):
                 continue
             if attached and child.line == base_line:

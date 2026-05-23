@@ -10,7 +10,7 @@ and store_sales.time.minute < min_high
     by store_sales.ticket_number
 );
 
-WHERE
+where
     store_sales.store.name = 'ese'
     and store_sales.time.hour in (8, 9, 10, 11, 12)
     and (
@@ -27,7 +27,7 @@ WHERE
             and store_sales.household_demographic.vehicle_count <= 2
         )
     )
-SELECT
+select
     @bucket_count(8, 30, 60) as h8_30_to_9,
     @bucket_count(9, 0, 30) as h9_to_9_30,
     @bucket_count(9, 30, 60) as h9_30_to_10,

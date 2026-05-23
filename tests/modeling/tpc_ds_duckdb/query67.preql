@@ -1,8 +1,8 @@
 import store_sales as ss;
 
-WHERE
+where
     ss.date.month_seq between 1200 and 1211 and ss.store.id is not null
-SELECT
+select
     ss.item.category,
     ss.item.class,
     ss.item.brand_name,
@@ -13,10 +13,10 @@ SELECT
     ss.store.text_id,
     sum(coalesce(ss.sales_price * ss.quantity, 0)) as sumsales,
     rank() over (partition by ss.item.category order by sumsales desc) as rk,
-HAVING
+having
     rk <= 100
 
-ORDER BY
+order by
     ss.item.category asc nulls first,
     ss.item.class asc nulls first,
     ss.item.brand_name asc nulls first,
@@ -27,5 +27,5 @@ ORDER BY
     ss.store.text_id asc nulls first,
     sumsales asc nulls first,
     rk asc nulls first
-LIMIT 100
+limit 100
 ;

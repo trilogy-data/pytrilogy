@@ -1,19 +1,19 @@
 import inventory as inventory;
 import store_sales as store_sales;
 
-MERGE inventory.item.id into ~store_sales.item.id;
+merge inventory.item.id into ~store_sales.item.id;
 
-WHERE
+where
     inventory.item.current_price between 62 and 92
     and inventory.date.date between '2000-05-25'::date and '2000-07-24'::date
     and inventory.item.manufacturer_id in (129, 270, 821, 423)
     and inventory.quantity_on_hand between 100 and 500
     and store_sales.item.id is not null
-SELECT
+select
     inventory.item.name,
     inventory.item.desc,
     inventory.item.current_price,
-ORDER BY
+order by
     inventory.item.name asc
-LIMIT 100
+limit 100
 ;

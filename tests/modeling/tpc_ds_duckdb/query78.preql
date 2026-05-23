@@ -24,9 +24,9 @@ auto other_chan_qty <- coalesce(ws_qty, 0) + coalesce(cs_qty, 0);
 auto other_chan_wc <- coalesce(ws_wc, 0) + coalesce(cs_wc, 0);
 auto other_chan_sp <- coalesce(ws_sp, 0) + coalesce(cs_sp, 0);
 
-WHERE
+where
     sales.is_returned is null and sales.date.year = 2000 and sales.customer.id is not null
-SELECT
+select
     sales.date.year as ss_sold_year,
     sales.item.id as ss_item_sk,
     sales.customer.id as ss_customer_sk,
@@ -39,10 +39,10 @@ SELECT
     other_chan_sp as other_chan_sales_price,
     --ws_qty,
     --cs_qty,
-HAVING
+having
     store_qty > 0 and (coalesce(ws_qty, 0) > 0 or coalesce(cs_qty, 0) > 0)
 
-ORDER BY
+order by
     ss_sold_year asc nulls first,
     ss_item_sk asc nulls first,
     ss_customer_sk asc nulls first,
@@ -53,5 +53,5 @@ ORDER BY
     other_chan_wholesale_cost asc nulls first,
     other_chan_sales_price asc nulls first,
     ratio asc nulls first
-LIMIT 100
+limit 100
 ;

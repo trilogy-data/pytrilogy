@@ -73,9 +73,9 @@ def test_basic_query(test_environment):
     )
 
     string_query = render_query(query)
-    assert string_query == """SELECT
+    assert string_query == """select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -95,7 +95,7 @@ select max(order_id) by order_id -> test;
 
 """)
     string_query = Renderer().to_string(parsed[-1])
-    assert string_query == """SELECT
+    assert string_query == """select
     max(order_id) by order_id as test,
 ;"""
 
@@ -132,14 +132,14 @@ def test_multi_select(test_environment):
     )
 
     string_query = render_query(query)
-    assert string_query == """SELECT
+    assert string_query == """select
     order_id,
-MERGE
-SELECT
+merge
+select
     order_id,
-ALIGN
+align
     merge: order_id
-ORDER BY
+order by
     order_id asc
 ;""", string_query
 
@@ -173,11 +173,11 @@ def test_full_query(test_environment):
     )
 
     string_query = render_query(query)
-    assert string_query == """WHERE
+    assert string_query == """where
     order_id = 123 or order_id = 456
-SELECT
+select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -212,9 +212,9 @@ def test_persist(test_environment: Environment):
     )
 
     string_query = render_query(query)
-    assert string_query == """OVERWRITE test INTO tbl_test FROM SELECT
+    assert string_query == """overwrite test into tbl_test from select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -230,9 +230,9 @@ ORDER BY
     )
 
     string_query = render_query(query)
-    assert string_query == """OVERWRITE test INTO tbl_test BY order_id FROM SELECT
+    assert string_query == """overwrite test into tbl_test by order_id from select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -249,9 +249,9 @@ ORDER BY
     )
 
     string_query = render_query(query)
-    assert string_query == """APPEND test INTO tbl_test BY order_id FROM SELECT
+    assert string_query == """append test into tbl_test by order_id from select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -319,9 +319,9 @@ def test_render_rowset(test_environment: Environment):
         )
     )
 
-    assert test == """rowset test <- SELECT
+    assert test == """rowset test <- select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -332,10 +332,10 @@ def test_render_case(test_environment: Environment):
     )
 
     test = Renderer().to_string(case_else)
-    assert test == "ELSE order_id"
+    assert test == "else order_id"
 
     test = Renderer().to_string(case_else)
-    assert test == "ELSE order_id"
+    assert test == "else order_id"
     case_when = CaseWhen(
         expr=test_environment.concepts["order_id"],
         comparison=Comparison(
@@ -346,7 +346,7 @@ def test_render_case(test_environment: Environment):
     )
 
     test = Renderer().to_string(case_when)
-    assert test == "WHEN order_id = 123 THEN order_id"
+    assert test == "when order_id = 123 then order_id"
 
     env, parsed = Environment().parse("""
 
@@ -354,10 +354,10 @@ key x int;
 auto y <- case when x = 1 then 1 else 2 end;""")
 
     test = Renderer().to_string(parsed[-1])
-    assert test == """property x.y <- CASE
-    WHEN x = 1 THEN 1
-    ELSE 2
-END;""", test
+    assert test == """property x.y <- case
+    when x = 1 then 1
+    else 2
+end;""", test
 
     #  property test_like <- CASE WHEN category_name like '%abc%' then True else False END;
 
@@ -370,10 +370,10 @@ auto y <- CASE
     test = Renderer().to_string(parsed[-1])
     # ``X like 'lit'`` is parsed as a ``Comparison`` (not a ``Function``-wrapped
     # ``= True``), so the round-tripped text reflects the cleaner infix form.
-    assert test == """property category_name.y <- CASE
-    WHEN category_name like '%abc%' THEN True
-    ELSE False
-END;""", test
+    assert test == """property category_name.y <- case
+    when category_name like '%abc%' then True
+    else False
+end;""", test
 
 
 def test_render_math():
@@ -546,14 +546,14 @@ def test_render_merge():
             modifiers=[Modifier.PARTIAL],
         )
     )
-    assert test == "MERGE materialized into ~test.materialized;"
+    assert test == "merge materialized into ~test.materialized;"
 
 
 def test_render_merge_property():
     test = Renderer().to_string(
         KeyMergeStatement(keys=set(["abc", "def"]), target=ConceptRef(address="abc.id"))
     )
-    assert test == "MERGE PROPERTY <abc, def> from abc.id;"
+    assert test == "merge property <abc, def> from abc.id;"
 
 
 def test_render_persist_to_source():
@@ -932,9 +932,9 @@ where id in (1,2,3);
     ), type(commands[-1].select.where_clause.conditional.right)
     rendered = Renderer().to_string(commands[-1])
 
-    assert rendered == """OVERWRITE test INTO test FROM WHERE
+    assert rendered == """overwrite test into test from where
     id in (1, 2, 3)
-SELECT
+select
     id,
 ;""", rendered
     # validate round trip
@@ -971,9 +971,9 @@ def test_render_copy_statement(test_environment):
     )
     query = CopyStatement(select=select, target_type=IOType.CSV, target="test.csv")
     string_query = render_query(query)
-    assert string_query == """COPY INTO CSV 'test.csv' FROM SELECT
+    assert string_query == """copy into csv 'test.csv' from select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;""", string_query
 
@@ -1162,7 +1162,7 @@ select
     )
     expected = [
         """def add_thrice(x) -> x + x + x;""",
-        """SELECT
+        """select
     @add_thrice(1) as test,
 ;""",
     ]
@@ -1174,7 +1174,7 @@ select
     select round(@add_thrice(1),2) as test_sum;
                 """)
     expected = [
-        """SELECT
+        """select
     round(@add_thrice(1), 2) as test_sum,
 ;""",
     ]
@@ -1268,7 +1268,7 @@ def test_render_struct():
     expected = [
         """const x <- 1;""",
         """const y <- 2;""",
-        """SELECT
+        """select
     struct(
             x-> label,
             y-> field
@@ -1308,7 +1308,7 @@ select group(1) by x as test, group(1) by * as all_rows;
 """)
     expected = [
         """key x int;""",
-        """SELECT
+        """select
     group(1) by x as test,
     group(1) by * as all_rows,
 ;""",
@@ -1329,7 +1329,7 @@ select x as x2;
 """)
     expected = [
         """key x int;""",
-        """SELECT
+        """select
     x as x2,
 ;""",
     ]
@@ -1349,7 +1349,7 @@ select x::float as x2, cast(x as float) as x3;
 """)
     expected = [
         """key x int;""",
-        """SELECT
+        """select
     x::float as x2,
     x::float as x3,
 ;""",

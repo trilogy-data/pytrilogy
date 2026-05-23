@@ -33,34 +33,34 @@ metric web_second_year <- sum(
 )
     by sales.customer.id;
 
-WHERE
+where
     sales.date.year in (first_year, second_year)
     and store_first_year > 0
     and catalog_first_year > 0
     and web_first_year > 0
-    and (CASE
-            WHEN catalog_first_year > 0 THEN catalog_second_year / catalog_first_year
-            ELSE null
-        END) > (CASE
-            WHEN store_first_year > 0 THEN store_second_year / store_first_year
-            ELSE null
-        END)
-    and (CASE
-            WHEN catalog_first_year > 0 THEN catalog_second_year / catalog_first_year
-            ELSE null
-        END) > (CASE
-            WHEN web_first_year > 0 THEN web_second_year / web_first_year
-            ELSE null
-        END)
-SELECT
+    and (case
+            when catalog_first_year > 0 then catalog_second_year / catalog_first_year
+            else null
+        end) > (case
+            when store_first_year > 0 then store_second_year / store_first_year
+            else null
+        end)
+    and (case
+            when catalog_first_year > 0 then catalog_second_year / catalog_first_year
+            else null
+        end) > (case
+            when web_first_year > 0 then web_second_year / web_first_year
+            else null
+        end)
+select
     sales.customer.text_id as customer_id,
     sales.customer.first_name as customer_first_name,
     sales.customer.last_name as customer_last_name,
     sales.customer.preferred_cust_flag as customer_preferred_cust_flag,
-ORDER BY
+order by
     customer_id asc nulls first,
     customer_first_name asc nulls first,
     customer_last_name asc nulls first,
     customer_preferred_cust_flag asc nulls first
-LIMIT 100
+limit 100
 ;

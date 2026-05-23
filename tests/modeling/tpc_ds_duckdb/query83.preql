@@ -20,9 +20,9 @@ property sr_dev <- (sr_item_qty * 1.0) / total_qty / 3.0 * 100;
 property cr_dev <- (cr_item_qty * 1.0) / total_qty / 3.0 * 100;
 property wr_dev <- (wr_item_qty * 1.0) / total_qty / 3.0 * 100;
 
-WHERE
+where
     sales.return_date.week_seq in target_week_seqs
-SELECT
+select
     sales.item.name as item_id,
     sr_item_qty,
     sr_dev,
@@ -34,11 +34,11 @@ SELECT
     --sr_item_present,
     --cr_item_present,
     --wr_item_present,
-HAVING
+having
     sr_item_present > 0 and cr_item_present > 0 and wr_item_present > 0
 
-ORDER BY
+order by
     item_id asc nulls first,
     sr_item_qty asc nulls first
-LIMIT 100
+limit 100
 ;

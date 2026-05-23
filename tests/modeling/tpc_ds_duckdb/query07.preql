@@ -3,19 +3,19 @@
 # educational status.
 import store_sales as store_sales;
 
-WHERE
+where
     store_sales.customer_demographic.gender = 'M'
     and store_sales.customer_demographic.marital_status = 'S'
     and store_sales.customer_demographic.education_status = 'College'
     and (store_sales.promotion.channel_email = 'N' or store_sales.promotion.channel_event = 'N')
     and store_sales.date.year = 2000
-SELECT
+select
     store_sales.item.name,
     avg(store_sales.quantity) as avg_quantity,
     avg(store_sales.list_price) as avg_list_price,
     avg(store_sales.coupon_amt) as avg_coupon_amt,
     avg(store_sales.sales_price) as avg_sales_price,
-ORDER BY
+order by
     store_sales.item.name asc
-LIMIT 100
+limit 100
 ;

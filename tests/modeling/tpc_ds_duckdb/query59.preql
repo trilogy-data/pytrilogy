@@ -2,11 +2,11 @@ import store_sales as ss;
 
 def day_sales(d) -> sum(ss.sales_price ? ss.date.day_name = d) by ss.store.id, ss.date.week_seq;
 
-rowset wss <- WHERE
+rowset wss <- where
     ss.date.month_seq between 1212 and 1235
     and ss.store.id is not null
     and ss.date.week_seq is not null
-SELECT
+select
     ss.store.id as store_id,
     ss.store.name as store_name,
     ss.store.text_id as store_text_id,
@@ -19,26 +19,26 @@ SELECT
     @day_sales('Friday') as fri_sales,
     @day_sales('Saturday') as sat_sales,
     max(
-            CASE
-            WHEN ss.date.month_seq >= 1212 and ss.date.month_seq <= 1223 THEN 1
-            ELSE 0
-        END
+            case
+            when ss.date.month_seq >= 1212 and ss.date.month_seq <= 1223 then 1
+            else 0
+        end
         ) as in_year1,
     max(
-            CASE
-            WHEN ss.date.month_seq >= 1224 and ss.date.month_seq <= 1235 THEN 1
-            ELSE 0
-        END
+            case
+            when ss.date.month_seq >= 1224 and ss.date.month_seq <= 1235 then 1
+            else 0
+        end
         ) as in_year2,
 ;
 
 # Normalized week-within-year so year1's W lines up with year2's W+52
-property normalized_week <- wss.week_seq - (CASE
-    WHEN wss.in_year2 = 1 THEN 52
-    ELSE 0
-END);
+property normalized_week <- wss.week_seq - (case
+    when wss.in_year2 = 1 then 52
+    else 0
+end);
 
-SELECT
+select
     wss.store_name as s_store_name1,
     wss.store_text_id as s_store_id1,
     wss.week_seq as d_week_seq1,
@@ -57,12 +57,12 @@ SELECT
             over (partition by wss.store_id, normalized_week order by wss.in_year2 asc) as fri_sales_ratio,
     wss.sat_sales / lead(wss.sat_sales, 1)
             over (partition by wss.store_id, normalized_week order by wss.in_year2 asc) as sat_sales_ratio,
-HAVING
+having
     year1_flag = 1 and sun_sales_ratio is not null
 
-ORDER BY
+order by
     s_store_name1 asc nulls first,
     s_store_id1 asc nulls first,
     d_week_seq1 asc nulls first
-LIMIT 100
+limit 100
 ;
