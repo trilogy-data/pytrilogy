@@ -1,6 +1,6 @@
 const _trilogyt._created_at <- current_datetime();
 
-import store_sales as store_sales;
+import ..store_sales as store_sales;
 
 # WHERE
 #     store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
