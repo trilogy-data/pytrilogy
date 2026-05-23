@@ -61,6 +61,11 @@ Available tools:
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
       under raw/) for every table in the database, in one step.
     * Run a Trilogy script: ["run", "<path.preql>"].
+    * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
+      `file list`, etc. To examine `raw/`, `read_file` a specific .preql by
+      name (the table name and the filename match). Global flags like
+      `--debug` come BEFORE the subcommand:
+      `["--debug", "run", "x.preql"]`, NOT `["run", "x.preql", "--debug"]`.
 - write_file(path, content): create or overwrite a text file; `content` is the
   exact, full file text. This is how you create every .preql query file.
 - read_file(path): return the text content of a file.
@@ -81,17 +86,29 @@ Discipline:
    the task is fully done or you are genuinely blocked."""
 
 
+def _strip_show_message(text: str) -> str:
+    """Return the agent system prompt without the ``show_message`` tool line
+    and its discipline rule — used in quiet mode where the tool is absent."""
+    out = text.replace("- show_message(message): print a message to the user.\n", "")
+    out = out.replace(
+        "3. Use `show_message` rarely — only for a genuine status change, never to\n"
+        "   narrate intent or restate the plan.\n",
+        "",
+    )
+    return out.replace("4. Use `trilogy`", "3. Use `trilogy`")
+
+
 # The Trilogy language reference has one source of truth, get_trilogy_prompt()
 # (also used by `trilogy agent-info`); never paraphrase it here.
-SYSTEM_PROMPT = (
-    _AGENT_INSTRUCTIONS
-    + "\n\n"
-    + get_trilogy_prompt(
-        intro=(
-            "When you write a Trilogy query file (.preql), follow this syntax "
-            "reference exactly — Trilogy is NOT SQL:"
-        )
+_TRILOGY_PROMPT_SECTION = get_trilogy_prompt(
+    intro=(
+        "When you write a Trilogy query file (.preql), follow this syntax "
+        "reference exactly — Trilogy is NOT SQL:"
     )
+)
+SYSTEM_PROMPT = _AGENT_INSTRUCTIONS + "\n\n" + _TRILOGY_PROMPT_SECTION
+QUIET_SYSTEM_PROMPT = (
+    _strip_show_message(_AGENT_INSTRUCTIONS) + "\n\n" + _TRILOGY_PROMPT_SECTION
 )
 
 
@@ -586,8 +603,9 @@ def _run_turn(
     state: AgentState,
     max_iterations: int,
     log_path: Path | None = None,
+    tools: list[LLMToolDefinition] | None = None,
 ) -> None:
-    options = LLMRequestOptions(tools=ALL_TOOLS, require_tool=True)
+    options = LLMRequestOptions(tools=tools or ALL_TOOLS, require_tool=True)
     for _ in range(max_iterations):
         with with_status("Thinking"):
             response = conv.get_response(options)
@@ -675,6 +693,13 @@ def _run_turn(
     is_flag=True,
     help="After return_control_to_user, prompt for the next command.",
 )
+@option(
+    "--quiet/--no-quiet",
+    "quiet",
+    default=None,
+    help="Drop the show_message tool from the agent's toolbox to cut "
+    "conversation churn (overrides [agent].quiet in trilogy.toml).",
+)
 @pass_context
 def agent(
     ctx: click.Context,
@@ -685,6 +710,7 @@ def agent(
     env: tuple[str, ...],
     log_file: str | None,
     interactive: bool,
+    quiet: bool | None,
 ) -> None:
     """Pass off a multi-step orchestration task to an AI agent.
 
@@ -704,7 +730,14 @@ def agent(
 
     runtime = get_runtime_config(Path.cwd())
     cfg = runtime.agent
+    actual_quiet = cfg.quiet if quiet is None else quiet
     llm_provider = _build_provider(cfg, model, provider)
+    if actual_quiet:
+        tools = [t for t in ALL_TOOLS if t.name != SHOW_MESSAGE_TOOL.name]
+        system_prompt = QUIET_SYSTEM_PROMPT
+    else:
+        tools = ALL_TOOLS
+        system_prompt = SYSTEM_PROMPT
 
     log_path: Path | None = None
     if log_file:
@@ -721,7 +754,7 @@ def agent(
             },
         )
 
-    conv = Conversation.create(llm_provider, model_prompt=SYSTEM_PROMPT)
+    conv = Conversation.create(llm_provider, model_prompt=system_prompt)
     state = AgentState(tool_output_limit=cfg.tool_output_limit)
 
     context_block = _read_context_files(context)
@@ -729,7 +762,7 @@ def agent(
     conv.add_message(initial, role="user")
 
     try:
-        _run_turn(conv, state, cfg.max_iterations, log_path)
+        _run_turn(conv, state, cfg.max_iterations, log_path, tools=tools)
     finally:
         if log_path:
             _dump_conversation(conv, log_path)
@@ -753,7 +786,7 @@ def agent(
         state.todos = []
         conv.add_message(next_command, role="user")
         try:
-            _run_turn(conv, state, cfg.max_iterations, log_path)
+            _run_turn(conv, state, cfg.max_iterations, log_path, tools=tools)
         finally:
             if log_path:
                 _dump_conversation(conv, log_path)

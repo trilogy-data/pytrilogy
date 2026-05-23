@@ -92,10 +92,14 @@ class InferredFK:
     to_column: str  # raw
     match_kind: str
     overlap: float | None  # None when sniffing was skipped (fast level)
+    # Set on role-playing-dimension conflicts so multiple FKs from one table
+    # can import the dim under distinct names (e.g. ``first_shipto_date``).
+    role_alias: str | None = None
 
     @property
     def target_ref(self) -> str:
-        return f"{self.to_table}.{self.to_column}"
+        base = f"{self.to_table}.{self.to_column}"
+        return f"{base}@{self.role_alias}" if self.role_alias else base
 
 
 def _fk_stem(canonical: str) -> str | None:
@@ -120,15 +124,27 @@ def _fk_stem(canonical: str) -> str | None:
 def _stem_related(a: str, b: str) -> bool:
     """True if two name stems plausibly denote the same entity.
 
-    Covers exact match, naive singular/plural, and abbreviation (one stem a
-    substring of the other, e.g. ``addr`` ↔ ``address``).
+    Covers exact match, naive singular/plural, abbreviation (one stem a
+    substring of the other, e.g. ``addr`` ↔ ``address``), and token-aware
+    matches for compound stems (``current_addr`` against ``address``: the
+    ``addr`` token abbreviates ``address``).
     """
     if len(a) < _MIN_STEM_LEN or len(b) < _MIN_STEM_LEN:
         return False
     if a == b or a.rstrip("s") == b.rstrip("s"):
         return True
     short, long = sorted((a, b), key=len)
-    return short in long
+    if short in long:
+        return True
+    # Compound from-stems (e.g. ``current_addr``, ``bill_addr``) carry the
+    # entity name in one of their underscore-delimited tokens — check those
+    # against the shorter (target-key) stem the same way.
+    for token in long.split("_"):
+        if len(token) < _MIN_STEM_LEN:
+            continue
+        if token == short or token.rstrip("s") == short.rstrip("s") or token in short:
+            return True
+    return False
 
 
 def _match_kind(
@@ -356,10 +372,19 @@ def _verify_column(
     return None
 
 
-def _resolve_target_conflicts(inferred: list[InferredFK]) -> list[InferredFK]:
-    """Drop all-but-best when several columns of one table resolve to the same
-    target concept — wiring them all would collapse distinct columns (a
-    role-playing dimension) onto a single concept.
+def _resolve_target_conflicts(
+    inferred: list[InferredFK],
+    by_name: dict[str, TableFKInfo],
+) -> list[InferredFK]:
+    """Role-alias FKs that share a target so the imports stay distinct.
+
+    When several columns of one table resolve to the same target concept,
+    wiring them all to the same import would collapse the columns onto a
+    single concept (a role-playing dimension). Instead, each FK in the
+    conflict group gets a ``role_alias`` derived from the FROM column's
+    canonical name (minus its FK suffix), so the dim is imported under that
+    role-specific name. Singleton FKs are left untouched and keep the bare
+    target-table alias.
     """
     groups: dict[tuple[str, str, str], list[InferredFK]] = {}
     for fk in inferred:
@@ -369,13 +394,14 @@ def _resolve_target_conflicts(inferred: list[InferredFK]) -> list[InferredFK]:
         if len(group) == 1:
             kept.append(group[0])
             continue
-        group.sort(key=lambda f: f.overlap or 0.0, reverse=True)
-        kept.append(group[0])
-        for dropped in group[1:]:
+        src = by_name[group[0].from_table]
+        for fk in group:
+            canonical = src.raw_to_canonical[fk.from_column]
+            fk.role_alias = _fk_stem(canonical) or canonical
+            kept.append(fk)
             print_info(
-                f"Skipping inferred FK {dropped.from_table}.{dropped.from_column}"
-                f" -> {dropped.target_ref}: another column already references it"
-                " (role-playing dimension; use --fks to wire explicitly)"
+                f"Role-aliasing inferred FK {fk.from_table}.{fk.from_column}"
+                f" -> {fk.to_table}.{fk.to_column} (imported as `{fk.role_alias}`)"
             )
     return kept
 
@@ -413,7 +439,7 @@ def infer_foreign_keys(
             verified = _verify_column(executor, by_name, edges, sample_size)
             if verified is not None:
                 accepted.append(verified)
-    return _resolve_target_conflicts(accepted)
+    return _resolve_target_conflicts(accepted, by_name)
 
 
 def build_table_fk_info(

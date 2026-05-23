@@ -639,7 +639,7 @@ def test_log_file_cli_flag_creates_and_truncates(tmp_path, monkeypatch):
     log_path = tmp_path / "trace.jsonl"
     log_path.write_text("stale content\n", encoding="utf-8")
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
         import trilogy.scripts.agent as mod
 
         mod._log_event(log_path, {"type": "llm_response", "tool_calls": []})
@@ -673,7 +673,7 @@ def test_env_flag_applies_kv_pair_via_cli(monkeypatch):
 
     seen: dict = {}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
         import os
 
         seen["AGENT_TEST_VAR"] = os.environ.get("AGENT_TEST_VAR")
@@ -702,7 +702,7 @@ def test_env_flag_loads_file_via_cli(tmp_path, monkeypatch):
 
     seen: dict = {}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
         import os
 
         seen["anthropic"] = os.environ.get("ANTHROPIC_API_KEY")

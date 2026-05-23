@@ -70,6 +70,10 @@ class AgentConfig:
     api_key_env: Optional[str] = None
     max_iterations: int = 50
     tool_output_limit: int = 8192
+    # Drop ``show_message`` from the tool list (and its discipline rule from
+    # the system prompt). Narration messages compound quadratically through
+    # history replays, so quiet mode is much cheaper for long unattended runs.
+    quiet: bool = False
 
 
 @dataclass
@@ -197,6 +201,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
         api_key_env=agent_raw.get("api_key_env"),
         max_iterations=int(agent_raw.get("max_iterations", 50)),
         tool_output_limit=int(agent_raw.get("tool_output_limit", 8192)),
+        quiet=bool(agent_raw.get("quiet", False)),
     )
 
     return RuntimeConfig(

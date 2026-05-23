@@ -150,6 +150,26 @@ class TestCandidateGeneration:
             candidates, "store_returns", "sr_addr_sk"
         )
 
+    def test_compound_stem_abbreviation_match(self):
+        # `c_current_addr_sk` -> `customer_address.ca_address_sk`. The from-stem
+        # is the compound ``current_addr``; the ``addr`` token must still be
+        # recognized as abbreviating ``address``. Also covers role-playing FKs
+        # like ``bill_addr_sk`` / ``ship_addr_sk`` on web_sales / catalog_sales.
+        customer = _info(
+            "customer",
+            ["c_customer_sk", "c_current_addr_sk"],
+            ["c_customer_sk"],
+        )
+        customer_address = _info(
+            "customer_address",
+            ["ca_address_sk", "ca_state"],
+            ["ca_address_sk"],
+        )
+        candidates = generate_candidates([customer, customer_address])
+        assert ("customer_address", "ca_address_sk") in _targets(
+            candidates, "customer", "c_current_addr_sk"
+        )
+
 
 class TestValueOverlap:
     """Stage 2 — value-overlap verification on synthetic DuckDB tables."""
@@ -248,6 +268,46 @@ class TestInferForeignKeys:
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
         assert infer_foreign_keys([orders, customers], None, "off") == []
+
+
+class TestRolePlayingDimensions:
+    """Multiple FKs from one table to the same dim get role-aliased instead of
+    dropped, so each retains its own import + reference."""
+
+    def test_conflicting_fks_role_aliased_not_dropped(self):
+        customer = _info(
+            "customer",
+            ["c_customer_sk", "c_first_shipto_date_sk", "c_first_sales_date_sk"],
+            ["c_customer_sk"],
+        )
+        date_dim = _info("date_dim", ["d_date_sk", "d_year"], ["d_date_sk"])
+        inferred = infer_foreign_keys([customer, date_dim], None, "fast")
+        assert len(inferred) == 2
+        aliases = sorted(fk.role_alias for fk in inferred)
+        assert aliases == ["first_sales_date", "first_shipto_date"]
+
+    def test_role_aliased_target_ref_encodes_alias(self):
+        customer = _info(
+            "customer",
+            ["c_customer_sk", "c_first_shipto_date_sk", "c_first_sales_date_sk"],
+            ["c_customer_sk"],
+        )
+        date_dim = _info("date_dim", ["d_date_sk", "d_year"], ["d_date_sk"])
+        inferred = infer_foreign_keys([customer, date_dim], None, "fast")
+        refs = sorted(fk.target_ref for fk in inferred)
+        assert refs == [
+            "date_dim.d_date_sk@first_sales_date",
+            "date_dim.d_date_sk@first_shipto_date",
+        ]
+
+    def test_singleton_fk_keeps_bare_alias(self):
+        # No conflict — backward compatible: no role alias, no `@` in target_ref.
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id", "name"], ["id"])
+        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        assert len(inferred) == 1
+        assert inferred[0].role_alias is None
+        assert inferred[0].target_ref == "customers.id"
 
 
 class TestMergeFKMaps:

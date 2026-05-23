@@ -70,13 +70,68 @@ def load_prompts() -> list[dict]:
     return json.loads(PROMPTS_FILE.read_text(encoding="utf-8"))
 
 
+def active_prompts() -> list[dict]:
+    """Prompts the eval runs. 'impossible'-graded entries stay in the catalog
+    for the record but are excluded (e.g. unsolvable at low scale factor)."""
+    return [p for p in load_prompts() if p.get("grade") != "impossible"]
+
+
 def selected_ids(num_queries: int) -> list[int]:
     """TPC-DS query ids the eval is running, in order."""
-    return [p["id"] for p in load_prompts()[:num_queries]]
+    return [p["id"] for p in active_prompts()[:num_queries]]
+
+
+SINGLE_QUERY_TEMPLATE = """\
+This is a Trilogy data project. The working directory contains `trilogy.toml`
+(a DuckDB database `tpcds.duckdb` is already loaded with TPC-DS data) and a
+populated `raw/` directory of ingested Trilogy semantic model files — every
+foreign key the ingest could infer is already wired.
+
+Your task: answer the ONE business question below by writing a single Trilogy
+query file. Do NOT re-run `trilogy ingest`. Do NOT edit files in `raw/` — the
+model is already there.
+
+Import ONLY the fact table the question is about — `ingest --all` linked its
+foreign keys, so its dimension tables are reached by chaining through it
+(`store_returns.store.state`, `store_returns.date_dim.year`). Do NOT separately
+import dimension tables — a separate import is a disconnected copy that will
+not join. If a question genuinely spans two fact tables (e.g. store_sales and
+inventory), import both and `merge` them on their shared dimension key — mark
+the superset side with `~`: `merge inventory.item.id into ~store_sales.item.id;`
+(a plain merge with no `~` asserts strict equivalence). Read the fact's model
+file first (e.g. `read_file` on `raw/store_returns.preql`) for exact concept
+names, then write a query like:
+
+    import raw.store_returns as store_returns;
+
+    where store_returns.store.state = 'TN'
+      and store_returns.date_dim.year = 2000
+    select
+        store_returns.customer.customer_id,
+        sum(store_returns.return_amt) as total_returns
+    order by total_returns desc
+    limit 100;
+
+Write the query to `query{nn}.preql` in the working directory (alongside
+`trilogy.toml`, NOT inside `raw/`). Validate with `trilogy run query{nn}.preql`.
+Return control once it runs cleanly.
+
+Question {id}:
+{prompt}
+"""
+
+
+def build_single_query_task(entry: dict) -> str:
+    """Per-query task: one question, fresh agent context, raw/ already populated."""
+    return SINGLE_QUERY_TEMPLATE.format(
+        id=entry["id"],
+        nn=f"{entry['id']:02d}",
+        prompt=entry["prompt"],
+    )
 
 
 def build_task(num_queries: int) -> str:
-    prompts = load_prompts()[:num_queries]
+    prompts = active_prompts()[:num_queries]
     questions = "\n\n".join(
         f"Question {p['id']} -> write `query{p['id']:02d}.preql`\n{p['prompt']}"
         for p in prompts

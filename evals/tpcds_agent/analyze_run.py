@@ -47,8 +47,10 @@ def latest_run_dir() -> Path:
 def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     events: list[dict] = []
-    log = run_dir / "agent_log.jsonl"
-    if log.exists():
+    # Per-query mode writes agent_log.q<id>.jsonl per query; legacy single-agent
+    # runs write a single agent_log.jsonl. Read whichever (or both) is present,
+    # in stable filename order so per-query event streams stay grouped.
+    for log in sorted(run_dir.glob("agent_log*.jsonl")):
         for line in log.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 try:

@@ -101,10 +101,37 @@ def parse_agent_log(log_path: Path) -> AgentMetrics:
     return m
 
 
+def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
+    """Sum per-query AgentMetrics into one — for the per-query (chunked) eval
+    where each query is a fresh agent invocation. The last non-empty farewell
+    wins (arbitrary but stable)."""
+    agg = AgentMetrics()
+    by_name: Counter[str] = Counter()
+    subcmds: Counter[str] = Counter()
+    for m in metrics_list:
+        agg.iterations += m.iterations
+        agg.tool_calls_total += m.tool_calls_total
+        agg.tool_results_total += m.tool_results_total
+        agg.tool_errors += m.tool_errors
+        agg.prompt_tokens += m.prompt_tokens
+        agg.completion_tokens += m.completion_tokens
+        agg.total_tokens += m.total_tokens
+        by_name.update(m.tool_calls_by_name)
+        subcmds.update(m.trilogy_subcommands)
+        if m.farewell:
+            agg.farewell = m.farewell
+    agg.tool_calls_by_name = dict(by_name)
+    agg.trilogy_subcommands = dict(subcmds)
+    return agg
+
+
 def _multiset(rows: list) -> Counter[str]:
-    """Order-independent representation of a result set. Ordering correctness is
-    not graded — only whether the right data was computed."""
-    return Counter(repr(tuple(r)) for r in rows)
+    """Order-independent representation of a result set, for comparison.
+
+    Both row order and column order are ignored: the prompts ask for a set of
+    values, not a fixed column layout, so each row's cells are sorted before
+    hashing. Only whether the right data was computed is graded."""
+    return Counter(repr(tuple(sorted(r, key=repr))) for r in rows)
 
 
 def _find_query_file(workspace: Path, idx: int) -> Path | None:

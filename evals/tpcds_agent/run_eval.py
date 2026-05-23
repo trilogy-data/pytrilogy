@@ -87,6 +87,9 @@ max_iterations = {max_iterations}
 # agent-info is ~26KB and carries the Trilogy language reference; the default
 # 8KB limit middle-truncates the syntax rules away, so give it real headroom.
 tool_output_limit = 32768
+# Narration messages compound quadratically through history replays in long
+# unattended runs; the eval drops show_message entirely.
+quiet = true
 """,
         encoding="utf-8",
     )
@@ -194,6 +197,38 @@ def run_agent(
         "timed_out": timed_out,
         "duration": time.perf_counter() - start,
         "output": output,
+    }
+
+
+def run_pre_ingest(workspace: Path, timeout: int = 600) -> dict:
+    """Run ``trilogy ingest --all`` once before any agent invocations.
+
+    Per-query mode hands each agent a populated ``raw/``, so the agent doesn't
+    burn iterations rebuilding the model (and we eliminate ingest variability
+    as a confound)."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "trilogy.scripts.trilogy",
+        "ingest",
+        "--all",
+        "duckdb",
+    ]
+    start = time.perf_counter()
+    proc = subprocess.run(
+        cmd,
+        cwd=workspace,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+    )
+    return {
+        "exit_code": proc.returncode,
+        "duration": time.perf_counter() - start,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
     }
 
 
@@ -313,13 +348,19 @@ def parse_args() -> argparse.Namespace:
         "--scale-factor", type=float, default=0.01, help="TPC-DS scale factor"
     )
     parser.add_argument(
-        "--num-queries", type=int, default=10, help="number of queries to attempt"
+        "--num-queries", type=int, default=20, help="number of queries to attempt"
     )
     parser.add_argument(
-        "--max-iterations", type=int, default=120, help="agent tool-loop budget"
+        "--max-iterations",
+        type=int,
+        default=30,
+        help="agent tool-loop budget PER QUERY (each query is a fresh agent)",
     )
     parser.add_argument(
-        "--timeout", type=int, default=2400, help="agent subprocess timeout (seconds)"
+        "--timeout",
+        type=int,
+        default=300,
+        help="agent subprocess timeout PER QUERY (seconds)",
     )
     parser.add_argument(
         "--output-dir",
@@ -363,31 +404,71 @@ def main() -> int:
     run_dir = args.output_dir or (EVAL_DIR / "results" / timestamp)
     workspace = run_dir / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
-    log_path = run_dir / "agent_log.jsonl"
-
-    print(f"[1/4] Building TPC-DS DuckDB (sf={args.scale_factor:g}) ...")
+    print(f"[1/5] Building TPC-DS DuckDB (sf={args.scale_factor:g}) ...")
     cached = db.build_database(args.scale_factor, EVAL_DIR / ".cache")
     workspace_db = db.copy_database(cached, workspace / "tpcds.duckdb")
 
     write_trilogy_toml(workspace, args.provider, args.model, args.max_iterations)
-    query_ids = prompts.selected_ids(args.num_queries)
-    task = prompts.build_task(args.num_queries)
-    (run_dir / "task.txt").write_text(task, encoding="utf-8")
+    active = prompts.active_prompts()[: args.num_queries]
+    query_ids = [p["id"] for p in active]
 
-    print(f"[2/4] Running Trilogy agent ({args.provider}/{args.model}) ...")
-    agent_run = run_agent(
-        workspace,
-        log_path,
-        args.provider,
-        args.model,
-        task,
-        args.timeout,
-        args.monitor,
+    print("[2/5] Pre-ingesting model with `trilogy ingest --all` ...")
+    ingest = run_pre_ingest(workspace)
+    (run_dir / "ingest_output.txt").write_text(
+        f"exit={ingest['exit_code']}  duration={ingest['duration']:.1f}s\n"
+        f"--- stdout ---\n{ingest['stdout']}\n--- stderr ---\n{ingest['stderr']}\n",
+        encoding="utf-8",
     )
+    if ingest["exit_code"] != 0:
+        print(
+            f"  ingest failed (exit {ingest['exit_code']}); see ingest_output.txt",
+            file=sys.stderr,
+        )
+
+    print(
+        f"[3/5] Running agent per query ({len(active)} queries, fresh context each)"
+        f" — {args.provider}/{args.model} ..."
+    )
+    per_query_runs: list[dict] = []
+    per_query_metrics: list[scoring.AgentMetrics] = []
+    for entry in active:
+        qid = entry["id"]
+        log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
+        task = prompts.build_single_query_task(entry)
+        (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
+        print(f"  [q{qid:02d}] starting", flush=True)
+        result = run_agent(
+            workspace,
+            log_path,
+            args.provider,
+            args.model,
+            task,
+            args.timeout,
+            args.monitor,
+        )
+        result["id"] = qid
+        per_query_runs.append(result)
+        per_query_metrics.append(scoring.parse_agent_log(log_path))
+        print(
+            f"  [q{qid:02d}] done in {result['duration']:.0f}s"
+            f" (exit {result['exit_code']})",
+            flush=True,
+        )
+
+    metrics = scoring.aggregate_metrics(per_query_metrics)
+    agent_run = {
+        "exit_code": 0 if all(r["exit_code"] == 0 for r in per_query_runs) else 1,
+        "timed_out": any(r.get("timed_out") for r in per_query_runs),
+        "duration": sum(r["duration"] for r in per_query_runs),
+        "output": "\n".join(
+            f"=== q{r['id']:02d} (exit {r['exit_code']}, {r['duration']:.0f}s) ===\n"
+            f"{r['output']}"
+            for r in per_query_runs
+        ),
+    }
     (run_dir / "agent_output.txt").write_text(agent_run["output"], encoding="utf-8")
 
-    print(f"[3/4] Scoring {len(query_ids)} queries against TPC-DS reference ...")
-    metrics = scoring.parse_agent_log(log_path)
+    print(f"[4/5] Scoring {len(query_ids)} queries against TPC-DS reference ...")
     try:
         query_results = scoring.score_queries(workspace_db, workspace, query_ids)
     except Exception as exc:
@@ -398,11 +479,24 @@ def main() -> int:
         ]
 
     report = build_report(args, timestamp, agent_run, metrics, query_results)
+    report["per_query"] = [
+        {
+            "id": r["id"],
+            "exit_code": r["exit_code"],
+            "timed_out": r.get("timed_out", False),
+            "duration_seconds": round(r["duration"], 1),
+        }
+        for r in per_query_runs
+    ]
+    report["ingest"] = {
+        "exit_code": ingest["exit_code"],
+        "duration_seconds": round(ingest["duration"], 1),
+    }
     (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     markdown = render_markdown(report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
 
-    print(f"[4/4] Done. Artifacts in {run_dir}\n")
+    print(f"[5/5] Done. Artifacts in {run_dir}\n")
     print(markdown)
     return 0
 
