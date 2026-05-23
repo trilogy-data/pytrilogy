@@ -337,6 +337,26 @@ def _source_parent_concepts(
     )
 
 
+def _parent_preexisting_where(
+    parent: StrategyNode,
+    conditions: BuildConditionContext | None,
+) -> BuildWhereClause | None:
+    if conditions is None:
+        return None
+    full = conditions.full_where
+    if full is not None:
+        full_condition = _preexisting_conditions_from_parents([parent], full)
+        if full_condition is not None:
+            return BuildWhereClause(conditional=full_condition)
+    active = conditions.active_where
+    if active is None:
+        return None
+    active_condition = _preexisting_conditions_from_parents([parent], active)
+    if active_condition is None:
+        return None
+    return BuildWhereClause(conditional=active_condition)
+
+
 def _resolve_parent_sources(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -475,9 +495,7 @@ def _resolve_parent_sources(
         parent_source=parent_source,
         parent_output_addr=parent_output_addr,
         can_reuse_parent_for_enrichment=can_reuse_parent_for_enrichment,
-        preexisting_conditions=(
-            parent_conditions.active_where if parent_conditions else None
-        ),
+        preexisting_conditions=_parent_preexisting_where(parent, parent_conditions),
     )
 
 

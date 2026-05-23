@@ -360,13 +360,18 @@ def gen_property_enrichment_node(
             required,
             _condition_key_addresses(required),
         )
+        source_conditions = (
+            enrichment_conditions.focus(local_conditions)
+            if enrichment_conditions
+            else None
+        )
         enrich_node: StrategyNode | None = source_concepts(
             mandatory_list=required,
             environment=environment,
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=local_conditions,
+            conditions=source_conditions,
         )
         if not enrich_node:
             return None

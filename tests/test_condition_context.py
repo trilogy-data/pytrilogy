@@ -42,6 +42,52 @@ then where
     assert "total_revenue" not in str(advanced.active_where)
 
 
+def test_condition_context_cache_key_preserves_staged_state(test_environment):
+    first = _context(
+        test_environment,
+        """
+where
+    order_id > 1
+then where
+    revenue > 0
+""",
+    )
+    second = _context(
+        test_environment,
+        """
+where
+    order_id > 1
+then where
+    total_revenue > 10
+""",
+    )
+
+    assert str(first.current_where) == str(second.current_where)
+    assert first.cache_key != second.cache_key
+
+
+def test_condition_context_focus_preserves_future_stages(test_environment):
+    context = _context(
+        test_environment,
+        """
+where
+    order_id > 1
+then where
+    revenue > 0
+then where
+    total_revenue > 10
+""",
+    )
+    local = context.current_where
+
+    focused = context.focus(local)
+
+    assert focused is not None
+    assert len(focused.pending) == 3
+    assert str(focused.current_where) == str(local)
+    assert "total_revenue" in str(focused.full_where)
+
+
 def test_condition_context_atomizes_top_level_and_only(test_environment):
     context = _context(
         test_environment,
@@ -102,6 +148,8 @@ then where
 
     child = context.for_child(owner)
     assert child is not None
+    assert child.applied == ()
+    assert len(child.pending) == 1
     assert "order_id" in str(child.active_where)
     assert "revenue > 0" in str(child.active_where)
     assert "total_revenue" not in str(child.active_where)
@@ -125,6 +173,8 @@ then where
 
     child = context.for_child(owner)
     assert child is not None
+    assert child.applied == ()
+    assert len(child.pending) == 1
     assert "order_id" in str(child.active_where)
     assert "revenue < 100" not in str(child.active_where)
     assert "total_revenue" not in str(child.active_where)

@@ -235,7 +235,7 @@ class BuildConditionContext:
         stage = tuple(stage_atoms)
         if not self.applied and not stage:
             return None
-        pending = (stage,) if stage else ()
+        pending = ((stage,) if stage else ()) + self.pending[1:]
         return BuildConditionContext(
             applied=self.applied,
             pending=pending,
@@ -258,10 +258,11 @@ class BuildConditionContext:
             pending = ()
         else:
             pending = (current,) if current else ()
-        if not applied and not pending:
+        child_pending = (*applied, *pending)
+        if not child_pending:
             return None
         return BuildConditionContext(
-            applied=applied, pending=pending, expose_applied=True
+            pending=child_pending,
         )
 
     def for_children(
