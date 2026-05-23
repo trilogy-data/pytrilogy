@@ -66,9 +66,12 @@ Execute a Trilogy script or all scripts in a directory.
 - `--parallelism N`, `-p N`: Max parallel workers for directory execution
 - `--config PATH`: Path to trilogy.toml configuration file
 - `--env KEY=VALUE`, `-e KEY=VALUE`: Set env vars (or pass an env file path)
-- `--import MODULE`: Prepend `import <module>;` to an inline query. Repeatable.
+- `--import MODULE[:ALIAS]`: Prepend an `import` to an inline query. Repeatable.
   Accepts bare names (`flight`), filenames (`flight.preql`), or relative paths
-  (`root/flight.preql`, converted to dotted form).
+  (`root/flight.preql`, converted to dotted form). Append `:ALIAS` to namespace
+  the import so the query reaches its concepts as `ALIAS.*` — e.g.
+  `--import raw/item:item` matches a file's `import raw.item as item;` and lets
+  you write `item.current_price`. Without an alias, concepts import unprefixed.
 
 **Examples:**
 ```bash
@@ -84,8 +87,8 @@ trilogy run jobs/ duckdb -p 4
 # Run with parameters
 trilogy run report.preql duckdb --param date=2024-01-01 --param region=US
 
-# Inline query against a file's concepts (no manual `import` in the query)
-trilogy run --import flight.preql "select carrier, count(id);" duckdb
+# Inline query against a file's concepts — `:alias` namespaces them as alias.*
+trilogy run --import flight.preql:flight "select flight.carrier, count(flight.id);" duckdb
 ```
 
 ---
@@ -251,6 +254,28 @@ trilogy file delete old_assets/ --recursive
 
 ---
 
+### trilogy database <subcommand> [options]
+
+Inspect the database configured in `trilogy.toml` — the introspection you need
+before `ingest` to know what tables exist and what columns they have.
+
+**Subcommands:**
+- `database list`: List all tables and views (one `name<TAB>type` per line).
+- `database describe <table>`: Show a table's columns (one
+  `column<TAB>type<TAB>nullable` per line).
+
+**Options:**
+- `--schema NAME`, `-s NAME`: Restrict to a single schema.
+
+**Examples:**
+```bash
+# Discover the schema before building a model
+trilogy database list
+trilogy database describe store_sales
+```
+
+---
+
 ### trilogy ingest <sources> [dialect] [options] [conn_args...]
 
 Bootstrap datasources from existing warehouse tables OR from data files
@@ -258,7 +283,7 @@ Bootstrap datasources from existing warehouse tables OR from data files
 and generates Trilogy datasource definitions.
 
 **Arguments:**
-- `sources` (required): Comma-separated list of either table names OR file
+- `sources` (required unless `--all`): Comma-separated list of either table names OR file
   paths/URLs (cannot be mixed in one call). Supported file types: `.csv`,
   `.tsv`, `.parquet`. URL schemes: `https://`, `http://`, `gs://`, `gcs://`,
   `s3://`, `az://`.
@@ -271,11 +296,15 @@ and generates Trilogy datasource definitions.
 - `--config PATH`: Path to trilogy.toml
 - `--fks SPEC`: Foreign key relationships (format: table.col:ref_table.col)
 - `--name NAME`: Override the generated datasource name (single source only)
+- `--all`: Ingest every table in the database (table mode; omit `sources`)
 
 **Examples:**
 ```bash
 # Ingest tables from DuckDB
 trilogy ingest "users,orders,products" duckdb "path/to/db.duckdb"
+
+# Ingest every table in the configured database in one step
+trilogy ingest --all
 
 # Ingest with schema and output directory
 trilogy ingest "customers" postgres -s public -o raw/ "postgresql://localhost/db"

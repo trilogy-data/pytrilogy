@@ -460,9 +460,18 @@ def is_compatible_datatype(left, right):
         return True
     if all(
         isinstance(x, NumericType)
-        or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
+        or x
+        in (
+            DataType.INTEGER,
+            DataType.BIGINT,
+            DataType.FLOAT,
+            DataType.NUMERIC,
+            DataType.NUMBER,
+        )
         for x in (left, right)
     ):
+        # All numeric types are mutually comparable — every SQL backend
+        # coerces across the integer/float/numeric family.
         return True
     elif isinstance(left, NumericType) or isinstance(right, NumericType):
         return False

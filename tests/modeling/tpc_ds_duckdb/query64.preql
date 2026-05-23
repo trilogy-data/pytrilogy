@@ -10,7 +10,7 @@ property <cr.sales.item.id>.cs_ui_refund_amt <-
     coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
 
 auto cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
-auto cs_ui_refund <- sum(cr.sales.item.cs_ui_refund_amt) by cr.sales.item.id;
+auto cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.id;
 
 with cs_ui as
 WHERE cs_ui_sale > 2 * cs_ui_refund

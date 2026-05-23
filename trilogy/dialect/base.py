@@ -739,6 +739,21 @@ class BaseDialect:
             return None
         return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
 
+    def list_tables(self, executor, schema: str | None = None) -> list[tuple[str, str]]:
+        """Return (table_name, table_type) for tables and views via
+        information_schema. System schemas are excluded unless ``schema`` is
+        passed explicitly."""
+        query = "SELECT table_name, table_type FROM information_schema.tables"
+        if schema:
+            query += f" WHERE table_schema = '{schema}'"
+        else:
+            query += (
+                " WHERE table_schema NOT IN "
+                "('information_schema', 'pg_catalog', 'pg_toast', 'system')"
+            )
+        query += " ORDER BY table_name"
+        return [(r[0], r[1]) for r in executor.execute_raw_sql(query).fetchall()]
+
     def refine_runtime_value_type_for_validation(
         self,
         executor,

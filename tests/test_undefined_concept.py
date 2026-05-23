@@ -1,8 +1,10 @@
+import pytest
+
 from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models.author import Concept
 from trilogy.core.models.core import DataType
-from trilogy.core.models.environment import EnvironmentConceptDict
+from trilogy.core.models.environment import Environment, EnvironmentConceptDict
 from trilogy.parser import parse
 
 
@@ -37,3 +39,21 @@ def test_undefined_concept_dict():
         assert e.suggestions == ["order_id"]
         assert "suggestions" in e.message.lower()
         assert "order_id" in e.message.lower()
+
+
+def test_undefined_concept_in_aggregate_raises():
+    """An undefined concept used only as a function argument must raise at
+    parse time, not slip through to SQL generation as a NoDatasourceException.
+    The select transform validates its output concept; the *input* arguments
+    were previously unchecked."""
+    env = Environment()
+    env.parse("key x int;")
+    with pytest.raises(UndefinedConceptException):
+        env.parse("select sum(totally_made_up_concept) as foo;")
+
+
+def test_undefined_concept_in_nested_aggregate_raises():
+    env = Environment()
+    env.parse("key x int;")
+    with pytest.raises(UndefinedConceptException):
+        env.parse("select sum(totally_made_up_concept) + sum(x) as foo;")

@@ -48,10 +48,32 @@ IGNORE_UNKNOWN = {"ignore_unknown_options": True}
 
 
 def validate_dialect(dialect: str | None, subcommand: str) -> None:
-    """Raise UsageError if dialect looks like a misplaced flag."""
-    if dialect and dialect.startswith("-"):
+    """Raise UsageError if dialect looks like a misplaced flag or path.
+
+    Two failure modes we surface specifically:
+      * ``trilogy run --debug file.preql`` — ``--debug`` gets swallowed as the
+        input positional and the file slides into the dialect slot.
+      * ``trilogy run file.preql`` where ``file.preql`` accidentally lands in
+        the dialect slot (e.g. due to a leading unknown flag absorbing input).
+    """
+    if not dialect:
+        return
+    if dialect.startswith("-"):
         raise click.UsageError(
             f"'{dialect}' looks like a flag, not a dialect. "
             "Global flags like --debug must come before the subcommand.\n"
             f"  Try: trilogy --debug {subcommand} ..."
+        )
+    if (
+        dialect.endswith(".preql")
+        or "/" in dialect
+        or "\\" in dialect
+        or dialect == "."
+    ):
+        raise click.UsageError(
+            f"'{dialect}' looks like a file path, not a dialect. "
+            "The dialect argument comes AFTER the input file.\n"
+            f"  Try: trilogy {subcommand} {dialect} <dialect>\n"
+            "Global flags like --debug must come before the subcommand:\n"
+            f"  Try: trilogy --debug {subcommand} {dialect}"
         )

@@ -25,6 +25,16 @@ def execute_script_for_run(
     return execute_script_with_stats(exec, node.path, run_statements=True)
 
 
+def _looks_like_missing_path(value: str) -> bool:
+    """True if ``value`` looks like a file path (extension or separator)."""
+    return (
+        value.endswith(".preql")
+        or value.endswith(".sql")
+        or "/" in value
+        or "\\" in value
+    )
+
+
 def _normalize_import(value: str) -> str:
     """Convert a path-ish --import value into a trilogy import module name.
 
@@ -39,6 +49,22 @@ def _normalize_import(value: str) -> str:
     while stripped.startswith("./"):
         stripped = stripped[2:]
     return stripped.replace("/", ".")
+
+
+def _format_import(value: str) -> str:
+    """Render a --import value as an ``import ...;`` statement line.
+
+    ``module:alias`` namespaces the import so its concepts are reached as
+    ``alias.*``, matching file-based ``import ... as ...``. A bare value
+    imports without a namespace prefix.
+    """
+    spec, sep, alias = value.partition(":")
+    # A lone leading drive letter (Windows path) is not an alias separator.
+    if sep and len(spec) == 1 and spec.isalpha():
+        spec, alias = value, ""
+    module = _normalize_import(spec)
+    alias = alias.strip()
+    return f"import {module} as {alias};\n" if alias else f"import {module};\n"
 
 
 @argument("input", type=Path(), default=".")
@@ -64,9 +90,11 @@ def _normalize_import(value: str) -> str:
     "imports",
     multiple=True,
     help=(
-        "Prepend 'import <module>;' to an inline query. Accepts bare module "
-        "names (flight), filenames (flight.preql), or relative paths "
-        "(root/flight.preql). Repeatable."
+        "Prepend an import to an inline query. Accepts bare module names "
+        "(flight), filenames (flight.preql), or relative paths "
+        "(root/flight.preql). Append ':alias' to namespace the import so its "
+        "concepts are reached as alias.* (e.g. raw/item:item), matching "
+        "file-based 'import ... as ...'. Repeatable."
     ),
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
@@ -85,17 +113,32 @@ def run(
     """Execute a Trilogy script or query."""
     validate_dialect(dialect, "run")
 
+    is_inline = not PathlibPath(input).exists()
+    # If the input clearly looks like a file path (.preql/.sql extension or
+    # contains a path separator) but does not exist, fail explicitly instead of
+    # falling through to inline-query mode and reporting a confusing "No
+    # dialect specified" error from the parser.
+    if is_inline and _looks_like_missing_path(input):
+        from trilogy.scripts.display import print_error
+
+        print_error(f"Input '{input}' does not exist.")
+        raise Exit(2)
+
     if imports:
-        pathlib_input = PathlibPath(input)
-        if pathlib_input.exists():
+        if not is_inline:
             from trilogy.scripts.display import print_error
 
             print_error(
                 "--import only applies to inline queries, not file/directory inputs."
             )
             raise Exit(2)
-        prefix = "".join(f"import {_normalize_import(v)};\n" for v in imports)
-        input = prefix + input
+        input = "".join(_format_import(v) for v in imports) + input
+
+    if is_inline:
+        # Inline queries may omit the trailing terminator; the parser needs it.
+        stripped = input.rstrip()
+        if stripped and not stripped.endswith(";"):
+            input = stripped + ";"
 
     cli_params = CLIRuntimeParams(
         input=input,

@@ -3,12 +3,14 @@ from trilogy.core.functions import FUNCTION_REGISTRY
 
 RULE_PROMPT = """Trilogy statements define a semantic model or query. If a user is asking for data, they want a SELECT.
 Semantic model statements:
-- import <> imports a model to reuse. The output of imports will be visible in fields available to use.
+- import <> imports a model to reuse; its fields become available. Imports CHAIN: when an imported model itself imports others (e.g. a fact table foreign-key-linked to its dimensions), reach those by chaining the path — after `import orders as orders;` write `orders.customer.name`. Import only the model(s) you take measures from; do NOT separately import a model already reachable by chaining (a separate import is a disconnected copy that will not join). A field belongs to exactly one model — never invent intermediate nesting: it is `orders.amount`, never `orders.date.amount`.
+- merge <a> into <b> links a concept from one model to another so the models that own them join. In general the two sides cover different-sized sets — merge the subset into the superset and mark the superset target with `~`: `merge inventory.item.id into ~store_sales.item.id;`. A plain `merge a into b` (no `~`) asserts strict equivalence — the two concepts are exactly the same set. When a query needs two separate models that share a concept (e.g. two fact tables each linked to `item`), import both and merge their shared concept before the query — one merge per concept. Use `merge` in the query; never edit model files to wire a join.
 - key|property|auto|metric defines fields locally. The output will also be visible in fields available to use, so you generally don't need to edit these unless requested.
 - datasource statements define a datasource, which is a mapping of fields to a SQL database table. The left side is the SQL column name, the right side is the field name.
 
 SELECT RULES:
 - No FROM, JOIN, GROUP BY, SUB SELECTS, DISTINCT, UNION, or SELECT *.
+- Never write the `distinct` keyword. `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count the distinct values of a non-key property.
 - All fields exist in a global namespace; field paths look like `order.product.id`. Always use the full path. NEVER include a from clause.
 - If a field has a grain defined, and that grain is not in the query output, aggregate it to get desired result. 
 - If a field has a 'alias_for' defined, it is shorthand for that calculation. Use the field name instead of the calculation in your query to be concise. 
@@ -18,8 +20,22 @@ SELECT RULES:
 - You can dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
 - Count must specify a field (no `count(*)`) Counts are automatically deduplicated. Do not ever use DISTINCT.
 - Since there are no underlying tables, sum/count of a constant should always specify a grain field (e.g. `sum(1) by x as count`). 
-- Aggregates in SELECT must be filtered via HAVING. Use WHERE for pre-aggregation filters.
+- Filtering on aggregates:
+  * HAVING filters on an aggregate that IS in the SELECT output. HAVING can ONLY reference fields that appear in the SELECT projection — select the aggregate with an alias, then reference that alias:
+      select customer.state, sum(sales.amount) as total_sales
+      having total_sales > 1000
+  * To filter rows by an aggregate condition that is NOT in the output, write the aggregate directly in WHERE using inline grouping `agg(x) by grain`:
+      where item.price > 1.2 * avg(item.price) by item.category
+      select item.name, item.price
 - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
+- Operator precedence (highest binds first; use `(...)` to override):
+  1. Primaries: literal, identifier, function call, parenthetical `(...)`, member access (`.`, `[]`, `::` cast).
+  2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).
+  3. Multiplicative: `*`, `/`, `%`.
+  4. Additive / string concat: `+`, `-`, `||`.
+  5. Comparison (one per pair, NOT chainable — write `a < b and b < c`, not `a < b < c`): `=`, `!=`, `<`, `<=`, `>`, `>=`, `like`, `ilike`, `between … and …`, `in (…)`, `not in (…)`, `is null`.
+  6. Logical `and`.
+  7. Logical `or`.
 - Always use a reasonable `LIMIT` for final queries unless the request is for a time series or line chart.
 - Window functions: `rank entity [optional over group] by field desc` (e.g. `rank name over state by sum(births) desc as top_name`) Do not use parentheses for over.
 - Functions. All function names have parenthese (e.g. `sum(births)`, `date_part('year', dep_time)`). For no arguments, use empty parentheses (e.g. `current_date()`).

@@ -11,6 +11,7 @@ from trilogy.scripts.display_core import print_info, print_success
 
 if TYPE_CHECKING:
     from trilogy.scripts.ingest import IngestSummaryRow
+    from trilogy.scripts.ingest_helpers.fk_inference import InferredFK
 
 try:
     from rich import box
@@ -164,3 +165,45 @@ def show_ingest_summary(rows: list["IngestSummaryRow"]) -> None:
         if successes < len(rows)
         else f"\nIngested {successes} source(s)."
     )
+
+
+def show_fk_summary(
+    inferred: list["InferredFK"],
+    explicit: dict[str, dict[str, str]],
+) -> None:
+    """Print the foreign keys wired into the model, inferred distinct from explicit."""
+    overridden = {
+        (table, column) for table, columns in explicit.items() for column in columns
+    }
+    # (column, references, origin, overlap)
+    rows: list[tuple[str, str, str, str]] = []
+    for fk in inferred:
+        if (fk.from_table, fk.from_column) in overridden:
+            continue  # an explicit --fks entry takes precedence; shown below
+        overlap = "name" if fk.overlap is None else f"{fk.overlap:.0%}"
+        rows.append(
+            (
+                f"{fk.from_table}.{fk.from_column}",
+                fk.target_ref,
+                f"inferred ({fk.match_kind})",
+                overlap,
+            )
+        )
+    for table, columns in explicit.items():
+        for column, ref in columns.items():
+            rows.append((f"{table}.{column}", ref, "explicit", "-"))
+    if not rows:
+        return
+    if _core.RICH_AVAILABLE and _core.console is not None:
+        table_view = Table(title="Foreign Keys", box=box.SIMPLE_HEAVY, show_lines=False)
+        table_view.add_column("Column", style="cyan")
+        table_view.add_column("References", style="green")
+        table_view.add_column("Origin")
+        table_view.add_column("Overlap", justify="right")
+        for column, ref, origin, overlap in rows:
+            style = "yellow" if origin.startswith("inferred") else "blue"
+            table_view.add_row(column, ref, f"[{style}]{origin}[/{style}]", overlap)
+        _core.console.print(table_view)
+    else:
+        for column, ref, origin, overlap in rows:
+            print_info(f"FK {column} -> {ref} [{origin}, overlap={overlap}]")

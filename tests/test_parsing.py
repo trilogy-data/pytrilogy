@@ -383,7 +383,12 @@ CASE WHEN dates.year BETWEEN 1883 AND 1900 THEN 'Lost Generation'
         env2,
     )
 
-    assert env2.concepts["dates.generation"].purpose == Purpose.PROPERTY
+    # the derived property lands in the declaring env's namespace, not pushed
+    # up into the imported `dates` namespace of its grain key
+    assert "dates.generation" not in env2.concepts
+    generation = env2.concepts["generation"]
+    assert generation.purpose == Purpose.PROPERTY
+    assert generation.keys == {"dates.year"}
 
 
 def test_rawsql():

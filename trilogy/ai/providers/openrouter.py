@@ -1,12 +1,39 @@
+import json
 from os import environ
 from typing import List, Optional
 
 from trilogy.ai.enums import Provider
-from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
+from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, parse_tool_arguments
+from .base import (
+    RETRYABLE_CODES,
+    LLMProvider,
+    LLMRequestOptions,
+    build_tool_call,
+    to_openai_messages,
+)
 from .utils import RetryOptions, fetch_with_retry
+
+
+def _load_provider_routing() -> Optional[dict]:
+    """OpenRouter provider-selection preferences from the OPENROUTER_PROVIDER
+    env var (a JSON object, e.g. {"ignore": ["AtlasCloud"]}). OpenRouter
+    multiplexes a model across providers and some reject otherwise-valid tool
+    requests, so this allows pinning/suppressing routes.
+
+    See https://openrouter.ai/docs/features/provider-routing.
+    """
+    raw = environ.get("OPENROUTER_PROVIDER")
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"OPENROUTER_PROVIDER must be valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("OPENROUTER_PROVIDER must be a JSON object")
+    return parsed
 
 
 class OpenRouterProvider(LLMProvider):
@@ -16,6 +43,7 @@ class OpenRouterProvider(LLMProvider):
         model: str,
         api_key: str | None = None,
         retry_options: Optional[RetryOptions] = None,
+        provider_routing: Optional[dict] = None,
     ):
         api_key = api_key or environ.get("OPENROUTER_API_KEY")
         if not api_key:
@@ -25,6 +53,11 @@ class OpenRouterProvider(LLMProvider):
         super().__init__(name, api_key, model, Provider.OPENROUTER)
         self.base_completion_url = "https://openrouter.ai/api/v1/chat/completions"
         self.type = Provider.OPENROUTER
+        self.provider_routing = (
+            provider_routing
+            if provider_routing is not None
+            else _load_provider_routing()
+        )
 
         self.retry_options = retry_options or RetryOptions(
             max_retries=3,
@@ -45,15 +78,18 @@ class OpenRouterProvider(LLMProvider):
                 "Missing httpx. Install pytrilogy[ai] to use OpenRouterProvider."
             )
 
-        messages = [{"role": msg.role, "content": msg.content} for msg in history]
+        messages = to_openai_messages(history)
         try:
 
             def make_request():
-                with httpx.Client(timeout=30) as client:
+                timeout = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=10.0)
+                with httpx.Client(timeout=timeout) as client:
                     payload = {
                         "model": self.model,
                         "messages": messages,
                     }
+                    if self.provider_routing:
+                        payload["provider"] = self.provider_routing
                     if options.tools:
                         payload["tools"] = [
                             {
@@ -89,14 +125,11 @@ class OpenRouterProvider(LLMProvider):
             return LLMResponse(
                 text=message.get("content") or "",
                 tool_calls=[
-                    LLMToolCall(
-                        name=tool_call["function"]["name"],
-                        arguments=parse_tool_arguments(
-                            tool_call["function"].get("arguments")
-                        ),
+                    build_tool_call(
+                        tc["function"]["name"], tc["function"].get("arguments")
                     )
-                    for tool_call in message.get("tool_calls", [])
-                    if tool_call.get("function", {}).get("name")
+                    for tc in message.get("tool_calls", [])
+                    if tc.get("function", {}).get("name")
                 ],
                 usage=UsageDict(
                     prompt_tokens=data["usage"]["prompt_tokens"],

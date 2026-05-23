@@ -81,6 +81,91 @@ def test_parse_tool_arguments_variants():
         parse_tool_arguments("[]")
 
 
+def test_build_tool_call_parses_valid_arguments():
+    from trilogy.ai.providers.base import build_tool_call
+
+    call = build_tool_call("todo", '{"action":"add"}')
+    assert call.arguments == {"action": "add"}
+    assert call.parse_error is None
+
+
+def test_build_tool_call_tolerates_malformed_json():
+    from trilogy.ai.providers.base import build_tool_call
+
+    call = build_tool_call("todo", '{"action":"add"')  # truncated JSON
+    assert call.arguments == {}
+    assert call.parse_error is not None
+    assert "invalid tool arguments" in call.parse_error
+
+
+def _tool_history():
+    from trilogy.ai.models import LLMMessage
+
+    return [
+        LLMMessage(role="system", content="sys"),
+        LLMMessage(role="user", content="do it"),
+        LLMMessage(
+            role="assistant",
+            content="",
+            model_info={
+                "tool_calls": [{"name": "todo", "arguments": {"action": "list"}}]
+            },
+        ),
+        LLMMessage(role="user", content="todo result"),
+    ]
+
+
+def test_to_openai_messages_threads_tool_calls():
+    from trilogy.ai.providers.base import to_openai_messages
+
+    msgs = to_openai_messages(_tool_history())
+    assert [m["role"] for m in msgs] == ["system", "user", "assistant", "tool"]
+    call = msgs[2]["tool_calls"][0]
+    assert call["function"]["name"] == "todo"
+    assert call["function"]["arguments"] == '{"action": "list"}'
+    assert msgs[3]["tool_call_id"] == call["id"]
+    assert msgs[3]["content"] == "todo result"
+
+
+def test_to_openai_messages_plain_when_no_tool_calls():
+    from trilogy.ai.models import LLMMessage
+    from trilogy.ai.providers.base import to_openai_messages
+
+    history = [
+        LLMMessage(role="user", content="hi"),
+        LLMMessage(role="assistant", content="hello"),
+    ]
+    assert to_openai_messages(history) == [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
+
+
+def test_to_anthropic_messages_threads_tool_calls():
+    from trilogy.ai.providers.anthropic import _to_anthropic_messages
+
+    msgs = _to_anthropic_messages(_tool_history())
+    assert [m["role"] for m in msgs] == ["user", "assistant", "user"]
+    use = msgs[1]["content"][0]
+    assert use["type"] == "tool_use" and use["name"] == "todo"
+    result = msgs[2]["content"][0]
+    assert result["type"] == "tool_result"
+    assert result["tool_use_id"] == use["id"]
+    assert result["content"] == "todo result"
+
+
+def test_gemini_history_threads_tool_calls():
+    from trilogy.ai.providers.google import GoogleProvider
+
+    provider = GoogleProvider(name="t", model="m", api_key="fake-key")
+    contents = provider._convert_to_gemini_history(_tool_history())
+    assert [c["role"] for c in contents] == ["user", "model", "user"]
+    fc = contents[1]["parts"][0]["functionCall"]
+    assert fc["name"] == "todo" and fc["args"] == {"action": "list"}
+    fr = contents[2]["parts"][0]["functionResponse"]
+    assert fr["name"] == "todo" and fr["response"] == {"result": "todo result"}
+
+
 def test_openai_provider_builds_required_tool_payload(monkeypatch):
     import httpx
 
@@ -147,6 +232,69 @@ def test_openai_provider_prefers_named_tool_choice(monkeypatch):
     )
 
     assert sink["json"]["tool_choice"]["function"]["name"] == "submit_query"
+
+
+def test_to_anthropic_messages_includes_assistant_text_with_tool_calls():
+    """Assistant content alongside tool_calls produces a leading text block."""
+    from trilogy.ai.providers.anthropic import _to_anthropic_messages
+
+    history = [
+        LLMMessage(role="user", content="hi"),
+        LLMMessage(
+            role="assistant",
+            content="reasoning",
+            model_info={"tool_calls": [{"name": "todo", "arguments": {}}]},
+        ),
+        LLMMessage(role="user", content="todo result"),
+    ]
+    msgs = _to_anthropic_messages(history)
+    blocks = msgs[1]["content"]
+    assert blocks[0] == {"type": "text", "text": "reasoning"}
+    assert blocks[1]["type"] == "tool_use"
+
+
+def test_load_openrouter_provider_routing_from_env(monkeypatch):
+    from trilogy.ai.providers.openrouter import _load_provider_routing
+
+    monkeypatch.delenv("OPENROUTER_PROVIDER", raising=False)
+    assert _load_provider_routing() is None
+
+    monkeypatch.setenv("OPENROUTER_PROVIDER", '{"ignore": ["AtlasCloud"]}')
+    assert _load_provider_routing() == {"ignore": ["AtlasCloud"]}
+
+    monkeypatch.setenv("OPENROUTER_PROVIDER", "not-json")
+    with pytest.raises(ValueError, match="valid JSON"):
+        _load_provider_routing()
+
+    monkeypatch.setenv("OPENROUTER_PROVIDER", '["array"]')
+    with pytest.raises(ValueError, match="JSON object"):
+        _load_provider_routing()
+
+
+def test_openrouter_provider_forwards_provider_routing(monkeypatch):
+    import httpx
+
+    sink: dict = {}
+    response_payload = {
+        "choices": [{"message": {"content": "ok", "tool_calls": []}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=response_payload, sink=sink),
+    )
+    provider = OpenRouterProvider(
+        name="openrouter",
+        model="r1",
+        api_key="x",
+        provider_routing={"ignore": ["AtlasCloud"]},
+    )
+    provider.generate_completion(
+        LLMRequestOptions(),
+        [LLMMessage(role="user", content="hi")],
+    )
+    assert sink["json"]["provider"] == {"ignore": ["AtlasCloud"]}
 
 
 def test_openrouter_provider_prefers_named_tool_choice(monkeypatch):

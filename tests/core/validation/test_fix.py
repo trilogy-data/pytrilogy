@@ -8,12 +8,14 @@ from trilogy import Dialects
 from trilogy.authoring import (
     ConceptDeclarationStatement,
     Datasource,
+    PropertiesDeclarationStatement,
 )
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, Grain
 from trilogy.core.models.datasource import Address, ColumnAssignment
 from trilogy.core.validation import fix as fix_module
 from trilogy.core.validation.fix import (
+    ConceptTypeFix,
     DatasourceReferenceFix,
     apply_fixes_to_statements,
     rewrite_file_with_reference_merges,
@@ -209,6 +211,98 @@ def test_rewrite_file_with_reference_merges_renders_output():
 
     assert "customer.customer_sk" in rendered
     assert "key local.customer_sk" not in rendered
+
+
+def _properties_setup():
+    customer_sk = Concept(name="customer_sk", datatype="int", purpose=Purpose.KEY)
+    external_customer_sk = Concept(
+        name="customer_sk",
+        namespace="customer",
+        datatype="int",
+        purpose=Purpose.KEY,
+    )
+    email = Concept(
+        name="email",
+        datatype="string",
+        purpose=Purpose.PROPERTY,
+        keys={customer_sk.address},
+    )
+    name = Concept(
+        name="name",
+        datatype="string",
+        purpose=Purpose.PROPERTY,
+        keys={customer_sk.address},
+    )
+    return customer_sk, external_customer_sk, email, name
+
+
+def test_properties_statement_concept_dropped_and_keys_rewired():
+    customer_sk, external_customer_sk, email, name = _properties_setup()
+
+    # also stage a type fix for `name` so the type-update inside the
+    # properties branch (lines covering concept.datatype = ...) executes.
+    statements = [
+        PropertiesDeclarationStatement(concepts=[customer_sk, email, name]),
+    ]
+    reference_fixes = [
+        DatasourceReferenceFix(
+            datasource_identifier="dummy",
+            column_address=customer_sk.address,
+            column_alias="ss_customer_sk",
+            reference_concept=external_customer_sk.reference,
+        )
+    ]
+    concept_fixes = [ConceptTypeFix(concept_address=name.address, new_type="int")]
+
+    output = apply_fixes_to_statements(statements, [], concept_fixes, reference_fixes)
+
+    [props] = [s for s in output if isinstance(s, PropertiesDeclarationStatement)]
+    assert customer_sk not in props.concepts  # replaced concept dropped
+    [updated_email] = [c for c in props.concepts if c.name == "email"]
+    assert external_customer_sk.address in updated_email.keys
+    assert customer_sk.address not in updated_email.keys
+    [updated_name] = [c for c in props.concepts if c.name == "name"]
+    assert str(updated_name.datatype) == "int"
+
+
+def test_properties_statement_collapses_to_single_concept_declaration():
+    customer_sk, external_customer_sk, email, _ = _properties_setup()
+
+    # Two-concept properties block; replacing one leaves a single concept and
+    # the branch should emit a ConceptDeclarationStatement instead of properties.
+    statements = [PropertiesDeclarationStatement(concepts=[customer_sk, email])]
+    reference_fixes = [
+        DatasourceReferenceFix(
+            datasource_identifier="dummy",
+            column_address=customer_sk.address,
+            column_alias="ss_customer_sk",
+            reference_concept=external_customer_sk.reference,
+        )
+    ]
+
+    output = apply_fixes_to_statements(statements, [], [], reference_fixes)
+
+    assert not any(isinstance(s, PropertiesDeclarationStatement) for s in output)
+    [decl] = [s for s in output if isinstance(s, ConceptDeclarationStatement)]
+    assert decl.concept.name == "email"
+
+
+def test_properties_statement_drops_when_all_concepts_replaced():
+    customer_sk, external_customer_sk, _, _ = _properties_setup()
+
+    statements = [PropertiesDeclarationStatement(concepts=[customer_sk])]
+    reference_fixes = [
+        DatasourceReferenceFix(
+            datasource_identifier="dummy",
+            column_address=customer_sk.address,
+            column_alias="ss_customer_sk",
+            reference_concept=external_customer_sk.reference,
+        )
+    ]
+
+    output = apply_fixes_to_statements(statements, [], [], reference_fixes)
+
+    assert output == []
 
 
 if __name__ == "__main__":

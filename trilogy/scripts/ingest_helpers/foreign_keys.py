@@ -5,6 +5,7 @@ from trilogy.authoring import (
     ConceptDeclarationStatement,
     Datasource,
     ImportStatement,
+    PropertiesDeclarationStatement,
 )
 from trilogy.core.validation.fix import (
     DatasourceReferenceFix,
@@ -50,23 +51,36 @@ def apply_foreign_key_references(
     datasource: Datasource,
     datasources: dict[str, Datasource],
     script_content: list[
-        Datasource | Comment | ConceptDeclarationStatement | ImportStatement
+        Datasource
+        | Comment
+        | ConceptDeclarationStatement
+        | PropertiesDeclarationStatement
+        | ImportStatement
     ],
     column_mappings: dict[str, str],
 ) -> str:
-    fk_imports: set[str] = set()
+    # (input_path, import_alias) — multiple aliases of the same dim become
+    # separate imports (role-playing dimensions).
+    fk_imports: set[tuple[str, str]] = set()
     reference_fixes: list[DatasourceReferenceFix] = []
 
     for source_column, target_ref in column_mappings.items():
-        # Parse target reference: table.column
-        target_table, _ = target_ref.rsplit(".", 1)
+        # Parse target reference: "table.column" or "table.column@alias".
+        # The optional ``@alias`` is set by inference for role-playing dims;
+        # explicit --fks entries never carry it.
+        role_alias: str | None = None
+        if "@" in target_ref:
+            target_ref, role_alias = target_ref.rsplit("@", 1)
+        target_table, target_col = target_ref.rsplit(".", 1)
+        import_alias = role_alias or target_table
+
         target_datasource = datasources.get(target_table)
         target_concept = None
         if not target_datasource:
             continue
         # Find the concept for the target column
         for col_assign in target_datasource.columns:
-            if col_assign.alias == target_ref.rsplit(".", 1)[1]:
+            if col_assign.alias == target_col:
                 target_concept = col_assign.concept
                 break
 
@@ -89,13 +103,14 @@ def apply_foreign_key_references(
                     column_address=source_concept,
                     column_alias=source_column,
                     reference_concept=target_concept.reference.with_namespace(
-                        target_table
+                        import_alias
                     ),
                 )
             )
 
-            fk_imports.add(target_table)
-            print_info(f"Linking {table_name}.{source_column} -> {target_ref}")
+            fk_imports.add((target_table, import_alias))
+            suffix = f" (as `{role_alias}`)" if role_alias else ""
+            print_info(f"Linking {table_name}.{source_column} -> {target_ref}{suffix}")
 
     # Add FK imports at the beginning (after comments)
     if fk_imports:
@@ -108,13 +123,13 @@ def apply_foreign_key_references(
                 break
 
         # Add FK imports
-        for fk_import in sorted(fk_imports):
+        for input_path, alias in sorted(fk_imports):
             script_content.insert(
                 insert_pos,
                 ImportStatement(
-                    input_path=fk_import,
-                    alias=fk_import,
-                    path=Path(fk_import),
+                    input_path=input_path,
+                    alias=alias,
+                    path=Path(input_path),
                 ),
             )
             insert_pos += 1

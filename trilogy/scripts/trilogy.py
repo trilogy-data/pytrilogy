@@ -24,6 +24,7 @@ commands, options, and usage examples.
 LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     "agent": ("trilogy.scripts.agent", "agent", None),
     "agent-info": ("trilogy.scripts.agent_info", "agent_info", None),
+    "database": ("trilogy.scripts.database", "database", None),
     "explore": ("trilogy.scripts.explore", "explore", None),
     "file": ("trilogy.scripts.file", "file", None),
     "fmt": ("trilogy.scripts.fmt", "fmt", IGNORE_UNKNOWN),

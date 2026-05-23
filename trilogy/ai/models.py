@@ -20,6 +20,9 @@ class LLMToolDefinition:
 class LLMToolCall:
     name: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    # Set when the model emitted a tool call whose arguments could not be
+    # parsed; the agent surfaces this back to the model instead of crashing.
+    parse_error: str | None = None
 
 
 @dataclass

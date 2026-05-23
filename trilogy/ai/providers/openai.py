@@ -2,10 +2,16 @@ from os import environ
 from typing import List, Optional
 
 from trilogy.ai.enums import Provider
-from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
+from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, parse_tool_arguments
+from .base import (
+    RETRYABLE_CODES,
+    LLMProvider,
+    LLMRequestOptions,
+    build_tool_call,
+    to_openai_messages,
+)
 from .utils import RetryOptions, fetch_with_retry
 
 
@@ -47,8 +53,7 @@ class OpenAIProvider(LLMProvider):
                 "Missing httpx. Install pytrilogy[ai] to use OpenAIProvider."
             )
 
-        messages: List[dict] = []
-        messages = [{"role": msg.role, "content": msg.content} for msg in history]
+        messages = to_openai_messages(history)
         try:
 
             def make_request():
@@ -93,14 +98,11 @@ class OpenAIProvider(LLMProvider):
             return LLMResponse(
                 text=message.get("content") or "",
                 tool_calls=[
-                    LLMToolCall(
-                        name=tool_call["function"]["name"],
-                        arguments=parse_tool_arguments(
-                            tool_call["function"].get("arguments")
-                        ),
+                    build_tool_call(
+                        tc["function"]["name"], tc["function"].get("arguments")
                     )
-                    for tool_call in message.get("tool_calls", [])
-                    if tool_call.get("function", {}).get("name")
+                    for tc in message.get("tool_calls", [])
+                    if tc.get("function", {}).get("name")
                 ],
                 usage=UsageDict(
                     prompt_tokens=data["usage"]["prompt_tokens"],

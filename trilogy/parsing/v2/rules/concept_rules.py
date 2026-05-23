@@ -265,12 +265,11 @@ def concept_derivation(
     else:
         keys, name = raw_name
         keys = [x.address for x in keys]
-        namespaces = {x.rsplit(".", 1)[0] for x in keys}
-        namespace = (
-            context.environment.namespace or DEFAULT_NAMESPACE
-            if len(namespaces) != 1
-            else namespaces.pop()
-        )
+        # A `<keys>.name <- expr` derivation declares `name` in the current
+        # file's namespace — never a grain key's namespace. Pushing a derived
+        # concept up into a parent/imported namespace orphans it across import
+        # boundaries and is inconsistent with the other `<...>` property forms.
+        namespace = context.environment.namespace or DEFAULT_NAMESPACE
     source_value = hydrate(syntax.source)
     while isinstance(source_value, Parenthetical):
         source_value = source_value.content
