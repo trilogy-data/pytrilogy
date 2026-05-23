@@ -1073,6 +1073,33 @@ properties <order_number,item_id> (
         assert c1.keys == c2.keys
 
 
+def test_render_properties_grouped_description_round_trip():
+    """Property descriptions ride as trailing `# ...` comments and round-trip."""
+    src = """key order_number int;
+key item_id int;
+
+properties <order_number,item_id> (
+    quantity int, #units sold
+    sales_price float,
+);"""
+    env = Environment.from_string(src)
+    rendered = Renderer().to_string(env)
+    assert "quantity int, #units sold" in rendered
+
+    env2 = Environment.from_string(rendered)
+    assert env2.concepts["quantity"].metadata.description == "units sold"
+
+
+def test_render_enum_type():
+    """EnumType renders as enum<base>[..members..]."""
+    from trilogy.core.models.core import EnumType
+
+    assert (
+        Renderer().to_string(EnumType(type=DataType.STRING, values=["a", "b"]))
+        == "enum<string>['a', 'b']"
+    )
+
+
 def test_render_properties_grouped_mixed():
     """Single-key properties render individually; multi-key groups use grouped format."""
     env = Environment.from_string("""

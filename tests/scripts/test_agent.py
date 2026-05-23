@@ -228,6 +228,28 @@ def test_read_file_returns_content_and_reports_missing(tmp_path, monkeypatch):
     assert "no such file" in handle_read_file(AgentState(), {"path": "missing.preql"})
 
 
+def test_write_file_validates_arguments():
+    assert "non-empty string" in handle_write_file(AgentState(), {"content": "x"})
+    assert "non-empty string" in handle_write_file(
+        AgentState(), {"path": "", "content": "x"}
+    )
+    assert "'content' must be a string" in handle_write_file(
+        AgentState(), {"path": "f.preql", "content": 5}
+    )
+
+
+def test_read_file_validates_path():
+    assert "non-empty string" in handle_read_file(AgentState(), {})
+    assert "non-empty string" in handle_read_file(AgentState(), {"path": ""})
+
+
+def test_return_control_rejects_non_string_message():
+    state = AgentState()
+    result = handle_return_control(state, {"message": 123})
+    assert "must be a string" in result
+    assert state.done is False
+
+
 def test_handle_trilogy_redirects_file_write_and_read():
     write = handle_trilogy(AgentState(), {"args": ["file", "write", "q.preql"]})
     assert "write_file" in write
@@ -548,6 +570,66 @@ def test_build_provider_reports_missing_custom_env(monkeypatch):
         _build_provider(cfg, None)
 
 
+def test_build_provider_errors_when_no_model_for_non_default_provider(monkeypatch):
+    """Non-default provider (OpenAI here) with no model anywhere — neither CLI,
+    env, nor [agent].model — must fail with a clear ClickException."""
+    import click
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.delenv("TRILOGY_AGENT_MODEL", raising=False)
+    cfg = AgentConfig(provider=Provider.OPENAI, model=None)
+    with pytest.raises(click.ClickException, match="No model configured"):
+        _build_provider(cfg, None)
+
+
+def test_read_context_files_rejects_missing_and_directory(tmp_path):
+    """Context paths must exist as files; missing/dir paths surface a clear error."""
+    import click
+
+    from trilogy.scripts.agent import _read_context_files
+
+    assert _read_context_files(()) == ""
+    with pytest.raises(click.ClickException, match="does not exist"):
+        _read_context_files((str(tmp_path / "nope.preql"),))
+    with pytest.raises(click.ClickException, match="is a directory"):
+        _read_context_files((str(tmp_path),))
+
+
+def test_read_context_files_concatenates_paths(tmp_path):
+    """Multiple files are wrapped in <context> blocks and joined."""
+    from trilogy.scripts.agent import _read_context_files
+
+    a = tmp_path / "a.preql"
+    a.write_text("first", encoding="utf-8")
+    b = tmp_path / "b.preql"
+    b.write_text("second", encoding="utf-8")
+    out = _read_context_files((str(a), str(b)))
+    assert "<context " in out and "first" in out and "second" in out
+
+
+def test_dump_conversation_renders_tool_call_model_info(tmp_path):
+    """Assistant turns that carry tool_calls in model_info round-trip to the
+    sidecar dump so the exact history sent to the model is auditable."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("hi", role="user")
+    msg = LLMMessage(
+        role="assistant",
+        content="thinking",
+        model_info={"tool_calls": [{"name": "todo", "arguments": {"action": "list"}}]},
+    )
+    conv.messages.append(msg)
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "[model_info]" in dump
+    assert "tool_calls" in dump
+
+
 # --- tool call logging / status formatting ---
 
 
@@ -716,6 +798,73 @@ def test_env_flag_loads_file_via_cli(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert seen["anthropic"] == "sk-file"
     assert seen["from_file"] == "xyz"
+
+
+def test_quiet_flag_drops_show_message_tool(monkeypatch):
+    """`--quiet` drops show_message from the toolbox and switches the system
+    prompt — verify both by inspecting what _run_turn receives."""
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    captured: dict = {}
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+        captured["tool_names"] = {t.name for t in (tools or [])}
+        captured["system_prompt"] = conv.messages[0].content
+        state.done = True
+        state.farewell = "done"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+
+    result = CliRunner().invoke(cli, ["agent", "--quiet", "do thing"])
+    assert result.exit_code == 0, result.output
+    assert "show_message" not in captured["tool_names"]
+    assert captured["system_prompt"] == agent_mod.QUIET_SYSTEM_PROMPT
+
+
+def test_interactive_followup_runs_then_exits(monkeypatch):
+    """`-i` keeps the REPL going across followups until the user types `exit`."""
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    turn_count = {"n": 0}
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+        turn_count["n"] += 1
+        state.done = True
+        state.farewell = f"turn {turn_count['n']} done"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+
+    # First prompt response: a follow-up message. Second: `exit`.
+    result = CliRunner().invoke(
+        cli, ["agent", "-i", "first task"], input="follow up\nexit\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert turn_count["n"] == 2  # initial command + one followup
+
+
+def test_interactive_aborts_cleanly_on_eof(monkeypatch):
+    """Ctrl-D / EOF in the REPL must return cleanly, not crash."""
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+        state.done = True
+        state.farewell = "done"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+
+    # No input → click.prompt raises Abort on first read → loop returns.
+    result = CliRunner().invoke(cli, ["agent", "-i", "task"], input="")
+    assert result.exit_code == 0, result.output
 
 
 def test_env_flag_invalid_value_raises_click_exception(monkeypatch):

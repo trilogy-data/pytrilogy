@@ -234,6 +234,69 @@ def test_openai_provider_prefers_named_tool_choice(monkeypatch):
     assert sink["json"]["tool_choice"]["function"]["name"] == "submit_query"
 
 
+def test_to_anthropic_messages_includes_assistant_text_with_tool_calls():
+    """Assistant content alongside tool_calls produces a leading text block."""
+    from trilogy.ai.providers.anthropic import _to_anthropic_messages
+
+    history = [
+        LLMMessage(role="user", content="hi"),
+        LLMMessage(
+            role="assistant",
+            content="reasoning",
+            model_info={"tool_calls": [{"name": "todo", "arguments": {}}]},
+        ),
+        LLMMessage(role="user", content="todo result"),
+    ]
+    msgs = _to_anthropic_messages(history)
+    blocks = msgs[1]["content"]
+    assert blocks[0] == {"type": "text", "text": "reasoning"}
+    assert blocks[1]["type"] == "tool_use"
+
+
+def test_load_openrouter_provider_routing_from_env(monkeypatch):
+    from trilogy.ai.providers.openrouter import _load_provider_routing
+
+    monkeypatch.delenv("OPENROUTER_PROVIDER", raising=False)
+    assert _load_provider_routing() is None
+
+    monkeypatch.setenv("OPENROUTER_PROVIDER", '{"ignore": ["AtlasCloud"]}')
+    assert _load_provider_routing() == {"ignore": ["AtlasCloud"]}
+
+    monkeypatch.setenv("OPENROUTER_PROVIDER", "not-json")
+    with pytest.raises(ValueError, match="valid JSON"):
+        _load_provider_routing()
+
+    monkeypatch.setenv("OPENROUTER_PROVIDER", '["array"]')
+    with pytest.raises(ValueError, match="JSON object"):
+        _load_provider_routing()
+
+
+def test_openrouter_provider_forwards_provider_routing(monkeypatch):
+    import httpx
+
+    sink: dict = {}
+    response_payload = {
+        "choices": [{"message": {"content": "ok", "tool_calls": []}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=response_payload, sink=sink),
+    )
+    provider = OpenRouterProvider(
+        name="openrouter",
+        model="r1",
+        api_key="x",
+        provider_routing={"ignore": ["AtlasCloud"]},
+    )
+    provider.generate_completion(
+        LLMRequestOptions(),
+        [LLMMessage(role="user", content="hi")],
+    )
+    assert sink["json"]["provider"] == {"ignore": ["AtlasCloud"]}
+
+
 def test_openrouter_provider_prefers_named_tool_choice(monkeypatch):
     import httpx
 

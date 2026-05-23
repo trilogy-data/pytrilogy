@@ -3,10 +3,14 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from tests.scripts._fault_dialect import FailingExecutor
 from trilogy.dialect.enums import Dialects
 from trilogy.scripts.ingest_helpers.fk_inference import (
     FKCandidate,
+    InferredFK,
     TableFKInfo,
+    _rollback,
+    _stem_related,
     generate_candidates,
     infer_foreign_keys,
     measure_overlap,
@@ -308,6 +312,119 @@ class TestRolePlayingDimensions:
         assert len(inferred) == 1
         assert inferred[0].role_alias is None
         assert inferred[0].target_ref == "customers.id"
+
+
+class TestStemHelpers:
+    """Cover the short-stem rejection and token-length guard in _stem_related."""
+
+    def test_short_stem_rejected(self):
+        # _MIN_STEM_LEN is 3 — a 2-char stem must not match anything.
+        assert _stem_related("ab", "abcdef") is False
+        assert _stem_related("address", "ab") is False
+
+    def test_compound_long_with_short_tokens_skipped(self):
+        # Compound long stem has 1-char tokens that must be skipped (length
+        # guard); the remaining tokens don't match the short stem, so result
+        # is False — but the per-token skip branch was exercised.
+        assert _stem_related("a_b_address", "phone") is False
+
+
+class TestRollbackSwallow:
+    """``_rollback`` must swallow rollback failures so callers stay clean."""
+
+    def test_rollback_swallows_executor_failure(self):
+        class _NoisyExec:
+            class _Conn:
+                def rollback(self):
+                    raise RuntimeError("connection died")
+
+            connection = _Conn()
+
+        # No exception should escape.
+        _rollback(_NoisyExec())
+
+
+class TestMeasureOverlapSniffFailure:
+    """Sniff queries that raise return None and roll back via _rollback."""
+
+    def test_measure_overlap_returns_none_on_sql_error(self):
+        # FailingExecutor.execute_raw_sql always raises; measure_overlap must
+        # catch, warn, attempt rollback, and return None.
+        exec = FailingExecutor(error=RuntimeError("sql blew up"))
+        src = _info("fact", ["dim_id"], [])
+        target = _info("dim", ["id"], ["id"])
+        candidate = FKCandidate("fact", "dim_id", "dim", "id", "exact")
+        assert measure_overlap(exec, src, candidate, target) is None
+        # And the rollback path was hit.
+        assert exec.connection.rolled_back is True
+
+
+class TestTieBreakByReverseCoverage:
+    """When two candidates tie on equal forward overlap and confidence, the
+    reverse-coverage tie-break (_break_overlap_tie + _reverse_coverage) picks
+    the parent whose key values are more densely used by the child."""
+
+    def test_break_overlap_tie_picks_denser_parent(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        # Two equally-named target dims; both fully contain `fact.id`.
+        exec.execute_raw_sql("CREATE TABLE fact(id INTEGER, label VARCHAR)")
+        exec.execute_raw_sql("INSERT INTO fact VALUES (1,'a'),(2,'b'),(3,'c')")
+        # `dim_dense` exactly mirrors fact.id — reverse coverage 1.0.
+        exec.execute_raw_sql("CREATE TABLE dim_dense(id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO dim_dense VALUES (1),(2),(3)")
+        # `dim_sparse` is a strict superset — reverse coverage 3/6 = 0.5.
+        exec.execute_raw_sql("CREATE TABLE dim_sparse(id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO dim_sparse VALUES (1),(2),(3),(4),(5),(6)")
+
+        # `fact` has no own key, so its `id` column becomes an FK candidate.
+        fact = _info("fact", ["id", "label"], [])
+        dim_dense = _info("dim_dense", ["id"], ["id"])
+        dim_sparse = _info("dim_sparse", ["id"], ["id"])
+
+        inferred = infer_foreign_keys([fact, dim_dense, dim_sparse], exec, "full")
+        assert len(inferred) == 1
+        # Dense parent wins.
+        assert inferred[0].to_table == "dim_dense"
+
+
+class TestVerifyColumnContinuesOnNoneOverlap:
+    """A sniff that returns None (all-null column) must let the loop advance
+    to the next candidate."""
+
+    def test_skip_unverifiable_candidate(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        # `fact.dim_id` is all NULL → sniff returns None.
+        exec.execute_raw_sql("CREATE TABLE fact(dim_id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO fact VALUES (NULL),(NULL)")
+        exec.execute_raw_sql("CREATE TABLE dim(id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO dim VALUES (1),(2)")
+
+        fact = _info("fact", ["dim_id"], [])
+        dim = _info("dim", ["id"], ["id"])
+        # No accepted edge — but the continue branch was exercised.
+        assert infer_foreign_keys([fact, dim], exec, "full") == []
+
+
+class TestFKCandidateTargetRef:
+    def test_target_ref_is_table_dot_column(self):
+        assert (
+            FKCandidate("orders", "customer_id", "customers", "id", "exact").target_ref
+            == "customers.id"
+        )
+
+
+class TestInferredFKTargetRefRoleAlias:
+    def test_target_ref_with_role_alias(self):
+        fk = InferredFK(
+            "customer",
+            "c_first_shipto_date_sk",
+            "date_dim",
+            "d_date_sk",
+            "stem",
+            None,
+            role_alias="first_shipto_date",
+        )
+        assert fk.target_ref == "date_dim.d_date_sk@first_shipto_date"
 
 
 class TestMergeFKMaps:
