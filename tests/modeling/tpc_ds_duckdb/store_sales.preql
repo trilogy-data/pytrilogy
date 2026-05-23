@@ -13,13 +13,13 @@ import store as return_store;
 import address as sale_address;
 import reason as return_reason;
 
-
 key ticket_number int;
-properties <ticket_number,item.id> (
+
+properties <ticket_number, item.id> (
     quantity int,
     sales_price float,
     list_price float,
-    ext_sales_price numeric(15,2),
+    ext_sales_price Numeric(15,2),
     ext_wholesale_cost float,
     ext_list_price float,
     ext_discount_amount float,
@@ -32,10 +32,10 @@ properties <ticket_number,item.id> (
     return_amount float?,
     return_quantity int?,
     return_net_loss float?,
-    row_counter int
+    row_counter int,
 );
 
-auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
+property <item.id, ticket_number>.profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
 
 datasource store_sales (
     raw('''1'''): row_counter,
@@ -62,13 +62,10 @@ datasource store_sales (
     SS_WHOLESALE_COST: wholesale_cost,
     SS_ADDR_SK: ?sale_address.id,
 )
-grain (ticket_number, item.id)
-address memory.store_sales
-;
+grain (item.id, ticket_number)
+address memory.store_sales;
 
-
-
-datasource store_returns(
+datasource store_returns (
     SR_RETURNED_DATE_SK: return_date.id,
     SR_RETURN_TIME_SK: return_time.id,
     SR_ITEM_SK: ~item.id,
@@ -79,11 +76,7 @@ datasource store_returns(
     SR_STORE_SK: return_store.id,
     SR_REASON_SK: return_reason.id,
     SR_NET_LOSS: return_net_loss,
-    # capture if there's a row in this table — IS NOT NULL is a null-rejecting
-    # predicate that lets DuckDB drop the matching outer joins when this is
-    # filtered TRUE, whereas a `bool(SR_RETURN_TIME_SK)` cast rendered as
-    # `CASE WHEN ... THEN TRUE ELSE FALSE END` is opaque to that analysis.
     raw('''SR_RETURN_TIME_SK IS NOT NULL'''): is_returned,
 )
-grain (ticket_number, item.id)
+grain (item.id, ticket_number)
 address memory.store_returns;

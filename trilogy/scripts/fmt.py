@@ -1,12 +1,11 @@
 """Format command for Trilogy CLI."""
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path as PathLib
 
 from click import Path, argument, pass_context
 
-from trilogy import parse
+from trilogy.core.models.environment import Environment
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.common import handle_execution_exception
 from trilogy.scripts.display import print_success, show_formatting_result, with_status
@@ -16,10 +15,15 @@ from trilogy.utility import safe_open
 def format_file(file_path: str) -> tuple[str, int, bool, str | None]:
     """Format a single file and return results."""
     try:
+        path = PathLib(file_path)
         with safe_open(file_path) as f:
             script = f.read()
-        _, queries = parse(script)
-        r = Renderer()
+        # Imports resolve relative to the file's directory, not the caller's CWD.
+        env = Environment(working_path=path.parent)
+        _, queries = env.parse(script)
+        # Pass the environment so the renderer can resolve virtual
+        # (``_virt_...``) concept refs back into their inline lineage.
+        r = Renderer(environment=env)
         with safe_open(file_path, "w", newline="\n") as f:
             f.write(r.render_statement_string(queries) + "\n")
         return (file_path, len(queries), True, None)
@@ -57,19 +61,11 @@ def fmt(ctx, input):
 
     with with_status(f"Formatting {total_files} file(s)"):
         try:
-            # Use parallel processing for multiple files
-            if total_files > 1:
-                with ProcessPoolExecutor() as executor:
-                    futures = {executor.submit(format_file, f): f for f in files}
-                    for future in as_completed(futures):
-                        file_path, query_count, success, error = future.result()
-                        if success:
-                            total_queries += query_count
-                        else:
-                            failed_files.append((file_path, error))
-            else:
-                # Single file - process directly
-                file_path, query_count, success, error = format_file(files[0])
+            # Sequential processing — files import each other, so a parallel
+            # write-during-read leaves importers reading partial state and
+            # failing with "Unable to import" against in-flight neighbours.
+            for f in files:
+                file_path, query_count, success, error = format_file(f)
                 if success:
                     total_queries += query_count
                 else:

@@ -1,5 +1,5 @@
-
 key id int;
+
 properties id (
     string_id string,
     name string,
@@ -11,7 +11,6 @@ properties id (
     country string?,
 );
 
-
 datasource warehouse (
     w_warehouse_sk: id,
     w_warehouse_id: string_id,
@@ -22,7 +21,6 @@ datasource warehouse (
     w_county: county,
     w_zip: zip,
     w_country: country,
-    )
+)
 grain (id)
-address memory.warehouse
-;
+address memory.warehouse;

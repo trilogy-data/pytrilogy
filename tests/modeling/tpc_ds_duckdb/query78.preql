@@ -1,43 +1,38 @@
 import unified_sales as sales;
 
-def channel_sum(metric, channel) -> sum(
-    metric ? sales.sales_channel = channel
-) by sales.date.year, sales.item.id, sales.customer.id;
+def channel_sum(metric, channel) -> sum(filter metric where sales.sales_channel = channel) by sales.date.year, sales.item.id, sales.customer.id;
 
-auto ss_qty <- @channel_sum(sales.quantity, 'STORE');
-auto ss_wc <- @channel_sum(sales.wholesale_cost, 'STORE');
-auto ss_sp <- @channel_sum(sales.sales_price, 'STORE');
-auto ws_qty <- @channel_sum(sales.quantity, 'WEB');
-auto ws_wc <- @channel_sum(sales.wholesale_cost, 'WEB');
-auto ws_sp <- @channel_sum(sales.sales_price, 'WEB');
-auto cs_qty <- @channel_sum(sales.quantity, 'CATALOG');
-auto cs_wc <- @channel_sum(sales.wholesale_cost, 'CATALOG');
-auto cs_sp <- @channel_sum(sales.sales_price, 'CATALOG');
-
-auto other_chan_qty <- coalesce(ws_qty, 0) + coalesce(cs_qty, 0);
-auto other_chan_wc <- coalesce(ws_wc, 0) + coalesce(cs_wc, 0);
-auto other_chan_sp <- coalesce(ws_sp, 0) + coalesce(cs_sp, 0);
+metric ss_qty <- sum(filter sales.quantity where sales.sales_channel = 'STORE') by sales.date.year, sales.item.id, sales.customer.id;
+metric ss_wc <- sum(filter sales.wholesale_cost where sales.sales_channel = 'STORE') by sales.date.year, sales.item.id, sales.customer.id;
+metric ss_sp <- sum(filter sales.sales_price where sales.sales_channel = 'STORE') by sales.date.year, sales.item.id, sales.customer.id;
+metric ws_qty <- sum(filter sales.quantity where sales.sales_channel = 'WEB') by sales.date.year, sales.item.id, sales.customer.id;
+metric ws_wc <- sum(filter sales.wholesale_cost where sales.sales_channel = 'WEB') by sales.date.year, sales.item.id, sales.customer.id;
+metric ws_sp <- sum(filter sales.sales_price where sales.sales_channel = 'WEB') by sales.date.year, sales.item.id, sales.customer.id;
+metric cs_qty <- sum(filter sales.quantity where sales.sales_channel = 'CATALOG') by sales.date.year, sales.item.id, sales.customer.id;
+metric cs_wc <- sum(filter sales.wholesale_cost where sales.sales_channel = 'CATALOG') by sales.date.year, sales.item.id, sales.customer.id;
+metric cs_sp <- sum(filter sales.sales_price where sales.sales_channel = 'CATALOG') by sales.date.year, sales.item.id, sales.customer.id;
+property <sales.customer.id, sales.date.year, sales.item.id>.other_chan_qty <- coalesce(ws_qty,0) + coalesce(cs_qty,0);
+property <sales.customer.id, sales.date.year, sales.item.id>.other_chan_wc <- coalesce(ws_wc,0) + coalesce(cs_wc,0);
+property <sales.customer.id, sales.date.year, sales.item.id>.other_chan_sp <- coalesce(ws_sp,0) + coalesce(cs_sp,0);
 
 WHERE
-    sales.is_returned is null
-    and sales.date.year = 2000
-    and sales.customer.id is not null
+    sales.is_returned is null and sales.date.year = 2000 and sales.customer.id is not null
 SELECT
-    sales.date.year as ss_sold_year,
-    sales.item.id as ss_item_sk,
-    sales.customer.id as ss_customer_sk,
-    round(cast(ss_qty as numeric(7,2)) / cast(other_chan_qty as numeric(7,2)), 2) as ratio,
-    ss_qty as store_qty,
-    ss_wc as store_wholesale_cost,
-    ss_sp as store_sales_price,
+    sales.date.year -> ss_sold_year,
+    sales.item.id -> ss_item_sk,
+    sales.customer.id -> ss_customer_sk,
+    round(ss_qty::Numeric(7,2) / other_chan_qty::Numeric(7,2),2) -> ratio,
+    ss_qty -> store_qty,
+    ss_wc -> store_wholesale_cost,
+    ss_sp -> store_sales_price,
     other_chan_qty,
-    other_chan_wc as other_chan_wholesale_cost,
-    other_chan_sp as other_chan_sales_price,
+    other_chan_wc -> other_chan_wholesale_cost,
+    other_chan_sp -> other_chan_sales_price,
     --ws_qty,
     --cs_qty,
 HAVING
-    store_qty > 0
-    and (coalesce(ws_qty, 0) > 0 or coalesce(cs_qty, 0) > 0)
+    store_qty > 0 and (coalesce(ws_qty,0) > 0 or coalesce(cs_qty,0) > 0)
+
 ORDER BY
     ss_sold_year asc nulls first,
     ss_item_sk asc nulls first,
@@ -49,4 +44,5 @@ ORDER BY
     other_chan_wholesale_cost asc nulls first,
     other_chan_sales_price asc nulls first,
     ratio asc nulls first
-LIMIT 100;
+LIMIT 100
+;

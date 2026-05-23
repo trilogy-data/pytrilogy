@@ -63,7 +63,7 @@ key x string; # guessing at type
 key y int;
 
 datasource dim_y (
-    y
+    y,
 )
 grain (y)
 query '''
@@ -71,7 +71,7 @@ select 1 as y union all select 2 as y union all select 3 as y''';
 
 datasource example (
     x: ?x,
-    y: ~?y
+    y: ~?y,
 )
 grain (x)
 query '''
@@ -109,7 +109,7 @@ key z numeric::longitude;
 datasource example (
     x: ?x,
     y: ?y,
-    z: ?z
+    z: ?z,
 )
 grain (x)
 query '''

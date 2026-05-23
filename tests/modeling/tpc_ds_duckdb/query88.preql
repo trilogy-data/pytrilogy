@@ -1,27 +1,33 @@
 import store_sales as store_sales;
 
-def bucket_count(h, min_low, min_high) -> sum(
-    count(store_sales.item.id ? store_sales.time.hour = h
-                                and store_sales.time.minute >= min_low
-                                and store_sales.time.minute <  min_high)
-        by store_sales.ticket_number
-);
+def bucket_count(h, min_low, min_high) -> sum(count(filter store_sales.item.id where store_sales.time.hour = h
+and store_sales.time.minute >= min_low
+and store_sales.time.minute < min_high) by store_sales.ticket_number);
 
 WHERE
     store_sales.store.name = 'ese'
     and store_sales.time.hour in (8, 9, 10, 11, 12)
     and (
-        (store_sales.household_demographic.dependent_count = 4 and store_sales.household_demographic.vehicle_count <= 6)
-        or (store_sales.household_demographic.dependent_count = 2 and store_sales.household_demographic.vehicle_count <= 4)
-        or (store_sales.household_demographic.dependent_count = 0 and store_sales.household_demographic.vehicle_count <= 2)
+        (
+            store_sales.household_demographic.dependent_count = 4
+            and store_sales.household_demographic.vehicle_count <= 6
+        )
+        or (
+            store_sales.household_demographic.dependent_count = 2
+            and store_sales.household_demographic.vehicle_count <= 4
+        )
+        or (
+            store_sales.household_demographic.dependent_count = 0
+            and store_sales.household_demographic.vehicle_count <= 2
+        )
     )
 SELECT
-    @bucket_count(8,  30, 60) as h8_30_to_9,
-    @bucket_count(9,   0, 30) as h9_to_9_30,
-    @bucket_count(9,  30, 60) as h9_30_to_10,
-    @bucket_count(10,  0, 30) as h10_to_10_30,
-    @bucket_count(10, 30, 60) as h10_30_to_11,
-    @bucket_count(11,  0, 30) as h11_to_11_30,
-    @bucket_count(11, 30, 60) as h11_30_to_12,
-    @bucket_count(12,  0, 30) as h12_to_12_30
+    @bucket_count(8, 30, 60) -> h8_30_to_9,
+    @bucket_count(9, 0, 30) -> h9_to_9_30,
+    @bucket_count(9, 30, 60) -> h9_30_to_10,
+    @bucket_count(10, 0, 30) -> h10_to_10_30,
+    @bucket_count(10, 30, 60) -> h10_30_to_11,
+    @bucket_count(11, 0, 30) -> h11_to_11_30,
+    @bucket_count(11, 30, 60) -> h11_30_to_12,
+    @bucket_count(12, 0, 30) -> h12_to_12_30,
 ;

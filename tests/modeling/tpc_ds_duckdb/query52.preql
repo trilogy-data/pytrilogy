@@ -2,15 +2,16 @@ import store_sales as store_sales;
 
 WHERE
     store_sales.item.manager_id = 1
-    AND store_sales.date.month_of_year = 11
-    AND store_sales.date.year = 2000
+    and store_sales.date.month_of_year = 11
+    and store_sales.date.year = 2000
 SELECT
     store_sales.date.year,
     store_sales.item.brand_id,
     store_sales.item.brand_name,
-    sum(store_sales.ext_sales_price) as ext_price
+    sum(store_sales.ext_sales_price) -> ext_price,
 ORDER BY
     store_sales.date.year asc,
-    ext_price DESC,
+    ext_price desc,
     store_sales.item.brand_id asc
-LIMIT 100;
+LIMIT 100
+;

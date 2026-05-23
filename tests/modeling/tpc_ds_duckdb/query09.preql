@@ -1,22 +1,47 @@
 import store_sales as store_sales;
 
-def bucket_count(low, high) -> sum(case when store_sales.quantity between low and high then 1 else 0 end);
-def bucket_pick(cnt, threshold, low, high) -> case when cnt > threshold
-    then avg(case when store_sales.quantity between low and high then store_sales.ext_discount_amount else null end)
-    else avg(case when store_sales.quantity between low and high then store_sales.net_paid else null end) end;
+def bucket_count(low, high) -> sum(CASE
+    WHEN store_sales.quantity between low and high THEN 1
+    ELSE 0
+END);
+def bucket_pick(cnt, threshold, low, high) -> CASE
+    WHEN cnt > threshold THEN avg(CASE
+            WHEN store_sales.quantity between low and high THEN store_sales.ext_discount_amount
+            ELSE null
+        END)
+    ELSE avg(CASE
+            WHEN store_sales.quantity between low and high THEN store_sales.net_paid
+            ELSE null
+        END)
+END;
 
-auto count1 <- @bucket_count(1, 20);
-auto count2 <- @bucket_count(21, 40);
-auto count3 <- @bucket_count(41, 60);
-auto count4 <- @bucket_count(61, 80);
-auto count5 <- @bucket_count(81, 100);
+metric count1 <- sum(CASE
+    WHEN store_sales.quantity between 1 and 20 THEN 1
+    ELSE 0
+END);
+metric count2 <- sum(CASE
+    WHEN store_sales.quantity between 21 and 40 THEN 1
+    ELSE 0
+END);
+metric count3 <- sum(CASE
+    WHEN store_sales.quantity between 41 and 60 THEN 1
+    ELSE 0
+END);
+metric count4 <- sum(CASE
+    WHEN store_sales.quantity between 61 and 80 THEN 1
+    ELSE 0
+END);
+metric count5 <- sum(CASE
+    WHEN store_sales.quantity between 81 and 100 THEN 1
+    ELSE 0
+END);
 
 WHERE
     store_sales.quantity between 1 and 100
 SELECT
-    @bucket_pick(count1,  74129,  1,  20) as bucket1,
-    @bucket_pick(count2, 122840, 21,  40) as bucket2,
-    @bucket_pick(count3,  56580, 41,  60) as bucket3,
-    @bucket_pick(count4,  10097, 61,  80) as bucket4,
-    @bucket_pick(count5, 165306, 81, 100) as bucket5
+    @bucket_pick(count1, 74129, 1, 20) -> bucket1,
+    @bucket_pick(count2, 122840, 21, 40) -> bucket2,
+    @bucket_pick(count3, 56580, 41, 60) -> bucket3,
+    @bucket_pick(count4, 10097, 61, 80) -> bucket4,
+    @bucket_pick(count5, 165306, 81, 100) -> bucket5,
 ;

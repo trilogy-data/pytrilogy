@@ -353,7 +353,7 @@ key x int;
 auto y <- case when x = 1 then 1 else 2 end;""")
 
     test = Renderer().to_string(parsed[-1])
-    assert test == """property y <- CASE
+    assert test == """property x.y <- CASE
     WHEN x = 1 THEN 1
     ELSE 2
 END;""", test
@@ -369,7 +369,7 @@ auto y <- CASE
     test = Renderer().to_string(parsed[-1])
     # ``X like 'lit'`` is parsed as a ``Comparison`` (not a ``Function``-wrapped
     # ``= True``), so the round-tripped text reflects the cleaner infix form.
-    assert test == """property y <- CASE
+    assert test == """property category_name.y <- CASE
     WHEN category_name like '%abc%' THEN True
     ELSE False
 END;""", test
@@ -689,7 +689,7 @@ def test_render_datasource():
 
     test = Renderer().to_string(ds)
     assert test == """datasource useful_data (
-    user_id: ~user_id
+    user_id: ~user_id,
 )
 grain (user_id)
 complete where user_id = 123
@@ -719,7 +719,7 @@ where user_id = 123 or user_id = 456;"""
 
     test = Renderer().to_string(ds)
     assert test == """datasource useful_data (
-    user_id
+    user_id,
 )
 grain (user_id)
 query '''SELECT * FROM test'''
@@ -760,7 +760,7 @@ address memory.date_dim;""")
     D_MOY: month_of_year,
     D_QOY: quarter,
     D_WEEK_SEQ1: d_week_seq1,
-    raw('''cast("D_YEAR" as int)'''): year
+    raw('''cast("D_YEAR" as int)'''): year,
 )
 grain (id)
 address memory.date_dim;""", test
@@ -788,7 +788,7 @@ address memory.date_dim;""", test
     ds.grain = Grain()
     test2 = Renderer().to_string(ds)
     assert test2 == """datasource useful_data (
-    user_id
+    user_id,
 )
 
 query '''SELECT * FROM test'''
@@ -821,7 +821,7 @@ where user_id = 123 or user_id = 456;"""
     ds.grain = Grain()
     test2 = Renderer().to_string(ds)
     assert test2 == """datasource useful_data (
-    user_id
+    user_id,
 )
 
 query '''SELECT * FROM test'''
@@ -1002,7 +1002,7 @@ final_zips;
 
     assert (
         rendered
-        == "property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
+        == "property zips.final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
     )
 
 
@@ -1038,7 +1038,7 @@ property y.y_name string;
         ConceptDeclarationStatement(concept=env.concepts["correlation"])
     )
 
-    assert test == "property <x,y>.correlation float;"
+    assert test == "property <x, y>.correlation float;"
 
     test = Renderer().to_string(
         ConceptDeclarationStatement(concept=env.concepts["y_name"])
@@ -1060,7 +1060,7 @@ properties <order_number,item_id> (
     rendered = Renderer().to_string(env)
 
     assert (
-        "properties <item_id,order_number> (\n    quantity int,\n    sales_price float,\n    net_profit float,\n);"
+        "properties <item_id, order_number> (\n    quantity int,\n    sales_price float,\n    net_profit float,\n);"
         in rendered
     )
 
@@ -1119,7 +1119,7 @@ property y.y_name string;
     assert "property x.x_name string;" in rendered
     assert "property y.y_name string;" in rendered
     # multi-key group renders as grouped block
-    assert "properties <x,y> (\n    a int,\n    b float,\n);" in rendered
+    assert "properties <x, y> (\n    a int,\n    b float,\n);" in rendered
 
     # round-trip
     env2 = Environment.from_string(rendered)
@@ -1387,7 +1387,7 @@ def test_column_assignment_in_datasource():
     expected = """datasource users (
     user_id,
     user_name,
-    id_copy: user_id
+    id_copy: user_id,
 )
 grain (user_id)
 address dim_users;"""

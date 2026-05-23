@@ -50,6 +50,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
+    PropertiesDeclarationStatement,
     ShowStatement,
 )
 from trilogy.parsing.common import constant_to_concept
@@ -399,7 +400,7 @@ def concept_statement(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> ConceptDeclarationStatement:
+) -> ConceptDeclarationStatement | PropertiesDeclarationStatement:
     declarations = node.child_nodes()
     if len(declarations) != 1:
         raise fail(
@@ -408,8 +409,13 @@ def concept_statement(
         )
     output = hydrate(declarations[0])
     if isinstance(output, list):
-        concept_value = output[0]
-    elif isinstance(output, Concept):
+        # `properties X (...)` defines a group of properties — preserve all of
+        # them as a single PropertiesDeclarationStatement so round-trip render
+        # can emit the same grouped block instead of dropping all but the first.
+        for concept_value in output:
+            apply_source_location(concept_value, node.meta)
+        return PropertiesDeclarationStatement(concepts=output)
+    if isinstance(output, Concept):
         concept_value = output
     else:
         concept_value = output.concept

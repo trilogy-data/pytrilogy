@@ -32,6 +32,8 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    DeriveClause,
+    DeriveItem,
     FilterItem,
     Function,
     FunctionCallWrapper,
@@ -124,6 +126,13 @@ def safe_address(address: str) -> str:
 DEFAULT_MAX_LINE_LENGTH = 100
 
 
+def _purpose_keyword(purpose: Purpose) -> str:
+    """Grammar keyword for a Purpose — ``unique property`` not ``unique_property``."""
+    if purpose == Purpose.UNIQUE_PROPERTY:
+        return "unique property"
+    return purpose.value
+
+
 class Renderer:
 
     def __init__(
@@ -135,6 +144,25 @@ class Renderer:
         self.environment = environment
         self.indent_context = IndentationContext(indent_string=indent_string)
         self.max_line_length = max_line_length
+        # Stack of rowset-name unmangling prefixes; concept names within a
+        # rowset SELECT carry an ``_{rowset}_`` prefix that must be stripped
+        # so reparsing doesn't double-prefix.
+        self._rowset_prefix_stack: list[str] = []
+
+    @contextmanager
+    def _rowset_scope(self, rowset_name: str):
+        prefix = f"_{rowset_name}_"
+        self._rowset_prefix_stack.append(prefix)
+        try:
+            yield
+        finally:
+            self._rowset_prefix_stack.pop()
+
+    def _unmangle_rowset_name(self, name: str) -> str:
+        for prefix in reversed(self._rowset_prefix_stack):
+            if name.startswith(prefix):
+                return name[len(prefix) :]
+        return name
 
     @contextmanager
     def indented(self, levels: int = 1):
@@ -385,10 +413,21 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: Datasource):
+        # When the datasource itself is `partial`, the parser stamps PARTIAL on
+        # every column. Only render `~` on columns that were partial at the
+        # source level — the rest inherit it implicitly from the keyword.
+        explicit_partial = (
+            arg.column_level_partial_addresses if arg.is_partial else None
+        )
         with self.indented():
             assignments = ",\n".join(
-                [self.indent_lines(self.to_string(x)) for x in arg.columns]
+                self.indent_lines(self._render_column_assignment(c, explicit_partial))
+                for c in arg.columns
             )
+            # Trailing comma matches Trilogy convention and lets diffs stay
+            # one-line-per-binding when columns are added or removed.
+            if assignments:
+                assignments += ","
 
         if arg.non_partial_for:
             non_partial = f"\ncomplete where {self.to_string(arg.non_partial_for)}"
@@ -443,7 +482,7 @@ class Renderer:
             else:
                 final.append(comp)
         final = sorted(final)
-        components = ",".join(x for x in final)
+        components = ", ".join(final)
         return f"grain ({components})"
 
     @to_string.register
@@ -452,7 +491,9 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: RowsetDerivationStatement):
-        return f"""rowset {arg.name} <- {self.to_string(arg.select)}"""
+        with self._rowset_scope(arg.name):
+            select_str = self.to_string(arg.select)
+        return f"""rowset {arg.name} <- {select_str}"""
 
     @to_string.register
     def _(self, arg: "CaseWhen"):
@@ -546,30 +587,40 @@ class Renderer:
             return "null"
         return arg.value
 
-    @to_string.register
-    def _(self, arg: "ColumnAssignment"):
-        if arg.modifiers:
-            modifiers = "".join(
-                [self.to_string(modifier) for modifier in sorted(arg.modifiers)]
-            )
+    def _render_column_assignment(
+        self,
+        arg: "ColumnAssignment",
+        explicit_partial: set[str] | None = None,
+    ) -> str:
+        """Render a ColumnAssignment, optionally filtering implicit PARTIAL.
+
+        When called from a Datasource render, ``explicit_partial`` carries
+        the set of column concept addresses that were ``~``-marked at parse
+        time; columns that got PARTIAL stamped on by a ``partial datasource``
+        keyword fall outside that set and should not re-emit ``~``.
+        """
+        mods: list[Modifier] = list(arg.modifiers)
+        if explicit_partial is not None and Modifier.PARTIAL in mods:
+            if arg.concept.address not in explicit_partial:
+                mods = [m for m in mods if m != Modifier.PARTIAL]
+        if mods:
+            modifiers = "".join(self.to_string(m) for m in sorted(mods))
         else:
             modifiers = ""
 
-        # Get concept string representation
         concept_str = self.to_string(arg.concept)
-
-        # Get alias string representation
         if isinstance(arg.alias, str):
             alias_str = arg.alias
         else:
             alias_str = self.to_string(arg.alias)
 
-        # If alias matches concept string and no modifiers, use shorthand
         if alias_str == concept_str and not modifiers:
             return alias_str
-
-        # Otherwise use full syntax
         return f"{alias_str}: {modifiers}{concept_str}"
+
+    @to_string.register
+    def _(self, arg: "ColumnAssignment"):
+        return self._render_column_assignment(arg)
 
     @to_string.register
     def _(self, arg: "RawColumnExpr"):
@@ -586,24 +637,68 @@ class Renderer:
             namespace = f"{concept.namespace}."
         else:
             namespace = ""
-        if not concept.lineage:
-            if concept.purpose == Purpose.PROPERTY and concept.keys:
-                if len(concept.keys) == 1:
-                    output = f"{concept.purpose.value} {self.to_string(ConceptRef(address=safe_address(list(concept.keys)[0])))}.{namespace}{concept.name} {self.to_string(concept.datatype)};"
-                else:
-                    keys = ",".join(
-                        sorted(
-                            list(
-                                self.to_string(ConceptRef(address=safe_address(x)))
-                                for x in concept.keys
-                            )
-                        )
-                    )
-                    output = f"{concept.purpose.value} <{keys}>.{namespace}{concept.name} {self.to_string(concept.datatype)};"
+        # Grammar accepts ``unique property``, not ``unique_property``.
+        purpose_kw = _purpose_keyword(concept.purpose)
+        is_propertyish = concept.purpose in (Purpose.PROPERTY, Purpose.UNIQUE_PROPERTY)
+        # Build the ``<a, b>.`` or ``a.`` key prefix shared by typed and
+        # derived property declarations. We only emit the prefix when the
+        # implied namespace on reparse matches the concept's own namespace
+        # — single-key form takes its namespace from the key's parent, and
+        # multi-key form takes it from the environment default.
+        key_prefix = ""
+        env_default_ns = (
+            self.environment.namespace
+            if self.environment and self.environment.namespace
+            else DEFAULT_NAMESPACE
+        )
+        concept_ns = concept.namespace or DEFAULT_NAMESPACE
+        if is_propertyish and concept.keys:
+            key_namespaces: set[str] = set()
+            for addr in concept.keys:
+                safe = safe_address(addr)
+                key_ns = safe.rsplit(".", 1)[0]
+                key_namespaces.add(key_ns)
+            sorted_keys = sorted(
+                self.to_string(ConceptRef(address=safe_address(x)))
+                for x in concept.keys
+            )
+            if len(concept.keys) == 1:
+                # Single-key form: parser sets namespace = key's namespace.
+                if next(iter(key_namespaces)) == concept_ns:
+                    key_prefix = f"{sorted_keys[0]}."
             else:
-                output = f"{concept.purpose.value} {namespace}{concept.name} {self.to_string(concept.datatype)};"
+                # Multi-key form: parser sets namespace = shared key ns when
+                # all keys share one, otherwise the env default.
+                if len(key_namespaces) == 1:
+                    inferred_ns = next(iter(key_namespaces))
+                else:
+                    inferred_ns = env_default_ns
+                if inferred_ns == concept_ns:
+                    key_prefix = f"<{', '.join(sorted_keys)}>."
+        # For derived concepts whose namespace is an import alias rather
+        # than a real concept (e.g. ``import unified_sales as sales``),
+        # emitting ``sales.X`` would make the parser treat ``sales`` as a
+        # parent concept. Drop the prefix and let re-inference place the
+        # concept back in the right namespace via its lineage.
+        ns_for_emit = namespace
+        if (
+            ns_for_emit
+            and concept.lineage
+            and not key_prefix
+            and self.environment
+            and concept_ns in self.environment.imports
+        ):
+            ns_for_emit = ""
+        if not concept.lineage:
+            if key_prefix:
+                output = f"{purpose_kw} {key_prefix}{concept.name} {self.to_string(concept.datatype)};"
+            else:
+                output = f"{purpose_kw} {namespace}{concept.name} {self.to_string(concept.datatype)};"
         else:
-            output = f"{concept.purpose.value} {namespace}{concept.name} <- {self.to_string(concept.lineage)};"
+            if key_prefix:
+                output = f"{purpose_kw} {key_prefix}{concept.name} <- {self.to_string(concept.lineage)};"
+            else:
+                output = f"{purpose_kw} {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
         if base_description:
             lines = "\n#".join(base_description.split("\n"))
             output += f" #{lines}"
@@ -618,13 +713,22 @@ class Renderer:
                 ConceptRef(address=safe_address(list(keys_set)[0]))
             )
         else:
+            # Parser takes the property block's namespace from the first
+            # listed key's namespace. Put a key matching the concepts'
+            # actual namespace first so reparse lands in the same place;
+            # break ties alphabetically for stable diffs.
+            target_ns = concepts[0].namespace
+            keys = list(keys_set)
+            keys.sort(
+                key=lambda x: (
+                    safe_address(x).rsplit(".", 1)[0] != target_ns,
+                    safe_address(x),
+                )
+            )
             key_str = (
                 "<"
-                + ",".join(
-                    sorted(
-                        self.to_string(ConceptRef(address=safe_address(x)))
-                        for x in keys_set
-                    )
+                + ", ".join(
+                    self.to_string(ConceptRef(address=safe_address(x))) for x in keys
                 )
                 + ">"
             )
@@ -746,6 +850,8 @@ class Renderer:
 
         base = "\nMERGE\n".join(select_parts)
         base += self.to_string(arg.align)
+        if arg.derive:
+            base += self.to_string(arg.derive)
         if arg.where_clause:
             base += f"\nWHERE\n{self.to_string(arg.where_clause)}"
         if arg.order_by:
@@ -754,6 +860,16 @@ class Renderer:
             base += f"\nLIMIT {arg.limit}"
         base += "\n;"
         return base
+
+    @to_string.register
+    def _(self, arg: DeriveClause):
+        with self.indented():
+            items = [self.indent_lines(self.to_string(i)) for i in arg.items]
+        return "\nderive\n" + ",\n".join(items)
+
+    @to_string.register
+    def _(self, arg: DeriveItem):
+        return f"{self.to_string(arg.expr)} -> {self._unmangle_rowset_name(arg.name)}"
 
     @to_string.register
     def _(self, arg: CopyStatement):
@@ -813,8 +929,15 @@ class Renderer:
         lines = "\n#".join(arg.text.split("\n"))
         return f"{lines}"
 
+    # Aggregate window types only have a legacy parse form — the SQL grammar
+    # rules ``window_item_sql_navigation`` only recognise ``lag``/``lead``,
+    # so ``sum(x) over (...)`` cannot be reparsed in a derivation context.
+    _LEGACY_ONLY_WINDOW_TYPES = frozenset({"sum", "avg", "max", "min", "count"})
+
     @to_string.register
     def _(self, arg: "NumberingWindowItem"):
+        # Numbering items (rank/row_number/dense_rank) — SQL form parses
+        # cleanly because ``WINDOW_TYPE_SQL_NUMBERING`` covers them.
         over = ",".join(self.to_string(c) for c in arg.over)
         order = ",".join(self.to_string(c) for c in arg.order_by)
         args = ",".join(self.to_string(a) for a in arg.arguments)
@@ -829,25 +952,45 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "NavigationWindowItem"):
-        over = ",".join(self.to_string(c) for c in arg.over)
-        order = ",".join(self.to_string(c) for c in arg.order_by)
+        type_name = arg.type.value
+        content_str = self.to_string(arg.content)
+        over_keys = [self.to_string(c) for c in arg.over]
+        order_keys = [self.to_string(c) for c in arg.order_by]
 
+        if type_name in self._LEGACY_ONLY_WINDOW_TYPES:
+            # ``sum X over Y, Z order by W`` — grammar's legacy-only path.
+            # Offset isn't applicable here (aggregates have no offset).
+            over_clause = (
+                f" over {', '.join(over_keys)}" if over_keys else ""
+            )
+            order_clause = (
+                f" order by {', '.join(order_keys)}" if order_keys else ""
+            )
+            return f"{type_name} {content_str}{over_clause}{order_clause}"
+
+        # lag/lead — SQL form ``lag(x, n) over (partition by ... order by ...)``.
         if arg.offset is not None:
-            content = f"{self.to_string(arg.content)},{arg.offset}"
+            inner = f"{content_str},{arg.offset}"
         else:
-            content = self.to_string(arg.content)
-
+            inner = content_str
         over_parts = []
-        if over:
-            over_parts.append(f"partition by {over}")
-        if order:
-            over_parts.append(f"order by {order}")
+        if over_keys:
+            over_parts.append(f"partition by {','.join(over_keys)}")
+        if order_keys:
+            over_parts.append(f"order by {','.join(order_keys)}")
         over_clause = f" over ({' '.join(over_parts)})" if over_parts else ""
-        return f"{arg.type.value}({content}){over_clause}"
+        return f"{type_name}({inner}){over_clause}"
 
     @to_string.register
     def _(self, arg: "FilterItem"):
-        return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+        # Grammar's ``filter X where Y`` form requires X to be a plain
+        # identifier — compound exprs must use the ``X ? Y`` form.
+        if isinstance(arg.content, (ConceptRef, Concept)):
+            return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+        content = self.to_string(arg.content)
+        if not (content.startswith("(") and content.endswith(")")):
+            content = f"({content})"
+        return f"{content} ? {self.to_string(arg.where)}"
 
     @to_string.register
     def _(self, arg: "ConceptRef"):
@@ -857,9 +1000,10 @@ class Renderer:
             return self.to_string(self.environment.concepts[arg.address])
 
         ns, base = arg.address.rsplit(".", 1)
+        base = self._unmangle_rowset_name(base)
         if ns == DEFAULT_NAMESPACE:
             return base
-        return arg.address
+        return f"{ns}.{base}"
 
     @to_string.register
     def _(self, arg: "ImportStatement"):
@@ -891,13 +1035,14 @@ class Renderer:
     def _(self, arg: "Concept"):
         if arg.name.startswith(VIRTUAL_CONCEPT_PREFIX):
             return self.to_string(arg.lineage)
+        name = self._unmangle_rowset_name(arg.name)
         if arg.namespace == DEFAULT_NAMESPACE:
-            return arg.name
-        return arg.address
+            return name
+        return f"{arg.namespace}.{name}"
 
     @to_string.register
     def _(self, arg: "ConceptTransform"):
-        return f"{self.to_string(arg.function)} -> {arg.output.name}"
+        return f"{self.to_string(arg.function)} -> {self._unmangle_rowset_name(arg.output.name)}"
 
     @to_string.register
     def _(self, arg: "Function"):
