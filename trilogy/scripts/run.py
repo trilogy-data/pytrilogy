@@ -25,6 +25,16 @@ def execute_script_for_run(
     return execute_script_with_stats(exec, node.path, run_statements=True)
 
 
+def _looks_like_missing_path(value: str) -> bool:
+    """True if ``value`` looks like a file path (extension or separator)."""
+    return (
+        value.endswith(".preql")
+        or value.endswith(".sql")
+        or "/" in value
+        or "\\" in value
+    )
+
+
 def _normalize_import(value: str) -> str:
     """Convert a path-ish --import value into a trilogy import module name.
 
@@ -104,6 +114,15 @@ def run(
     validate_dialect(dialect, "run")
 
     is_inline = not PathlibPath(input).exists()
+    # If the input clearly looks like a file path (.preql/.sql extension or
+    # contains a path separator) but does not exist, fail explicitly instead of
+    # falling through to inline-query mode and reporting a confusing "No
+    # dialect specified" error from the parser.
+    if is_inline and _looks_like_missing_path(input):
+        from trilogy.scripts.display import print_error
+
+        print_error(f"Input '{input}' does not exist.")
+        raise Exit(2)
 
     if imports:
         if not is_inline:
