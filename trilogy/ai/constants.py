@@ -28,6 +28,14 @@ SELECT RULES:
       where item.price > 1.2 * avg(item.price) by item.category
       select item.name, item.price
 - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
+- Operator precedence (highest binds first; use `(...)` to override):
+  1. Primaries: literal, identifier, function call, parenthetical `(...)`, member access (`.`, `[]`, `::` cast).
+  2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).
+  3. Multiplicative: `*`, `/`, `%`.
+  4. Additive / string concat: `+`, `-`, `||`.
+  5. Comparison (one per pair, NOT chainable — write `a < b and b < c`, not `a < b < c`): `=`, `!=`, `<`, `<=`, `>`, `>=`, `like`, `ilike`, `between … and …`, `in (…)`, `not in (…)`, `is null`.
+  6. Logical `and`.
+  7. Logical `or`.
 - Always use a reasonable `LIMIT` for final queries unless the request is for a time series or line chart.
 - Window functions: `rank entity [optional over group] by field desc` (e.g. `rank name over state by sum(births) desc as top_name`) Do not use parentheses for over.
 - Functions. All function names have parenthese (e.g. `sum(births)`, `date_part('year', dep_time)`). For no arguments, use empty parentheses (e.g. `current_date()`).
