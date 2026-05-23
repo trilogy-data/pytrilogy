@@ -891,3 +891,12 @@ def test_flag_after_subcommand_gives_helpful_error(cmd):
     assert "looks like a flag" in result.output, result.output
     assert "must come before the subcommand" in result.output, result.output
     assert "is not a valid Dialects" not in result.output, result.output
+
+
+@pytest.mark.parametrize("cmd", ["refresh", "run"])
+def test_debug_before_file_path_gives_helpful_error(cmd):
+    """`trilogy run --debug raw/foo.preql` puts the path in the dialect slot; emit a clear hint."""
+    runner = CliRunner()
+    result = runner.invoke(cli, [cmd, "--debug", "raw/inventory.preql"])
+    assert "looks like a file path" in result.output, result.output
+    assert "is not a valid Dialects" not in result.output, result.output

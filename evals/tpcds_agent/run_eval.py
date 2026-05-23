@@ -212,7 +212,6 @@ def run_pre_ingest(workspace: Path, timeout: int = 600) -> dict:
         "trilogy.scripts.trilogy",
         "ingest",
         "--all",
-        "duckdb",
     ]
     start = time.perf_counter()
     proc = subprocess.run(
@@ -424,6 +423,9 @@ def main() -> int:
             f"  ingest failed (exit {ingest['exit_code']}); see ingest_output.txt",
             file=sys.stderr,
         )
+        # Per-query tasks tell the agent `raw/` is already populated; without it
+        # every query starts from a broken premise. Abort instead of grading 0/N.
+        return 2
 
     print(
         f"[3/5] Running agent per query ({len(active)} queries, fresh context each)"
