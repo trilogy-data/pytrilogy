@@ -201,15 +201,8 @@ def show_execution_summary(
             )
 
 
-def show_formatting_result(filename: str, num_queries: int, duration: object) -> None:
-    """Show formatting operation result."""
-    if _core.RICH_AVAILABLE and _core.console is not None:
-        _core.console.print(f"File: [bold]{filename}[/bold]")
-        _core.console.print(
-            f"Processed [cyan]{num_queries}[/cyan] queries in [cyan]{format_duration(duration)}[/cyan]"
-        )
-    else:
-        print_success(f"Formatted {num_queries} queries in {format_duration(duration)}")
+def show_formatting_result(num_queries: int, duration: object) -> None:
+    print_success(f"Formatted {num_queries} statements in {format_duration(duration)}")
 
 
 def print_results_table(results: ResultSet) -> None:

@@ -94,23 +94,16 @@ def fmt(ctx, input):
                     f.write(formatted)
 
             duration = datetime.now() - start
-
-            if failed_files:
-                for file_path, error in failed_files:
-                    print_success(f"Failed to format {file_path}: {error}")
+            if total_files == 1:
+                show_formatting_result(total_queries, duration)
+            else:
+                if failed_files:
+                    for file_path, error in failed_files:
+                        print_success(f"Failed to format {file_path}: {error}")
                 print_success(
                     f"Formatted {total_files - len(failed_files)}/{total_files} files "
-                    f"with {total_queries} total queries in {duration}"
+                    f"with {total_queries} statements in {duration}"
                 )
-            else:
-                print_success(
-                    f"Successfully formatted {total_files} file(s) "
-                    f"with {total_queries} total queries"
-                )
-                if total_files == 1:
-                    show_formatting_result(files[0], total_queries, duration)
-                else:
-                    print_success(f"Duration: {duration}")
 
         except Exception as e:
             handle_execution_exception(e, debug=ctx.obj["DEBUG"])

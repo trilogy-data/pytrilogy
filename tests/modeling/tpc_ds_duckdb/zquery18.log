@@ -1,6 +1,6 @@
 query_id = "18"
 gen_length = 7282
-preql_size = 1388
+preql_size = 1370
 comp_size = 1593
 generated_sql = """
 

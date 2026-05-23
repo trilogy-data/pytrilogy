@@ -1,6 +1,6 @@
 query_id = "77"
 gen_length = 7821
-preql_size = 3293
+preql_size = 3215
 comp_size = 3129
 generated_sql = """
 
@@ -86,9 +86,9 @@ GROUP BY
     1),
 rambunctious as (
 SELECT
+    \"puzzled\".\"ws_grouped_ws_profit\" - cast(coalesce(\"busy\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"u_profit\",
     \"puzzled\".\"ws_grouped_ws_wp_id\" as \"u_id\",
     :_l0_union_u_channel_w as \"u_channel\",
-    cast(\"puzzled\".\"ws_grouped_ws_profit\" - coalesce(\"busy\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"u_profit\",
     cast(\"puzzled\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"u_sales\",
     cast(coalesce(\"busy\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"u_returns\"
 FROM
@@ -102,9 +102,9 @@ GROUP BY
     5),
 friendly as (
 SELECT
+    \"sparkling\".\"ss_grouped_ss_profit\" - cast(coalesce(\"macho\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"u_profit\",
     \"sparkling\".\"ss_grouped_ss_store_id\" as \"u_id\",
     :_l0_union_u_channel_s as \"u_channel\",
-    cast(\"sparkling\".\"ss_grouped_ss_profit\" - coalesce(\"macho\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"u_profit\",
     cast(\"sparkling\".\"ss_grouped_ss_sales\" as numeric(15,2)) as \"u_sales\",
     cast(coalesce(\"macho\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"u_returns\"
 FROM
@@ -132,10 +132,10 @@ FROM
     \"thoughtful\"),
 juicy as (
 SELECT
+    \"uneven\".\"_virt_agg_sum_6520591768854391\" * cast(\"cooperative\".\"cr_totals_cr_n_groups\" as numeric(15,2)) as \"_l0_union_u_sales_c\",
     \"uneven\".\"cs_call_center_id\" as \"_l0_union_u_id_c\",
-    :_l0_union_u_channel_c as \"_l0_union_u_channel_c\",
-    cast(\"uneven\".\"_virt_agg_sum_6520591768854391\" * \"cooperative\".\"cr_totals_cr_n_groups\" as numeric(15,2)) as \"_l0_union_u_sales_c\",
-    cast(( \"uneven\".\"_virt_agg_sum_6226990944561419\" * \"cooperative\".\"cr_totals_cr_n_groups\" ) - \"cooperative\".\"cr_totals_cr_total_loss\" as numeric(15,2)) as \"_l0_union_u_profit_c\"
+    ( \"uneven\".\"_virt_agg_sum_6226990944561419\" * \"cooperative\".\"cr_totals_cr_n_groups\" ) - cast(\"cooperative\".\"cr_totals_cr_total_loss\" as numeric(15,2)) as \"_l0_union_u_profit_c\",
+    :_l0_union_u_channel_c as \"_l0_union_u_channel_c\"
 FROM
     \"cooperative\"
     FULL JOIN \"uneven\" on 1=1),

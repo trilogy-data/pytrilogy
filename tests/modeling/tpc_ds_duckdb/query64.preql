@@ -6,13 +6,14 @@ import catalog_returns as cr;
 # for items that have a matching catalog_return. catalog_sales is reached
 # through cr.sales (cr already imports catalog_sales as sales) so we avoid
 # the cross-import merge dance.
-property cr.sales.item.id.cs_ui_refund_amt <- coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
+auto cs_ui_refund_amt <- coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
 metric cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
-metric cs_ui_refund <- sum(cr.sales.item.cs_ui_refund_amt) by cr.sales.item.id;
+metric cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.id;
 
-with cs_ui as
-WHERE cs_ui_sale > 2 * cs_ui_refund
-SELECT cr.sales.item.id as cs_ui_item_id
+rowset cs_ui <- where
+    cs_ui_sale > 2 * cs_ui_refund
+select
+    cr.sales.item.id as cs_ui_item_id,
 ;
 
 # Row-level filter common to both year slices. Excludes the cross-CDEMO

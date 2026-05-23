@@ -1113,6 +1113,31 @@ property y.y_name string;
     assert test == "property y.y_name string;"
 
 
+def test_render_property_imported_key_round_trip(tmp_path):
+    """`<abc.def>.some_name` declares a local property keyed off an imported
+    concept. The `<>` are load-bearing — without them, `abc.def.some_name`
+    parses as a property in namespace `abc`, a different concept.
+    """
+    (tmp_path / "abc.preql").write_text("key def int;")
+    env = Environment(working_path=tmp_path)
+    env.parse("import abc as abc;\nproperty <abc.def>.some_name string;")
+
+    concept = env.concepts["some_name"]
+    assert concept.namespace == DEFAULT_NAMESPACE
+    assert {addr for addr in concept.keys} == {"abc.def"}
+
+    rendered = Renderer(environment=env).to_string(
+        ConceptDeclarationStatement(concept=concept)
+    )
+    assert rendered == "property <abc.def>.some_name string;", rendered
+
+    env2 = Environment(working_path=tmp_path)
+    env2.parse(f"import abc as abc;\n{rendered}")
+    concept2 = env2.concepts["some_name"]
+    assert concept2.namespace == concept.namespace
+    assert {a for a in concept2.keys} == {a for a in concept.keys}
+
+
 def test_render_properties_grouped_round_trip():
     src = """key order_number int;
 key item_id int;
@@ -1154,6 +1179,130 @@ properties <order_number,item_id> (
 
     env2 = Environment.from_string(rendered)
     assert env2.concepts["quantity"].metadata.description == "units sold"
+
+
+def test_render_window_aggregate_over_round_trip():
+    """`sum(x) over (partition by y order by z)` covers both the
+    window_item_sql_aggregate parser rule and the NavigationWindowItem
+    render branch."""
+    env = Environment()
+    env.parse("""
+key x int;
+key y int;
+key z int;
+auto wsum <- sum(x) over (partition by y order by z);
+""")
+    rendered = Renderer(environment=env).to_string(
+        ConceptDeclarationStatement(concept=env.concepts["wsum"])
+    )
+    assert "sum(x)" in rendered, rendered
+    assert "over" in rendered, rendered
+    assert "partition by y" in rendered, rendered
+    assert "order by z" in rendered, rendered
+
+    env2 = Environment()
+    env2.parse(f"key x int;\nkey y int;\nkey z int;\n{rendered}")
+    assert "wsum" in env2.concepts
+
+
+def test_render_window_aggregate_over_expression():
+    """`sum(x + 1) over (...)` hits the arbitrary-expression promotion path
+    (virtual concept) inside window_item_sql_aggregate."""
+    env = Environment()
+    env.parse("""
+key x int;
+key y int;
+key z int;
+auto wsum <- sum(x + 1) over (partition by y order by z);
+""")
+    rendered = Renderer(environment=env).to_string(
+        ConceptDeclarationStatement(concept=env.concepts["wsum"])
+    )
+    assert "over" in rendered, rendered
+    assert "partition by y" in rendered, rendered
+
+
+def test_render_window_aggregate_over_with_by_rejected():
+    """Mixing `by` aggregate grouping with `over (...)` is a parse error."""
+    env = Environment()
+    with pytest.raises(Exception):
+        env.parse("""
+key x int;
+key y int;
+key z int;
+auto wsum <- sum(x) by y over (partition by y order by z);
+""")
+
+
+def test_render_window_aggregate_over_unmappable_aggregate_rejected():
+    """An aggregate with no window equivalent (array_agg) can't take `over`."""
+    env = Environment()
+    with pytest.raises(Exception):
+        env.parse("""
+key x int;
+key y int;
+key z int;
+auto wagg <- array_agg(x) over (partition by y order by z);
+""")
+
+
+def test_render_simple_case():
+    """`case x when 1 then ... when 2 then ... else ... end` exercises the
+    SIMPLE_CASE render branch."""
+    env = Environment()
+    _, parsed = env.parse("""
+key x int;
+auto y <- case x when 1 then 'a' when 2 then 'b' else 'c' end;
+""")
+    rendered = Renderer().to_string(parsed[-1])
+    assert "case x" in rendered, rendered
+    assert "when 1 then" in rendered, rendered
+    assert "when 2 then" in rendered, rendered
+    assert "else" in rendered, rendered
+    assert "end" in rendered, rendered
+
+
+def test_render_show_concepts():
+    env = Environment()
+    _, parsed = env.parse("key x int;\nshow concepts;")
+    rendered = Renderer().to_string(parsed[-1])
+    assert rendered == "show concepts;", rendered
+
+
+def test_render_show_select():
+    env = Environment()
+    _, parsed = env.parse("key x int;\nshow select x;")
+    rendered = Renderer().to_string(parsed[-1])
+    assert rendered.startswith("show "), rendered
+    assert rendered.endswith(";"), rendered
+    assert "select" in rendered
+
+
+def test_render_validate_all():
+    env = Environment()
+    _, parsed = env.parse("key x int;\nvalidate all;")
+    rendered = Renderer().to_string(parsed[-1])
+    assert rendered == "validate all;", rendered
+
+
+def test_render_validate_scoped():
+    env = Environment()
+    _, parsed = env.parse("key x int;\nvalidate concepts x;")
+    rendered = Renderer().to_string(parsed[-1])
+    assert rendered == "validate concepts x;", rendered
+
+
+def test_properties_block_trailing_description():
+    """A `# ...` on the line that closes a `properties (...)` block attaches
+    as the description of the first concept in the block."""
+    src = """key a int;
+key b int;
+properties <a, b> (
+    quantity int,
+); #block description
+"""
+    env = Environment.from_string(src)
+    assert env.concepts["quantity"].metadata.description == "block description"
 
 
 def test_render_enum_type():

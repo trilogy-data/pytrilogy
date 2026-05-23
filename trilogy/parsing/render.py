@@ -732,17 +732,19 @@ class Renderer:
                 for x in concept.keys
             )
             if len(concept.keys) == 1:
-                # Single-key form: parser sets namespace = key's namespace.
-                if next(iter(key_namespaces)) == concept_ns:
+                only_key_ns = next(iter(key_namespaces))
+                if only_key_ns == concept_ns:
+                    # IDENTIFIER form `key.name`: parser sets ns = key's ns.
                     key_prefix = f"{sorted_keys[0]}."
+                elif concept_ns == env_default_ns:
+                    # prop_ident form `<key>.name`: parser sets ns = env
+                    # default. Required when the key lives in an imported
+                    # namespace but the property belongs to the local file.
+                    key_prefix = f"<{sorted_keys[0]}>."
             else:
-                # Multi-key form: parser sets namespace = shared key ns when
-                # all keys share one, otherwise the env default.
-                if len(key_namespaces) == 1:
-                    inferred_ns = next(iter(key_namespaces))
-                else:
-                    inferred_ns = env_default_ns
-                if inferred_ns == concept_ns:
+                # Multi-key form has no IDENTIFIER spelling; parser always
+                # sets ns = env default for `<...>.name`.
+                if concept_ns == env_default_ns:
                     key_prefix = f"<{', '.join(sorted_keys)}>."
         # For derived concepts whose namespace is an import alias rather
         # than a real concept (e.g. ``import unified_sales as sales``),
@@ -884,9 +886,9 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: ValidateStatement):
-        targets = ",".join(arg.targets) if arg.targets else "*"
-        if arg.scope.value == ValidationScope.ALL:
+        if arg.scope == ValidationScope.ALL:
             return "validate all;"
+        targets = ",".join(arg.targets) if arg.targets else "*"
         return f"validate {arg.scope.value} {targets};"
 
     @to_string.register
