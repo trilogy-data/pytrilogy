@@ -16,6 +16,7 @@ from trilogy.core.enums import (
     Modifier,
     PersistMode,
     Purpose,
+    ShowCategory,
     ValidationScope,
 )
 from trilogy.core.models.author import (
@@ -79,6 +80,7 @@ from trilogy.core.statements.author import (
     RowsetDerivationStatement,
     SelectItem,
     SelectStatement,
+    ShowStatement,
     TypeDeclaration,
     ValidateStatement,
 )
@@ -119,13 +121,20 @@ def safe_address(address: str) -> str:
     return address
 
 
+DEFAULT_MAX_LINE_LENGTH = 100
+
+
 class Renderer:
 
     def __init__(
-        self, environment: Environment | None = None, indent_string: str = "    "
+        self,
+        environment: Environment | None = None,
+        indent_string: str = "    ",
+        max_line_length: int = DEFAULT_MAX_LINE_LENGTH,
     ):
         self.environment = environment
         self.indent_context = IndentationContext(indent_string=indent_string)
+        self.max_line_length = max_line_length
 
     @contextmanager
     def indented(self, levels: int = 1):
@@ -136,6 +145,74 @@ class Renderer:
             yield
         finally:
             self.indent_context = old_context
+
+    def _available_width(self, extra_prefix: str = "") -> int:
+        return (
+            self.max_line_length
+            - len(self.indent_context.current_indent)
+            - len(extra_prefix)
+        )
+
+    def _flatten_boolean(self, cond: "Conditional") -> tuple[list[Any], str]:
+        op = cond.operator.value
+        parts: list[Any] = []
+
+        def walk(c):
+            if isinstance(c, Conditional) and c.operator.value == op:
+                walk(c.left)
+                walk(c.right)
+            else:
+                parts.append(c)
+
+        walk(cond)
+        return parts, op
+
+    def _render_boolean(self, cond, extra_prefix: str = "") -> str:
+        """Render a boolean tree with optional line breaking.
+
+        Lines in the returned string carry NO base indent — the caller is
+        expected to prefix it via ``indent_lines`` (or place it at column 0).
+        Continuation lines and paren-interior lines carry ``extra_prefix``
+        and further inner indent so they align under the same base column.
+        """
+        # Strip outer parens; the WhereClause path strips already, but nested
+        # callers may pass a Parenthetical here.
+        while isinstance(cond, Parenthetical):
+            cond = cond.content
+
+        if not isinstance(cond, Conditional):
+            return self._render_expression(cond, extra_prefix)
+
+        parts, op = self._flatten_boolean(cond)
+        # Try single-line first
+        rendered_singles = [self.to_string(p) for p in parts]
+        single = f" {op} ".join(rendered_singles)
+        if "\n" not in single and len(single) <= self._available_width(extra_prefix):
+            return single
+
+        rendered: list[str] = []
+        for p in parts:
+            rendered.append(self._render_expression(p, extra_prefix))
+
+        lines = [rendered[0]]
+        for r in rendered[1:]:
+            lines.append(f"{op} {r}")
+        return ("\n" + extra_prefix).join(lines)
+
+    def _render_expression(self, expr, extra_prefix: str = "") -> str:
+        """Render an expression, breaking inside parens if needed."""
+        if isinstance(expr, Parenthetical):
+            inner_prefix = extra_prefix + self.indent_context.indent_string
+            content = expr.content
+            if isinstance(content, (Conditional, Parenthetical)):
+                inner = self._render_boolean(content, inner_prefix)
+            else:
+                inner = self.to_string(content)
+            single = f"({inner})"
+            if "\n" not in inner and len(single) <= self._available_width(extra_prefix):
+                return single
+            return f"(\n{inner_prefix}{inner}\n{extra_prefix})"
+        return self.to_string(expr)
 
     def indent_lines(self, text: str, extra_levels: int = 0) -> str:
         """Apply current indentation to all lines in text"""
@@ -156,22 +233,47 @@ class Renderer:
 
         return "\n".join(indented_lines)
 
+    # Statement types that pack tightly when adjacent to the same type.
+    # Anything else (or a type switch) gets a blank line between statements.
+    _TIGHT_TYPES: tuple = (
+        ImportStatement,
+        ConceptDeclarationStatement,
+        ConceptDerivationStatement,
+        PropertiesDeclarationStatement,
+        TypeDeclaration,
+        MergeStatementV2,
+        KeyMergeStatement,
+        FunctionDeclaration,
+    )
+
+    def _statement_separator(self, prev, curr) -> str:
+        if prev is None:
+            return ""
+        # A comment binds tightly to the statement that follows it.
+        if isinstance(prev, Comment):
+            return "\n"
+        # A comment introducing a new section gets a blank line before it.
+        if isinstance(curr, Comment):
+            return "\n\n"
+        # Same tight type: pack with a single newline.
+        if (
+            isinstance(prev, self._TIGHT_TYPES)
+            and isinstance(curr, self._TIGHT_TYPES)
+            and type(prev) is type(curr)
+        ):
+            return "\n"
+        return "\n\n"
+
     def render_statement_string(self, list_of_statements: list[Any]) -> str:
-        new = []
-        last_statement_type = None
+        out: list[str] = []
+        prev = None
         for stmt in list_of_statements:
-            stmt_type = type(stmt)
-            if last_statement_type is None:
-                pass
-            elif last_statement_type == Comment:
-                new.append("\n")
-            elif stmt_type != last_statement_type:
-                new.append("\n\n")
-            else:
-                new.append("\n")
-            new.append(self.to_string(stmt))
-            last_statement_type = stmt_type
-        return "".join(new)
+            sep = self._statement_separator(prev, stmt)
+            if sep:
+                out.append(sep)
+            out.append(self.to_string(stmt))
+            prev = stmt
+        return "".join(out)
 
     @singledispatchmethod
     def to_string(self, arg):
@@ -304,7 +406,14 @@ class Renderer:
 {self.to_string(arg.grain) if arg.grain.components else ''}{non_partial}
 {self.to_string(arg.address)}"""
         if arg.where:
-            base += f"\nwhere {self.to_string(arg.where)}"
+            where_text = self.to_string(arg.where)
+            if "\n" in where_text:
+                first, rest = where_text.split("\n", 1)
+                rest = "\n".join(
+                    f"    {line}" if line else line for line in rest.split("\n")
+                )
+                where_text = f"{first}\n{rest}"
+            base += f"\nwhere {where_text}"
 
         if arg.incremental_by:
             base += f"\nincremental by {','.join(self.to_string(x) for x in arg.incremental_by)}"
@@ -584,6 +693,16 @@ class Renderer:
         return f"{final}{self.to_string(arg.content)}"
 
     @to_string.register
+    def _(self, arg: ShowStatement):
+        content = arg.content
+        if isinstance(content, ShowCategory):
+            return f"show {content.value};"
+        body = self.to_string(content)
+        if body.endswith(";"):
+            body = body[:-1]
+        return f"show {body};"
+
+    @to_string.register
     def _(self, arg: ValidateStatement):
         targets = ",".join(arg.targets) if arg.targets else "*"
         if arg.scope.value == ValidationScope.ALL:
@@ -642,16 +761,17 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: AlignClause):
+        # Grammar separates items with `and`, not commas.
+        joined = "\nand ".join(self.to_string(c) for c in arg.items)
         with self.indented():
-            align_items = [self.indent_lines(self.to_string(c)) for c in arg.items]
-        return "\nALIGN\n" + ",\n".join(align_items)
+            joined = self.indent_lines(joined)
+        return "\nALIGN\n" + joined
 
     @to_string.register
     def _(self, arg: AlignItem):
         prefix = "--" if arg.hidden else ""
-        return (
-            f"{prefix}{arg.alias}:{','.join([self.to_string(c) for c in arg.concepts])}"
-        )
+        concepts = ", ".join(self.to_string(c) for c in arg.concepts)
+        return f"{prefix}{arg.alias}: {concepts}"
 
     @to_string.register
     def _(self, arg: OrderBy):
@@ -665,14 +785,16 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "WhereClause"):
-        base = f"{self.to_string(arg.conditional)}"
-        if base[0] == "(" and base[-1] == ")":
+        base = self._render_boolean(arg.conditional)
+        # Strip outer parens only when we still have a single-line result —
+        # multi-line breaks already unwrap the outer Parenthetical layer.
+        if "\n" not in base and base.startswith("(") and base.endswith(")"):
             return base[1:-1]
         return base
 
     @to_string.register
     def _(self, arg: "Conditional"):
-        return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
+        return self._render_boolean(arg)
 
     @to_string.register
     def _(self, arg: "SubselectComparison"):
