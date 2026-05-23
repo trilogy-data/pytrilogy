@@ -245,7 +245,12 @@
     // SQL-like navigation: lag(field) or lag(field, 2) over (...)
     window_item_sql_navigation: WINDOW_TYPE_SQL_NAVIGATION expr ("," int_lit)? ")" window_sql_over?
 
-    window_item: window_item_sql_numbering | window_item_sql_navigation | window_item_legacy
+    // SQL-like aggregate-as-window: sum(x) over (partition by y order by z)
+    // Aggregate body is parsed via the existing aggregate_functions rule,
+    // then the trailing window_sql_over wraps it as a window expression.
+    window_item_sql_aggregate: aggregate_functions window_sql_over
+
+    window_item: window_item_sql_aggregate | window_item_sql_numbering | window_item_sql_navigation | window_item_legacy
     
     select_hide_modifier: "--"
     select_partial_modifier: "~"

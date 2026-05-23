@@ -929,15 +929,8 @@ class Renderer:
         lines = "\n#".join(arg.text.split("\n"))
         return f"{lines}"
 
-    # Aggregate window types only have a legacy parse form — the SQL grammar
-    # rules ``window_item_sql_navigation`` only recognise ``lag``/``lead``,
-    # so ``sum(x) over (...)`` cannot be reparsed in a derivation context.
-    _LEGACY_ONLY_WINDOW_TYPES = frozenset({"sum", "avg", "max", "min", "count"})
-
     @to_string.register
     def _(self, arg: "NumberingWindowItem"):
-        # Numbering items (rank/row_number/dense_rank) — SQL form parses
-        # cleanly because ``WINDOW_TYPE_SQL_NUMBERING`` covers them.
         over = ",".join(self.to_string(c) for c in arg.over)
         order = ",".join(self.to_string(c) for c in arg.order_by)
         args = ",".join(self.to_string(a) for a in arg.arguments)
@@ -952,34 +945,21 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "NavigationWindowItem"):
-        type_name = arg.type.value
-        content_str = self.to_string(arg.content)
-        over_keys = [self.to_string(c) for c in arg.over]
-        order_keys = [self.to_string(c) for c in arg.order_by]
+        over = ",".join(self.to_string(c) for c in arg.over)
+        order = ",".join(self.to_string(c) for c in arg.order_by)
 
-        if type_name in self._LEGACY_ONLY_WINDOW_TYPES:
-            # ``sum X over Y, Z order by W`` — grammar's legacy-only path.
-            # Offset isn't applicable here (aggregates have no offset).
-            over_clause = (
-                f" over {', '.join(over_keys)}" if over_keys else ""
-            )
-            order_clause = (
-                f" order by {', '.join(order_keys)}" if order_keys else ""
-            )
-            return f"{type_name} {content_str}{over_clause}{order_clause}"
-
-        # lag/lead — SQL form ``lag(x, n) over (partition by ... order by ...)``.
         if arg.offset is not None:
-            inner = f"{content_str},{arg.offset}"
+            content = f"{self.to_string(arg.content)},{arg.offset}"
         else:
-            inner = content_str
+            content = self.to_string(arg.content)
+
         over_parts = []
-        if over_keys:
-            over_parts.append(f"partition by {','.join(over_keys)}")
-        if order_keys:
-            over_parts.append(f"order by {','.join(order_keys)}")
+        if over:
+            over_parts.append(f"partition by {over}")
+        if order:
+            over_parts.append(f"order by {order}")
         over_clause = f" over ({' '.join(over_parts)})" if over_parts else ""
-        return f"{type_name}({inner}){over_clause}"
+        return f"{arg.type.value}({content}){over_clause}"
 
     @to_string.register
     def _(self, arg: "FilterItem"):

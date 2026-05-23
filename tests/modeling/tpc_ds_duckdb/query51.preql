@@ -10,8 +10,8 @@ metric store_has_row <- max(CASE
     WHEN sales.sales_channel = 'STORE' THEN 1
     ELSE 0
 END) by sales.item.id, sales.date.date;
-property <sales.date.date, sales.item.id>.web_cume <- sum web_daily over sales.item.id order by sales.date.date asc;
-property <sales.date.date, sales.item.id>.store_cume <- sum store_daily over sales.item.id order by sales.date.date asc;
+property <sales.date.date, sales.item.id>.web_cume <- sum(web_daily) over (partition by sales.item.id order by sales.date.date asc);
+property <sales.date.date, sales.item.id>.store_cume <- sum(store_daily) over (partition by sales.item.id order by sales.date.date asc);
 property <sales.date.date, sales.item.id>.web_sales_visible <- CASE
     WHEN web_has_row = 1 THEN web_cume
     ELSE null
