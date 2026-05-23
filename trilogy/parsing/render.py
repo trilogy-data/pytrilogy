@@ -218,6 +218,38 @@ class Renderer:
         parts.append(")")
         return self._pretty(parts, extra_prefix=extra_prefix)
 
+    def _render_window_tail(self, head: str, over, order_by) -> str:
+        """Append ``over (partition by ... order by ...)`` to a window call.
+
+        Breaks (in priority order): the ``over`` boundary (10), the
+        partition/order boundary (9), inter-column commas (7).
+        """
+        if not over and not order_by:
+            return head
+        over_strs = [self.to_string(c) for c in over]
+        order_strs = [self.to_string(c) for c in order_by]
+        clause_parts: list[DocPart] = ["("]
+        if over_strs:
+            clause_parts.append("partition by ")
+            for i, s in enumerate(over_strs):
+                clause_parts.append(s)
+                if i < len(over_strs) - 1:
+                    clause_parts.append(",")
+                    clause_parts.append(Break(priority=7, indent=2, flat=" "))
+        if order_strs:
+            if over_strs:
+                clause_parts.append(Break(priority=9, indent=1, flat=" "))
+            clause_parts.append("order by ")
+            for i, s in enumerate(order_strs):
+                clause_parts.append(s)
+                if i < len(order_strs) - 1:
+                    clause_parts.append(",")
+                    clause_parts.append(Break(priority=7, indent=2, flat=" "))
+        clause_parts.append(")")
+        parts: list[DocPart] = [head, Break(priority=10, indent=1, flat=" "), "over "]
+        parts.extend(clause_parts)
+        return self._pretty(parts)
+
     def _flatten_boolean(self, cond: "Conditional") -> tuple[list[Any], str]:
         op = cond.operator.value
         parts: list[Any] = []
@@ -732,7 +764,14 @@ class Renderer:
             else:
                 output = f"{purpose_kw} {namespace}{concept.name} {self.to_string(concept.datatype)};"
         else:
-            if key_prefix:
+            # `auto` lets the parser re-infer purpose and keys from the
+            # lineage — far more readable than an explicit multi-key
+            # `<k1, k2, ...>.name` prefix. Single-key `key.name` form
+            # stays since it's already concise.
+            use_auto = key_prefix.startswith("<")
+            if use_auto:
+                output = f"auto {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
+            elif key_prefix:
                 output = f"{purpose_kw} {key_prefix}{concept.name} <- {self.to_string(concept.lineage)};"
             else:
                 output = f"{purpose_kw} {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
@@ -968,35 +1007,17 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "NumberingWindowItem"):
-        over = ",".join(self.to_string(c) for c in arg.over)
-        order = ",".join(self.to_string(c) for c in arg.order_by)
-        args = ",".join(self.to_string(a) for a in arg.arguments)
-
-        over_parts = []
-        if over:
-            over_parts.append(f"partition by {over}")
-        if order:
-            over_parts.append(f"order by {order}")
-        over_clause = f" over ({' '.join(over_parts)})" if over_parts else ""
-        return f"{arg.type.value}({args}){over_clause}"
+        args = [self.to_string(a) for a in arg.arguments]
+        head = self._render_call(arg.type.value, args)
+        return self._render_window_tail(head, arg.over, arg.order_by)
 
     @to_string.register
     def _(self, arg: "NavigationWindowItem"):
-        over = ",".join(self.to_string(c) for c in arg.over)
-        order = ",".join(self.to_string(c) for c in arg.order_by)
-
+        call_args = [self.to_string(arg.content)]
         if arg.offset is not None:
-            content = f"{self.to_string(arg.content)},{arg.offset}"
-        else:
-            content = self.to_string(arg.content)
-
-        over_parts = []
-        if over:
-            over_parts.append(f"partition by {over}")
-        if order:
-            over_parts.append(f"order by {order}")
-        over_clause = f" over ({' '.join(over_parts)})" if over_parts else ""
-        return f"{arg.type.value}({content}){over_clause}"
+            call_args.append(str(arg.offset))
+        head = self._render_call(arg.type.value, call_args)
+        return self._render_window_tail(head, arg.over, arg.order_by)
 
     @to_string.register
     def _(self, arg: "FilterItem"):

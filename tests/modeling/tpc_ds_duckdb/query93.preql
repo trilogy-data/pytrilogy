@@ -9,8 +9,9 @@ WHERE
     ss.return_reason.desc = 'reason 28'
 SELECT
     ss.customer.id as customer_sk,
-    sum(act_sales) by ss.customer.id -> sumsales,
+    sum(act_sales) by ss.customer.id as sumsales,
 ORDER BY
     sumsales asc nulls first,
     customer_sk asc nulls first
-LIMIT 100;
+LIMIT 100
+;

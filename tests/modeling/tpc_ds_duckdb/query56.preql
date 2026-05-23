@@ -1,15 +1,17 @@
 import unified_sales as sales;
 
-auto color_ids <- sales.item.name ? sales.item.color in ('slate', 'blanched', 'burnished');
+property color_ids <- sales.item.name ? sales.item.color in ('slate', 'blanched', 'burnished');
 
-where sales.item.name in color_ids
-  and sales.date.year = 2001
-  and sales.date.month_of_year = 2
-  and sales.bill_address.gmt_offset = -5
+WHERE
+    sales.item.name in color_ids
+    and sales.date.year = 2001
+    and sales.date.month_of_year = 2
+    and sales.bill_address.gmt_offset = -5
 SELECT
     sales.item.name,
-    sum(sales.ext_sales_price) -> total_sales
-order by
-    total_sales asc NULLS first,
-    sales.item.name asc NULLS first
-limit 100;
+    sum(sales.ext_sales_price) as total_sales,
+ORDER BY
+    total_sales asc nulls first,
+    sales.item.name asc nulls first
+LIMIT 100
+;

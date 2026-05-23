@@ -2,6 +2,7 @@ import date as date;
 
 key id int;
 unique property id.text_id string;
+
 properties id (
     name string,
     employees int,

@@ -2,50 +2,49 @@ import unified_sales as sales;
 
 # Composite key for (brand_id, class_id, category_id) tuples — encoded so a
 # single-column `in` filter can carry membership downstream.
-auto tuple_key <- concat(
-    cast(sales.item.brand_id as string), '|',
-    cast(sales.item.class_id as string), '|',
-    cast(sales.item.category_id as string)
+property tuple_key <- concat(
+    sales.item.brand_id::string,
+    '|',
+    sales.item.class_id::string,
+    '|',
+    sales.item.category_id::string
 );
-
-auto cross_channel_count <- count_distinct(sales.sales_channel) by tuple_key;
+metric fact_row_one <- count(sales.order_id) by sales.sales_channel, sales.order_id, sales.item.id;
 
 # cross_tuples: tuples sold in all 3 channels during 1999-2001. Equivalent to
 # the reference's 3-way INTERSECT on (i_brand_id, i_class_id, i_category_id)
 # across store/catalog/web sales.
-with cross_tuples as
-WHERE
+rowset cross_tuples <- WHERE
     sales.date.year between 1999 and 2001
 SELECT
     tuple_key as ci_tuple_key,
     --cross_channel_count,
 HAVING
     cross_channel_count = 3
+
 ;
 
 # avg_sales: scalar avg(quantity * list_price) over all 3 channels for 1999-2001.
-with avg_sales as
-WHERE
+rowset avg_sales <- WHERE
     sales.date.year between 1999 and 2001
 SELECT
     avg(sales.quantity * sales.list_price) as average_sales,
 ;
 
 # One per fact row (unified_sales grain is (sales_channel, order_id, item.id)).
-auto fact_row_one <- count(sales.order_id) by sales.sales_channel, sales.order_id, sales.item.id;
-
-# Map unified_sales' uppercase channel codes to the reference's lowercase labels.
-auto channel_label <- CASE
+property channel_label <- CASE
     WHEN sales.sales_channel = 'STORE' THEN 'store'
     WHEN sales.sales_channel = 'CATALOG' THEN 'catalog'
     WHEN sales.sales_channel = 'WEB' THEN 'web'
     ELSE null
 END;
 
+# Map unified_sales' uppercase channel codes to the reference's lowercase labels.
+metric cross_channel_count <- count_distinct(sales.sales_channel) by tuple_key;
+
 # Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items in
 # cross_tuples, HAVING sum(quantity*list_price) > avg_sales.
-with l0_filtered as
-WHERE
+rowset l0_filtered <- WHERE
     sales.date.year = 2001
     and sales.date.month_of_year = 11
     and tuple_key in cross_tuples.ci_tuple_key
@@ -59,6 +58,7 @@ SELECT
     --avg_sales.average_sales,
 HAVING
     bucket_sum_l0 > avg_sales.average_sales
+
 ;
 
 # Final ROLLUP(channel, brand_id, class_id, category_id) over the per-channel L0.
@@ -67,21 +67,14 @@ SELECT
     l0_filtered.brand_l0 as i_brand_id,
     l0_filtered.class_l0 as i_class_id,
     l0_filtered.category_l0 as i_category_id,
-    sum(l0_filtered.bucket_sum_l0) by rollup
-        l0_filtered.channel_l0,
-        l0_filtered.brand_l0,
-        l0_filtered.class_l0,
-        l0_filtered.category_l0
-        as sum_sales,
-    sum(l0_filtered.bucket_count_l0) by rollup
-        l0_filtered.channel_l0,
-        l0_filtered.brand_l0,
-        l0_filtered.class_l0,
-        l0_filtered.category_l0
-        as sum_number_sales,
+    sum(l0_filtered.bucket_sum_l0)
+            by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 as sum_sales,
+    sum(l0_filtered.bucket_count_l0)
+            by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 as sum_number_sales,
 ORDER BY
     channel asc nulls first,
     i_brand_id asc nulls first,
     i_class_id asc nulls first,
     i_category_id asc nulls first
-LIMIT 100;
+LIMIT 100
+;

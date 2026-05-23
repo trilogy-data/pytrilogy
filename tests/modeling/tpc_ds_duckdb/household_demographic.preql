@@ -1,13 +1,13 @@
 import income_band as income_band;
 
 key id int;
+
 properties id (
     income_band_id int,
     buy_potential string,
     dependent_count int,
     vehicle_count int,
 );
-
 
 datasource household_demographics (
     HD_DEMO_SK: id,
