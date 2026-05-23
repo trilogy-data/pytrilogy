@@ -1055,9 +1055,10 @@ class Renderer:
             path = path.rsplit(".", 1)[0]
         if path.startswith("."):
             path = path[1:]
+        prefix = "." * arg.leading_dots
         if arg.alias == DEFAULT_NAMESPACE or not arg.alias:
-            return f"import {path};"
-        return f"import {path} as {arg.alias};"
+            return f"import {prefix}{path};"
+        return f"import {prefix}{path} as {arg.alias};"
 
     @to_string.register
     def _(self, arg: "Import"):
@@ -1157,17 +1158,22 @@ class Renderer:
     @to_string.register
     def _(self, arg: AggregateWrapper):
         func_str = self.to_string(arg.function)
-        if not arg.by:
+        grouping = arg.grouping.value
+        if not arg.by and grouping == "standard":
             return func_str
-        if arg.grouping.value == "grouping_sets":
+        if grouping == "grouping_sets":
             sets = []
             for grouping_set in arg.grouping_sets:
                 sets.append(f"({', '.join([self.to_string(x) for x in grouping_set])})")
             tail = "by grouping sets " + ", ".join(sets)
+        elif not arg.by:
+            # Empty form: ``BY ROLLUP()`` rolls up over the select's own grain.
+            # Grammar only allows the empty parens for ROLLUP, but we mirror
+            # whichever grouping keyword the AST carries.
+            kw = {"rollup": "rollup", "cube": "cube"}.get(grouping, "")
+            tail = f"by {kw}()" if kw else "by ()"
         else:
-            kw = {"rollup": "by rollup ", "cube": "by cube "}.get(
-                arg.grouping.value, "by "
-            )
+            kw = {"rollup": "by rollup ", "cube": "by cube "}.get(grouping, "by ")
             by = ", ".join([self.to_string(x) for x in arg.by])
             tail = f"{kw}{by}"
         # The ``by`` boundary is the most natural break; give it higher

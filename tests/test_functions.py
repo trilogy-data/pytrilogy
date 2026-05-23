@@ -481,9 +481,9 @@ def test_simple_case_renders_round_trip(test_environment):
     renderer = Renderer()
     rendered = renderer.to_string(concept.lineage)
     # Should render back as simple CASE, not expanded searched CASE
-    assert "CASE category_name" in rendered
-    assert "WHEN 'Seafood'" in rendered
-    assert "WHEN 'Beverages'" in rendered
+    assert "case category_name" in rendered
+    assert "when 'Seafood'" in rendered
+    assert "when 'Beverages'" in rendered
 
 
 def test_split_and_index_function(test_environment):

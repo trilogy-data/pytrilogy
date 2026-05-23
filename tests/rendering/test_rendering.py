@@ -647,6 +647,71 @@ def test_render_import():
         assert test == "import path.to.file;"
 
 
+def test_render_import_preserves_leading_dots():
+    """``import ..store_sales as ss`` must round-trip; only ImportStatement
+    carries the leading_dots count (Import is the import-record, not a stmt)."""
+    base = Path("store_sales.preql")
+    out = Renderer().to_string(
+        ImportStatement(
+            alias="ss",
+            path=str(PurePosixPath(base)),
+            input_path="store_sales",
+            leading_dots=2,
+        )
+    )
+    assert out == "import ..store_sales as ss;"
+
+    out_one_dot = Renderer().to_string(
+        ImportStatement(
+            alias="ss",
+            path=str(PurePosixPath(base)),
+            input_path="store_sales",
+            leading_dots=1,
+        )
+    )
+    assert out_one_dot == "import .store_sales as ss;"
+
+
+def test_parse_render_roundtrip_relative_import(tmp_path):
+    """End-to-end: parser captures leading dots and renderer emits them."""
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    (tmp_path / "store_sales.preql").write_text("key id int;")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    env = Environment(working_path=sub)
+    text = "import ..store_sales as ss;"
+    _, parsed = parse_text(text, env)
+    assert parsed[0].leading_dots == 2
+    rendered = Renderer().to_string(parsed[0])
+    assert rendered == text
+
+
+def test_parse_render_roundtrip_aggregate_rollup_empty():
+    """``sum(x) by rollup() as sx`` must round-trip — the empty rollup form
+    is not the same as a plain ``sum(x)`` and the formatter must not drop it.
+    Regression for q67 where formatter dropped/added rollup inconsistently."""
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    env = Environment()
+    text = "key x int;\nselect sum(x) by rollup() as sx;"
+    _, parsed = parse_text(text, env)
+    rendered = str(parsed[-1])
+    assert "sum(x) by rollup() as sx" in rendered, rendered
+
+
+def test_parse_render_roundtrip_aggregate_no_grouping():
+    """Plain ``sum(x)`` must NOT gain a ``by rollup()`` on render."""
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    env = Environment()
+    text = "key x int;\nselect sum(x) as sx;"
+    _, parsed = parse_text(text, env)
+    rendered = str(parsed[-1])
+    assert "by rollup" not in rendered, rendered
+    assert "sum(x) as sx" in rendered, rendered
+
+
 def test_render_datasource():
     user_id = Concept(
         name="user_id",

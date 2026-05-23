@@ -2327,9 +2327,11 @@ class FunctionCallWrapper(
             ),
             name=self.name,
             args=[
-                x.with_reference_replacement(replacements)
-                if isinstance(x, Mergeable)
-                else x
+                (
+                    x.with_reference_replacement(replacements)
+                    if isinstance(x, Mergeable)
+                    else x
+                )
                 for x in self.args
             ],
         )
