@@ -1,45 +1,49 @@
-# Trilogy failure analysis — 20260523-034814
+# Trilogy failure analysis — 20260523-152402
 
-- Run `20260523-034814` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.1
-- `trilogy` calls: 123 | failed: 23 (19%)
+- Run `20260523-152402` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.01
+- `trilogy` calls: 67 | failed: 14 (21%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 11 | 48% |
-| `syntax-parse` | 9 | 39% |
-| `cli-misuse` | 2 | 9% |
-| `syntax-missing-alias` | 1 | 4% |
+| `syntax-parse` | 10 | 71% |
+| `other` | 2 | 14% |
+| `join-resolution` | 2 | 14% |
 
 ## Detail
 
+### `syntax-parse`
+
+- `trilogy run query40.preql`
+  - --> 19:117 | 19 | sum((catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0)) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARIS…
+- `trilogy run query40.preql`
+  - --> 19:117 | 19 | sum((catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0)) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARIS…
+- `trilogy run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy run query40.preql`
+  - --> 19:117 | 19 | sum((catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0)) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARIS…
+- `trilogy run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy --debug run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy run query62.preql`
+  - --> 5:40 | 5 | web_sales.warehouse.warehouse_name[:20] as w_name, | ^--- | = expected INT_LITERAL_PART or MULTILINE_STRING Location: ...ales.warehouse.warehouse_name[ ??? :20] as w_name, web_sales.... --- stderr ---
+- `trilogy run --import raw/inventory:inventory select inventory.date_dim.date, count(inventory.item.item_sk) from inventory whe…`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...count(inventory.item.item_sk) ??? from inventory where inventory... --- stderr ---
+
 ### `other`
 
-- `trilogy run --debug raw/inventory.preql`
-  - 'raw/inventory.preql' is not a valid Dialects
-- `trilogy file list raw/.`
-  - exit_code: 1 --- stdout --- No such path: raw/. --- stderr ---
-- `trilogy file list raw`
-  - exit_code: 1 --- stdout --- No such path: raw --- stderr ---
-- `trilogy file list raw/`
-  - exit_code: 1 --- stdout --- No such path: raw/ --- stderr ---
-- `trilogy run query26.preql`
-  - Value 'Y' is not valid for enum field 'catalog_sales.promotion.channel_email'. Allowed values: 'N'. --- stderr ---
-- `trilogy run query26.preql`
-  - Value 'Y' is not valid for enum field 'catalog_sales.promotion.channel_email'. Allowed values: 'N'. --- stderr ---
-- `trilogy run --debug query26.preql`
-  - 'query26.preql' is not a valid Dialects
-- `trilogy run query26.preql duckdb`
-  - Value 'Y' is not valid for enum field 'catalog_sales.promotion.channel_email'. Allowed values: 'N'. --- stderr ---
-- `trilogy run --import raw/catalog_sales:catalog_sales select catalog_sales.promotion.channel_email where catalog_sales.promoti…`
-  - Value 'Y' is not valid for enum field 'catalog_sales.promotion.channel_email'. Allowed values: 'N'. --- stderr ---
-- `trilogy run --import raw/catalog_sales:catalog_sales select catalog_sales.promotion.channel_event where catalog_sales.promoti…`
-  - Value 'Y' is not valid for enum field 'catalog_sales.promotion.channel_event'. Allowed values: 'N'. --- stderr ---
+- `trilogy `
+  - Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 45 (char 44). Re-issue the call with valid JSON arguments.
 - `trilogy run query42.preql`
   - Cannot order by column store_sales.date_dim.year that is not in the output projection; line: 3 --- stderr ---
 
-### `syntax-parse`
+### `join-resolution`
 
 - `trilogy run --import raw/catalog_sales:catalog_sales select catalog_sales.promotion.channel_email, catalog_sales.promotion.ch…`
   - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...sales.promotion.channel_event ??? from catalog_sales limit 10; --- stderr ---

@@ -22,6 +22,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+import analyze_run
 import db
 import monitor
 import prompts
@@ -497,6 +498,24 @@ def main() -> int:
     (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     markdown = render_markdown(report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+
+    try:
+        _, events = analyze_run.load_run(run_dir)
+        dashboard = analyze_run.render(
+            report, events, analyze_run.CHARTS_DIR / "dashboard.png"
+        )
+        failures = analyze_run.collect_failures(events)
+        failures_md = analyze_run.write_failures_report(
+            run_dir,
+            report,
+            failures,
+            analyze_run.CHARTS_DIR / "trilogy_failures.md",
+        )
+        print(f"  wrote {dashboard}  ({len(failures)} trilogy failures -> {failures_md})")
+    except Exception as exc:  # matplotlib missing, etc. — don't fail the eval
+        print(
+            f"  analyze_run skipped: {type(exc).__name__}: {exc}", file=sys.stderr
+        )
 
     print(f"[5/5] Done. Artifacts in {run_dir}\n")
     print(markdown)
