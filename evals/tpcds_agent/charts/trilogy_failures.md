@@ -18,6 +18,29 @@
 
 ## Detail
 
+### `syntax-parse`
+
+- `trilogy run query40.preql`
+  - --> 19:117 | 19 | sum((catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0)) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARIS…
+- `trilogy run query40.preql`
+  - --> 19:117 | 19 | sum((catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0)) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARIS…
+- `trilogy run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy run query40.preql`
+  - --> 19:117 | 19 | sum((catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0)) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARIS…
+- `trilogy run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy --debug run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy run query40.preql`
+  - --> 19:115 | 19 | sum(catalog_sales.ext_sales_price - coalesce(catalog_returns.refunded_cash, 0) ? catalog_sales.sold_date.date | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON…
+- `trilogy run query62.preql`
+  - --> 5:40 | 5 | web_sales.warehouse.warehouse_name[:20] as w_name, | ^--- | = expected INT_LITERAL_PART or MULTILINE_STRING Location: ...ales.warehouse.warehouse_name[ ??? :20] as w_name, web_sales.... --- stderr ---
+- `trilogy run --import raw/inventory:inventory select inventory.date_dim.date, count(inventory.item.item_sk) from inventory whe…`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...count(inventory.item.item_sk) ??? from inventory where inventory... --- stderr ---
+
 ### `other`
 
 - `trilogy run query01.preql`
