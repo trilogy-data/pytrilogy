@@ -1,9 +1,10 @@
-key id int;
 
+key id int;
 properties id (
     date_string string,
     _date_string string,
     date date,
+    # _year_string string,
     year int,
     day_of_week int,
     day_of_month int?,
@@ -16,11 +17,12 @@ properties id (
     month_seq int,
 );
 
+
 datasource date (
     D_DATE_SK: id,
     D_DATE_ID: date_string,
     D_DATE: _date_string,
-    _date_string::date: date,
+    cast(_date_string as date): date,
     D_DOW: day_of_week,
     D_DOM: day_of_month,
     D_DAY_NAME: day_name,
@@ -29,7 +31,7 @@ datasource date (
     D_MONTH_SEQ: month_seq,
     D_QOY: quarter,
     D_QUARTER_NAME: quarter_name,
-    D_YEAR: year,
+    D_YEAR: year
 )
 grain (id)
 address memory.date_dim;

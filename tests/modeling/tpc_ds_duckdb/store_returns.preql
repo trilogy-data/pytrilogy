@@ -6,9 +6,10 @@ import time as time;
 import customer as customer;
 import customer_demographic as customer_demographic;
 
-property <item.id, store_sales.ticket_number>.return_amount float;
 
-datasource store_returns (
+property <store_sales.ticket_number, item.id>.return_amount float;
+
+datasource store_returns(
     SR_RETURNED_DATE_SK: return_date.id,
     SR_RETURN_TIME_SK: time.id,
     SR_ITEM_SK: item.id,
@@ -18,5 +19,5 @@ datasource store_returns (
     SR_TICKET_NUMBER: store_sales.ticket_number,
     SR_STORE_SK: store.id,
 )
-grain (item.id, store_sales.ticket_number)
+grain (store_sales.ticket_number, item.id)
 address memory.store_returns;

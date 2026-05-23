@@ -1,18 +1,25 @@
 import store_sales as ss;
 
-rowset q36_rolled <- WHERE
+# Single ROLLUP(category, class). All rollup aggregates AND grouping/CASE
+# derivations are computed INSIDE the rowset SELECT (with the underlying sums
+# and grouping bits hidden via `--`). Exposing only the derived
+# `gross_margin`/`lochierarchy`/`partition_cat` keeps the planner's source-
+# resolution from splitting the two sums across separate CTEs.
+#
+# We use real `grouping()` here (not the rollup-NULL-pattern trick from q70)
+# because some items in TPC-DS have NULL category/class, so a NULL in the
+# rollup output is ambiguous between "data NULL" and "rolled up".
+with q36_rolled as
+WHERE
     ss.date.year = 2001 and ss.store.state = 'TN'
 SELECT
     --sum(ss.net_profit) by rollup ss.item.category, ss.item.class as profit_sum,
     --sum(ss.ext_sales_price) by rollup ss.item.category, ss.item.class as sales_sum,
     --grouping(ss.item.category) by rollup ss.item.category, ss.item.class as g_cat,
     --grouping(ss.item.class) by rollup ss.item.category, ss.item.class as g_class,
-    profit_sum::numeric(15,4) / sales_sum::numeric(15,4) as gross_margin,
+    cast(profit_sum as numeric(15,4)) / cast(sales_sum as numeric(15,4)) as gross_margin,
     g_cat + g_class as lochierarchy,
-    CASE
-            WHEN g_class = 0 THEN ss.item.category
-            ELSE null
-        END as partition_cat,
+    CASE WHEN g_class = 0 THEN ss.item.category ELSE null END as partition_cat,
     ss.item.category as r_category,
     ss.item.class as r_class,
 ;
@@ -22,13 +29,12 @@ SELECT
     q36_rolled.r_category as i_category,
     q36_rolled.r_class as i_class,
     q36_rolled.lochierarchy,
-    rank(q36_rolled.r_class,q36_rolled.r_category) over (partition by q36_rolled.lochierarchy,q36_rolled.partition_cat order by q36_rolled.gross_margin asc) as rank_within_parent,
+    rank(q36_rolled.r_class, q36_rolled.r_category) over (
+        partition by q36_rolled.lochierarchy, q36_rolled.partition_cat
+        order by q36_rolled.gross_margin asc
+    ) as rank_within_parent,
 ORDER BY
     q36_rolled.lochierarchy desc nulls first,
-    CASE
-            WHEN q36_rolled.lochierarchy = 0 THEN i_category
-            ELSE null
-        END asc nulls first,
+    CASE WHEN q36_rolled.lochierarchy = 0 THEN i_category ELSE null END asc nulls first,
     rank_within_parent asc nulls first
-LIMIT 100
-;
+LIMIT 100;

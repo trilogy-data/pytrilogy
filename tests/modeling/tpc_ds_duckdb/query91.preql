@@ -4,14 +4,8 @@ WHERE
     cr.date.year = 1998
     and cr.date.month_of_year = 11
     and (
-        (
-            cr.customer.demographics.marital_status = 'M'
-            and cr.customer.demographics.education_status = 'Unknown'
-        )
-        or (
-            cr.customer.demographics.marital_status = 'W'
-            and cr.customer.demographics.education_status = 'Advanced Degree'
-        )
+        (cr.customer.demographics.marital_status = 'M' and cr.customer.demographics.education_status = 'Unknown')
+        or (cr.customer.demographics.marital_status = 'W' and cr.customer.demographics.education_status = 'Advanced Degree')
     )
     and cr.customer.household_demographic.buy_potential like 'Unknown%'
     and cr.customer.address.gmt_offset = -7
@@ -19,8 +13,7 @@ SELECT
     cr.call_center.text_id as call_center,
     cr.call_center.name as call_center_name,
     cr.call_center.manager as manager,
-    sum(cr.net_loss)
-            by cr.call_center.text_id, cr.call_center.name, cr.call_center.manager, cr.customer.demographics.marital_status, cr.customer.demographics.education_status as returns_loss,
+    sum(cr.net_loss) by cr.call_center.text_id, cr.call_center.name, cr.call_center.manager, cr.customer.demographics.marital_status, cr.customer.demographics.education_status -> returns_loss,
 ORDER BY
     returns_loss desc nulls first
 ;

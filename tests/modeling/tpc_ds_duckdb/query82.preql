@@ -1,7 +1,7 @@
 import inventory as inventory;
 import store_sales as store_sales;
 
-MERGE inventory.item.id into ~store_sales.item.id;
+merge inventory.item.id into ~store_sales.item.id;
 
 WHERE
     inventory.item.current_price between 62 and 92
@@ -12,8 +12,7 @@ WHERE
 SELECT
     inventory.item.name,
     inventory.item.desc,
-    inventory.item.current_price,
+    inventory.item.current_price
 ORDER BY
     inventory.item.name asc
-LIMIT 100
-;
+LIMIT 100;

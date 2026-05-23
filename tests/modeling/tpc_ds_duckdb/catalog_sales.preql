@@ -16,10 +16,9 @@ import address as customer_address;
 import address as bill_address;
 
 key warehouse_id int;
-key order_number int;
-property <item.id, order_number>.days_to_ship <- date_diff(sold_date.date, ship_date.date, day);
 
-properties <order_number, item.id> (
+key order_number int;
+properties <order_number,item.id> (
     quantity int,
     sales_price float,
     list_price float,
@@ -38,7 +37,11 @@ properties <order_number, item.id> (
     row_counter int,
 );
 
-property <item.id, order_number>.profit <- list_price - wholesale_cost - discount_amount + ext_sales_price;
+
+# metrics
+property <order_number,item.id>.profit <- list_price - wholesale_cost - discount_amount + ext_sales_price;
+property <order_number, item.id>.days_to_ship <- date_diff(sold_date.date, ship_date.date, DAY);
+
 
 datasource catalog_sales (
     raw('''1'''): row_counter,
@@ -57,7 +60,7 @@ datasource catalog_sales (
     CS_LIST_PRICE: list_price,
     CS_SALES_PRICE: sales_price,
     CS_ORDER_NUMBER: order_number,
-    CS_WHOLESALE_COST: wholesale_cost,
+    CS_WHOLESALE_COST:  wholesale_cost,
     CS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     CS_EXT_DISCOUNT_AMT: discount_amount,
     CS_CALL_CENTER_SK: ?call_center.id,
@@ -73,8 +76,9 @@ datasource catalog_sales (
     CS_NET_PAID: net_paid,
     CS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
-grain (item.id, order_number)
-address memory.catalog_sales;
+grain (order_number, item.id)
+address memory.catalog_sales
+;
 
 datasource catalog_returns_inline (
     CR_ORDER_NUMBER: ~order_number,
@@ -82,5 +86,6 @@ datasource catalog_returns_inline (
     CR_RETURN_AMOUNT: return_amount,
     CR_RETURN_QUANTITY: return_quantity,
 )
-grain (item.id, order_number)
-address memory.catalog_returns;
+grain (order_number, item.id)
+address memory.catalog_returns
+;

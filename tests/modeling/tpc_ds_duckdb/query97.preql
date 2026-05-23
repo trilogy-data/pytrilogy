@@ -1,46 +1,22 @@
 # Generate counts of (customer, item) pairs that appear only in store sales,
 # only in catalog sales, or in both, within a 12-month window.
-import unified_sales as sales;
 
-rowset pair_presence <- WHERE
-    sales.sales_channel in ('STORE', 'CATALOG')
-    and sales.date.month_seq between 1200 and 1200 + 11
-    and sales.customer.id is not null
-    and sales.item.id is not null
-SELECT
-    sales.customer.id,
-    sales.item.id,
-    max(
-            CASE
-            WHEN sales.sales_channel = 'STORE' THEN sales.order_id
-            ELSE 0
-        END
-        ) as store_present,
-    max(
-            CASE
-            WHEN sales.sales_channel = 'CATALOG' THEN sales.order_id
-            ELSE 0
-        END
-        ) as catalog_present,
-;
+  import unified_sales as sales;
 
-SELECT
-    sum(
-            CASE
-            WHEN pair_presence.store_present >= 1 and pair_presence.catalog_present = 0 THEN 1
-            ELSE 0
-        END
-        ) as store_sale_count,
-    sum(
-            CASE
-            WHEN pair_presence.store_present = 0 and pair_presence.catalog_present >= 1 THEN 1
-            ELSE 0
-        END
-        ) as catalog_sale_count,
-    sum(
-            CASE
-            WHEN pair_presence.store_present >= 1 and pair_presence.catalog_present >= 1 THEN 1
-            ELSE 0
-        END
-        ) as both_sale_count,
-;
+  with pair_presence as
+  where sales.sales_channel in ('STORE', 'CATALOG')
+      and sales.date.month_seq between 1200 and 1200 + 11
+      and sales.customer.id is not null
+      and sales.item.id is not null
+  SELECT
+      sales.customer.id,
+      sales.item.id,
+      max(CASE WHEN sales.sales_channel = 'STORE' THEN sales.order_id ELSE 0 END) as store_present,
+      max(CASE WHEN sales.sales_channel = 'CATALOG' THEN sales.order_id ELSE 0 END) as catalog_present,
+  ;
+
+  SELECT
+      sum(CASE WHEN pair_presence.store_present >= 1 AND pair_presence.catalog_present = 0 THEN 1 ELSE 0 END) as store_sale_count,
+      sum(CASE WHEN pair_presence.store_present = 0 AND pair_presence.catalog_present >= 1 THEN 1 ELSE 0 END) as catalog_sale_count,
+      sum(CASE WHEN pair_presence.store_present >= 1 AND pair_presence.catalog_present >= 1 THEN 1 ELSE 0 END) as both_sale_count
+  ;

@@ -2,20 +2,20 @@ import store_sales as store_sales;
 
 WHERE
     store_sales.item.manager_id = 8
-    and store_sales.date.month_of_year = 11
-    and store_sales.date.year = 1998
-    and substring(store_sales.customer.address.zip, 1, 5) != substring(store_sales.store.zip, 1, 5)
+    AND store_sales.date.month_of_year = 11
+    AND store_sales.date.year = 1998
+    AND substring(store_sales.customer.address.zip, 1, 5)
+        != substring(store_sales.store.zip, 1, 5)
 SELECT
     store_sales.item.brand_id,
     store_sales.item.brand_name,
     store_sales.item.manufacturer_id,
     store_sales.item.manufact,
-    sum(store_sales.ext_sales_price) as ext_price,
+    sum(store_sales.ext_sales_price) as ext_price
 ORDER BY
     ext_price desc,
     store_sales.item.brand_name asc,
     store_sales.item.brand_id asc,
     store_sales.item.manufacturer_id asc,
     store_sales.item.manufact asc
-LIMIT 100
-;
+LIMIT 100;

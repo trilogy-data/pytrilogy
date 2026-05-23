@@ -1,18 +1,23 @@
 import catalog_sales as cs;
 
-property <cs.bill_customer.birth_year, cs.item.id, cs.order_number>.row_birth_year <- group(cs.bill_customer.birth_year) by cs.order_number, cs.item.id;
-property <cs.bill_customer_demographic.dependent_count, cs.item.id, cs.order_number>.row_dep_count <- group(cs.bill_customer_demographic.dependent_count) by cs.order_number, cs.item.id;
+# Group dim-property values by the row grain (order_number, item.id) so they
+# aren't dedup'd by their source key before averaging.
+auto row_birth_year <- group cs.bill_customer.birth_year by cs.order_number, cs.item.id;
+auto row_dep_count <- group cs.bill_customer_demographic.dependent_count by cs.order_number, cs.item.id;
 
-def rollup_avg(metric) -> avg(metric::numeric(12,2))
-    by rollup cs.item.name, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
+def rollup_avg(metric) -> avg(cast(metric as numeric(12, 2))) by rollup
+    cs.item.name,
+    cs.bill_customer.address.country,
+    cs.bill_customer.address.state,
+    cs.bill_customer.address.county;
 
 WHERE
     cs.bill_customer_demographic.gender = 'F'
-    and cs.bill_customer_demographic.education_status = 'Unknown'
-    and cs.bill_customer.demographics.id is not null
-    and cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
-    and cs.date.year = 1998
-    and cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
+    AND cs.bill_customer_demographic.education_status = 'Unknown'
+    AND cs.bill_customer.demographics.id is not null
+    AND cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
+    AND cs.date.year = 1998
+    AND cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
 SELECT
     cs.item.name,
     cs.bill_customer.address.country,
@@ -30,5 +35,4 @@ ORDER BY
     cs.bill_customer.address.state asc nulls first,
     cs.bill_customer.address.county asc nulls first,
     cs.item.name asc nulls first
-LIMIT 100
-;
+LIMIT 100;

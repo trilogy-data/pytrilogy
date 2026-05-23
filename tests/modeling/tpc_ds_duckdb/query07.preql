@@ -1,7 +1,9 @@
 # compute the average quantity, list price, discount, and sales price for promotional items sold in stores where the
 # promotion is not offered by mail or a special event. Restrict the results to a specific gender, marital and
 # educational status.
+
 import store_sales as store_sales;
+
 
 WHERE
     store_sales.customer_demographic.gender = 'M'
@@ -14,8 +16,9 @@ SELECT
     avg(store_sales.quantity) as avg_quantity,
     avg(store_sales.list_price) as avg_list_price,
     avg(store_sales.coupon_amt) as avg_coupon_amt,
-    avg(store_sales.sales_price) as avg_sales_price,
-ORDER BY
+    avg(store_sales.sales_price) as avg_sales_price
+order by
     store_sales.item.name asc
-LIMIT 100
+limit 100
 ;
+

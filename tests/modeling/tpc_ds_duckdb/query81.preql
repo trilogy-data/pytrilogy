@@ -1,8 +1,11 @@
 import catalog_returns as cr;
 
-metric customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.return_address.state is not null)
-    by cr.return_address.state, cr.customer.id;
-metric scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
+# Non-rowset equivalent of the rowset form: the key-join shape achieved by
+# grouping the aggregate to (return_address.state, customer.id). The year/state
+# filter is bound *inside* the conditional sum because a plain sum + a row-grain
+# WHERE year=2000 loses the filter from the customer-grain aggregate.
+auto customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.return_address.state is not null) by cr.return_address.state, cr.customer.id;
+auto scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
 
 WHERE
     customer_state > scaled_state

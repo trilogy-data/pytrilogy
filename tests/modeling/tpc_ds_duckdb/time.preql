@@ -1,5 +1,5 @@
-key id int;
 
+key id int;
 properties id (
     time_string string,
     time int,
@@ -8,6 +8,7 @@ properties id (
     second int,
     meal_time string?,
 );
+
 
 datasource time (
     T_TIME_SK: id,

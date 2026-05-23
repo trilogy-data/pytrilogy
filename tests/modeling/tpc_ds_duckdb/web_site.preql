@@ -1,16 +1,18 @@
-key id int;
 
+key id int;
 properties id (
     string_id string,
     company_name string,
     name string?,
 );
 
+
 datasource web_site (
-    web_site_sk: id,
-    web_site_id: string_id,
-    web_company_name: company_name,
-    web_name: name,
+web_site_sk: id,
+web_site_id: string_id,
+web_company_name: company_name,
+web_name: name,
 )
-grain (id)
-address memory.web_site;
+grain(id)
+address memory.web_site
+;

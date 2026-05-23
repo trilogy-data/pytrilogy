@@ -1,14 +1,13 @@
 key id int;
-
 properties id (
     string_id string,
-    channel_email enum<string>['Y', 'N']?,
-    channel_catalog enum<string>['Y', 'N']?,
-    channel_event enum<string>['Y', 'N']?,
-    channel_dmail enum<string>['Y', 'N']?,
-    channel_tv enum<string>['Y', 'N']?,
-    channel_radio enum<string>['Y', 'N']?,
-    channel_press enum<string>['Y', 'N']?,
+    channel_email enum<string>['Y','N']?,
+    channel_catalog enum<string>['Y','N']?,
+    channel_event enum<string>['Y','N']?,
+    channel_dmail enum<string>['Y','N']?,
+    channel_tv enum<string>['Y','N']?,
+    channel_radio enum<string>['Y','N']?,
+    channel_press enum<string>['Y','N']?,
     cost float,
 );
 
