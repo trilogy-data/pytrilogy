@@ -434,7 +434,7 @@ property x.lagged <- lag(x, 3) over (order by x asc);
     env, parsed = parse(declarations)
     renderer = Renderer(environment=env)
     rendered = renderer.to_string(parsed[-1])
-    assert "lag(x,3)" in rendered
+    assert "lag(x, 3)" in rendered
     assert "order by x asc" in rendered
 
 
