@@ -11,198 +11,14 @@ def cat_month_sum(metric, month) -> sum(metric * sales.quantity ? sales.sales_ch
 def channel_total(ws, cs) -> coalesce(ws, 0) + coalesce(cs, 0);
 def per_sqft(ws, cs) -> coalesce(ws, 0) / sales.warehouse.square_feet + coalesce(cs, 0) / sales.warehouse.square_feet;
 
-metric ws_jan_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 1
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_feb_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 2
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_mar_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 3
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_apr_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 4
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_may_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 5
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_jun_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 6
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_jul_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 7
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_aug_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 8
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_sep_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 9
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_oct_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 10
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_nov_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 11
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_dec_sales <- sum(
-    sales.ext_sales_price * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 12
-)
-    by sales.warehouse.id, sales.date.year;
-metric ws_jan_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 1)
-    by sales.warehouse.id, sales.date.year;
-metric ws_feb_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 2)
-    by sales.warehouse.id, sales.date.year;
-metric ws_mar_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 3)
-    by sales.warehouse.id, sales.date.year;
-metric ws_apr_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 4)
-    by sales.warehouse.id, sales.date.year;
-metric ws_may_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 5)
-    by sales.warehouse.id, sales.date.year;
-metric ws_jun_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 6)
-    by sales.warehouse.id, sales.date.year;
-metric ws_jul_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 7)
-    by sales.warehouse.id, sales.date.year;
-metric ws_aug_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 8)
-    by sales.warehouse.id, sales.date.year;
-metric ws_sep_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 9)
-    by sales.warehouse.id, sales.date.year;
-metric ws_oct_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 10)
-    by sales.warehouse.id, sales.date.year;
-metric ws_nov_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 11)
-    by sales.warehouse.id, sales.date.year;
-metric ws_dec_net <- sum(sales.net_paid * sales.quantity ? sales.sales_channel = 'WEB' and sales.date.month_of_year = 12)
-    by sales.warehouse.id, sales.date.year;
-metric cs_jan_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 1
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_feb_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 2
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_mar_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 3
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_apr_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 4
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_may_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 5
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_jun_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 6
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_jul_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 7
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_aug_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 8
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_sep_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 9
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_oct_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 10
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_nov_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 11
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_dec_sales <- sum(
-    sales.sales_price * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 12
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_jan_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 1
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_feb_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 2
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_mar_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 3
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_apr_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 4
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_may_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 5
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_jun_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 6
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_jul_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 7
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_aug_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 8
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_sep_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 9
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_oct_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 10
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_nov_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 11
-)
-    by sales.warehouse.id, sales.date.year;
-metric cs_dec_net <- sum(
-    sales.net_paid_inc_tax * sales.quantity ? sales.sales_channel = 'CATALOG' and sales.date.month_of_year = 12
-)
-    by sales.warehouse.id, sales.date.year;
-auto jan_sales <- coalesce(ws_jan_sales, 0) + coalesce(cs_jan_sales, 0);
-auto feb_sales <- coalesce(ws_feb_sales, 0) + coalesce(cs_feb_sales, 0);
-auto mar_sales <- coalesce(ws_mar_sales, 0) + coalesce(cs_mar_sales, 0);
-auto apr_sales <- coalesce(ws_apr_sales, 0) + coalesce(cs_apr_sales, 0);
-auto may_sales <- coalesce(ws_may_sales, 0) + coalesce(cs_may_sales, 0);
-auto jun_sales <- coalesce(ws_jun_sales, 0) + coalesce(cs_jun_sales, 0);
-auto jul_sales <- coalesce(ws_jul_sales, 0) + coalesce(cs_jul_sales, 0);
-auto aug_sales <- coalesce(ws_aug_sales, 0) + coalesce(cs_aug_sales, 0);
-auto sep_sales <- coalesce(ws_sep_sales, 0) + coalesce(cs_sep_sales, 0);
-auto oct_sales <- coalesce(ws_oct_sales, 0) + coalesce(cs_oct_sales, 0);
-auto nov_sales <- coalesce(ws_nov_sales, 0) + coalesce(cs_nov_sales, 0);
-auto dec_sales <- coalesce(ws_dec_sales, 0) + coalesce(cs_dec_sales, 0);
-auto jan_net <- coalesce(ws_jan_net, 0) + coalesce(cs_jan_net, 0);
-auto feb_net <- coalesce(ws_feb_net, 0) + coalesce(cs_feb_net, 0);
-auto mar_net <- coalesce(ws_mar_net, 0) + coalesce(cs_mar_net, 0);
-auto apr_net <- coalesce(ws_apr_net, 0) + coalesce(cs_apr_net, 0);
-auto may_net <- coalesce(ws_may_net, 0) + coalesce(cs_may_net, 0);
-auto jun_net <- coalesce(ws_jun_net, 0) + coalesce(cs_jun_net, 0);
-auto jul_net <- coalesce(ws_jul_net, 0) + coalesce(cs_jul_net, 0);
-auto aug_net <- coalesce(ws_aug_net, 0) + coalesce(cs_aug_net, 0);
-auto sep_net <- coalesce(ws_sep_net, 0) + coalesce(cs_sep_net, 0);
-auto oct_net <- coalesce(ws_oct_net, 0) + coalesce(cs_oct_net, 0);
-auto nov_net <- coalesce(ws_nov_net, 0) + coalesce(cs_nov_net, 0);
-auto dec_net <- coalesce(ws_dec_net, 0) + coalesce(cs_dec_net, 0);
+def ws_sales(month) -> @web_month_sum(sales.ext_sales_price, month);
+def cs_sales(month) -> @cat_month_sum(sales.sales_price, month);
+def ws_net(month) -> @web_month_sum(sales.net_paid, month);
+def cs_net(month) -> @cat_month_sum(sales.net_paid_inc_tax, month);
+
+def month_sales(month) -> @channel_total(@ws_sales(month), @cs_sales(month));
+def month_net(month) -> @channel_total(@ws_net(month), @cs_net(month));
+def month_sales_per_sqft(month) -> @per_sqft(@ws_sales(month), @cs_sales(month));
 
 WHERE
     sales.sales_channel in ('WEB', 'CATALOG')
@@ -220,42 +36,42 @@ SELECT
     sales.warehouse.country as w_country,
     'DHL,BARIAN' as ship_carriers,
     sales.date.year as year_,
-    jan_sales,
-    feb_sales,
-    mar_sales,
-    apr_sales,
-    may_sales,
-    jun_sales,
-    jul_sales,
-    aug_sales,
-    sep_sales,
-    oct_sales,
-    nov_sales,
-    dec_sales,
-    @per_sqft(ws_jan_sales, cs_jan_sales) as jan_sales_per_sq_foot,
-    @per_sqft(ws_feb_sales, cs_feb_sales) as feb_sales_per_sq_foot,
-    @per_sqft(ws_mar_sales, cs_mar_sales) as mar_sales_per_sq_foot,
-    @per_sqft(ws_apr_sales, cs_apr_sales) as apr_sales_per_sq_foot,
-    @per_sqft(ws_may_sales, cs_may_sales) as may_sales_per_sq_foot,
-    @per_sqft(ws_jun_sales, cs_jun_sales) as jun_sales_per_sq_foot,
-    @per_sqft(ws_jul_sales, cs_jul_sales) as jul_sales_per_sq_foot,
-    @per_sqft(ws_aug_sales, cs_aug_sales) as aug_sales_per_sq_foot,
-    @per_sqft(ws_sep_sales, cs_sep_sales) as sep_sales_per_sq_foot,
-    @per_sqft(ws_oct_sales, cs_oct_sales) as oct_sales_per_sq_foot,
-    @per_sqft(ws_nov_sales, cs_nov_sales) as nov_sales_per_sq_foot,
-    @per_sqft(ws_dec_sales, cs_dec_sales) as dec_sales_per_sq_foot,
-    jan_net,
-    feb_net,
-    mar_net,
-    apr_net,
-    may_net,
-    jun_net,
-    jul_net,
-    aug_net,
-    sep_net,
-    oct_net,
-    nov_net,
-    dec_net,
+    @month_sales(1) as jan_sales,
+    @month_sales(2) as feb_sales,
+    @month_sales(3) as mar_sales,
+    @month_sales(4) as apr_sales,
+    @month_sales(5) as may_sales,
+    @month_sales(6) as jun_sales,
+    @month_sales(7) as jul_sales,
+    @month_sales(8) as aug_sales,
+    @month_sales(9) as sep_sales,
+    @month_sales(10) as oct_sales,
+    @month_sales(11) as nov_sales,
+    @month_sales(12) as dec_sales,
+    @month_sales_per_sqft(1) as jan_sales_per_sq_foot,
+    @month_sales_per_sqft(2) as feb_sales_per_sq_foot,
+    @month_sales_per_sqft(3) as mar_sales_per_sq_foot,
+    @month_sales_per_sqft(4) as apr_sales_per_sq_foot,
+    @month_sales_per_sqft(5) as may_sales_per_sq_foot,
+    @month_sales_per_sqft(6) as jun_sales_per_sq_foot,
+    @month_sales_per_sqft(7) as jul_sales_per_sq_foot,
+    @month_sales_per_sqft(8) as aug_sales_per_sq_foot,
+    @month_sales_per_sqft(9) as sep_sales_per_sq_foot,
+    @month_sales_per_sqft(10) as oct_sales_per_sq_foot,
+    @month_sales_per_sqft(11) as nov_sales_per_sq_foot,
+    @month_sales_per_sqft(12) as dec_sales_per_sq_foot,
+    @month_net(1) as jan_net,
+    @month_net(2) as feb_net,
+    @month_net(3) as mar_net,
+    @month_net(4) as apr_net,
+    @month_net(5) as may_net,
+    @month_net(6) as jun_net,
+    @month_net(7) as jul_net,
+    @month_net(8) as aug_net,
+    @month_net(9) as sep_net,
+    @month_net(10) as oct_net,
+    @month_net(11) as nov_net,
+    @month_net(12) as dec_net,
 ORDER BY
     w_warehouse_name asc nulls first,
     year_ asc nulls first
