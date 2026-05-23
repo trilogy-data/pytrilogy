@@ -302,6 +302,37 @@ def _raw_path_note(path: str) -> str:
     return ""
 
 
+# HTML entities seen written into .preql files by some models that escape their
+# own tool output. We catch the comparison-operator ones explicitly because
+# they're the failure mode we've observed; other entities are flagged generically.
+_HTML_ENTITY_HINTS: dict[str, str] = {
+    "&lt;": "<",
+    "&gt;": ">",
+    "&amp;": "&",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&apos;": "'",
+}
+
+
+def _detect_html_escapes(content: str) -> list[str]:
+    return [ent for ent in _HTML_ENTITY_HINTS if ent in content]
+
+
+def _validate_preql_syntax(content: str) -> str | None:
+    """Return a parse-error message for invalid Trilogy syntax, else None."""
+    from trilogy.core.exceptions import InvalidSyntaxException
+    from trilogy.parsing.v2.lark_backend import parse_lark
+
+    try:
+        parse_lark(content)
+    except InvalidSyntaxException as exc:
+        return str(exc)
+    except Exception as exc:  # safety net — never let validation crash the write
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
 def handle_write_file(state: AgentState, args: dict) -> str:
     path = args.get("path")
     content = args.get("content")
@@ -320,6 +351,25 @@ def handle_write_file(state: AgentState, args: dict) -> str:
             "content — that would erase it. Pass the file's full text in "
             "'content'."
         )
+    # Pre-write validation for .preql files: HTML-escape detection + syntax
+    # parse. Catching these here saves the agent a round-trip through
+    # `trilogy run` and gives a more pointed error than the lark parser would.
+    if path.endswith(".preql"):
+        entities = _detect_html_escapes(content)
+        if entities:
+            decoded = ", ".join(f"`{e}` (use `{_HTML_ENTITY_HINTS[e]}`)" for e in entities)
+            return (
+                f"write_file refused: '{path}' contains HTML-escaped characters: "
+                f"{decoded}. Trilogy parses raw operators — emit them literally "
+                "(e.g. `<=` not `&lt;=`)."
+            )
+        syntax_error = _validate_preql_syntax(content)
+        if syntax_error:
+            return (
+                f"write_file refused: '{path}' did not parse as Trilogy.\n"
+                f"{syntax_error}\n"
+                "Fix the syntax and call write_file again with the full file."
+            )
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
