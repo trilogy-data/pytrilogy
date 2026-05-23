@@ -270,6 +270,7 @@ def _source_concepts_via_graph(
             and conditions is not None
             and _conditions_deferrable_to_merge(orig_concepts, conditions, environment)
         )
+        graph_conditions = None if defer_conditions_to_merge else conditions
         select_conditions = (
             filter_conditions if filter_conditions is not None else conditions
         )
@@ -280,7 +281,7 @@ def _source_concepts_via_graph(
                 g,
                 concepts,
                 criteria=attempt,
-                conditions=conditions,
+                conditions=graph_conditions,
                 datasources=list(environment.datasources.values()),
                 depth=depth,
                 allow_intersection=allow_intersection,
@@ -458,8 +459,6 @@ def _sourceable_condition_atoms(
         )
     sourceable = []
     for atom in decompose_condition(conditions.conditional):
-        if any(arg for group in atom.existence_arguments for arg in group):
-            continue
         if not is_scalar_condition(atom):
             continue
         if condition_required_addresses(atom).issubset(available):
@@ -485,7 +484,7 @@ def _condition_source_concepts(
     atoms: list[BoolExpr],
     environment: BuildEnvironment,
 ) -> list[BuildConcept]:
-    concepts = [c for atom in atoms for c in atom.row_arguments]
+    concepts = [c for atom in atoms for c in atom.concept_arguments]
     seen = {c.address for c in concepts}
     for concept in list(concepts):
         for key in concept.keys or []:

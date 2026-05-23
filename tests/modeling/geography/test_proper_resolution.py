@@ -102,7 +102,7 @@ def compile_appended_filter_sql() -> str:
     assert statement.where_clause is None
     assert where_clause is not None
 
-    statement.where_clause = where_clause
+    statement.where_clauses = [where_clause]
 
     dialect = DuckDBDialect()
     processed = dialect.generate_queries(env, [statement])[-1]

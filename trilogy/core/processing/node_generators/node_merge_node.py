@@ -19,6 +19,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     decompose_condition,
@@ -441,8 +442,8 @@ def subgraphs_to_merge_node(
     history,
     conditions,
     output_concepts: List[BuildConcept],
-    search_conditions: BuildWhereClause | None = None,
-    filter_conditions: BuildWhereClause | None = None,
+    search_conditions: BuildConditionContext | None = None,
+    filter_conditions: BuildConditionContext | None = None,
     enable_early_exit: bool = True,
 ):
 
@@ -460,7 +461,7 @@ def subgraphs_to_merge_node(
             filter_conditions if filter_conditions is not None else search_conditions
         )
         subgraph_conditions = (
-            _conditions_for_subgraph(applicable_conditions, subgraph_addrs)
+            applicable_conditions.with_only_addresses(subgraph_addrs)
             if applicable_conditions
             else None
         )
@@ -577,7 +578,7 @@ def gen_merge_node(
     accept_partial: bool = False,
     history: History | None = None,
     conditions: BuildConditional | None = None,
-    search_conditions: BuildWhereClause | None = None,
+    search_conditions: BuildConditionContext | None = None,
 ) -> Optional[MergeNode]:
 
     # we do not actually APPLY these conditions anywhere
@@ -585,15 +586,18 @@ def gen_merge_node(
     # it's important to include them so the base discovery loop that was generating
     # the merge node can then add them automatically
     # so we should not return a node with preexisting conditions
-    if search_conditions:
+    active_search_conditions = (
+        search_conditions.active_where if search_conditions else None
+    )
+    if active_search_conditions:
         all_search_concepts = unique(
-            all_concepts + list(search_conditions.row_arguments), "address"
+            all_concepts + list(active_search_conditions.row_arguments), "address"
         )
         # Preserve only atoms that are satisfied by a datasource's complete_where so
         # that partial-datasource exact-match resolution works inside each subgraph.
         # Extra condition concepts are still in all_search_concepts as projections.
         effective_search_conditions = _preserved_conditions(
-            search_conditions, environment
+            active_search_conditions, environment
         )
     else:
         effective_search_conditions = None
@@ -604,7 +608,9 @@ def gen_merge_node(
         # Skip condition pruning only when conditions are "owned" by a partial datasource;
         # otherwise retain normal pruning so regular WHERE conditions still gate resolution.
         resolved_search_conditions = (
-            None if effective_search_conditions is not None else search_conditions
+            None
+            if effective_search_conditions is not None
+            else active_search_conditions
         )
         weak_resolve = resolve_weak_components(
             all_search_concepts,
@@ -639,7 +645,7 @@ def gen_merge_node(
             source_concepts=source_concepts,
             history=history,
             conditions=conditions,
-            search_conditions=effective_search_conditions,
+            search_conditions=None,
             filter_conditions=search_conditions,
             output_concepts=all_concepts,
         )

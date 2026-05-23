@@ -1,5 +1,6 @@
 import os
 import platform
+import re
 import time
 from pathlib import Path
 from typing import Callable, TypeVar
@@ -278,6 +279,18 @@ def test_twenty(engine):
 
 def test_twenty_one(engine):
     run_query(engine, 21)
+
+
+def test_twenty_one_pushes_first_where_before_order_aggregates(engine):
+    engine.environment = Environment(working_path=working_path)
+    query = engine.generate_sql((working_path / "query21.preql").read_text())[-1]
+
+    # the staged first WHERE must be evaluated upstream of the order-grain
+    # count aggregates rather than filtering their output
+    first_agg = re.search(r"\bcount\s*\(", query, re.IGNORECASE)
+    assert first_agg, "expected an order-grain count aggregate"
+    assert query.index("o_orderstatus") < first_agg.start()
+    assert query.index("SAUDI ARABIA") < first_agg.start()
 
 
 def test_twenty_two(engine):

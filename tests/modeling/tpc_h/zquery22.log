@@ -1,10 +1,20 @@
 query_id = "22"
-gen_length = 1533
-preql_size = 589
+gen_length = 1520
+preql_size = 529
 comp_size = 806
 generated_sql = """
 
 WITH 
+quizzical as (
+SELECT
+    \"customers\".\"c_acctbal\" as \"account_balance\",
+    \"customers\".\"c_custkey\" as \"id\",
+    \"customers\".\"c_phone\" as \"phone\"
+FROM
+    \"memory\".\"customer\" as \"customers\"
+WHERE
+    \"customers\".\"c_acctbal\" > 0 and SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
+),
 thoughtful as (
 SELECT
     \"customers\".\"c_custkey\" as \"id\",
@@ -13,28 +23,25 @@ FROM
     \"memory\".\"customer\" as \"customers\"
     LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
 WHERE
-    SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
+    \"customers\".\"c_acctbal\" > 0 and SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
 
 GROUP BY
     1),
 highfalutin as (
 SELECT
-    avg(CASE WHEN \"customers\".\"c_acctbal\" > 0 and SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') THEN \"customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
+    avg(\"quizzical\".\"account_balance\") as \"avg_bal_in_target\"
 FROM
-    \"memory\".\"customer\" as \"customers\"
-WHERE
-    SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
-),
+    \"quizzical\"),
 questionable as (
 SELECT
-    \"customers\".\"c_acctbal\" as \"account_balance\",
-    \"customers\".\"c_custkey\" as \"id\",
-    \"customers\".\"c_phone\" as \"phone\"
+    \"quizzical\".\"account_balance\" as \"account_balance\",
+    \"quizzical\".\"id\" as \"id\",
+    \"quizzical\".\"phone\" as \"phone\"
 FROM
-    \"memory\".\"customer\" as \"customers\"
-    LEFT OUTER JOIN \"thoughtful\" on \"customers\".\"c_custkey\" = \"thoughtful\".\"id\"
+    \"quizzical\"
+    LEFT OUTER JOIN \"thoughtful\" on \"quizzical\".\"id\" = \"thoughtful\".\"id\"
 WHERE
-    SUBSTRING(\"customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') and coalesce(coalesce(\"thoughtful\".\"order_count_per_customer\",0),0) = 0
+    coalesce(coalesce(\"thoughtful\".\"order_count_per_customer\",0),0) = 0
 )
 SELECT
     SUBSTRING(\"questionable\".\"phone\",1,2) as \"cntrycode\",

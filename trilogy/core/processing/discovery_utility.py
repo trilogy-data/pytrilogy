@@ -500,6 +500,10 @@ def get_inputs_that_require_pushdown(
 ) -> list[BuildConcept]:
     if not conditions:
         return []
+    if conditions.row_arguments and all(
+        x.is_aggregate for x in conditions.row_arguments
+    ):
+        return []
     return [
         x
         for x in mandatory
@@ -691,4 +695,18 @@ def get_loop_iteration_targets(
         candidates=local_all,
         exhausted=attempted,
     )
+    if original_conditions and original_conditions.row_arguments:
+        condition_addresses = {x.address for x in original_conditions.row_arguments}
+        if (
+            priority_concept.is_aggregate
+            and priority_concept.address not in condition_addresses
+        ):
+            optional = [
+                x
+                for x in optional
+                if not (x.is_aggregate and x.address in condition_addresses)
+            ]
+        elif all(x.is_aggregate for x in original_conditions.row_arguments):
+            if priority_concept.address not in condition_addresses:
+                optional = [x for x in optional if x.address not in condition_addresses]
     return priority_concept, optional, conditions

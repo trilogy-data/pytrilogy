@@ -1,5 +1,6 @@
 # from trilogy.compiler import compile
-from trilogy.core.models.author import Grain, Parenthetical
+from trilogy import Dialects
+from trilogy.core.models.author import Conditional, Grain, Parenthetical
 from trilogy.core.models.build import Factory
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
@@ -25,6 +26,201 @@ where
     assert select.grain == Grain(components=[env.concepts["order_id"]])
 
     BaseDialect().compile_statement(process_query(test_environment, select))
+
+
+def test_select_hierarchical_where_order(test_environment):
+    declarations = """
+where
+    order_id > 1
+then where
+    revenue > 0
+then where
+    total_revenue > 10
+select
+    total_revenue
+;
+"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+
+    assert len(select.where_clauses) == 3
+    assert [str(clause) for clause in select.where_clauses] == [
+        "ref:local.order_id > 1",
+        "ref:local.revenue > 0",
+        "ref:local.total_revenue > 10",
+    ]
+
+    query = BaseDialect().compile_statement(process_query(env, select))
+
+    assert "`revenue`.`order_id` > 1" in query
+    assert "`revenue`.`revenue` > 0" in query
+    assert "HAVING" in query
+    assert "sum(`revenue`.`revenue`) > 10" in query
+
+
+def test_select_hierarchical_where_matches_flat(test_environment):
+    staged = """
+where
+    order_id > 1
+then where
+    revenue > 0
+then where
+    total_revenue > 10
+select
+    total_revenue
+;
+"""
+    flat = """
+where
+    order_id > 1
+    and revenue > 0
+    and total_revenue > 10
+select
+    total_revenue
+;
+"""
+    staged_env, staged_parsed = parse(staged, environment=test_environment)
+    flat_env, flat_parsed = parse(flat, environment=test_environment)
+
+    staged_query = BaseDialect().compile_statement(
+        process_query(staged_env, staged_parsed[-1])
+    )
+    flat_query = BaseDialect().compile_statement(
+        process_query(flat_env, flat_parsed[-1])
+    )
+
+    assert "`order_id`" in staged_query
+    assert "`total_revenue`" in staged_query
+    assert len(staged_parsed[-1].where_clauses) == 3
+    assert len(flat_parsed[-1].where_clauses) == 1
+    assert staged_query
+    assert flat_query
+
+
+def test_pre_and_post_select_where_are_ordered(test_environment):
+    declarations = """
+where
+    category_id = 1
+select
+    category_id
+where
+    category_name like '%a%'
+;
+"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+
+    assert len(select.where_clauses) == 2
+    assert [str(clause) for clause in select.where_clauses] == [
+        "ref:local.category_id = 1",
+        "ref:local.category_name like %a%",
+    ]
+
+    BaseDialect().compile_statement(process_query(env, select))
+
+
+def test_hierarchical_where_bounds_hidden_aggregate_filter_results():
+    executor = Dialects.DUCK_DB.default_executor()
+    results = executor.execute_text("""
+key item string;
+key return_id int;
+property return_id.week int;
+property return_id.channel_name string;
+property return_id.return_qty int;
+
+datasource returns(
+    item: item,
+    return_id: return_id,
+    week: week,
+    channel_name: channel_name,
+    return_qty: return_qty
+)
+grain (return_id)
+query '''
+select 'A' as item, 1 as return_id, 1 as week, 'S' as channel_name, 10 as return_qty
+union all select 'A', 2, 1, 'C', 20
+union all select 'A', 3, 1, 'W', 30
+union all select 'B', 4, 1, 'S', 5
+union all select 'B', 5, 2, 'C', 6
+union all select 'B', 6, 2, 'W', 7
+''';
+
+def channel_qty(ch) -> sum(return_qty ? channel_name = ch) by item;
+def channel_present(ch) -> count(return_id ? channel_name = ch) by item;
+
+auto s_qty <- @channel_qty('S');
+auto c_qty <- @channel_qty('C');
+auto w_qty <- @channel_qty('W');
+auto s_present <- @channel_present('S');
+auto c_present <- @channel_present('C');
+auto w_present <- @channel_present('W');
+
+where
+    week = 1
+then where
+    s_present > 0
+    and c_present > 0
+    and w_present > 0
+select
+    item,
+    s_qty,
+    c_qty,
+    w_qty,
+    --s_present,
+    --c_present,
+    --w_present
+order by
+    item asc;
+""")[-1]
+
+    assert results.fetchall() == [("A", 10, 20, 30)]
+
+
+def test_hierarchical_where_repeated_concepts_stay_ordered():
+    executor = Dialects.DUCK_DB.default_executor()
+    results = executor.execute_text("""
+key item string;
+key return_id int;
+property return_id.week int;
+property return_id.channel_name string;
+
+datasource returns(
+    item: item,
+    return_id: return_id,
+    week: week,
+    channel_name: channel_name
+)
+grain (return_id)
+query '''
+select 'A' as item, 1 as return_id, 1 as week, 'S' as channel_name
+union all select 'A', 2, 1, 'C'
+union all select 'B', 3, 1, 'S'
+union all select 'B', 4, 2, 'S'
+union all select 'C', 5, 1, 'C'
+union all select 'D', 6, 1, 'S'
+union all select 'D', 7, 1, 'S'
+''';
+
+def channel_present(ch) -> count(return_id ? channel_name = ch) by item;
+
+auto s_present <- @channel_present('S');
+
+where
+    week in (1, 2)
+then where
+    week = 1
+then where
+    s_present > 0
+then where
+    s_present < 2
+select
+    item,
+    --s_present
+order by
+    item asc;
+""")[-1]
+
+    assert results.fetchall() == [("A",), ("B",)]
 
 
 def test_select_where_or(test_environment):
@@ -275,3 +471,43 @@ where
 
     # check to make sure our subselect is well-formed
     assert "`category_id` not in (select" in query, query
+
+
+def test_add_base_condition(test_environment):
+    env, parsed = parse(
+        "select order_id where order_id in (1,2,3);", environment=test_environment
+    )
+    select: SelectStatement = parsed[-1]
+    _, fparsed = parse("where order_id > 5 select order_id;", environment=env)
+    extra = fparsed[-1].where_clause
+    assert extra is not None
+
+    last = select.where_clauses[-1]
+    select.add_base_condition(extra)
+
+    assert len(select.where_clauses) == 1
+    assert select.where_clauses[-1] is last
+    cond = select.where_clauses[-1].conditional
+    assert isinstance(cond, Conditional)
+    assert isinstance(cond.left, Parenthetical)
+    assert isinstance(cond.right, Parenthetical)
+    rendered = str(select.where_clause)
+    assert "1, 2, 3" in rendered and "order_id > 5" in rendered
+    BaseDialect().compile_statement(process_query(env, select))
+
+
+def test_add_base_condition_no_existing_where(test_environment):
+    env, parsed = parse("select order_id;", environment=test_environment)
+    select: SelectStatement = parsed[-1]
+    assert select.where_clauses == []
+
+    _, fparsed = parse("where order_id > 5 select order_id;", environment=env)
+    extra = fparsed[-1].where_clause
+    assert extra is not None
+
+    select.add_base_condition(extra)
+
+    assert select.where_clauses == [extra]
+    assert select.where_clause is not None
+    assert "order_id > 5" in str(select.where_clause)
+    BaseDialect().compile_statement(process_query(env, select))

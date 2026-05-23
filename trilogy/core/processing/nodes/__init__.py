@@ -47,11 +47,12 @@ class History:
         self,
         search: list[BuildConcept],
         accept_partial: bool,
-        conditions: BuildWhereClause | None = None,
+        conditions=None,
     ) -> str:
         base = sorted([c.address for c in search])
         if conditions:
-            return "-".join(base) + str(accept_partial) + str(conditions)
+            key = getattr(conditions, "cache_key", str(conditions))
+            return "-".join(base) + str(accept_partial) + key
         return "-".join(base) + str(accept_partial)
 
     def search_to_history(
@@ -59,10 +60,14 @@ class History:
         search: list[BuildConcept],
         accept_partial: bool,
         output: StrategyNode | None,
-        conditions: BuildWhereClause | None = None,
+        conditions=None,
     ):
         self.history[
-            self._concepts_to_lookup(search, accept_partial, conditions=conditions)
+            self._concepts_to_lookup(
+                search,
+                accept_partial,
+                conditions=conditions,
+            )
         ] = output
         self.log_end(
             search,
@@ -73,7 +78,7 @@ class History:
     def get_history(
         self,
         search: list[BuildConcept],
-        conditions: BuildWhereClause | None = None,
+        conditions=None,
         accept_partial: bool = False,
         parent_key: str = "",
     ) -> StrategyNode | None | bool:
@@ -97,7 +102,7 @@ class History:
         self,
         search: list[BuildConcept],
         accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
+        conditions=None,
     ):
         key = self._concepts_to_lookup(
             search,
@@ -117,7 +122,7 @@ class History:
         self,
         search: list[BuildConcept],
         accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
+        conditions=None,
     ):
         key = self._concepts_to_lookup(
             search,
@@ -131,7 +136,7 @@ class History:
         self,
         search: list[BuildConcept],
         accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
+        conditions=None,
     ):
         return (
             self._concepts_to_lookup(

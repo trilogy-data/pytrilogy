@@ -1,7 +1,8 @@
 from typing import List
 
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.utility import unique
 
@@ -16,7 +17,7 @@ def gen_constant_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
     accept_partial: bool = False,
 ):
     """our only goal here is to generate a row if conditions exist, or none if they do not"""

@@ -237,26 +237,15 @@ LIMIT 1;
 
 
 def test_exact_match_with_parenthetical_extra_filter():
-    """Partial datasource must be selected when extra_filters are concatenated
-    with Parenthetical wrappers (as the web server does).
+    """Partial datasource must be selected when an extra filter is AND-ed into
+    the parsed query's WHERE clause with Parenthetical wrappers.
 
-    Reproduces: the web server wraps each condition side in Parenthetical when
-    joining extra_filters to the parsed query's WHERE clause. This prevented
-    decompose_condition from matching city='USSFO' against the datasource's
-    non_partial_for, causing the full datasource to be chosen.
+    The web server appends an extra filter via `SelectStatement.add_base_condition`,
+    which wraps each side in a Parenthetical. The partial datasource
+    (sf_tree_info, complete where city='USSFO') must still be recognized as an
+    exact match for the appended `city='USSFO'`.
     """
-    from trilogy.authoring import (
-        BooleanOperator as AuthBoolOp,
-    )
-    from trilogy.authoring import (
-        Conditional as AuthConditional,
-    )
-    from trilogy.authoring import (
-        Parenthetical as AuthParenthetical,
-    )
-    from trilogy.authoring import (
-        SelectStatement as AuthSelect,
-    )
+    from trilogy.authoring import SelectStatement as AuthSelect
     from trilogy.parser import parse_text as trilogy_parse
 
     base_query = """
@@ -283,13 +272,10 @@ ORDER BY tree_count DESC;
     # Parse the extra filter into the same env (mimics web server)
     _, fparsed = trilogy_parse(f"WHERE {extra_filter} SELECT 1 as __ftest;", env)
     filter_clause = fparsed[-1].where_clause
+    assert filter_clause is not None
 
-    # Concatenate with Parenthetical wrappers (exactly as the web server does)
-    select.where_clause.conditional = AuthConditional(
-        left=AuthParenthetical(content=select.where_clause.conditional),
-        right=AuthParenthetical(content=filter_clause.conditional),
-        operator=AuthBoolOp.AND,
-    )
+    # Append the extra filter (exactly as the web server does)
+    select.add_base_condition(filter_clause)
 
     generated = base.generate_sql(select)[-1]
     assert (

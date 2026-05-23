@@ -6,13 +6,13 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildFunction,
     BuildGrain,
-    BuildWhereClause,
     ComparisonOperator,
     DataType,
     Derivation,
     Purpose,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import History, RecursiveNode, StrategyNode
 from trilogy.core.processing.utility import padding
 
@@ -38,7 +38,7 @@ def gen_recursive_node(
     g,
     depth: int,
     source_concepts,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     arguments = []
     if isinstance(concept.lineage, BuildFunction):

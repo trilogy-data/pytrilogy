@@ -2,7 +2,8 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.build import BuildConcept, BuildFunction
+from trilogy.core.processing.condition_context import BuildConditionContext
 from trilogy.core.processing.nodes import History, StrategyNode, UnionNode
 from trilogy.core.processing.utility import padding
 
@@ -56,7 +57,7 @@ def gen_union_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     all_unions = [x for x in local_optional if is_union(x)] + [concept]
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} found unions {all_unions}")
@@ -72,7 +73,7 @@ def gen_union_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=conditions,
+            conditions=conditions.for_child(concept) if conditions else None,
         )
 
         parent.add_output_concepts(resolved)
@@ -88,5 +89,9 @@ def gen_union_node(
         output_concepts=resolved,
         environment=environment,
         parents=parent_nodes,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            conditions.active_where.conditional
+            if conditions and conditions.active_where
+            else None
+        ),
     )

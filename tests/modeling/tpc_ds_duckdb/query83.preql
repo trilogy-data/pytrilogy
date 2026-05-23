@@ -3,14 +3,12 @@ import date as date;
 
 auto target_week_seqs <- date.week_seq ? date.date in (cast('2000-06-30' as date), cast('2000-09-27' as date), cast('2000-11-17' as date));
 
-# Per-channel return quantities by item.name; the week_seq filter applies to
-# the return date.
 def channel_qty(channel) -> sum(sales.return_quantity ?
-    sales.sales_channel = channel 
+    sales.sales_channel = channel
 ) by sales.item.name;
 
 def channel_present(channel) -> count(sales.order_id ?
-    sales.sales_channel = channel 
+    sales.sales_channel = channel
 ) by sales.item.name;
 
 auto sr_item_qty <- @channel_qty('STORE');
@@ -29,6 +27,10 @@ auto wr_dev <- (wr_item_qty * 1.0000) / total_qty / 3.0000 * 100;
 
 WHERE
     sales.return_date.week_seq in target_week_seqs
+THEN WHERE
+    sr_item_present > 0
+    and cr_item_present > 0
+    and wr_item_present > 0
 SELECT
     sales.item.name as item_id,
     sr_item_qty,
@@ -41,10 +43,6 @@ SELECT
     --sr_item_present,
     --cr_item_present,
     --wr_item_present
-HAVING 
-    sr_item_present > 0
-    and cr_item_present > 0
-    and wr_item_present > 0
 ORDER BY
     item_id asc nulls first,
     sr_item_qty asc nulls first

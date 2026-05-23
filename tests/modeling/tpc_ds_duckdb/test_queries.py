@@ -638,8 +638,9 @@ def test_eighty_two(engine):
 
 def test_eighty_three(engine):
     query = run_query(engine, 83)
-    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
-    assert len(query) < 9500, query
+    # Larger after UnionDimPushdown/staged aggregate filters: dim joins and
+    # WHEREs land per branch.
+    assert len(query) < 10500, query
 
 
 def test_eighty_four(engine):

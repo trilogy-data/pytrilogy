@@ -6,7 +6,8 @@ auto late_suppliers_per_order <- count(part.supplier.id ?  receipt_date > commit
 where
     part.supplier.nation.name = 'SAUDI ARABIA'
     and order.status = 'F'
-    and receipt_date > commit_date
+then where
+    receipt_date > commit_date
     and distinct_suppliers_per_order > 1
     and late_suppliers_per_order = 1
 select

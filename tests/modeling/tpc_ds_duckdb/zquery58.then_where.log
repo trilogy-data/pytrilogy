@@ -1,0 +1,131 @@
+query_id = "58.then_where"
+gen_length = 5563
+preql_size = 1260
+comp_size = 2250
+generated_sql = """
+
+WITH 
+quizzical as (
+SELECT
+    CASE WHEN \"date_date\".\"D_DATE\" = '2000-01-03' THEN \"date_date\".\"D_WEEK_SEQ\" ELSE NULL END as \"target_week_seq\"
+FROM
+    \"memory\".\"date_dim\" as \"date_date\"
+GROUP BY
+    1),
+questionable as (
+SELECT
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
+     'CATALOG'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
+
+UNION ALL
+SELECT
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
+     'STORE'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
+
+UNION ALL
+SELECT
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
+    \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
+     'WEB'  as \"sales_sales_channel\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
+),
+abundant as (
+SELECT
+    \"questionable\".\"sales_date_id\" as \"sales_date_id\",
+    \"questionable\".\"sales_item_id\" as \"sales_item_id\"
+FROM
+    \"questionable\"
+GROUP BY
+    1,
+    2),
+vacuous as (
+SELECT
+    \"questionable\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"questionable\".\"sales_sales_channel\" as \"sales_sales_channel\",
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\"
+FROM
+    \"questionable\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"questionable\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+GROUP BY
+    1,
+    2,
+    3,
+    \"questionable\".\"sales_item_id\",
+    \"questionable\".\"sales_order_id\"),
+juicy as (
+SELECT
+    \"sales_date_date\".\"D_WEEK_SEQ\" as \"sales_date_week_seq\",
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\"
+FROM
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_id\" = \"sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"sales_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
+
+GROUP BY
+    1,
+    2),
+concerned as (
+SELECT
+    \"vacuous\".\"sales_item_name\" as \"sales_item_name\",
+    sum(CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'CATALOG' THEN \"vacuous\".\"sales_ext_sales_price\" ELSE NULL END) as \"cs_item_rev\",
+    sum(CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'STORE' THEN \"vacuous\".\"sales_ext_sales_price\" ELSE NULL END) as \"ss_item_rev\",
+    sum(CASE WHEN \"vacuous\".\"sales_sales_channel\" = 'WEB' THEN \"vacuous\".\"sales_ext_sales_price\" ELSE NULL END) as \"ws_item_rev\"
+FROM
+    \"vacuous\"
+GROUP BY
+    1
+HAVING
+    \"ss_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\" and \"ss_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\"
+)
+SELECT
+    \"juicy\".\"sales_item_name\" as \"item_id\",
+    \"concerned\".\"ss_item_rev\" as \"ss_item_rev\",
+    ( \"concerned\".\"ss_item_rev\" / ( (( \"concerned\".\"ss_item_rev\" + \"concerned\".\"cs_item_rev\" ) + \"concerned\".\"ws_item_rev\") / 3 ) ) * 100 as \"ss_dev\",
+    \"concerned\".\"cs_item_rev\" as \"cs_item_rev\",
+    ( \"concerned\".\"cs_item_rev\" / ( (( \"concerned\".\"ss_item_rev\" + \"concerned\".\"cs_item_rev\" ) + \"concerned\".\"ws_item_rev\") / 3 ) ) * 100 as \"cs_dev\",
+    \"concerned\".\"ws_item_rev\" as \"ws_item_rev\",
+    ( \"concerned\".\"ws_item_rev\" / ( (( \"concerned\".\"ss_item_rev\" + \"concerned\".\"cs_item_rev\" ) + \"concerned\".\"ws_item_rev\") / 3 ) ) * 100 as \"ws_dev\",
+    (( \"concerned\".\"ss_item_rev\" + \"concerned\".\"cs_item_rev\" ) + \"concerned\".\"ws_item_rev\") / 3 as \"avg_rev\"
+FROM
+    \"concerned\"
+    INNER JOIN \"juicy\" on \"concerned\".\"sales_item_name\" = \"juicy\".\"sales_item_name\"
+WHERE
+    \"juicy\".\"sales_date_week_seq\" in (select quizzical.\"target_week_seq\" from quizzical where quizzical.\"target_week_seq\" is not null)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+ORDER BY 
+    \"item_id\" asc nulls first,
+    \"concerned\".\"ss_item_rev\" asc nulls first
+LIMIT (100)"""

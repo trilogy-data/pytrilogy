@@ -1,9 +1,10 @@
 import part;
 
-auto germany_total_value <- sum(supply_cost * available_quantity ? supplier.nation.name = 'GERMANY');
-auto part_total_value <- sum(supply_cost * available_quantity ? supplier.nation.name = 'GERMANY') by id;
+auto germany_total_value <- sum(supply_cost * available_quantity);
+auto part_total_value <- sum(supply_cost * available_quantity) by id;
 
-where part_total_value > germany_total_value * 0.0001
+where supplier.nation.name = 'GERMANY'
+then where part_total_value > germany_total_value * 0.0001
 select
     id,
     part_total_value -> total_value

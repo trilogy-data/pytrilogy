@@ -47,7 +47,7 @@ def select_statement(
     limit: int | None = None
     order_by: OrderBy | None = None
     from_clause_val: FromClause | None = None
-    where: WhereClause | None = None
+    where_clauses: list[WhereClause] = []
     having: HavingClause | None = None
     for arg in args:
         atype = type(arg)
@@ -60,9 +60,7 @@ def select_statement(
         elif atype is FromClause:
             from_clause_val = arg
         elif atype is WhereClause:
-            if where is not None:
-                raise fail(node, "Multiple where clauses are not supported")
-            where = arg
+            where_clauses.append(arg)
         elif atype is HavingClause:
             having = arg
     if not select_items:
@@ -70,7 +68,7 @@ def select_statement(
     return SelectStatement(
         selection=select_items,
         order_by=order_by,
-        where_clause=where,
+        where_clauses=where_clauses,
         having_clause=having,
         limit=limit,
         eligible_datasources=from_clause_val.sources if from_clause_val else None,
