@@ -6,14 +6,18 @@ WHERE
 SELECT
     inventory.warehouse.name,
     inventory.item.name,
-    sum(CASE
+    sum(
+            CASE
             WHEN inventory.date.date < '2000-03-11'::date THEN inventory.quantity_on_hand
             ELSE 0
-        END) -> inv_before,
-    sum(CASE
+        END
+        ) as inv_before,
+    sum(
+            CASE
             WHEN inventory.date.date >= '2000-03-11'::date THEN inventory.quantity_on_hand
             ELSE 0
-        END) -> inv_after,
+        END
+        ) as inv_after,
 HAVING
     CASE
             WHEN inv_before > 0 THEN (inv_after * 1.0) / inv_before

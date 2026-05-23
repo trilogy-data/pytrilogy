@@ -8,29 +8,39 @@ WHERE
     and ws.ship_mode.id is not null
     and ws.web_site.id is not null
 SELECT
-    substring(ws.warehouse.name,1,20) -> w_substr,
+    substring(ws.warehouse.name, 1, 20) as w_substr,
     ws.ship_mode.type,
     ws.web_site.name,
-    sum(CASE
+    sum(
+            CASE
             WHEN days_to_ship <= 30 THEN 1
             ELSE 0
-        END) -> days_30,
-    sum(CASE
+        END
+        ) as days_30,
+    sum(
+            CASE
             WHEN days_to_ship > 30 and days_to_ship <= 60 THEN 1
             ELSE 0
-        END) -> days_31_60,
-    sum(CASE
+        END
+        ) as days_31_60,
+    sum(
+            CASE
             WHEN days_to_ship > 60 and days_to_ship <= 90 THEN 1
             ELSE 0
-        END) -> days_61_90,
-    sum(CASE
+        END
+        ) as days_61_90,
+    sum(
+            CASE
             WHEN days_to_ship > 90 and days_to_ship <= 120 THEN 1
             ELSE 0
-        END) -> days_91_120,
-    sum(CASE
+        END
+        ) as days_91_120,
+    sum(
+            CASE
             WHEN days_to_ship > 120 THEN 1
             ELSE 0
-        END) -> days_120_plus,
+        END
+        ) as days_120_plus,
 ORDER BY
     w_substr asc nulls first,
     ws.ship_mode.type asc nulls first,

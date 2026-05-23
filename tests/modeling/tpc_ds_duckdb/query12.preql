@@ -9,9 +9,9 @@ SELECT
     web_sales.item.category,
     web_sales.item.class,
     web_sales.item.current_price,
-    sum(web_sales.ext_sales_price) -> itemrevenue,
-    --sum(itemrevenue) by web_sales.item.class -> itemclassrevenue,
-    (itemrevenue * 100.0) / itemclassrevenue -> revenueratio,
+    sum(web_sales.ext_sales_price) as itemrevenue,
+    --sum(itemrevenue) by web_sales.item.class as itemclassrevenue,
+    (itemrevenue * 100.0) / itemclassrevenue as revenueratio,
 ORDER BY
     web_sales.item.category asc,
     web_sales.item.class asc,

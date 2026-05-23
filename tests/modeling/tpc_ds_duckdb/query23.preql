@@ -1,12 +1,12 @@
 import unified_sales as sales;
 
-property sales.item.id.desc_truncated <- substring(sales.item.desc,1,30);
+property sales.item.id.desc_truncated <- substring(sales.item.desc, 1, 30);
 metric customer_total_in_window <- sum(sales.quantity * sales.sales_price) by sales.customer.id;
 
 rowset frequent_items <- WHERE
     sales.sales_channel = 'STORE' and sales.date.year in (2000, 2001, 2002, 2003)
 SELECT
-    sales.item.id -> frequent_item_id,
+    sales.item.id as frequent_item_id,
     --ss_combo_count,
 HAVING
     ss_combo_count > 4
@@ -20,7 +20,7 @@ rowset max_total <- WHERE
     and sales.sales_channel = 'STORE'
     and sales.date.year in (2000, 2001, 2002, 2003)
 SELECT
-    max(customer_total_in_window) -> cmax,
+    max(customer_total_in_window) as cmax,
 ;
 
 metric ss_combo_count <- count(sales.order_id) by sales.item.desc_truncated, sales.item.id, sales.date.date;
@@ -28,7 +28,7 @@ metric ss_combo_count <- count(sales.order_id) by sales.item.desc_truncated, sal
 rowset best_customers <- WHERE
     sales.customer.id is not null and sales.sales_channel = 'STORE'
 SELECT
-    sales.customer.id -> best_customer_id,
+    sales.customer.id as best_customer_id,
     --customer_total_overall,
     --max_total.cmax,
 HAVING
@@ -42,9 +42,9 @@ WHERE
     and sales.item.id in frequent_items.frequent_item_id
     and sales.customer.id in best_customers.best_customer_id
 SELECT
-    sales.customer.last_name -> c_last_name,
-    sales.customer.first_name -> c_first_name,
-    sum((sales.quantity * sales.list_price) ? sales.sales_channel in ('WEB', 'CATALOG')) -> sales_total,
+    sales.customer.last_name as c_last_name,
+    sales.customer.first_name as c_first_name,
+    sum((sales.quantity * sales.list_price) ? sales.sales_channel in ('WEB', 'CATALOG')) as sales_total,
 HAVING
     sales_total > 0
 

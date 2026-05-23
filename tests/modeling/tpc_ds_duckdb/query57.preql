@@ -1,7 +1,9 @@
 import catalog_sales as catalog_sales;
 
-metric sum_sales <- sum(catalog_sales.sales_price) by catalog_sales.item.category, catalog_sales.item.brand_name, catalog_sales.call_center.name, catalog_sales.date.year, catalog_sales.date.month_of_year;
-metric avg_monthly_sales <- avg(sum_sales) by catalog_sales.item.category, catalog_sales.item.brand_name, catalog_sales.call_center.name, catalog_sales.date.year;
+metric sum_sales <- sum(catalog_sales.sales_price)
+    by catalog_sales.item.category, catalog_sales.item.brand_name, catalog_sales.call_center.name, catalog_sales.date.year, catalog_sales.date.month_of_year;
+metric avg_monthly_sales <- avg(sum_sales)
+    by catalog_sales.item.category, catalog_sales.item.brand_name, catalog_sales.call_center.name, catalog_sales.date.year;
 property <catalog_sales.call_center.name, catalog_sales.date.month_of_year, catalog_sales.date.year, catalog_sales.item.brand_name, catalog_sales.item.category>.psum <- lag(sum_sales,1) over (partition by catalog_sales.item.category,catalog_sales.item.brand_name,catalog_sales.call_center.name order by catalog_sales.date.year asc,catalog_sales.date.month_of_year asc);
 property <catalog_sales.call_center.name, catalog_sales.date.month_of_year, catalog_sales.date.year, catalog_sales.item.brand_name, catalog_sales.item.category>.nsum <- lead(sum_sales,1) over (partition by catalog_sales.item.category,catalog_sales.item.brand_name,catalog_sales.call_center.name order by catalog_sales.date.year asc,catalog_sales.date.month_of_year asc);
 property <catalog_sales.call_center.name, catalog_sales.date.month_of_year, catalog_sales.date.year, catalog_sales.item.brand_name, catalog_sales.item.category>.sum_minus_avg <- sum_sales - avg_monthly_sales;

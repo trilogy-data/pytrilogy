@@ -1,16 +1,16 @@
 import adhoc01_imports;
 
-metric zip_p_count <- count(filter customer.id where customer.preferred_cust_flag = 'Y') by customer.address.zip;
-property p_cust_zip <- filter customer.address.zip where zip_p_count > 10;
-property <customer.address.id, zips_pre>.final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);
+metric zip_p_count <- count(customer.id ? customer.preferred_cust_flag = 'Y') by customer.address.zip;
+property p_cust_zip <- customer.address.zip ? zip_p_count > 10;
+property <customer.address.id, zips_pre>.final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);
 
 WHERE
     store_sales.date.quarter = 2
     and store_sales.date.year = 1998
-    and substring(store_sales.store.zip,1,2) in final_zips
+    and substring(store_sales.store.zip, 1, 2) in final_zips
 SELECT
     store_sales.store.name,
-    sum(store_sales.net_profit) -> store_net_profit,
+    sum(store_sales.net_profit) as store_net_profit,
 ORDER BY
     store_sales.store.name asc
 LIMIT 100

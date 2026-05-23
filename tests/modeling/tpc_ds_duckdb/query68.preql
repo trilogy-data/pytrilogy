@@ -14,9 +14,9 @@ SELECT
     store_sales.ticket_number,
     store_sales.customer.id,
     store_sales.sale_address.city,
-    sum(store_sales.ext_sales_price) -> extended_price,
-    sum(store_sales.ext_tax) -> extended_tax,
-    sum(store_sales.ext_list_price) -> list_price,
+    sum(store_sales.ext_sales_price) as extended_price,
+    sum(store_sales.ext_tax) as extended_tax,
+    sum(store_sales.ext_list_price) as list_price,
 MERGE
 SELECT
     customer.id,

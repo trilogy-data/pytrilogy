@@ -9,8 +9,8 @@ SELECT
     cs.item.category,
     cs.item.class,
     cs.item.current_price,
-    sum(cs.ext_sales_price) -> revenue,
-    revenue * 100.0 / (sum(revenue) by cs.item.class) -> revenue_ratio,
+    sum(cs.ext_sales_price) as revenue,
+    revenue * 100.0 / (sum(revenue) by cs.item.class) as revenue_ratio,
 HAVING
     cs.item.name is not null
 

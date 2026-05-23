@@ -1,12 +1,12 @@
 import store_sales as ss;
 
-metric state_total <- sum(filter ss.net_profit where ss.date.month_seq between 1200 and 1211) by ss.store.state;
+metric state_total <- sum(ss.net_profit ? ss.date.month_seq between 1200 and 1211) by ss.store.state;
 property state_rnk <- rank(ss.store.state) over (order by state_total desc);
 
 rowset top_states <- WHERE
     ss.date.month_seq between 1200 and 1211
 SELECT
-    ss.store.state -> ts_state,
+    ss.store.state as ts_state,
     --state_rnk,
 HAVING
     state_rnk <= 5
@@ -16,9 +16,9 @@ HAVING
 rowset q70_rolled <- WHERE
     ss.date.month_seq between 1200 and 1211 and ss.store.state in top_states.ts_state
 SELECT
-    sum(ss.net_profit) by rollup ss.store.state, ss.store.county -> total_sum,
-    ss.store.state -> r_state,
-    ss.store.county -> r_county,
+    sum(ss.net_profit) by rollup ss.store.state, ss.store.county as total_sum,
+    ss.store.state as r_state,
+    ss.store.county as r_county,
 ;
 
 def loc_level(state, county) -> CASE
@@ -33,10 +33,10 @@ END;
 
 SELECT
     q70_rolled.total_sum,
-    q70_rolled.r_state -> s_state,
-    q70_rolled.r_county -> s_county,
-    @loc_level(q70_rolled.r_state, q70_rolled.r_county) -> lochierarchy,
-    rank(q70_rolled.r_county,q70_rolled.r_state) over (partition by @loc_level(q70_rolled.r_state, q70_rolled.r_county),@partition_state(q70_rolled.r_state, q70_rolled.r_county) order by q70_rolled.total_sum desc) -> rank_within_parent,
+    q70_rolled.r_state as s_state,
+    q70_rolled.r_county as s_county,
+    @loc_level(q70_rolled.r_state, q70_rolled.r_county) as lochierarchy,
+    rank(q70_rolled.r_county,q70_rolled.r_state) over (partition by @loc_level(q70_rolled.r_state, q70_rolled.r_county),@partition_state(q70_rolled.r_state, q70_rolled.r_county) order by q70_rolled.total_sum desc) as rank_within_parent,
 ORDER BY
     lochierarchy desc nulls first,
     CASE

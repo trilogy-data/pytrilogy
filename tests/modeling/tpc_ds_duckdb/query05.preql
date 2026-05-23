@@ -7,15 +7,15 @@ property channel_label <- CASE
     ELSE null
 END;
 property sales_id_label <- CASE
-    WHEN sales.sales_channel = 'STORE' THEN concat('store',sales.channel_dim_text_id)
-    WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page',sales.channel_dim_text_id)
-    WHEN sales.sales_channel = 'WEB' THEN concat('web_site',sales.channel_dim_text_id)
+    WHEN sales.sales_channel = 'STORE' THEN concat('store', sales.channel_dim_text_id)
+    WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page', sales.channel_dim_text_id)
+    WHEN sales.sales_channel = 'WEB' THEN concat('web_site', sales.channel_dim_text_id)
     ELSE null
 END;
 property return_id_label <- CASE
-    WHEN sales.sales_channel = 'STORE' THEN concat('store',sales.return_channel_dim_text_id)
-    WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page',sales.return_channel_dim_text_id)
-    WHEN sales.sales_channel = 'WEB' THEN concat('web_site',sales.return_channel_dim_text_id)
+    WHEN sales.sales_channel = 'STORE' THEN concat('store', sales.return_channel_dim_text_id)
+    WHEN sales.sales_channel = 'CATALOG' THEN concat('catalog_page', sales.return_channel_dim_text_id)
+    WHEN sales.sales_channel = 'WEB' THEN concat('web_site', sales.return_channel_dim_text_id)
     ELSE null
 END;
 
@@ -23,34 +23,34 @@ rowset q5_results <- WHERE
     sales.channel_dim_text_id is not null
     and sales.date.date between '2000-08-23'::date and '2000-09-06'::date
 SELECT
-    channel_label -> s_channel,
-    sales_id_label -> s_id,
-    sum(sales.ext_sales_price) by rollup channel_label, sales_id_label -> sales_total_a,
-    sum(sales.net_profit) by rollup channel_label, sales_id_label -> profit_only_a,
+    channel_label as s_channel,
+    sales_id_label as s_id,
+    sum(sales.ext_sales_price) by rollup channel_label, sales_id_label as sales_total_a,
+    sum(sales.net_profit) by rollup channel_label, sales_id_label as profit_only_a,
 MERGE
 WHERE
     sales.return_channel_dim_text_id is not null
     and sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date
 SELECT
-    channel_label -> r_channel,
-    return_id_label -> r_id,
-    sum(coalesce(sales.return_amount,0)) by rollup channel_label, return_id_label -> returns_total_b,
-    sum(coalesce(sales.return_net_loss,0)) by rollup channel_label, return_id_label -> loss_only_b,
+    channel_label as r_channel,
+    return_id_label as r_id,
+    sum(coalesce(sales.return_amount, 0)) by rollup channel_label, return_id_label as returns_total_b,
+    sum(coalesce(sales.return_net_loss, 0)) by rollup channel_label, return_id_label as loss_only_b,
 ALIGN
     channel: s_channel, r_channel
     and id: s_id, r_id
 derive
-    coalesce(q5_results.sales_total_a,0.0) -> sales_metric,
-    coalesce(q5_results.returns_total_b,0.0) -> returns_metric,
-    coalesce(q5_results.profit_only_a,0.0) - coalesce(q5_results.loss_only_b,0.0) -> profit_metric
+    coalesce(q5_results.sales_total_a, 0.0) -> sales_metric,
+    coalesce(q5_results.returns_total_b, 0.0) -> returns_metric,
+    coalesce(q5_results.profit_only_a, 0.0) - coalesce(q5_results.loss_only_b, 0.0) -> profit_metric
 ;
 
 SELECT
     q5_results.channel,
     q5_results.id,
-    q5_results.sales_metric -> sales,
-    q5_results.returns_metric -> returns_,
-    q5_results.profit_metric -> profit,
+    q5_results.sales_metric as sales,
+    q5_results.returns_metric as returns_,
+    q5_results.profit_metric as profit,
 ORDER BY
     q5_results.channel asc nulls first,
     q5_results.id asc nulls first

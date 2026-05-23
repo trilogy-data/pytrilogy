@@ -2,8 +2,9 @@ import item as items;
 import inventory as inv;
 import catalog_sales as cs;
 
-property cs_item_ids <- filter cs.item.id where True = True;
-property inv_item_ids <- filter inv.item.id where inv.date.date between '2000-02-01'::date and '2000-04-01'::date
+property cs_item_ids <- cs.item.id ? True = True;
+property inv_item_ids <- inv.item.id
+    ? inv.date.date between '2000-02-01'::date and '2000-04-01'::date
 and inv.quantity_on_hand between 100 and 500;
 
 WHERE

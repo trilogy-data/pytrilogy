@@ -40,8 +40,8 @@ WHERE
         )
     )
 SELECT
-    avg(store_sales.quantity) -> avg1,
-    avg(store_sales.ext_sales_price) -> avg2,
-    avg(store_sales.ext_wholesale_cost) -> avg3,
-    sum(store_sales.ext_wholesale_cost) -> sum_ewc,
+    avg(store_sales.quantity) as avg1,
+    avg(store_sales.ext_sales_price) as avg2,
+    avg(store_sales.ext_wholesale_cost) as avg3,
+    sum(store_sales.ext_wholesale_cost) as sum_ewc,
 ;

@@ -4,9 +4,9 @@ WHERE
     returns.store.state = 'TN' and returns.return_date.year = 2000
 SELECT
     returns.customer.text_id,
-    --sum(returns.return_amount) by returns.customer.id, returns.store.id -> total_returns,
+    --sum(returns.return_amount) by returns.customer.id, returns.store.id as total_returns,
     --returns.store.id,
-    --avg(total_returns) by returns.store.id -> avg_store_returns,
+    --avg(total_returns) by returns.store.id as avg_store_returns,
 HAVING
     total_returns > (1.2 * avg_store_returns)
 

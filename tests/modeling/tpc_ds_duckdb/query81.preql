@@ -1,6 +1,7 @@
 import catalog_returns as cr;
 
-metric customer_state <- sum(filter cr.return_amt_inc_tax where cr.date.year = 2000 and cr.return_address.state is not null) by cr.return_address.state, cr.customer.id;
+metric customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.return_address.state is not null)
+    by cr.return_address.state, cr.customer.id;
 metric scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
 
 WHERE

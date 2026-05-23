@@ -38,5 +38,5 @@ WHERE
         )
     )
 SELECT
-    sum(store_sales.quantity) -> total_quantity,
+    sum(store_sales.quantity) as total_quantity,
 ;

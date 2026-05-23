@@ -13,9 +13,9 @@ SELECT
     analysis.item.desc,
     analysis.store.text_id,
     analysis.store.name,
-    sum(analysis.store_net_profit) -> store_sales_profit,
-    sum(analysis.store_return_net_loss) -> store_returns_loss,
-    sum(analysis.catalog_net_profit) -> catalog_sales_profit,
+    sum(analysis.store_net_profit) as store_sales_profit,
+    sum(analysis.store_return_net_loss) as store_returns_loss,
+    sum(analysis.catalog_net_profit) as catalog_sales_profit,
 ORDER BY
     analysis.item.name asc,
     analysis.item.desc asc,

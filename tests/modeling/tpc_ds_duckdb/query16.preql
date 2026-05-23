@@ -1,7 +1,7 @@
 import catalog_sales as cs;
 import catalog_returns as cr;
 
-property multi_warehouse_sales <- filter cs.order_number where count(cs.warehouse.id) by cs.order_number > 1;
+property multi_warehouse_sales <- cs.order_number ? count(cs.warehouse.id) by cs.order_number > 1;
 
 WHERE
     cs.ship_date.date between '2002-02-01'::date and '2002-04-02'::date
@@ -10,9 +10,9 @@ WHERE
     and cs.order_number not in cr.order_number
     and cs.order_number in multi_warehouse_sales
 SELECT
-    count_distinct(cs.order_number) -> order_count,
-    sum(cs.ext_ship_cost) -> total_shipping_cost,
-    sum(cs.net_profit) -> total_net_profit,
+    count_distinct(cs.order_number) as order_count,
+    sum(cs.ext_ship_cost) as total_shipping_cost,
+    sum(cs.net_profit) as total_net_profit,
 ORDER BY
     order_count desc
 LIMIT 100

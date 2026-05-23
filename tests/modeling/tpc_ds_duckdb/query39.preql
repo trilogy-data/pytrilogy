@@ -1,12 +1,18 @@
 import inventory as inventory;
 
-def month_mean(month) -> avg(filter inventory.quantity_on_hand where inventory.date.month_of_year = month) by inventory.warehouse.id, inventory.item.id;
-def month_stdev(month) -> stddev(filter inventory.quantity_on_hand where inventory.date.month_of_year = month) by inventory.warehouse.id, inventory.item.id;
+def month_mean(month) -> avg(inventory.quantity_on_hand ? inventory.date.month_of_year = month)
+    by inventory.warehouse.id, inventory.item.id;
+def month_stdev(month) -> stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = month)
+    by inventory.warehouse.id, inventory.item.id;
 
-metric mean1 <- avg(filter inventory.quantity_on_hand where inventory.date.month_of_year = 1) by inventory.warehouse.id, inventory.item.id;
-metric stdev1 <- stddev(filter inventory.quantity_on_hand where inventory.date.month_of_year = 1) by inventory.warehouse.id, inventory.item.id;
-metric mean2 <- avg(filter inventory.quantity_on_hand where inventory.date.month_of_year = 2) by inventory.warehouse.id, inventory.item.id;
-metric stdev2 <- stddev(filter inventory.quantity_on_hand where inventory.date.month_of_year = 2) by inventory.warehouse.id, inventory.item.id;
+metric mean1 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 1)
+    by inventory.warehouse.id, inventory.item.id;
+metric stdev1 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 1)
+    by inventory.warehouse.id, inventory.item.id;
+metric mean2 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 2)
+    by inventory.warehouse.id, inventory.item.id;
+metric stdev2 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 2)
+    by inventory.warehouse.id, inventory.item.id;
 property <inventory.item.id, inventory.warehouse.id>.cov1 <- CASE
     WHEN mean1 = 0 THEN null
     ELSE stdev1 / mean1
@@ -21,14 +27,14 @@ WHERE
     and inventory.date.month_of_year in (1, 2)
     and inventory.warehouse.id is not null
 SELECT
-    inventory.warehouse.id -> wsk1,
-    inventory.item.id -> isk1,
-    1 -> dmoy1,
+    inventory.warehouse.id as wsk1,
+    inventory.item.id as isk1,
+    1 as dmoy1,
     mean1,
     cov1,
-    inventory.warehouse.id -> wsk2,
-    inventory.item.id -> isk2,
-    2 -> dmoy2,
+    inventory.warehouse.id as wsk2,
+    inventory.item.id as isk2,
+    2 as dmoy2,
     mean2,
     cov2,
 HAVING

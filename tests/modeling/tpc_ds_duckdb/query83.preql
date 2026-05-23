@@ -1,17 +1,17 @@
 import unified_sales as sales;
 import date as date;
 
-property target_week_seqs <- filter date.week_seq where date.date in ('2000-06-30'::date, '2000-09-27'::date, '2000-11-17'::date);
+property target_week_seqs <- date.week_seq ? date.date in ('2000-06-30'::date, '2000-09-27'::date, '2000-11-17'::date);
 
-def channel_qty(channel) -> sum(filter sales.return_quantity where sales.sales_channel = channel) by sales.item.name;
-def channel_present(channel) -> count(filter sales.order_id where sales.sales_channel = channel) by sales.item.name;
+def channel_qty(channel) -> sum(sales.return_quantity ? sales.sales_channel = channel) by sales.item.name;
+def channel_present(channel) -> count(sales.order_id ? sales.sales_channel = channel) by sales.item.name;
 
-metric sr_item_qty <- sum(filter sales.return_quantity where sales.sales_channel = 'STORE') by sales.item.name;
-metric cr_item_qty <- sum(filter sales.return_quantity where sales.sales_channel = 'CATALOG') by sales.item.name;
-metric wr_item_qty <- sum(filter sales.return_quantity where sales.sales_channel = 'WEB') by sales.item.name;
-metric sr_item_present <- count(filter sales.order_id where sales.sales_channel = 'STORE') by sales.item.name;
-metric cr_item_present <- count(filter sales.order_id where sales.sales_channel = 'CATALOG') by sales.item.name;
-metric wr_item_present <- count(filter sales.order_id where sales.sales_channel = 'WEB') by sales.item.name;
+metric sr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'STORE') by sales.item.name;
+metric cr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'CATALOG') by sales.item.name;
+metric wr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'WEB') by sales.item.name;
+metric sr_item_present <- count(sales.order_id ? sales.sales_channel = 'STORE') by sales.item.name;
+metric cr_item_present <- count(sales.order_id ? sales.sales_channel = 'CATALOG') by sales.item.name;
+metric wr_item_present <- count(sales.order_id ? sales.sales_channel = 'WEB') by sales.item.name;
 property total_qty <- sr_item_qty + cr_item_qty + wr_item_qty;
 property avg_qty <- total_qty / 3.0;
 property sr_dev <- (sr_item_qty * 1.0) / total_qty / 3.0 * 100;
@@ -21,14 +21,14 @@ property wr_dev <- (wr_item_qty * 1.0) / total_qty / 3.0 * 100;
 WHERE
     sales.return_date.week_seq in target_week_seqs
 SELECT
-    sales.item.name -> item_id,
+    sales.item.name as item_id,
     sr_item_qty,
     sr_dev,
     cr_item_qty,
     cr_dev,
     wr_item_qty,
     wr_dev,
-    avg_qty -> average,
+    avg_qty as average,
     --sr_item_present,
     --cr_item_present,
     --wr_item_present,

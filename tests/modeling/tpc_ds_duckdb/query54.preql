@@ -10,7 +10,7 @@ rowset my_customers <- WHERE
     and sales.date.month_of_year = 12
     and sales.customer.id is not null
 SELECT
-    sales.customer.id -> my_cust_id,
+    sales.customer.id as my_cust_id,
 ;
 
 rowset cust_ss <- WHERE
@@ -19,32 +19,32 @@ rowset cust_ss <- WHERE
     and ss.date.month_seq <= 1190
     and ss.customer.id is not null
 SELECT
-    ss.customer.id -> ss_cust_id,
-    ss.customer.address.county -> ss_cust_county,
-    ss.customer.address.state -> ss_cust_state,
-    sum(ss.ext_sales_price) -> ss_revenue,
+    ss.customer.id as ss_cust_id,
+    ss.customer.address.county as ss_cust_county,
+    ss.customer.address.state as ss_cust_state,
+    sum(ss.ext_sales_price) as ss_revenue,
 ;
 
 rowset stores_cs <- SELECT
-    store.county -> scs_county,
-    store.state -> scs_state,
-    count(store.id) -> scs_count,
+    store.county as scs_county,
+    store.state as scs_state,
+    count(store.id) as scs_count,
 ;
 
 MERGE cust_ss.ss_cust_county into stores_cs.scs_county;
 MERGE cust_ss.ss_cust_state into stores_cs.scs_state;
 
 rowset my_revenue <- SELECT
-    cust_ss.ss_cust_id -> rev_cust_id,
-    cust_ss.ss_revenue * stores_cs.scs_count -> revenue,
+    cust_ss.ss_cust_id as rev_cust_id,
+    cust_ss.ss_revenue * stores_cs.scs_count as revenue,
 ;
 
-property segment <- round(my_revenue.revenue / 50,0)::int;
+property segment <- round(my_revenue.revenue / 50, 0)::int;
 
 SELECT
     segment,
-    count(my_revenue.rev_cust_id) -> num_customers,
-    segment * 50 -> segment_base,
+    count(my_revenue.rev_cust_id) as num_customers,
+    segment * 50 as segment_base,
 ORDER BY
     segment asc nulls first,
     num_customers asc nulls first,

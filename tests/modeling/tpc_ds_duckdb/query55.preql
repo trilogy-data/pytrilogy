@@ -7,7 +7,7 @@ WHERE
 SELECT
     store_sales.item.brand_id,
     store_sales.item.brand_name,
-    sum(store_sales.ext_sales_price) -> total_ext_sales,
+    sum(store_sales.ext_sales_price) as total_ext_sales,
 ORDER BY
     total_ext_sales desc,
     store_sales.item.brand_id asc

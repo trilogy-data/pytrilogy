@@ -1,7 +1,7 @@
 import unified_sales as sales;
 
-property <sales.item.id, sales.order_id, sales.sales_channel>.cnt_per_row <- sales.quantity - coalesce(sales.return_quantity,0);
-property <sales.item.id, sales.order_id, sales.sales_channel>.amt_per_row <- sales.ext_sales_price - coalesce(sales.return_amount,0.0);
+property <sales.item.id, sales.order_id, sales.sales_channel>.cnt_per_row <- sales.quantity - coalesce(sales.return_quantity, 0);
+property <sales.item.id, sales.order_id, sales.sales_channel>.amt_per_row <- sales.ext_sales_price - coalesce(sales.return_amount, 0.0);
 
 rowset deduped <- WHERE
     sales.item.category = 'Books' and sales.date.year in (2001, 2002)
@@ -18,22 +18,22 @@ SELECT
 rowset year_pair <- WHERE
     deduped.sales.date.year = 2002
 SELECT
-    deduped.sales.item.brand_id -> brand_id_curr,
-    deduped.sales.item.class_id -> class_id_curr,
-    deduped.sales.item.category_id -> category_id_curr,
-    deduped.sales.item.manufacturer_id -> manufact_id_curr,
-    sum(deduped.cnt_per_row) -> curr_cnt,
-    sum(deduped.amt_per_row) -> curr_amt,
+    deduped.sales.item.brand_id as brand_id_curr,
+    deduped.sales.item.class_id as class_id_curr,
+    deduped.sales.item.category_id as category_id_curr,
+    deduped.sales.item.manufacturer_id as manufact_id_curr,
+    sum(deduped.cnt_per_row) as curr_cnt,
+    sum(deduped.amt_per_row) as curr_amt,
 MERGE
 WHERE
     deduped.sales.date.year = 2001
 SELECT
-    deduped.sales.item.brand_id -> brand_id_prev,
-    deduped.sales.item.class_id -> class_id_prev,
-    deduped.sales.item.category_id -> category_id_prev,
-    deduped.sales.item.manufacturer_id -> manufact_id_prev,
-    sum(deduped.cnt_per_row) -> prev_cnt,
-    sum(deduped.amt_per_row) -> prev_amt,
+    deduped.sales.item.brand_id as brand_id_prev,
+    deduped.sales.item.class_id as class_id_prev,
+    deduped.sales.item.category_id as category_id_prev,
+    deduped.sales.item.manufacturer_id as manufact_id_prev,
+    sum(deduped.cnt_per_row) as prev_cnt,
+    sum(deduped.amt_per_row) as prev_amt,
 ALIGN
     i_brand_id: brand_id_curr, brand_id_prev
     and i_class_id: class_id_curr, class_id_prev
@@ -42,18 +42,18 @@ ALIGN
 ;
 
 SELECT
-    2001 -> prev_year,
-    2002 -> year_,
+    2001 as prev_year,
+    2002 as year_,
     year_pair.i_brand_id,
     year_pair.i_class_id,
     year_pair.i_category_id,
     year_pair.i_manufact_id,
-    year_pair.prev_cnt -> prev_yr_cnt,
-    year_pair.curr_cnt -> curr_yr_cnt,
-    year_pair.curr_cnt - year_pair.prev_cnt -> sales_cnt_diff,
-    year_pair.curr_amt - year_pair.prev_amt -> sales_amt_diff,
+    year_pair.prev_cnt as prev_yr_cnt,
+    year_pair.curr_cnt as curr_yr_cnt,
+    year_pair.curr_cnt - year_pair.prev_cnt as sales_cnt_diff,
+    year_pair.curr_amt - year_pair.prev_amt as sales_amt_diff,
 HAVING
-    curr_yr_cnt::Numeric(17,2) / prev_yr_cnt::Numeric(17,2) < 0.9
+    curr_yr_cnt::numeric(17,2) / prev_yr_cnt::numeric(17,2) < 0.9
 
 ORDER BY
     sales_cnt_diff asc nulls first,

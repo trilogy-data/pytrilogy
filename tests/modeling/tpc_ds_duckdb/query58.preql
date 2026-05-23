@@ -1,13 +1,13 @@
 import unified_sales as sales;
 import date as date;
 
-property target_week_seq <- filter date.week_seq where date._date_string = '2000-01-03';
+property target_week_seq <- date.week_seq ? date._date_string = '2000-01-03';
 
-def channel_item_rev(channel) -> sum(filter sales.ext_sales_price where sales.sales_channel = channel) by sales.item.name;
+def channel_item_rev(channel) -> sum(sales.ext_sales_price ? sales.sales_channel = channel) by sales.item.name;
 
-metric ss_item_rev <- sum(filter sales.ext_sales_price where sales.sales_channel = 'STORE') by sales.item.name;
-metric cs_item_rev <- sum(filter sales.ext_sales_price where sales.sales_channel = 'CATALOG') by sales.item.name;
-metric ws_item_rev <- sum(filter sales.ext_sales_price where sales.sales_channel = 'WEB') by sales.item.name;
+metric ss_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE') by sales.item.name;
+metric cs_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'CATALOG') by sales.item.name;
+metric ws_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB') by sales.item.name;
 property avg_rev <- (ss_item_rev + cs_item_rev + ws_item_rev) / 3;
 property ss_dev <- ss_item_rev / avg_rev * 100;
 property cs_dev <- cs_item_rev / avg_rev * 100;
@@ -16,7 +16,7 @@ property ws_dev <- ws_item_rev / avg_rev * 100;
 WHERE
     sales.date.week_seq in target_week_seq
 SELECT
-    sales.item.name -> item_id,
+    sales.item.name as item_id,
     ss_item_rev,
     ss_dev,
     cs_item_rev,

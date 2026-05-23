@@ -86,6 +86,8 @@ from trilogy.core.statements.author import (
     TypeDeclaration,
     ValidateStatement,
 )
+from trilogy.parsing.pretty import Break, DocPart
+from trilogy.parsing.pretty import render as pretty_render
 
 QUERY_TEMPLATE = Template("""{% if where %}WHERE
 {{ where }}
@@ -180,6 +182,41 @@ class Renderer:
             - len(self.indent_context.current_indent)
             - len(extra_prefix)
         )
+
+    def _pretty(self, parts: list[DocPart], *, extra_prefix: str = "") -> str:
+        """Render a Doc with the current indent column as the starting col."""
+        col = len(self.indent_context.current_indent) + len(extra_prefix)
+        return pretty_render(
+            parts,
+            width=self.max_line_length,
+            col=col,
+            indent_unit=self.indent_context.indent_string,
+        )
+
+    def _render_call(
+        self,
+        name: str,
+        args: list[str],
+        *,
+        priority: int = 5,
+        extra_prefix: str = "",
+    ) -> str:
+        """Render ``name(arg1, arg2, ...)`` with one-per-line wrap as a fallback.
+
+        All inter-arg breaks (and the prefix/suffix breaks) share ``priority``
+        so they activate together when the flat form doesn't fit.
+        """
+        if not args:
+            return f"{name}()"
+        parts: list[DocPart] = [f"{name}(", Break(priority, indent=1, flat="")]
+        for i, a in enumerate(args):
+            parts.append(a)
+            if i < len(args) - 1:
+                parts.append(",")
+                parts.append(Break(priority, indent=1, flat=" "))
+        parts.append(Break(priority, indent=0, flat=""))
+        parts.append(")")
+        return self._pretty(parts, extra_prefix=extra_prefix)
 
     def _flatten_boolean(self, cond: "Conditional") -> tuple[list[Any], str]:
         op = cond.operator.value
@@ -525,7 +562,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "NumericType"):
-        return f"""Numeric({arg.precision},{arg.scale})"""
+        return f"""numeric({arg.precision},{arg.scale})"""
 
     @to_string.register
     def _(self, arg: EnumType):
@@ -963,14 +1000,16 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "FilterItem"):
-        # Grammar's ``filter X where Y`` form requires X to be a plain
-        # identifier — compound exprs must use the ``X ? Y`` form.
-        if isinstance(arg.content, (ConceptRef, Concept)):
-            return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
         content = self.to_string(arg.content)
-        if not (content.startswith("(") and content.endswith(")")):
-            content = f"({content})"
-        return f"{content} ? {self.to_string(arg.where)}"
+        # Plain identifiers can sit naked on the LHS of ``?``; anything else
+        # must be parenthesized so the grammar's ``_filter_alt`` rule binds it.
+        if not isinstance(arg.content, (ConceptRef, Concept)):
+            if not (content.startswith("(") and content.endswith(")")):
+                content = f"({content})"
+        where = self.to_string(arg.where)
+        return self._pretty(
+            [content, Break(priority=8, indent=1, flat=" "), f"? {where}"]
+        )
 
     @to_string.register
     def _(self, arg: "ConceptRef"):
@@ -1022,7 +1061,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ConceptTransform"):
-        return f"{self.to_string(arg.function)} -> {self._unmangle_rowset_name(arg.output.name)}"
+        return f"{self.to_string(arg.function)} as {self._unmangle_rowset_name(arg.output.name)}"
 
     @to_string.register
     def _(self, arg: "Function"):
@@ -1088,8 +1127,7 @@ class Renderer:
             return f"struct(\n{inputs}\n{self.indent_context.current_indent})"
         if arg.operator == FunctionType.ALIAS:
             return f"{self.to_string(arg.arguments[0])}"
-        inputs = ",".join(args)
-        return f"{arg.operator.value}({inputs})"
+        return self._render_call(arg.operator.value, args)
 
     @to_string.register
     def _(self, arg: "OrderItem"):
@@ -1097,25 +1135,23 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: AggregateWrapper):
-        if arg.by:
-            if arg.grouping.value == "rollup":
-                by = ", ".join([self.to_string(x) for x in arg.by])
-                return f"{self.to_string(arg.function)} by rollup {by}"
-            if arg.grouping.value == "cube":
-                by = ", ".join([self.to_string(x) for x in arg.by])
-                return f"{self.to_string(arg.function)} by cube {by}"
-            if arg.grouping.value == "grouping_sets":
-                sets = []
-                for grouping_set in arg.grouping_sets:
-                    sets.append(
-                        f"({', '.join([self.to_string(x) for x in grouping_set])})"
-                    )
-                return f"{self.to_string(arg.function)} by grouping sets " + ", ".join(
-                    sets
-                )
+        func_str = self.to_string(arg.function)
+        if not arg.by:
+            return func_str
+        if arg.grouping.value == "grouping_sets":
+            sets = []
+            for grouping_set in arg.grouping_sets:
+                sets.append(f"({', '.join([self.to_string(x) for x in grouping_set])})")
+            tail = "by grouping sets " + ", ".join(sets)
+        else:
+            kw = {"rollup": "by rollup ", "cube": "by cube "}.get(
+                arg.grouping.value, "by "
+            )
             by = ", ".join([self.to_string(x) for x in arg.by])
-            return f"{self.to_string(arg.function)} by {by}"
-        return f"{self.to_string(arg.function)}"
+            tail = f"{kw}{by}"
+        # The ``by`` boundary is the most natural break; give it higher
+        # priority than function-internal arg breaks (which use 5).
+        return self._pretty([func_str, Break(priority=10, indent=1, flat=" "), tail])
 
     @to_string.register
     def _(self, arg: MergeStatementV2):

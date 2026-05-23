@@ -11,8 +11,8 @@ SELECT
     ss.date.quarter,
     ss.date.month_of_year,
     ss.store.text_id,
-    sum(coalesce(ss.sales_price * ss.quantity,0)) -> sumsales,
-    rank() over (partition by ss.item.category order by sumsales desc) -> rk,
+    sum(coalesce(ss.sales_price * ss.quantity, 0)) as sumsales,
+    rank() over (partition by ss.item.category order by sumsales desc) as rk,
 HAVING
     rk <= 100
 

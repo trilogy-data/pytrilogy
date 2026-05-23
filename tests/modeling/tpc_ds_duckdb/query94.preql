@@ -1,7 +1,7 @@
 import web_sales as ws;
 import web_returns as wr;
 
-property multi_warehouse_orders <- filter ws.order_number where count(ws.warehouse.id) by ws.order_number > 1;
+property multi_warehouse_orders <- ws.order_number ? count(ws.warehouse.id) by ws.order_number > 1;
 
 WHERE
     ws.ship_date.date between '1999-02-01'::date and '1999-04-02'::date
@@ -10,9 +10,9 @@ WHERE
     and ws.order_number in multi_warehouse_orders
     and ws.order_number not in wr.web_sales.order_number
 SELECT
-    count_distinct(ws.order_number) -> order_count,
-    sum(ws.ext_ship_cost) -> total_shipping_cost,
-    sum(ws.net_profit) -> total_net_profit,
+    count_distinct(ws.order_number) as order_count,
+    sum(ws.ext_ship_cost) as total_shipping_cost,
+    sum(ws.net_profit) as total_net_profit,
 ORDER BY
     order_count asc
 LIMIT 100

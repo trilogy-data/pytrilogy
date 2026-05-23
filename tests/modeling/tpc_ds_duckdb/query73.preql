@@ -1,6 +1,8 @@
 import store_sales as store_sales;
 
-metric ticket_cnt <- count(filter store_sales.item.id where store_sales.date.day_of_month >= 1
+metric ticket_cnt <- count(
+    store_sales.item.id
+    ? store_sales.date.day_of_month >= 1
 and store_sales.date.day_of_month <= 2
 and (
     store_sales.household_demographic.buy_potential = '>10000'
@@ -12,7 +14,9 @@ and (CASE
     ELSE null
 END) > 1
 and store_sales.date.year in (1999, 2000, 2001)
-and store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')) by store_sales.ticket_number, store_sales.customer.id;
+and store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')
+)
+    by store_sales.ticket_number, store_sales.customer.id;
 
 WHERE
     store_sales.customer.id is not null

@@ -10,21 +10,27 @@ MERGE store_sales.item.id into ~item.id;
 MERGE catalog_sales.bill_customer.id into ~customer.id;
 MERGE catalog_sales.item.id into ~item.id;
 
-property <customer.id, item.id>.customer_item <- concat(concat(customer.id::string,'-'),item.id::string);
-property <customer.id, item.id>.catalog_sales <- filter customer_item where catalog_sales.date.month_seq between 1200 and 1200 + 11;
-property <customer.id, item.id>.store_sales <- filter customer_item where store_sales.date.month_seq between 1200 and 1200 + 11;
+property <customer.id, item.id>.customer_item <- concat(concat(customer.id::string, '-'), item.id::string);
+property <customer.id, item.id>.catalog_sales <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
+property <customer.id, item.id>.store_sales <- customer_item ? store_sales.date.month_seq between 1200 and 1200 + 11;
 
 SELECT
-    sum(CASE
+    sum(
+            CASE
             WHEN store_sales is not null and catalog_sales is null THEN 1
             ELSE 0
-        END) -> store_sale_count,
-    sum(CASE
+        END
+        ) as store_sale_count,
+    sum(
+            CASE
             WHEN store_sales is null and catalog_sales is not null THEN 1
             ELSE 0
-        END) -> catalog_sale_count,
-    sum(CASE
+        END
+        ) as catalog_sale_count,
+    sum(
+            CASE
             WHEN store_sales is not null and catalog_sales is not null THEN 1
             ELSE 0
-        END) -> both_sale_count,
+        END
+        ) as both_sale_count,
 ;

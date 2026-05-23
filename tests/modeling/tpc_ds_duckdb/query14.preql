@@ -1,12 +1,18 @@
 import unified_sales as sales;
 
-property tuple_key <- concat(sales.item.brand_id::string,'|',sales.item.class_id::string,'|',sales.item.category_id::string);
+property tuple_key <- concat(
+    sales.item.brand_id::string,
+    '|',
+    sales.item.class_id::string,
+    '|',
+    sales.item.category_id::string
+);
 metric fact_row_one <- count(sales.order_id) by sales.sales_channel, sales.order_id, sales.item.id;
 
 rowset cross_tuples <- WHERE
     sales.date.year between 1999 and 2001
 SELECT
-    tuple_key -> ci_tuple_key,
+    tuple_key as ci_tuple_key,
     --cross_channel_count,
 HAVING
     cross_channel_count = 3
@@ -16,7 +22,7 @@ HAVING
 rowset avg_sales <- WHERE
     sales.date.year between 1999 and 2001
 SELECT
-    avg(sales.quantity * sales.list_price) -> average_sales,
+    avg(sales.quantity * sales.list_price) as average_sales,
 ;
 
 property channel_label <- CASE
@@ -32,12 +38,12 @@ rowset l0_filtered <- WHERE
     and sales.date.month_of_year = 11
     and tuple_key in cross_tuples.ci_tuple_key
 SELECT
-    channel_label -> channel_l0,
-    sales.item.brand_id -> brand_l0,
-    sales.item.class_id -> class_l0,
-    sales.item.category_id -> category_l0,
-    sum(sales.quantity * sales.list_price) -> bucket_sum_l0,
-    sum(fact_row_one) -> bucket_count_l0,
+    channel_label as channel_l0,
+    sales.item.brand_id as brand_l0,
+    sales.item.class_id as class_l0,
+    sales.item.category_id as category_l0,
+    sum(sales.quantity * sales.list_price) as bucket_sum_l0,
+    sum(fact_row_one) as bucket_count_l0,
     --avg_sales.average_sales,
 HAVING
     bucket_sum_l0 > avg_sales.average_sales
@@ -45,12 +51,14 @@ HAVING
 ;
 
 SELECT
-    l0_filtered.channel_l0 -> channel,
-    l0_filtered.brand_l0 -> i_brand_id,
-    l0_filtered.class_l0 -> i_class_id,
-    l0_filtered.category_l0 -> i_category_id,
-    sum(l0_filtered.bucket_sum_l0) by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 -> sum_sales,
-    sum(l0_filtered.bucket_count_l0) by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 -> sum_number_sales,
+    l0_filtered.channel_l0 as channel,
+    l0_filtered.brand_l0 as i_brand_id,
+    l0_filtered.class_l0 as i_class_id,
+    l0_filtered.category_l0 as i_category_id,
+    sum(l0_filtered.bucket_sum_l0)
+            by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 as sum_sales,
+    sum(l0_filtered.bucket_count_l0)
+            by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 as sum_number_sales,
 ORDER BY
     channel asc nulls first,
     i_brand_id asc nulls first,

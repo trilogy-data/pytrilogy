@@ -95,7 +95,7 @@ select max(order_id) by order_id -> test;
 """)
     string_query = Renderer().to_string(parsed[-1])
     assert string_query == """SELECT
-    max(order_id) by order_id -> test,
+    max(order_id) by order_id as test,
 ;"""
 
 
@@ -572,7 +572,7 @@ def test_render_raw_sqlpersist_to_source():
 def test_render_numeric():
     test = Renderer().to_string(NumericType(precision=12, scale=3))
 
-    assert test == "Numeric(12,3)"
+    assert test == "numeric(12,3)"
 
 
 def test_render_index_access():
@@ -1002,7 +1002,7 @@ final_zips;
 
     assert (
         rendered
-        == "property zips.final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
+        == "property zips.final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);"
     )
 
 
@@ -1162,7 +1162,7 @@ select
     expected = [
         """def add_thrice(x) -> x + x + x;""",
         """SELECT
-    @add_thrice(1) -> test,
+    @add_thrice(1) as test,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1174,7 +1174,7 @@ select
                 """)
     expected = [
         """SELECT
-    round(@add_thrice(1),2) -> test_sum,
+    round(@add_thrice(1), 2) as test_sum,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1230,7 +1230,7 @@ def test_render_struct():
     struct(
             x-> label,
             y-> field
-        ) -> num_struct,
+        ) as num_struct,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1267,8 +1267,8 @@ select group(1) by x as test, group(1) by * as all_rows;
     expected = [
         """key x int;""",
         """SELECT
-    group(1) by x -> test,
-    group(1) by * -> all_rows,
+    group(1) by x as test,
+    group(1) by * as all_rows,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1288,7 +1288,7 @@ select x as x2;
     expected = [
         """key x int;""",
         """SELECT
-    x -> x2,
+    x as x2,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1308,8 +1308,8 @@ select x::float as x2, cast(x as float) as x3;
     expected = [
         """key x int;""",
         """SELECT
-    x::float -> x2,
-    x::float -> x3,
+    x::float as x2,
+    x::float as x3,
 ;""",
     ]
     for idx, cmd in enumerate(commands):

@@ -11,7 +11,7 @@ WHERE
     and customer.household_demographic.income_band.upper_bound <= 38128 + 50000
 SELECT
     customer.text_id,
-    concat(coalesce(customer.last_name,''),', ',coalesce(customer.first_name,'')) -> customername,
+    concat(coalesce(customer.last_name, ''), ', ', coalesce(customer.first_name, '')) as customername,
     --returns.store_sales.ticket_number,
     --returns.item.id,
 ORDER BY

@@ -6,11 +6,11 @@ WHERE
     and sales.item.manager_id = 1
     and (sales.time.meal_time = 'breakfast' or sales.time.meal_time = 'dinner')
 SELECT
-    sales.item.brand_id -> brand_id,
-    sales.item.brand_name -> brand,
-    sales.time.hour -> t_hour,
-    sales.time.minute -> t_minute,
-    sum(sales.ext_sales_price) -> ext_price,
+    sales.item.brand_id as brand_id,
+    sales.item.brand_name as brand,
+    sales.time.hour as t_hour,
+    sales.time.minute as t_minute,
+    sum(sales.ext_sales_price) as ext_price,
 ORDER BY
     ext_price desc nulls first,
     brand_id asc nulls first,

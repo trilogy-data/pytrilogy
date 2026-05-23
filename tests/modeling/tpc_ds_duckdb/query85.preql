@@ -44,10 +44,10 @@ WHERE
     )
 SELECT
     --wr.reason.desc,
-    substring(wr.reason.desc,1,20) -> reason_desc,
-    avg(wr.web_sales.quantity) -> avg1,
-    avg(wr.refunded_cash) -> avg2,
-    avg(wr.fee) -> avg3,
+    substring(wr.reason.desc, 1, 20) as reason_desc,
+    avg(wr.web_sales.quantity) as avg1,
+    avg(wr.refunded_cash) as avg2,
+    avg(wr.fee) as avg3,
 ORDER BY
     reason_desc asc,
     avg1 asc,

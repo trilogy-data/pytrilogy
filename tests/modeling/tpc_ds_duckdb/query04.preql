@@ -3,14 +3,35 @@ import unified_sales as sales;
 const first_year <- 2001;
 const second_year <- 2002;
 
-def channel_year_total(channel, year) -> sum((sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = channel and sales.date.year = year) by sales.customer.id;
+def channel_year_total(channel, year) -> sum(
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = channel and sales.date.year = year
+)
+    by sales.customer.id;
 
-metric store_first_year <- sum((sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'STORE' and sales.date.year = first_year) by sales.customer.id;
-metric catalog_first_year <- sum((sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'CATALOG' and sales.date.year = first_year) by sales.customer.id;
-metric web_first_year <- sum((sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'WEB' and sales.date.year = first_year) by sales.customer.id;
-metric store_second_year <- sum((sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'STORE' and sales.date.year = second_year) by sales.customer.id;
-metric catalog_second_year <- sum((sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'CATALOG' and sales.date.year = second_year) by sales.customer.id;
-metric web_second_year <- sum((sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'WEB' and sales.date.year = second_year) by sales.customer.id;
+metric store_first_year <- sum(
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'STORE' and sales.date.year = first_year
+)
+    by sales.customer.id;
+metric catalog_first_year <- sum(
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'CATALOG' and sales.date.year = first_year
+)
+    by sales.customer.id;
+metric web_first_year <- sum(
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'WEB' and sales.date.year = first_year
+)
+    by sales.customer.id;
+metric store_second_year <- sum(
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'STORE' and sales.date.year = second_year
+)
+    by sales.customer.id;
+metric catalog_second_year <- sum(
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'CATALOG' and sales.date.year = second_year
+)
+    by sales.customer.id;
+metric web_second_year <- sum(
+    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'WEB' and sales.date.year = second_year
+)
+    by sales.customer.id;
 
 WHERE
     sales.date.year in (first_year, second_year)
@@ -32,10 +53,10 @@ WHERE
             ELSE null
         END)
 SELECT
-    sales.customer.text_id -> customer_id,
-    sales.customer.first_name -> customer_first_name,
-    sales.customer.last_name -> customer_last_name,
-    sales.customer.preferred_cust_flag -> customer_preferred_cust_flag,
+    sales.customer.text_id as customer_id,
+    sales.customer.first_name as customer_first_name,
+    sales.customer.last_name as customer_last_name,
+    sales.customer.preferred_cust_flag as customer_preferred_cust_flag,
 ORDER BY
     customer_id asc nulls first,
     customer_first_name asc nulls first,
