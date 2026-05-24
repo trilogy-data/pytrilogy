@@ -223,6 +223,11 @@ def filter_irrelevant_ctes(
         #                 child.existence_source_map[x2].append(parent.name)
         # else:
         if cte.name in visited:
+            # Promote to emitted if we now reach this CTE as a real parent.
+            # A CTE first visited as a union branch (emit=False) and later
+            # reached via parent_ctes of some sibling needs its own WITH entry
+            # — without this it gets filtered out while consumers still
+            # reference its name. The visited-set still prevents re-traversal.
             if emit:
                 relevant_ctes.add(cte.name)
             return
@@ -231,15 +236,6 @@ def filter_irrelevant_ctes(
             relevant_ctes.add(cte.name)
 
         for parent in cte.dependency_nodes():
-            if parent.name in visited:
-                logger.info(
-                    optimization_log(
-                        "FilterIrrelevantCTEs",
-                        f"Already visited {parent.name} when visiting {cte.name}, potential recursive dag",
-                    )
-                )
-                continue
-
             recurse(parent, inverse_map)
         if isinstance(cte, UnionCTE):
             for binding in cte.source_bindings(include_branches=True):
