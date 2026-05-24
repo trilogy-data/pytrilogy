@@ -24,8 +24,8 @@ from __future__ import annotations
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.core.models.build import BuildConcept, BuildGrain
 from trilogy.core.enums import SourceType
+from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
 from trilogy.core.optimization import filter_irrelevant_ctes
 
