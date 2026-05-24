@@ -13,16 +13,16 @@ auto store_daily <- sum(sales.sales_price ? sales.sales_channel = 'STORE') by sa
 # can't use `daily IS NOT NULL` since SUM of NULL prices yields NULL.
 auto web_has_row <- max(
     case
-    when sales.sales_channel = 'WEB' then 1
-    else 0
-end
+        when sales.sales_channel = 'WEB' then 1
+        else 0
+    end
 )
     by sales.item.id, sales.date.date;
 auto store_has_row <- max(
     case
-    when sales.sales_channel = 'STORE' then 1
-    else 0
-end
+        when sales.sales_channel = 'STORE' then 1
+        else 0
+    end
 )
     by sales.item.id, sales.date.date;
 

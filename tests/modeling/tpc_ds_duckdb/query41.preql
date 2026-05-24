@@ -2,7 +2,7 @@ import item as item;
 
 auto manufact_matches <- count(
     item.id
-    ? (
+        ? (
     item.category = 'Women'
     and item.color in ('powder', 'khaki')
     and item.units in ('Ounce', 'Oz')

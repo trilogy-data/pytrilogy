@@ -17,20 +17,20 @@ auto store_sales <- customer_item ? store_sales.date.month_seq between 1200 and 
 select
     sum(
             case
-            when store_sales is not null and catalog_sales is null then 1
-            else 0
-        end
+                when store_sales is not null and catalog_sales is null then 1
+                else 0
+            end
         ) as store_sale_count,
     sum(
             case
-            when store_sales is null and catalog_sales is not null then 1
-            else 0
-        end
+                when store_sales is null and catalog_sales is not null then 1
+                else 0
+            end
         ) as catalog_sale_count,
     sum(
             case
-            when store_sales is not null and catalog_sales is not null then 1
-            else 0
-        end
+                when store_sales is not null and catalog_sales is not null then 1
+                else 0
+            end
         ) as both_sale_count,
 ;

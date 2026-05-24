@@ -2,54 +2,54 @@ import store_sales as store_sales;
 
 def bucket_count(low, high) -> sum(
     case
-    when store_sales.quantity between low and high then 1
-    else 0
-end
+        when store_sales.quantity between low and high then 1
+        else 0
+    end
 );
 def bucket_pick(cnt, threshold, low, high) -> case
     when cnt > threshold then avg(
             case
-            when store_sales.quantity between low and high then store_sales.ext_discount_amount
-            else null
-        end
+                when store_sales.quantity between low and high then store_sales.ext_discount_amount
+                else null
+            end
         )
     else avg(
             case
-            when store_sales.quantity between low and high then store_sales.net_paid
-            else null
-        end
+                when store_sales.quantity between low and high then store_sales.net_paid
+                else null
+            end
         )
 end;
 
 auto count1 <- sum(
     case
-    when store_sales.quantity between 1 and 20 then 1
-    else 0
-end
+        when store_sales.quantity between 1 and 20 then 1
+        else 0
+    end
 );
 auto count2 <- sum(
     case
-    when store_sales.quantity between 21 and 40 then 1
-    else 0
-end
+        when store_sales.quantity between 21 and 40 then 1
+        else 0
+    end
 );
 auto count3 <- sum(
     case
-    when store_sales.quantity between 41 and 60 then 1
-    else 0
-end
+        when store_sales.quantity between 41 and 60 then 1
+        else 0
+    end
 );
 auto count4 <- sum(
     case
-    when store_sales.quantity between 61 and 80 then 1
-    else 0
-end
+        when store_sales.quantity between 61 and 80 then 1
+        else 0
+    end
 );
 auto count5 <- sum(
     case
-    when store_sales.quantity between 81 and 100 then 1
-    else 0
-end
+        when store_sales.quantity between 81 and 100 then 1
+        else 0
+    end
 );
 
 where

@@ -9,15 +9,15 @@ auto relevent_week_seq <- date.week_seq ? date.year in (2001, 2002);
 
 def weekday_sales(weekday) -> sum(
     case
-    when date.day_of_week = weekday then web_sales.ext_sales_price
-    else 0.0::numeric(15,2)
-end
+        when date.day_of_week = weekday then web_sales.ext_sales_price
+        else 0.0::numeric(15,2)
+    end
 )
     by date.week_seq + sum(
     case
-    when date.day_of_week = weekday then catalog_sales.ext_sales_price
-    else 0.0::numeric(15,2)
-end
+        when date.day_of_week = weekday then catalog_sales.ext_sales_price
+        else 0.0::numeric(15,2)
+    end
 )
     by date.week_seq;
 def round_lag(sales) -> round(sales / (lead(sales, 53) over (order by date.week_seq asc)), 2);

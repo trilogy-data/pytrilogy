@@ -8,15 +8,15 @@ select
     inventory.item.name,
     sum(
             case
-            when inventory.date.date < '2000-03-11'::date then inventory.quantity_on_hand
-            else 0
-        end
+                when inventory.date.date < '2000-03-11'::date then inventory.quantity_on_hand
+                else 0
+            end
         ) as inv_before,
     sum(
             case
-            when inventory.date.date >= '2000-03-11'::date then inventory.quantity_on_hand
-            else 0
-        end
+                when inventory.date.date >= '2000-03-11'::date then inventory.quantity_on_hand
+                else 0
+            end
         ) as inv_after,
 having
     case

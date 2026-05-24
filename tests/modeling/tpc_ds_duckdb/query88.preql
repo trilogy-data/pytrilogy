@@ -2,12 +2,12 @@ import store_sales as store_sales;
 
 def bucket_count(h, min_low, min_high) -> sum(
     count(
-    store_sales.item.id
-    ? store_sales.time.hour = h
+        store_sales.item.id
+            ? store_sales.time.hour = h
 and store_sales.time.minute >= min_low
 and store_sales.time.minute < min_high
-)
-    by store_sales.ticket_number
+    )
+        by store_sales.ticket_number
 );
 
 where

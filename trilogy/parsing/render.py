@@ -205,6 +205,11 @@ class Renderer:
 
         All inter-arg breaks (and the prefix/suffix breaks) share ``priority``
         so they activate together when the flat form doesn't fit.
+
+        Pre-rendered args are inserted verbatim. If an arg is itself
+        multi-line, its internal indentation must already match this call's
+        wrapped position — render those args inside ``self.indented()`` so
+        their interior columns line up with the call's ``indent=1`` break.
         """
         if not args:
             return f"{name}()"
@@ -1006,15 +1011,17 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "NumberingWindowItem"):
-        args = [self.to_string(a) for a in arg.arguments]
+        with self.indented():
+            args = [self.to_string(a) for a in arg.arguments]
         head = self._render_call(arg.type.value, args)
         return self._render_window_tail(head, arg.over, arg.order_by)
 
     @to_string.register
     def _(self, arg: "NavigationWindowItem"):
-        call_args = [self.to_string(arg.content)]
-        if arg.offset is not None:
-            call_args.append(str(arg.offset))
+        with self.indented():
+            call_args = [self.to_string(arg.content)]
+            if arg.offset is not None:
+                call_args.append(str(arg.offset))
         head = self._render_call(arg.type.value, call_args)
         return self._render_window_tail(head, arg.over, arg.order_by)
 
@@ -1148,7 +1155,11 @@ class Renderer:
             return f"struct(\n{inputs}\n{self.indent_context.current_indent})"
         if arg.operator == FunctionType.ALIAS:
             return f"{self.to_string(arg.arguments[0])}"
-        return self._render_call(arg.operator.value, args)
+        # Re-render args at +1 indent so multi-line atoms (e.g. wrapped
+        # array literals) line up under the call's wrapped open-paren.
+        with self.indented():
+            indented_args = [self.to_string(c) for c in arg.arguments]
+        return self._render_call(arg.operator.value, indented_args)
 
     @to_string.register
     def _(self, arg: "OrderItem"):

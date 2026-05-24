@@ -6,7 +6,7 @@ import web_returns as web_returns;
 # WHERE year=2002 loses the filter from the customer-grain aggregate.
 auto customer_state_returns_2002 <- sum(
     web_returns.return_amount
-    ? web_returns.return_date.year = 2002 and web_returns.return_address.state is not null
+        ? web_returns.return_date.year = 2002 and web_returns.return_address.state is not null
 )
     by web_returns.return_address.state, web_returns.customer.id;
 auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;

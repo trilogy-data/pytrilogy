@@ -5,7 +5,7 @@ import store_sales as store_sales;
 # rather than going through an unfiltered cooperative dedup of all store_sales.
 auto ticket_cnt <- count(
     store_sales.item.id
-    ? store_sales.date.day_of_month >= 1
+        ? store_sales.date.day_of_month >= 1
 and store_sales.date.day_of_month <= 2
 and (
     store_sales.household_demographic.buy_potential = '>10000'
@@ -13,9 +13,9 @@ and (
 )
 and store_sales.household_demographic.vehicle_count > 0
 and (case
-    when store_sales.household_demographic.vehicle_count > 0 then (store_sales.household_demographic.dependent_count * 1.0) / store_sales.household_demographic.vehicle_count
-    else null
-end) > 1
+        when store_sales.household_demographic.vehicle_count > 0 then (store_sales.household_demographic.dependent_count * 1.0) / store_sales.household_demographic.vehicle_count
+        else null
+    end) > 1
 and store_sales.date.year in (1999, 2000, 2001)
 and store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')
 )

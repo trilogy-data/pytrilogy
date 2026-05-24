@@ -13,33 +13,33 @@ select
     ws.web_site.name,
     sum(
             case
-            when days_to_ship <= 30 then 1
-            else 0
-        end
+                when days_to_ship <= 30 then 1
+                else 0
+            end
         ) as days_30,
     sum(
             case
-            when days_to_ship > 30 and days_to_ship <= 60 then 1
-            else 0
-        end
+                when days_to_ship > 30 and days_to_ship <= 60 then 1
+                else 0
+            end
         ) as days_31_60,
     sum(
             case
-            when days_to_ship > 60 and days_to_ship <= 90 then 1
-            else 0
-        end
+                when days_to_ship > 60 and days_to_ship <= 90 then 1
+                else 0
+            end
         ) as days_61_90,
     sum(
             case
-            when days_to_ship > 90 and days_to_ship <= 120 then 1
-            else 0
-        end
+                when days_to_ship > 90 and days_to_ship <= 120 then 1
+                else 0
+            end
         ) as days_91_120,
     sum(
             case
-            when days_to_ship > 120 then 1
-            else 0
-        end
+                when days_to_ship > 120 then 1
+                else 0
+            end
         ) as days_120_plus,
 order by
     w_substr asc nulls first,

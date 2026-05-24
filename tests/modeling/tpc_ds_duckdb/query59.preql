@@ -20,15 +20,15 @@ select
     @day_sales('Saturday') as sat_sales,
     max(
             case
-            when ss.date.month_seq >= 1212 and ss.date.month_seq <= 1223 then 1
-            else 0
-        end
+                when ss.date.month_seq >= 1212 and ss.date.month_seq <= 1223 then 1
+                else 0
+            end
         ) as in_year1,
     max(
             case
-            when ss.date.month_seq >= 1224 and ss.date.month_seq <= 1235 then 1
-            else 0
-        end
+                when ss.date.month_seq >= 1224 and ss.date.month_seq <= 1235 then 1
+                else 0
+            end
         ) as in_year2,
 ;
 

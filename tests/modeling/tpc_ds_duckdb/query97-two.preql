@@ -22,29 +22,29 @@ align
 select
     sum(
             case
-            when merged.store_sales.customer.id is not null
-            and merged.store_sales.item.id is not null
-            and merged.catalog_sales.bill_customer.id is null
-            and merged.catalog_sales.item.id is null then 1
-            else 0
-        end
+                when merged.store_sales.customer.id is not null
+                and merged.store_sales.item.id is not null
+                and merged.catalog_sales.bill_customer.id is null
+                and merged.catalog_sales.item.id is null then 1
+                else 0
+            end
         ) as store_sale_count,
     sum(
             case
-            when merged.store_sales.customer.id is null
-            and merged.store_sales.item.id is null
-            and merged.catalog_sales.bill_customer.id is not null
-            and merged.catalog_sales.item.id is not null then 1
-            else 0
-        end
+                when merged.store_sales.customer.id is null
+                and merged.store_sales.item.id is null
+                and merged.catalog_sales.bill_customer.id is not null
+                and merged.catalog_sales.item.id is not null then 1
+                else 0
+            end
         ) as catalog_sale_count,
     sum(
             case
-            when merged.store_sales.customer.id is not null
-            and merged.store_sales.item.id is not null
-            and merged.catalog_sales.bill_customer.id is not null
-            and merged.catalog_sales.item.id is not null then 1
-            else 0
-        end
+                when merged.store_sales.customer.id is not null
+                and merged.store_sales.item.id is not null
+                and merged.catalog_sales.bill_customer.id is not null
+                and merged.catalog_sales.item.id is not null then 1
+                else 0
+            end
         ) as both_sale_count,
 ;

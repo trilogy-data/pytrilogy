@@ -4,29 +4,29 @@ import unified_sales as sales;
 # evaluated within month_seq 1200..1211. Tuples with rows in ALL three channels are intersect.
 auto store_in_window <- sum(
     case
-    when sales.sales_channel = 'STORE'
-    and sales.date.month_seq between 1200 and 1200 + 11
-    and sales.customer.id is not null then 1
-    else 0
-end
+        when sales.sales_channel = 'STORE'
+        and sales.date.month_seq between 1200 and 1200 + 11
+        and sales.customer.id is not null then 1
+        else 0
+    end
 )
     by sales.customer.last_name, sales.customer.first_name, sales.date.date;
 auto catalog_in_window <- sum(
     case
-    when sales.sales_channel = 'CATALOG'
-    and sales.date.month_seq between 1200 and 1200 + 11
-    and sales.customer.id is not null then 1
-    else 0
-end
+        when sales.sales_channel = 'CATALOG'
+        and sales.date.month_seq between 1200 and 1200 + 11
+        and sales.customer.id is not null then 1
+        else 0
+    end
 )
     by sales.customer.last_name, sales.customer.first_name, sales.date.date;
 auto web_in_window <- sum(
     case
-    when sales.sales_channel = 'WEB'
-    and sales.date.month_seq between 1200 and 1200 + 11
-    and sales.customer.id is not null then 1
-    else 0
-end
+        when sales.sales_channel = 'WEB'
+        and sales.date.month_seq between 1200 and 1200 + 11
+        and sales.customer.id is not null then 1
+        else 0
+    end
 )
     by sales.customer.last_name, sales.customer.first_name, sales.date.date;
 
@@ -35,9 +35,9 @@ where
 select
     sum(
             case
-            when store_in_window > 0 and catalog_in_window > 0 and web_in_window > 0 then 1
-            else 0
-        end
+                when store_in_window > 0 and catalog_in_window > 0 and web_in_window > 0 then 1
+                else 0
+            end
         ) as cnt,
 limit 100
 ;

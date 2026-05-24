@@ -4,7 +4,7 @@ auto days_to_return <- store_sales.return_date.id - store_sales.date.id;
 
 def bucket_count(low, high) -> sum(
     count(store_sales.item.id ? days_to_return > low and days_to_return <= high)
-    by store_sales.ticket_number, store_sales.store.id
+        by store_sales.ticket_number, store_sales.store.id
 )
     by store_sales.store.id;
 
