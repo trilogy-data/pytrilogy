@@ -2,7 +2,6 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
 from itertools import combinations
 from pathlib import Path as PathlibPath
 
@@ -57,6 +56,7 @@ from trilogy.scripts.ingest_helpers.typing import (
     detect_enum_types,
     detect_rich_type,
 )
+from trilogy.utility import safe_open
 
 # Filename suffix → AddressType. JSON intentionally omitted: the Trilogy
 # grammar's `file` rule only accepts these extensions natively.
@@ -511,7 +511,6 @@ def _build_script_content(
 ) -> list[ScriptStatement]:
     script_content: list[ScriptStatement] = [
         Comment(text=f"# Datasource ingested from {source_label}"),
-        Comment(text=f"# Generated on {datetime.now()}"),
     ]
     for import_path in sorted(required_imports):
         file_path = import_path.replace(".", "/")
@@ -819,12 +818,17 @@ def ingest(
         output_file = output_dir / f"{rec.datasource.name}.preql"
         if fk_map and source in fk_map:
             column_mappings = fk_map[source]
-            modified_content = apply_foreign_key_references(
+            content = apply_foreign_key_references(
                 source, rec.datasource, fk_datasources, rec.script, column_mappings
             )
-            output_file.write_text(modified_content)
         else:
-            output_file.write_text(renderer.render_statement_string(rec.script))
+            content = renderer.render_statement_string(rec.script)
+        # Trailing newline + LF line endings match what `trilogy fmt` writes,
+        # so a freshly ingested file is already format-stable.
+        if not content.endswith("\n"):
+            content += "\n"
+        with safe_open(str(output_file), "w", newline="\n") as f:
+            f.write(content)
         ingested_files.append(output_file)
         summary_rows.append(
             IngestSummaryRow(
