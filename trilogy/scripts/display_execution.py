@@ -201,7 +201,16 @@ def show_execution_summary(
             )
 
 
-def show_formatting_result(num_queries: int, duration: object) -> None:
+def show_formatting_result(
+    num_queries: int,
+    duration: object,
+    file_path: str | None = None,
+    error: str | None = None,
+) -> None:
+    if error is not None:
+        location = f" {file_path}" if file_path else ""
+        print_error(f"Failed to format{location}: {error}")
+        return
     print_success(f"Formatted {num_queries} statements in {format_duration(duration)}")
 
 

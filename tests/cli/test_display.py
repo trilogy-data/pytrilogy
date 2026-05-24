@@ -503,7 +503,7 @@ class TestProgressAndExecution:
                     num_queries=5, duration=duration
                 )
                 captured = stdout.getvalue() + stderr.getvalue()
-                assert "5 queries" in captured
+                assert "5 statements" in captured
                 assert "2.30s" in captured
 
 

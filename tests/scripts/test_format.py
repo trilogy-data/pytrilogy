@@ -28,7 +28,7 @@ def test_format_single_file(runner):
 
         # Check that the command was successful
         assert result.exit_code == 0
-        assert "formatted 1 file" in result.output
+        assert "Formatted 1 statements" in result.output
 
         # Verify that the file was formatted correctly
         with open(file_path, "r") as f:
@@ -55,7 +55,7 @@ def test_format_directory(runner):
 
         # Check that the command was successful
         assert result.exit_code == 0
-        assert "formatted 2 file" in result.output
+        assert "Formatted 2/2 files" in result.output
 
         # Verify that each file was formatted correctly
         expected_scripts = {

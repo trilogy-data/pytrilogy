@@ -8,20 +8,20 @@ Signed deltas are `PreQL - Reference SQL` for size and `Trilogy execution - Refe
 
 Queries: 99
 
-PreQL is shorter than the reference SQL for 76/99 queries. Total PreQL length is 128,943 chars vs 184,304 reference SQL chars.
+PreQL is shorter than the reference SQL for 75/99 queries. Total PreQL length is 131,131 chars vs 184,304 reference SQL chars.
 
 | Length metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| PreQL - Reference SQL chars | -1,269 | -223 | +248 |
-| PreQL vs Reference SQL | -53.6% | -17.9% | +14.2% |
+| PreQL - Reference SQL chars | -1,269 | -207 | +251 |
+| PreQL vs Reference SQL | -53.5% | -17.0% | +14.2% |
 
 Top 5 queries where PreQL is longest vs reference SQL
 
 | Query | PreQL chars | Reference SQL chars | PreQL - Reference SQL |
 | --- | ---: | ---: | ---: |
 | 28 | 2,821 | 2,056 | +765 |
+| 76 | 2,344 | 1,708 | +636 |
 | 89 | 1,566 | 965 | +601 |
-| 76 | 2,308 | 1,708 | +600 |
 | 64 | 4,256 | 3,783 | +473 |
 | 29 | 1,537 | 1,089 | +448 |
 
@@ -47,19 +47,19 @@ Top 5 queries where reference SQL is fastest vs Trilogy
 
 Queries: 5
 
-PreQL is shorter than the reference SQL for 3/5 queries. Total PreQL length is 7,112 chars vs 8,957 reference SQL chars.
+PreQL is shorter than the reference SQL for 3/5 queries. Total PreQL length is 7,272 chars vs 8,957 reference SQL chars.
 
 | Length metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| PreQL - Reference SQL chars | -1,226 | -80 | +311 |
-| PreQL vs Reference SQL | -47.8% | -6.9% | +24.6% |
+| PreQL - Reference SQL chars | -1,202 | -44 | +356 |
+| PreQL vs Reference SQL | -46.8% | -3.8% | +28.5% |
 
 Top 5 queries where PreQL is longest vs reference SQL
 
 | Query | PreQL chars | Reference SQL chars | PreQL - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 97.2 | 1,491 | 1,159 | +332 |
-| 30.alt | 1,787 | 1,507 | +280 |
+| 97.2 | 1,563 | 1,159 | +404 |
+| 30.alt | 1,791 | 1,507 | +284 |
 
 Trilogy execution is faster than the reference SQL for 1/5 queries. Total Trilogy execution time is 2.331s vs 0.445s reference SQL time.
 
