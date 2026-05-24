@@ -1,21 +1,32 @@
 import inventory as inventory;
 
-def month_mean(month) -> avg(inventory.quantity_on_hand ? inventory.date.month_of_year = month) by inventory.warehouse.id, inventory.item.id;
-def month_stdev(month) -> stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = month) by inventory.warehouse.id, inventory.item.id;
+def month_mean(month) -> avg(inventory.quantity_on_hand ? inventory.date.month_of_year = month)
+    by inventory.warehouse.id, inventory.item.id;
+def month_stdev(month) -> stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = month)
+    by inventory.warehouse.id, inventory.item.id;
 
-auto mean1 <- @month_mean(1);
-auto stdev1 <- @month_stdev(1);
-auto cov1 <- CASE WHEN mean1 = 0 THEN NULL ELSE stdev1 / mean1 END;
+auto mean1 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 1)
+    by inventory.warehouse.id, inventory.item.id;
+auto stdev1 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 1)
+    by inventory.warehouse.id, inventory.item.id;
+auto mean2 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 2)
+    by inventory.warehouse.id, inventory.item.id;
+auto stdev2 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 2)
+    by inventory.warehouse.id, inventory.item.id;
+auto cov1 <- case
+    when mean1 = 0 then null
+    else stdev1 / mean1
+end;
+auto cov2 <- case
+    when mean2 = 0 then null
+    else stdev2 / mean2
+end;
 
-auto mean2 <- @month_mean(2);
-auto stdev2 <- @month_stdev(2);
-auto cov2 <- CASE WHEN mean2 = 0 THEN NULL ELSE stdev2 / mean2 END;
-
-WHERE
+where
     inventory.date.year = 2001
     and inventory.date.month_of_year in (1, 2)
     and inventory.warehouse.id is not null
-SELECT
+select
     inventory.warehouse.id as wsk1,
     inventory.item.id as isk1,
     1 as dmoy1,
@@ -26,9 +37,10 @@ SELECT
     2 as dmoy2,
     mean2,
     cov2,
-HAVING
+having
     cov1 > 1 and cov2 > 1
-ORDER BY
+
+order by
     wsk1 asc nulls first,
     isk1 asc nulls first,
     mean1 asc nulls first,

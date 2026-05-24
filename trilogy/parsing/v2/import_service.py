@@ -28,6 +28,7 @@ class ImportRequest:
     token_lookup: Path | str
     is_stdlib: bool = False
     concepts: list[str] | None = None
+    leading_dots: int = 0
 
 
 def _read_import_text(
@@ -179,4 +180,5 @@ class ImportHydrationService:
             input_path=request.input_path,
             path=parsed_path,
             concepts=request.concepts,
+            leading_dots=request.leading_dots,
         )

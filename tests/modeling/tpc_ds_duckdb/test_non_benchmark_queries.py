@@ -340,6 +340,30 @@ def test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate():
     assert [c.address for c in grouped_cte.group_concepts] == ["sales.date.week_seq"]
 
 
+def test_def_body_can_call_another_custom_function():
+    """Regression: FunctionCallWrapper.with_reference_replacement used to raise
+    NotImplementedError, breaking any `def` whose body wrapped another @-call."""
+    query = """
+    import unified_sales as sales;
+
+    def weekday_sum(weekday) -> sum(
+        sales.ext_sales_price ? sales.date.day_of_week = weekday
+    ) by sales.date.week_seq;
+
+    def doubled_weekday_sum(weekday) -> @weekday_sum(weekday) * 2;
+
+    SELECT
+        sales.date.week_seq,
+        @doubled_weekday_sum(0) as sun_doubled
+    ORDER BY sales.date.week_seq asc
+    LIMIT 5;
+    """
+
+    env = Environment(working_path=working_path)
+    _, statements = parse_text(query, env)
+    process_query(env, statements[-1])
+
+
 def test_two_merge_aggregate_compacts_inline_window_query():
     query = """
     import catalog_sales as catalog_sales;

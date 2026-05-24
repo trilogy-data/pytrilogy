@@ -11,7 +11,7 @@ import reason as reason;
 
 key order_number int;
 
-properties <order_number,item.id> (
+properties <order_number, item.id> (
     net_loss float,
     refunded_cash float?,
     reversed_charge float?,
@@ -42,6 +42,5 @@ datasource catalog_returns (
     CR_RETURN_AMT_INC_TAX: return_amt_inc_tax,
     CR_RETURN_QUANTITY: return_quantity,
 )
-grain (order_number, item.id)
-address memory.catalog_returns
-;
+grain (item.id, order_number)
+address memory.catalog_returns;

@@ -14,7 +14,7 @@ root datasource users_with_pk (
     user_id,
     username,
     email,
-    created_at
+    created_at,
 )
 grain (user_id)
 address users_with_pk;

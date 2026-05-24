@@ -6,30 +6,23 @@ import date as first_shipto_date;
 
 key id int;
 unique property id.text_id string; # text version of ID
+
 properties id (
-    last_name string,              # Customer last name (not guaranteed unique; weak for identity)
-    first_name string,             # Customer first name (display only; low analytical value alone)
-    preferred_cust_flag string,    # 'Y'/'N' indicator for preferred/loyalty status (use for segmentation, LTV analysis)
-    birth_day int,                 # Day of birth (1–31; combine with month/year for full DOB)
-    birth_month int,               # Month of birth (1–12)
-    birth_year int,                # Year of birth (used for age calculation, cohorting)
-    birth_country string,          # Country of birth (demographic segmentation; may differ from residence)
-    salutation string,             # Title (e.g., 'Mr.', 'Ms.', 'Dr.'; mostly presentation, sometimes demographic proxy)
-    email_address string,          # Contact email (quasi-unique, but not reliable as a key; can change over time)
-    login string,                  # Account username/login (more stable than email, often used for authentication)
-    last_review_date string,       # Last date customer submitted a review (string in TPC-DS; should be cast to date)
-                                   # Useful for engagement/recency metrics
+    last_name string, # Customer last name (not guaranteed unique; weak for identity)
+    first_name string, # Customer first name (display only; low analytical value alone)
+    preferred_cust_flag string, # 'Y'/'N' indicator for preferred/loyalty status (use for segmentation, LTV analysis)
+    birth_day int, # Day of birth (1–31; combine with month/year for full DOB)
+    birth_month int, # Month of birth (1–12)
+    birth_year int, # Year of birth (used for age calculation, cohorting)
+    birth_country string, # Country of birth (demographic segmentation; may differ from residence)
+    salutation string, # Title (e.g., 'Mr.', 'Ms.', 'Dr.'; mostly presentation, sometimes demographic proxy)
+    email_address string, # Contact email (quasi-unique, but not reliable as a key; can change over time)
+    login string, # Account username/login (more stable than email, often used for authentication)
+    last_review_date string, # Last date customer submitted a review (string in TPC-DS; should be cast to date)
 );
 
-property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
-
-property id.birth_date <- cast(
-    concat(cast(birth_year as string),
-        '/', cast(birth_month as string),
-        '/', cast(birth_day as string)
-    ) as date
-);
-
+auto full_name <- concat(salutation, ' ', first_name, ' ', last_name);
+auto birth_date <- concat(birth_year::string, '/', birth_month::string, '/', birth_day::string)::date;
 
 datasource customers (
     C_CUSTOMER_SK: id,
@@ -49,7 +42,7 @@ datasource customers (
     C_BIRTH_MONTH: birth_month,
     C_BIRTH_YEAR: birth_year,
     C_LOGIN: login,
-    C_LAST_REVIEW_DATE_SK:last_review_date,
+    C_LAST_REVIEW_DATE_SK: last_review_date,
 )
 grain (id)
 address memory.customer;

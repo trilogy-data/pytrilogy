@@ -6,15 +6,14 @@ import catalog_returns as cr;
 # for items that have a matching catalog_return. catalog_sales is reached
 # through cr.sales (cr already imports catalog_sales as sales) so we avoid
 # the cross-import merge dance.
-property <cr.sales.item.id>.cs_ui_refund_amt <-
-    coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
-
+auto cs_ui_refund_amt <- coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
 auto cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
 auto cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.id;
 
-with cs_ui as
-WHERE cs_ui_sale > 2 * cs_ui_refund
-SELECT cr.sales.item.id as cs_ui_item_id
+rowset cs_ui <- where
+    cs_ui_sale > 2 * cs_ui_refund
+select
+    cr.sales.item.id as cs_ui_item_id,
 ;
 
 # Row-level filter common to both year slices. Excludes the cross-CDEMO
@@ -22,22 +21,21 @@ SELECT cr.sales.item.id as cs_ui_item_id
 # it out of the customer_demographics join planning, which otherwise
 # triggers a LEFT->INNER upgrade that DuckDB plans catastrophically (q64
 # went from 0.05s -> 18s in PR #549's null-safe promotion).
-def year_row_filter(yr) ->
-    ss.item.id in cs_ui.cs_ui_item_id
-    and ss.date.year = yr
-    and ss.is_returned
-    and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
-    and ss.item.current_price between 65 and 74
-    and ss.customer.id is not null
-    and ss.store.id is not null
-    and ss.sale_address.id is not null
-    and ss.customer.address.id is not null;
+def year_row_filter(yr) -> ss.item.id in cs_ui.cs_ui_item_id
+and ss.date.year = yr
+and ss.is_returned
+and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
+and ss.item.current_price between 65 and 74
+and ss.customer.id is not null
+and ss.store.id is not null
+and ss.sale_address.id is not null
+and ss.customer.address.id is not null;
 
 # Row-grain projection for each year. Both marital_status columns are
 # selected here so the outer aggregate can apply the inequality.
-with ss_rows_99 as
-WHERE @year_row_filter(1999)
-SELECT
+rowset ss_rows_99 <- where
+    @year_row_filter(1999) = True
+select
     ss.ticket_number,
     ss.item.id,
     ss.item.product_name,
@@ -61,9 +59,9 @@ SELECT
     ss.customer.demographics.marital_status,
 ;
 
-with ss_rows_00 as
-WHERE @year_row_filter(2000)
-SELECT
+rowset ss_rows_00 <- where
+    @year_row_filter(2000) = True
+select
     ss.ticket_number,
     ss.item.id,
     ss.store.name,
@@ -76,9 +74,9 @@ SELECT
     ss.customer.demographics.marital_status,
 ;
 
-with q64_results as
-WHERE ss_rows_99.ss.customer_demographic.marital_status != ss_rows_99.ss.customer.demographics.marital_status
-SELECT
+rowset q64_results <- where
+    ss_rows_99.ss.customer_demographic.marital_status != ss_rows_99.ss.customer.demographics.marital_status
+select
     ss_rows_99.ss.item.id as item_sk_99,
     ss_rows_99.ss.store.name as s_name_99,
     ss_rows_99.ss.store.zip as s_zip_99,
@@ -98,9 +96,10 @@ SELECT
     sum(ss_rows_99.ss.wholesale_cost) as s1_99,
     sum(ss_rows_99.ss.list_price) as s2_99,
     sum(ss_rows_99.ss.coupon_amt) as s3_99,
-MERGE
-WHERE ss_rows_00.ss.customer_demographic.marital_status != ss_rows_00.ss.customer.demographics.marital_status
-SELECT
+merge
+where
+    ss_rows_00.ss.customer_demographic.marital_status != ss_rows_00.ss.customer.demographics.marital_status
+select
     ss_rows_00.ss.item.id as item_sk_00,
     ss_rows_00.ss.store.name as s_name_00,
     ss_rows_00.ss.store.zip as s_zip_00,
@@ -111,12 +110,13 @@ SELECT
     sum(ss_rows_00.ss.coupon_amt) as s3_00,
 align
     item_sk: item_sk_99, item_sk_00
-    AND s_name: s_name_99, s_name_00
-    AND s_zip: s_zip_99, s_zip_00
+    and s_name: s_name_99, s_name_00
+    and s_zip: s_zip_99, s_zip_00
 ;
 
-WHERE q64_results.cnt_00 <= q64_results.cnt_99
-SELECT
+where
+    q64_results.cnt_00 <= q64_results.cnt_99
+select
     q64_results.p_name_99,
     q64_results.s_name,
     q64_results.s_zip,
@@ -138,7 +138,7 @@ SELECT
     q64_results.s3_00,
     q64_results.syear_00,
     q64_results.cnt_00,
-ORDER BY
+order by
     q64_results.p_name_99 asc nulls first,
     q64_results.s_name asc nulls first,
     q64_results.cnt_00 asc nulls first,

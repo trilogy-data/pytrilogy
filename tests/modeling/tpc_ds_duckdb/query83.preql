@@ -1,35 +1,28 @@
 import unified_sales as sales;
 import date as date;
 
-auto target_week_seqs <- date.week_seq ? date.date in (cast('2000-06-30' as date), cast('2000-09-27' as date), cast('2000-11-17' as date));
+auto target_week_seqs <- date.week_seq ? date.date in ('2000-06-30'::date, '2000-09-27'::date, '2000-11-17'::date);
 
 # Per-channel return quantities by item.name; the week_seq filter applies to
 # the return date.
-def channel_qty(channel) -> sum(sales.return_quantity ?
-    sales.sales_channel = channel 
-) by sales.item.name;
+def channel_qty(channel) -> sum(sales.return_quantity ? sales.sales_channel = channel) by sales.item.name;
+def channel_present(channel) -> count(sales.order_id ? sales.sales_channel = channel) by sales.item.name;
 
-def channel_present(channel) -> count(sales.order_id ?
-    sales.sales_channel = channel 
-) by sales.item.name;
-
-auto sr_item_qty <- @channel_qty('STORE');
-auto cr_item_qty <- @channel_qty('CATALOG');
-auto wr_item_qty <- @channel_qty('WEB');
-
-auto sr_item_present <- @channel_present('STORE');
-auto cr_item_present <- @channel_present('CATALOG');
-auto wr_item_present <- @channel_present('WEB');
-
+auto sr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'STORE') by sales.item.name;
+auto cr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'CATALOG') by sales.item.name;
+auto wr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'WEB') by sales.item.name;
+auto sr_item_present <- count(sales.order_id ? sales.sales_channel = 'STORE') by sales.item.name;
+auto cr_item_present <- count(sales.order_id ? sales.sales_channel = 'CATALOG') by sales.item.name;
+auto wr_item_present <- count(sales.order_id ? sales.sales_channel = 'WEB') by sales.item.name;
 auto total_qty <- sr_item_qty + cr_item_qty + wr_item_qty;
 auto avg_qty <- total_qty / 3.0;
-auto sr_dev <- (sr_item_qty * 1.0000) / total_qty / 3.0000 * 100;
-auto cr_dev <- (cr_item_qty * 1.0000) / total_qty / 3.0000 * 100;
-auto wr_dev <- (wr_item_qty * 1.0000) / total_qty / 3.0000 * 100;
+auto sr_dev <- (sr_item_qty * 1.0) / total_qty / 3.0 * 100;
+auto cr_dev <- (cr_item_qty * 1.0) / total_qty / 3.0 * 100;
+auto wr_dev <- (wr_item_qty * 1.0) / total_qty / 3.0 * 100;
 
-WHERE
+where
     sales.return_date.week_seq in target_week_seqs
-SELECT
+select
     sales.item.name as item_id,
     sr_item_qty,
     sr_dev,
@@ -40,12 +33,12 @@ SELECT
     avg_qty as average,
     --sr_item_present,
     --cr_item_present,
-    --wr_item_present
-HAVING 
-    sr_item_present > 0
-    and cr_item_present > 0
-    and wr_item_present > 0
-ORDER BY
+    --wr_item_present,
+having
+    sr_item_present > 0 and cr_item_present > 0 and wr_item_present > 0
+
+order by
     item_id asc nulls first,
     sr_item_qty asc nulls first
-LIMIT 100;
+limit 100
+;

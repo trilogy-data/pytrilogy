@@ -486,6 +486,9 @@ class ImportStatement(HasUUID):
     is_self: bool = False
     # explicit concept filter: import field1, field2 from abc
     concepts: list[str] | None = None
+    # count of leading "." tokens in the source (e.g. ``..store_sales`` -> 2);
+    # preserved for round-trip rendering since N>=2 leading dots mean parent dirs.
+    leading_dots: int = 0
 
 
 @dataclass

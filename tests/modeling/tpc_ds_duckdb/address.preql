@@ -1,5 +1,5 @@
-
 key id int;
+
 properties id (
     text_id string,
     street_number string?,
@@ -15,8 +15,7 @@ properties id (
     location_type string?,
 );
 
-
-datasource customer_address(
+datasource customer_address (
     CA_ADDRESS_SK: id,
     CA_ADDRESS_ID: text_id,
     CA_STREET_NUMBER: street_number,
@@ -27,7 +26,7 @@ datasource customer_address(
     CA_STATE: state,
     CA_ZIP: zip,
     CA_COUNTY: county,
-    CA_COUNTRY:country,
+    CA_COUNTRY: country,
     CA_GMT_OFFSET: gmt_offset,
     CA_LOCATION_TYPE: location_type,
 )

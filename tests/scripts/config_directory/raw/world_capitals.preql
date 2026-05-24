@@ -16,7 +16,7 @@ root datasource world_capitals (
     capital,
     population,
     latitude,
-    longitude
+    longitude,
 )
 grain (country)
 address world_capitals;

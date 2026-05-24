@@ -9,7 +9,10 @@ from trilogy.constants import Parsing
 from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import Comment
 from trilogy.core.models.environment import Environment, Import
-from trilogy.core.statements.author import ConceptDeclarationStatement
+from trilogy.core.statements.author import (
+    ConceptDeclarationStatement,
+    PropertiesDeclarationStatement,
+)
 from trilogy.parsing.helpers import comment_body
 from trilogy.parsing.v2.import_service import (
     ImportEnvCacheKey,
@@ -303,12 +306,17 @@ class NativeHydrator:
     def hydrate_concept_block(
         self,
         block: SyntaxNode,
-    ) -> ConceptDeclarationStatement:
+    ) -> ConceptDeclarationStatement | PropertiesDeclarationStatement:
         concept_node = self.block_statement(block)
         output = self.hydrate_rule(concept_node)
         description = self.trailing_description(block, concept_node)
         if description is not None:
-            output.concept.metadata.description = description
+            if isinstance(output, PropertiesDeclarationStatement):
+                # Attach to the first property — the grouped block has no
+                # single description target, so this matches v1 behavior.
+                output.concepts[0].metadata.description = description
+            else:
+                output.concept.metadata.description = description
         return output
 
     def trailing_description(

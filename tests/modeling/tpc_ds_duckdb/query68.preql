@@ -1,29 +1,35 @@
-import store_sales as store_sales;import customer as customer;
+import store_sales as store_sales;
+import customer as customer;
 
-rowset dn <- SELECT
-    store_sales.ticket_number,
-    store_sales.customer.id,
-    store_sales.sale_address.city,
-    sum(store_sales.ext_sales_price) -> extended_price,
-    sum(store_sales.ext_tax) -> extended_tax,
-    sum(store_sales.ext_list_price) -> list_price
-WHERE
+rowset dn <- where
     store_sales.date.day_of_month between 1 and 2
-    and (store_sales.household_demographic.dependent_count = 4 or store_sales.household_demographic.vehicle_count = 3)
+    and (
+        store_sales.household_demographic.dependent_count = 4
+        or store_sales.household_demographic.vehicle_count = 3
+    )
     and store_sales.date.year in (1999, 2000, 2001)
     and store_sales.store.city in ('Fairview', 'Midway')
     and store_sales.customer.id is not null
-MERGE
-SELECT
+select
+    store_sales.ticket_number,
+    store_sales.customer.id,
+    store_sales.sale_address.city,
+    sum(store_sales.ext_sales_price) as extended_price,
+    sum(store_sales.ext_tax) as extended_tax,
+    sum(store_sales.ext_list_price) as list_price,
+merge
+select
     customer.id,
     customer.last_name,
     customer.first_name,
-    customer.address.city
-ALIGN customer_id: store_sales.customer.id, customer.id
-WHERE
-    customer.address.city != store_sales.sale_address.city
+    customer.address.city,
+align
+    customer_id: store_sales.customer.id, customer.id
+where
+customer.address.city != store_sales.sale_address.city
 ;
-SELECT
+
+select
     dn.customer.last_name,
     dn.customer.first_name,
     dn.customer.address.city,
@@ -31,8 +37,9 @@ SELECT
     dn.store_sales.ticket_number,
     dn.extended_price,
     dn.extended_tax,
-    dn.list_price
-ORDER BY
+    dn.list_price,
+order by
     dn.customer.last_name asc nulls first,
     dn.store_sales.ticket_number asc nulls first
-LIMIT 100;
+limit 100
+;

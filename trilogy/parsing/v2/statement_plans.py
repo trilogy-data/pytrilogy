@@ -17,6 +17,7 @@ from trilogy.core.statements.author import (
     MockStatement,
     MultiSelectStatement,
     PersistStatement,
+    PropertiesDeclarationStatement,
     PublishStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
@@ -135,7 +136,7 @@ class CommentStatementPlan(StatementPlanBase):
 @dataclass
 class ConceptStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
-    output: ConceptDeclarationStatement | None = None
+    output: ConceptDeclarationStatement | PropertiesDeclarationStatement | None = None
     address: str | None = None
     provided_addresses: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
@@ -168,7 +169,7 @@ class ConceptStatementPlan(StatementPlanBase):
     def commit(
         self,
         hydrator: "NativeHydrator",
-    ) -> ConceptDeclarationStatement | None:
+    ) -> ConceptDeclarationStatement | PropertiesDeclarationStatement | None:
         return self.output
 
 

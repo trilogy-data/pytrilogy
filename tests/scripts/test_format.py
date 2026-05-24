@@ -28,12 +28,12 @@ def test_format_single_file(runner):
 
         # Check that the command was successful
         assert result.exit_code == 0
-        assert "formatted 1 file" in result.output
+        assert "Formatted 1 statements" in result.output
 
         # Verify that the file was formatted correctly
         with open(file_path, "r") as f:
             formatted_script = f.read()
-        expected_script = "SELECT\n    1 -> test,\n;"
+        expected_script = "select\n    1 as test,\n;"
         assert formatted_script.strip() == expected_script
 
 
@@ -55,12 +55,12 @@ def test_format_directory(runner):
 
         # Check that the command was successful
         assert result.exit_code == 0
-        assert "formatted 2 file" in result.output
+        assert "Formatted 2/2 files" in result.output
 
         # Verify that each file was formatted correctly
         expected_scripts = {
-            "script1.preql": "SELECT\n    1 -> one,\n;",
-            "script2.preql": "SELECT\n    2 -> test,\n;",
+            "script1.preql": "select\n    1 as one,\n;",
+            "script2.preql": "select\n    2 as test,\n;",
         }
         for filename, expected_content in expected_scripts.items():
             with open(dir_path / filename, "r") as f:

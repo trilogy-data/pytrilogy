@@ -198,6 +198,7 @@ class SyntaxNodeKind(str, Enum):
     WINDOW_ITEM_LEGACY = "window_item_legacy"
     WINDOW_ITEM_SQL_NUMBERING = "window_item_sql_numbering"
     WINDOW_ITEM_SQL_NAVIGATION = "window_item_sql_navigation"
+    WINDOW_ITEM_SQL_AGGREGATE = "window_item_sql_aggregate"
     WINDOW_ITEM_OVER = "window_item_over"
     WINDOW_ITEM_ORDER = "window_item_order"
     WINDOW_SQL_OVER = "window_sql_over"
@@ -521,6 +522,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "window_item_legacy": SyntaxNodeKind.WINDOW_ITEM_LEGACY,
     "window_item_sql_numbering": SyntaxNodeKind.WINDOW_ITEM_SQL_NUMBERING,
     "window_item_sql_navigation": SyntaxNodeKind.WINDOW_ITEM_SQL_NAVIGATION,
+    "window_item_sql_aggregate": SyntaxNodeKind.WINDOW_ITEM_SQL_AGGREGATE,
     "window_item_over": SyntaxNodeKind.WINDOW_ITEM_OVER,
     "window_item_order": SyntaxNodeKind.WINDOW_ITEM_ORDER,
     "window_sql_over": SyntaxNodeKind.WINDOW_SQL_OVER,

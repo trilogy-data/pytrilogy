@@ -411,8 +411,8 @@ select
         assert rollup.grouping == AggregateGroupingMode.ROLLUP
         assert grouping_sets.grouping == AggregateGroupingMode.GROUPING_SETS
         rendered = str(output[-1])
-        assert "sum(x) by rollup a, b -> sx" in rendered
-        assert "sum(x) by grouping sets (a, b), (a), () -> sx_sets" in rendered
+        assert "sum(x) by rollup a, b as sx" in rendered
+        assert "sum(x) by grouping sets (a, b), (a), () as sx_sets" in rendered
 
 
 def test_empty_rollup_and_rank_inherit_select_grain() -> None:

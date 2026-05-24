@@ -491,20 +491,19 @@ class TestProgressAndExecution:
         if rich_mode and RICH_AVAILABLE:
             with capture_rich_console_output() as output:
                 display.show_formatting_result(
-                    filename="test.sql", num_queries=5, duration=duration
+                     num_queries=5, duration=duration
                 )
                 captured = output.getvalue()
-                assert "test.sql" in captured
                 assert "5" in captured
                 assert "2.30s" in strip_ansi(captured)
                 assert "\x1b[" in captured  # Should have styling
         else:
             with capture_all_output() as (stdout, stderr):
                 display.show_formatting_result(
-                    filename="test.sql", num_queries=5, duration=duration
+                    num_queries=5, duration=duration
                 )
                 captured = stdout.getvalue() + stderr.getvalue()
-                assert "5 queries" in captured
+                assert "5 statements" in captured
                 assert "2.30s" in captured
 
 
