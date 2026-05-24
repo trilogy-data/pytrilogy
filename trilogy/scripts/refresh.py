@@ -779,6 +779,7 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
 @option(
     "--parallelism",
     "-p",
+    type=int,
     default=None,
     help="Maximum parallel workers for directory execution",
 )

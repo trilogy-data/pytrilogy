@@ -73,6 +73,7 @@ def _format_import(value: str) -> str:
 @option(
     "--parallelism",
     "-p",
+    type=int,
     default=None,
     help="Maximum parallel workers for directory execution",
 )
