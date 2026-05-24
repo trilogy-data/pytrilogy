@@ -354,7 +354,7 @@ key x int;
 auto y <- case when x = 1 then 1 else 2 end;""")
 
     test = Renderer().to_string(parsed[-1])
-    assert test == """property x.y <- case
+    assert test == """auto y <- case
     when x = 1 then 1
     else 2
 end;""", test
@@ -370,7 +370,7 @@ auto y <- CASE
     test = Renderer().to_string(parsed[-1])
     # ``X like 'lit'`` is parsed as a ``Comparison`` (not a ``Function``-wrapped
     # ``= True``), so the round-tripped text reflects the cleaner infix form.
-    assert test == """property category_name.y <- case
+    assert test == """auto y <- case
     when category_name like '%abc%' then True
     else False
 end;""", test
@@ -1068,7 +1068,7 @@ final_zips;
 
     assert (
         rendered
-        == "property zips.final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);"
+        == "auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);"
     )
 
 
