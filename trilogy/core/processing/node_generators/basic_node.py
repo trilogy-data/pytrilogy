@@ -2,7 +2,11 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, FunctionType, SourceType
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConditionContext,
+    BuildFunction,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.discovery_utility import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
@@ -42,7 +46,7 @@ def gen_basic_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ):
     depth_prefix = "\t" * depth
     parent_concepts = resolve_function_parent_concepts(concept, environment=environment)

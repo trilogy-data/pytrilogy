@@ -1,20 +1,19 @@
 import web_sales as web_sales;
 
-auto multi_warehouse_order <- web_sales.order_number ? count(web_sales.warehouse.id) by web_sales.order_number >1;
+property multi_warehouse_order <- web_sales.order_number ? count(web_sales.warehouse.id) by web_sales.order_number > 1;
+property returned_orders <- web_sales.order_number ? web_sales.is_returned is True;
 
-auto returned_orders <- web_sales.order_number ? web_sales.is_returned is True;
-
-WHERE
-    web_sales.ship_date.date BETWEEN '1999-02-01'::date AND '1999-04-02'::date AND
-    web_sales.ship_address.state = 'IL' AND
-    web_sales.web_site.company_name = 'pri' AND
-    web_sales.order_number IN multi_warehouse_order AND
-    web_sales.order_number IN returned_orders
-SELECT
-    count(web_sales.order_number) -> order_count,
-    sum(web_sales.ext_ship_cost) -> total_shipping_cost,
-    sum(web_sales.net_profit) -> total_net_profit
-ORDER BY
+where
+    web_sales.ship_date.date between '1999-02-01'::date and '1999-04-02'::date
+    and web_sales.ship_address.state = 'IL'
+    and web_sales.web_site.company_name = 'pri'
+    and web_sales.order_number in multi_warehouse_order
+    and web_sales.order_number in returned_orders
+select
+    count(web_sales.order_number) as order_count,
+    sum(web_sales.ext_ship_cost) as total_shipping_cost,
+    sum(web_sales.net_profit) as total_net_profit,
+order by
     order_count desc
-LIMIT 100;
-
+limit 100
+;

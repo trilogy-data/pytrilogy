@@ -1,35 +1,25 @@
 import store_sales as store_sales;
 
-WHERE
+where
     store_sales.customer_demographic.gender = 'M'
     and store_sales.customer_demographic.marital_status = 'S'
     and store_sales.customer_demographic.education_status = 'College'
     and store_sales.date.year = 2002
     and store_sales.store.state = 'TN'
-SELECT
+select
     store_sales.item.name,
     store_sales.store.state,
-    grouping(store_sales.store.state) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as g_state,
-    avg(cast(store_sales.quantity as numeric(12, 2))) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as agg1,
-    avg(cast(store_sales.list_price as numeric(12, 2))) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as agg2,
-    avg(cast(store_sales.coupon_amt as numeric(12, 2))) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as agg3,
-    avg(cast(store_sales.sales_price as numeric(12, 2))) by rollup
-        store_sales.item.name,
-        store_sales.store.state
-        as agg4,
-ORDER BY
+    grouping(store_sales.store.state) by rollup store_sales.item.name, store_sales.store.state as g_state,
+    avg(store_sales.quantity::numeric(12,2))
+            by rollup store_sales.item.name, store_sales.store.state as agg1,
+    avg(store_sales.list_price::numeric(12,2))
+            by rollup store_sales.item.name, store_sales.store.state as agg2,
+    avg(store_sales.coupon_amt::numeric(12,2))
+            by rollup store_sales.item.name, store_sales.store.state as agg3,
+    avg(store_sales.sales_price::numeric(12,2))
+            by rollup store_sales.item.name, store_sales.store.state as agg4,
+order by
     store_sales.item.name asc nulls first,
     store_sales.store.state asc nulls first
-LIMIT 100;
+limit 100
+;

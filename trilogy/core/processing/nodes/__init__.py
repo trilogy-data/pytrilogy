@@ -2,7 +2,11 @@ from dataclasses import dataclass, field
 
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import Concept
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConditionContext,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 
@@ -16,6 +20,18 @@ from .subselect_node import SubselectNode
 from .union_node import UnionNode
 from .unnest_node import UnnestNode
 from .window_node import WindowNode
+
+BuildConditionInput = BuildConditionContext | BuildWhereClause | None
+
+
+def _condition_context(
+    conditions: BuildConditionInput,
+) -> BuildConditionContext | None:
+    if conditions is None:
+        return None
+    if isinstance(conditions, BuildConditionContext):
+        return conditions
+    return conditions.as_condition_context()
 
 
 @dataclass
@@ -47,8 +63,9 @@ class History:
         self,
         search: list[BuildConcept],
         accept_partial: bool,
-        conditions: BuildWhereClause | None = None,
+        conditions: BuildConditionInput = None,
     ) -> str:
+        conditions = _condition_context(conditions)
         base = sorted([c.address for c in search])
         if conditions:
             return "-".join(base) + str(accept_partial) + str(conditions)
@@ -59,8 +76,9 @@ class History:
         search: list[BuildConcept],
         accept_partial: bool,
         output: StrategyNode | None,
-        conditions: BuildWhereClause | None = None,
+        conditions: BuildConditionInput = None,
     ):
+        conditions = _condition_context(conditions)
         self.history[
             self._concepts_to_lookup(search, accept_partial, conditions=conditions)
         ] = output
@@ -73,10 +91,11 @@ class History:
     def get_history(
         self,
         search: list[BuildConcept],
-        conditions: BuildWhereClause | None = None,
+        conditions: BuildConditionInput = None,
         accept_partial: bool = False,
         parent_key: str = "",
     ) -> StrategyNode | None | bool:
+        conditions = _condition_context(conditions)
         key = self._concepts_to_lookup(
             search,
             accept_partial,
@@ -97,8 +116,9 @@ class History:
         self,
         search: list[BuildConcept],
         accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
+        conditions: BuildConditionInput = None,
     ):
+        conditions = _condition_context(conditions)
         key = self._concepts_to_lookup(
             search,
             accept_partial=accept_partial,
@@ -117,8 +137,9 @@ class History:
         self,
         search: list[BuildConcept],
         accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
+        conditions: BuildConditionInput = None,
     ):
+        conditions = _condition_context(conditions)
         key = self._concepts_to_lookup(
             search,
             accept_partial=accept_partial,
@@ -131,8 +152,9 @@ class History:
         self,
         search: list[BuildConcept],
         accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
+        conditions: BuildConditionInput = None,
     ):
+        conditions = _condition_context(conditions)
         return (
             self._concepts_to_lookup(
                 search,
@@ -150,10 +172,11 @@ class History:
         depth: int,
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
+        conditions: BuildConditionInput = None,
     ) -> StrategyNode | None:
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 
+        conditions = _condition_context(conditions)
         fingerprint = self._concepts_to_lookup(
             concepts,
             accept_partial,

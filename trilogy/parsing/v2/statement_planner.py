@@ -63,7 +63,40 @@ def require_block_statement(block: SyntaxNode) -> SyntaxNode:
 
 class StatementPlanner:
     def plan(self, forms: list[SyntaxElement]) -> list[StatementPlan]:
-        return [self._plan_form(form) for form in forms]
+        # A comment in the gap between two blocks gets parked on the
+        # *previous* block by the pest gobbler (BLOCK is a gobbler). Same-line
+        # trailing comments correctly attach as the statement's description,
+        # but everything past the first line break is a leading comment for
+        # the NEXT block — peel those out and emit them as standalone
+        # CommentStatementPlans so the renderer can put them back.
+        plans: list[StatementPlan] = []
+        for form in forms:
+            plans.append(self._plan_form(form))
+            if isinstance(form, SyntaxNode) and form.kind == SyntaxNodeKind.BLOCK:
+                for detached in self._detached_block_comments(form):
+                    plans.append(CommentStatementPlan(detached))
+        return plans
+
+    def _detached_block_comments(self, block: SyntaxNode) -> list[SyntaxToken]:
+        if not block.children:
+            return []
+        statement = block.children[0]
+        base_line = statement.end_line if isinstance(statement, SyntaxNode) else None
+        if base_line is None:
+            return []
+        detached: list[SyntaxToken] = []
+        attached = True
+        for child in block.children[1:]:
+            if not (
+                isinstance(child, SyntaxToken) and child.kind == SyntaxTokenKind.COMMENT
+            ):
+                continue
+            if attached and child.line == base_line:
+                base_line = child.end_line
+            else:
+                attached = False
+                detached.append(child)
+        return detached
 
     def _plan_form(self, form: SyntaxElement) -> StatementPlan:
         if isinstance(form, SyntaxToken):

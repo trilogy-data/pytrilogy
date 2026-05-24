@@ -383,8 +383,8 @@ _atom = _{
     | _generic_functions
     | _date_functions
     | aggregate_by
-    | aggregate_functions
     | window_item
+    | aggregate_functions
     | unnest
     | union
     | subselect
@@ -492,7 +492,7 @@ fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }
 // arbitrary sub-trees.
 filter_item = {
       (^"filter" ~ IDENTIFIER ~ where)
-    | ((_constant_functions | _static_functions | _generic_functions | _date_functions | aggregate_functions | aggregate_by | custom_function | window_item | unnest | union | subselect | fgroup | expr_tuple | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
+    | ((_constant_functions | _static_functions | _generic_functions | _date_functions | window_item | aggregate_functions | aggregate_by | custom_function | unnest | union | subselect | fgroup | expr_tuple | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
 }
 
 // =============================================================================
@@ -542,7 +542,12 @@ window_item_legacy = {
 window_item_sql_numbering  = { WINDOW_TYPE_SQL_NUMBERING ~ (expr ~ ("," ~ expr)*)? ~ ")" ~ window_sql_over? }
 // SQL-like navigation: lag(field) or lag(field, 2) over (...).
 window_item_sql_navigation = { WINDOW_TYPE_SQL_NAVIGATION ~ expr ~ ("," ~ int_lit)? ~ ")" ~ window_sql_over? }
-window_item                = { window_item_sql_numbering | window_item_sql_navigation | window_item_legacy }
+// SQL-like aggregate-as-window: sum(x) over (partition by y order by z).
+// Match before plain aggregate_functions in the expr atom list so the
+// trailing over clause binds here instead of leaving the parser stuck
+// after the aggregate call.
+window_item_sql_aggregate  = { aggregate_functions ~ window_sql_over }
+window_item                = { window_item_sql_aggregate | window_item_sql_numbering | window_item_sql_navigation | window_item_legacy }
 
 // Allow newlines/CR between the comma and the identifier so multi-line
 // `over a, b,\n   c` and `by a, b,\n   c` lists parse the same as the lark

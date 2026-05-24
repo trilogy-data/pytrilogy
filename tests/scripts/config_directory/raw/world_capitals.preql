@@ -1,5 +1,5 @@
 # Datasource ingested from world_capitals
-# Generated on 2026-05-23 10:44:58.264344
+# Generated on 2026-05-23 16:12:11.520745
 import std.geography;
 
 key country string::country;
@@ -16,7 +16,7 @@ root datasource world_capitals (
     capital,
     population,
     latitude,
-    longitude
+    longitude,
 )
 grain (country)
 address world_capitals;

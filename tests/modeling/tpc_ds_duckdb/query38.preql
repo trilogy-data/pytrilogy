@@ -2,32 +2,42 @@ import unified_sales as sales;
 
 # Per-channel presence flag for each (customer.last_name, customer.first_name, date.date) tuple,
 # evaluated within month_seq 1200..1211. Tuples with rows in ALL three channels are intersect.
-auto store_in_window <- sum(
-    CASE WHEN sales.sales_channel = 'STORE'
-              and sales.date.month_seq between 1200 and 1200 + 11
-              and sales.customer.id is not null
-         THEN 1 ELSE 0 END
-) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+metric store_in_window <- sum(
+    case
+    when sales.sales_channel = 'STORE'
+    and sales.date.month_seq between 1200 and 1200 + 11
+    and sales.customer.id is not null then 1
+    else 0
+end
+)
+    by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+metric catalog_in_window <- sum(
+    case
+    when sales.sales_channel = 'CATALOG'
+    and sales.date.month_seq between 1200 and 1200 + 11
+    and sales.customer.id is not null then 1
+    else 0
+end
+)
+    by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+metric web_in_window <- sum(
+    case
+    when sales.sales_channel = 'WEB'
+    and sales.date.month_seq between 1200 and 1200 + 11
+    and sales.customer.id is not null then 1
+    else 0
+end
+)
+    by sales.customer.last_name, sales.customer.first_name, sales.date.date;
 
-auto catalog_in_window <- sum(
-    CASE WHEN sales.sales_channel = 'CATALOG'
-              and sales.date.month_seq between 1200 and 1200 + 11
-              and sales.customer.id is not null
-         THEN 1 ELSE 0 END
-) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
-
-auto web_in_window <- sum(
-    CASE WHEN sales.sales_channel = 'WEB'
-              and sales.date.month_seq between 1200 and 1200 + 11
-              and sales.customer.id is not null
-         THEN 1 ELSE 0 END
-) by sales.customer.last_name, sales.customer.first_name, sales.date.date;
-
-WHERE
+where
     sales.date.month_seq between 1200 and 1200 + 11
-SELECT
-    sum(CASE WHEN store_in_window > 0
-              and catalog_in_window > 0
-              and web_in_window > 0
-         THEN 1 ELSE 0 END) as cnt
-LIMIT 100;
+select
+    sum(
+            case
+            when store_in_window > 0 and catalog_in_window > 0 and web_in_window > 0 then 1
+            else 0
+        end
+        ) as cnt,
+limit 100
+;

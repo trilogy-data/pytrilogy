@@ -27,15 +27,15 @@ STDLIB_ROOT = Path(__file__).parent.parent.parent.parent
 def _resolve_import_path(
     raw_args: list[str],
     environment: Environment,
-) -> tuple[str, str, str, str, Path | str, bool]:
-    parent_dirs = -1
+) -> tuple[str, str, str, str, Path | str, bool, int]:
+    leading_dots = 0
     parsed_args: list[str] = []
     for x in raw_args:
         if x == ".":
-            parent_dirs += 1
+            leading_dots += 1
         else:
             parsed_args.append(str(x))
-    parent_dirs = max(parent_dirs, 0)
+    parent_dirs = max(leading_dots - 1, 0)
     if len(parsed_args) == 2:
         alias = parsed_args[-1]
         cache_key = parsed_args[-1]
@@ -59,7 +59,7 @@ def _resolve_import_path(
         token_lookup = target
     else:
         raise NotImplementedError
-    return alias, cache_key, input_path, target, token_lookup, is_stdlib
+    return alias, cache_key, input_path, target, token_lookup, is_stdlib, leading_dots
 
 
 def import_statement(
@@ -68,7 +68,7 @@ def import_statement(
     hydrate: HydrateFunction,
 ) -> ImportRequest:
     args = [str(hydrate(child)) for child in node.children]
-    alias, cache_key, input_path, target, token_lookup, is_stdlib = (
+    alias, cache_key, input_path, target, token_lookup, is_stdlib, leading_dots = (
         _resolve_import_path(args, context.environment)
     )
     return ImportRequest(
@@ -78,6 +78,7 @@ def import_statement(
         target=target,
         token_lookup=token_lookup,
         is_stdlib=is_stdlib,
+        leading_dots=leading_dots,
     )
 
 
@@ -89,7 +90,7 @@ def selective_import_statement(
     args = hydrated_children(node, hydrate)
     concepts_list: list[str] = next(a for a in args if isinstance(a, list))
     path_args = [str(a) for a in args if not isinstance(a, list)]
-    alias, cache_key, input_path, target, token_lookup, is_stdlib = (
+    alias, cache_key, input_path, target, token_lookup, is_stdlib, leading_dots = (
         _resolve_import_path(path_args, context.environment)
     )
     return ImportRequest(
@@ -100,6 +101,7 @@ def selective_import_statement(
         token_lookup=token_lookup,
         is_stdlib=is_stdlib,
         concepts=concepts_list,
+        leading_dots=leading_dots,
     )
 
 

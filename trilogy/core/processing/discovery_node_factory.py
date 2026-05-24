@@ -6,7 +6,7 @@ from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildWhereClause,
+    BuildConditionContext,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
@@ -45,7 +45,7 @@ class SearchConceptsType(Protocol):
         depth: int,
         g: ReferenceGraph,
         accept_partial: bool = False,
-        conditions: Optional[BuildWhereClause] = None,
+        conditions: BuildConditionContext | None = None,
     ) -> Union[StrategyNode, None]: ...
 
 
@@ -61,7 +61,7 @@ class NodeGenerationContext:
     source_concepts: SearchConceptsType
     history: History
     accept_partial: bool = False
-    conditions: Optional[BuildWhereClause] = None
+    conditions: BuildConditionContext | None = None
     required_concepts: List[BuildConcept] | None = None
 
     @property
@@ -115,7 +115,7 @@ def restrict_node_outputs_targets(
 
 
 def _condition_arguments_still_required(
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
     node: StrategyNode,
 ) -> set[str]:
     if not conditions:
@@ -467,7 +467,7 @@ def generate_node(
     source_concepts: SearchConceptsType,
     history: History,
     accept_partial: bool,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
     required_concepts: List[BuildConcept] | None = None,
 ) -> StrategyNode | None:
 

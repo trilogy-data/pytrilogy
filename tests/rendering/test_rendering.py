@@ -22,6 +22,7 @@ from trilogy.core.models.author import (
     AlignItem,
     CaseElse,
     CaseWhen,
+    Comment,
     Comparison,
     Concept,
     ConceptRef,
@@ -72,9 +73,9 @@ def test_basic_query(test_environment):
     )
 
     string_query = render_query(query)
-    assert string_query == """SELECT
+    assert string_query == """select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -94,8 +95,8 @@ select max(order_id) by order_id -> test;
 
 """)
     string_query = Renderer().to_string(parsed[-1])
-    assert string_query == """SELECT
-    max(order_id) by order_id -> test,
+    assert string_query == """select
+    max(order_id) by order_id as test,
 ;"""
 
 
@@ -131,14 +132,14 @@ def test_multi_select(test_environment):
     )
 
     string_query = render_query(query)
-    assert string_query == """SELECT
+    assert string_query == """select
     order_id,
-MERGE
-SELECT
+merge
+select
     order_id,
-ALIGN
-    merge:order_id
-ORDER BY
+align
+    merge: order_id
+order by
     order_id asc
 ;""", string_query
 
@@ -172,11 +173,11 @@ def test_full_query(test_environment):
     )
 
     string_query = render_query(query)
-    assert string_query == """WHERE
+    assert string_query == """where
     order_id = 123 or order_id = 456
-SELECT
+select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -211,9 +212,9 @@ def test_persist(test_environment: Environment):
     )
 
     string_query = render_query(query)
-    assert string_query == """OVERWRITE test INTO tbl_test FROM SELECT
+    assert string_query == """overwrite test into tbl_test from select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -229,9 +230,9 @@ ORDER BY
     )
 
     string_query = render_query(query)
-    assert string_query == """OVERWRITE test INTO tbl_test BY order_id FROM SELECT
+    assert string_query == """overwrite test into tbl_test by order_id from select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -248,9 +249,9 @@ ORDER BY
     )
 
     string_query = render_query(query)
-    assert string_query == """APPEND test INTO tbl_test BY order_id FROM SELECT
+    assert string_query == """append test into tbl_test by order_id from select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -318,9 +319,9 @@ def test_render_rowset(test_environment: Environment):
         )
     )
 
-    assert test == """rowset test <- SELECT
+    assert test == """rowset test <- select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;"""
 
@@ -331,10 +332,10 @@ def test_render_case(test_environment: Environment):
     )
 
     test = Renderer().to_string(case_else)
-    assert test == "ELSE order_id"
+    assert test == "else order_id"
 
     test = Renderer().to_string(case_else)
-    assert test == "ELSE order_id"
+    assert test == "else order_id"
     case_when = CaseWhen(
         expr=test_environment.concepts["order_id"],
         comparison=Comparison(
@@ -345,7 +346,7 @@ def test_render_case(test_environment: Environment):
     )
 
     test = Renderer().to_string(case_when)
-    assert test == "WHEN order_id = 123 THEN order_id"
+    assert test == "when order_id = 123 then order_id"
 
     env, parsed = Environment().parse("""
 
@@ -353,10 +354,10 @@ key x int;
 auto y <- case when x = 1 then 1 else 2 end;""")
 
     test = Renderer().to_string(parsed[-1])
-    assert test == """property y <- CASE
-    WHEN x = 1 THEN 1
-    ELSE 2
-END;""", test
+    assert test == """property x.y <- case
+    when x = 1 then 1
+    else 2
+end;""", test
 
     #  property test_like <- CASE WHEN category_name like '%abc%' then True else False END;
 
@@ -369,10 +370,10 @@ auto y <- CASE
     test = Renderer().to_string(parsed[-1])
     # ``X like 'lit'`` is parsed as a ``Comparison`` (not a ``Function``-wrapped
     # ``= True``), so the round-tripped text reflects the cleaner infix form.
-    assert test == """property y <- CASE
-    WHEN category_name like '%abc%' THEN True
-    ELSE False
-END;""", test
+    assert test == """property category_name.y <- case
+    when category_name like '%abc%' then True
+    else False
+end;""", test
 
 
 def test_render_math():
@@ -545,14 +546,14 @@ def test_render_merge():
             modifiers=[Modifier.PARTIAL],
         )
     )
-    assert test == "MERGE materialized into ~test.materialized;"
+    assert test == "merge materialized into ~test.materialized;"
 
 
 def test_render_merge_property():
     test = Renderer().to_string(
         KeyMergeStatement(keys=set(["abc", "def"]), target=ConceptRef(address="abc.id"))
     )
-    assert test == "MERGE PROPERTY <abc, def> from abc.id;"
+    assert test == "merge property <abc, def> from abc.id;"
 
 
 def test_render_persist_to_source():
@@ -572,7 +573,7 @@ def test_render_raw_sqlpersist_to_source():
 def test_render_numeric():
     test = Renderer().to_string(NumericType(precision=12, scale=3))
 
-    assert test == "Numeric(12,3)"
+    assert test == "numeric(12,3)"
 
 
 def test_render_index_access():
@@ -646,6 +647,71 @@ def test_render_import():
         assert test == "import path.to.file;"
 
 
+def test_render_import_preserves_leading_dots():
+    """``import ..store_sales as ss`` must round-trip; only ImportStatement
+    carries the leading_dots count (Import is the import-record, not a stmt)."""
+    base = Path("store_sales.preql")
+    out = Renderer().to_string(
+        ImportStatement(
+            alias="ss",
+            path=str(PurePosixPath(base)),
+            input_path="store_sales",
+            leading_dots=2,
+        )
+    )
+    assert out == "import ..store_sales as ss;"
+
+    out_one_dot = Renderer().to_string(
+        ImportStatement(
+            alias="ss",
+            path=str(PurePosixPath(base)),
+            input_path="store_sales",
+            leading_dots=1,
+        )
+    )
+    assert out_one_dot == "import .store_sales as ss;"
+
+
+def test_parse_render_roundtrip_relative_import(tmp_path):
+    """End-to-end: parser captures leading dots and renderer emits them."""
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    (tmp_path / "store_sales.preql").write_text("key id int;")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    env = Environment(working_path=sub)
+    text = "import ..store_sales as ss;"
+    _, parsed = parse_text(text, env)
+    assert parsed[0].leading_dots == 2
+    rendered = Renderer().to_string(parsed[0])
+    assert rendered == text
+
+
+def test_parse_render_roundtrip_aggregate_rollup_empty():
+    """``sum(x) by rollup() as sx`` must round-trip — the empty rollup form
+    is not the same as a plain ``sum(x)`` and the formatter must not drop it.
+    Regression for q67 where formatter dropped/added rollup inconsistently."""
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    env = Environment()
+    text = "key x int;\nselect sum(x) by rollup() as sx;"
+    _, parsed = parse_text(text, env)
+    rendered = str(parsed[-1])
+    assert "sum(x) by rollup() as sx" in rendered, rendered
+
+
+def test_parse_render_roundtrip_aggregate_no_grouping():
+    """Plain ``sum(x)`` must NOT gain a ``by rollup()`` on render."""
+    from trilogy.parsing.parse_engine_v2 import parse_text
+
+    env = Environment()
+    text = "key x int;\nselect sum(x) as sx;"
+    _, parsed = parse_text(text, env)
+    rendered = str(parsed[-1])
+    assert "by rollup" not in rendered, rendered
+    assert "sum(x) as sx" in rendered, rendered
+
+
 def test_render_datasource():
     user_id = Concept(
         name="user_id",
@@ -689,7 +755,7 @@ def test_render_datasource():
 
     test = Renderer().to_string(ds)
     assert test == """datasource useful_data (
-    user_id: ~user_id
+    user_id: ~user_id,
 )
 grain (user_id)
 complete where user_id = 123
@@ -719,7 +785,7 @@ where user_id = 123 or user_id = 456;"""
 
     test = Renderer().to_string(ds)
     assert test == """datasource useful_data (
-    user_id
+    user_id,
 )
 grain (user_id)
 query '''SELECT * FROM test'''
@@ -760,7 +826,7 @@ address memory.date_dim;""")
     D_MOY: month_of_year,
     D_QOY: quarter,
     D_WEEK_SEQ1: d_week_seq1,
-    raw('''cast("D_YEAR" as int)'''): year
+    raw('''cast("D_YEAR" as int)'''): year,
 )
 grain (id)
 address memory.date_dim;""", test
@@ -788,7 +854,7 @@ address memory.date_dim;""", test
     ds.grain = Grain()
     test2 = Renderer().to_string(ds)
     assert test2 == """datasource useful_data (
-    user_id
+    user_id,
 )
 
 query '''SELECT * FROM test'''
@@ -821,7 +887,7 @@ where user_id = 123 or user_id = 456;"""
     ds.grain = Grain()
     test2 = Renderer().to_string(ds)
     assert test2 == """datasource useful_data (
-    user_id
+    user_id,
 )
 
 query '''SELECT * FROM test'''
@@ -931,9 +997,9 @@ where id in (1,2,3);
     ), type(commands[-1].select.where_clause.conditional.right)
     rendered = Renderer().to_string(commands[-1])
 
-    assert rendered == """OVERWRITE test INTO test FROM WHERE
+    assert rendered == """overwrite test into test from where
     id in (1, 2, 3)
-SELECT
+select
     id,
 ;""", rendered
     # validate round trip
@@ -970,9 +1036,9 @@ def test_render_copy_statement(test_environment):
     )
     query = CopyStatement(select=select, target_type=IOType.CSV, target="test.csv")
     string_query = render_query(query)
-    assert string_query == """COPY INTO CSV 'test.csv' FROM SELECT
+    assert string_query == """copy into csv 'test.csv' from select
     order_id,
-ORDER BY
+order by
     order_id asc
 ;""", string_query
 
@@ -1002,7 +1068,7 @@ final_zips;
 
     assert (
         rendered
-        == "property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
+        == "property zips.final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);"
     )
 
 
@@ -1038,7 +1104,7 @@ property y.y_name string;
         ConceptDeclarationStatement(concept=env.concepts["correlation"])
     )
 
-    assert test == "property <x,y>.correlation float;"
+    assert test == "property <x, y>.correlation float;"
 
     test = Renderer().to_string(
         ConceptDeclarationStatement(concept=env.concepts["y_name"])
@@ -1060,7 +1126,7 @@ properties <order_number,item_id> (
     rendered = Renderer().to_string(env)
 
     assert (
-        "properties <item_id,order_number> (\n    quantity int,\n    sales_price float,\n    net_profit float,\n);"
+        "properties <item_id, order_number> (\n    quantity int,\n    sales_price float,\n    net_profit float,\n);"
         in rendered
     )
 
@@ -1119,7 +1185,7 @@ property y.y_name string;
     assert "property x.x_name string;" in rendered
     assert "property y.y_name string;" in rendered
     # multi-key group renders as grouped block
-    assert "properties <x,y> (\n    a int,\n    b float,\n);" in rendered
+    assert "properties <x, y> (\n    a int,\n    b float,\n);" in rendered
 
     # round-trip
     env2 = Environment.from_string(rendered)
@@ -1161,8 +1227,8 @@ select
     )
     expected = [
         """def add_thrice(x) -> x + x + x;""",
-        """SELECT
-    @add_thrice(1) -> test,
+        """select
+    @add_thrice(1) as test,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1173,13 +1239,54 @@ select
     select round(@add_thrice(1),2) as test_sum;
                 """)
     expected = [
-        """SELECT
-    round(@add_thrice(1),2) -> test_sum,
+        """select
+    round(@add_thrice(1), 2) as test_sum,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
         rendered = Renderer().to_string(cmd)
         assert rendered == expected[idx], rendered
+
+
+def test_parse_preserves_leading_comments():
+    """Standalone comments preceding a statement must survive parse.
+
+    Regression: the pest gobbler parks leading-comment tokens on the
+    *previous* block, and ``trailing_description`` only attaches comments
+    on the statement's end line. Anything past the first line break used
+    to be silently dropped during hydration, causing ``trilogy fmt`` to
+    strip leading comments. The planner now peels detached comments off
+    each block and emits them as standalone CommentStatementPlans.
+    """
+    src = """
+key id int;
+# leading comment for next field
+# second line of that comment
+property id.x int;
+
+# new section
+property id.y int;
+"""
+    env, queries = Environment().parse(src)
+    kinds = [type(q).__name__ for q in queries]
+    assert kinds == [
+        "ConceptDeclarationStatement",
+        "Comment",
+        "Comment",
+        "ConceptDeclarationStatement",
+        "Comment",
+        "ConceptDeclarationStatement",
+    ], kinds
+    comments = [q.text.strip() for q in queries if isinstance(q, Comment)]
+    assert comments == [
+        "# leading comment for next field",
+        "# second line of that comment",
+        "# new section",
+    ]
+    # Round-trip: rendering and re-parsing must yield the same shape.
+    rendered = Renderer().render_statement_string(queries)
+    _, queries2 = Environment().parse(rendered)
+    assert [type(q).__name__ for q in queries2] == kinds
 
 
 def test_render_function_trailing_comment():
@@ -1226,11 +1333,11 @@ def test_render_struct():
     expected = [
         """const x <- 1;""",
         """const y <- 2;""",
-        """SELECT
+        """select
     struct(
             x-> label,
             y-> field
-        ) -> num_struct,
+        ) as num_struct,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1266,9 +1373,9 @@ select group(1) by x as test, group(1) by * as all_rows;
 """)
     expected = [
         """key x int;""",
-        """SELECT
-    group(1) by x -> test,
-    group(1) by * -> all_rows,
+        """select
+    group(1) by x as test,
+    group(1) by * as all_rows,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1287,8 +1394,8 @@ select x as x2;
 """)
     expected = [
         """key x int;""",
-        """SELECT
-    x -> x2,
+        """select
+    x as x2,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1307,9 +1414,9 @@ select x::float as x2, cast(x as float) as x3;
 """)
     expected = [
         """key x int;""",
-        """SELECT
-    x::float -> x2,
-    x::float -> x3,
+        """select
+    x::float as x2,
+    x::float as x3,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
@@ -1387,7 +1494,7 @@ def test_column_assignment_in_datasource():
     expected = """datasource users (
     user_id,
     user_name,
-    id_copy: user_id
+    id_copy: user_id,
 )
 grain (user_id)
 address dim_users;"""

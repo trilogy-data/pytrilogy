@@ -16,6 +16,7 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
+    BuildConditionContext,
     BuildDatasource,
     BuildGrain,
     BuildUnionDatasource,
@@ -89,7 +90,7 @@ def create_pruned_concept_graph(
     all_concepts: list[BuildConcept],
     datasources: list[BuildDatasource],
     criteria: SearchCriteria,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
     depth: int = 0,
     allow_intersection: bool = False,
 ) -> ReferenceGraph | None:
@@ -233,9 +234,9 @@ def _source_concepts_via_graph(
     environment: BuildEnvironment,
     depth: int,
     accept_partial: bool = False,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
     allow_intersection: bool = False,
-    filter_conditions: BuildWhereClause | None = None,
+    filter_conditions: BuildConditionContext | None = None,
 ) -> list[StrategyNode]:
     """Run the pruned-graph → subgraph → SelectNode pipeline for a list of concepts.
 
@@ -427,7 +428,7 @@ def _source_concepts_via_graph(
 
 def _conditions_can_be_sourced_by_components(
     concepts: list[BuildConcept],
-    conditions: BuildWhereClause,
+    conditions: BuildConditionContext,
     environment: BuildEnvironment,
 ) -> bool:
     return len(_sourceable_condition_atoms(conditions, environment)) == len(
@@ -436,7 +437,7 @@ def _conditions_can_be_sourced_by_components(
 
 
 def _sourceable_condition_atoms(
-    conditions: BuildWhereClause,
+    conditions: BuildConditionContext,
     environment: BuildEnvironment,
 ) -> list[BoolExpr]:
     datasources = [
@@ -469,7 +470,7 @@ def _sourceable_condition_atoms(
 
 def _conditions_deferrable_to_merge(
     concepts: list[BuildConcept],
-    conditions: BuildWhereClause,
+    conditions: BuildConditionContext,
     environment: BuildEnvironment,
 ) -> bool:
     """Whether the WHERE can be merged-then-reapplied rather than pushed per source.
@@ -541,7 +542,7 @@ def _condition_can_apply_after_merge(
 
 def _candidates_route_conditions(
     candidates: list[SourceNodeCandidate],
-    conditions: BuildWhereClause,
+    conditions: BuildConditionContext,
 ) -> bool:
     pushed = _condition_atoms_applied_by_candidates(candidates)
     remaining = combine_condition_atoms(
@@ -557,7 +558,7 @@ def _candidates_route_conditions(
 def _candidate_satisfies_request(
     candidate: SourceNodeCandidate,
     requested: list[BuildConcept],
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
 ) -> bool:
     if not conditions or candidate.node.preexisting_conditions is None:
         return False
@@ -573,7 +574,7 @@ def _candidate_satisfies_request(
 
 def _parents_apply_condition_atoms(
     parents: list[StrategyNode],
-    conditions: BuildWhereClause,
+    conditions: BuildConditionContext,
 ) -> bool:
     if not parents:
         return False
@@ -588,7 +589,7 @@ def _parents_apply_condition_atoms(
 
 def _condition_remaining_after_parents(
     parents: list[StrategyNode],
-    conditions: BuildWhereClause,
+    conditions: BuildConditionContext,
 ) -> BoolExpr | None:
     parent_atoms = [a for parent in parents for a in _node_condition_atoms(parent)]
     return combine_condition_atoms(
@@ -610,7 +611,7 @@ def _condition_can_apply_after_parent_merge(
 def _merge_condition_routing(
     parents: list[StrategyNode],
     output_concepts: list[BuildConcept],
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
 ) -> tuple[BoolExpr | None, BoolExpr | None, JoinType | None]:
     if conditions is None:
         return None, None, None
@@ -664,7 +665,7 @@ def gen_select_merge_node(
     environment: BuildEnvironment,
     depth: int,
     accept_partial: bool = False,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     abstract_props = [
         c

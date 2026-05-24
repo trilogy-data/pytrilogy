@@ -809,6 +809,257 @@ class BuildWhereClause(BuildConceptArgs):
     def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
         return self.conditional.existence_arguments
 
+    @property
+    def condition_atoms(self) -> tuple["BuildConditionAtom", ...]:
+        return BuildConditionLayer.from_where_clause(self).atoms
+
+    def as_condition_context(self) -> "BuildConditionContext":
+        return BuildConditionContext(
+            layers=(BuildConditionLayer.from_where_clause(self),)
+        )
+
+
+@dataclass(slots=True)
+class BuildConditionAtom(BuildConceptArgs):
+    conditional: Union[
+        BuildSubselectComparison,
+        BuildComparison,
+        BuildConditional,
+        BuildParenthetical,
+        "BuildBetween",
+    ]
+
+    def __eq__(self, other):
+        if isinstance(other, BuildConditionAtom):
+            return self.conditional == other.conditional
+        return self.conditional == other
+
+    def __repr__(self):
+        return str(self.conditional)
+
+    def __str__(self):
+        return self.__repr__()
+
+    @property
+    def concept_arguments(self) -> List[BuildConcept]:
+        return self.conditional.concept_arguments
+
+    @property
+    def row_arguments(self) -> Sequence[BuildConcept]:
+        return self.conditional.row_arguments
+
+    @property
+    def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
+        return self.conditional.existence_arguments
+
+
+@dataclass(slots=True)
+class BuildConditionLayer(BuildConceptArgs):
+    atoms: tuple[BuildConditionAtom, ...]
+    _conditional: Union[
+        BuildSubselectComparison,
+        BuildComparison,
+        BuildConditional,
+        BuildParenthetical,
+        "BuildBetween",
+        None,
+    ] = None
+
+    @classmethod
+    def from_where_clause(cls, where: BuildWhereClause) -> "BuildConditionLayer":
+        return cls.from_conditional(where.conditional)
+
+    @classmethod
+    def from_conditional(
+        cls,
+        conditional: Union[
+            BuildSubselectComparison,
+            BuildComparison,
+            BuildConditional,
+            BuildParenthetical,
+            "BuildBetween",
+        ],
+    ) -> "BuildConditionLayer":
+        atoms = cls._condition_atoms(conditional)
+        return cls(atoms=atoms, _conditional=conditional)
+
+    @classmethod
+    def from_atoms(cls, atoms: Sequence[BuildConditionAtom]) -> "BuildConditionLayer":
+        if not atoms:
+            raise ValueError("BuildConditionLayer requires at least one atom")
+        return cls(atoms=tuple(atoms))
+
+    @staticmethod
+    def _condition_atoms(
+        conditional: Union[
+            BuildSubselectComparison,
+            BuildComparison,
+            BuildConditional,
+            BuildParenthetical,
+            "BuildBetween",
+        ],
+    ) -> tuple[BuildConditionAtom, ...]:
+        if not isinstance(conditional, BuildConditional):
+            return (BuildConditionAtom(conditional=conditional),)
+        if conditional.operator != BooleanOperator.AND:
+            return (BuildConditionAtom(conditional=conditional),)
+        condition_types = (
+            BuildSubselectComparison,
+            BuildComparison,
+            BuildConditional,
+            BuildParenthetical,
+            BuildBetween,
+        )
+        if not (
+            isinstance(conditional.left, condition_types)
+            and isinstance(conditional.right, condition_types)
+        ):
+            return (BuildConditionAtom(conditional=conditional),)
+        chunks: list[BuildConditionAtom] = []
+        for value in (conditional.left, conditional.right):
+            if isinstance(value, BuildConditional):
+                chunks.extend(BuildConditionLayer._condition_atoms(value))
+            else:
+                chunks.append(BuildConditionAtom(conditional=value))
+        return tuple(chunks)
+
+    @property
+    def conditional(
+        self,
+    ) -> Union[
+        BuildSubselectComparison,
+        BuildComparison,
+        BuildConditional,
+        BuildParenthetical,
+        "BuildBetween",
+    ]:
+        if self._conditional is not None:
+            return self._conditional
+        condition = self.atoms[0].conditional
+        for atom in self.atoms[1:]:
+            condition = BuildConditional(
+                left=condition,
+                right=atom.conditional,
+                operator=BooleanOperator.AND,
+            )
+        return condition
+
+    @property
+    def where_clause(self) -> BuildWhereClause:
+        return BuildWhereClause(conditional=self.conditional)
+
+    def __repr__(self):
+        return str(self.conditional)
+
+    def __str__(self):
+        return self.__repr__()
+
+    @property
+    def concept_arguments(self) -> List[BuildConcept]:
+        output: List[BuildConcept] = []
+        for atom in self.atoms:
+            output += list(atom.concept_arguments)
+        return output
+
+    @property
+    def row_arguments(self) -> Sequence[BuildConcept]:
+        output: List[BuildConcept] = []
+        for atom in self.atoms:
+            output += list(atom.row_arguments)
+        return output
+
+    @property
+    def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
+        output: list[tuple["BuildConcept", ...]] = []
+        for atom in self.atoms:
+            output += list(atom.existence_arguments)
+        return output
+
+
+@dataclass(slots=True)
+class BuildConditionContext(BuildConceptArgs):
+    layers: tuple[BuildConditionLayer, ...] = ()
+
+    @classmethod
+    def from_where_clause(
+        cls, where: BuildWhereClause | None
+    ) -> "BuildConditionContext | None":
+        if where is None:
+            return None
+        return cls(layers=(BuildConditionLayer.from_where_clause(where),))
+
+    @classmethod
+    def from_layers(
+        cls, layers: Sequence[BuildConditionLayer]
+    ) -> "BuildConditionContext | None":
+        if not layers:
+            return None
+        return cls(layers=tuple(layers))
+
+    @property
+    def single_layer(self) -> BuildConditionLayer | None:
+        if not self.layers:
+            return None
+        if len(self.layers) > 1:
+            raise NotImplementedError("Nested condition discovery is not supported yet")
+        return self.layers[0]
+
+    def as_single_where_clause(self) -> BuildWhereClause | None:
+        layer = self.single_layer
+        if layer is None:
+            return None
+        return layer.where_clause
+
+    @property
+    def conditional(
+        self,
+    ) -> Union[
+        BuildSubselectComparison,
+        BuildComparison,
+        BuildConditional,
+        BuildParenthetical,
+        "BuildBetween",
+    ]:
+        layer = self.single_layer
+        if layer is None:
+            raise ValueError("BuildConditionContext has no condition layers")
+        return layer.conditional
+
+    @property
+    def condition_atoms(self) -> tuple["BuildConditionAtom", ...]:
+        layer = self.single_layer
+        if layer is None:
+            return ()
+        return layer.atoms
+
+    def __bool__(self) -> bool:
+        return bool(self.layers)
+
+    def __repr__(self):
+        layer = self.single_layer
+        return str(layer) if layer else ""
+
+    def __str__(self):
+        return self.__repr__()
+
+    @property
+    def concept_arguments(self) -> List[BuildConcept]:
+        layer = self.single_layer
+        return list(layer.concept_arguments) if layer else []
+
+    @property
+    def row_arguments(self) -> Sequence[BuildConcept]:
+        layer = self.single_layer
+        return list(layer.row_arguments) if layer else []
+
+    @property
+    def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
+        layer = self.single_layer
+        return list(layer.existence_arguments) if layer else []
+
+
+BuildCondition = BuildConditionContext | BuildWhereClause
+
 
 class BuildHavingClause(BuildWhereClause):
     pass

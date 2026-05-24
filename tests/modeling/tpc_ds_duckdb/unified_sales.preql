@@ -10,24 +10,18 @@ import warehouse as warehouse;
 import ship_mode as ship_mode;
 
 key sales_channel enum<string>['WEB', 'CATALOG', 'STORE'];
-
-
 key channel_dim_id int; # store/web/site for order
-
-
 key return_channel_dim_id int; # used for the return store
-
-properties <channel_dim_id> (
-    channel_dim_text_id string,
-);
-# return identifier
-properties <return_channel_dim_id> (
-    return_channel_dim_text_id string,
-);
-
 key order_id int;
 
-properties <sales_channel, order_id, item.id> (
+# return identifier
+properties channel_dim_id (
+    channel_dim_text_id string,
+);
+properties return_channel_dim_id (
+    return_channel_dim_text_id string,
+);
+properties <order_id, sales_channel, item.id> (
     quantity int?,
     sales_price float?,
     list_price float?,
@@ -73,7 +67,7 @@ partial datasource web_sales_unified (
     WS_NET_PAID: net_paid,
     WS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
-grain (sales_channel, order_id, item.id)
+grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'WEB'
 address memory.web_sales;
 
@@ -103,7 +97,7 @@ partial datasource catalog_sales_unified (
     CS_NET_PAID: net_paid,
     CS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
-grain (sales_channel, order_id, item.id)
+grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'CATALOG'
 address memory.catalog_sales;
 
@@ -133,7 +127,7 @@ partial datasource store_sales_unified (
     SS_NET_PAID: net_paid,
     SS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )
-grain (sales_channel, order_id, item.id)
+grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'STORE'
 address memory.store_sales;
 
@@ -142,7 +136,7 @@ partial datasource store_dim_unified (
     S_STORE_SK: channel_dim_id,
     S_STORE_ID: channel_dim_text_id,
 )
-grain (sales_channel, channel_dim_id)
+grain (channel_dim_id, sales_channel)
 complete where sales_channel = 'STORE'
 address memory.store;
 
@@ -151,7 +145,7 @@ partial datasource catalog_dim_unified (
     CP_CATALOG_PAGE_SK: channel_dim_id,
     CP_CATALOG_PAGE_ID: channel_dim_text_id,
 )
-grain (sales_channel, channel_dim_id)
+grain (channel_dim_id, sales_channel)
 complete where sales_channel = 'CATALOG'
 address memory.catalog_page;
 
@@ -160,7 +154,7 @@ partial datasource web_dim_unified (
     web_site_sk: channel_dim_id,
     web_site_id: channel_dim_text_id,
 )
-grain (sales_channel, channel_dim_id)
+grain (channel_dim_id, sales_channel)
 complete where sales_channel = 'WEB'
 address memory.web_site;
 
@@ -169,7 +163,7 @@ partial datasource store_dim_return_unified (
     S_STORE_SK: return_channel_dim_id,
     S_STORE_ID: return_channel_dim_text_id,
 )
-grain (sales_channel, return_channel_dim_id)
+grain (return_channel_dim_id, sales_channel)
 complete where sales_channel = 'STORE'
 address memory.store;
 
@@ -178,7 +172,7 @@ partial datasource catalog_dim_return_unified (
     CP_CATALOG_PAGE_SK: return_channel_dim_id,
     CP_CATALOG_PAGE_ID: return_channel_dim_text_id,
 )
-grain (sales_channel, return_channel_dim_id)
+grain (return_channel_dim_id, sales_channel)
 complete where sales_channel = 'CATALOG'
 address memory.catalog_page;
 
@@ -187,7 +181,7 @@ partial datasource web_dim_return_unified (
     web_site_sk: return_channel_dim_id,
     web_site_id: return_channel_dim_text_id,
 )
-grain (sales_channel, return_channel_dim_id)
+grain (return_channel_dim_id, sales_channel)
 complete where sales_channel = 'WEB'
 address memory.web_site;
 
@@ -201,7 +195,7 @@ partial datasource web_returns_unified (
     WR_NET_LOSS: return_net_loss,
     raw(''' true '''): is_returned,
 )
-grain (sales_channel, order_id, item.id)
+grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'WEB'
 address memory.web_returns;
 
@@ -216,7 +210,7 @@ partial datasource catalog_returns_unified (
     CR_NET_LOSS: return_net_loss,
     raw(''' true '''): is_returned,
 )
-grain (sales_channel, order_id, item.id)
+grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'CATALOG'
 address memory.catalog_returns;
 
@@ -231,6 +225,6 @@ partial datasource store_returns_unified (
     SR_NET_LOSS: return_net_loss,
     raw(''' true '''): is_returned,
 )
-grain (sales_channel, order_id, item.id)
+grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'STORE'
 address memory.store_returns;

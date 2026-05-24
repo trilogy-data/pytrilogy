@@ -1,22 +1,65 @@
 import item as item;
 
-auto manufact_matches <- count(item.id ?
-    (item.category = 'Women' and item.color in ('powder',    'khaki')      and item.units in ('Ounce',  'Oz')     and item.size in ('medium', 'extra large'))
-    or (item.category = 'Women' and item.color in ('brown',     'honeydew')   and item.units in ('Bunch',  'Ton')    and item.size in ('N/A',    'small'))
-    or (item.category = 'Men'   and item.color in ('floral',    'deep')       and item.units in ('N/A',    'Dozen')  and item.size in ('petite', 'large'))
-    or (item.category = 'Men'   and item.color in ('light',     'cornflower') and item.units in ('Box',    'Pound')  and item.size in ('medium', 'extra large'))
-    or (item.category = 'Women' and item.color in ('midnight',  'snow')       and item.units in ('Pallet', 'Gross')  and item.size in ('medium', 'extra large'))
-    or (item.category = 'Women' and item.color in ('cyan',      'papaya')     and item.units in ('Cup',    'Dram')   and item.size in ('N/A',    'small'))
-    or (item.category = 'Men'   and item.color in ('orange',    'frosted')    and item.units in ('Each',   'Tbl')    and item.size in ('petite', 'large'))
-    or (item.category = 'Men'   and item.color in ('forest',    'ghost')      and item.units in ('Lb',     'Bundle') and item.size in ('medium', 'extra large'))
-) by item.manufact;
+metric manufact_matches <- count(
+    item.id
+    ? (
+    item.category = 'Women'
+    and item.color in ('powder', 'khaki')
+    and item.units in ('Ounce', 'Oz')
+    and item.size in ('medium', 'extra large')
+)
+or (
+    item.category = 'Women'
+    and item.color in ('brown', 'honeydew')
+    and item.units in ('Bunch', 'Ton')
+    and item.size in ('N/A', 'small')
+)
+or (
+    item.category = 'Men'
+    and item.color in ('floral', 'deep')
+    and item.units in ('N/A', 'Dozen')
+    and item.size in ('petite', 'large')
+)
+or (
+    item.category = 'Men'
+    and item.color in ('light', 'cornflower')
+    and item.units in ('Box', 'Pound')
+    and item.size in ('medium', 'extra large')
+)
+or (
+    item.category = 'Women'
+    and item.color in ('midnight', 'snow')
+    and item.units in ('Pallet', 'Gross')
+    and item.size in ('medium', 'extra large')
+)
+or (
+    item.category = 'Women'
+    and item.color in ('cyan', 'papaya')
+    and item.units in ('Cup', 'Dram')
+    and item.size in ('N/A', 'small')
+)
+or (
+    item.category = 'Men'
+    and item.color in ('orange', 'frosted')
+    and item.units in ('Each', 'Tbl')
+    and item.size in ('petite', 'large')
+)
+or (
+    item.category = 'Men'
+    and item.color in ('forest', 'ghost')
+    and item.units in ('Lb', 'Bundle')
+    and item.size in ('medium', 'extra large')
+)
+)
+    by item.manufact;
 
-SELECT
-    item.product_name ? item.manufacturer_id between 738 and 778 -> filtered_product_name,
-    --manufact_matches
-HAVING
-    filtered_product_name is not null
-    and manufact_matches > 0
-ORDER BY
+select
+    item.product_name ? item.manufacturer_id between 738 and 778 as filtered_product_name,
+    --manufact_matches,
+having
+    filtered_product_name is not null and manufact_matches > 0
+
+order by
     filtered_product_name asc
-LIMIT 100;
+limit 100
+;

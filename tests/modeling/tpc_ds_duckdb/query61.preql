@@ -1,17 +1,24 @@
 import store_sales as ss;
-metric promotional_sales <- sum(filter ss.ext_sales_price 
-where ss.promotion.channel_dmail = 'Y' or ss.promotion.channel_email = 'Y' or ss.promotion.channel_tv = 'Y');
 
+metric promotional_sales <- sum(
+    ss.ext_sales_price
+    ? ss.promotion.channel_dmail = 'Y'
+or ss.promotion.channel_email = 'Y'
+or ss.promotion.channel_tv = 'Y'
+);
 
-
-WHERE
-    ss.date.year = 1998 and ss.date.month_of_year = 11 and ss.item.category = 'Jewelry' and ss.customer.address.gmt_offset = -5 and ss.store.gmt_offset = -5
-SELECT
-    promotional_sales -> promotions,
-    sum(ss.ext_sales_price) -> total,
-    promotional_sales::Numeric(15,4) / total::Numeric(15,4) * 100 -> ratio,
-ORDER BY
+where
+    ss.date.year = 1998
+    and ss.date.month_of_year = 11
+    and ss.item.category = 'Jewelry'
+    and ss.customer.address.gmt_offset = -5
+    and ss.store.gmt_offset = -5
+select
+    promotional_sales as promotions,
+    sum(ss.ext_sales_price) as total,
+    promotional_sales::numeric(15,4) / total::numeric(15,4) * 100 as ratio,
+order by
     promotions asc nulls first,
     total asc nulls first
-LIMIT 100
+limit 100
 ;

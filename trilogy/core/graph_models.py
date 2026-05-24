@@ -6,9 +6,9 @@ from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.graph import DiGraph
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildCondition,
     BuildDatasource,
     BuildUnionDatasource,
-    BuildWhereClause,
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
@@ -76,7 +76,7 @@ class SearchCriteria(Enum):
 
 def _union_is_exact_match(
     ds: BuildUnionDatasource,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
 ) -> bool:
     if not conditions:
         return True
@@ -94,7 +94,7 @@ def _union_is_exact_match(
     )
 
 
-def _condition_canonical_addresses(conditions: BuildWhereClause) -> set[str]:
+def _condition_canonical_addresses(conditions: BuildCondition) -> set[str]:
     return {
         c.canonical_address
         for c in conditions.row_arguments
@@ -104,7 +104,7 @@ def _condition_canonical_addresses(conditions: BuildWhereClause) -> set[str]:
 
 def datasource_has_filter_sensitive_aggregate(
     ds: BuildDatasource,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
     canonical_to_concept: "dict[str, BuildConcept] | None" = None,
 ) -> bool:
     if not conditions or not any(c.is_aggregate for c in ds.output_concepts):
@@ -134,7 +134,7 @@ def datasource_has_filter_sensitive_aggregate(
 def _datasource_is_exact_match(
     ds: BuildDatasource,
     criteria: SearchCriteria,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
     allow_intersection: bool = False,
     allow_filter_application: bool = True,
     relevant_concepts: set[str] | None = None,
@@ -232,7 +232,7 @@ def _datasource_is_exact_match(
 def get_graph_exact_match(
     g: "ReferenceGraph",
     criteria: SearchCriteria,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
     allow_intersection: bool = False,
     allow_filter_application: bool = True,
     relevant_concepts: set[str] | None = None,
@@ -260,7 +260,7 @@ def get_graph_exact_match(
 
 def _get_collective_condition_matches(
     g: "ReferenceGraph",
-    conditions: BuildWhereClause,
+    conditions: BuildCondition,
     relevant_concepts: set[str],
 ) -> set[str]:
     keep: set[str] = set()
@@ -305,7 +305,7 @@ def _get_collective_condition_matches(
 def prune_sources_for_conditions(
     g: "ReferenceGraph",
     criteria: SearchCriteria,
-    conditions: BuildWhereClause | None,
+    conditions: BuildCondition | None,
     allow_intersection: bool = False,
     relevant_concepts: set[str] | None = None,
 ):

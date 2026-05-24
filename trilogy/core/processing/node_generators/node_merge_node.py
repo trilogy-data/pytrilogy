@@ -14,6 +14,7 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
+    BuildConditionContext,
     BuildDatasource,
     BuildFunction,
     BuildWhereClause,
@@ -306,7 +307,7 @@ def resolve_weak_components(
     environment_graph: ReferenceGraph,
     filter_downstream: bool = True,
     accept_partial: bool = False,
-    search_conditions: BuildWhereClause | None = None,
+    search_conditions: BuildConditionContext | None = None,
 ) -> list[list[BuildConcept]] | None:
     break_flag = False
     found = []
@@ -441,8 +442,8 @@ def subgraphs_to_merge_node(
     history,
     conditions,
     output_concepts: List[BuildConcept],
-    search_conditions: BuildWhereClause | None = None,
-    filter_conditions: BuildWhereClause | None = None,
+    search_conditions: BuildConditionContext | None = None,
+    filter_conditions: BuildConditionContext | None = None,
     enable_early_exit: bool = True,
 ):
 
@@ -517,8 +518,8 @@ def subgraphs_to_merge_node(
 
 
 def _preserved_conditions(
-    conditions: BuildWhereClause, environment: BuildEnvironment
-) -> BuildWhereClause | None:
+    conditions: BuildConditionContext, environment: BuildEnvironment
+) -> BuildConditionContext | None:
     """Return only condition atoms covered by some datasource's complete_where.
 
     If the full conditions imply a datasource's non_partial_for, the atoms of that
@@ -546,13 +547,13 @@ def _preserved_conditions(
     cond = preserved[0]
     for a in preserved[1:]:
         cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
-    return BuildWhereClause(conditional=cond)
+    return BuildConditionContext.from_where_clause(BuildWhereClause(conditional=cond))
 
 
 def _conditions_for_subgraph(
-    conditions: BuildWhereClause,
+    conditions: BuildConditionContext,
     subgraph_addrs: set[str],
-) -> BuildWhereClause | None:
+) -> BuildConditionContext | None:
     """Return condition atoms whose concepts are all present in the subgraph."""
     atoms = decompose_condition(conditions.conditional)
     relevant = [
@@ -565,7 +566,7 @@ def _conditions_for_subgraph(
     cond = relevant[0]
     for a in relevant[1:]:
         cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
-    return BuildWhereClause(conditional=cond)
+    return BuildConditionContext.from_where_clause(BuildWhereClause(conditional=cond))
 
 
 def gen_merge_node(
@@ -577,7 +578,7 @@ def gen_merge_node(
     accept_partial: bool = False,
     history: History | None = None,
     conditions: BuildConditional | None = None,
-    search_conditions: BuildWhereClause | None = None,
+    search_conditions: BuildConditionContext | None = None,
 ) -> Optional[MergeNode]:
 
     # we do not actually APPLY these conditions anywhere

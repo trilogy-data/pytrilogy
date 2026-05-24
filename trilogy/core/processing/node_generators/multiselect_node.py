@@ -5,9 +5,9 @@ from trilogy.constants import logger
 from trilogy.core.enums import JoinType, Modifier, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildConditionContext,
     BuildGrain,
     BuildMultiSelectLineage,
-    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair
@@ -92,7 +92,7 @@ def gen_multiselect_node(
     depth: int,
     source_concepts,
     history: History,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> MergeNode | None:
     from trilogy.core.query_processor import get_query_node
 

@@ -11,6 +11,7 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildConditionContext,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -35,12 +36,24 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.utility import unique
 
+BuildConditionInput = BuildConditionContext | BuildWhereClause | None
+
+
+def _condition_context(
+    conditions: BuildConditionInput,
+) -> BuildConditionContext | None:
+    if conditions is None:
+        return None
+    if isinstance(conditions, BuildConditionContext):
+        return conditions
+    return BuildConditionContext.from_where_clause(conditions)
+
 
 def append_existence_check(
     node: StrategyNode,
     environment: BuildEnvironment,
     graph: ReferenceGraph,
-    where: BuildWhereClause,
+    where: BuildConditionContext,
     history: History,
 ):
     # we if we have a where clause doing an existence check
@@ -76,10 +89,12 @@ def search_concepts(
     depth: int,
     g: ReferenceGraph,
     accept_partial: bool = False,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     hist = history.get_history(
-        search=mandatory_list, accept_partial=accept_partial, conditions=conditions
+        search=mandatory_list,
+        accept_partial=accept_partial,
+        conditions=conditions,
     )
     if hist is not False:
         logger.info(
@@ -124,11 +139,15 @@ class LoopContext:
     complete: ValidationResult = ValidationResult.INCOMPLETE
     accept_partial: bool = False
     must_evaluate_condition_on_this_level_not_push_down: bool = False
-    conditions: BuildWhereClause | None = None
+    condition_context: BuildConditionContext | None = None
 
     @property
     def incomplete(self) -> bool:
         return self.attempted != self.all_mandatory
+
+    @property
+    def conditions(self) -> BuildConditionContext | None:
+        return self.condition_context
 
 
 def initialize_loop_context(
@@ -138,8 +157,9 @@ def initialize_loop_context(
     g: ReferenceGraph,
     history: History,
     accept_partial: bool = False,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionInput = None,
 ):
+    condition_context = _condition_context(conditions)
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
     # cache our values before an filter injection
@@ -152,9 +172,9 @@ def initialize_loop_context(
     must_evaluate_condition_on_this_level_not_push_down = False
 
     # if we have a filter, we may need to get more values to support that.
-    if conditions:
+    if condition_context:
         completion_mandatory = unique(
-            mandatory_list + list(conditions.row_arguments), "address"
+            mandatory_list + list(condition_context.row_arguments), "address"
         )
         # if anything we need to get is in the filter set and it's a computed value
         # we need to get _everything_ in this loop
@@ -166,7 +186,7 @@ def initialize_loop_context(
                 x.derivation == Derivation.AGGREGATE
                 and x.granularity == Granularity.SINGLE_ROW
             )
-            and x.address in conditions.row_arguments
+            and x.address in condition_context.row_arguments
         ]
         if any(required_filters):
             logger.info(
@@ -201,7 +221,7 @@ def initialize_loop_context(
         complete=ValidationResult.INCOMPLETE,
         accept_partial=accept_partial,
         must_evaluate_condition_on_this_level_not_push_down=must_evaluate_condition_on_this_level_not_push_down,
-        conditions=conditions,
+        condition_context=condition_context,
     )
 
 
@@ -368,7 +388,7 @@ def _search_concepts(
     g: ReferenceGraph,
     history: History,
     accept_partial: bool = False,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> StrategyNode | None:
     # check for direct materialization first
     candidate = history.gen_select_node(
@@ -495,12 +515,13 @@ def source_query_concepts(
     history: History,
     environment: BuildEnvironment,
     g: Optional[ReferenceGraph] = None,
-    conditions: Optional[BuildWhereClause] = None,
+    conditions: BuildConditionInput = None,
 ):
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
     if not g:
         g = generate_graph(environment)
+    condition_context = _condition_context(conditions)
 
     root = search_concepts(
         mandatory_list=output_concepts,
@@ -508,7 +529,7 @@ def source_query_concepts(
         g=g,
         depth=0,
         history=history,
-        conditions=conditions,
+        conditions=condition_context,
     )
     if not root:
         error_strings = [

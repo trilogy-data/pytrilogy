@@ -15,17 +15,16 @@ merge catalog_sales.item.id into store_sales.item.id;
 # grain. Selecting `catalog_sales.order_number` alongside
 # `store_sales.ticket_number` forces the cross-fact join and pins the
 # grain.
-with correlated as
-WHERE
+rowset correlated <- where
     store_sales.date.month_of_year = 9
     and store_sales.date.year = 1999
     and store_sales.return_date.month_of_year between 9 and 12
     and store_sales.return_date.year = 1999
     and catalog_sales.date.year in (1999, 2000, 2001)
-    and catalog_sales.quantity>0
+    and catalog_sales.quantity > 0
     and store_sales.is_returned
     and store_sales.customer.id = store_sales.return_customer.id
-SELECT
+select
     store_sales.ticket_number,
     store_sales.item.id,
     catalog_sales.order_number,
@@ -38,7 +37,7 @@ SELECT
     catalog_sales.quantity,
 ;
 
-SELECT
+select
     correlated.store_sales.item.name as store_sales_item_name,
     correlated.store_sales.item.desc as store_sales_item_desc,
     correlated.store_sales.store.text_id as store_sales_store_text_id,
@@ -46,11 +45,13 @@ SELECT
     sum(correlated.store_sales.quantity) as store_sales_quantity,
     sum(correlated.store_sales.return_quantity) as store_returns_quantity,
     sum(correlated.catalog_sales.quantity) as catalog_sales_quantity,
-HAVING
+having
     catalog_sales_quantity > 0
-ORDER BY
+
+order by
     store_sales_item_name asc,
     store_sales_item_desc asc,
     store_sales_store_text_id asc,
     store_name asc
-LIMIT 100;
+limit 100
+;

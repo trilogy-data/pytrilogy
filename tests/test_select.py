@@ -62,7 +62,7 @@ datasource users (
         == Grain(components=[env.concepts["about_me"]]).components
     )
 
-    assert str(select) == """SELECT
+    assert str(select) == """select
     about_me,
     post_count,
 ;"""

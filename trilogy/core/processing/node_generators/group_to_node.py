@@ -1,7 +1,11 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConditionContext,
+    BuildFunction,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 
 # C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\node_generators\group_to_node.py
@@ -24,7 +28,7 @@ def gen_group_to_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
     if not isinstance(concept.lineage, BuildFunction):

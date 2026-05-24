@@ -1,16 +1,13 @@
 import unified_sales as sales;
 
-auto relevent_week_seq <- filter sales.date.week_seq where sales.date.year in (2001, 2002);
+property relevent_week_seq <- sales.date.week_seq ? sales.date.year in (2001, 2002);
 
-def weekday_sum(weekday) -> sum(
-    sales.ext_sales_price ?  sales.date.day_of_week = weekday
-) by sales.date.week_seq;
+def weekday_sum(weekday) -> sum(sales.ext_sales_price ? sales.date.day_of_week = weekday) by sales.date.week_seq;
+def round_lag(amt) -> round(amt / (lead(amt, 53) over (order by sales.date.week_seq asc)), 2);
 
-def round_lag(amt) -> round(amt / (lead 53 amt by sales.date.week_seq asc), 2);
-
-WHERE
+where
     sales.sales_channel in ('WEB', 'CATALOG') and sales.date.week_seq in relevent_week_seq
-SELECT
+select
     sales.date.week_seq,
     @round_lag(@weekday_sum(0)) as sunday_increase,
     @round_lag(@weekday_sum(1)) as monday_increase,
@@ -18,9 +15,11 @@ SELECT
     @round_lag(@weekday_sum(3)) as wednesday_increase,
     @round_lag(@weekday_sum(4)) as thursday_increase,
     @round_lag(@weekday_sum(5)) as friday_increase,
-    @round_lag(@weekday_sum(6)) as saturday_increase
+    @round_lag(@weekday_sum(6)) as saturday_increase,
 having
     sunday_increase is not null
-ORDER BY
-    sales.date.week_seq asc NULLS FIRST
-LIMIT 100;
+
+order by
+    sales.date.week_seq asc nulls first
+limit 100
+;

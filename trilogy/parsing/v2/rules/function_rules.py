@@ -153,6 +153,10 @@ WINDOW_TO_AGGREGATE_MAP: dict[WindowType, FunctionType] = {
     WindowType.MIN: FunctionType.MIN,
 }
 
+AGGREGATE_TO_WINDOW_MAP: dict[FunctionType, WindowType] = {
+    v: k for k, v in WINDOW_TO_AGGREGATE_MAP.items()
+}
+
 
 def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
     if not isinstance(root, Comparison):
@@ -757,6 +761,68 @@ _WINDOW_ITEM_MISSING_FIELD_ERROR: dict[SyntaxNodeKind, str] = {
 }
 
 
+def window_item_sql_aggregate(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> NavigationWindowItem:
+    """``sum(x) over (partition by y order by z)`` — aggregate-as-window.
+
+    Children are an ``AggregateWrapper`` (the aggregate call body) and a
+    ``window_sql_over`` payload (``{"over": [...], "order": [...]}``). We
+    map the aggregate's FunctionType back to a WindowType and build a
+    NavigationWindowItem. The aggregate must not carry a ``by`` clause
+    here — that form belongs to plain aggregate_functions, not windows.
+    """
+    args = hydrated_children(node, hydrate)
+    aggregate: AggregateWrapper | None = None
+    over: list[Any] = []
+    order: list[Any] = []
+    for item in args:
+        if isinstance(item, AggregateWrapper):
+            aggregate = item
+        elif isinstance(item, dict):
+            over = item.get("over", [])
+            order = item.get("order", [])
+    if aggregate is None:
+        raise fail(node, "Aggregate-over-window form requires an aggregate body")
+    if aggregate.by:
+        raise fail(
+            node,
+            "Cannot mix `by` grouping with `over (...)` — choose aggregate or window form",
+        )
+    func = aggregate.function
+    wtype = AGGREGATE_TO_WINDOW_MAP.get(func.operator)
+    if wtype is None:
+        raise fail(
+            node,
+            f"Aggregate {func.operator.value} cannot be used with a window over clause",
+        )
+    # ``sum(x)`` → arguments=[x]; lift the single argument into the
+    # NavigationWindowItem's ``content`` slot the same way the lag/lead
+    # path does.
+    if not func.arguments:
+        raise fail(node, "Aggregate-over-window form requires a field argument")
+    content_arg = func.arguments[0]
+    if isinstance(content_arg, str):
+        content_arg = context.concepts.require(content_arg).reference
+    elif isinstance(content_arg, ConceptRef):
+        content_arg = context.concepts.require(content_arg.address).reference
+    elif not isinstance(content_arg, Concept):
+        virt = arbitrary_to_concept_v2(content_arg, context=context)
+        context.add_virtual_concept(virt, meta=core_meta(None))
+        content_arg = virt.reference
+    else:
+        content_arg = content_arg.reference
+    return NavigationWindowItem(
+        type=wtype,
+        content=content_arg,
+        over=over,
+        order_by=order,
+        offset=None,
+    )
+
+
 def window_item_from_args(
     node: SyntaxNode,
     context: RuleContext,
@@ -962,6 +1028,7 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.WINDOW_ITEM_LEGACY: window_item_from_args,
     SyntaxNodeKind.WINDOW_ITEM_SQL_NUMBERING: window_item_from_args,
     SyntaxNodeKind.WINDOW_ITEM_SQL_NAVIGATION: window_item_from_args,
+    SyntaxNodeKind.WINDOW_ITEM_SQL_AGGREGATE: window_item_sql_aggregate,
     SyntaxNodeKind.WINDOW_ITEM_OVER: window_single_arg,
     SyntaxNodeKind.WINDOW_ITEM_ORDER: window_single_arg,
     SyntaxNodeKind.WINDOW_SQL_OVER: window_sql_over,

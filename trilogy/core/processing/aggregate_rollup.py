@@ -4,9 +4,9 @@ from trilogy.core.enums import FunctionType, Granularity, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConditionContext,
     BuildDatasource,
     BuildGrain,
-    BuildWhereClause,
 )
 
 ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
@@ -106,7 +106,7 @@ def _safe_dropped_grain(
 
 def _conditions_supported(
     datasource: BuildDatasource,
-    conditions: BuildWhereClause | None,
+    conditions: BuildConditionContext | None,
     concepts_by_address: Mapping[str, BuildConcept] | None = None,
 ) -> bool:
     if not conditions:
@@ -142,7 +142,7 @@ def get_additive_rollup_concepts(
     concepts_by_address: Mapping[str, BuildConcept],
     datasources: Iterable[BuildDatasource],
     target_grain: BuildGrain,
-    conditions: BuildWhereClause | None = None,
+    conditions: BuildConditionContext | None = None,
 ) -> list[BuildConcept]:
     if not _conditions_supported(datasource, conditions, concepts_by_address):
         return []

@@ -1,5 +1,5 @@
-
 key id int;
+
 properties id (
     gender string,
     marital_status string,
@@ -11,17 +11,16 @@ properties id (
     college_dependent_count int,
 );
 
-
 datasource customer_demographics (
-        CD_DEMO_SK: id,
-        CD_GENDER: gender,
-        CD_MARITAL_STATUS: marital_status,
-        CD_EDUCATION_STATUS: education_status,
-        CD_PURCHASE_ESTIMATE: purchase_estimate,
-        CD_CREDIT_RATING: credit_rating,
-        CD_DEP_COUNT: dependent_count,
-        CD_DEP_EMPLOYED_COUNT: employed_dependent_count,
-        CD_DEP_COLLEGE_COUNT: college_dependent_count,
+    CD_DEMO_SK: id,
+    CD_GENDER: gender,
+    CD_MARITAL_STATUS: marital_status,
+    CD_EDUCATION_STATUS: education_status,
+    CD_PURCHASE_ESTIMATE: purchase_estimate,
+    CD_CREDIT_RATING: credit_rating,
+    CD_DEP_COUNT: dependent_count,
+    CD_DEP_EMPLOYED_COUNT: employed_dependent_count,
+    CD_DEP_COLLEGE_COUNT: college_dependent_count,
 )
 grain (id)
 address memory.customer_demographics;
