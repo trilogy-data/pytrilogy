@@ -61,14 +61,18 @@ Available tools:
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
       under raw/) for every table in the database, in one step.
     * Run a Trilogy script: ["run", "<path.preql>"].
+    * ["explore", "<path.preql>"] is the canonical "what concepts can I query
+      from this file?" tool. Prefer it over `read_file` on a model file —
+      default output groups concepts by namespace so a 300+ concept fact
+      collapses to ~25 group lines. Use `--grep` (repeatable) to filter, or
+      `--show concepts` for the flat table.
     * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
-      `file list`, etc. To examine `raw/`, `read_file` a specific .preql by
-      name (the table name and the filename match). Global flags like
-      `--debug` come BEFORE the subcommand:
-      `["--debug", "run", "x.preql"]`, NOT `["run", "x.preql", "--debug"]`.
+      etc. `trilogy agent-info` lists everything that exists.
 - write_file(path, content): create or overwrite a text file; `content` is the
   exact, full file text. This is how you create every .preql query file.
-- read_file(path): return the text content of a file.
+- read_file(path): return the text content of a file. Use this for *your own
+  output files* (re-reading a query you just wrote) — for discovering what's
+  in a model file, use `trilogy explore` instead.
 - todo(action, id=None, description=None): manage a scratch TODO list. Actions:
   "add" (description: one string, or a list of strings to add several at once),
   "complete"/"remove" (id: one id or a list of ids), "list". Plan in one `add`.
@@ -357,7 +361,9 @@ def handle_write_file(state: AgentState, args: dict) -> str:
     if path.endswith(".preql"):
         entities = _detect_html_escapes(content)
         if entities:
-            decoded = ", ".join(f"`{e}` (use `{_HTML_ENTITY_HINTS[e]}`)" for e in entities)
+            decoded = ", ".join(
+                f"`{e}` (use `{_HTML_ENTITY_HINTS[e]}`)" for e in entities
+            )
             return (
                 f"write_file refused: '{path}' contains HTML-escaped characters: "
                 f"{decoded}. Trilogy parses raw operators — emit them literally "
@@ -392,6 +398,67 @@ def handle_read_file(state: AgentState, args: dict) -> str:
     return truncate_middle(text, state.tool_output_limit)
 
 
+def _first_non_flag_arg(raw_args: list[str]) -> str | None:
+    """Return the first positional (non-flag) argument from a CLI arg list, or
+    ``None``. Used to detect the subcommand past any group-level flags."""
+    skip_next = False
+    for arg in raw_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in ("--debug-file",):  # group-level flags that take a value
+            skip_next = True
+            continue
+        if arg.startswith("-"):
+            continue
+        return arg
+    return None
+
+
+def _trilogy_file_write_hint(raw_args: list[str]) -> str | None:
+    """Detect the common ``trilogy file write`` misuse pattern where the agent
+    split a single ``--content`` value across many positional args.
+
+    Returns a guidance string when the misuse is detected, ``None`` otherwise.
+    The command itself is real and works — we just intercept the most common
+    mistake (treating ``--content`` as a shell-tokenised string) before
+    subprocess swallows the args."""
+    if len(raw_args) < 2 or raw_args[0] != "file" or raw_args[1] != "write":
+        return None
+    # Find a `--content`/`-c` flag and count what comes after it that is not
+    # another known option flag for `file write`.
+    flag_indices = [i for i, a in enumerate(raw_args) if a in ("--content", "-c")]
+    if not flag_indices:
+        return None
+    known_flags = {
+        "--content",
+        "-c",
+        "--from-file",
+        "--from-url",
+        "--escapes",
+        "-e",
+        "--no-create",
+        "--quiet",
+        "-q",
+    }
+    idx = flag_indices[-1]
+    trailing = [a for a in raw_args[idx + 1 :] if a not in known_flags]
+    if len(trailing) <= 1:
+        return None
+    return (
+        "trilogy file write: `--content` takes a SINGLE string argument. Your "
+        f"args list put {len(trailing)} separate tokens after --content "
+        "(treating it like a shell command). In a tool call, pass the entire "
+        "file body as one string element after --content, with newlines "
+        "embedded literally — e.g.\n"
+        '  {"args": ["file", "write", "query70.preql", "--content", '
+        '"import raw.store_sales as store_sales;\\n\\nselect ..."]}\n'
+        "Alternatively use `--escapes` with a single-line `\\n`-escaped string, "
+        "or use the `write_file(path, content)` tool which takes the same "
+        "content directly."
+    )
+
+
 def handle_trilogy(state: AgentState, args: dict) -> str:
     raw_args = args.get("args")
     if not isinstance(raw_args, list) or not all(isinstance(a, str) for a in raw_args):
@@ -399,15 +466,9 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     stdin_value = args.get("stdin")
     if stdin_value is not None and not isinstance(stdin_value, str):
         return "trilogy error: 'stdin' must be a string or null."
-    if len(raw_args) >= 2 and raw_args[0] == "file" and raw_args[1] == "write":
-        return (
-            "Use the `write_file(path, content)` tool to write files, not "
-            "`trilogy file write`."
-        )
-    if len(raw_args) >= 2 and raw_args[0] == "file" and raw_args[1] == "read":
-        return (
-            "Use the `read_file(path)` tool to read files, not " "`trilogy file read`."
-        )
+    hint = _trilogy_file_write_hint(raw_args)
+    if hint is not None:
+        return hint
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
     child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     try:
@@ -423,8 +484,14 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
         )
     except subprocess.TimeoutExpired:
         return "trilogy error: subprocess timed out after 600s."
-    stdout = truncate_middle(completed.stdout or "", state.tool_output_limit)
-    stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
+    # `agent-info` is the language reference + CLI docs and must arrive whole —
+    # middle-truncating it eats the syntax rules the agent needs to write queries.
+    if _first_non_flag_arg(raw_args) == "agent-info":
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+    else:
+        stdout = truncate_middle(completed.stdout or "", state.tool_output_limit)
+        stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
     return (
         f"exit_code: {completed.returncode}\n"
         f"--- stdout ---\n{stdout}\n"

@@ -214,12 +214,16 @@ def show_formatting_result(
     print_success(f"Formatted {num_queries} statements in {format_duration(duration)}")
 
 
-def print_results_table(results: ResultSet) -> None:
-    """Print query results using Rich tables or fallback."""
+def print_results_table(results: ResultSet, row_limit: int | None = None) -> None:
+    """Print query results using Rich tables or fallback.
+
+    ``row_limit`` is the displayed-rows ceiling. ``None`` keeps the legacy
+    default (50 rows shown, one extra fetched as a "more exist" sentinel)."""
+    cap = _core.FETCH_LIMIT - 1 if row_limit is None else row_limit
     if _core.RICH_AVAILABLE and _core.console is not None:
-        _print_rich_table(results.rows, headers=results.columns)
+        _print_rich_table(results.rows, headers=results.columns, row_limit=cap)
     else:
-        _print_fallback_table(results.rows, results.columns)
+        _print_fallback_table(results.rows, results.columns, row_limit=cap)
 
 
 def print_chart_terminal(
@@ -244,7 +248,9 @@ def print_chart_terminal(
     return True
 
 
-def _print_rich_table(result: list, headers: list[str] | None = None) -> None:
+def _print_rich_table(
+    result: list, headers: list[str] | None = None, row_limit: int | None = None
+) -> None:
     """Print query results using Rich tables."""
     if _core.console is None:
         return
@@ -252,6 +258,8 @@ def _print_rich_table(result: list, headers: list[str] | None = None) -> None:
     if not result:
         _core.console.print("No results returned.", style="dim")
         return
+
+    cap = _core.FETCH_LIMIT - 1 if row_limit is None else row_limit
 
     table = Table(
         box=box.MINIMAL_DOUBLE_HEAD,
@@ -264,10 +272,10 @@ def _print_rich_table(result: list, headers: list[str] | None = None) -> None:
         table.add_column(str(col), style=_core.COL_WHITE, no_wrap=False)
 
     for i, row in enumerate(result):
-        if i >= _core.FETCH_LIMIT:
+        if i >= cap:
             table.add_row(*["..." for _ in column_names], style="dim")
             _core.console.print(
-                f"[dim]Showing first {_core.FETCH_LIMIT-1} rows. Result set was larger.[/dim]"
+                f"[dim]Showing first {cap} rows. Result set was larger.[/dim]"
             )
             break
         row_data = [str(val) if val is not None else "[dim]NULL[/dim]" for val in row]
@@ -276,10 +284,16 @@ def _print_rich_table(result: list, headers: list[str] | None = None) -> None:
     _core.console.print(table)
 
 
-def _print_fallback_table(rows: list, headers: list[str]) -> None:
+def _print_fallback_table(
+    rows: list, headers: list[str], row_limit: int | None = None
+) -> None:
     """Fallback table printing when Rich is not available."""
     print_warning("Install rich for prettier table output")
     print(", ".join(headers))
-    for row in rows:
+    cap = _core.FETCH_LIMIT - 1 if row_limit is None else row_limit
+    for i, row in enumerate(rows):
+        if i >= cap:
+            print(f"... showing first {cap} rows. Result set was larger.")
+            break
         print(row)
     print("---")

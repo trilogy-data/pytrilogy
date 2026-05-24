@@ -250,11 +250,41 @@ def test_return_control_rejects_non_string_message():
     assert state.done is False
 
 
-def test_handle_trilogy_redirects_file_write_and_read():
-    write = handle_trilogy(AgentState(), {"args": ["file", "write", "q.preql"]})
-    assert "write_file" in write
-    read = handle_trilogy(AgentState(), {"args": ["file", "read", "q.preql"]})
-    assert "read_file" in read
+def test_handle_trilogy_file_write_hints_on_split_content(tmp_path):
+    # The CLI `file write` is allowed (it's a real, useful command). What we
+    # intercept is the common misuse where the agent split the file body
+    # across multiple positional args instead of one --content string.
+    target = tmp_path / "q.preql"
+    bad = handle_trilogy(
+        AgentState(),
+        {
+            "args": [
+                "file",
+                "write",
+                str(target),
+                "--content",
+                "import",
+                "raw.store_sales",
+                "as",
+                "store_sales;",
+            ]
+        },
+    )
+    assert "SINGLE string" in bad
+    # And valid usage isn't intercepted — falls through to the subprocess.
+    ok = handle_trilogy(
+        AgentState(),
+        {
+            "args": [
+                "file",
+                "write",
+                str(target),
+                "--content",
+                "select 1+1 -> answer;",
+            ]
+        },
+    )
+    assert "exit_code: 0" in ok
 
 
 # --- return_control_to_user gating ---

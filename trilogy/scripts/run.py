@@ -1,5 +1,6 @@
 """Run command for Trilogy CLI."""
 
+import sys
 from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Path, argument, option, pass_context
@@ -98,6 +99,22 @@ def _format_import(value: str) -> str:
         "file-based 'import ... as ...'. Repeatable."
     ),
 )
+@option(
+    "--rows",
+    type=int,
+    default=10,
+    show_default=True,
+    help=(
+        "Cap on result rows displayed per statement. The query still runs in "
+        "full — this caps the dump only. Use `--all-rows` to disable the cap."
+    ),
+)
+@option(
+    "--all-rows",
+    is_flag=True,
+    default=False,
+    help="Show every result row, overriding --rows. Useful for piping.",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def run(
@@ -109,10 +126,21 @@ def run(
     config,
     env,
     imports: tuple[str, ...],
+    rows: int,
+    all_rows: bool,
     conn_args,
 ):
     """Execute a Trilogy script or query."""
     validate_dialect(dialect, "run")
+
+    # `-` reads the query body from stdin (the conventional CLI sentinel).
+    if input == "-":
+        input = sys.stdin.read()
+        if not input.strip():
+            from trilogy.scripts.display import print_error
+
+            print_error("No input on stdin.")
+            raise Exit(2)
 
     is_inline = not PathlibPath(input).exists()
     # If the input clearly looks like a file path (.preql/.sql extension or
@@ -152,6 +180,7 @@ def run(
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
         env=env,
+        row_limit=None if all_rows else rows,
     )
 
     try:

@@ -89,6 +89,9 @@ trilogy run report.preql duckdb --param date=2024-01-01 --param region=US
 
 # Inline query against a file's concepts — `:alias` namespaces them as alias.*
 trilogy run --import flight.preql:flight "select flight.carrier, count(flight.id);" duckdb
+
+# Read the query from stdin (use `-` as input)
+echo "select item.id limit 5;" | trilogy run --import raw/item:item - duckdb
 ```
 
 ---

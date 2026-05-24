@@ -1,11 +1,15 @@
 """Explore command - introspect the environment built from a .preql file.
 
-Lists concepts, datasources, and imports so agents and humans can answer
-"what can I query from this file?" without reading the raw source.
+The canonical schema-discovery tool. Prefer this over reading the .preql
+source — the same content is here as a structured concept listing, smaller and
+easier to scan. Token-efficient by default: groups concepts by namespace prefix
+so a 378-concept fact like ``store_sales`` collapses to ~25 group lines.
 """
 
 from __future__ import annotations
 
+import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Sequence
 
@@ -16,7 +20,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.parser import parse_text
 from trilogy.scripts.display import print_error, print_info
 
-_CATEGORIES = ("all", "concepts", "datasources", "imports")
+_CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
 
 
 def _load_environment(path: Path) -> Environment:
@@ -25,10 +29,29 @@ def _load_environment(path: Path) -> Environment:
     return env
 
 
+def _compact_datatype(dt: str) -> str:
+    """``Trait<STRING, ['us_state']>`` → ``string<us_state>``. Keeps the trait
+    name (often the semantic hint the agent cares about) and drops the
+    redundant base-type wrapping."""
+    m = re.match(r"Trait<([A-Z]+),\s*\[(.*)\]>", dt)
+    if m:
+        base, traits = m.group(1).lower(), m.group(2)
+        traits = re.sub(r"['\"]", "", traits).strip()
+        return f"{base}<{traits}>" if traits else base
+    if dt.startswith("enum<") and len(dt) > 60:
+        # Long enums: keep first 3 + count, e.g. enum<'A','B','C',…+7>
+        body = dt[len("enum<") : -1]
+        parts = [p.strip() for p in body.split(",")]
+        if len(parts) > 4:
+            head = ",".join(parts[:3])
+            return f"enum<{head},…+{len(parts) - 3}>"
+    return dt.lower() if dt.isupper() else dt
+
+
 def _concept_row(address: str, concept: Concept) -> tuple[str, str, str, str]:
     purpose = concept.purpose.value
     derivation = concept.derivation.value
-    datatype = str(concept.datatype)
+    datatype = _compact_datatype(str(concept.datatype))
     return address, purpose, derivation, datatype
 
 
@@ -48,6 +71,42 @@ def _emit_table(
         click.echo("  ".join(str(c).ljust(w) for c, w in zip(row, widths)))
 
 
+def _emit_groups(concept_items: list[tuple[str, Concept]]) -> None:
+    """Compact namespace-grouped listing — one line per leaf attribute under
+    each namespace prefix, e.g. ``customer.customer_address  →  city, state,
+    zip, county, …``. Cuts the size of a typical fact's schema dump by ~5×
+    versus the flat table."""
+    by_ns: dict[str, list[tuple[str, Concept]]] = defaultdict(list)
+    for addr, c in concept_items:
+        ns, _, leaf = addr.rpartition(".")
+        by_ns[ns or "(root)"].append((leaf, c))
+    click.echo()
+    print_info(f"Concept groups ({len(by_ns)} namespaces, {len(concept_items)} concepts)")
+    for ns in sorted(by_ns):
+        items = by_ns[ns]
+        # ks/ps/ms split so the agent can see grain-defining keys at a glance
+        keys = [leaf for leaf, c in items if c.purpose.value == "key"]
+        props = [leaf for leaf, c in items if c.purpose.value == "property"]
+        metrics = [leaf for leaf, c in items if c.purpose.value == "metric"]
+        others = [
+            leaf
+            for leaf, c in items
+            if c.purpose.value not in ("key", "property", "metric")
+        ]
+        bits = []
+        if keys:
+            bits.append("keys: " + ", ".join(sorted(keys)))
+        if props:
+            bits.append("props: " + ", ".join(sorted(props)))
+        if metrics:
+            bits.append("metrics: " + ", ".join(sorted(metrics)))
+        if others:
+            bits.append("other: " + ", ".join(sorted(others)))
+        click.echo(f"  {ns}")
+        for bit in bits:
+            click.echo(f"    {bit}")
+
+
 @click.command("explore")
 @click.argument(
     "path",
@@ -56,20 +115,34 @@ def _emit_table(
 @click.option(
     "--show",
     type=click.Choice(_CATEGORIES),
-    default="all",
-    help="Which section to print (default: all).",
+    default="groups",
+    help=(
+        "Which section to print (default: groups — concepts collapsed by "
+        "namespace prefix). Use `concepts` for the full flat table, `all` for "
+        "everything including datasources and imports."
+    ),
 )
 @click.option(
     "--purpose",
     type=str,
-    default=None,
-    help="Filter concepts by purpose (key, property, metric, constant, rowset).",
+    multiple=True,
+    default=(),
+    help=(
+        "Filter concepts by purpose. Repeatable: "
+        "`--purpose key --purpose property`. Allowed: key, property, metric, "
+        "constant, rowset."
+    ),
 )
 @click.option(
     "--grep",
     type=str,
-    default=None,
-    help="Case-insensitive substring filter over concept addresses.",
+    multiple=True,
+    default=(),
+    help=(
+        "Case-insensitive substring filter over concept addresses. Repeatable: "
+        "`--grep customer --grep date` matches concepts whose address contains "
+        "any of the given needles."
+    ),
 )
 @click.option(
     "--include-hidden",
@@ -86,16 +159,17 @@ def _emit_table(
 def explore(
     path: Path,
     show: str,
-    purpose: str | None,
-    grep: str | None,
+    purpose: tuple[str, ...],
+    grep: tuple[str, ...],
     include_hidden: bool,
     include_builtins: bool,
 ) -> None:
     """Parse PATH and list concepts, datasources, and imports from its environment.
 
-    Use this to discover what's available from a .preql file before writing
-    a query. It's equivalent to `trilogy run --import <path> "show concepts;"`
-    without requiring a dialect or connection.
+    The canonical "what can I query from this file?" tool. Prefer this over
+    reading the raw .preql source — same content, smaller, scannable. The
+    default `--show groups` view collapses concepts by namespace so a 378-
+    concept fact import becomes ~25 group lines.
     """
     try:
         env = _load_environment(path)
@@ -113,10 +187,18 @@ def explore(
             if not k.startswith("__") and not k.startswith("local._env_")
         ]
     if purpose:
-        concept_items = [(k, v) for k, v in concept_items if v.purpose.value == purpose]
+        allowed = {p.lower() for p in purpose}
+        concept_items = [
+            (k, v) for k, v in concept_items if v.purpose.value in allowed
+        ]
     if grep:
-        needle = grep.lower()
-        concept_items = [(k, v) for k, v in concept_items if needle in k.lower()]
+        needles = [g.lower() for g in grep]
+        concept_items = [
+            (k, v) for k, v in concept_items if any(n in k.lower() for n in needles)
+        ]
+
+    if show in ("all", "groups"):
+        _emit_groups(concept_items)
 
     if show in ("all", "concepts"):
         rows = [_concept_row(k, v) for k, v in sorted(concept_items)]

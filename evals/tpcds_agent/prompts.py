@@ -1,9 +1,10 @@
 """Assemble the natural-language task handed to the Trilogy agent.
 
-Steering is deliberately minimal: the agent gets the database location and the
-business questions, and must discover the CLI workflow itself. The only
-non-negotiable instructions are the deliverable filenames (so scoring can find
-the output).
+The task prompt is intentionally minimal — environment + deliverable + the
+question(s). All query-authoring guidance (imports, chaining, merge, function
+reference) belongs in the Trilogy language reference, which the agent loads via
+`trilogy agent-info`. Keep this file's templates env-level only; do not
+duplicate language rules here.
 """
 
 from __future__ import annotations
@@ -14,51 +15,19 @@ from pathlib import Path
 PROMPTS_FILE = Path(__file__).parent / "query_prompts.json"
 
 TASK_TEMPLATE = """\
-This is a Trilogy data project. The working directory contains `trilogy.toml`,
-which configures a DuckDB database named `tpcds.duckdb`. That database is already
-loaded with the standard TPC-DS benchmark schema and data (tables such as
-store_sales, customer, date_dim, item, and so on).
+Trilogy project in this directory. `trilogy.toml` configures a DuckDB database
+(`tpcds.duckdb`) already loaded with the TPC-DS benchmark schema and data.
 
 Your goal:
-1. Build a Trilogy semantic data model: run `trilogy ingest --all`, which writes
-   one .preql model file per table into a `raw/` directory. (`trilogy database
-   list` shows the tables.) Do NOT overwrite files in `raw/` unless you are
-   deliberately correcting a model definition.
+1. Build a Trilogy semantic data model with `trilogy ingest --all` — writes
+   one .preql model file per table under `raw/`. Do NOT overwrite files in
+   `raw/` unless deliberately correcting a model definition.
 2. Answer each of the {n} business questions below by writing a Trilogy query.
 
-`ingest --all` infers foreign keys and links the datasources, so the generated
-model can be queried across tables directly. If a specific join is still
-missing, you may edit the `raw/` model files to bind a foreign-key column to the
-referenced table's key concept.
-
-Write one query file per question in the working directory itself — alongside
-`trilogy.toml`, NOT inside `raw/`. Each question below states its exact filename
-(`queryNN.preql`, where NN is that question's number).
-
-Import ONLY the fact table the question is about — `ingest --all` linked its
-foreign keys, so its dimension tables are reached by chaining through it
-(`store_returns.store.state`, `store_returns.date_dim.year`). Do NOT separately
-import dimension tables — a separate import is a disconnected copy that will not
-join. If a question genuinely spans two fact tables (e.g. store_sales and
-inventory), import both and `merge` them on their shared dimension key — mark
-the superset side with `~`: `merge inventory.item.id into ~store_sales.item.id;`
-(a plain merge with no `~` asserts strict equivalence). Do not edit the `raw/`
-model files. Read the fact's model file first (e.g. `read_file` on
-`raw/store_returns.preql`) for exact concept names, then write a query like:
-
-    import raw.store_returns as store_returns;
-
-    where store_returns.store.state = 'TN'
-      and store_returns.date_dim.year = 2000
-    select
-        store_returns.customer.customer_id,
-        sum(store_returns.return_amt) as total_returns
-    order by total_returns desc
-    limit 100;
-
-Each file must be a complete, runnable Trilogy query that returns the answer to
-its question. Validate each one with `trilogy run <file>` before moving on to
-the next.
+Write one query file per question alongside `trilogy.toml` (NOT inside `raw/`).
+Each question below states its exact filename (`queryNN.preql`, where NN is the
+question number). Validate each file with `trilogy run <file>` before moving
+on.
 
 Business questions
 ==================
@@ -82,39 +51,15 @@ def selected_ids(num_queries: int) -> list[int]:
 
 
 SINGLE_QUERY_TEMPLATE = """\
-This is a Trilogy data project. The working directory contains `trilogy.toml`
-(a DuckDB database `tpcds.duckdb` is already loaded with TPC-DS data) and a
-populated `raw/` directory of ingested Trilogy semantic model files — every
-foreign key the ingest could infer is already wired.
+Trilogy project in this directory. `trilogy.toml` configures a DuckDB database
+(`tpcds.duckdb`) already loaded with TPC-DS data, and `raw/` is already
+populated with ingested Trilogy model files — do NOT re-run `trilogy ingest`
+and do NOT edit files in `raw/`.
 
-Your task: answer the ONE business question below by writing a single Trilogy
-query file. Do NOT re-run `trilogy ingest`. Do NOT edit files in `raw/` — the
-model is already there.
-
-Import ONLY the fact table the question is about — `ingest --all` linked its
-foreign keys, so its dimension tables are reached by chaining through it
-(`store_returns.store.state`, `store_returns.date_dim.year`). Do NOT separately
-import dimension tables — a separate import is a disconnected copy that will
-not join. If a question genuinely spans two fact tables (e.g. store_sales and
-inventory), import both and `merge` them on their shared dimension key — mark
-the superset side with `~`: `merge inventory.item.id into ~store_sales.item.id;`
-(a plain merge with no `~` asserts strict equivalence). Read the fact's model
-file first (e.g. `read_file` on `raw/store_returns.preql`) for exact concept
-names, then write a query like:
-
-    import raw.store_returns as store_returns;
-
-    where store_returns.store.state = 'TN'
-      and store_returns.date_dim.year = 2000
-    select
-        store_returns.customer.customer_id,
-        sum(store_returns.return_amt) as total_returns
-    order by total_returns desc
-    limit 100;
-
-Write the query to `query{nn}.preql` in the working directory (alongside
-`trilogy.toml`, NOT inside `raw/`). Validate with `trilogy run query{nn}.preql`.
-Return control once it runs cleanly.
+Answer the ONE business question below by writing a Trilogy query file to
+`query{nn}.preql` in the working directory (alongside `trilogy.toml`, NOT
+inside `raw/`). Validate with `trilogy run query{nn}.preql`. Return control
+once it runs cleanly.
 
 Question {id}:
 {prompt}

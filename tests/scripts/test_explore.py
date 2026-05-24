@@ -35,12 +35,21 @@ def sample_preql(tmp_path: Path) -> Path:
 
 
 def test_explore_lists_concepts(runner, sample_preql: Path):
+    # Default output is the namespace-grouped view, which still names every
+    # concept by leaf — just collapsed under a header.
     result = runner.invoke(cli, ["explore", str(sample_preql)])
     assert result.exit_code == 0, result.output
+    assert "Concept groups" in result.output
+    assert "carrier" in result.output
+    assert "distance" in result.output
+
+
+def test_explore_show_all_includes_datasources_and_imports(runner, sample_preql: Path):
+    result = runner.invoke(cli, ["explore", str(sample_preql), "--show", "all"])
+    assert result.exit_code == 0
+    assert "Concept groups" in result.output
     assert "Concepts" in result.output
-    assert "local.id" in result.output
-    assert "local.carrier" in result.output
-    assert "local.distance" in result.output
+    assert "Datasources" in result.output
     assert "flights" in result.output
 
 
@@ -75,15 +84,55 @@ def test_explore_show_datasources_only(runner, sample_preql: Path):
 def test_explore_purpose_filter(runner, sample_preql: Path):
     result = runner.invoke(cli, ["explore", str(sample_preql), "--purpose", "key"])
     assert result.exit_code == 0
-    assert "local.id" in result.output
-    assert "local.carrier" not in result.output
+    # In grouped output, ``id`` shows up under "keys:" — and the only-properties
+    # leaves (carrier, distance) are filtered out.
+    assert "id" in result.output
+    assert "carrier" not in result.output
+    assert "distance" not in result.output
+
+
+def test_explore_purpose_filter_accepts_multiple(runner, sample_preql: Path):
+    result = runner.invoke(
+        cli,
+        [
+            "explore",
+            str(sample_preql),
+            "--purpose",
+            "key",
+            "--purpose",
+            "property",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "id" in result.output
+    assert "carrier" in result.output
+    assert "distance" in result.output
 
 
 def test_explore_grep_filter(runner, sample_preql: Path):
     result = runner.invoke(cli, ["explore", str(sample_preql), "--grep", "carrier"])
     assert result.exit_code == 0
-    assert "local.carrier" in result.output
-    assert "local.distance" not in result.output
+    assert "carrier" in result.output
+    assert "distance" not in result.output
+
+
+def test_explore_grep_filter_accepts_multiple(runner, sample_preql: Path):
+    result = runner.invoke(
+        cli,
+        [
+            "explore",
+            str(sample_preql),
+            "--grep",
+            "carrier",
+            "--grep",
+            "distance",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "carrier" in result.output
+    assert "distance" in result.output
+    # `id` is neither — should be filtered out, even though it's a key concept.
+    assert "keys:" not in result.output
 
 
 def test_explore_missing_file(runner, tmp_path: Path):

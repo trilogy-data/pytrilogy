@@ -884,19 +884,24 @@ def test_debug_flag_before_subcommand(cmd, args):
 
 
 @pytest.mark.parametrize("cmd", ["refresh", "run"])
-def test_flag_after_subcommand_gives_helpful_error(cmd):
-    """Placing --debug after the subcommand should give a clear error, not a cryptic ValueError."""
+def test_flag_after_subcommand_is_hoisted(cmd):
+    """``trilogy run --debug ...`` reads as naturally as ``trilogy --debug run ...``
+    — the group-level ``--debug`` is hoisted by ``LazyGroup.parse_args``."""
     runner = CliRunner()
     result = runner.invoke(cli, [cmd, "select 1-> test;", "--debug"])
-    assert "looks like a flag" in result.output, result.output
-    assert "must come before the subcommand" in result.output, result.output
+    assert "Debug mode enabled" in result.output, result.output
     assert "is not a valid Dialects" not in result.output, result.output
+    assert "looks like a flag" not in result.output, result.output
 
 
 @pytest.mark.parametrize("cmd", ["refresh", "run"])
-def test_debug_before_file_path_gives_helpful_error(cmd):
-    """`trilogy run --debug raw/foo.preql` puts the path in the dialect slot; emit a clear hint."""
+def test_debug_before_file_path_resolves_cleanly(cmd):
+    """``trilogy <cmd> --debug raw/foo.preql`` no longer collides with the
+    dialect slot — ``--debug`` is consumed by the group and the missing path
+    surfaces a clean "does not exist" message instead of the legacy "looks
+    like a file path" hint."""
     runner = CliRunner()
     result = runner.invoke(cli, [cmd, "--debug", "raw/inventory.preql"])
-    assert "looks like a file path" in result.output, result.output
+    assert "Debug mode enabled" in result.output, result.output
+    assert "does not exist" in result.output, result.output
     assert "is not a valid Dialects" not in result.output, result.output

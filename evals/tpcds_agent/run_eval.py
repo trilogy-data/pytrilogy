@@ -220,6 +220,34 @@ def prepare_worker_workspace(src: Path, worker_idx: int) -> Path:
     return worker_dir
 
 
+def install_enriched_model(workspace: Path, src_dir: Path) -> dict:
+    """Skip ingest and seed ``workspace/raw/`` from a hand-curated model directory.
+
+    Used by the enriched-eval variant to measure how much a richer semantic layer
+    (concept descriptions, derived metrics, named import aliases) lifts the
+    agent above what bare ``trilogy ingest --all`` produces. Only top-level
+    ``*.preql`` files are copied — ``query*.preql`` and ``adhoc*.preql`` are
+    skipped so we hand the agent a model, not the reference answers."""
+    raw = workspace / "raw"
+    if raw.exists():
+        shutil.rmtree(raw)
+    raw.mkdir(parents=True)
+    start = time.perf_counter()
+    copied: list[str] = []
+    for path in sorted(src_dir.glob("*.preql")):
+        name = path.name
+        if name.startswith("query") or name.startswith("adhoc"):
+            continue
+        shutil.copy2(path, raw / name)
+        copied.append(name)
+    return {
+        "exit_code": 0,
+        "duration": time.perf_counter() - start,
+        "stdout": f"copied {len(copied)} files from {src_dir}: {copied}\n",
+        "stderr": "",
+    }
+
+
 def run_pre_ingest(workspace: Path, timeout: int = 600) -> dict:
     """Run ``trilogy ingest --all`` once before any agent invocations.
 
@@ -271,6 +299,11 @@ def build_report(
             "max_iterations": args.max_iterations,
             "trilogy_version": _trilogy_version(),
             "openrouter_routing": os.environ.get("OPENROUTER_PROVIDER"),
+            "model_source": (
+                f"enriched:{args.enriched_model_dir}"
+                if args.enriched_model_dir
+                else "ingest"
+            ),
         },
         "agent": {
             "exit_code": agent_run["exit_code"],
@@ -283,6 +316,17 @@ def build_report(
             "tool_results_total": metrics.tool_results_total,
             "tool_errors": metrics.tool_errors,
             "tool_success_rate": round(metrics.tool_success_rate, 3),
+            "repeated_calls_by_name": metrics.repeated_calls_by_name,
+            "tool_output_stats": {
+                tool: {
+                    "count": s.count,
+                    "truncated": s.truncated,
+                    "truncation_rate": round(s.truncation_rate, 3),
+                    "avg_chars": round(s.avg_chars, 1),
+                    "max_chars": s.max_chars,
+                }
+                for tool, s in metrics.tool_output_stats.items()
+            },
             "tokens": {
                 "prompt": metrics.prompt_tokens,
                 "completion": metrics.completion_tokens,
@@ -339,6 +383,26 @@ def render_markdown(report: dict) -> str:
         f"({tok['prompt']} prompt + {tok['completion']} completion)"
     )
     out.append("")
+    stats = agent.get("tool_output_stats") or {}
+    if stats:
+        out.append("## Tool-output sizes")
+        out.append("")
+        out.append("| Tool | calls | avg chars | max chars | truncated | trunc-rate |")
+        out.append("|---|---:|---:|---:|---:|---:|")
+        for tool, s in sorted(stats.items(), key=lambda x: -x[1]["count"]):
+            out.append(
+                f"| `{tool}` | {s['count']} | {s['avg_chars']:.0f} | "
+                f"{s['max_chars']} | {s['truncated']} | "
+                f"{s['truncation_rate'] * 100:.0f}% |"
+            )
+        out.append("")
+    repeats = agent.get("repeated_calls_by_name") or {}
+    if repeats:
+        out.append(
+            f"- Repeated calls (same args seen earlier in same query): "
+            f"{repeats} — total {sum(repeats.values())}"
+        )
+        out.append("")
     out.append("## Per-query")
     out.append("")
     out.append("| Query | Status | Ref rows | Cand rows | SQL len | Detail |")
@@ -372,13 +436,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-iterations",
         type=int,
-        default=30,
+        default=50,
         help="agent tool-loop budget PER QUERY (each query is a fresh agent)",
     )
     parser.add_argument(
         "--timeout",
         type=int,
-        default=300,
+        default=600,
         help="agent subprocess timeout PER QUERY (seconds)",
     )
     parser.add_argument(
@@ -408,6 +472,15 @@ def parse_args() -> argparse.Namespace:
         help="number of agents to run in parallel; >1 forces monitor=quiet and "
         "uses a per-worker workspace (copy of the duckdb + raw/) so DuckDB's "
         "file lock doesn't serialise the workers",
+    )
+    parser.add_argument(
+        "--enriched-model-dir",
+        type=Path,
+        default=None,
+        help="if set, skip `trilogy ingest --all` and seed workspace/raw/ from "
+        "this directory of hand-curated *.preql files (e.g. "
+        "tests/modeling/tpc_ds_duckdb). Used to measure the delta a richer "
+        "semantic layer provides over bare ingest.",
     )
     return parser.parse_args()
 
@@ -439,8 +512,14 @@ def main() -> int:
     active = prompts.active_prompts()[: args.num_queries]
     query_ids = [p["id"] for p in active]
 
-    print("[2/5] Pre-ingesting model with `trilogy ingest --all` ...")
-    ingest = run_pre_ingest(workspace)
+    if args.enriched_model_dir:
+        print(
+            f"[2/5] Seeding raw/ from enriched model dir {args.enriched_model_dir} ..."
+        )
+        ingest = install_enriched_model(workspace, args.enriched_model_dir)
+    else:
+        print("[2/5] Pre-ingesting model with `trilogy ingest --all` ...")
+        ingest = run_pre_ingest(workspace)
     (run_dir / "ingest_output.txt").write_text(
         f"exit={ingest['exit_code']}  duration={ingest['duration']:.1f}s\n"
         f"--- stdout ---\n{ingest['stdout']}\n--- stderr ---\n{ingest['stderr']}\n",
@@ -567,17 +646,23 @@ def main() -> int:
     markdown = render_markdown(report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
 
+    # Enriched runs are useful to compare directly against base runs; give
+    # their committed artifacts a distinct suffix so they don't clobber the
+    # base baseline in charts/.
+    suffix = "_enriched" if args.enriched_model_dir else ""
     try:
         _, events = analyze_run.load_run(run_dir)
         dashboard = analyze_run.render(
-            report, events, analyze_run.CHARTS_DIR / "dashboard.png"
+            report,
+            events,
+            analyze_run.CHARTS_DIR / f"dashboard{suffix}.png",
         )
         failures = analyze_run.collect_failures(events)
         failures_md = analyze_run.write_failures_report(
             run_dir,
             report,
             failures,
-            analyze_run.CHARTS_DIR / "trilogy_failures.md",
+            analyze_run.CHARTS_DIR / f"trilogy_failures{suffix}.md",
         )
         print(
             f"  wrote {dashboard}  ({len(failures)} trilogy failures -> {failures_md})"
