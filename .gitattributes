@@ -1,0 +1,9 @@
+# Normalize line endings to LF in the repo AND working tree on every platform.
+# Without this, Windows checkouts with `core.autocrlf=true` produce CRLF on
+# disk for some files but not others (depending on when they were last touched),
+# which causes spurious diffs and size-measurement noise.
+* text=auto eol=lf
+
+# Binary files: never touch contents.
+*.png    binary
+*.parquet binary
