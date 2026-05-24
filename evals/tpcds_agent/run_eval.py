@@ -14,11 +14,13 @@ import argparse
 import dataclasses
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -199,6 +201,23 @@ def run_agent(
         "duration": time.perf_counter() - start,
         "output": output,
     }
+
+
+def prepare_worker_workspace(src: Path, worker_idx: int) -> Path:
+    """Materialise a self-contained per-worker copy of the eval workspace.
+
+    DuckDB takes an exclusive file lock on open; parallel agents pointing at the
+    same database would serialise. Each worker gets its own copy of the duckdb,
+    its own `raw/`, and its own `trilogy.toml`."""
+    worker_dir = src / f"_worker_{worker_idx}"
+    worker_dir.mkdir(exist_ok=True)
+    shutil.copy2(src / "tpcds.duckdb", worker_dir / "tpcds.duckdb")
+    shutil.copy2(src / "trilogy.toml", worker_dir / "trilogy.toml")
+    worker_raw = worker_dir / "raw"
+    if worker_raw.exists():
+        shutil.rmtree(worker_raw)
+    shutil.copytree(src / "raw", worker_raw)
+    return worker_dir
 
 
 def run_pre_ingest(workspace: Path, timeout: int = 600) -> dict:
@@ -382,6 +401,14 @@ def parse_args() -> argparse.Namespace:
         "raw=agent stdout passthrough, both=raw + periodic tally heartbeat, "
         "quiet=phase markers only",
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="number of agents to run in parallel; >1 forces monitor=quiet and "
+        "uses a per-worker workspace (copy of the duckdb + raw/) so DuckDB's "
+        "file lock doesn't serialise the workers",
+    )
     return parser.parse_args()
 
 
@@ -428,35 +455,76 @@ def main() -> int:
         # every query starts from a broken premise. Abort instead of grading 0/N.
         return 2
 
+    concurrency = max(1, args.concurrency)
+    monitor_mode = "quiet" if concurrency > 1 else args.monitor
     print(
-        f"[3/5] Running agent per query ({len(active)} queries, fresh context each)"
-        f" — {args.provider}/{args.model} ..."
+        f"[3/5] Running agent per query ({len(active)} queries, fresh context each,"
+        f" concurrency={concurrency}) — {args.provider}/{args.model} ..."
     )
-    per_query_runs: list[dict] = []
-    per_query_metrics: list[scoring.AgentMetrics] = []
-    for entry in active:
+    if concurrency > 1:
+        worker_dirs = [
+            prepare_worker_workspace(workspace, i) for i in range(concurrency)
+        ]
+    else:
+        worker_dirs = [workspace]
+
+    per_query_runs: list[dict] = [None] * len(active)  # type: ignore[list-item]
+    per_query_metrics: list[scoring.AgentMetrics] = [
+        scoring.AgentMetrics() for _ in active
+    ]
+    worker_pool: "list[Path]" = list(worker_dirs)
+    pool_lock = threading.Lock()
+
+    def acquire_worker() -> Path:
+        with pool_lock:
+            return worker_pool.pop()
+
+    def release_worker(worker: Path) -> None:
+        with pool_lock:
+            worker_pool.append(worker)
+
+    def run_one(index: int, entry: dict) -> None:
         qid = entry["id"]
-        log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
-        task = prompts.build_single_query_task(entry)
-        (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
-        print(f"  [q{qid:02d}] starting", flush=True)
-        result = run_agent(
-            workspace,
-            log_path,
-            args.provider,
-            args.model,
-            task,
-            args.timeout,
-            args.monitor,
-        )
-        result["id"] = qid
-        per_query_runs.append(result)
-        per_query_metrics.append(scoring.parse_agent_log(log_path))
-        print(
-            f"  [q{qid:02d}] done in {result['duration']:.0f}s"
-            f" (exit {result['exit_code']})",
-            flush=True,
-        )
+        worker = acquire_worker()
+        try:
+            log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
+            task = prompts.build_single_query_task(entry)
+            (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
+            print(f"  [q{qid:02d}] starting (worker {worker.name})", flush=True)
+            result = run_agent(
+                worker,
+                log_path,
+                args.provider,
+                args.model,
+                task,
+                args.timeout,
+                monitor_mode,
+            )
+            result["id"] = qid
+            if worker != workspace:
+                produced = worker / f"query{qid:02d}.preql"
+                if produced.exists():
+                    shutil.copy2(produced, workspace / f"query{qid:02d}.preql")
+                    produced.unlink()
+            per_query_runs[index] = result
+            per_query_metrics[index] = scoring.parse_agent_log(log_path)
+            print(
+                f"  [q{qid:02d}] done in {result['duration']:.0f}s"
+                f" (exit {result['exit_code']})",
+                flush=True,
+            )
+        finally:
+            release_worker(worker)
+
+    if concurrency == 1:
+        for i, entry in enumerate(active):
+            run_one(i, entry)
+    else:
+        with ThreadPoolExecutor(max_workers=concurrency) as ex:
+            futures = [ex.submit(run_one, i, e) for i, e in enumerate(active)]
+            for fut in as_completed(futures):
+                # Surface worker exceptions instead of swallowing them in futures.
+                fut.result()
 
     metrics = scoring.aggregate_metrics(per_query_metrics)
     agent_run = {
@@ -511,11 +579,11 @@ def main() -> int:
             failures,
             analyze_run.CHARTS_DIR / "trilogy_failures.md",
         )
-        print(f"  wrote {dashboard}  ({len(failures)} trilogy failures -> {failures_md})")
-    except Exception as exc:  # matplotlib missing, etc. — don't fail the eval
         print(
-            f"  analyze_run skipped: {type(exc).__name__}: {exc}", file=sys.stderr
+            f"  wrote {dashboard}  ({len(failures)} trilogy failures -> {failures_md})"
         )
+    except Exception as exc:  # matplotlib missing, etc. — don't fail the eval
+        print(f"  analyze_run skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     print(f"[5/5] Done. Artifacts in {run_dir}\n")
     print(markdown)

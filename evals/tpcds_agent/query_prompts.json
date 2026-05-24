@@ -1,13 +1,59 @@
 [
   {
+    "id": 1,
+    "grade": "medium",
+    "prompt": "List the customer ids of customers whose total store-return amount at a given store in the year 2000 exceeded 1.2 times the average total store-return amount at that same store (the average taken across all customers who returned anything at that store in 2000). Only consider stores located in TN. Compute each customer's total per (customer, store) pair by summing the return amount over all of that customer's returns at that store in 2000, and compare to the per-store average of those totals. Order by customer id; limit 100 rows."
+  },
+  {
+    "id": 2,
+    "grade": "hard",
+    "prompt": "Combine web sales and catalog sales into a single stream of (sold date, extended sales price) records. For each week-of-the-calendar grouping, sum the extended sales price split into seven day-of-the-week columns (Sunday through Saturday). Then, for each calendar week in year 2001, find the same calendar week in year 2002 (matched as the 2001 week's week sequence equals the 2002 week's week sequence minus 53) and report the ratio of the 2001 day-of-week total to the 2002 day-of-week total, rounded to 2 decimals, for each of the seven days. Output the 2001 week sequence and the seven ratios, distinct, ordered by week sequence with nulls first."
+  },
+  {
     "id": 3,
     "grade": "easy",
     "prompt": "For all items from manufacturer ID 128, report total extended store sales price by brand and by year, for store sales that occurred in the 11th month of the year. Order by year, then revenue descending, then brand id; limit to 100 rows."
   },
   {
+    "id": 4,
+    "grade": "hard",
+    "prompt": "For each customer and each year, compute a customer 'year total' separately for each of three channels (store, catalog, web) as the sum of ((extended list price minus extended wholesale cost minus extended discount amount) plus extended sales price) divided by 2 over that channel's sales in that year. Restrict to customers who have year totals greater than zero in 2001 across all three channels. Among those, return only customers whose catalog 2002-over-2001 ratio exceeds both their store 2002-over-2001 ratio and their web 2002-over-2001 ratio (ratios computed only when the 2001 total is positive). Report the customer's id, first name, last name, and preferred-customer flag (taken from the 2002 store record), ordered by those four fields with nulls first; limit 100 rows."
+  },
+  {
+    "id": 5,
+    "grade": "hard",
+    "prompt": "For the date range 2000-08-23 to 2000-09-06 inclusive, produce a rolled-up summary across three sales channels (store, catalog, web). For each channel, combine sales and returns into one stream: store sales/store returns grouped by store, catalog sales/catalog returns grouped by catalog page, and web sales/web returns (matching returns to their originating sale by item and order number) grouped by web site. Per group, sum the extended sales price as sales, the return amount as returns, and the net profit minus net loss as profit. Then aggregate to channel-level and grand-total levels with a rollup over (channel, id), where id is the group key prefixed with its kind (store, catalog_page, or web_site). Report channel, id, total sales, total returns, and total profit, ordered by channel and id with nulls first; limit 100 rows."
+  },
+  {
+    "id": 6,
+    "grade": "medium",
+    "prompt": "Find the states in which at least 10 customers bought items whose current price is more than 1.2 times the average current price of items in the same category. Restrict to store sales in January 2001. Use the state from the customer's own current home address. Report state and customer count, ordered by count ascending with nulls first, then state with nulls first; limit 100 rows."
+  },
+  {
     "id": 7,
     "grade": "easy",
-    "prompt": "For store sales in the year 2000, report the average quantity, average list price, average coupon amount, and average sales price for each item. Filter by the customer-demographics recorded on the sale itself (the demographics linked directly to store_sales via the sale's own customer-demographic key, NOT via the customer chain to the customer's current demographic profile): male, single, 'College' education. Also restrict to promotions where the email channel flag is 'N' or the event channel flag is 'N' (at sf=0.01 these flags are always 'N', so this clause matches every promotion — the standard TPC-DS filter is `p_channel_email = 'N' OR p_channel_event = 'N'`). Order by item id; limit 100 rows."
+    "prompt": "For store sales in the year 2000, report the average quantity, average list price, average coupon amount, and average sales price for each item. Filter by the customer-demographic profile recorded on the sale itself (the one linked directly to the sale, NOT the customer's current demographic profile reached through the customer chain): male, single, 'College' education. Also restrict to promotions where the email channel flag is 'N' or the event channel flag is 'N' (at this scale factor these flags are always 'N', so the clause matches every promotion). Order by item id; limit 100 rows."
+  },
+  {
+    "id": 8,
+    "grade": "impossible",
+    "comment": "The query filters store ZIPs by matching their first 2 digits against a curated set of ~400 five-digit ZIPs intersected with ZIPs where preferred-customer count > 10. At sf=0.01 the customer base is too small to produce ZIPs with more than ~10 preferred customers, so the intersection is empty and the query returns no rows. Marked impossible.",
+    "prompt": "For store sales in the 2nd quarter of 1998, report total net profit per store name. Restrict to stores whose ZIP code's first 2 digits match the first 2 digits of any 5-digit ZIP code that appears in both of two sets: a curated list of about four hundred specific 5-digit ZIP codes, and the set of 5-digit ZIP codes where more than 10 preferred customers (those with the preferred-customer flag set to Y) have their current home address. Order by store name; limit 100 rows."
+  },
+  {
+    "id": 9,
+    "grade": "medium",
+    "prompt": "Return a single row with five values, computed from store sales bucketed by ticket quantity (1-20, 21-40, 41-60, 61-80, 81-100). For each bucket, if the count of store-sale line items in that quantity range exceeds a known threshold (74129, 122840, 56580, 10097, and 165306 respectively) then return the average extended discount amount in that bucket, otherwise return the average net paid in that bucket. Use the reason table restricted to the single reason record with id 1 as the framing row."
+  },
+  {
+    "id": 10,
+    "grade": "medium",
+    "prompt": "For customers whose current home address is in one of the counties 'Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', or 'La Porte County', and who made at least one store sale in the first four calendar months of 2002 (January through April) and either at least one web sale or at least one catalog sale in the same year (matched via the web-sale bill customer or the catalog-sale ship customer), use the customer's current customer-demographics record. Group by gender, marital status, education status, purchase estimate, credit rating, dependent count, dependent-employed count, and dependent-college count, and report each group's customer count six separate times alongside the grouping fields. Order by the eight grouping fields in their listed order; limit 100 rows."
+  },
+  {
+    "id": 11,
+    "grade": "hard",
+    "prompt": "For each customer and each year, compute a per-year customer total separately for two channels: store (sum of extended list price minus extended discount amount across that year's store sales) and web (same expression over web sales by billing customer). Restrict to customers whose store total in 2001 and web total in 2001 are both positive. Among those, keep only customers whose web 2002-over-2001 ratio exceeds their store 2002-over-2001 ratio (treating either ratio as zero when the 2001 denominator is zero). Report customer id, first name, last name, and preferred-customer flag (from the 2002 store record), ordered by those four fields with nulls first; limit 100 rows."
   },
   {
     "id": 12,
@@ -15,14 +61,40 @@
     "prompt": "For web sales of items in the 'Sports', 'Books', or 'Home' categories sold between 1999-02-22 and 1999-03-24, report for each item its id, description, category, class, and current price, along with the total extended web sales price for that item, and that item's extended sales price as a percentage of the total extended sales price of all items in its class. The percentage is the ratio multiplied by 100 (a value between 0 and 100), not a 0-1 fraction. Group by item id, description, category, class, and current price. Order by category, class, item id, description, then the percentage; limit 100 rows."
   },
   {
+    "id": 13,
+    "grade": "medium",
+    "prompt": "For store sales in the year 2001, return the average ticket quantity, the average extended sales price, the average extended wholesale cost, and the total extended wholesale cost across all qualifying sales. A sale qualifies when it satisfies one demographic-and-price clause AND one address-and-profit clause. The demographic-and-price clause requires that the customer-demographics linked directly to the sale and the household-demographics linked to the sale jointly match one of three combinations: married with 'Advanced Degree' and per-line sales price between 100 and 150 and household dependent count of 3; single with 'College' and per-line sales price between 50 and 100 and household dependent count of 1; or widowed with '2 yr Degree' and per-line sales price between 150 and 200 and household dependent count of 1. The address-and-profit clause requires that the sale-address record have country 'United States' and match one of: states TX/OH with net profit between 100 and 200; states OR/NM/KY with net profit between 150 and 300; or states VA/TX/MS with net profit between 50 and 250."
+  },
+  {
+    "id": 14,
+    "grade": "impossible",
+    "comment": "Cross-channel intersection: items whose (brand, class, category) triple appears in store sales AND catalog sales AND web sales over 1999-2001. At sf=0.01 the per-channel coverage of items is sparse and the 3-way intersection on the (brand, class, category) triple over only 3 years typically yields an empty set, so the channel-level totals are zero and no rows pass the having-clause threshold (channel sales > 3-channel average). Marked impossible.",
+    "prompt": "Find items whose (brand, class, category) combination appears in all three channels (store sales, catalog sales, and web sales) at some point during 1999 through 2001 inclusive. For each channel and each (brand, class, category) of such items, sum the per-line quantity times per-line list price for November 2001 sales and count those sales, but only keep groups where the per-channel sales total exceeds the overall average sale value (quantity times list price) across all three channels in 1999-2001. Roll up the result by (channel, brand, class, category) producing channel subtotals and a grand total. Report channel, brand id, class id, category id, total sales, and total number of sales, ordered by those four grouping fields with nulls first; limit 100 rows."
+  },
+  {
     "id": 15,
     "grade": "medium",
-    "prompt": "For catalog sales in the 2nd quarter of year 2001, report the total per-line catalog sales price (the `cs_sales_price` field, not the extended price) grouped by the ZIP code of the buying customer's own current home address. Include a sale if any one of these holds: the first 5 digits of that ZIP code are one of 85669, 86197, 88274, 83405, 86475, 85392, 85460, 80348, or 81792; or that address's state is CA, WA, or GA; or the sale's per-line sales price exceeds 500. Order by ZIP code with nulls first; limit 100 rows."
+    "prompt": "For catalog sales in the 2nd quarter of year 2001, report the total per-line catalog sales price (use the per-line sales price, not the extended sales price) grouped by the ZIP code of the buying customer's own current home address. Include a sale if any one of these holds: the first 5 digits of that ZIP code are one of 85669, 86197, 88274, 83405, 86475, 85392, 85460, 80348, or 81792; or that address's state is CA, WA, or GA; or the sale's per-line sales price exceeds 500. Order by ZIP code with nulls first; limit 100 rows."
+  },
+  {
+    "id": 16,
+    "grade": "medium",
+    "prompt": "For catalog sales whose ship date falls between 2002-02-01 and 2002-04-02 inclusive, shipping to a ship address in GA via a call center located in 'Williamson County', report the distinct count of order numbers, the total extended ship cost, and the total net profit. Restrict to orders that have more than one distinct warehouse across their line items (so there exists another line in the same order shipping from a different warehouse) and that have no matching catalog return on the same order number. Order by the distinct order count; limit 100 rows."
+  },
+  {
+    "id": 17,
+    "grade": "medium",
+    "prompt": "For store sales sold in fiscal quarter 2001Q1, joined to matching store returns from the same customer, item, and ticket whose return date falls in 2001Q1, 2001Q2, or 2001Q3, joined to catalog sales by the same customer (billed) and item whose sale date falls in those same three quarters, report per (item id, item description, store state): the count, average, sample standard deviation, and coefficient of variation (stddev divided by average) of three quantity measures - the store-sale ticket quantity, the store-return return quantity, and the catalog-sale ticket quantity. Order by item id, item description, then store state, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 18,
+    "grade": "medium",
+    "prompt": "For catalog sales in the year 1998, restricted to sales where the billing customer-demographics directly on the sale show gender female and education 'Unknown', and where the customer's own birth month is one of January, February, June, August, September, or December, and where the customer's current home address state is one of MS, IN, ND, OK, NM, or VA, report the average of the following measures: ticket quantity, per-line list price, per-line coupon amount, per-line sales price, per-line net profit, customer birth year, and the dependent count from the sale's billing customer-demographics. Roll up these averages over (item id, country, state, county) using the customer's current home address country, state, and county. Order by country, state, county, item id, then by the grouping indicators on country, state, and county, all with nulls first; limit 100 rows."
   },
   {
     "id": 19,
     "grade": "easy",
-    "prompt": "For items managed by manager ID 8, for store sales in November 1998 where the first 5 digits of the customer's own current home address ZIP code differ from those of the selling store's ZIP code, report — for each (brand id, brand name, manufacturer id, manufacturer name) combination — the total extended store sales price. Use the address on the customer record, not any address attached to the sale itself. Include all four of brand id, brand name, manufacturer id, and manufacturer name in the output. Order by revenue descending, then by brand and manufacturer; limit 100 rows."
+    "prompt": "For items managed by manager ID 8, for store sales in November 1998 where the first 5 digits of the customer's own current home address ZIP code differ from those of the selling store's ZIP code, report \u2014 for each (brand id, brand name, manufacturer id, manufacturer name) combination \u2014 the total extended store sales price. Use the address on the customer record, not any address attached to the sale itself. Include all four of brand id, brand name, manufacturer id, and manufacturer name in the output. Order by revenue descending, then by brand and manufacturer; limit 100 rows."
   },
   {
     "id": 20,
@@ -30,9 +102,70 @@
     "prompt": "For catalog sales of items in the 'Sports', 'Books', or 'Home' categories sold between 1999-02-22 and 1999-03-24, report for each item its id, description, category, class, and current price, along with the total extended catalog sales price for that item, and that item's extended sales price as a percentage of the total extended sales price of all items in its class. The percentage is the ratio multiplied by 100 (a value between 0 and 100), not a 0-1 fraction. Group by item id, description, category, class, and current price. Order by category, class, item id, description, then the percentage, all with nulls first; limit 100 rows."
   },
   {
+    "id": 21,
+    "grade": "medium",
+    "prompt": "For each (warehouse name, item id), compare inventory on hand in the 30-day window before 2000-03-11 (from 2000-02-10 up to but not including 2000-03-11) to inventory in the 30-day window starting on and after 2000-03-11 (through 2000-04-10). Sum the on-hand quantity in each window. Restrict to items whose current price is between 0.99 and 1.49. Keep only pairs where the ratio (after divided by before) is between 2/3 and 3/2 (treat the comparison as undefined when the before-sum is zero). Report warehouse name, item id, before-window total, and after-window total, ordered by warehouse name and item id with nulls first; limit 100 rows."
+  },
+  {
+    "id": 22,
+    "grade": "medium",
+    "prompt": "In the year 2000, report the average inventory quantity on hand, grouped with a rollup over (item product name, item brand, item class, item category). Order by the average on-hand ascending with nulls first, then by product name, brand, class, and category all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 23,
+    "grade": "hard",
+    "prompt": "Identify 'frequent' items: items where the count of (item, sold date) store-sale pairs in years 2000 through 2003 exceeds 4 (using the first 30 characters of item description as part of the grouping). Identify 'best' store customers: customers whose lifetime store-sale total (sum of ticket quantity times per-line sales price) exceeds 50 percent of the maximum customer total computed across all customers over 2000-2003. Then, for February 2000 sales in catalog and web channels combined, sum quantity times list price per customer (last name, first name) but only for sales whose item is in the frequent set and whose billing customer is in the best-customer set. Report customer last name, first name, and total sales (one row per channel that contributed), ordered by last name, first name, and sales with nulls first; limit 100 rows."
+  },
+  {
+    "id": 24,
+    "grade": "impossible",
+    "comment": "Filters on item color 'peach'. Trilogy infers a closed enum for item color from values present in the sampled data, and at sf=0.01 'peach' may not appear in the items used by qualifying market-id-8 sales, making the spec-faithful filter return zero rows or fail to parse the literal. Same pattern as q96. Marked impossible.",
+    "prompt": "For store sales matched to store returns by ticket and item, at stores whose market id is 8, where the customer's current home address ZIP equals the selling store's ZIP and the customer's birth country differs (case-insensitively) from the customer's current address country, sum per-line net paid grouped by (customer last name, first name, store name, address state, store state, item color, item current price, item manager id, item units, item size). Then keep only groups where item color is 'peach', re-aggregate to (customer last name, first name, store name) summing those sub-totals, and keep only re-aggregated groups whose sum exceeds 5 percent of the average sum across all (customer last name, first name, store name, ...) sub-totals from the first stage. Order by customer last name, first name, then store name."
+  },
+  {
+    "id": 25,
+    "grade": "medium",
+    "prompt": "For store sales in April 2001, matched to store returns from the same customer, item, and ticket whose return date is in April through October 2001, matched to catalog sales by the same customer (billed) and item whose sale date is also in April through October 2001, report per (item id, item description, store id, store name) the sum of store-sale net profit, the sum of store-return net loss, and the sum of catalog-sale net profit. Order by item id, item description, store id, then store name; limit 100 rows."
+  },
+  {
     "id": 26,
     "grade": "easy",
-    "prompt": "For catalog sales in the year 2000, report the average quantity, average list price, average coupon amount, and average sales price for each item. Filter by the customer-demographics recorded on each catalog sale itself (the demographics linked directly to catalog_sales via the catalog sale's own billing customer-demographic key, NOT via the customer chain): male, single, 'College' education. Also restrict to promotions where the email channel flag is 'N' or the event channel flag is 'N' (at sf=0.01 these flags are always 'N', so this clause matches every promotion — the standard TPC-DS filter is `p_channel_email = 'N' OR p_channel_event = 'N'`). Order by item id; limit 100 rows."
+    "prompt": "For catalog sales in the year 2000, report the average quantity, average list price, average coupon amount, and average sales price for each item. Filter by the customer-demographic profile recorded on each catalog sale itself (the one linked directly to the catalog sale's billing customer-demographic key, NOT the customer's current demographic profile reached through the customer chain): male, single, 'College' education. Also restrict to promotions where the email channel flag is 'N' or the event channel flag is 'N' (at this scale factor these flags are always 'N', so the clause matches every promotion). Order by item id; limit 100 rows."
+  },
+  {
+    "id": 27,
+    "grade": "medium",
+    "prompt": "For store sales in 2002 at stores in TN, restricted to customer-demographics directly on the sale showing male, single, with 'College' education, report the average ticket quantity, average per-line list price, average per-line coupon amount, and average per-line sales price. Produce three groupings combined: per (item id, state) with a group-indicator of 0; per item id (state set to null) with a group-indicator of 1; and an overall total (both item id and state null) with a group-indicator of 1. Order by item id then state with nulls first; limit 100 rows."
+  },
+  {
+    "id": 28,
+    "grade": "medium",
+    "prompt": "Return one row containing 18 values arranged into 6 buckets, computed from store sales. For each bucket compute the average per-line list price, the count of per-line list price values, and the distinct count of per-line list price values. Each bucket has a ticket-quantity range and a price-or-coupon-or-cost OR clause. Bucket 1: ticket quantity 0 to 5, and (list price between 8 and 18 OR coupon amount between 459 and 1459 OR wholesale cost between 57 and 77). Bucket 2: ticket quantity 6 to 10, and (list price 90 to 100 OR coupon 2323 to 3323 OR wholesale 31 to 51). Bucket 3: ticket quantity 11 to 15, and (list price 142 to 152 OR coupon 12214 to 13214 OR wholesale 79 to 99). Bucket 4: ticket quantity 16 to 20, and (list price 135 to 145 OR coupon 6071 to 7071 OR wholesale 38 to 58). Bucket 5: ticket quantity 21 to 25, and (list price 122 to 132 OR coupon 836 to 1836 OR wholesale 17 to 37). Bucket 6: ticket quantity 26 to 30, and (list price 154 to 164 OR coupon 7326 to 8326 OR wholesale 7 to 27)."
+  },
+  {
+    "id": 29,
+    "grade": "medium",
+    "prompt": "For store sales in September 1999, matched to store returns from the same customer, item, and ticket whose return date falls between September and December 1999, matched to catalog sales by the same customer (billed) and item whose sale year is 1999, 2000, or 2001, report per (item id, item description, store id, store name) the total store-sale ticket quantity, the total store-return return quantity, and the total catalog-sale ticket quantity. Order by item id, item description, store id, then store name; limit 100 rows."
+  },
+  {
+    "id": 30,
+    "grade": "medium",
+    "prompt": "List customers whose total web-return amount in the year 2002 at a given state exceeded 1.2 times the average total web-return amount in that same state (the average taken across all customers who web-returned anything from that state in 2002), and whose own current home address state is GA. Use the returning-customer address state to group the per-customer totals. Report each qualifying customer's customer id, salutation, first name, last name, preferred-customer flag, birth day, birth month, birth year, birth country, login, email address, last-review-date surrogate, and total web return amount. Order by those thirteen fields in the order listed, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 31,
+    "grade": "hard",
+    "prompt": "For each county and each calendar quarter in the year 2000, compute total extended store sales price (using the store-sale address county) and total extended web sales price (using the web-sale billing-address county). For each county, report year 2000 alongside four ratios: web Q2-over-Q1, store Q2-over-Q1, web Q3-over-Q2, and store Q3-over-Q2 (computed as floating-point divisions). Keep only counties whose web Q2-over-Q1 ratio exceeds their store Q2-over-Q1 ratio AND whose web Q3-over-Q2 ratio exceeds their store Q3-over-Q2 ratio (each ratio is undefined when its denominator is zero). Order by county."
+  },
+  {
+    "id": 32,
+    "grade": "medium",
+    "prompt": "For catalog sales of items from manufacturer id 977 sold between 2000-01-27 and 2000-04-26 inclusive, return the total extended discount amount across only those sales whose per-line extended discount amount exceeds 1.3 times the average extended discount amount for that same item across all of its catalog sales in the same date window. Limit to 100 rows (the result is a single value)."
+  },
+  {
+    "id": 33,
+    "grade": "medium",
+    "prompt": "For sales in May 1998 (year 1998, month 5) of items whose manufacturer id appears among the manufacturers of items in the 'Electronics' category, restricted to sales whose sale-address (store-sale address, catalog-sale billing address, or web-sale billing address respectively) has a GMT offset of -5, sum the extended sales price across all three channels (store, catalog, web) combined per manufacturer id. Report manufacturer id and the combined total, ordered by the total ascending; limit 100 rows."
   },
   {
     "id": 34,
@@ -40,14 +173,39 @@
     "prompt": "List the last name, first name, salutation, preferred-customer flag, and store-sale ticket number for store-sale tickets, along with the count of line items on that ticket. Restrict to tickets sold in years 1999, 2000, or 2001, on a day of the month that is between 1 and 3 or between 25 and 28, at a store in 'Williamson County', to a household whose buy potential is '>10000' or 'Unknown', whose vehicle count is greater than 0, and whose dependent-count divided by vehicle-count is greater than 1.2. Count line items per ticket and customer, and keep only tickets whose line-item count is between 15 and 20. Join to the customer to get the name fields. Order by last name, first name, salutation, then preferred-customer flag descending, then ticket number, all with nulls first."
   },
   {
+    "id": 35,
+    "grade": "hard",
+    "prompt": "List customers along with demographic and address attributes for customers who had a store sale in one of the first three quarters of year 2002, AND who also had at least one web sale (by billing customer) OR catalog sale (by ship customer) in the same first-three-quarters-of-2002 window. Use the customer's own current home address state and current customer-demographic record (gender, marital status, dependent count, employed-dependent count, college-dependent count). Group by state, gender, marital status, dependent count, employed-dependent count, and college-dependent count; report the row count, plus the min, max, and average of dependent count, employed-dependent count, and college-dependent count for each group (note that within a group all three dependent counts are constant, so min equals max equals the group key, but still report them). Order by state, gender, marital status, dependent count, employed-dependent count, then college-dependent count, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 36,
+    "grade": "hard",
+    "prompt": "For store sales in year 2001 at stores in TN, compute the gross-margin ratio (sum of net profit divided by sum of extended sales price) at three levels of an item-category-and-class hierarchy: by category and class, by category alone (rolling up class), and grand total (rolling up both). Mark each row with its hierarchy level (0 for the leaf level, 1 for category subtotal, 2 for the grand total). Within each hierarchy level, rank rows by gross margin ascending, partitioned by the parent: leaf rows are ranked within their category, the subtotal rows are ranked among themselves, and the grand total is its own rank. Report gross margin, category, class, hierarchy level, and the within-parent rank. Order by hierarchy level descending with nulls first, then by category for the leaf rows with nulls first, then by within-parent rank with nulls first; limit 100 rows."
+  },
+  {
     "id": 37,
     "grade": "easy",
     "prompt": "List the item id, description, and current price of items whose current price is between 68 and 98, that are from manufacturers 677, 940, 694, or 808, that had between 100 and 500 units of inventory on hand on dates between 2000-02-01 and 2000-04-01, and that appear in catalog sales. Order by item id; limit 100 rows."
   },
   {
+    "id": 38,
+    "grade": "medium",
+    "prompt": "Count the number of distinct (customer last name, customer first name, sale date) combinations that appear in all three of store sales, catalog sales (by billing customer), and web sales (by billing customer) in the year 2000. Return a single count value. Limit 100 rows."
+  },
+  {
+    "id": 39,
+    "grade": "hard",
+    "prompt": "For inventory measurements during year 2001, compute for each (warehouse, item, month-of-year) combination the mean and the sample standard deviation of the on-hand quantity, then derive the coefficient of variation (standard deviation divided by mean, treated as null when mean is 0). Keep only combinations whose coefficient of variation exceeds 1. From those qualifying combinations, pair each one in month 1 (January) with the same warehouse and item in month 2 (February); report for both months the warehouse, item, month-of-year, mean, and coefficient of variation. Order by warehouse, item, January's month-of-year, January's mean, January's coefficient of variation, then February's month-of-year, February's mean, and February's coefficient of variation, all with nulls first."
+  },
+  {
     "id": 40,
     "grade": "medium",
     "prompt": "For catalog sales of items whose current price is between 0.99 and 1.49, sold on dates between 2000-02-10 and 2000-04-10, report two figures grouped by warehouse state and item id: the total of (per-line catalog sales price minus any refunded cash from a matching catalog return) for sales before 2000-03-11, and the same total for sales on or after 2000-03-11. Match catalog returns to catalog sales by order number and item; treat a missing refunded cash amount as 0. Order by warehouse state then item id; limit 100 rows."
+  },
+  {
+    "id": 41,
+    "grade": "medium",
+    "prompt": "List the distinct product names of items whose manufacturer ID is between 738 and 778 inclusive, restricted to items whose manufacturer (the manufacturer-text field, not the manufacturer ID) is shared by at least one other item matching any one of eight detailed attribute profiles. The eight profiles are: Women / powder or khaki / Ounce or Oz / medium or extra large; Women / brown or honeydew / Bunch or Ton / N/A or small; Men / floral or deep / N/A or Dozen / petite or large; Men / light or cornflower / Box or Pound / medium or extra large; Women / midnight or snow / Pallet or Gross / medium or extra large; Women / cyan or papaya / Cup or Dram / N/A or small; Men / orange or frosted / Each or Tbl / petite or large; Men / forest or ghost / Lb or Bundle / medium or extra large. Each profile constrains category, color, units, and size. Order by product name; limit 100 rows."
   },
   {
     "id": 42,
@@ -57,7 +215,47 @@
   {
     "id": 43,
     "grade": "easy",
-    "prompt": "For each store, report a sales-price total split into seven separate day-of-the-week columns (Sunday through Saturday), for sales in the year 2000, restricted to stores with a GMT offset of -5. Sum the per-line sales price (the `sales_price` field), not the extended sales price. Order by store name and store id; limit 100 rows."
+    "prompt": "For each store, report a sales-price total split into seven separate day-of-the-week columns (Sunday through Saturday), for sales in the year 2000, restricted to stores with a GMT offset of -5. Sum the per-line sales price, not the extended sales price. Order by store name and store id; limit 100 rows."
+  },
+  {
+    "id": 44,
+    "grade": "medium",
+    "prompt": "For store sales at the store with store ID 4, rank items by their average net profit. Keep only items whose average net profit exceeds 90 percent of the average net profit on sales at that same store where the sale's address key is missing (null). Take the top 10 items by ascending rank (best performers - lowest average net profit first) and the top 10 items by descending rank (worst performers - highest average net profit first), then pair them position by position by rank. For each pair, report the rank, the best-performer product name, and the worst-performer product name. Order by rank ascending, best-performer product name descending, then worst-performer product name descending; limit 100 rows."
+  },
+  {
+    "id": 45,
+    "grade": "medium",
+    "prompt": "For web sales in the 2nd quarter of year 2001, report the total per-line web sales price (sum of the per-line sales price) grouped by the buying customer's current home address ZIP code and city. Include a sale only if either the first 5 digits of that ZIP code are one of 85669, 86197, 88274, 83405, 86475, 85392, 85460, 80348, or 81792, OR the item belongs to the same item-id group as any item whose internal item key is one of 2, 3, 5, 7, 11, 13, 17, 19, 23, or 29. Use the address on the customer's current address record. Order by ZIP code then city; limit 100 rows."
+  },
+  {
+    "id": 46,
+    "grade": "medium",
+    "prompt": "List the customer's last name and first name, the city of the customer's current home address, the city of the address recorded on the store-sale ticket itself, the store-sale ticket number, and per-ticket totals of coupon amount and net profit. Restrict to store sales made on a Saturday or Sunday in years 1999, 2000, or 2001, at stores in the cities 'Fairview' or 'Midway', to households whose dependent count is 4 or whose vehicle count is 3. Total coupon amount and net profit per ticket, customer, sale address, and sale-address city. Then join to the customer for the name fields and the customer's current home address; keep only rows where the customer's current home address city differs from the city of the sale address. Order by last name, first name, customer's current address city, the sale-address city, then ticket number, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 47,
+    "grade": "hard",
+    "prompt": "For each (item category, item brand, store name, store company name) combination, compute monthly store-sales price totals across months of year 1999 plus December 1998 and January 2000. Within each (category, brand, store, company, year) group, compute the average of those monthly totals (the average monthly sales). Within each (category, brand, store, company) group, order the months chronologically by year then month-of-year and assign each a sequence number. Keep only rows for year 1999 where the average monthly sales is positive and the relative deviation between the month's total and the average monthly sales (absolute difference divided by average monthly sales) exceeds 0.1. For each such row, also report the previous month's total (lag, from the immediately prior month in the same category-brand-store-company sequence) and the next month's total (lead). Report category, brand, store name, store company name, year, month-of-year, average monthly sales, this month's total, the prior month's total, and the next month's total. Order by the difference between this month's total and the average monthly sales (signed), then by each of those reported columns in turn; limit 100 rows."
+  },
+  {
+    "id": 48,
+    "grade": "medium",
+    "prompt": "For store sales in year 2000, report the total store-sale quantity, restricted to sales matching one of three combined demographic-and-address profiles. Use the customer-demographic record linked directly to the sale (not the customer's current one). Profile 1: married with '4 yr Degree', sale's per-line sales price between 100 and 150 inclusive, sale's billing address in the United States in state CO, OH, or TX, sale's net profit between 0 and 2000 inclusive. Profile 2: divorced with '2 yr Degree', sale's per-line sales price between 50 and 100 inclusive, sale's billing address in the United States in state OR, MN, or KY, sale's net profit between 150 and 3000 inclusive. Profile 3: single with 'College', sale's per-line sales price between 150 and 200 inclusive, sale's billing address in the United States in state VA, CA, or MS, sale's net profit between 50 and 25000 inclusive. Return a single total quantity value."
+  },
+  {
+    "id": 49,
+    "grade": "hard",
+    "prompt": "For sales in December 2001 across three channels - web, catalog, and store - identify, per channel, items whose return behavior is extreme. For web: consider only items where the sale's net profit is positive, the sale's net paid is positive, and the sale's quantity is positive, and where there exists a matching return (by order number and item) with return amount greater than 10000; for each item compute the return-quantity ratio (sum of return quantity divided by sum of sold quantity) and the return-currency ratio (sum of return amount divided by sum of net paid). Rank items by return-quantity ratio ascending and by return-currency ratio ascending, and keep items in the top 10 of either ranking. Repeat the same logic for catalog (using catalog sales and catalog returns matched by catalog order number and item, with return amount greater than 10000) and for store (using store sales and store returns matched by ticket number and item, with return amount greater than 10000). Union the three result sets, labeling each row with the channel name ('web', 'catalog', or 'store'). Report channel, item, return-quantity ratio, return-quantity rank, and return-currency rank. Order by channel, return-quantity rank, return-currency rank, then item, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 50,
+    "grade": "medium",
+    "prompt": "For each store, count the number of store-sale-line-item-to-store-return pairings (matched by ticket number, item, and customer) where the return occurred in August 2001, bucketed by the elapsed days between the sale date and the return date into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. Group by store name, store company id, street number, street name, street type, suite number, city, county, state, and ZIP. Order by those same store-attribute columns in the same order; limit 100 rows."
+  },
+  {
+    "id": 51,
+    "grade": "hard",
+    "prompt": "In the year 2000, compute per-item, per-day running totals of per-line sales price for both web sales and store sales (each running total is cumulative across days, partitioned by item, within the year). Full-outer-join the two streams on item and date so each (item, date) combination appears once with whichever side(s) have data. For each (item, date) row, also compute the running maximum of the web running total and the running maximum of the store running total (cumulative across dates, partitioned by item, taking the running totals from the joined row). Keep only rows where the running maximum of the web side exceeds the running maximum of the store side. Report item, date, web running total, store running total, web running maximum, and store running maximum. Order by item then date, with nulls first; limit 100 rows."
   },
   {
     "id": 52,
@@ -65,14 +263,134 @@
     "prompt": "For store sales in the 11th month of year 2000, report total extended sales price by brand, restricted to items managed by manager ID 1. Report the year, brand id, and brand alongside the total. Order by year, then total descending, then brand id; limit 100 rows."
   },
   {
+    "id": 53,
+    "grade": "medium",
+    "prompt": "For store sales in the year 2000, restricted to items in one of two profiles - either category in 'Books', 'Children', 'Electronics' with class in 'personal', 'portable', 'reference', 'self-help' and brand in 'scholaramalgamalg #14', 'scholaramalgamalg #7', 'exportiunivamalg #9', or 'scholaramalgamalg #9'; or category in 'Women', 'Music', 'Men' with class in 'accessories', 'classical', 'fragrances', 'pants' and brand in 'amalgimporto #1', 'edu packscholar #1', 'exportiimporto #1', or 'importoamalg #1' - compute the total per-line sales price for each (manufacturer id, quarter-of-year) combination. Then for each manufacturer id compute the average of those per-quarter totals (the average quarterly sales). Keep only (manufacturer, quarter) rows where the average quarterly sales is positive and the relative deviation between the row's total and the average (absolute difference divided by average) exceeds 0.1. Report manufacturer id, the per-quarter total, and the average quarterly sales. Order by average quarterly sales, then the per-quarter total, then manufacturer id; limit 100 rows."
+  },
+  {
+    "id": 54,
+    "grade": "hard",
+    "prompt": "Identify customers who bought any 'Women' / 'maternity' item via catalog (by billing customer) or web (by billing customer) in December 1998. For each such customer, sum the extended store-sale price from store sales they made during a 3-month window starting the month after December 1998 (i.e., months whose month-sequence is between the month-sequence-of-Dec-1998 plus 1 and the month-sequence-of-Dec-1998 plus 3, inclusive), restricted to store sales at stores whose county and state both match the customer's current home address's county and state. Bucket each customer's total into a segment by dividing the total by 50 and rounding to the nearest integer. Group by segment; report segment, count of customers in that segment, and segment times 50. Order by segment, then customer count, then segment-times-50, with nulls first on the first two; limit 100 rows."
+  },
+  {
     "id": 55,
     "grade": "easy",
     "prompt": "For store sales in the 11th month of year 1999, report total extended sales price by brand, restricted to items managed by manager ID 28. Order by total descending, then brand id; limit 100 rows."
   },
   {
+    "id": 56,
+    "grade": "medium",
+    "prompt": "For sales in February 2001, restricted to billing or sale addresses with GMT offset -5, and restricted to items in the same item-id group as any item whose color is 'slate', 'blanched', or 'burnished', sum the extended sales price across three channels: store sales (by sale address), catalog sales (by billing address), and web sales (by billing address). Combine the three channel totals via union-all and re-aggregate by item id. Report item id and the combined total. Order by total then item id, both with nulls first; limit 100 rows."
+  },
+  {
+    "id": 57,
+    "grade": "hard",
+    "prompt": "For each (item category, item brand, call center name) combination, compute monthly catalog-sales price totals across months of year 1999 plus December 1998 and January 2000. Within each (category, brand, call center, year) group, compute the average of those monthly totals (the average monthly sales). Within each (category, brand, call center) group, order the months chronologically by year then month-of-year and assign each a sequence number. Keep only rows for year 1999 where the average monthly sales is positive and the relative deviation between the month's total and the average monthly sales (absolute difference divided by average) exceeds 0.1. For each such row, also report the previous month's total (lag) and the next month's total (lead) from the same (category, brand, call center) sequence. Report category, brand, call center, year, month-of-year, average monthly sales, this month's total, the prior month's total, and the next month's total. Order by the signed difference between this month's total and the average monthly sales with nulls first, then by each of the reported columns; limit 100 rows."
+  },
+  {
+    "id": 58,
+    "grade": "hard",
+    "prompt": "Find items whose extended sales price totals are nearly equal across all three channels (store, catalog, and web) within the calendar week that contains 2000-01-03. For each channel, sum extended sales price per item id, restricted to dates falling in the same week as 2000-01-03. Inner-join the three per-channel totals by item id. Keep only items where each pair of channel totals is within 10 percent of each other in both directions (so for any two channels A and B, A is between 0.9*B and 1.1*B). Report the item id, the store total, the store total as a percentage of the three-channel average (store total divided by the average, multiplied by 100), the catalog total and its percentage of the average, the web total and its percentage of the average, and the three-channel average itself. Order by item id then the store total, both with nulls first; limit 100 rows."
+  },
+  {
+    "id": 59,
+    "grade": "hard",
+    "prompt": "For each (store, calendar week) combination, sum the per-line store-sale price split into seven day-of-week columns (Sunday through Saturday). Then pair weeks across years: take rows whose week falls in the year 2001 (the 'this year' set) and rows whose week falls in the next the year 2002 (the 'next year' set), matched by same store id and where the 'this year' week sequence equals the 'next year' week sequence minus 52. For each matching pair report the store name, store id, and 'this year' week sequence, plus the ratio of this-year-Sunday to next-year-Sunday, this-year-Monday to next-year-Monday, and so on through Saturday. Order by store name, store id, then this-year week sequence, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 60,
+    "grade": "medium",
+    "prompt": "For sales in September 1998, restricted to billing or sale addresses with GMT offset -5, and restricted to items in the same item-id group as any item in the 'Music' category, sum the extended sales price across three channels: store sales (by sale address), catalog sales (by billing address), and web sales (by billing address). Combine via union-all and re-aggregate by item id. Report item id and the combined total. Order by item id then total; limit 100 rows."
+  },
+  {
+    "id": 61,
+    "grade": "medium",
+    "prompt": "For store sales in November 1998 of items in the 'Jewelry' category, restricted to stores with GMT offset -5 and customers whose current home address has GMT offset -5, compute two totals: the total extended sales price across all such sales, and the subset of that total where the sale's promotion has any of its direct-mail, email, or TV channel flags equal to 'Y'. Report the promotion-channel total, the overall total, and the promotion total as a percentage of the overall total (multiplied by 100). Order by promotion total then overall total; limit 100 rows."
+  },
+  {
     "id": 62,
     "grade": "medium",
-    "prompt": "For web sales whose ship date falls in the 12-month window of month sequences 1200 through 1211, report the count of orders bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. Group by the first 20 characters of the warehouse name, the shipping-mode type, and the web site name. Order by those three grouping columns, all with nulls first; limit 100 rows."
+    "prompt": "For web sales whose ship date falls in the year 2000, report the count of orders bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. Group by the first 20 characters of the warehouse name, the shipping-mode type, and the web site name. Order by those three grouping columns, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 63,
+    "grade": "medium",
+    "prompt": "For store sales in the year 2000, restricted to items in one of two profiles - either category in 'Books', 'Children', 'Electronics' with class in 'personal', 'portable', 'reference', 'self-help' and brand in 'scholaramalgamalg #14', 'scholaramalgamalg #7', 'exportiunivamalg #9', or 'scholaramalgamalg #9'; or category in 'Women', 'Music', 'Men' with class in 'accessories', 'classical', 'fragrances', 'pants' and brand in 'amalgimporto #1', 'edu packscholar #1', 'exportiimporto #1', or 'importoamalg #1' - compute the total per-line sales price for each (manager id, month-of-year) combination. Then for each manager id compute the average of those per-month totals (the average monthly sales). Keep only (manager, month) rows where the average monthly sales is positive and the relative deviation between the row's total and the average (absolute difference divided by average) exceeds 0.1. Report manager id, the per-month total, and the average monthly sales. Order by manager id, then average monthly sales, then the per-month total; limit 100 rows."
+  },
+  {
+    "id": 64,
+    "grade": "hard",
+    "prompt": "Identify items sold in store sales where the cumulative extended list price (across catalog sales for that item) exceeds twice the cumulative refund amount (sum of refunded cash plus reversed charge plus store credit on catalog returns matched by item and catalog order number). For each such item involved in a store sale that also has a matching store return (on ticket number and item), aggregate by (item product name, item, store name, store ZIP, sale-address fields, customer's current-address fields, sale year, customer's first-sales date year, customer's first-ship-to date year). Restrict to items whose color is in 'purple', 'burlywood', 'indian', 'spring', 'floral', or 'medium' and whose current price is between 65 and 74 inclusive (the intersection of two stated ranges). Restrict further to sales where the customer-demographics on the sale and the customer's current customer-demographics have different marital statuses. For each group, count the number of sale lines and sum wholesale cost, list price, and coupon amount. Then self-pair these aggregated rows on item and matching store name and store ZIP, where the first row has sale year 1999 and the second has sale year 2000 and the second row's count is no greater than the first row's count. Report product name, store name, store ZIP, both addresses' street numbers, street names, cities, and ZIPs, the first row's year and count and three sums, then the second row's three sums, year, and count. Order by product name, store name, then the second row's count, then the first row's wholesale-cost sum, then the second row's wholesale-cost sum."
+  },
+  {
+    "id": 65,
+    "grade": "medium",
+    "prompt": "For store sales in the year 1998, compute revenue (sum of per-line sales price) per (store, item). For each store, compute the average across items of that per-item revenue. Keep only (store, item) rows whose per-item revenue is no more than 10 percent of the store's average. Report store name, item description, the per-item revenue, item current price, item wholesale cost, and item brand. Order by store name, item description, store, then item, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 66,
+    "grade": "hard",
+    "prompt": "For sales in year 2001, restricted to sales made between time-of-day seconds 30838 and 59638 (an 8-hour window) with shipping mode whose carrier is 'DHL' or 'BARIAN', compute monthly totals of (extended sales price times quantity) and (net paid times quantity) for both web sales and catalog sales (catalog uses net-paid-including-tax instead of plain net-paid). Group each by warehouse name, warehouse square footage, warehouse city, county, state, and country, plus year. Union-all the two channel results, labeling each with the carrier string 'DHL,BARIAN'. Then re-aggregate by warehouse name, square footage, city, county, state, country, carrier string, and year: sum the 12 monthly sales totals, sum each monthly total divided by square footage (to give per-square-foot figures), and sum the 12 monthly net totals. Report all of those 37 fields. Order by warehouse name with nulls first; limit 100 rows."
+  },
+  {
+    "id": 67,
+    "grade": "hard",
+    "prompt": "For store sales in the year 2000, compute the sum of (per-line sales price times quantity, treating null as 0) grouped with a multi-level rollup over: item category, item class, item brand, item product name, year, quarter-of-year, month-of-year, and store id. The rollup produces leaf rows, all eight subtotal levels above them, and a grand total. Within each item category (treating null category as its own group from the grand total), rank rows by the summed-sales descending. Keep only rows whose within-category rank is 100 or less. Report category, class, brand, product name, year, quarter-of-year, month-of-year, store id, summed sales, and within-category rank. Order by category, class, brand, product name, year, quarter-of-year, month-of-year, store id, summed sales, then rank, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 68,
+    "grade": "medium",
+    "prompt": "For store-sale tickets sold in years 1999, 2000, or 2001, on a day of the month between 1 and 2, at a store in the city of Fairview or Midway, to a household whose dependent count is 4 or whose vehicle count is 3, report per-ticket totals of extended sales price, extended list price, and extended tax. Group those totals by ticket number, customer, sale address, and the city recorded on the sale address. Then keep only tickets where the customer's own current home address city is different from the city recorded on the sale address. Output the customer's last name and first name, the customer's current home city, the city recorded on the sale address, the ticket number, and the three per-ticket totals. Order by last name then ticket number, both with nulls first; limit 100 rows."
+  },
+  {
+    "id": 69,
+    "grade": "medium",
+    "prompt": "For customers whose current home address state is KY, GA, or NM, who made at least one store sale between months 4 and 6 of year 2001, and who made no web sale and no catalog sale (as ship customer) in the same year, report the count of qualifying customers grouped by their current customer-demographic profile's gender, marital status, education status, purchase estimate, and credit rating. Output those five demographic attributes alongside three identical count columns. Order by gender, marital status, education status, purchase estimate, then credit rating; limit 100 rows."
+  },
+  {
+    "id": 70,
+    "grade": "hard",
+    "prompt": "For store sales whose sold date falls in the year 2000, report total net profit rolled up by store state and store county, but restrict to the top 5 states ranked by total net profit over the same window. Alongside the total, include a hierarchy level (0 for state-and-county rows, 1 for state-only subtotals, 2 for the grand total) and a rank within each parent level: state rows are ranked by net profit descending within their hierarchy level, county rows are ranked by net profit descending within their state. Order by hierarchy level descending, then by state for the detail rows, then by the within-parent rank; limit 100 rows."
+  },
+  {
+    "id": 71,
+    "grade": "medium",
+    "prompt": "For items managed by manager ID 1, combine extended sales price across web, catalog, and store sales sold in the 11th month of year 1999, restricted to sale times whose meal-time classification is either 'breakfast' or 'dinner'. Report total extended sales price grouped by item brand id, brand, and the hour and minute of the sale time. Order by total descending, then brand id, hour, and minute, all with nulls first."
+  },
+  {
+    "id": 72,
+    "grade": "hard",
+    "prompt": "For catalog sales in year 1999 to households whose buy potential is '>10000' and to customers whose current customer-demographic marital status is 'D' (divorced), match each catalog-sale line to the warehouse inventory record for the same item in the same week, keep only matches where on-hand inventory was less than the sold quantity, and further keep only lines whose ship date is more than 5 days after the sold date. Group by item description, warehouse name, and the sold week sequence, and report three counts: lines with no promotion, lines with a promotion, and total lines. Order by total count descending, then item description, warehouse name, and week sequence, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 73,
+    "grade": "medium",
+    "prompt": "List the customer's last name, first name, salutation, preferred-customer flag, store-sale ticket number, and the count of line items on that ticket. Restrict to tickets sold in years 1999, 2000, or 2001, on a day of the month between 1 and 2, at a store in Orange County, Bronx County, Franklin Parish, or Williamson County, to a household whose buy potential is 'Unknown' or '>10000', whose vehicle count is greater than 0, and whose dependent-count divided by vehicle-count is greater than 1. Count line items per ticket and customer, and keep only tickets whose count is between 1 and 5. Order by line-item count descending, then last name ascending, then ticket number ascending, then customer."
+  },
+  {
+    "id": 74,
+    "grade": "hard",
+    "prompt": "For each customer, compute total net paid from store sales and total net paid from web sales for each of years 2001 and 2002. Keep only customers whose store total and web total are both strictly positive in 2001, and for whom the ratio of 2002 web total to 2001 web total is greater than the ratio of 2002 store total to 2001 store total. Output the customer id, first name, and last name for the qualifying customers. Order by customer id with nulls first; limit 100 rows."
+  },
+  {
+    "id": 75,
+    "grade": "hard",
+    "prompt": "For items in the 'Books' category, compute net sales quantity (sold quantity minus any matched return quantity, with missing returns treated as zero) and net sales amount (extended sales price minus any matched return amount, missing treated as zero) across store, catalog, and web channels, matching returns to sales by order and item. Aggregate the unioned per-line records to year, brand id, class id, category id, and manufacturer id (deduplicate before aggregating). Then compare each (brand, class, category, manufacturer) combination between year 2002 and year 2001, keeping only those where the 2002 quantity divided by the 2001 quantity is less than 0.9. Output the previous and current years, the brand/class/category/manufacturer ids, the previous and current quantities, and the differences in quantity and in amount. Order by quantity difference, then amount difference; limit 100 rows."
+  },
+  {
+    "id": 76,
+    "grade": "medium",
+    "prompt": "Across three sales channels, find lines with a specific missing-reference situation: store sales whose selling store reference is null, web sales whose shipping customer reference is null, and catalog sales whose shipping address reference is null. For each such line, capture the year, quarter of year, and item category. Report \u2014 grouped by channel label ('store', 'web', 'catalog'), a label naming which reference is missing (use 'store reference', 'web ship customer reference', and 'catalog ship address reference' as the labels), year, quarter of year, and item category \u2014 the count of lines and the total extended sales price. Order by channel, the missing-reference label, year, quarter, then category, all with nulls first; limit 100 rows."
+  },
+  {
+    "id": 77,
+    "grade": "hard",
+    "prompt": "For the period 2000-08-23 through 2000-09-22, report sales, returns, and profit per channel and per outlet, rolled up so we get per-outlet rows, per-channel subtotals, and a grand total. Three channels are involved. For the store channel the outlet is the store id; sales is total extended store-sale price; returns is total store-return amount with missing treated as zero; profit is store-sale net profit minus matched store-return net loss. For the catalog channel the outlet is the call center id; sales is total extended catalog-sale price; returns is total catalog-return amount; profit is total catalog-sale net profit minus total catalog-return net loss across the period. For the web channel the outlet is the web page id; sales is total extended web-sale price; returns is total web-return amount with missing treated as zero; profit is web-sale net profit minus matched web-return net loss. Sum sales, returns, and profit across all rows in each rollup bucket. Order by channel and outlet id (both with nulls first), then by returns descending; limit 100 rows."
+  },
+  {
+    "id": 78,
+    "grade": "hard",
+    "prompt": "For year 2000, for each (year, item, customer) combination, compute store-channel totals from store sales that were never returned (sum of sold quantity, wholesale cost, and per-line sales price). Compute the same totals for web sales that were never returned and for catalog sales that were never returned, also keyed by (year, item, bill-customer). Then keep only store rows where the combined web-plus-catalog quantity for the same (year, item, customer) is positive. Report year, item, customer, the rounded ratio of store quantity to combined other-channel quantity (rounded to 2 decimals), store quantity, store wholesale cost, store sales price, combined other-channel quantity, combined other-channel wholesale cost, and combined other-channel sales price (missing other-channel values treated as zero). Order by year, item, customer, store quantity descending, store wholesale descending, store sales price descending, then the three other-channel totals ascending, then the ratio; limit 100 rows."
   },
   {
     "id": 79,
@@ -80,14 +398,60 @@
     "prompt": "List the customer's last name and first name, the first 30 characters of the selling store's city, the store-sale ticket number, and per-ticket totals of coupon amount and net profit. Restrict to store sales made on a Monday in years 1999, 2000, or 2001, at stores with between 200 and 295 employees, to households whose dependent count is 6 or whose vehicle count is greater than 2. Total coupon amount and net profit per ticket, customer, sale address, and store city; then join to the customer for the name fields. Order by last name, first name, the 30-character store city, net profit, then ticket number, with nulls first; limit 100 rows."
   },
   {
+    "id": 80,
+    "grade": "hard",
+    "prompt": "For the period 2000-08-23 through 2000-09-22, restricted to items whose current price is greater than 50 and to promotions whose TV channel flag is 'N', report sales, returns, and profit rolled up by channel and outlet. For the store channel the outlet id is the store id prefixed with 'store'; for the catalog channel it is the catalog page id prefixed with 'catalog_page'; for the web channel it is the web site id prefixed with 'web_site'. In each channel, profit is the channel's net profit minus matched return net loss (returns matched by order/ticket and item), and returns is the channel's return amount with missing treated as zero. Sum sales, returns, and profit across all rows in each rollup bucket so we get per-outlet rows, per-channel subtotals, and a grand total. Order by channel and outlet id, both with nulls first; limit 100 rows."
+  },
+  {
+    "id": 81,
+    "grade": "medium",
+    "prompt": "For catalog returns in year 2000, compute each (returning customer, returning-address state) combination's total return amount including tax. Then keep only customers whose total exceeds 1.2 times the average total within their returning-address state, and whose own current home address state is GA. For each such customer, output customer id, salutation, first name, last name, the current address's street number, street name, street type, suite number, city, county, state, ZIP, country, GMT offset, and location type, alongside the total return amount including tax. Order by all sixteen output columns in their listed order; limit 100 rows."
+  },
+  {
     "id": 82,
     "grade": "easy",
     "prompt": "List the item id, description, and current price of items whose current price is between 62 and 92, that are from manufacturers 129, 270, 821, or 423, that had between 100 and 500 units of inventory on hand during 2000-05-25 to 2000-07-24, and that appear in store sales. Order by item id; limit 100 rows."
   },
   {
+    "id": 83,
+    "grade": "medium",
+    "prompt": "For each item, compute three return quantities \u2014 total store-return quantity, total catalog-return quantity, and total web-return quantity \u2014 restricted to returns whose returned date falls in any of the calendar weeks that contain 2000-06-30, 2000-09-27, or 2000-11-17. Keep only items that have at least one return in all three channels. For each such item, report the item id, the store-return quantity, the store-return quantity as a percentage of the three-channel total averaged across channels (the formula is store qty divided by the three-channel sum, divided by 3, times 100), the catalog-return quantity with its analogous percentage, the web-return quantity with its analogous percentage, and the three-channel average (sum divided by 3). Order by item id then store-return quantity, both with nulls first; limit 100 rows."
+  },
+  {
     "id": 84,
     "grade": "medium",
-    "prompt": "List the customer id and full name (formatted as 'last name, first name', using empty strings for missing parts) for each match between a customer and a store return where: the customer's current home address is in the city of Edgewood; the income band of the customer's current household has lower bound at least 38128 and upper bound at most 88128; and the customer's current customer-demographic profile is the same one recorded on the store return (i.e. `sr_cdemo_sk` equals the customer's `c_current_cdemo_sk`). Report one row per qualifying (customer, store return) pair — do not deduplicate or aggregate by customer. Order by customer id with nulls first; limit 100 rows."
+    "prompt": "List the customer id and full name (formatted as 'last name, first name', using empty strings for missing parts) for each match between a customer and a store return where: the customer's current home address is in the city of Edgewood; the income band of the customer's current household has lower bound at least 38128 and upper bound at most 88128; and the customer's current customer-demographic profile is the same one recorded on the store return. Report one row per qualifying (customer, store return) pair \u2014 do not deduplicate or aggregate by customer. Order by customer id with nulls first; limit 100 rows."
+  },
+  {
+    "id": 85,
+    "grade": "hard",
+    "prompt": "For web sales sold in year 2000 that were returned, group by the return reason description and report the first 20 characters of that description, the average sold quantity, the average refunded cash on the matching return, and the average return fee. Match the web return to the web sale by item and order number. Restrict to records that satisfy one of three combined conditions linking the refunded customer-demographic profile, the returning customer-demographic profile (which must agree on marital status and education with the refunded profile), the sale's sales price, the refunded-address state and country, and the sale's net profit: (a) both demographics are married with 'Advanced Degree', the sales price is between 100 and 150, and the refunded address is in the United States in IN, OH, or NJ with net profit between 100 and 200; or (b) both single with 'College', sales price between 50 and 100, US in WI, CT, or KY with net profit between 150 and 300; or (c) both widowed with '2 yr Degree', sales price between 150 and 200, US in LA, IA, or AR with net profit between 50 and 250. Order by the 20-character reason description, then the three averages; limit 100 rows."
+  },
+  {
+    "id": 86,
+    "grade": "hard",
+    "prompt": "For web sales whose sold date falls in the year 2000, report total net paid rolled up by item category and item class. Alongside the total, include a hierarchy level (0 for category-and-class rows, 1 for category-only subtotals, 2 for the grand total) and a rank within each parent level: category rows are ranked by net paid descending within their hierarchy level, class rows are ranked by net paid descending within their category. Order by hierarchy level descending (nulls first), then by category for the detail rows (nulls first), then by the within-parent rank (nulls first); limit 100 rows."
+  },
+  {
+    "id": 87,
+    "grade": "medium",
+    "prompt": "Count the distinct (last name, first name, sale date) combinations of customers who made at least one store sale in the year 2000, but made no catalog sale and no web sale on that same date in the same year (catalog match uses billing customer; web match uses billing customer). Report a single count."
+  },
+  {
+    "id": 88,
+    "grade": "impossible",
+    "comment": "Filters on store name 'ese'. At scale factor 0.01 this specific store name is typically absent from the sampled stores, so the filter returns no rows for every half-hour bucket. Same issue as query 96.",
+    "prompt": "For store sales at the store named 'ese', to households where the dependent count and vehicle count satisfy one of these three combinations \u2014 dependent count of 4 with vehicle count no more than 6, dependent count of 2 with vehicle count no more than 4, or dependent count of 0 with vehicle count no more than 2 \u2014 produce eight separate counts of qualifying sales bucketed by the half-hour of the sold time: 8:30-9:00, 9:00-9:30, 9:30-10:00, 10:00-10:30, 10:30-11:00, 11:00-11:30, 11:30-12:00, and 12:00-12:30. Output one row with the eight counts as separate columns."
+  },
+  {
+    "id": 89,
+    "grade": "hard",
+    "prompt": "For store sales in year 1999, restricted to items in either ('Books','Electronics','Sports') with class in ('computers','stereo','football') or in ('Men','Jewelry','Women') with class in ('shirts','birdal','dresses'), report total sales price grouped by item category, class, brand, store name, store company name, and month of year. Alongside each row include the average of that monthly total computed across all months of the year for the same (category, brand, store name, store company name). Keep only rows where, when that average is non-zero, the absolute difference between the row's monthly sales and the average, divided by the average, is greater than 0.1. Order by (monthly total minus average), then store name, then category, class, brand, store company name, month of year, total, and average; limit 100 rows."
+  },
+  {
+    "id": 90,
+    "grade": "medium",
+    "prompt": "Count web sales by households with dependent count of 6, on web pages whose character count is between 5000 and 5200, for sales whose sold time falls in the morning hours 8 through 9. Count the same population for sales whose sold time falls in the evening hours 19 through 20. Report the morning count divided by the evening count as a decimal ratio (null when the evening count is zero). Order by the ratio; limit 1 row (limit 100 in the spec)."
   },
   {
     "id": 91,
@@ -95,14 +459,46 @@
     "prompt": "For catalog returns in the 11th month of year 1998, report total net loss by call center, grouped by call center id, name, and manager. Restrict to returns by customers whose current home address has a GMT offset of -7, whose household buy potential begins with 'Unknown', and whose marital-status and education combination is either married with 'Unknown' education or widowed with 'Advanced Degree' education. Use the customer's own current customer-demographics, household-demographics, and address records. Report call center id, name, and manager with the total net loss, ordered by total net loss descending."
   },
   {
+    "id": 92,
+    "grade": "medium",
+    "prompt": "For web sales of items from manufacturer ID 350, sold between 2000-01-27 and 2000-04-26, report the total extended discount amount on lines whose extended discount amount exceeds 1.3 times the average extended discount amount for that same item (across all web sales of that item in the same date window). Output a single total. Order by the total; limit 100 rows."
+  },
+  {
+    "id": 93,
+    "grade": "easy",
+    "prompt": "For each customer, sum an adjusted store-sale amount across all their store-sale lines: when the line has a matching store return (matched by ticket and item), the adjusted amount is (sold quantity minus return quantity) times sales price; otherwise it is sold quantity times sales price. Restrict to lines whose matched return reason description is 'reason 28'. Report customer and the summed adjusted amount. Order by the sum then by customer, both with nulls first; limit 100 rows."
+  },
+  {
+    "id": 94,
+    "grade": "impossible",
+    "comment": "Filters on web_site.web_company_name='pri'. At scale factor 0.01 the company-name enum sampled by Trilogy typically does not include 'pri', so the filter cannot match and the spec-faithful query returns nothing.",
+    "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where at least one other line on the same order ships from a different warehouse and no line of that order has a web return, report the count of distinct orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
+  },
+  {
+    "id": 95,
+    "grade": "impossible",
+    "comment": "Same as query 94: filters on web_site.web_company_name='pri', which is typically absent at scale factor 0.01, so the spec-faithful filter produces no rows.",
+    "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where the order has at least one other line shipping from a different warehouse and at least one web return exists for the order, report the count of distinct orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
+  },
+  {
     "id": 96,
     "grade": "impossible",
-    "comment": "Filters on store name 'ese'. Trilogy infers a closed enum for store_name from the values present in the sampled data; below full scale 'ese' is usually absent, so the spec-faithful filter cannot parse. Not gradeable below full scale factor — kept for the record, excluded from runs.",
+    "comment": "Filters on store name 'ese'. Trilogy infers a closed enum for store_name from the values present in the sampled data; below full scale 'ese' is usually absent, so the spec-faithful filter cannot parse. Not gradeable below full scale factor \u2014 kept for the record, excluded from runs.",
     "prompt": "Count the store sale line items that were sold in the 8 PM hour at or after minute 30, at the store named 'ese', to customers whose household has a dependent count of 7. Order by the count; limit 100 rows."
+  },
+  {
+    "id": 97,
+    "grade": "medium",
+    "prompt": "For sales whose sold date falls in the year 2000, take each distinct (customer, item) combination from store sales and each distinct (billing customer, item) combination from catalog sales, then full-outer-join the two sets on customer and item. Report three counts: combinations present only in the store set, combinations present only in the catalog set, and combinations present in both. Output a single row with those three counts; limit 100 rows."
+  },
+  {
+    "id": 98,
+    "grade": "medium",
+    "prompt": "For store sales of items in the 'Sports', 'Books', or 'Home' categories sold between 1999-02-22 and 1999-03-24, report for each item its id, description, category, class, and current price, along with the total extended store sales price for that item, and that item's extended sales price as a percentage of the total extended sales price of all items in its class (the ratio multiplied by 100, between 0 and 100). Group by item id, description, category, class, and current price. Order by category, class, item id, description, then the percentage, all with nulls first."
   },
   {
     "id": 99,
     "grade": "medium",
-    "prompt": "For catalog sales whose ship date falls in the 12-month window of month sequences 1200 through 1211, report the count of orders bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. Group by the first 20 characters of the warehouse name, the shipping-mode type, and the lowercased call center name. Order by the 20-character warehouse name, the shipping-mode type, then the lowercased call center name, all with nulls first; limit 100 rows."
+    "prompt": "For catalog sales whose ship date falls in the year 2000, report the count of orders bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. Group by the first 20 characters of the warehouse name, the shipping-mode type, and the lowercased call center name. Order by the 20-character warehouse name, the shipping-mode type, then the lowercased call center name, all with nulls first; limit 100 rows."
   }
 ]
