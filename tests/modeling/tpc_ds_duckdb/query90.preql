@@ -1,7 +1,7 @@
 import web_sales as ws;
 
-metric amc <- sum(ws.row_counter ? ws.time.hour between 8 and 9);
-metric pmc <- sum(ws.row_counter ? ws.time.hour between 19 and 20);
+auto amc <- sum(ws.row_counter ? ws.time.hour between 8 and 9);
+auto pmc <- sum(ws.row_counter ? ws.time.hour between 19 and 20);
 
 where
     ws.ship_household_demographic.dependent_count = 6

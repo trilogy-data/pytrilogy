@@ -21,8 +21,8 @@ properties id (
     last_review_date string, # Last date customer submitted a review (string in TPC-DS; should be cast to date)
 );
 
-property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
-property id.birth_date <- concat(birth_year::string, '/', birth_month::string, '/', birth_day::string)::date;
+auto full_name <- concat(salutation, ' ', first_name, ' ', last_name);
+auto birth_date <- concat(birth_year::string, '/', birth_month::string, '/', birth_day::string)::date;
 
 datasource customers (
     C_CUSTOMER_SK: id,

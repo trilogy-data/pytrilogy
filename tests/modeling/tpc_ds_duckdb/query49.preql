@@ -4,13 +4,13 @@ import unified_sales as sales;
 # (acts as INNER on LEFT JOIN to returns), and Dec 2001.
 def in_window(metric) -> sum(metric) by sales.sales_channel, sales.item.id;
 
-metric return_qty <- sum(sales.return_quantity) by sales.sales_channel, sales.item.id;
-metric sale_qty <- sum(sales.quantity) by sales.sales_channel, sales.item.id;
-metric return_amt <- sum(sales.return_amount) by sales.sales_channel, sales.item.id;
-metric sale_paid <- sum(sales.net_paid) by sales.sales_channel, sales.item.id;
+auto return_qty <- sum(sales.return_quantity) by sales.sales_channel, sales.item.id;
+auto sale_qty <- sum(sales.quantity) by sales.sales_channel, sales.item.id;
+auto return_amt <- sum(sales.return_amount) by sales.sales_channel, sales.item.id;
+auto sale_paid <- sum(sales.net_paid) by sales.sales_channel, sales.item.id;
 auto return_rank <- rank(sales.item.id) over (partition by sales.sales_channel order by return_ratio asc);
 auto currency_rank <- rank(sales.item.id) over (partition by sales.sales_channel order by currency_ratio asc);
-property channel_label <- case
+auto channel_label <- case
     when sales.sales_channel = 'WEB' then 'web'
     when sales.sales_channel = 'CATALOG' then 'catalog'
     when sales.sales_channel = 'STORE' then 'store'

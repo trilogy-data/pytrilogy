@@ -1,6 +1,6 @@
 query_id = "30.alt"
 gen_length = 6395
-preql_size = 1791
+preql_size = 1787
 comp_size = 1507
 generated_sql = """
 

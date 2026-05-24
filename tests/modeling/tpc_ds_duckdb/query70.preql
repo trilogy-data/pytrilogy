@@ -1,8 +1,8 @@
 import store_sales as ss;
 
 # Top-5 states by sum(profit) — same as reference's IN-subquery.
-metric state_total <- sum(ss.net_profit ? ss.date.month_seq between 1200 and 1211) by ss.store.state;
-property state_rnk <- rank(ss.store.state) over (order by state_total desc);
+auto state_total <- sum(ss.net_profit ? ss.date.month_seq between 1200 and 1211) by ss.store.state;
+auto state_rnk <- rank(ss.store.state) over (order by state_total desc);
 
 rowset top_states <- where
     ss.date.month_seq between 1200 and 1211

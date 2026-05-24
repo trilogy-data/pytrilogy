@@ -1,7 +1,7 @@
 import unified_sales as sales;
 import item as items;
 
-property electronics_manuf_ids <- items.manufacturer_id ? items.category = 'Electronics';
+auto electronics_manuf_ids <- items.manufacturer_id ? items.category = 'Electronics';
 
 where
     sales.item.manufacturer_id in electronics_manuf_ids

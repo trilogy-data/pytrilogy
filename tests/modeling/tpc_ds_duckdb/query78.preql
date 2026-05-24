@@ -2,23 +2,23 @@ import unified_sales as sales;
 
 def channel_sum(metric, channel) -> sum(metric ? sales.sales_channel = channel) by sales.date.year, sales.item.id, sales.customer.id;
 
-metric ss_qty <- sum(sales.quantity ? sales.sales_channel = 'STORE')
+auto ss_qty <- sum(sales.quantity ? sales.sales_channel = 'STORE')
     by sales.date.year, sales.item.id, sales.customer.id;
-metric ss_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'STORE')
+auto ss_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'STORE')
     by sales.date.year, sales.item.id, sales.customer.id;
-metric ss_sp <- sum(sales.sales_price ? sales.sales_channel = 'STORE')
+auto ss_sp <- sum(sales.sales_price ? sales.sales_channel = 'STORE')
     by sales.date.year, sales.item.id, sales.customer.id;
-metric ws_qty <- sum(sales.quantity ? sales.sales_channel = 'WEB')
+auto ws_qty <- sum(sales.quantity ? sales.sales_channel = 'WEB')
     by sales.date.year, sales.item.id, sales.customer.id;
-metric ws_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'WEB')
+auto ws_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'WEB')
     by sales.date.year, sales.item.id, sales.customer.id;
-metric ws_sp <- sum(sales.sales_price ? sales.sales_channel = 'WEB')
+auto ws_sp <- sum(sales.sales_price ? sales.sales_channel = 'WEB')
     by sales.date.year, sales.item.id, sales.customer.id;
-metric cs_qty <- sum(sales.quantity ? sales.sales_channel = 'CATALOG')
+auto cs_qty <- sum(sales.quantity ? sales.sales_channel = 'CATALOG')
     by sales.date.year, sales.item.id, sales.customer.id;
-metric cs_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'CATALOG')
+auto cs_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'CATALOG')
     by sales.date.year, sales.item.id, sales.customer.id;
-metric cs_sp <- sum(sales.sales_price ? sales.sales_channel = 'CATALOG')
+auto cs_sp <- sum(sales.sales_price ? sales.sales_channel = 'CATALOG')
     by sales.date.year, sales.item.id, sales.customer.id;
 auto other_chan_qty <- coalesce(ws_qty, 0) + coalesce(cs_qty, 0);
 auto other_chan_wc <- coalesce(ws_wc, 0) + coalesce(cs_wc, 0);

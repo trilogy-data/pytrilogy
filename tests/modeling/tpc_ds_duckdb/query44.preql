@@ -10,7 +10,7 @@ select
 ;
 
 # Per-item avg profit at store 4
-metric item_avg_profit <- avg(ss.net_profit) by ss.item.id;
+auto item_avg_profit <- avg(ss.net_profit) by ss.item.id;
 
 rowset ascending <- where
     ss.store.id = 4 and item_avg_profit > 0.9 * addr_null_threshold.threshold

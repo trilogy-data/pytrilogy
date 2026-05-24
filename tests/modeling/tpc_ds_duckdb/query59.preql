@@ -33,7 +33,7 @@ select
 ;
 
 # Normalized week-within-year so year1's W lines up with year2's W+52
-property normalized_week <- wss.week_seq - (case
+auto normalized_week <- wss.week_seq - (case
     when wss.in_year2 = 1 then 52
     else 0
 end);

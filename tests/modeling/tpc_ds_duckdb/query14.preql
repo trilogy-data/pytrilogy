@@ -2,14 +2,14 @@ import unified_sales as sales;
 
 # Composite key for (brand_id, class_id, category_id) tuples — encoded so a
 # single-column `in` filter can carry membership downstream.
-property tuple_key <- concat(
+auto tuple_key <- concat(
     sales.item.brand_id::string,
     '|',
     sales.item.class_id::string,
     '|',
     sales.item.category_id::string
 );
-metric fact_row_one <- count(sales.order_id) by sales.sales_channel, sales.order_id, sales.item.id;
+auto fact_row_one <- count(sales.order_id) by sales.sales_channel, sales.order_id, sales.item.id;
 
 # cross_tuples: tuples sold in all 3 channels during 1999-2001. Equivalent to
 # the reference's 3-way INTERSECT on (i_brand_id, i_class_id, i_category_id)
@@ -32,7 +32,7 @@ select
 ;
 
 # One per fact row (unified_sales grain is (sales_channel, order_id, item.id)).
-property channel_label <- case
+auto channel_label <- case
     when sales.sales_channel = 'STORE' then 'store'
     when sales.sales_channel = 'CATALOG' then 'catalog'
     when sales.sales_channel = 'WEB' then 'web'
@@ -40,7 +40,7 @@ property channel_label <- case
 end;
 
 # Map unified_sales' uppercase channel codes to the reference's lowercase labels.
-metric cross_channel_count <- count_distinct(sales.sales_channel) by tuple_key;
+auto cross_channel_count <- count_distinct(sales.sales_channel) by tuple_key;
 
 # Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items in
 # cross_tuples, HAVING sum(quantity*list_price) > avg_sales.

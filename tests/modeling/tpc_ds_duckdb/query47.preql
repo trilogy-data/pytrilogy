@@ -1,8 +1,8 @@
 import store_sales as store_sales;
 
-metric sum_sales <- sum(store_sales.sales_price)
+auto sum_sales <- sum(store_sales.sales_price)
     by store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.date.year, store_sales.date.month_of_year;
-metric avg_monthly_sales <- avg(sum_sales)
+auto avg_monthly_sales <- avg(sum_sales)
     by store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.date.year;
 auto psum <- lag(sum_sales, 1)
     over (partition by store_sales.item.category,

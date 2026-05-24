@@ -1,6 +1,6 @@
 import unified_sales as sales;
 
-property color_ids <- sales.item.name ? sales.item.color in ('slate', 'blanched', 'burnished');
+auto color_ids <- sales.item.name ? sales.item.color in ('slate', 'blanched', 'burnished');
 
 where
     sales.item.name in color_ids

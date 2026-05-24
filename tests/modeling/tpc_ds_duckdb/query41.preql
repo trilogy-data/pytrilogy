@@ -1,6 +1,6 @@
 import item as item;
 
-metric manufact_matches <- count(
+auto manufact_matches <- count(
     item.id
     ? (
     item.category = 'Women'

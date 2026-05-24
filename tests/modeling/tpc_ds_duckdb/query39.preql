@@ -5,13 +5,13 @@ def month_mean(month) -> avg(inventory.quantity_on_hand ? inventory.date.month_o
 def month_stdev(month) -> stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = month)
     by inventory.warehouse.id, inventory.item.id;
 
-metric mean1 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 1)
+auto mean1 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 1)
     by inventory.warehouse.id, inventory.item.id;
-metric stdev1 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 1)
+auto stdev1 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 1)
     by inventory.warehouse.id, inventory.item.id;
-metric mean2 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 2)
+auto mean2 <- avg(inventory.quantity_on_hand ? inventory.date.month_of_year = 2)
     by inventory.warehouse.id, inventory.item.id;
-metric stdev2 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 2)
+auto stdev2 <- stddev(inventory.quantity_on_hand ? inventory.date.month_of_year = 2)
     by inventory.warehouse.id, inventory.item.id;
 auto cov1 <- case
     when mean1 = 0 then null

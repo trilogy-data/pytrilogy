@@ -5,20 +5,20 @@ import unified_sales as sales;
 # daily total. The (item, date) grain naturally spans every (item, date) tuple
 # where EITHER web or store had a sale, giving us the FULL JOIN union without
 # explicit merge.
-metric web_daily <- sum(sales.sales_price ? sales.sales_channel = 'WEB') by sales.item.id, sales.date.date;
-metric store_daily <- sum(sales.sales_price ? sales.sales_channel = 'STORE') by sales.item.id, sales.date.date;
+auto web_daily <- sum(sales.sales_price ? sales.sales_channel = 'WEB') by sales.item.id, sales.date.date;
+auto store_daily <- sum(sales.sales_price ? sales.sales_channel = 'STORE') by sales.item.id, sales.date.date;
 
 # Per-channel row-presence flag. The reference's per-channel CTE has a row
 # whenever a sale exists on this (item, date), even if sales_price is NULL —
 # can't use `daily IS NOT NULL` since SUM of NULL prices yields NULL.
-metric web_has_row <- max(
+auto web_has_row <- max(
     case
     when sales.sales_channel = 'WEB' then 1
     else 0
 end
 )
     by sales.item.id, sales.date.date;
-metric store_has_row <- max(
+auto store_has_row <- max(
     case
     when sales.sales_channel = 'STORE' then 1
     else 0

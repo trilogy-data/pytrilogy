@@ -2,7 +2,7 @@ import unified_sales as sales;
 
 # For each (customer.last_name, customer.first_name, date.date) tuple,
 # count rows present in each channel within month_seq 1200..1211.
-metric store_in_window <- sum(
+auto store_in_window <- sum(
     case
     when sales.sales_channel = 'STORE'
     and sales.date.month_seq between 1200 and 1200 + 11
@@ -11,7 +11,7 @@ metric store_in_window <- sum(
 end
 )
     by sales.customer.last_name, sales.customer.first_name, sales.date.date;
-metric catalog_in_window <- sum(
+auto catalog_in_window <- sum(
     case
     when sales.sales_channel = 'CATALOG'
     and sales.date.month_seq between 1200 and 1200 + 11
@@ -20,7 +20,7 @@ metric catalog_in_window <- sum(
 end
 )
     by sales.customer.last_name, sales.customer.first_name, sales.date.date;
-metric web_in_window <- sum(
+auto web_in_window <- sum(
     case
     when sales.sales_channel = 'WEB'
     and sales.date.month_seq between 1200 and 1200 + 11

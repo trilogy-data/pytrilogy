@@ -52,9 +52,9 @@ auto filtered_lp <- case
     ) then store_sales.list_price
     else null
 end;
-metric lp_avg <- avg(filtered_lp) by bucket_id;
-metric lp_cnt <- count(filtered_lp) by bucket_id;
-metric lp_cntd <- count_distinct(filtered_lp) by bucket_id;
+auto lp_avg <- avg(filtered_lp) by bucket_id;
+auto lp_cnt <- count(filtered_lp) by bucket_id;
+auto lp_cntd <- count_distinct(filtered_lp) by bucket_id;
 
 where
     store_sales.quantity between 0 and 30

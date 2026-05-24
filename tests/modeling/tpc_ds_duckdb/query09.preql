@@ -21,31 +21,31 @@ def bucket_pick(cnt, threshold, low, high) -> case
         )
 end;
 
-metric count1 <- sum(
+auto count1 <- sum(
     case
     when store_sales.quantity between 1 and 20 then 1
     else 0
 end
 );
-metric count2 <- sum(
+auto count2 <- sum(
     case
     when store_sales.quantity between 21 and 40 then 1
     else 0
 end
 );
-metric count3 <- sum(
+auto count3 <- sum(
     case
     when store_sales.quantity between 41 and 60 then 1
     else 0
 end
 );
-metric count4 <- sum(
+auto count4 <- sum(
     case
     when store_sales.quantity between 61 and 80 then 1
     else 0
 end
 );
-metric count5 <- sum(
+auto count5 <- sum(
     case
     when store_sales.quantity between 81 and 100 then 1
     else 0

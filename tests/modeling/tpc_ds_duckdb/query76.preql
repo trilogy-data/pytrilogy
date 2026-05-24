@@ -4,21 +4,21 @@ import web_sales as ws;
 
 # Row-grain 0/1 flag that sums to the row count without count()'s COALESCE-to-0 wrapping
 # (which breaks the multi-branch coalesce(cnt_a, cnt_b, cnt_c) derive).
-metric ss_row_flag <- sum(
+auto ss_row_flag <- sum(
     case
     when ss.store.id is null then 1
     else 0
 end
 )
     by ss.ticket_number, ss.item.id;
-metric ws_row_flag <- sum(
+auto ws_row_flag <- sum(
     case
     when ws.ship_customer.id is null then 1
     else 0
 end
 )
     by ws.order_number, ws.item.id;
-metric cs_row_flag <- sum(
+auto cs_row_flag <- sum(
     case
     when cs.customer_address.id is null then 1
     else 0

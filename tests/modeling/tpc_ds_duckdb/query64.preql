@@ -7,8 +7,8 @@ import catalog_returns as cr;
 # through cr.sales (cr already imports catalog_sales as sales) so we avoid
 # the cross-import merge dance.
 auto cs_ui_refund_amt <- coalesce(cr.refunded_cash, 0) + coalesce(cr.reversed_charge, 0) + coalesce(cr.store_credit, 0);
-metric cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
-metric cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.id;
+auto cs_ui_sale <- sum(cr.sales.ext_list_price) by cr.sales.item.id;
+auto cs_ui_refund <- sum(cs_ui_refund_amt) by cr.sales.item.id;
 
 rowset cs_ui <- where
     cs_ui_sale > 2 * cs_ui_refund

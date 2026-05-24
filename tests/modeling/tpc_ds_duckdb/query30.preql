@@ -4,12 +4,12 @@ import web_returns as web_returns;
 # grouping the aggregate to (return_address.state, customer.id). The year/state
 # filter is bound *inside* the conditional sum because a plain sum + a row-grain
 # WHERE year=2002 loses the filter from the customer-grain aggregate.
-metric customer_state_returns_2002 <- sum(
+auto customer_state_returns_2002 <- sum(
     web_returns.return_amount
     ? web_returns.return_date.year = 2002 and web_returns.return_address.state is not null
 )
     by web_returns.return_address.state, web_returns.customer.id;
-metric scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;
+auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;
 
 where
     customer_state_returns_2002 > scaled_state_returns_2002

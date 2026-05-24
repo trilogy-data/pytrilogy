@@ -608,7 +608,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: ListWrapper):
-        return "[" + ", ".join([self.to_string(x) for x in arg]) + "]"
+        return self._render_list_items([self.to_string(x) for x in arg])
 
     @to_string.register
     def _(self, arg: TupleWrapper):
@@ -766,17 +766,14 @@ class Renderer:
             else:
                 output = f"{purpose_kw} {namespace}{concept.name} {self.to_string(concept.datatype)};"
         else:
-            # `auto` lets the parser re-infer purpose and keys from the
-            # lineage — far more readable than an explicit multi-key
-            # `<k1, k2, ...>.name` prefix. Single-key `key.name` form
-            # stays since it's already concise.
-            use_auto = key_prefix.startswith("<")
-            if use_auto:
-                output = f"auto {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
-            elif key_prefix:
-                output = f"{purpose_kw} {key_prefix}{concept.name} <- {self.to_string(concept.lineage)};"
-            else:
-                output = f"{purpose_kw} {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
+            # Any lineage-bearing concept renders as `auto`; the parser
+            # re-infers purpose and keys. `property`/`metric` keywords
+            # are reserved for typed declarations (no lineage) and
+            # inside `properties { ... } ( ... );` blocks. Use `const`
+            # when the parser classified the derivation as fully static
+            # — round-trips, and reads clearer for literal/constant defs.
+            kw = "const" if concept.purpose == Purpose.CONSTANT else "auto"
+            output = f"{kw} {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
         if base_description:
             lines = "\n#".join(base_description.split("\n"))
             output += f" #{lines}"
@@ -1219,10 +1216,25 @@ class Renderer:
     def _(self, arg: bool):
         return f"{arg}"
 
+    def _render_list_items(self, items: list[str]) -> str:
+        if not items:
+            return "[]"
+        # Wrap onto multiple lines when the flat form overflows; otherwise
+        # render inline. Priority matches _render_call so nested arrays and
+        # call args break together when needed.
+        parts: list[DocPart] = ["[", Break(5, indent=1, flat="")]
+        for i, item in enumerate(items):
+            parts.append(item)
+            if i < len(items) - 1:
+                parts.append(",")
+                parts.append(Break(5, indent=1, flat=" "))
+        parts.append(Break(5, indent=0, flat=""))
+        parts.append("]")
+        return self._pretty(parts)
+
     @to_string.register
     def _(self, arg: list):
-        base = ", ".join([self.to_string(x) for x in arg])
-        return f"[{base}]"
+        return self._render_list_items([self.to_string(x) for x in arg])
 
 
 def render_query(query: "SelectStatement") -> str:

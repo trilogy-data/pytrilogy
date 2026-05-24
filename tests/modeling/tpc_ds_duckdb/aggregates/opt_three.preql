@@ -15,7 +15,7 @@ import ..store_sales as store_sales;
 #     store_sales.item.brand_id asc
 # LIMIT 100
 # ;
-metric sum_agg <- sum(store_sales.ext_sales_price)
+auto sum_agg <- sum(store_sales.ext_sales_price)
     by store_sales.date.year, store_sales.item.brand_id, store_sales.item.brand_name;
 
 partial datasource dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id (

@@ -1,6 +1,6 @@
 import store_sales as ss;
 
-metric promotional_sales <- sum(
+auto promotional_sales <- sum(
     ss.ext_sales_price
     ? ss.promotion.channel_dmail = 'Y'
 or ss.promotion.channel_email = 'Y'

@@ -3,17 +3,17 @@ import unified_sales as sales;
 def channel_qtr(channel, qtr) -> sum(sales.ext_sales_price ? sales.sales_channel = channel and sales.date.quarter = qtr)
     by sales.bill_address.county, sales.date.year;
 
-metric ss_q1 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 1)
+auto ss_q1 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 1)
     by sales.bill_address.county, sales.date.year;
-metric ss_q2 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 2)
+auto ss_q2 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 2)
     by sales.bill_address.county, sales.date.year;
-metric ss_q3 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 3)
+auto ss_q3 <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE' and sales.date.quarter = 3)
     by sales.bill_address.county, sales.date.year;
-metric ws_q1 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 1)
+auto ws_q1 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 1)
     by sales.bill_address.county, sales.date.year;
-metric ws_q2 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 2)
+auto ws_q2 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 2)
     by sales.bill_address.county, sales.date.year;
-metric ws_q3 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 3)
+auto ws_q3 <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB' and sales.date.quarter = 3)
     by sales.bill_address.county, sales.date.year;
 auto store_q1_q2_increase <- ss_q2 / ss_q1;
 auto store_q2_q3_increase <- ss_q3 / ss_q2;

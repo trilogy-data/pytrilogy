@@ -1,12 +1,12 @@
 import unified_sales as sales;
 
-property channel_label <- case
+auto channel_label <- case
     when sales.sales_channel = 'STORE' then 'store channel'
     when sales.sales_channel = 'CATALOG' then 'catalog channel'
     when sales.sales_channel = 'WEB' then 'web channel'
     else null
 end;
-property id_label <- case
+auto id_label <- case
     when sales.sales_channel = 'STORE' then concat('store', sales.channel_dim_text_id)
     when sales.sales_channel = 'CATALOG' then concat('catalog_page', sales.channel_dim_text_id)
     when sales.sales_channel = 'WEB' then concat('web_site', sales.channel_dim_text_id)

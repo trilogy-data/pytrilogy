@@ -3,7 +3,7 @@
 # and shipping mode.
 import catalog_sales;
 
-property warehouse_short_name <- substring(warehouse.name, 1, 20);
+auto warehouse_short_name <- substring(warehouse.name, 1, 20);
 
 # we can statically evaluate the case statement to prune to
 def catalog_in_range(start, end) -> case

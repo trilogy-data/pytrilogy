@@ -1,7 +1,7 @@
 import web_sales as web_sales;
 import item as item2;
 
-property special_item_ids <- item2.name ? item2.id in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
+auto special_item_ids <- item2.name ? item2.id in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
 
 where
     web_sales.date.quarter = 2

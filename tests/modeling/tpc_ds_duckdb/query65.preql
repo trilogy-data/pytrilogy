@@ -1,7 +1,7 @@
 import store_sales as store_sales;
 
-metric item_revenue <- sum(store_sales.sales_price) by store_sales.store.id, store_sales.item.id;
-metric store_avg_revenue <- avg(item_revenue) by store_sales.store.id;
+auto item_revenue <- sum(store_sales.sales_price) by store_sales.store.id, store_sales.item.id;
+auto store_avg_revenue <- avg(item_revenue) by store_sales.store.id;
 
 where
     store_sales.date.month_seq between 1176 and 1187 and store_sales.store.id is not null

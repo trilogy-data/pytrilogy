@@ -1,6 +1,6 @@
 import unified_sales as sales;
 
-property music_item_ids <- sales.item.name ? sales.item.category = 'Music';
+auto music_item_ids <- sales.item.name ? sales.item.category = 'Music';
 
 where
     sales.item.name in music_item_ids

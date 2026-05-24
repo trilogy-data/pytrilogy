@@ -1,17 +1,17 @@
 import unified_sales as sales;
 import date as date;
 
-property target_week_seq <- date.week_seq ? date._date_string = '2000-01-03';
+auto target_week_seq <- date.week_seq ? date._date_string = '2000-01-03';
 
 def channel_item_rev(channel) -> sum(sales.ext_sales_price ? sales.sales_channel = channel) by sales.item.name;
 
-metric ss_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE') by sales.item.name;
-metric cs_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'CATALOG') by sales.item.name;
-metric ws_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB') by sales.item.name;
-property avg_rev <- (ss_item_rev + cs_item_rev + ws_item_rev) / 3;
-property ss_dev <- ss_item_rev / avg_rev * 100;
-property cs_dev <- cs_item_rev / avg_rev * 100;
-property ws_dev <- ws_item_rev / avg_rev * 100;
+auto ss_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE') by sales.item.name;
+auto cs_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'CATALOG') by sales.item.name;
+auto ws_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB') by sales.item.name;
+auto avg_rev <- (ss_item_rev + cs_item_rev + ws_item_rev) / 3;
+auto ss_dev <- ss_item_rev / avg_rev * 100;
+auto cs_dev <- cs_item_rev / avg_rev * 100;
+auto ws_dev <- ws_item_rev / avg_rev * 100;
 
 where
     sales.date.week_seq in target_week_seq

@@ -5,7 +5,7 @@ import date as date;
 merge catalog_sales.date.* into ~date.*;
 merge web_sales.date.* into ~date.*;
 
-property relevent_week_seq <- date.week_seq ? date.year in (2001, 2002);
+auto relevent_week_seq <- date.week_seq ? date.year in (2001, 2002);
 
 def weekday_sales(weekday) -> sum(
     case

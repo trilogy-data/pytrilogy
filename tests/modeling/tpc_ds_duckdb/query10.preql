@@ -10,7 +10,7 @@ merge catalog_sales.customer.id into ~customer.id;
 merge web_sales.customer.id into ~customer.id;
 merge store_sales.customer.id into ~customer.id;
 
-property relevant_customers <- customer.id
+auto relevant_customers <- customer.id
     ? store_sales.date.year = 2002
 and store_sales.date.month_of_year in (1, 2, 3, 4)
 and customer.address.county in ('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', 'La Porte County')

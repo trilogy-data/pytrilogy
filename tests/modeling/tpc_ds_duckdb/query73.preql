@@ -3,7 +3,7 @@ import store_sales as store_sales;
 # Force the count to a strict per-ticket grain via the `by` clause; the rest of
 # the ticket-level customer enrichment now derives from the same filtered rowset
 # rather than going through an unfiltered cooperative dedup of all store_sales.
-metric ticket_cnt <- count(
+auto ticket_cnt <- count(
     store_sales.item.id
     ? store_sales.date.day_of_month >= 1
 and store_sales.date.day_of_month <= 2

@@ -47,7 +47,7 @@ rowset my_revenue <- select
     cust_ss.ss_revenue * stores_cs.scs_count as revenue,
 ;
 
-property segment <- round(my_revenue.revenue / 50, 0)::int;
+auto segment <- round(my_revenue.revenue / 50, 0)::int;
 
 select
     segment,

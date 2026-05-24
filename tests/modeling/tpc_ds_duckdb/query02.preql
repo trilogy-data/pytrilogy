@@ -1,6 +1,6 @@
 import unified_sales as sales;
 
-property relevent_week_seq <- sales.date.week_seq ? sales.date.year in (2001, 2002);
+auto relevent_week_seq <- sales.date.week_seq ? sales.date.year in (2001, 2002);
 
 def weekday_sum(weekday) -> sum(sales.ext_sales_price ? sales.date.day_of_week = weekday) by sales.date.week_seq;
 def round_lag(amt) -> round(amt / (lead(amt, 53) over (order by sales.date.week_seq asc)), 2);
