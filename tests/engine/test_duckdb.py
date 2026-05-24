@@ -9,7 +9,7 @@ from trilogy import Dialects
 from trilogy.constants import Rendering
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models.author import Concept, Grain
+from trilogy.core.models.author import Concept, FunctionCallWrapper, Grain
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import ShowStatement
@@ -1203,7 +1203,10 @@ ORDER BY
 LIMIT 10;"""
     executor.parse_text(test)
     c = executor.environment.concepts["prime_cubed_plus_one"]
-    if c.lineage.operator == FunctionType.CONSTANT:  # type: ignore
+    lineage = (
+        c.lineage.content if isinstance(c.lineage, FunctionCallWrapper) else c.lineage
+    )
+    if lineage.operator == FunctionType.CONSTANT:  # type: ignore
         raise ValueError(
             "prime_cubed_plus_one should not be constant {}".format(c.lineage)
         )
