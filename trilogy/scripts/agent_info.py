@@ -112,6 +112,13 @@ explore output for `raw/store_sales.preql` ALSO contains every concept under
 You do NOT need to call `explore` separately on each dimension file — one call
 on the fact file shows the full queryable surface.
 
+**Trilogy auto-resolves joins.** Trilogy automatically resolves
+joins from the model's declared key/property relationships — there is no
+manual `JOIN` clause in this language. If `store_sales.date_dim.year` shows
+up in explore, you write `select store_sales.date_dim.year, ...;` and the
+engine does the join planning. When using an existing model, you can 
+typically query all fields safely.
+
 Prefer this over `read_file` on a model file: the same content arrives as a
 structured listing, smaller and easier to scan. Default `--show groups`
 collapses concepts by namespace so a 300+ concept fact collapses to ~25 group

@@ -61,7 +61,13 @@ class AgentMetrics:
 @dataclass
 class QueryResult:
     id: int
-    status: str  # pass | fail | error | missing
+    # pass    — candidate result set matches the TPC-DS reference
+    # fail    — query ran cleanly but the result set differs
+    # error   — engine threw (parse / generate_sql / execute / reference)
+    # missing — no query file produced (agent never wrote one)
+    # timeout — agent subprocess hit its wall-clock limit; overrides
+    #           fail/error/missing, but not `pass`
+    status: str
     ref_rows: int = 0
     cand_rows: int = 0
     generated_sql_len: int = 0
@@ -234,6 +240,20 @@ def score_query(engine, workspace: Path, idx: int) -> QueryResult:
     """Score a single query — for live dashboard updates that don't want to
     wait for the whole run to finish before grading."""
     return _score_one(engine, workspace, idx)
+
+
+def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
+    """Promote a non-passing result to ``status='timeout'`` when the agent
+    subprocess hit its wall-clock limit. A passing query is left alone — the
+    agent happened to produce a correct file before being killed."""
+    if not timed_out or result.status == "pass":
+        return result
+    detail = result.detail or "agent timed out"
+    if "timed out" not in detail.lower():
+        detail = f"agent timed out (was: {result.status}) — {detail}"
+    result.status = "timeout"
+    result.detail = detail
+    return result
 
 
 def score_queries(db_path: Path, workspace: Path, ids: list[int]) -> list[QueryResult]:

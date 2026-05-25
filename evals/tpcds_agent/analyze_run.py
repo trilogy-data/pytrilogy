@@ -30,8 +30,9 @@ STATUS_COLORS = {
     "fail": "#ef6c00",
     "error": "#c62828",
     "missing": "#9e9e9e",
+    "timeout": "#6a1b9a",
 }
-STATUS_ORDER = ["pass", "fail", "error", "missing"]
+STATUS_ORDER = ["pass", "fail", "error", "missing", "timeout"]
 OK_COLOR = "#2e7d32"
 ERR_COLOR = "#c62828"
 _RUN_FILE = re.compile(r"query(\d+)\.preql")
@@ -258,7 +259,7 @@ def _plot_per_query(ax, queries: list[dict], attempts: Counter[int]) -> None:
         fontsize=8,
         loc="upper center",
         bbox_to_anchor=(0.5, -0.13),
-        ncol=4,
+        ncol=5,
     )
 
 

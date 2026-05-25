@@ -158,6 +158,42 @@ def test_filtering_having_on_unincluded_value(test_environment):
     assert exception, "should have an exception"
 
 
+def test_order_by_accepts_aliased_concept_source():
+    parse("""key id int;
+property id.value int;
+
+datasource items (
+    id: id,
+    value: value)
+    grain(id)
+    address items;
+
+select
+    id,
+    value as v
+order by value asc;
+""")
+
+
+def test_having_accepts_aliased_aggregate_source():
+    parse("""key id int;
+property id.value int;
+property id.category string;
+
+datasource items (
+    id: id,
+    value: value,
+    category: category)
+    grain(id)
+    address items;
+
+select
+    category,
+    sum(value) as total
+having sum(value) > 15;
+""")
+
+
 def test_filtering_valid(test_environment):
     env, _ = parse("""key x int;
 property x.cost float;

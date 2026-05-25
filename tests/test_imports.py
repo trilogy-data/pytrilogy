@@ -261,6 +261,52 @@ def test_imported_file_parsed_once_via_multiple_paths(monkeypatch):
     assert parse_counts[leaf] == 1, parse_counts
 
 
+def test_missing_import_suggests_nested_match(tmp_path):
+    """When `import store_sales` fails at workspace root but `raw/store_sales.preql`
+    exists, the parser surfaces a `Did you mean: raw.store_sales?` hint instead
+    of leaking a raw OSError. This was the dominant agent dead-end in the
+    tpc_ds_agent eval (~7 wasted calls/run)."""
+    import pytest
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "store_sales.preql").write_text("key id int;", encoding="utf-8")
+    env = Environment(working_path=tmp_path)
+    with pytest.raises(ImportError, match="Did you mean: raw.store_sales"):
+        env.parse("import store_sales as store_sales; select 1 -> x;")
+
+
+def test_missing_import_no_match_omits_hint(tmp_path):
+    """No matching `.preql` anywhere under working_path → no `Did you mean` line."""
+    import pytest
+
+    env = Environment(working_path=tmp_path)
+    with pytest.raises(ImportError) as exc_info:
+        env.parse("import nonexistent as nx; select 1 -> x;")
+    assert "Did you mean" not in str(exc_info.value)
+
+
+def test_missing_import_skips_hidden_and_worker_dirs(tmp_path):
+    """Suggestions skip `_worker_*`, `__pycache__`, `.git`, etc. — without
+    this the eval workspace's parallel-worker copies dominated the hint list."""
+    import pytest
+
+    (tmp_path / "_worker_0" / "raw").mkdir(parents=True)
+    (tmp_path / "_worker_0" / "raw" / "store_sales.preql").write_text(
+        "key id int;", encoding="utf-8"
+    )
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "store_sales.preql").write_text(
+        "key id int;", encoding="utf-8"
+    )
+    env = Environment(working_path=tmp_path)
+    with pytest.raises(ImportError) as exc_info:
+        env.parse("import store_sales as store_sales; select 1 -> x;")
+    msg = str(exc_info.value)
+    assert "raw.store_sales" in msg
+    assert "_worker_0" not in msg
+
+
 def test_self_import_dict_resolver():
     self_content = """
 self import as parent;

@@ -679,6 +679,9 @@ def main() -> int:
                         status="error",
                         detail=f"inline-score: {type(exc).__name__}: {exc}",
                     )
+                per_query_scores[index] = scoring.apply_timeout(
+                    per_query_scores[index], result.get("timed_out", False)
+                )
             status = per_query_scores[index].status if per_query_scores[index] else "?"
             print(
                 f"  [q{qid:02d}] done in {result['duration']:.0f}s"
@@ -729,6 +732,10 @@ def main() -> int:
                         status="error",
                         detail=f"backfill-score: {type(exc).__name__}: {exc}",
                     )
+                per_query_scores[i] = scoring.apply_timeout(
+                    per_query_scores[i],
+                    per_query_runs[i].get("timed_out", False) if per_query_runs[i] else False,
+                )
         query_results = [
             s if s is not None else scoring.QueryResult(
                 id=entry["id"], status="error", detail="never scored"
@@ -745,6 +752,13 @@ def main() -> int:
                 scoring.QueryResult(id=i, status="error", detail="scoring aborted")
                 for i in query_ids
             ]
+        # Apply timeout overlay even in the batch-fallback path.
+        query_results = [
+            scoring.apply_timeout(
+                qr, per_query_runs[i].get("timed_out", False) if per_query_runs[i] else False
+            )
+            for i, qr in enumerate(query_results)
+        ]
 
     report = build_report(args, timestamp, agent_run, metrics, query_results)
     report["per_query"] = [

@@ -70,6 +70,10 @@ Available tools:
       imports (`product.*`, `date.*`, `customer.*`, …) in the same output.
       You do NOT need to explore each dimension separately. Prefer this over
       `read_file` on a model file. Use `--grep` (repeatable) to filter.
+      Trilogy auto-resolves joins from the model's declared relationships.
+      Join discovery is not needed;
+    write `select store_sales.date_dim.year, ...;` and Trilogy
+      handles the join. There is no manual JOIN clause in this language.
     * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
       etc. `trilogy agent-info` lists everything that exists.
 - write_file(path, content): create or overwrite a text file; `content` is the
@@ -92,10 +96,16 @@ Discipline:
 2. Skip TODOs unless the task has 3+ truly independent steps. A single-query
    task does not. Never use a TODO entry as a substitute for doing the work.
 3. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
-   the task is fully done or you are genuinely blocked."""
+   the task is fully done or you are genuinely blocked.
+4. If a tool call fails or returns the same error you have already seen, do
+   NOT immediately re-issue the same call. First emit a short plain-text
+   message naming the failure and what you will try differently (e.g. "stdin
+   was empty — re-issue with the query body in `stdin`"). Then take the
+   different action. Repeating an identical call with the same arguments is
+   never the right move."""
     if include_show:
         base +="""
-4. Use `show_message` rarely — only for a genuine status change, never to
+5. Use `show_message` rarely — only for a genuine status change, never to
    narrate intent or restate the plan."""
     return base
 

@@ -293,8 +293,10 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             select.where_clause = select.where_clause.with_reference_replacement(
                 replacements
             )
-    all_in_output = set(select.output_components)
+    all_in_output = {x.address for x in select.output_components}
     locally_derived = select.locally_derived
+    alias_sources = select.alias_source_addresses
+    allowed_addresses = all_in_output | alias_sources
     if select.where_clause:
         for cref in select.where_clause.concept_arguments:
             concept = context.concepts.get(cref.address)
@@ -320,7 +322,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
         _validate_where_aggregate_grains(select, line_no)
     if select.having_clause:
         for cref in select.having_clause.concept_arguments:
-            if cref.address not in [x for x in select.output_components]:
+            if cref.address not in allowed_addresses:
                 raise SyntaxError(
                     f"HAVING references '{cref.address}', which is not in the "
                     f"SELECT projection (line {line_no}). Fix one of: "
@@ -332,7 +334,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                 )
     if select.order_by:
         for cref in select.order_by.concept_arguments:
-            if cref.address not in all_in_output:
+            if cref.address not in allowed_addresses:
                 raise SyntaxError(
                     f"ORDER BY references '{cref.address}', which is not in the "
                     f"SELECT projection (line {line_no}). Add it to SELECT to "
