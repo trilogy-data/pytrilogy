@@ -515,7 +515,7 @@ import catalog_ret…`
 - `trilogy run --import raw/reason:reason select reason.id, contains(reason.desc, '28') limit 5;`
   - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ..., contains(reason.desc, '28') ??? limit 5; --- stderr ---
 
-### `type-error`
+### `cli-misuse`
 
 - `trilogy run query97.preql`
   - Invalid argument type 'BIGINT' passed into CONCAT function in position 1 from concept: catalog_sales.bill_customer.customer_sk. Valid: 'STRING'. --- stderr ---
