@@ -19,6 +19,7 @@ to skip the SQL compile step.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -64,6 +65,57 @@ DEPTH_COLORS = {
 }
 
 
+# Typed views over the raw node-attribute dicts written by
+# trilogy.core.processing.concept_strategies_v4. Mirror the shape produced
+# there; defaults cover the FINAL group node, which only carries a subset.
+
+
+@dataclass
+class ConceptNodeData:
+    depth_label: str = "d*"
+    derivation: str = ""
+    purpose: str = ""
+    granularity: str = ""
+    grain_components: frozenset[str] = frozenset()
+
+
+@dataclass
+class GroupNodeData:
+    depth_label: str = "d*"
+    derivation: str = ""
+    grain_components: frozenset[str] = frozenset()
+    members: tuple[str, ...] = ()
+    primary_members: tuple[str, ...] = ()
+    secondary_members: tuple[str, ...] = ()
+    member_depths: dict[str, str] = field(default_factory=dict)
+    conditions: list[str] = field(default_factory=list)
+
+
+def _concept_data(graph: nx.DiGraph, node: str) -> ConceptNodeData:
+    raw = graph.nodes[node]
+    return ConceptNodeData(
+        depth_label=raw.get("depth_label", "d*"),
+        derivation=raw.get("derivation", ""),
+        purpose=raw.get("purpose", ""),
+        granularity=raw.get("granularity", ""),
+        grain_components=raw.get("grain_components", frozenset()),
+    )
+
+
+def _group_data(graph: nx.DiGraph, node: str) -> GroupNodeData:
+    raw = graph.nodes[node]
+    return GroupNodeData(
+        depth_label=raw.get("depth_label", "d*"),
+        derivation=raw.get("derivation", ""),
+        grain_components=raw.get("grain_components", frozenset()),
+        members=tuple(raw.get("members", ())),
+        primary_members=tuple(raw.get("primary_members", ())),
+        secondary_members=tuple(raw.get("secondary_members", ())),
+        member_depths=dict(raw.get("member_depths", {})),
+        conditions=list(raw.get("conditions") or []),
+    )
+
+
 def render_digraph(graph: nx.DiGraph, output_path: Path) -> None:
     """Render a concept-dependency digraph to a PNG, sorted top-down by lineage depth."""
     lineage_edges = [
@@ -83,12 +135,10 @@ def render_digraph(graph: nx.DiGraph, output_path: Path) -> None:
     pos = nx.multipartite_layout(graph, subset_key="layer", align="horizontal")
     pos = {node: (x, -y) for node, (x, y) in pos.items()}
 
-    labels = {
-        n: f"{n}\n({graph.nodes[n].get('depth_label', 'd*')})" for n in graph.nodes
-    }
+    concept_data = {n: _concept_data(graph, n) for n in graph.nodes}
+    labels = {n: f"{n}\n({d.depth_label})" for n, d in concept_data.items()}
     node_colors = [
-        DEPTH_COLORS.get(graph.nodes[n].get("depth_label", "d*"), "#eeeeee")
-        for n in graph.nodes
+        DEPTH_COLORS.get(concept_data[n].depth_label, "#eeeeee") for n in graph.nodes
     ]
 
     plt.figure(figsize=(max(8, len(graph) * 1.2), max(4, len(graph) * 0.6)))
@@ -145,29 +195,25 @@ def _short(addr: str) -> str:
     return addr.split(".")[-1]
 
 
-def _group_label(node: str, data: dict) -> str:
-    conditions = data.get("conditions", []) or []
+def _group_label(node: str, data: GroupNodeData) -> str:
     if node == FINAL_NODE_ID:
-        members = data.get("members", ())
-        label = "FINAL\n[" + ", ".join(_short(m) for m in members) + "]"
-        if conditions:
-            label += "\nwhere " + " AND ".join(conditions)
+        label = "FINAL\n[" + ", ".join(_short(m) for m in data.members) + "]"
+        if data.conditions:
+            label += "\nwhere " + " AND ".join(data.conditions)
         return label
-    depth_label = data.get("depth_label", "d*")
-    derivation = data.get("derivation", "")
-    primary = data.get("primary_members", ())
-    secondary = data.get("secondary_members", ())
-    member_depths = data.get("member_depths", {})
 
     def _member(m: str) -> str:
-        d = member_depths.get(m, depth_label)
-        return f"{_short(m)} ({d})" if d != depth_label else _short(m)
+        d = data.member_depths.get(m, data.depth_label)
+        return f"{_short(m)} ({d})" if d != data.depth_label else _short(m)
 
-    label = f"{depth_label} · {derivation}\n[{', '.join(_member(m) for m in primary)}]"
-    if secondary:
-        label += f"\n+[{', '.join(_member(m) for m in secondary)}]"
-    if conditions:
-        label += "\nwhere " + " AND ".join(conditions)
+    label = (
+        f"{data.depth_label} · {data.derivation}\n"
+        f"[{', '.join(_member(m) for m in data.primary_members)}]"
+    )
+    if data.secondary_members:
+        label += f"\n+[{', '.join(_member(m) for m in data.secondary_members)}]"
+    if data.conditions:
+        label += "\nwhere " + " AND ".join(data.conditions)
     return label
 
 
@@ -202,21 +248,17 @@ def render_group_digraph(graph: nx.DiGraph, output_path: Path) -> None:
     pos = nx.multipartite_layout(graph, subset_key="layer", align="horizontal")
     pos = {node: (x, -y) for node, (x, y) in pos.items()}
 
-    labels = {n: _group_label(n, graph.nodes[n]) for n in graph.nodes}
+    group_data = {n: _group_data(graph, n) for n in graph.nodes}
+    labels = {n: _group_label(n, d) for n, d in group_data.items()}
     node_colors = [
-        DEPTH_COLORS.get(graph.nodes[n].get("depth_label", "d*"), "#eeeeee")
-        for n in graph.nodes
+        DEPTH_COLORS.get(group_data[n].depth_label, "#eeeeee") for n in graph.nodes
     ]
     node_edge_colors = [
-        "#c2185b"
-        if graph.nodes[n].get("conditions") and n != FINAL_NODE_ID
-        else "#888888"
+        "#c2185b" if group_data[n].conditions and n != FINAL_NODE_ID else "#888888"
         for n in graph.nodes
     ]
     node_linewidths = [
-        2.5
-        if graph.nodes[n].get("conditions") and n != FINAL_NODE_ID
-        else 1.0
+        2.5 if group_data[n].conditions and n != FINAL_NODE_ID else 1.0
         for n in graph.nodes
     ]
 
@@ -319,7 +361,7 @@ def _materialize_for_query(
     for component in build_statement.output_components:
         protected.add(component.address)
         protected.add(component.canonical_address)
-    order_by = getattr(build_statement, "order_by", None)
+    order_by = build_statement.order_by
     if order_by is not None:
         for item in order_by.items:
             for arg in item.concept_arguments:

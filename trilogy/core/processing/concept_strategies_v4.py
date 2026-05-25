@@ -31,6 +31,7 @@ from trilogy.core.processing.discovery_validation import (
 )
 from trilogy.core.processing.node_generators.basic_node import gen_basic_node
 from trilogy.core.processing.node_generators.group_node import gen_group_node
+from trilogy.core.processing.node_generators.window_node import gen_window_node 
 from trilogy.core.processing.node_generators.node_merge_node import gen_merge_node
 from trilogy.core.processing import concept_strategies_v3 as v3
 from trilogy.core.processing.nodes import (
@@ -137,9 +138,11 @@ def _build_group_graph(
 ) -> nx.DiGraph:
     """Collapse compatible concepts into groups and append a single 'final' sink.
 
-    Two concepts are compatible (groupable) when they share `depth_label`,
-    `derivation`, and grain — i.e. they have the same row shape and the same
-    role in the plan, so a single scan/projection can deliver them together.
+    Non-basic concepts group when they share `depth_label`, `derivation`, and
+    grain — same row shape, same role in the plan, deliverable in one scan.
+    Basics group purely by grain compatibility (subset/equal): any pair of
+    basics whose grains are nested can be co-projected, so connected
+    components in the subset relation define the basic groups.
     """
     # Derivations whose row shape is defined by a grain/by/partition list —
     # those grain components can be "pulled into" the group for free since they
@@ -166,6 +169,11 @@ def _build_group_graph(
     primary_group: dict[str, str] = {}
     group_data: dict[str, dict] = {}
 
+    # Basics defer to a second pass: their groupability is a structural
+    # property (grain compatibility), not a per-node identity, so we union-find
+    # them once the non-basic groups exist.
+    deferred_basics: list[tuple[str, str, frozenset[str]]] = []
+
     for node, data in concept_graph.nodes(data=True):
         depth_label = data.get("depth_label", "d*")
         derivation = data.get("derivation", "")
@@ -178,13 +186,8 @@ def _build_group_graph(
             group_depth = "root"
             group_grain: frozenset = frozenset()
         elif derivation == Derivation.BASIC.value:
-            # Basics merge by parentage: two basics that draw from the same
-            # lineage parents can be projected in the same scan.
-            parents = _lineage_parents(node)
-            parent_key = "|".join(sorted(parents)) or "∅"
-            group_id = f"grp:{depth_label}:basic:parents={parent_key}"
-            group_depth = depth_label
-            group_grain = grain
+            deferred_basics.append((node, depth_label, grain))
+            continue
         else:
             grain_key = "|".join(sorted(grain)) or "∅"
             group_id = f"grp:{depth_label}:{derivation}:{grain_key}"
@@ -204,6 +207,62 @@ def _build_group_graph(
         )
         bucket["primary_members"].append(node)
         bucket["member_depths"][node] = depth_label
+
+    # Basic-grouping pass: union basics whose grains are subset/equal. Two
+    # basics A,B share a scan iff grain(A) ⊆ grain(B) or grain(B) ⊆ grain(A);
+    # by transitivity, the connected components in that relation are the
+    # groups. We don't read derivation/purpose/parents — grain alone is the
+    # structural property that decides co-projectability.
+    parent_uf: dict[int, int] = {i: i for i in range(len(deferred_basics))}
+
+    def _find(x: int) -> int:
+        while parent_uf[x] != x:
+            parent_uf[x] = parent_uf[parent_uf[x]]
+            x = parent_uf[x]
+        return x
+
+    def _union(a: int, b: int) -> None:
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent_uf[rb] = ra
+
+    for i in range(len(deferred_basics)):
+        gi = deferred_basics[i][2]
+        for j in range(i + 1, len(deferred_basics)):
+            gj = deferred_basics[j][2]
+            if gi <= gj or gj <= gi:
+                _union(i, j)
+
+    components: dict[int, list[int]] = {}
+    for i in range(len(deferred_basics)):
+        components.setdefault(_find(i), []).append(i)
+
+    for ridx, members in components.items():
+        merged_grain: frozenset[str] = frozenset().union(
+            *(deferred_basics[i][2] for i in members)
+        )
+        depths = {deferred_basics[i][1] for i in members}
+        # Group inherits the strictest placement label of its members: a d1
+        # member pins the whole group above d0 barriers.
+        group_depth = "d1" if "d1" in depths else next(iter(depths))
+        grain_key = "|".join(sorted(merged_grain)) or "∅"
+        group_id = f"grp:basic:{grain_key}"
+        bucket = group_data.setdefault(
+            group_id,
+            {
+                "depth_label": group_depth,
+                "derivation": Derivation.BASIC.value,
+                "grain_components": merged_grain,
+                "primary_members": [],
+                "secondary_members": [],
+                "member_depths": {},
+            },
+        )
+        for i in members:
+            node, depth_label, _ = deferred_basics[i]
+            primary_group[node] = group_id
+            bucket["primary_members"].append(node)
+            bucket["member_depths"][node] = depth_label
 
     def _attach_secondary(group_id: str, address: str) -> None:
         gd = group_data[group_id]
@@ -457,6 +516,18 @@ def _build_strategy_node(
                     source_concepts=cb,
                     history=history,
                     conditions=injected,
+                )
+            elif derivation == Derivation.WINDOW.value:
+                node = gen_window_node(
+                    primaries[0],
+                    primaries[1:],
+                    environment=environment,
+                    g=g,
+                    depth=1,
+                    source_concepts=cb,
+                    history=history,
+                    conditions=injected,
+                    is_window=True,
                 )
             elif derivation == Derivation.BASIC.value:
                 node = gen_basic_node(
