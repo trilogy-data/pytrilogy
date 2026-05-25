@@ -1,6 +1,9 @@
-"""Stage 3: walk the group graph in topological order, dispatch each group
-to its derivation factory, and stitch the per-group `StrategyNode`s together
-via a graph-aware `source_concepts` callback."""
+"""Stage 3: walk the group graph in topological order, hand each group's
+already-built parents to its v4 generator, and stash the resulting node.
+
+No source-concepts callback: parents are explicit, derived from the group
+graph's lineage edges. Generators that haven't been ported to the v4 flat
+style fall back inside `v4_node_generators.dispatch.build_node`."""
 
 import networkx as nx
 
@@ -13,11 +16,10 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing import concept_strategies_v3 as v3
 from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.v4_node_generators import build_node
 
 from .constants import FINAL_NODE_ID
-from .factory_dispatch import build_node_for_group
 
 
 def combine_clauses(clauses: list[BuildWhereClause]) -> BuildWhereClause | None:
@@ -51,52 +53,22 @@ def _active_clauses_at(group_graph: nx.DiGraph, gid: str) -> list[BuildWhereClau
     return active
 
 
-def _make_source_callback(
+def _parent_nodes_for(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
-    current_gid: str,
-):
-    """Return a `source_concepts`-shaped callback that the per-derivation
-    factories will invoke when they need to fetch parent concepts. We prefer
-    already-built groups (graph predecessors first, then anything else built);
-    if no built group covers the request we delegate to v3."""
-    candidates = list(group_graph.predecessors(current_gid)) + [
-        gid for gid in built if gid != current_gid
-    ]
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for gid in candidates:
-        if gid in seen or gid == FINAL_NODE_ID:
+    gid: str,
+) -> list[StrategyNode]:
+    """Look up the already-built StrategyNodes for `gid`'s lineage
+    predecessors. Topological order guarantees they exist (or that the
+    generator was skipped, in which case we just skip that parent)."""
+    parents: list[StrategyNode] = []
+    for pgid in group_graph.predecessors(gid):
+        if pgid == FINAL_NODE_ID:
             continue
-        seen.add(gid)
-        ordered.append(gid)
-
-    def cb(
-        mandatory_list: list[BuildConcept],
-        history: History,
-        environment: BuildEnvironment,
-        depth: int,
-        g: ReferenceGraph,
-        accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
-    ) -> StrategyNode | None:
-        requested = {c.address for c in mandatory_list}
-        for pgid in ordered:
-            if pgid not in built:
-                continue
-            if requested <= _members_of(group_graph, pgid):
-                return built[pgid].copy()
-        return v3.search_concepts(
-            mandatory_list=mandatory_list,
-            history=history,
-            environment=environment,
-            depth=depth,
-            g=g,
-            accept_partial=accept_partial,
-            conditions=conditions,
-        )
-
-    return cb
+        node = built.get(pgid)
+        if node is not None:
+            parents.append(node.copy())
+    return parents
 
 
 def _topological_order(group_graph: nx.DiGraph) -> list[str]:
@@ -141,8 +113,9 @@ def build_strategy_node(
     g: ReferenceGraph,
     history: History,
 ) -> StrategyNode | None:
-    """Walk groups in topological order, dispatching each to its derivation
-    factory. Returns the most-downstream built node, or None if nothing built."""
+    """Walk groups in topological order, dispatching each to its v4 generator
+    with explicit parent nodes. Returns the most-downstream built node, or
+    None if nothing built."""
     built: dict[str, StrategyNode] = {}
 
     for gid in _topological_order(group_graph):
@@ -150,28 +123,35 @@ def build_strategy_node(
             continue
         data = group_graph.nodes[gid]
         derivation = data.get("derivation")
+        # Outputs = primaries + secondaries. Secondary members are the
+        # concepts a group can also expose for free: grain components on
+        # aggregates/windows (which appear in the GROUP BY and need to be
+        # in the SELECT), and lineage parents/roots for basics (so downstream
+        # groups can reach them via this node).
         primary_addrs = data.get("primary_members", ())
-        primaries = [
+        secondary_addrs = data.get("secondary_members", ())
+        outputs = [
             environment.concepts[a]
-            for a in primary_addrs
+            for a in (*primary_addrs, *secondary_addrs)
             if a in environment.concepts
         ]
-        if not primaries:
+        if not outputs:
             continue
         injected = combine_clauses(_active_clauses_at(group_graph, gid))
-        cb = _make_source_callback(group_graph, built, gid)
-        node = build_node_for_group(
+        parents = _parent_nodes_for(group_graph, built, gid)
+        node = build_node(
             derivation=derivation,
-            primaries=primaries,
+            outputs=outputs,
+            parents=parents,
             environment=environment,
-            g=g,
-            history=history,
-            source_concepts=cb,
             conditions=injected,
+            history=history,
+            g=g,
         )
         logger.info(
             f"[v4] built {gid} derivation={derivation} "
-            f"primaries={[p.address for p in primaries]} "
+            f"outputs={[o.address for o in outputs]} "
+            f"parents={[type(p).__name__ for p in parents]} "
             f"-> {type(node).__name__ if node else None}"
         )
         if node is not None:
