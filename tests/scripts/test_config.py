@@ -18,8 +18,10 @@ from trilogy.dialect.config import (
 )
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import (
+    DEFAULT_PARALLELISM,
     DEFAULT_STUDIO_URL,
     apply_env_vars,
+    audit_config_file,
     load_config_file,
     load_env_file,
 )
@@ -1018,3 +1020,371 @@ def test_agent_config_provider_case_insensitive():
         toml_path.write_text(content)
         config = load_config_file(toml_path)
     assert config.agent.provider == Provider.ANTHROPIC
+
+
+# -----------------------------------------------------------------------------
+# --parallelism CLI flag
+# -----------------------------------------------------------------------------
+
+
+def test_cli_parallelism_rejects_non_int():
+    """Click should reject non-int --parallelism for unit/integration/run/refresh."""
+    runner = CliRunner()
+    for cmd in ["integration", "unit", "run", "refresh"]:
+        result = runner.invoke(cli, [cmd, "model.preql", "--parallelism", "abc"])
+        assert result.exit_code != 0, f"{cmd} should reject non-int parallelism"
+        assert "not a valid integer" in result.output
+
+
+def test_cli_parallelism_accepts_int(tmp_path, monkeypatch):
+    """An int --parallelism flows into CLIRuntimeParams."""
+    from trilogy.scripts import testing
+
+    captured: dict = {}
+
+    def fake_run_parallel_execution(**kwargs):
+        captured["parallelism"] = kwargs["cli_params"].parallelism
+        from trilogy.scripts.parallel_execution import ParallelExecutionSummary
+
+        return ParallelExecutionSummary(
+            total_scripts=0,
+            successful=0,
+            skipped=0,
+            failed=0,
+            total_duration=0.0,
+            results=[],
+        )
+
+    monkeypatch.setattr(testing, "run_parallel_execution", fake_run_parallel_execution)
+    test_file = tmp_path / "x.preql"
+    test_file.write_text("select 1 as v;")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["integration", str(test_file), "duckdb", "--parallelism", "7"]
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["parallelism"] == 7
+    assert isinstance(captured["parallelism"], int)
+
+
+# -----------------------------------------------------------------------------
+# parallelism in trilogy.toml
+# -----------------------------------------------------------------------------
+
+
+def test_config_parallelism_under_engine_section(tmp_path):
+    """[engine].parallelism is the canonical location and is applied."""
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\nparallelism = 9\n')
+    config = load_config_file(toml_path)
+    assert config.parallelism == 9
+
+
+def test_config_parallelism_top_level_fallback(tmp_path):
+    """Top-level parallelism still works for prior installs."""
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('parallelism = 11\n[engine]\ndialect = "duckdb"\n')
+    config = load_config_file(toml_path)
+    assert config.parallelism == 11
+
+
+def test_config_parallelism_engine_takes_precedence(tmp_path):
+    """When both locations are set, [engine].parallelism wins."""
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        'parallelism = 1\n[engine]\ndialect = "duckdb"\nparallelism = 9\n'
+    )
+    config = load_config_file(toml_path)
+    assert config.parallelism == 9
+
+
+def test_config_parallelism_defaults_when_absent(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\n')
+    config = load_config_file(toml_path)
+    assert config.parallelism == DEFAULT_PARALLELISM
+
+
+def test_config_parallelism_applies_through_cli(tmp_path, monkeypatch):
+    """Config-file parallelism flows to the parallel-execution worker pool."""
+    from trilogy.scripts import testing
+
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\nparallelism = 6\n')
+
+    test_file = tmp_path / "x.preql"
+    test_file.write_text("select 1 as v;")
+
+    captured: dict = {}
+
+    def fake_run_parallel_execution(**kwargs):
+        from trilogy.scripts.common import (
+            merge_runtime_config,
+            resolve_input_information,
+        )
+        from trilogy.scripts.parallel_execution import ParallelExecutionSummary
+
+        cli_params = kwargs["cli_params"]
+        _, _, _, _, file_config = resolve_input_information(
+            cli_params.input, cli_params.config_path
+        )
+        _, parallelism = merge_runtime_config(cli_params, file_config)
+        captured["parallelism"] = parallelism
+        return ParallelExecutionSummary(
+            total_scripts=0,
+            successful=0,
+            skipped=0,
+            failed=0,
+            total_duration=0.0,
+            results=[],
+        )
+
+    monkeypatch.setattr(testing, "run_parallel_execution", fake_run_parallel_execution)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["integration", str(test_file), "duckdb", "--config", str(toml_path)],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["parallelism"] == 6
+
+
+def test_cli_parallelism_overrides_config(tmp_path, monkeypatch):
+    """--parallelism takes precedence over the value in the config file."""
+    from trilogy.scripts import testing
+
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\nparallelism = 6\n')
+
+    test_file = tmp_path / "x.preql"
+    test_file.write_text("select 1 as v;")
+
+    captured: dict = {}
+
+    def fake_run_parallel_execution(**kwargs):
+        from trilogy.scripts.common import (
+            merge_runtime_config,
+            resolve_input_information,
+        )
+        from trilogy.scripts.parallel_execution import ParallelExecutionSummary
+
+        cli_params = kwargs["cli_params"]
+        _, _, _, _, file_config = resolve_input_information(
+            cli_params.input, cli_params.config_path
+        )
+        _, parallelism = merge_runtime_config(cli_params, file_config)
+        captured["parallelism"] = parallelism
+        return ParallelExecutionSummary(
+            total_scripts=0,
+            successful=0,
+            skipped=0,
+            failed=0,
+            total_duration=0.0,
+            results=[],
+        )
+
+    monkeypatch.setattr(testing, "run_parallel_execution", fake_run_parallel_execution)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "integration",
+            str(test_file),
+            "duckdb",
+            "--config",
+            str(toml_path),
+            "--parallelism",
+            "2",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["parallelism"] == 2
+
+
+# -----------------------------------------------------------------------------
+# trilogy.toml field audit
+# -----------------------------------------------------------------------------
+
+
+def test_audit_clean_config_produces_no_warnings(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        "parallelism = 2\n"
+        'env_file = ".env"\n\n'
+        "[engine]\n"
+        'dialect = "duckdb"\n'
+        "parallelism = 3\n\n"
+        "[engine.config]\n"
+        "enable_spatial = true\n\n"
+        "[setup]\n"
+        "sql = []\n"
+        "trilogy = []\n\n"
+        "[staging]\n"
+        'path = "/tmp/stg"\n\n'
+        "[serve]\n"
+        'studio_url = "https://example.com"\n\n'
+        "[serve.connection]\n"
+        'type = "duckdb"\n\n'
+        "[serve.connection.options]\n"
+        'arbitrary = "ok"\n\n'
+        "[project]\n"
+        'name = "x"\n\n'
+        "[agent]\n"
+        'provider = "openai"\n'
+    )
+    assert audit_config_file(toml_path) == []
+
+
+def test_audit_warns_unknown_top_level_key(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('typo_field = 1\n[engine]\ndialect = "duckdb"\n')
+    warnings = audit_config_file(toml_path)
+    assert len(warnings) == 1
+    assert "typo_field" in warnings[0]
+    assert "top-level" in warnings[0]
+
+
+def test_audit_warns_unknown_section_key(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\nbogus = 1\n')
+    warnings = audit_config_file(toml_path)
+    assert len(warnings) == 1
+    assert "bogus" in warnings[0]
+    assert "[engine]" in warnings[0]
+
+
+def test_audit_skips_engine_config_section(tmp_path):
+    """Per-dialect config keys are not audited; the dialect dataclass enforces them."""
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        '[engine]\ndialect = "duckdb"\n\n'
+        "[engine.config]\n"
+        "enable_spatial = true\n"
+        'unknown_to_duckdb = "but ignored by audit"\n'
+    )
+    assert audit_config_file(toml_path) == []
+
+
+def test_audit_skips_serve_connection_options(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        "[serve.connection]\n"
+        'type = "snowflake"\n\n'
+        "[serve.connection.options]\n"
+        'anything_goes = "fine"\n'
+    )
+    assert audit_config_file(toml_path) == []
+
+
+def test_audit_collects_multiple_warnings(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        "typo_field = 1\n\n"
+        "[engine]\n"
+        'dialect = "duckdb"\n'
+        'rogue = "x"\n\n'
+        "[agent]\n"
+        "nonsense = 1\n"
+    )
+    warnings = audit_config_file(toml_path)
+    fields = sorted(w.split("'")[1] for w in warnings)
+    assert fields == ["nonsense", "rogue", "typo_field"]
+
+
+def test_integration_cli_warns_about_unknown_config_fields(tmp_path, monkeypatch):
+    """Running `trilogy integration` surfaces audit warnings."""
+    from trilogy.scripts import testing
+
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\nbogus_key = 1\n')
+
+    test_file = tmp_path / "x.preql"
+    test_file.write_text("select 1 as v;")
+
+    def fake_run_parallel_execution(**kwargs):
+        from trilogy.scripts.parallel_execution import ParallelExecutionSummary
+
+        return ParallelExecutionSummary(
+            total_scripts=0,
+            successful=0,
+            skipped=0,
+            failed=0,
+            total_duration=0.0,
+            results=[],
+        )
+
+    monkeypatch.setattr(testing, "run_parallel_execution", fake_run_parallel_execution)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["integration", str(test_file), "duckdb", "--config", str(toml_path)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "bogus_key" in result.output
+
+
+def test_unit_cli_warns_about_unknown_config_fields(tmp_path, monkeypatch):
+    """Running `trilogy unit` surfaces audit warnings."""
+    from trilogy.scripts import testing
+
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\n\n[agent]\nnonsense = 1\n')
+
+    test_file = tmp_path / "x.preql"
+    test_file.write_text("select 1 as v;")
+
+    def fake_run_parallel_execution(**kwargs):
+        from trilogy.scripts.parallel_execution import ParallelExecutionSummary
+
+        return ParallelExecutionSummary(
+            total_scripts=0,
+            successful=0,
+            skipped=0,
+            failed=0,
+            total_duration=0.0,
+            results=[],
+        )
+
+    monkeypatch.setattr(testing, "run_parallel_execution", fake_run_parallel_execution)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["unit", str(test_file), "--config", str(toml_path)])
+    assert result.exit_code == 0, result.output
+    assert "nonsense" in result.output
+
+
+def test_integration_cli_no_warnings_for_clean_config(tmp_path, monkeypatch):
+    """No spurious audit warnings when the config is clean."""
+    from trilogy.scripts import testing
+
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\nparallelism = 2\n')
+
+    test_file = tmp_path / "x.preql"
+    test_file.write_text("select 1 as v;")
+
+    def fake_run_parallel_execution(**kwargs):
+        from trilogy.scripts.parallel_execution import ParallelExecutionSummary
+
+        return ParallelExecutionSummary(
+            total_scripts=0,
+            successful=0,
+            skipped=0,
+            failed=0,
+            total_duration=0.0,
+            results=[],
+        )
+
+    monkeypatch.setattr(testing, "run_parallel_execution", fake_run_parallel_execution)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["integration", str(test_file), "duckdb", "--config", str(toml_path)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Unknown trilogy.toml" not in result.output

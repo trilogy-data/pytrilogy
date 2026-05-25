@@ -1105,6 +1105,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             SubselectItem,
             MultiSelectLineage,
             Comparison,
+            "FunctionCallWrapper",
         ]
     ] = None
     namespace: str = dc_field(default=DEFAULT_NAMESPACE)
@@ -1122,17 +1123,24 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             self.datatype = DataType(self.datatype)
         if self.purpose == Purpose.AUTO:
             raise ValueError("Cannot set purpose to AUTO")
-        # parse grain
+        # parse grain. FunctionCallWrapper is a syntactic marker — look
+        # through it for grain/pseudonym derivation, which depend on the
+        # inlined body's shape.
+        effective_lineage = (
+            self.lineage.content
+            if isinstance(self.lineage, FunctionCallWrapper)
+            else self.lineage
+        )
         if not self.grain and self.purpose == Purpose.KEY:
             self.grain = Grain(components={f"{self.namespace}.{self.name}"})
         elif not self.grain and self.purpose == Purpose.PROPERTY:
             self.grain = Grain(components=self.keys or set())
         elif (
-            self.lineage
-            and isinstance(self.lineage, AggregateWrapper)
-            and self.lineage.by
+            effective_lineage
+            and isinstance(effective_lineage, AggregateWrapper)
+            and effective_lineage.by
         ):
-            self.grain = Grain(components={c.address for c in self.lineage.by})
+            self.grain = Grain(components={c.address for c in effective_lineage.by})
         elif not self.grain:
             self.grain = Grain(components=set())
         elif isinstance(self.grain, Grain):
@@ -1142,11 +1150,11 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
         else:
             raise SyntaxError(f"Invalid grain {self.grain} for concept {self.name}")
         if (
-            isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.ALIAS
+            isinstance(effective_lineage, Function)
+            and effective_lineage.operator == FunctionType.ALIAS
         ):
             self.pseudonyms.update(
-                arg.address for arg in self.lineage.concept_arguments
+                arg.address for arg in effective_lineage.concept_arguments
             )
 
     def duplicate(self) -> Concept:
@@ -1302,7 +1310,28 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
         Grain,
         set[str] | None,
     ]:
-        new_lineage = self.lineage
+        # The wrapper is a syntactic marker; semantic shape comes from its
+        # inlined body. The build phase will strip the wrapper via
+        # `_build_function_call_wrapper`, so we can unwrap here too.
+        new_lineage = cast(
+            Optional[
+                Union[
+                    Function,
+                    WindowItem,
+                    FilterItem,
+                    AggregateWrapper,
+                    RowsetItem,
+                    SubselectItem,
+                    MultiSelectLineage,
+                    Comparison,
+                ]
+            ],
+            (
+                self.lineage.content
+                if isinstance(self.lineage, FunctionCallWrapper)
+                else self.lineage
+            ),
+        )
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
         if not new_lineage:
@@ -1409,6 +1438,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
                     SubselectItem,
                     MultiSelectLineage,
                     Comparison,
+                    "FunctionCallWrapper",
                 ],
                 output: List[ConceptRef],
             ):
@@ -1429,7 +1459,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
-        return self.lineage.concept_arguments if self.lineage else []
+        return list(self.lineage.concept_arguments) if self.lineage else []
 
     @classmethod
     def calculate_derivation(self, lineage, purpose: Purpose) -> Derivation:
@@ -1444,6 +1474,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             BuildWindowItem,
         )
 
+        # FunctionCallWrapper is a syntactic marker for `@fn(...)` — derivation
+        # is determined by the inlined body, not the wrapper itself.
+        if isinstance(lineage, FunctionCallWrapper):
+            lineage = lineage.content
         if lineage and isinstance(lineage, (BuildWindowItem, WindowItem)):
             return Derivation.WINDOW
         elif lineage and isinstance(lineage, (BuildFilterItem, FilterItem)):

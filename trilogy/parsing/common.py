@@ -1386,11 +1386,21 @@ def arbitrary_to_concept(
 ) -> Concept:
     namespace = namespace or environment.namespace
 
-    # this is purely for the parse tree, discard from derivation
+    # Keep the wrapper as the concept lineage so the author-time syntax
+    # `@fn(...)` round-trips through the renderer. The build phase strips it
+    # via `_build_function_call_wrapper`, so semantics are unchanged. Author-
+    # layer code that pattern-matches on lineage must look through the
+    # wrapper (e.g. `unwrap_function_call_wrapper`).
     if isinstance(parent, FunctionCallWrapper):
-        return arbitrary_to_concept(
+        inner = arbitrary_to_concept(
             parent.content, environment, namespace, name or parent.name, metadata  # type: ignore
         )
+        inner.lineage = FunctionCallWrapper(
+            content=inner.lineage,  # type: ignore[arg-type]
+            name=parent.name,
+            args=parent.args,
+        )
+        return inner
 
     # Generate name if not provided
     if not name:

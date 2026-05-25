@@ -8,30 +8,12 @@ def channel_year_total(channel, year) -> sum(
 )
     by sales.customer.id;
 
-auto store_first_year <- sum(
-    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'STORE' and sales.date.year = first_year
-)
-    by sales.customer.id;
-auto catalog_first_year <- sum(
-    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'CATALOG' and sales.date.year = first_year
-)
-    by sales.customer.id;
-auto web_first_year <- sum(
-    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'WEB' and sales.date.year = first_year
-)
-    by sales.customer.id;
-auto store_second_year <- sum(
-    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'STORE' and sales.date.year = second_year
-)
-    by sales.customer.id;
-auto catalog_second_year <- sum(
-    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'CATALOG' and sales.date.year = second_year
-)
-    by sales.customer.id;
-auto web_second_year <- sum(
-    (sales.ext_list_price - sales.ext_wholesale_cost - sales.ext_discount_amount + sales.ext_sales_price) / (2) ? sales.sales_channel = 'WEB' and sales.date.year = second_year
-)
-    by sales.customer.id;
+auto store_first_year <- @channel_year_total('STORE', first_year);
+auto catalog_first_year <- @channel_year_total('CATALOG', first_year);
+auto web_first_year <- @channel_year_total('WEB', first_year);
+auto store_second_year <- @channel_year_total('STORE', second_year);
+auto catalog_second_year <- @channel_year_total('CATALOG', second_year);
+auto web_second_year <- @channel_year_total('WEB', second_year);
 
 where
     sales.date.year in (first_year, second_year)

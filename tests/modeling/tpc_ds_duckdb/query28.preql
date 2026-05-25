@@ -56,26 +56,28 @@ auto lp_avg <- avg(filtered_lp) by bucket_id;
 auto lp_cnt <- count(filtered_lp) by bucket_id;
 auto lp_cntd <- count_distinct(filtered_lp) by bucket_id;
 
+def pivot(metric, b) -> max(metric ? bucket_id = b);
+
 where
     store_sales.quantity between 0 and 30
 select
-    max(lp_avg ? bucket_id = 1) as B1_LP,
-    max(lp_cnt ? bucket_id = 1) as B1_CNT,
-    max(lp_cntd ? bucket_id = 1) as B1_CNTD,
-    max(lp_avg ? bucket_id = 2) as B2_LP,
-    max(lp_cnt ? bucket_id = 2) as B2_CNT,
-    max(lp_cntd ? bucket_id = 2) as B2_CNTD,
-    max(lp_avg ? bucket_id = 3) as B3_LP,
-    max(lp_cnt ? bucket_id = 3) as B3_CNT,
-    max(lp_cntd ? bucket_id = 3) as B3_CNTD,
-    max(lp_avg ? bucket_id = 4) as B4_LP,
-    max(lp_cnt ? bucket_id = 4) as B4_CNT,
-    max(lp_cntd ? bucket_id = 4) as B4_CNTD,
-    max(lp_avg ? bucket_id = 5) as B5_LP,
-    max(lp_cnt ? bucket_id = 5) as B5_CNT,
-    max(lp_cntd ? bucket_id = 5) as B5_CNTD,
-    max(lp_avg ? bucket_id = 6) as B6_LP,
-    max(lp_cnt ? bucket_id = 6) as B6_CNT,
-    max(lp_cntd ? bucket_id = 6) as B6_CNTD,
+    @pivot(lp_avg, 1) as B1_LP,
+    @pivot(lp_cnt, 1) as B1_CNT,
+    @pivot(lp_cntd, 1) as B1_CNTD,
+    @pivot(lp_avg, 2) as B2_LP,
+    @pivot(lp_cnt, 2) as B2_CNT,
+    @pivot(lp_cntd, 2) as B2_CNTD,
+    @pivot(lp_avg, 3) as B3_LP,
+    @pivot(lp_cnt, 3) as B3_CNT,
+    @pivot(lp_cntd, 3) as B3_CNTD,
+    @pivot(lp_avg, 4) as B4_LP,
+    @pivot(lp_cnt, 4) as B4_CNT,
+    @pivot(lp_cntd, 4) as B4_CNTD,
+    @pivot(lp_avg, 5) as B5_LP,
+    @pivot(lp_cnt, 5) as B5_CNT,
+    @pivot(lp_cntd, 5) as B5_CNTD,
+    @pivot(lp_avg, 6) as B6_LP,
+    @pivot(lp_cnt, 6) as B6_CNT,
+    @pivot(lp_cntd, 6) as B6_CNTD,
 limit 100
 ;

@@ -101,6 +101,71 @@ class RuntimeConfig:
     agent: AgentConfig = field(default_factory=AgentConfig)
 
 
+# Schema of known fields. `[engine.config]` is intentionally omitted (validated
+# per-dialect by the config dataclasses) and `[serve.connection.options]` is
+# free-form dialect kwargs. None as the value means: known section, sub-keys
+# are not audited.
+_KNOWN_TOP_LEVEL: set[str] = {
+    "parallelism",
+    "env_file",
+    "engine",
+    "setup",
+    "staging",
+    "serve",
+    "project",
+    "agent",
+}
+_KNOWN_SECTIONS: dict[str, set[str] | None] = {
+    "engine": {"dialect", "config", "env_file", "parallelism"},
+    "engine.config": None,
+    "setup": {"trilogy", "sql"},
+    "staging": {"path"},
+    "serve": {"studio_url", "connection"},
+    "serve.connection": {"type", "options"},
+    "serve.connection.options": None,
+    "project": {"name"},
+    "agent": {
+        "provider",
+        "model",
+        "api_key_env",
+        "max_iterations",
+        "tool_output_limit",
+        "quiet",
+    },
+}
+
+
+def audit_config_file(path: Path) -> list[str]:
+    """Return warning messages for unknown fields in a trilogy.toml.
+
+    Detects unexpected top-level keys and unexpected sub-keys in known sections.
+    Sections with `None` in `_KNOWN_SECTIONS` (per-dialect config, free-form
+    options) are skipped because their schema is enforced elsewhere.
+    """
+    with safe_open(path) as f:
+        config_data = loads(f.read())
+
+    warnings: list[str] = []
+
+    def visit(prefix: str, table: dict) -> None:
+        allowed = _KNOWN_SECTIONS.get(prefix) if prefix else _KNOWN_TOP_LEVEL
+        if allowed is None:
+            return
+        for key, value in table.items():
+            qualified = f"{prefix}.{key}" if prefix else key
+            if key not in allowed:
+                location = f"[{prefix}]" if prefix else "top-level"
+                warnings.append(
+                    f"Unknown trilogy.toml field '{key}' in {location} of {path}"
+                )
+                continue
+            if isinstance(value, dict) and qualified in _KNOWN_SECTIONS:
+                visit(qualified, value)
+
+    visit("", config_data)
+    return warnings
+
+
 def load_config_file(path: Path) -> RuntimeConfig:
     with safe_open(path) as f:
         toml_content = f.read()
@@ -204,10 +269,18 @@ def load_config_file(path: Path) -> RuntimeConfig:
         quiet=bool(agent_raw.get("quiet", False)),
     )
 
+    # Canonical location is [engine].parallelism (matches docs and `trilogy init`
+    # template). Top-level is accepted as a fallback for prior installs.
+    parallelism = int(
+        engine_raw.get(
+            "parallelism", config_data.get("parallelism", DEFAULT_PARALLELISM)
+        )
+    )
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
-        parallelism=config_data.get("parallelism", DEFAULT_PARALLELISM),
+        parallelism=parallelism,
         engine_dialect=engine,
         engine_config=engine_config,
         source_path=path,

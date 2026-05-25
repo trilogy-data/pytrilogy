@@ -95,9 +95,7 @@ def fmt(ctx, input):
 
             duration = datetime.now() - start
             if total_files == 1:
-                file_path, error = (
-                    failed_files[0] if failed_files else (files[0], None)
-                )
+                file_path, error = failed_files[0] if failed_files else (files[0], None)
                 show_formatting_result(
                     total_queries, duration, file_path=file_path, error=error
                 )

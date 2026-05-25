@@ -13,19 +13,21 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import AddressType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.dialect.enums import Dialects
+from trilogy.execution.config import audit_config_file
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
     RefreshParams,
     count_statement_stats,
     create_executor_for_script,
+    find_trilogy_config,
     handle_execution_exception,
     merge_runtime_config,
     resolve_input_information,
     validate_environment,
 )
 from trilogy.scripts.dependency import DependencyResolver, ScriptNode
-from trilogy.scripts.display import print_info
+from trilogy.scripts.display import print_info, print_warning
 from trilogy.scripts.parallel_execution import (
     ExecutionMode,
     ExecutionResult,
@@ -36,6 +38,21 @@ from trilogy.scripts.refresh import run_refresh_command
 from trilogy.utility import safe_open
 
 FAILED_DEPENDENCY_ERROR = "Skipped due to failed dependency"
+
+
+def _warn_unknown_config_fields(
+    input_path: str, config_override: PathlibPath | None
+) -> None:
+    """Audit the resolved trilogy.toml and emit warnings for unknown fields."""
+    if config_override is not None:
+        config_path: PathlibPath | None = config_override
+    else:
+        start = PathlibPath(input_path)
+        config_path = find_trilogy_config(start if start.exists() else None)
+    if config_path is None or not config_path.exists():
+        return
+    for warning in audit_config_file(config_path):
+        print_warning(warning)
 
 
 def execute_script_for_integration(
@@ -186,6 +203,7 @@ def _run_refresh_for_derived_datasources(
 @option(
     "--parallelism",
     "-p",
+    type=int,
     default=None,
     help="Maximum parallel workers for directory execution",
 )
@@ -218,6 +236,7 @@ def integration(
     conn_args,
 ):
     """Run integration tests on Trilogy scripts."""
+    _warn_unknown_config_fields(input, PathlibPath(config) if config else None)
     cli_params = CLIRuntimeParams(
         input=input,
         dialect=Dialects(dialect) if dialect else None,
@@ -305,6 +324,7 @@ def integration(
 @option(
     "--parallelism",
     "-p",
+    type=int,
     default=None,
     help="Maximum parallel workers for directory execution",
 )
@@ -327,6 +347,7 @@ def unit(
     env,
 ):
     """Run unit tests on Trilogy scripts with mocked datasources."""
+    _warn_unknown_config_fields(input, PathlibPath(config) if config else None)
     # Build CLI runtime params (unit tests always use DuckDB)
     cli_params = CLIRuntimeParams(
         input=input,

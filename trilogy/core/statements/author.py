@@ -256,10 +256,15 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                 concept = environment.concepts[cref.address]
                 if isinstance(concept, UndefinedConcept):
                     continue
+                concept_lineage = (
+                    concept.lineage.content
+                    if isinstance(concept.lineage, FunctionCallWrapper)
+                    else concept.lineage
+                )
                 if (
-                    concept.lineage
-                    and isinstance(concept.lineage, Function)
-                    and concept.lineage.operator
+                    concept_lineage
+                    and isinstance(concept_lineage, Function)
+                    and concept_lineage.operator
                     in FunctionClass.AGGREGATE_FUNCTIONS.value
                 ):
                     if concept.address in self.locally_derived:
@@ -268,9 +273,9 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                         )
 
                 if (
-                    concept.lineage
-                    and isinstance(concept.lineage, AggregateWrapper)
-                    and concept.lineage.function.operator
+                    concept_lineage
+                    and isinstance(concept_lineage, AggregateWrapper)
+                    and concept_lineage.function.operator
                     in FunctionClass.AGGREGATE_FUNCTIONS.value
                 ):
                     if concept.address in self.locally_derived:
