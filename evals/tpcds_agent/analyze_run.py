@@ -44,12 +44,11 @@ def latest_run_dir() -> Path:
     return runs[-1]
 
 
-def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
-    report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+def load_run_events(run_dir: Path) -> tuple[None, list[dict]]:
+    """Load only the JSONL events from a run dir, without requiring
+    ``report.json`` to exist yet. Used by the live-dashboard renderer that
+    runs while the eval is still in flight."""
     events: list[dict] = []
-    # Per-query mode writes agent_log.q<id>.jsonl per query; legacy single-agent
-    # runs write a single agent_log.jsonl. Read whichever (or both) is present,
-    # in stable filename order so per-query event streams stay grouped.
     for log in sorted(run_dir.glob("agent_log*.jsonl")):
         for line in log.read_text(encoding="utf-8").splitlines():
             if line.strip():
@@ -57,6 +56,12 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
                     events.append(json.loads(line))
                 except json.JSONDecodeError:
                     pass
+    return None, events
+
+
+def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
+    report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    _, events = load_run_events(run_dir)
     return report, events
 
 

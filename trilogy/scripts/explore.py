@@ -8,7 +8,6 @@ so a 378-concept fact like ``store_sales`` collapses to ~25 group lines.
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Sequence
@@ -30,14 +29,21 @@ def _load_environment(path: Path) -> Environment:
 
 
 def _compact_datatype(dt: str) -> str:
-    """``Trait<STRING, ['us_state']>`` → ``string<us_state>``. Keeps the trait
-    name (often the semantic hint the agent cares about) and drops the
-    redundant base-type wrapping."""
-    m = re.match(r"Trait<([A-Z]+),\s*\[(.*)\]>", dt)
-    if m:
-        base, traits = m.group(1).lower(), m.group(2)
-        traits = re.sub(r"['\"]", "", traits).strip()
-        return f"{base}<{traits}>" if traits else base
+    """``Trait<STRING, ['us_state']>`` → ``string::us_state`` to mirror the
+    `value::trait` authoring syntax. Keeps the trait name (the semantic hint
+    the agent cares about) and drops the redundant base-type wrapping. The
+    inner type can itself be a generic (e.g. ``Trait<enum<'TN'>, ['us_state']>``)
+    so we split on the trait-list delimiter ``, [`` rather than a flat regex."""
+    if dt.startswith("Trait<") and dt.endswith("]>"):
+        body = dt[len("Trait<") : -len("]>")]
+        sep = ", ["
+        idx = body.rfind(sep)
+        if idx > 0:
+            base = _compact_datatype(body[:idx])
+            traits = ", ".join(
+                t.strip().strip("'\"") for t in body[idx + len(sep) :].split(",") if t.strip()
+            )
+            return f"{base}::{traits}" if traits else base
     if dt.startswith("enum<") and len(dt) > 60:
         # Long enums: keep first 3 + count, e.g. enum<'A','B','C',…+7>
         body = dt[len("enum<") : -1]
@@ -48,11 +54,26 @@ def _compact_datatype(dt: str) -> str:
     return dt.lower() if dt.isupper() else dt
 
 
+_LOCAL_PREFIX = "local."
+
+
+def _display_address(address: str) -> str:
+    """Strip the implicit ``local.`` namespace from a concept address for
+    display. The local namespace is the file's own bare declarations; bare
+    references work everywhere they're addressable (including from importing
+    queries after ``import file as alias``, which rebinds them under the
+    alias). Showing ``local.X`` invites the agent to copy that literal into a
+    query where it no longer resolves."""
+    if address.startswith(_LOCAL_PREFIX):
+        return address[len(_LOCAL_PREFIX) :]
+    return address
+
+
 def _concept_row(address: str, concept: Concept) -> tuple[str, str, str, str]:
     purpose = concept.purpose.value
     derivation = concept.derivation.value
     datatype = _compact_datatype(str(concept.datatype))
-    return address, purpose, derivation, datatype
+    return _display_address(address), purpose, derivation, datatype
 
 
 def _emit_table(
@@ -75,13 +96,24 @@ def _emit_groups(concept_items: list[tuple[str, Concept]]) -> None:
     """Compact namespace-grouped listing — one line per leaf attribute under
     each namespace prefix, e.g. ``customer.customer_address  →  city, state,
     zip, county, …``. Cuts the size of a typical fact's schema dump by ~5×
-    versus the flat table."""
+    versus the flat table. Concepts in the implicit ``local`` namespace are
+    grouped under ``(this file)`` — they're referenced bare from the file's
+    own queries, or under the importing query's alias."""
     by_ns: dict[str, list[tuple[str, Concept]]] = defaultdict(list)
     for addr, c in concept_items:
-        ns, _, leaf = addr.rpartition(".")
-        by_ns[ns or "(root)"].append((leaf, c))
+        display = _display_address(addr)
+        ns, sep, leaf = display.rpartition(".")
+        if not sep:
+            # No remaining dot ⇒ this was a `local.X` concept; group under a
+            # clear label so the agent can see at a glance which concepts
+            # belong to the file itself (vs. its imports).
+            by_ns["(this file)"].append((display, c))
+        else:
+            by_ns[ns].append((leaf, c))
     click.echo()
-    print_info(f"Concept groups ({len(by_ns)} namespaces, {len(concept_items)} concepts)")
+    print_info(
+        f"Concept groups ({len(by_ns)} namespaces, {len(concept_items)} concepts)"
+    )
     for ns in sorted(by_ns):
         items = by_ns[ns]
         # ks/ps/ms split so the agent can see grain-defining keys at a glance
@@ -188,9 +220,7 @@ def explore(
         ]
     if purpose:
         allowed = {p.lower() for p in purpose}
-        concept_items = [
-            (k, v) for k, v in concept_items if v.purpose.value in allowed
-        ]
+        concept_items = [(k, v) for k, v in concept_items if v.purpose.value in allowed]
     if grep:
         needles = [g.lower() for g in grep]
         concept_items = [

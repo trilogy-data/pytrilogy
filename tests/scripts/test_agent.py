@@ -24,6 +24,7 @@ from trilogy.scripts.agent import (
     _maybe_flag_loop,
     _run_turn,
     _status_message,
+    handle_list_files,
     handle_read_file,
     handle_return_control,
     handle_show_message,
@@ -238,6 +239,47 @@ def test_write_file_validates_arguments():
     )
 
 
+def test_list_files_recursive_shows_nested_paths(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "store_sales.preql").write_text("x", encoding="utf-8")
+    (tmp_path / "trilogy.toml").write_text("y", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "trilogy.toml" in out
+    assert "raw/store_sales.preql" in out
+
+
+def test_list_files_skips_workspace_noise(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "tpcds.duckdb").write_text("bin", encoding="utf-8")
+    (tmp_path / "_worker_0").mkdir()
+    (tmp_path / "_worker_0" / "junk.preql").write_text("z", encoding="utf-8")
+    (tmp_path / "__pycache__").mkdir()
+    (tmp_path / "__pycache__" / "x.pyc").write_text("z", encoding="utf-8")
+    (tmp_path / "query01.preql").write_text("q", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "query01.preql" in out
+    assert "tpcds.duckdb" not in out
+    assert "_worker_0" not in out
+    assert "__pycache__" not in out
+
+
+def test_list_files_reports_missing_and_non_directory(tmp_path):
+    assert "no such path" in handle_list_files(
+        AgentState(), {"path": str(tmp_path / "missing")}
+    )
+    f = tmp_path / "f.txt"
+    f.write_text("x", encoding="utf-8")
+    assert "not a directory" in handle_list_files(AgentState(), {"path": str(f)})
+
+
+def test_list_files_validates_args():
+    assert "non-empty string" in handle_list_files(AgentState(), {"path": ""})
+    assert "must be a boolean" in handle_list_files(
+        AgentState(), {"path": ".", "recursive": "yes"}
+    )
+
+
 def test_read_file_validates_path():
     assert "non-empty string" in handle_read_file(AgentState(), {})
     assert "non-empty string" in handle_read_file(AgentState(), {"path": ""})
@@ -290,19 +332,16 @@ def test_handle_trilogy_file_write_hints_on_split_content(tmp_path):
 # --- return_control_to_user gating ---
 
 
-def test_return_control_blocked_by_open_todos():
+def test_return_control_auto_discards_open_todos():
+    # Earlier behavior refused exit with uncompleted TODOs; the eval showed
+    # agents burning iterations on complete/remove just to satisfy the gate.
+    # Open items are now auto-discarded so exit is always cheap.
     state = AgentState(todos=[TodoItem(id="a", description="x")])
     result = handle_return_control(state, {"message": "done"})
-    assert "refused" in result
-    assert state.done is False
-
-
-def test_return_control_succeeds_when_todos_complete():
-    state = AgentState(todos=[TodoItem(id="a", description="x", completed=True)])
-    result = handle_return_control(state, {"message": "all good"})
     assert result == "return_control_to_user: ok"
     assert state.done is True
-    assert state.farewell == "all good"
+    assert state.todos == []
+    assert state.farewell == "done"
 
 
 def test_return_control_succeeds_with_no_todos():
@@ -459,28 +498,29 @@ def test_run_turn_reprompts_when_no_tool_calls():
     )
 
 
-def test_run_turn_blocks_return_until_todos_completed(monkeypatch):
+def test_run_turn_return_control_drops_open_todos(monkeypatch):
     class _FixedUUID:
         hex = "abcd1234ffff"
 
     monkeypatch.setattr(agent_mod.uuid, "uuid4", lambda: _FixedUUID())
+    # Open TODOs no longer gate exit. The agent adds one, then returns
+    # control immediately; the open item is discarded and the run ends.
     provider = ScriptedProvider(
         responses=[
             make_response(call("todo", action="add", description="step one")),
-            make_response(call("return_control_to_user", message="premature")),
-            make_response(call("todo", action="complete", id="abcd1234")),
-            make_response(call("return_control_to_user", message="done now")),
+            make_response(call("return_control_to_user", message="done")),
         ]
     )
     conv = make_conv(provider)
     state = AgentState()
     _run_turn(conv, state, max_iterations=10)
     assert state.done is True
-    assert state.farewell == "done now"
-    refusal_msgs = [
-        m.content for m in conv.messages if m.role == "user" and "refused" in m.content
-    ]
-    assert len(refusal_msgs) == 1
+    assert state.farewell == "done"
+    assert state.todos == []
+    # No refusal message — the gate is gone.
+    assert not any(
+        "refused" in m.content for m in conv.messages if m.role == "user"
+    )
 
 
 def test_run_turn_raises_after_max_iterations():
@@ -920,6 +960,7 @@ def test_all_tools_registered():
         "trilogy",
         "write_file",
         "read_file",
+        "list_files",
         "todo",
         "return_control_to_user",
     }

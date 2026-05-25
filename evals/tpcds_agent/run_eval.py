@@ -14,6 +14,7 @@ import argparse
 import dataclasses
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -220,6 +221,9 @@ def prepare_worker_workspace(src: Path, worker_idx: int) -> Path:
     return worker_dir
 
 
+_ADDRESS_DB_PREFIX = re.compile(r"^(address\s+)([A-Za-z_]\w*)\.", re.MULTILINE)
+
+
 def install_enriched_model(workspace: Path, src_dir: Path) -> dict:
     """Skip ingest and seed ``workspace/raw/`` from a hand-curated model directory.
 
@@ -227,23 +231,36 @@ def install_enriched_model(workspace: Path, src_dir: Path) -> dict:
     (concept descriptions, derived metrics, named import aliases) lifts the
     agent above what bare ``trilogy ingest --all`` produces. Only top-level
     ``*.preql`` files are copied — ``query*.preql`` and ``adhoc*.preql`` are
-    skipped so we hand the agent a model, not the reference answers."""
+    skipped so we hand the agent a model, not the reference answers.
+
+    The source models were authored against an in-memory DuckDB (``address
+    memory.<table>``), but the eval workspace's ``tpcds.duckdb`` attaches as a
+    different database name — so we strip the leading database qualifier on
+    each ``address`` line as we copy. Tables resolve via DuckDB's default
+    catalog search path, which is what we want for an arbitrary db file."""
     raw = workspace / "raw"
     if raw.exists():
         shutil.rmtree(raw)
     raw.mkdir(parents=True)
     start = time.perf_counter()
     copied: list[str] = []
+    rewrites = 0
     for path in sorted(src_dir.glob("*.preql")):
         name = path.name
         if name.startswith("query") or name.startswith("adhoc"):
             continue
-        shutil.copy2(path, raw / name)
+        text = path.read_text(encoding="utf-8")
+        new_text, n = _ADDRESS_DB_PREFIX.subn(r"\1", text)
+        rewrites += n
+        (raw / name).write_text(new_text, encoding="utf-8")
         copied.append(name)
     return {
         "exit_code": 0,
         "duration": time.perf_counter() - start,
-        "stdout": f"copied {len(copied)} files from {src_dir}: {copied}\n",
+        "stdout": (
+            f"copied {len(copied)} files from {src_dir} "
+            f"(stripped db-qualifier on {rewrites} address lines): {copied}\n"
+        ),
         "stderr": "",
     }
 
@@ -551,6 +568,7 @@ def main() -> int:
     per_query_metrics: list[scoring.AgentMetrics] = [
         scoring.AgentMetrics() for _ in active
     ]
+    per_query_scores: list[scoring.QueryResult | None] = [None] * len(active)
     worker_pool: "list[Path]" = list(worker_dirs)
     pool_lock = threading.Lock()
 
@@ -561,6 +579,66 @@ def main() -> int:
     def release_worker(worker: Path) -> None:
         with pool_lock:
             worker_pool.append(worker)
+
+    # Enriched runs are useful to compare directly against base runs; give
+    # their committed artifacts a distinct suffix so they don't clobber the
+    # base baseline in charts/.
+    suffix = "_enriched" if args.enriched_model_dir else ""
+
+    # --- live dashboard machinery ---------------------------------------
+    # Build the scoring engine ONCE and reuse it per query. Reusing avoids
+    # paying engine setup + `INSTALL tpcds; LOAD tpcds;` on every grade.
+    try:
+        scoring_engine = scoring.make_scoring_engine(workspace_db, workspace)
+    except Exception as exc:
+        scoring_engine = None
+        print(
+            f"  scoring engine init failed; live dashboard disabled: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+    scoring_lock = threading.Lock()
+    render_lock = threading.Lock()
+    last_render = [0.0]  # one-element list so the closure can mutate it
+    RENDER_MIN_INTERVAL = 10.0  # seconds — debounce so matplotlib isn't hot
+
+    def maybe_render_dashboard(force: bool = False) -> None:
+        if scoring_engine is None:
+            return
+        with render_lock:
+            now = time.perf_counter()
+            if not force and now - last_render[0] < RENDER_MIN_INTERVAL:
+                return
+            last_render[0] = now
+            graded = [s for s in per_query_scores if s is not None]
+            done_runs = [r for r in per_query_runs if r is not None]
+            agent_run_partial = {
+                "exit_code": 0,
+                "timed_out": any(r.get("timed_out") for r in done_runs),
+                "duration": sum(r["duration"] for r in done_runs),
+                "output": "",
+            }
+            metrics_partial = scoring.aggregate_metrics(per_query_metrics)
+            try:
+                partial_report = build_report(
+                    args, timestamp, agent_run_partial, metrics_partial, graded
+                )
+                # In-progress queries land in build_report as a smaller total
+                # than meta.num_queries — patch the headline so the dashboard
+                # title reflects the live denominator.
+                partial_report["meta"]["num_queries"] = len(active)
+                _, events = analyze_run.load_run_events(run_dir)
+                analyze_run.render(
+                    partial_report,
+                    events,
+                    analyze_run.CHARTS_DIR / f"dashboard{suffix}.png",
+                )
+            except Exception as exc:
+                # Never let a render failure kill the run — chart is best-effort.
+                print(
+                    f"  live dashboard render skipped: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
 
     def run_one(index: int, entry: dict) -> None:
         qid = entry["id"]
@@ -587,11 +665,27 @@ def main() -> int:
                     produced.unlink()
             per_query_runs[index] = result
             per_query_metrics[index] = scoring.parse_agent_log(log_path)
+            # Inline-score so the live dashboard reflects pass/fail rather than
+            # just "agent finished". Lock around the shared engine.
+            if scoring_engine is not None:
+                try:
+                    with scoring_lock:
+                        per_query_scores[index] = scoring.score_query(
+                            scoring_engine, workspace, qid
+                        )
+                except Exception as exc:
+                    per_query_scores[index] = scoring.QueryResult(
+                        id=qid,
+                        status="error",
+                        detail=f"inline-score: {type(exc).__name__}: {exc}",
+                    )
+            status = per_query_scores[index].status if per_query_scores[index] else "?"
             print(
                 f"  [q{qid:02d}] done in {result['duration']:.0f}s"
-                f" (exit {result['exit_code']})",
+                f" (exit {result['exit_code']}, score={status})",
                 flush=True,
             )
+            maybe_render_dashboard()
         finally:
             release_worker(worker)
 
@@ -618,15 +712,39 @@ def main() -> int:
     }
     (run_dir / "agent_output.txt").write_text(agent_run["output"], encoding="utf-8")
 
-    print(f"[4/5] Scoring {len(query_ids)} queries against TPC-DS reference ...")
-    try:
-        query_results = scoring.score_queries(workspace_db, workspace, query_ids)
-    except Exception as exc:
-        print(f"  scoring aborted: {type(exc).__name__}: {exc}", file=sys.stderr)
+    print(f"[4/5] Finalising scores for {len(query_ids)} queries ...")
+    # Queries were scored inline as agents finished; backfill any that never
+    # got that far (e.g. crashed in run_one before the scoring step).
+    if scoring_engine is not None:
+        for i, entry in enumerate(active):
+            if per_query_scores[i] is None:
+                try:
+                    with scoring_lock:
+                        per_query_scores[i] = scoring.score_query(
+                            scoring_engine, workspace, entry["id"]
+                        )
+                except Exception as exc:
+                    per_query_scores[i] = scoring.QueryResult(
+                        id=entry["id"],
+                        status="error",
+                        detail=f"backfill-score: {type(exc).__name__}: {exc}",
+                    )
         query_results = [
-            scoring.QueryResult(id=i, status="error", detail="scoring aborted")
-            for i in query_ids
+            s if s is not None else scoring.QueryResult(
+                id=entry["id"], status="error", detail="never scored"
+            )
+            for s, entry in zip(per_query_scores, active)
         ]
+    else:
+        # No live scoring was possible — fall back to the legacy batch path.
+        try:
+            query_results = scoring.score_queries(workspace_db, workspace, query_ids)
+        except Exception as exc:
+            print(f"  scoring aborted: {type(exc).__name__}: {exc}", file=sys.stderr)
+            query_results = [
+                scoring.QueryResult(id=i, status="error", detail="scoring aborted")
+                for i in query_ids
+            ]
 
     report = build_report(args, timestamp, agent_run, metrics, query_results)
     report["per_query"] = [
@@ -646,10 +764,8 @@ def main() -> int:
     markdown = render_markdown(report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
 
-    # Enriched runs are useful to compare directly against base runs; give
-    # their committed artifacts a distinct suffix so they don't clobber the
-    # base baseline in charts/.
-    suffix = "_enriched" if args.enriched_model_dir else ""
+    # `suffix` is defined upstream alongside the live-render setup so the
+    # in-flight chart and the final chart share the same filename.
     try:
         _, events = analyze_run.load_run(run_dir)
         dashboard = analyze_run.render(

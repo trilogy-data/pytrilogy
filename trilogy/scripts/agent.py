@@ -46,7 +46,9 @@ PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
     Provider.OPENROUTER: OpenRouterProvider,
 }
 
-_AGENT_INSTRUCTIONS = """You are the Trilogy CLI agent. You operate by calling tools.
+
+def get_agent_instructions(include_show:bool = True) -> str:
+    base = """You are the Trilogy CLI agent. You operate by calling tools.
 
 Available tools:
 - show_message(message): print a message to the user.
@@ -54,52 +56,50 @@ Available tools:
   list of string arguments. Output is captured and returned; large outputs are
   truncated from the middle. Common uses:
     * ["agent-info"] — prints the full CLI docs AND the Trilogy language
-      syntax reference. Run this first, and read the language section before
-      writing any .preql file.
+      syntax reference. CALL THIS FIRST on every task before writing any
+      .preql file. Trilogy is not SQL; the language section names the rules
+      you cannot afford to guess. Do not skip it.
     * ["database", "list"] — list the tables in the configured database.
       ["database", "describe", "<table>"] — show a table's columns and types.
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
       under raw/) for every table in the database, in one step.
     * Run a Trilogy script: ["run", "<path.preql>"].
     * ["explore", "<path.preql>"] is the canonical "what concepts can I query
-      from this file?" tool. Prefer it over `read_file` on a model file —
-      default output groups concepts by namespace so a 300+ concept fact
-      collapses to ~25 group lines. Use `--grep` (repeatable) to filter, or
-      `--show concepts` for the flat table.
+      from this file?" tool. Imported references chain in — exploring the
+      fact file (e.g. `sales.preql`) ALSO lists all dimensions it
+      imports (`product.*`, `date.*`, `customer.*`, …) in the same output.
+      You do NOT need to explore each dimension separately. Prefer this over
+      `read_file` on a model file. Use `--grep` (repeatable) to filter.
     * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
       etc. `trilogy agent-info` lists everything that exists.
 - write_file(path, content): create or overwrite a text file; `content` is the
   exact, full file text. This is how you create every .preql query file.
-- read_file(path): return the text content of a file. Use this for *your own
-  output files* (re-reading a query you just wrote) — for discovering what's
-  in a model file, use `trilogy explore` instead.
-- todo(action, id=None, description=None): manage a scratch TODO list. Actions:
-  "add" (description: one string, or a list of strings to add several at once),
-  "complete"/"remove" (id: one id or a list of ids), "list". Plan in one `add`.
-- return_control_to_user(message): hand control back to the user. This FAILS if
-  any TODOs are not completed — either complete or remove them first.
+- read_file(path): return the text content of a file; use this for
+  code understanding; prefer explore for usage.
+- list_files(path=".", recursive=True): list files in the workspace.
+  Call this when you are unsure what files exist (e.g. before guessing a
+  path like `./store_sales.preql` — the model files live under `raw/`).
+  Skips noise (`__pycache__`, `.duckdb`, `_worker_*`).
+- todo(action, id=None, description=None): scratch TODO list, for multi-step
+  tasks ONLY. Actions: "add" (description: one string, or a list to add
+  several), "complete"/"remove" (id: one id or a list), "list". Most tasks
+  finish without ever calling this.
+- return_control_to_user(message): hand control back to the user. Open TODOs
+  are auto-discarded so you never need to clean them up just to exit.
 
 Discipline:
-1. Bias toward action — every turn should make concrete progress with the
-   `trilogy` tool. Never repeat exploration you have already done.
-2. The TODO list is optional and for your own tracking only. Keep it short;
-   never let managing todos substitute for doing the real work.
-3. Use `show_message` rarely — only for a genuine status change, never to
-   narrate intent or restate the plan.
-4. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
+1. Bias toward action and use of the trilogy CLI Never repeat exploration you have already done.
+2. Skip TODOs unless the task has 3+ truly independent steps. A single-query
+   task does not. Never use a TODO entry as a substitute for doing the work.
+3. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
    the task is fully done or you are genuinely blocked."""
+    if include_show:
+        base +="""
+4. Use `show_message` rarely — only for a genuine status change, never to
+   narrate intent or restate the plan."""
+    return base
 
 
-def _strip_show_message(text: str) -> str:
-    """Return the agent system prompt without the ``show_message`` tool line
-    and its discipline rule — used in quiet mode where the tool is absent."""
-    out = text.replace("- show_message(message): print a message to the user.\n", "")
-    out = out.replace(
-        "3. Use `show_message` rarely — only for a genuine status change, never to\n"
-        "   narrate intent or restate the plan.\n",
-        "",
-    )
-    return out.replace("4. Use `trilogy`", "3. Use `trilogy`")
 
 
 # The Trilogy language reference has one source of truth, get_trilogy_prompt()
@@ -110,9 +110,9 @@ _TRILOGY_PROMPT_SECTION = get_trilogy_prompt(
         "reference exactly — Trilogy is NOT SQL:"
     )
 )
-SYSTEM_PROMPT = _AGENT_INSTRUCTIONS + "\n\n" + _TRILOGY_PROMPT_SECTION
+SYSTEM_PROMPT =  get_agent_instructions(True) + "\n\n" + _TRILOGY_PROMPT_SECTION
 QUIET_SYSTEM_PROMPT = (
-    _strip_show_message(_AGENT_INSTRUCTIONS) + "\n\n" + _TRILOGY_PROMPT_SECTION
+     get_agent_instructions(False) + "\n\n" + _TRILOGY_PROMPT_SECTION
 )
 
 
@@ -218,6 +218,28 @@ READ_FILE_TOOL = LLMToolDefinition(
     },
 )
 
+LIST_FILES_TOOL = LLMToolDefinition(
+    name="list_files",
+    description=(
+        "List files in the workspace (default: current directory, recursive). "
+        "Use this when unsure what files exist — for example, before assuming "
+        "a path like './store_sales.preql' (the model files live under raw/)."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Directory to list (default: '.').",
+            },
+            "recursive": {
+                "type": "boolean",
+                "description": "Recurse into subdirectories (default: true).",
+            },
+        },
+    },
+)
+
 TODO_TOOL = LLMToolDefinition(
     name="todo",
     description=(
@@ -257,8 +279,8 @@ TODO_TOOL = LLMToolDefinition(
 RETURN_CONTROL_TOOL = LLMToolDefinition(
     name="return_control_to_user",
     description=(
-        "Hand control back to the user with a final message. Fails if any TODOs "
-        "are not completed — complete or remove them first."
+        "Hand control back to the user with a final message. Any open TODOs "
+        "are auto-discarded — no need to clean them up just to exit."
     ),
     input_schema={
         "type": "object",
@@ -272,6 +294,7 @@ ALL_TOOLS: list[LLMToolDefinition] = [
     TRILOGY_TOOL,
     WRITE_FILE_TOOL,
     READ_FILE_TOOL,
+    LIST_FILES_TOOL,
     TODO_TOOL,
     RETURN_CONTROL_TOOL,
 ]
@@ -382,6 +405,63 @@ def handle_write_file(state: AgentState, args: dict) -> str:
     except OSError as exc:
         return f"write_file error: {exc}"
     return f"write_file: wrote {len(content)} chars to {path}" + _raw_path_note(path)
+
+
+# Workspace noise the agent never needs to see in a file listing.
+_LIST_FILES_SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules"}
+_LIST_FILES_SKIP_PREFIXES = ("_worker_",)
+_LIST_FILES_SKIP_SUFFIXES = (".duckdb", ".pyc")
+_LIST_FILES_MAX_ENTRIES = 500
+
+
+def _should_skip_entry(name: str) -> bool:
+    if name in _LIST_FILES_SKIP_DIRS:
+        return True
+    if any(name.startswith(p) for p in _LIST_FILES_SKIP_PREFIXES):
+        return True
+    if any(name.endswith(s) for s in _LIST_FILES_SKIP_SUFFIXES):
+        return True
+    return False
+
+
+def handle_list_files(state: AgentState, args: dict) -> str:
+    path = args.get("path", ".")
+    recursive = args.get("recursive", True)
+    if not isinstance(path, str) or not path:
+        return "list_files error: 'path' must be a non-empty string."
+    if not isinstance(recursive, bool):
+        return "list_files error: 'recursive' must be a boolean."
+    root = Path(path)
+    if not root.exists():
+        return f"list_files error: no such path: {path}"
+    if not root.is_dir():
+        return f"list_files error: not a directory: {path}"
+    entries: list[str] = []
+    truncated = False
+    if recursive:
+        for current, dirs, files in os.walk(root):
+            dirs[:] = sorted(d for d in dirs if not _should_skip_entry(d))
+            rel = Path(current).relative_to(root)
+            for name in sorted(files):
+                if _should_skip_entry(name):
+                    continue
+                rel_path = (rel / name).as_posix() if str(rel) != "." else name
+                entries.append(rel_path)
+                if len(entries) >= _LIST_FILES_MAX_ENTRIES:
+                    truncated = True
+                    break
+            if truncated:
+                break
+    else:
+        for child in sorted(root.iterdir()):
+            if _should_skip_entry(child.name):
+                continue
+            suffix = "/" if child.is_dir() else ""
+            entries.append(child.name + suffix)
+    if not entries:
+        return f"(no files under {path})"
+    header = f"files under {path} ({len(entries)}{'+' if truncated else ''}):\n"
+    return header + "\n".join(entries)
 
 
 def handle_read_file(state: AgentState, args: dict) -> str:
@@ -564,13 +644,10 @@ def handle_return_control(state: AgentState, args: dict) -> str:
     message = args.get("message")
     if not isinstance(message, str):
         return "return_control_to_user error: 'message' must be a string."
-    outstanding = [t for t in state.todos if not t.completed]
-    if outstanding:
-        pending = ", ".join(f"{t.id} ({t.description})" for t in outstanding)
-        return (
-            "return_control_to_user refused: uncompleted TODOs remain — "
-            f"{pending}. Complete or remove them before returning control."
-        )
+    # Open TODOs are auto-discarded on exit — they were a scratch aid, not a
+    # contract. Earlier runs showed agents burning iterations on
+    # complete/remove just to satisfy a gate; not worth the tokens.
+    state.todos = []
     state.done = True
     state.farewell = message
     return "return_control_to_user: ok"
@@ -581,6 +658,7 @@ TOOL_HANDLERS: dict[str, Callable[[AgentState, dict], str]] = {
     TRILOGY_TOOL.name: handle_trilogy,
     WRITE_FILE_TOOL.name: handle_write_file,
     READ_FILE_TOOL.name: handle_read_file,
+    LIST_FILES_TOOL.name: handle_list_files,
     TODO_TOOL.name: handle_todo,
     RETURN_CONTROL_TOOL.name: handle_return_control,
 }

@@ -575,9 +575,14 @@ class TestResultsTable:
             with capture_all_output() as (stdout, stderr):
                 display.print_results_table(results)
                 captured = stdout.getvalue() + stderr.getvalue()
-                # Fallback shows all results
+                # Fallback now caps at the same 50-row default the rich table
+                # uses — both render paths emit a "more rows" sentinel rather
+                # than firehosing the full result set.
                 assert "row0" in captured
-                assert "row50" in captured
+                assert "row49" in captured
+                assert "row50" not in captured
+                assert "first 50 rows" in captured.lower()
+                assert "Result set was larger" in captured
 
 
 class TestContextManagers:
