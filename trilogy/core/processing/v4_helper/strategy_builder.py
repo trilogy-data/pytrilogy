@@ -71,6 +71,35 @@ def _parent_nodes_for(
     return parents
 
 
+def _satisfiable_outputs(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+) -> list[BuildConcept]:
+    """Drop outputs that no parent can actually supply. The group graph's
+    secondary-members pass attaches every root to every basic on the
+    optimistic theory "I can reach them"; but when a basic's direct parents
+    are aggregates/windows, the roots were collapsed away and aren't in any
+    parent's output. Without this filter those concepts end up in
+    `output_concepts` with no source map entry, producing
+    `INVALID_REFERENCE_BUG_<...>` markers in the rendered SQL."""
+    if not parents:
+        return outputs
+    available: set[str] = set()
+    for parent in parents:
+        for output in parent.output_concepts:
+            available.add(output.address)
+    keep: list[BuildConcept] = []
+    for concept in outputs:
+        if concept.address in available:
+            keep.append(concept)
+            continue
+        if concept.lineage is not None:
+            args = {a.address for a in concept.lineage.concept_arguments}
+            if args <= available:
+                keep.append(concept)
+    return keep
+
+
 def _topological_order(group_graph: nx.DiGraph) -> list[str]:
     lineage_edges = [
         (u, v)
@@ -139,6 +168,9 @@ def build_strategy_node(
             continue
         injected = combine_clauses(_active_clauses_at(group_graph, gid))
         parents = _parent_nodes_for(group_graph, built, gid)
+        outputs = _satisfiable_outputs(outputs, parents)
+        if not outputs:
+            continue
         node = build_node(
             derivation=derivation,
             outputs=outputs,

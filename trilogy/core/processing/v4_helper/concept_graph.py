@@ -65,9 +65,18 @@ def build_concept_graph(
             resolved = environment.concepts.get(concept.address, concept)
             _add_concept(resolved, environment, graph, condition_addresses)
 
+    # Add a constraint edge from every d1 to every d0 — except when a
+    # lineage edge already connects them. NetworkX merges duplicate edges
+    # (last write wins), so overwriting would silently demote the lineage
+    # relationship to "constraint only" and break downstream group-graph
+    # construction (the agg group would lose its by-clause inputs because
+    # those happen to be d1 conditions).
     d1_nodes = [n for n, d in graph.nodes(data=True) if d.get("depth_label") == "d1"]
     d0_nodes = [n for n, d in graph.nodes(data=True) if d.get("depth_label") == "d0"]
     for src in d1_nodes:
         for dst in d0_nodes:
-            graph.add_edge(src, dst, kind="constraint")
+            if graph.has_edge(src, dst):
+                graph.edges[src, dst]["is_constraint"] = True
+            else:
+                graph.add_edge(src, dst, kind="constraint", is_constraint=True)
     return graph
