@@ -12,6 +12,7 @@ def gen_unnest(
     parents: List[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
+    preexisting_conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """Unnest an array-valued parent column into rows. The unnested concepts
     are passed as `unnest_concepts`; everything in `outputs` that isn't

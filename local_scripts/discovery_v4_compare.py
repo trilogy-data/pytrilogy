@@ -21,13 +21,13 @@ from __future__ import annotations
 import argparse
 import sys
 import traceback
-import tomllib
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import duckdb
+import tomllib
 
 # Make `discovery_v4` importable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -95,19 +95,29 @@ def load_reference_sql(query_id: str) -> Optional[str]:
 
 
 def execute(con: duckdb.DuckDBPyConnection, sql: str) -> list[tuple]:
-    return list(con.execute(sql).fetchall())
+    """Return rows normalized to (sorted_by_column_name) tuples so two SQLs
+    that produce the same data with different SELECT column ordering compare
+    equal. Column order is a SQL surface concern; we care about row-level
+    semantic equality here."""
+    cursor = con.execute(sql)
+    columns = [d[0] for d in cursor.description] if cursor.description else []
+    rows = cursor.fetchall()
+    if not columns:
+        return [tuple(r) for r in rows]
+    order = sorted(range(len(columns)), key=lambda i: columns[i])
+    return [tuple(row[i] for i in order) for row in rows]
 
 
 def generate_v4_sql(query_id: str) -> tuple[Optional[str], Optional[str]]:
     """Run the v4 planner and return (sql, error). Either may be None."""
     try:
-        info, build_env, _ = run_tpcds_query(query_id)
+        info, build_env, _, build_stmt = run_tpcds_query(query_id)
     except Exception:
         return None, traceback.format_exc()
     if info.strategy_node is None:
         return None, "v4 produced no strategy node"
     try:
-        sql = compile_sql(info, build_env)
+        sql = compile_sql(info, build_env, build_stmt)
     except Exception:
         return None, traceback.format_exc()
     return (sql.strip() if sql else None), None
@@ -163,6 +173,12 @@ def run_one(
     return result
 
 
+def _sql_size(sql: Optional[str]) -> tuple[int, int]:
+    if not sql:
+        return 0, 0
+    return len(sql), sql.count("\n") + 1
+
+
 def write_query_report(result: QueryResult, preql_text: str) -> Path:
     path = OUT_DIR / f"query{result.query_id}.md"
     lines: list[str] = []
@@ -170,6 +186,8 @@ def write_query_report(result: QueryResult, preql_text: str) -> Path:
     lines.append("")
     lines.append(f"**Status:** `{result.status}`")
     lines.append("")
+
+    # --- Stage table ---
     lines.append("| Stage | Result |")
     lines.append("| --- | --- |")
     lines.append(f"| v4 SQL generation | {'OK' if result.v4_sql else 'FAILED'} |")
@@ -190,6 +208,36 @@ def write_query_report(result: QueryResult, preql_text: str) -> Path:
     if result.v4_rows is not None and result.ref_rows is not None:
         identical = Counter(result.v4_rows) == Counter(result.ref_rows)
         lines.append(f"| results identical | {'YES' if identical else 'NO'} |")
+    lines.append("")
+
+    # --- Result comparison (moved up so failures are the headline) ---
+    lines.append("## Result comparison")
+    lines.append("")
+    if result.diff:
+        for line in result.diff:
+            lines.append(line)
+    elif result.v4_rows is None or result.ref_rows is None:
+        lines.append("_at least one side did not produce rows._")
+    else:
+        identical = Counter(result.v4_rows) == Counter(result.ref_rows)
+        lines.append("identical." if identical else "row sets differ.")
+    lines.append("")
+
+    # --- SQL size comparison ---
+    v4_chars, v4_lines = _sql_size(result.v4_sql)
+    ref_chars, ref_lines = _sql_size(result.ref_sql)
+    lines.append("## SQL size")
+    lines.append("")
+    lines.append("| Source | Chars | Lines |")
+    lines.append("| --- | --- | --- |")
+    lines.append(f"| v4 | {v4_chars} | {v4_lines} |")
+    lines.append(f"| reference | {ref_chars} | {ref_lines} |")
+    if ref_chars and v4_chars:
+        ratio_chars = v4_chars / ref_chars
+        ratio_lines = (v4_lines / ref_lines) if ref_lines else 0
+        lines.append(
+            f"| v4 / ref | {ratio_chars:.2f}x | {ratio_lines:.2f}x |"
+        )
     lines.append("")
 
     lines.append("## Preql")
@@ -218,13 +266,6 @@ def write_query_report(result: QueryResult, preql_text: str) -> Path:
     else:
         lines.append("_no reference log found._")
     lines.append("")
-
-    if result.diff:
-        lines.append("## Result comparison")
-        lines.append("")
-        for line in result.diff:
-            lines.append(line)
-        lines.append("")
 
     for label, err in (
         ("v4 generation error", result.v4_gen_error),

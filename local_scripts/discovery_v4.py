@@ -50,7 +50,6 @@ from trilogy.core.processing.concept_strategies_v4 import (
 from trilogy.core.processing.condition_utility import strip_tautological_not_null
 from trilogy.core.statements.author import SelectStatement
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TPCDS_DIR = REPO_ROOT / "tests" / "modeling" / "tpc_ds_duckdb"
 OUT_DIR = Path(__file__).parent
@@ -383,7 +382,7 @@ def _find_select(queries: list) -> SelectStatement:
     return selects[-1]
 
 
-def run_inline_demo() -> tuple[BuildInfo, BuildEnvironment, str]:
+def run_inline_demo() -> tuple[BuildInfo, BuildEnvironment, str, None]:
     base = Environment()
     env, _ = base.parse(
         """
@@ -441,11 +440,15 @@ select
         g=generate_graph(benv),
         conditions=[conditions],
     )
-    return info, benv, "discovery_v4"
+    return info, benv, "discovery_v4", None
 
 
-def run_tpcds_query(name: str) -> tuple[BuildInfo, BuildEnvironment, str]:
-    """Resolve `name` to a preql file under TPCDS_DIR, build the v4 plan."""
+def run_tpcds_query(
+    name: str,
+) -> tuple[BuildInfo, BuildEnvironment, str, Optional[BuildSelectLineage | BuildMultiSelectLineage]]:
+    """Resolve `name` to a preql file under TPCDS_DIR, build the v4 plan.
+    Returns the BuildSelectLineage too so compile_sql can apply HAVING,
+    ORDER BY, hidden_concepts, and LIMIT from the original statement."""
     if name.isdigit():
         filename = f"query{int(name):02d}.preql"
     elif name.endswith(".preql"):
@@ -471,20 +474,57 @@ def run_tpcds_query(name: str) -> tuple[BuildInfo, BuildEnvironment, str]:
         g=generate_graph(build_env),
         conditions=[conditions] if conditions else [],
     )
-    return info, build_env, path.stem
+    return info, build_env, path.stem, build_stmt
 
 
-def compile_sql(info: BuildInfo, build_env: BuildEnvironment) -> str | None:
+def compile_sql(
+    info: BuildInfo,
+    build_env: BuildEnvironment,
+    build_stmt: Optional[BuildSelectLineage | BuildMultiSelectLineage] = None,
+) -> str | None:
+    """Compile the v4 strategy node to SQL. When `build_stmt` is supplied,
+    apply HAVING / ORDER BY / hidden_concepts / LIMIT from the original
+    statement so the SQL matches the user's authored query (mirrors what
+    v3's process_query does at the end)."""
     if info.strategy_node is None:
         return None
+    from trilogy.core.enums import BooleanOperator
+    from trilogy.core.models.build import BuildConditional
+    from trilogy.core.processing.nodes import SelectNode
     from trilogy.core.query_processor import datasource_to_cte, flatten_ctes
     from trilogy.core.statements.execute import ProcessedQuery
     from trilogy.dialect.duckdb import DuckDBDialect
 
     node = info.strategy_node.copy()
-    node.hidden_concepts = set()
-    node.ordering = None
+
+    if build_stmt is not None and getattr(build_stmt, "having_clause", None):
+        having = build_stmt.having_clause.conditional
+        combined = (
+            BuildConditional(
+                left=node.conditions,
+                right=having,
+                operator=BooleanOperator.AND,
+            )
+            if node.conditions
+            else having
+        )
+        node = SelectNode(
+            output_concepts=list(build_stmt.output_components),
+            input_concepts=list(node.usable_outputs),
+            parents=[node],
+            environment=node.environment,
+            partial_concepts=list(node.partial_concepts),
+            conditions=combined,
+        )
+
+    if build_stmt is not None:
+        node.hidden_concepts = set(build_stmt.hidden_components)
+        node.ordering = build_stmt.order_by
+    else:
+        node.hidden_concepts = set()
+        node.ordering = None
     node.rebuild_cache()
+
     qds = node.resolve()
     root_cte = datasource_to_cte(qds, build_env.cte_name_map)
     raw_ctes = list(reversed(flatten_ctes(root_cte)))
@@ -497,6 +537,11 @@ def compile_sql(info: BuildInfo, build_env: BuildEnvironment) -> str | None:
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped = list(seen.values())
+
+    if build_stmt is not None:
+        root_cte.limit = build_stmt.limit
+        root_cte.hidden_concepts = set(build_stmt.hidden_components)
+
     outputs = [
         c for c in node.output_concepts if c.address not in node.hidden_concepts
     ]
@@ -520,9 +565,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.query:
-        info, build_env, stem = run_tpcds_query(args.query)
+        info, build_env, stem, build_stmt = run_tpcds_query(args.query)
     else:
-        info, build_env, stem = run_inline_demo()
+        info, build_env, stem, build_stmt = run_inline_demo()
 
     print("concept_graph:", info.concept_graph)
     print("group_graph:", info.group_graph)
@@ -539,7 +584,7 @@ def main() -> None:
     print(f"wrote {group_out}")
 
     if not args.no_sql:
-        sql = compile_sql(info, build_env)
+        sql = compile_sql(info, build_env, build_stmt)
         if sql is not None:
             print("\n--- Generated SQL (from v4 strategy_node) ---")
             print(sql)

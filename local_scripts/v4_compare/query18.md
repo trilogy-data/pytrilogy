@@ -1,0 +1,327 @@
+# Query 18
+
+**Status:** `exec_fail`
+
+| Stage | Result |
+| --- | --- |
+| v4 SQL generation | OK |
+| v4 execution | FAILED |
+| reference execution | OK (100 rows) |
+
+## Result comparison
+
+_at least one side did not produce rows._
+
+## SQL size
+
+| Source | Chars | Lines |
+| --- | --- | --- |
+| v4 | 6800 | 128 |
+| reference | 7284 | 111 |
+| v4 / ref | 0.93x | 1.15x |
+
+## Preql
+
+```
+import catalog_sales as cs;
+
+# Group dim-property values by the row grain (order_number, item.id) so they
+# aren't dedup'd by their source key before averaging.
+auto row_birth_year <- group(cs.bill_customer.birth_year) by cs.order_number, cs.item.id;
+auto row_dep_count <- group(cs.bill_customer_demographic.dependent_count) by cs.order_number, cs.item.id;
+
+def rollup_avg(metric) -> avg(metric::numeric(12,2))
+    by rollup cs.item.name, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
+
+where
+    cs.bill_customer_demographic.gender = 'F'
+    and cs.bill_customer_demographic.education_status = 'Unknown'
+    and cs.bill_customer.demographics.id is not null
+    and cs.bill_customer.birth_month in (1, 6, 8, 9, 12, 2)
+    and cs.date.year = 1998
+    and cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
+select
+    cs.item.name,
+    cs.bill_customer.address.country,
+    cs.bill_customer.address.state,
+    cs.bill_customer.address.county,
+    @rollup_avg(cs.quantity) as agg1,
+    @rollup_avg(cs.list_price) as agg2,
+    @rollup_avg(cs.coupon_amt) as agg3,
+    @rollup_avg(cs.sales_price) as agg4,
+    @rollup_avg(cs.net_profit) as agg5,
+    @rollup_avg(row_birth_year) as agg6,
+    @rollup_avg(row_dep_count) as agg7,
+order by
+    cs.bill_customer.address.country asc nulls first,
+    cs.bill_customer.address.state asc nulls first,
+    cs.bill_customer.address.county asc nulls first,
+    cs.item.name asc nulls first
+limit 100
+;
+```
+
+## v4 generated SQL
+
+```sql
+WITH 
+cooperative as (
+SELECT
+    "cs_item_items"."I_ITEM_ID" as "cs_item_name",
+    "cs_item_items"."I_ITEM_SK" as "cs_item_id"
+FROM
+    "memory"."item" as "cs_item_items"),
+thoughtful as (
+SELECT
+    "cs_date_date"."D_DATE_SK" as "cs_date_id",
+    "cs_date_date"."D_YEAR" as "cs_date_year"
+FROM
+    "memory"."date_dim" as "cs_date_date"),
+cheerful as (
+SELECT
+    "cs_catalog_sales"."CS_BILL_CDEMO_SK" as "cs_bill_customer_demographic_id",
+    "cs_catalog_sales"."CS_BILL_CUSTOMER_SK" as "cs_bill_customer_id",
+    "cs_catalog_sales"."CS_COUPON_AMT" as "cs_coupon_amt",
+    "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
+    "cs_catalog_sales"."CS_LIST_PRICE" as "cs_list_price",
+    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
+    "cs_catalog_sales"."CS_QUANTITY" as "cs_quantity",
+    "cs_catalog_sales"."CS_SALES_PRICE" as "cs_sales_price",
+    "cs_catalog_sales"."CS_SOLD_DATE_SK" as "cs_date_id"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"),
+wakeful as (
+SELECT
+    "cs_bill_customer_demographic_customer_demographics"."CD_DEMO_SK" as "cs_bill_customer_demographic_id",
+    "cs_bill_customer_demographic_customer_demographics"."CD_DEP_COUNT" as "cs_bill_customer_demographic_dependent_count",
+    "cs_bill_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" as "cs_bill_customer_demographic_education_status",
+    "cs_bill_customer_demographic_customer_demographics"."CD_GENDER" as "cs_bill_customer_demographic_gender"
+FROM
+    "memory"."customer_demographics" as "cs_bill_customer_demographic_customer_demographics"),
+highfalutin as (
+SELECT
+    "cs_bill_customer_customers"."C_BIRTH_MONTH" as "cs_bill_customer_birth_month",
+    "cs_bill_customer_customers"."C_BIRTH_YEAR" as "cs_bill_customer_birth_year",
+    "cs_bill_customer_customers"."C_CURRENT_ADDR_SK" as "cs_bill_customer_address_id",
+    "cs_bill_customer_customers"."C_CURRENT_CDEMO_SK" as "cs_bill_customer_demographics_id",
+    "cs_bill_customer_customers"."C_CUSTOMER_SK" as "cs_bill_customer_id"
+FROM
+    "memory"."customer" as "cs_bill_customer_customers"),
+quizzical as (
+SELECT
+    "cs_bill_customer_address_customer_address"."CA_ADDRESS_SK" as "cs_bill_customer_address_id",
+    "cs_bill_customer_address_customer_address"."CA_COUNTRY" as "cs_bill_customer_address_country",
+    "cs_bill_customer_address_customer_address"."CA_COUNTY" as "cs_bill_customer_address_county",
+    "cs_bill_customer_address_customer_address"."CA_STATE" as "cs_bill_customer_address_state"
+FROM
+    "memory"."customer_address" as "cs_bill_customer_address_customer_address"),
+questionable as (
+SELECT
+    "cheerful"."cs_coupon_amt" as "cs_coupon_amt",
+    "cheerful"."cs_item_id" as "cs_item_id",
+    "cheerful"."cs_list_price" as "cs_list_price",
+    "cheerful"."cs_net_profit" as "cs_net_profit",
+    "cheerful"."cs_order_number" as "cs_order_number",
+    "cheerful"."cs_quantity" as "cs_quantity",
+    "cheerful"."cs_sales_price" as "cs_sales_price",
+    "cooperative"."cs_item_name" as "cs_item_name",
+    "highfalutin"."cs_bill_customer_birth_month" as "cs_bill_customer_birth_month",
+    "highfalutin"."cs_bill_customer_birth_year" as "cs_bill_customer_birth_year",
+    "highfalutin"."cs_bill_customer_demographics_id" as "cs_bill_customer_demographics_id",
+    "quizzical"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
+    "quizzical"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
+    "quizzical"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "thoughtful"."cs_date_year" as "cs_date_year",
+    "wakeful"."cs_bill_customer_demographic_dependent_count" as "cs_bill_customer_demographic_dependent_count",
+    "wakeful"."cs_bill_customer_demographic_education_status" as "cs_bill_customer_demographic_education_status",
+    "wakeful"."cs_bill_customer_demographic_gender" as "cs_bill_customer_demographic_gender"
+FROM
+    "cheerful"
+    LEFT OUTER JOIN "thoughtful" on "cheerful"."cs_date_id" = "thoughtful"."cs_date_id"
+    INNER JOIN "cooperative" on "cheerful"."cs_item_id" = "cooperative"."cs_item_id"
+    LEFT OUTER JOIN "highfalutin" on "cheerful"."cs_bill_customer_id" = "highfalutin"."cs_bill_customer_id"
+    LEFT OUTER JOIN "quizzical" on "highfalutin"."cs_bill_customer_address_id" = "quizzical"."cs_bill_customer_address_id"
+    LEFT OUTER JOIN "wakeful" on "cheerful"."cs_bill_customer_demographic_id" = "wakeful"."cs_bill_customer_demographic_id"
+WHERE
+    "wakeful"."cs_bill_customer_demographic_gender" = 'F' and "wakeful"."cs_bill_customer_demographic_education_status" = 'Unknown' and "highfalutin"."cs_bill_customer_demographics_id" is not null and "highfalutin"."cs_bill_customer_birth_month" in (1,6,8,9,12,2) and "thoughtful"."cs_date_year" = 1998 and "quizzical"."cs_bill_customer_address_state" in ('MS','IN','ND','OK','NM','VA')
+),
+uneven as (
+SELECT
+    "questionable"."cs_bill_customer_demographic_dependent_count" as "cs_bill_customer_demographic_dependent_count",
+    "questionable"."cs_bill_customer_demographic_dependent_count" as "row_dep_count",
+    "questionable"."cs_item_id" as "cs_item_id",
+    "questionable"."cs_order_number" as "cs_order_number"
+FROM
+    "questionable"
+GROUP BY
+    2,
+    3,
+    4),
+abundant as (
+SELECT
+    "questionable"."cs_bill_customer_birth_year" as "cs_bill_customer_birth_year",
+    "questionable"."cs_bill_customer_birth_year" as "row_birth_year",
+    "questionable"."cs_item_id" as "cs_item_id",
+    "questionable"."cs_order_number" as "cs_order_number"
+FROM
+    "questionable"
+GROUP BY
+    2,
+    3,
+    4)
+SELECT
+    avg(cast("questionable"."cs_quantity" as numeric(12,2))) as "agg1",
+    avg(cast("questionable"."cs_list_price" as numeric(12,2))) as "agg2",
+    avg(cast("questionable"."cs_coupon_amt" as numeric(12,2))) as "agg3",
+    avg(cast("questionable"."cs_sales_price" as numeric(12,2))) as "agg4",
+    avg(cast("questionable"."cs_net_profit" as numeric(12,2))) as "agg5",
+    avg(cast("abundant"."row_birth_year" as numeric(12,2))) as "agg6",
+    avg(cast("uneven"."row_dep_count" as numeric(12,2))) as "agg7",
+    "questionable"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "questionable"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
+    "questionable"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
+    "questionable"."cs_item_name" as "cs_item_name"
+FROM
+    "questionable"
+GROUP BY
+    ROLLUP (11, 9, 8, 10)
+ORDER BY 
+    "questionable"."cs_bill_customer_address_country" asc nulls first,
+    "questionable"."cs_bill_customer_address_state" asc nulls first,
+    "questionable"."cs_bill_customer_address_county" asc nulls first,
+    "questionable"."cs_item_name" asc nulls first
+LIMIT (100)
+```
+
+## Reference SQL (zquery log)
+
+```sql
+WITH 
+cooperative as (
+SELECT
+    "cs_bill_customer_customers"."C_BIRTH_YEAR" as "cs_bill_customer_birth_year",
+    "cs_bill_customer_demographic_customer_demographics"."CD_DEP_COUNT" as "cs_bill_customer_demographic_dependent_count",
+    "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer" as "cs_bill_customer_customers" on "cs_catalog_sales"."CS_BILL_CUSTOMER_SK" = "cs_bill_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_bill_customer_address_customer_address" on "cs_bill_customer_customers"."C_CURRENT_ADDR_SK" = "cs_bill_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer_demographics" as "cs_bill_customer_demographic_customer_demographics" on "cs_catalog_sales"."CS_BILL_CDEMO_SK" = "cs_bill_customer_demographic_customer_demographics"."CD_DEMO_SK"
+WHERE
+    "cs_bill_customer_demographic_customer_demographics"."CD_GENDER" = 'F' and "cs_bill_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'Unknown' and "cs_bill_customer_customers"."C_CURRENT_CDEMO_SK" is not null and "cs_bill_customer_customers"."C_BIRTH_MONTH" in (1,6,8,9,12,2) and "cs_date_date"."D_YEAR" = 1998 and "cs_bill_customer_address_customer_address"."CA_STATE" in ('MS','IN','ND','OK','NM','VA')
+),
+yummy as (
+SELECT
+    "cs_bill_customer_address_customer_address"."CA_COUNTRY" as "cs_bill_customer_address_country",
+    "cs_bill_customer_address_customer_address"."CA_COUNTY" as "cs_bill_customer_address_county",
+    "cs_bill_customer_address_customer_address"."CA_STATE" as "cs_bill_customer_address_state",
+    "cs_bill_customer_customers"."C_BIRTH_YEAR" as "cs_bill_customer_birth_year",
+    "cs_catalog_sales"."CS_COUPON_AMT" as "cs_coupon_amt",
+    "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
+    "cs_catalog_sales"."CS_LIST_PRICE" as "cs_list_price",
+    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
+    "cs_catalog_sales"."CS_QUANTITY" as "cs_quantity",
+    "cs_catalog_sales"."CS_SALES_PRICE" as "cs_sales_price",
+    "cs_item_items"."I_ITEM_ID" as "cs_item_name"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."customer" as "cs_bill_customer_customers" on "cs_catalog_sales"."CS_BILL_CUSTOMER_SK" = "cs_bill_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_bill_customer_address_customer_address" on "cs_bill_customer_customers"."C_CURRENT_ADDR_SK" = "cs_bill_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer_demographics" as "cs_bill_customer_demographic_customer_demographics" on "cs_catalog_sales"."CS_BILL_CDEMO_SK" = "cs_bill_customer_demographic_customer_demographics"."CD_DEMO_SK"
+WHERE
+    "cs_bill_customer_demographic_customer_demographics"."CD_GENDER" = 'F' and "cs_bill_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'Unknown' and "cs_bill_customer_customers"."C_CURRENT_CDEMO_SK" is not null and "cs_bill_customer_customers"."C_BIRTH_MONTH" in (1,6,8,9,12,2) and "cs_date_date"."D_YEAR" = 1998 and "cs_bill_customer_address_customer_address"."CA_STATE" in ('MS','IN','ND','OK','NM','VA')
+),
+abundant as (
+SELECT
+    "cooperative"."cs_bill_customer_demographic_dependent_count" as "row_dep_count",
+    "cooperative"."cs_item_id" as "cs_item_id",
+    "cooperative"."cs_order_number" as "cs_order_number"
+FROM
+    "cooperative"),
+questionable as (
+SELECT
+    "cooperative"."cs_bill_customer_birth_year" as "cs_bill_customer_birth_year",
+    "cooperative"."cs_bill_customer_birth_year" as "row_birth_year",
+    "cooperative"."cs_item_id" as "cs_item_id",
+    "cooperative"."cs_order_number" as "cs_order_number"
+FROM
+    "cooperative"),
+juicy as (
+SELECT
+    "abundant"."row_dep_count" as "row_dep_count",
+    "yummy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
+    "yummy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
+    "yummy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "yummy"."cs_bill_customer_birth_year" as "cs_bill_customer_birth_year",
+    "yummy"."cs_coupon_amt" as "cs_coupon_amt",
+    "yummy"."cs_item_name" as "cs_item_name",
+    "yummy"."cs_list_price" as "cs_list_price",
+    "yummy"."cs_net_profit" as "cs_net_profit",
+    "yummy"."cs_quantity" as "cs_quantity",
+    "yummy"."cs_sales_price" as "cs_sales_price",
+    coalesce("abundant"."cs_item_id","yummy"."cs_item_id") as "cs_item_id",
+    coalesce("abundant"."cs_order_number","yummy"."cs_order_number") as "cs_order_number"
+FROM
+    "abundant"
+    FULL JOIN "yummy" on "abundant"."cs_item_id" = "yummy"."cs_item_id" AND "abundant"."cs_order_number" = "yummy"."cs_order_number"),
+vacuous as (
+SELECT
+    "juicy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
+    "juicy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
+    "juicy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "juicy"."cs_coupon_amt" as "cs_coupon_amt",
+    "juicy"."cs_item_name" as "cs_item_name",
+    "juicy"."cs_list_price" as "cs_list_price",
+    "juicy"."cs_net_profit" as "cs_net_profit",
+    "juicy"."cs_quantity" as "cs_quantity",
+    "juicy"."cs_sales_price" as "cs_sales_price",
+    "juicy"."row_dep_count" as "row_dep_count",
+    "questionable"."row_birth_year" as "row_birth_year"
+FROM
+    "juicy"
+    FULL JOIN "questionable" on "juicy"."cs_bill_customer_birth_year" is not distinct from "questionable"."cs_bill_customer_birth_year" AND "juicy"."cs_item_id" = "questionable"."cs_item_id" AND "juicy"."cs_order_number" = "questionable"."cs_order_number")
+SELECT
+    "vacuous"."cs_item_name" as "cs_item_name",
+    "vacuous"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
+    "vacuous"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "vacuous"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
+    avg(cast("vacuous"."cs_quantity" as numeric(12,2))) as "agg1",
+    avg(cast("vacuous"."cs_list_price" as numeric(12,2))) as "agg2",
+    avg(cast("vacuous"."cs_coupon_amt" as numeric(12,2))) as "agg3",
+    avg(cast("vacuous"."cs_sales_price" as numeric(12,2))) as "agg4",
+    avg(cast("vacuous"."cs_net_profit" as numeric(12,2))) as "agg5",
+    avg(cast("vacuous"."row_birth_year" as numeric(12,2))) as "agg6",
+    avg(cast("vacuous"."row_dep_count" as numeric(12,2))) as "agg7"
+FROM
+    "vacuous"
+GROUP BY
+    ROLLUP (1, 2, 3, 4)
+ORDER BY 
+    "vacuous"."cs_bill_customer_address_country" asc nulls first,
+    "vacuous"."cs_bill_customer_address_state" asc nulls first,
+    "vacuous"."cs_bill_customer_address_county" asc nulls first,
+    "vacuous"."cs_item_name" asc nulls first
+LIMIT (100)
+```
+
+## v4 execution error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
+    result.v4_rows = execute(con, v4_sql)
+                     ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+    cursor = con.execute(sql)
+_duckdb.BinderException: Binder Error: Referenced table "abundant" not found!
+Candidate tables: "questionable"
+
+LINE 113:     avg(cast("abundant"."row_birth_year" as numeric(12,2))) as "agg6",
+                       ^
+```

@@ -12,6 +12,7 @@ def gen_aggregate(
     parents: List[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
+    preexisting_conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """GROUP BY at the outputs' shared grain over already-built parents."""
     return GroupNode(
@@ -20,4 +21,7 @@ def gen_aggregate(
         environment=environment,
         parents=parents,
         conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            preexisting_conditions.conditional if preexisting_conditions else None
+        ),
     )

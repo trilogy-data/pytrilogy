@@ -52,6 +52,7 @@ def build_node(
     parents: List[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None,
+    preexisting_conditions: BuildWhereClause | None = None,
     history: History,
     g: ReferenceGraph,
 ) -> StrategyNode | None:
@@ -75,7 +76,13 @@ def build_node(
             return fn(
                 outputs, parents, environment, conditions, history=history, g=g
             )
-        return fn(outputs, parents, environment, conditions)
+        return fn(
+            outputs,
+            parents,
+            environment,
+            conditions,
+            preexisting_conditions=preexisting_conditions,
+        )
     except Exception as exc:
         logger.info(f"[v4-gen] {derivation} failed: {exc!r}; falling back to v3")
         return _fallback_to_v3(

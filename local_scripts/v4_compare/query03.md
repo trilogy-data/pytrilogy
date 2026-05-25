@@ -1,13 +1,26 @@
 # Query 03
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (89 rows) |
 | reference execution | OK (89 rows) |
-| results identical | NO |
+| results identical | YES |
+
+## Result comparison
+
+v4 rows: 89 (89 distinct)
+ref rows: 89 (89 distinct)
+
+## SQL size
+
+| Source | Chars | Lines |
+| --- | --- | --- |
+| v4 | 2296 | 54 |
+| reference | 893 | 21 |
+| v4 / ref | 2.57x | 2.57x |
 
 ## Preql
 
@@ -74,18 +87,20 @@ WHERE
 )
 SELECT
     sum("cheerful"."store_sales_ext_sales_price") as "sum_agg",
-    "cheerful"."store_sales_date_year" as "store_sales_date_year",
     "cheerful"."store_sales_item_brand_id" as "store_sales_item_brand_id",
-    "cheerful"."store_sales_item_brand_name" as "store_sales_item_brand_name"
+    "cheerful"."store_sales_item_brand_name" as "store_sales_item_brand_name",
+    "cheerful"."store_sales_date_year" as "store_sales_date_year"
 FROM
     "cheerful"
-WHERE
-    "cheerful"."store_sales_date_month_of_year" = 11 and "cheerful"."store_sales_item_manufacturer_id" = 128
-
 GROUP BY
     2,
     3,
     4
+ORDER BY 
+    "cheerful"."store_sales_date_year" asc,
+    "sum_agg" desc,
+    "cheerful"."store_sales_item_brand_id" asc
+LIMIT (100)
 ```
 
 ## Reference SQL (zquery log)
@@ -113,20 +128,3 @@ ORDER BY
     "store_sales_item_items"."I_BRAND_ID" asc
 LIMIT (100)
 ```
-
-## Result comparison
-
-v4 rows: 89 (89 distinct)
-ref rows: 89 (89 distinct)
-only in v4 (showing up to 5 of 89):
-  1x  (Decimal('50239.96'), 1999, 2001001, 'amalgimporto #1')
-  1x  (Decimal('13937.28'), 1999, 1001002, 'amalgamalg #2')
-  1x  (Decimal('10199.74'), 1999, 5003002, 'exportischolar #2')
-  1x  (Decimal('17509.46'), 1998, 1004001, 'edu packamalg #1')
-  1x  (Decimal('11056.90'), 1999, 8001009, 'amalgnameless #9')
-only in ref (showing up to 5 of 89):
-  1x  (1998, 2001001, 'amalgimporto #1', Decimal('60828.60'))
-  1x  (1998, 5003001, 'exportischolar #1', Decimal('50182.63'))
-  1x  (1998, 3004001, 'edu packexporti #1', Decimal('29036.38'))
-  1x  (1998, 3001001, 'amalgexporti #1', Decimal('28596.63'))
-  1x  (1998, 1003001, 'exportiamalg #1', Decimal('27087.35'))

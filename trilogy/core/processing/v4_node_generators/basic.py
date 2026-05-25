@@ -17,6 +17,7 @@ def gen_basic(
     parents: List[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
+    preexisting_conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """Projection of derived basic expressions over already-built parents.
 
@@ -24,11 +25,13 @@ def gen_basic(
     Multiple parents → MergeNode, which auto-joins on shared output concepts
     (typically the common grain). A SelectNode here would render with no
     join and emit `INVALID_REFERENCE_BUG_<...>` for the unjoined parent."""
+    pre = preexisting_conditions.conditional if preexisting_conditions else None
     if not parents:
         return ConstantNode(
             input_concepts=[],
             output_concepts=outputs,
             environment=environment,
+            preexisting_conditions=pre,
         )
     inputs = parent_outputs_needed(outputs, parents, conditions)
     if len(parents) == 1:
@@ -38,6 +41,7 @@ def gen_basic(
             environment=environment,
             parents=parents,
             conditions=conditions.conditional if conditions else None,
+            preexisting_conditions=pre,
         )
     return MergeNode(
         input_concepts=inputs,
@@ -45,4 +49,5 @@ def gen_basic(
         environment=environment,
         parents=parents,
         conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=pre,
     )

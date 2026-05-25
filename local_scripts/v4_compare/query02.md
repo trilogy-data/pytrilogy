@@ -8,6 +8,18 @@
 | v4 execution | FAILED |
 | reference execution | OK (53 rows) |
 
+## Result comparison
+
+_at least one side did not produce rows._
+
+## SQL size
+
+| Source | Chars | Lines |
+| --- | --- | --- |
+| v4 | 8105 | 141 |
+| reference | 4649 | 80 |
+| v4 / ref | 1.74x | 1.76x |
+
 ## Preql
 
 ```
@@ -92,6 +104,9 @@ SELECT
 FROM
     "thoughtful"
     LEFT OUTER JOIN "cooperative" on "thoughtful"."sales_date_id" = "cooperative"."sales_date_id"
+WHERE
+    "thoughtful"."sales_sales_channel" in ('WEB','CATALOG')
+
 GROUP BY
     1,
     2,
@@ -134,33 +149,51 @@ SELECT
     lead("uneven"."_virt_agg_sum_5898269946212687", 53) over (order by "questionable"."sales_date_week_seq" asc ) as "_virt_window_lead_3355739386573542",
     lead("uneven"."_virt_agg_sum_6232287870778562", 53) over (order by "questionable"."sales_date_week_seq" asc ) as "_virt_window_lead_8846802885933861"
 FROM
-    "uneven")
+    "uneven"),
+juicy as (
 SELECT
-    round("uneven"."_virt_agg_sum_5898269946212687" / ("yummy"."_virt_window_lead_3355739386573542"),2) as "sunday_increase",
+    "uneven"."_virt_agg_sum_1215995592885356" as "_virt_agg_sum_1215995592885356",
+    "uneven"."_virt_agg_sum_1755492547499297" as "_virt_agg_sum_1755492547499297",
+    "uneven"."_virt_agg_sum_3160525683686265" as "_virt_agg_sum_3160525683686265",
+    "uneven"."_virt_agg_sum_3226984322777641" as "_virt_agg_sum_3226984322777641",
+    "uneven"."_virt_agg_sum_5503961012463124" as "_virt_agg_sum_5503961012463124",
+    "uneven"."_virt_agg_sum_5898269946212687" as "_virt_agg_sum_5898269946212687",
+    "uneven"."_virt_agg_sum_6232287870778562" as "_virt_agg_sum_6232287870778562",
+    "uneven"."sales_date_week_seq" as "sales_date_week_seq",
+    "yummy"."_virt_window_lead_1513977696668684" as "_virt_window_lead_1513977696668684",
+    "yummy"."_virt_window_lead_3355739386573542" as "_virt_window_lead_3355739386573542",
+    "yummy"."_virt_window_lead_5402686874923245" as "_virt_window_lead_5402686874923245",
+    "yummy"."_virt_window_lead_6726398054446491" as "_virt_window_lead_6726398054446491",
+    "yummy"."_virt_window_lead_7589933802981203" as "_virt_window_lead_7589933802981203",
+    "yummy"."_virt_window_lead_8434916643189094" as "_virt_window_lead_8434916643189094",
+    "yummy"."_virt_window_lead_8846802885933861" as "_virt_window_lead_8846802885933861",
     round("uneven"."_virt_agg_sum_1215995592885356" / ("yummy"."_virt_window_lead_8434916643189094"),2) as "monday_increase",
-    round("uneven"."_virt_agg_sum_5503961012463124" / ("yummy"."_virt_window_lead_5402686874923245"),2) as "tuesday_increase",
-    round("uneven"."_virt_agg_sum_6232287870778562" / ("yummy"."_virt_window_lead_8846802885933861"),2) as "wednesday_increase",
-    round("uneven"."_virt_agg_sum_3226984322777641" / ("yummy"."_virt_window_lead_7589933802981203"),2) as "thursday_increase",
     round("uneven"."_virt_agg_sum_1755492547499297" / ("yummy"."_virt_window_lead_1513977696668684"),2) as "friday_increase",
     round("uneven"."_virt_agg_sum_3160525683686265" / ("yummy"."_virt_window_lead_6726398054446491"),2) as "saturday_increase",
-    "uneven"."sales_date_week_seq" as "sales_date_week_seq",
-    "uneven"."_virt_agg_sum_5898269946212687" as "_virt_agg_sum_5898269946212687",
-    "yummy"."_virt_window_lead_3355739386573542" as "_virt_window_lead_3355739386573542",
-    "uneven"."_virt_agg_sum_1215995592885356" as "_virt_agg_sum_1215995592885356",
-    "yummy"."_virt_window_lead_8434916643189094" as "_virt_window_lead_8434916643189094",
-    "uneven"."_virt_agg_sum_5503961012463124" as "_virt_agg_sum_5503961012463124",
-    "yummy"."_virt_window_lead_5402686874923245" as "_virt_window_lead_5402686874923245",
-    "yummy"."_virt_window_lead_8846802885933861" as "_virt_window_lead_8846802885933861",
-    "uneven"."_virt_agg_sum_6232287870778562" as "_virt_agg_sum_6232287870778562",
-    "uneven"."_virt_agg_sum_3226984322777641" as "_virt_agg_sum_3226984322777641",
-    "yummy"."_virt_window_lead_7589933802981203" as "_virt_window_lead_7589933802981203",
-    "uneven"."_virt_agg_sum_1755492547499297" as "_virt_agg_sum_1755492547499297",
-    "yummy"."_virt_window_lead_1513977696668684" as "_virt_window_lead_1513977696668684",
-    "uneven"."_virt_agg_sum_3160525683686265" as "_virt_agg_sum_3160525683686265",
-    "yummy"."_virt_window_lead_6726398054446491" as "_virt_window_lead_6726398054446491"
+    round("uneven"."_virt_agg_sum_3226984322777641" / ("yummy"."_virt_window_lead_7589933802981203"),2) as "thursday_increase",
+    round("uneven"."_virt_agg_sum_5503961012463124" / ("yummy"."_virt_window_lead_5402686874923245"),2) as "tuesday_increase",
+    round("uneven"."_virt_agg_sum_5898269946212687" / ("yummy"."_virt_window_lead_3355739386573542"),2) as "sunday_increase",
+    round("uneven"."_virt_agg_sum_6232287870778562" / ("yummy"."_virt_window_lead_8846802885933861"),2) as "wednesday_increase"
 FROM
     "uneven"
-    LEFT OUTER JOIN "yummy" on "uneven"."sales_date_week_seq" = "yummy"."sales_date_week_seq"
+    LEFT OUTER JOIN "yummy" on "uneven"."sales_date_week_seq" = "yummy"."sales_date_week_seq")
+SELECT
+    "juicy"."sales_date_week_seq" as "sales_date_week_seq",
+    "juicy"."sunday_increase" as "sunday_increase",
+    "juicy"."monday_increase" as "monday_increase",
+    "juicy"."tuesday_increase" as "tuesday_increase",
+    "juicy"."wednesday_increase" as "wednesday_increase",
+    "juicy"."thursday_increase" as "thursday_increase",
+    "juicy"."friday_increase" as "friday_increase",
+    "juicy"."saturday_increase" as "saturday_increase"
+FROM
+    "juicy"
+WHERE
+    "juicy"."sunday_increase" is not null
+
+ORDER BY 
+    "juicy"."sales_date_week_seq" asc nulls first
+LIMIT (100)
 ```
 
 ## Reference SQL (zquery log)
@@ -252,15 +285,14 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 151, in run_one
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
     result.v4_rows = execute(con, v4_sql)
                      ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 98, in execute
-    return list(con.execute(sql).fetchall())
-                ~~~~~~~~~~~^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+    cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "questionable" not found!
 Candidate tables: "abundant"
 
-LINE 71:     "questionable"."sales_date_week_seq" as "sales_date_week_seq...
+LINE 74:     "questionable"."sales_date_week_seq" as "sales_date_week_seq...
              ^
 ```

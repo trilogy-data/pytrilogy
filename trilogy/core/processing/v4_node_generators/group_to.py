@@ -12,6 +12,7 @@ def gen_group_to(
     parents: List[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
+    preexisting_conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """`group_to(...)` always materializes the grain change — force a GROUP
     BY even when the parent is already at the target grain."""
@@ -21,5 +22,8 @@ def gen_group_to(
         environment=environment,
         parents=parents,
         conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            preexisting_conditions.conditional if preexisting_conditions else None
+        ),
         force_group=True,
     )

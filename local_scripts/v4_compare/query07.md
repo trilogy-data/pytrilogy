@@ -1,13 +1,26 @@
 # Query 07
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (5159 rows) |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | NO |
+| results identical | YES |
+
+## Result comparison
+
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
+
+## SQL size
+
+| Source | Chars | Lines |
+| --- | --- | --- |
+| v4 | 5224 | 108 |
+| reference | 1617 | 20 |
+| v4 / ref | 3.23x | 5.40x |
 
 ## Preql
 
@@ -141,11 +154,11 @@ SELECT
     "questionable"."store_sales_item_name" as "store_sales_item_name"
 FROM
     "questionable"
-WHERE
-    "questionable"."store_sales_customer_demographic_gender" = 'M' and "questionable"."store_sales_customer_demographic_marital_status" = 'S' and "questionable"."store_sales_customer_demographic_education_status" = 'College' and ( "questionable"."store_sales_promotion_channel_email" = 'N' or "questionable"."store_sales_promotion_channel_event" = 'N' ) and "questionable"."store_sales_date_year" = 2000
-
 GROUP BY
     5
+ORDER BY 
+    "questionable"."store_sales_item_name" asc
+LIMIT (100)
 ```
 
 ## Reference SQL (zquery log)
@@ -172,20 +185,3 @@ ORDER BY
     "store_sales_item_items"."I_ITEM_ID" asc
 LIMIT (100)
 ```
-
-## Result comparison
-
-v4 rows: 5159 (5159 distinct)
-ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 5159):
-  1x  (13.0, 158.88, 0.0, 93.73, 'AAAAAAAANBCAAAAA')
-  1x  (51.333333333333336, 65.18333333333334, 476.0366666666667, 45.78666666666667, 'AAAAAAAAHADAAAAA')
-  1x  (39.25, 85.0225, 0.0, 52.44, 'AAAAAAAADKDAAAAA')
-  1x  (35.0, 59.27, 0.0, 37.295, 'AAAAAAAAGCIAAAAA')
-  1x  (42.0, 36.69, 0.0, 13.025, 'AAAAAAAAGEKAAAAA')
-only in ref (showing up to 5 of 100):
-  1x  ('AAAAAAAAAAABAAAA', 9.0, 86.25, 0.0, 75.03)
-  1x  ('AAAAAAAAAAACAAAA', 25.0, 149.41, 0.0, 94.12)
-  1x  ('AAAAAAAAAAAEAAAA', 16.0, 127.87, 0.0, 26.85)
-  1x  ('AAAAAAAAAABBAAAA', 18.0, 23.43, 0.0, 3.98)
-  1x  ('AAAAAAAAAABEAAAA', 20.5, 85.01, 0.0, 42.05)

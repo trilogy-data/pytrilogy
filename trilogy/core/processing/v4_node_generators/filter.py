@@ -12,6 +12,7 @@ def gen_filter(
     parents: List[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
+    preexisting_conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """Apply a row filter over already-built parents. The filter expression
     comes from the filter concept's lineage; `conditions` here is any
@@ -22,4 +23,7 @@ def gen_filter(
         environment=environment,
         parents=parents,
         conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            preexisting_conditions.conditional if preexisting_conditions else None
+        ),
     )

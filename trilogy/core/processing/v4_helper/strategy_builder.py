@@ -5,32 +5,37 @@ No source-concepts callback: parents are explicit, derived from the group
 graph's lineage edges. Generators that haven't been ported to the v4 flat
 style fall back inside `v4_node_generators.dispatch.build_node`."""
 
+from collections import defaultdict
+
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import BooleanOperator
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.condition_utility import combine_condition_atoms
+from trilogy.core.processing.nodes import (
+    GroupNode,
+    History,
+    MergeNode,
+    StrategyNode,
+)
 from trilogy.core.processing.v4_node_generators import build_node
 
 from .constants import FINAL_NODE_ID
 
 
-def combine_clauses(clauses: list[BuildWhereClause]) -> BuildWhereClause | None:
-    """AND a chain of clauses together; returns None if `clauses` is empty."""
-    if not clauses:
+def _wrap_atoms(atoms: list[BoolExpr]) -> BuildWhereClause | None:
+    """AND-combine a list of condition atoms into a single BuildWhereClause."""
+    if not atoms:
         return None
-    combined = clauses[0].conditional
-    for extra in clauses[1:]:
-        combined = BuildConditional(
-            left=combined, right=extra.conditional, operator=BooleanOperator.AND
-        )
+    combined = combine_condition_atoms(atoms)
+    if combined is None:
+        return None
     return BuildWhereClause(conditional=combined)
 
 
@@ -39,18 +44,26 @@ def _members_of(group_graph: nx.DiGraph, gid: str) -> set[str]:
     return set(gd.get("primary_members", ())) | set(gd.get("secondary_members", ()))
 
 
-def _active_clauses_at(group_graph: nx.DiGraph, gid: str) -> list[BuildWhereClause]:
-    """Every clause injected at `gid` or any ancestor — those filters are in
-    effect when we materialize this group's StrategyNode."""
-    active: list[BuildWhereClause] = []
-    ancestors = nx.ancestors(group_graph, gid) | {gid}
-    for anc in ancestors:
+def _atoms_at(group_graph: nx.DiGraph, gid: str) -> list[BoolExpr]:
+    """Atoms injected AT `gid` only. These become the WHERE for this node."""
+    return list(group_graph.nodes[gid].get("condition_atoms", []) or [])
+
+
+def _accumulated_atoms_above(
+    group_graph: nx.DiGraph, gid: str
+) -> list[BoolExpr]:
+    """Atoms applied at any STRICT ancestor of `gid`. Threaded into the node
+    as `preexisting_conditions` so nullable inference (and any later
+    optimizer) knows which rows the parent already filtered, without
+    re-emitting the same WHERE on this CTE."""
+    accumulated: list[BoolExpr] = []
+    for anc in nx.ancestors(group_graph, gid):
         if anc == FINAL_NODE_ID:
             continue
-        for clause in group_graph.nodes[anc].get("condition_objects", []) or []:
-            if clause not in active:
-                active.append(clause)
-    return active
+        for atom in group_graph.nodes[anc].get("condition_atoms", []) or []:
+            if atom not in accumulated:
+                accumulated.append(atom)
+    return accumulated
 
 
 def _parent_nodes_for(
@@ -112,27 +125,138 @@ def _topological_order(group_graph: nx.DiGraph) -> list[str]:
     return list(nx.topological_sort(lineage_only))
 
 
-def _pick_result(
+def _cover_groups_for_mandatory(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
-) -> StrategyNode:
-    """Pick the most-downstream built group as the result; with multiple
-    leaves, prefer the one whose primary members cover the most mandatory
-    concepts."""
-    mandatory_addrs = {c.address for c in mandatory_list}
-    leaves = [
-        gid
-        for gid in built
-        if not any(s in built for s in group_graph.successors(gid))
-    ]
-    if not leaves:
-        leaves = list(built)
-    leaves.sort(
-        key=lambda gid: len(mandatory_addrs & _members_of(group_graph, gid)),
-        reverse=True,
+) -> dict[str, list[BuildConcept]]:
+    """For each mandatory concept, pick the most-downstream built group that
+    actually exposes it (more built ancestors = further downstream). Returns
+    `{gid: [concepts that group provides]}` preserving discovery order so
+    the MergeNode renders with a stable join layout."""
+    per_group: dict[str, list[BuildConcept]] = defaultdict(list)
+    for concept in mandatory_list:
+        addr = concept.address
+        candidates = [
+            gid
+            for gid, node in built.items()
+            if any(o.address == addr for o in node.output_concepts)
+        ]
+        if not candidates:
+            continue
+        candidates.sort(
+            key=lambda gid: sum(
+                1 for a in nx.ancestors(group_graph, gid) if a in built
+            ),
+            reverse=True,
+        )
+        per_group[candidates[0]].append(concept)
+    return per_group
+
+
+def _wrap_root_for_grain(
+    root_node: StrategyNode,
+    needed_concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """When a root scan feeds a merge edge, its row grain is typically wider
+    than the natural grain of the concepts the merge actually wants — joining
+    the raw row-grain into a per-key aggregate blows up cardinality. For
+    each natural-grain bucket among `needed_concepts`, emit a GroupNode that
+    aggregates `root_node` to that grain and exposes only those concepts plus
+    the grain keys. Buckets whose grain already matches `root_node.grain`
+    pass through unchanged."""
+    if not needed_concepts:
+        return [root_node]
+
+    root_grain_components = (
+        frozenset(root_node.grain.components) if root_node.grain else frozenset()
     )
-    return built[leaves[0]]
+
+    # Each concept's natural grain is the key it functionally depends on
+    # (e.g. text_id is a property of customer.id, so its grain is
+    # {customer.id}). `BuildGrain.from_concepts([c])` is the wrong helper
+    # here — that asks "what grain do these concepts collectively require"
+    # which can include the concept itself as a self-key.
+    by_grain: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
+    for concept in needed_concepts:
+        grain_components = (
+            frozenset(concept.grain.components) if concept.grain else frozenset()
+        )
+        by_grain[grain_components].append(concept)
+
+    wraps: list[StrategyNode] = []
+    for grain_comps, concepts in by_grain.items():
+        if grain_comps == root_grain_components or not grain_comps:
+            wraps.append(root_node)
+            continue
+        grain_concepts = [
+            environment.concepts[a]
+            for a in grain_comps
+            if a in environment.concepts
+        ]
+        # Dedup by address, keep concept order stable.
+        outputs_by_addr: dict[str, BuildConcept] = {}
+        for c in concepts + grain_concepts:
+            outputs_by_addr.setdefault(c.address, c)
+        outputs = list(outputs_by_addr.values())
+        wraps.append(
+            GroupNode(
+                output_concepts=outputs,
+                input_concepts=outputs,
+                environment=environment,
+                parents=[root_node],
+            )
+        )
+    return wraps
+
+
+def _assemble_final_node(
+    group_graph: nx.DiGraph,
+    built: dict[str, StrategyNode],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> StrategyNode | None:
+    """Build the FINAL output node: merge the minimum set of built groups
+    that together cover `mandatory_list`. When a single group already covers
+    every mandatory concept, return it as-is. Otherwise wrap the contributing
+    groups in a MergeNode whose auto-join logic links them on shared output
+    concepts — this is what the FINAL sink in the group graph was reserved
+    for, instead of just picking one leaf and dropping the rest.
+
+    For ROOT contributions specifically, project the root scan down to the
+    needed concepts' natural grain via `_wrap_root_for_grain` so the merge
+    join doesn't blow up cardinality (e.g. `text_id` at customer grain
+    instead of one row per store_return)."""
+    if not built:
+        return None
+    per_group = _cover_groups_for_mandatory(group_graph, built, mandatory_list)
+    if not per_group:
+        return next(iter(built.values()))
+    contributing = list(per_group.keys())
+    if len(contributing) == 1:
+        return built[contributing[0]]
+
+    parents: list[StrategyNode] = []
+    for gid in contributing:
+        node = built[gid]
+        is_root = group_graph.nodes[gid].get("derivation") == "root"
+        if is_root:
+            parents.extend(_wrap_root_for_grain(node, per_group[gid], environment))
+        else:
+            parents.append(node)
+
+    available: set[str] = set()
+    for p in parents:
+        for o in p.output_concepts:
+            available.add(o.address)
+    outputs = [c for c in mandatory_list if c.address in available]
+    return MergeNode(
+        input_concepts=outputs,
+        output_concepts=outputs,
+        environment=environment,
+        parents=parents,
+    )
 
 
 def build_strategy_node(
@@ -166,7 +290,8 @@ def build_strategy_node(
         ]
         if not outputs:
             continue
-        injected = combine_clauses(_active_clauses_at(group_graph, gid))
+        injected = _wrap_atoms(_atoms_at(group_graph, gid))
+        preexisting = _wrap_atoms(_accumulated_atoms_above(group_graph, gid))
         parents = _parent_nodes_for(group_graph, built, gid)
         outputs = _satisfiable_outputs(outputs, parents)
         if not outputs:
@@ -177,6 +302,7 @@ def build_strategy_node(
             parents=parents,
             environment=environment,
             conditions=injected,
+            preexisting_conditions=preexisting,
             history=history,
             g=g,
         )
@@ -191,4 +317,4 @@ def build_strategy_node(
 
     if not built:
         return None
-    return _pick_result(group_graph, built, mandatory_list)
+    return _assemble_final_node(group_graph, built, mandatory_list, environment)

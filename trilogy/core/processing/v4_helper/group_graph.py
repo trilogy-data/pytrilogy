@@ -22,6 +22,7 @@ import networkx as nx
 
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildWhereClause
+from trilogy.core.processing.condition_utility import decompose_condition
 
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
@@ -120,8 +121,14 @@ def _materialize_group_graph(
             primary_members=tuple(bucket.primary_members),
             secondary_members=tuple(bucket.secondary_members),
             member_depths=dict(bucket.member_depths),
+            # Atoms (BoolExpr) applied AT this group. A clause like
+            # `state='TN' AND year=2000` is decomposed and each atom finds its
+            # own highest-allowed group independently — so a single clause
+            # may live at multiple groups, or one group may collect atoms
+            # from several clauses.
+            condition_atoms=[],
+            # String renderings of the atoms above, just for graph visualization.
             conditions=[],
-            condition_objects=[],
         )
 
     for u, v, edata in concept_graph.edges(data=True):
@@ -140,10 +147,15 @@ def _inject_conditions(
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
 ) -> set[str]:
-    """Place each clause on the furthest-upstream group that already exposes
-    every input the clause references. Errors out if the chosen group sits
-    downstream of a d0 barrier (a filter cannot be pushed past a row-shape
-    change). Returns the set of groups that received at least one condition."""
+    """Decompose each clause into AND-atoms (via `decompose_condition`) and
+    place each atom *independently* at the furthest-upstream group that can
+    serve its inputs. An atom like `state='TN'` can fly all the way up to
+    ROOT even if its sibling atom needs a downstream group — the two no
+    longer share fate.
+
+    Errors out if a chosen group sits downstream of a d0 barrier (a filter
+    cannot be pushed past a row-shape change). Returns the set of groups
+    that received at least one atom."""
     d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == "d0"}
     group_members: dict[str, set[str]] = {
         gid: set(b.primary_members) | set(b.secondary_members)
@@ -152,28 +164,31 @@ def _inject_conditions(
     condition_group_ids: set[str] = set()
 
     for clause in conditions:
-        inputs = {c.address for c in clause.concept_arguments}
-        candidates = [gid for gid, mems in group_members.items() if inputs <= mems]
-        if not candidates:
-            continue
-        cand_set = set(candidates)
-        upstream_most = [
-            gid
-            for gid in candidates
-            if not (cand_set & nx.ancestors(group_graph, gid))
-        ]
-        chosen = upstream_most[0] if upstream_most else candidates[0]
-        chosen_ancestors = nx.ancestors(group_graph, chosen)
-        offending = d0_group_ids & chosen_ancestors
-        if offending:
-            raise ValueError(
-                f"Condition {clause} would be injected at {chosen}, which is "
-                f"downstream of d0 barrier(s) {sorted(offending)}; conditions "
-                f"cannot be pushed past row-shape changes."
-            )
-        group_graph.nodes[chosen]["conditions"].append(str(clause))
-        group_graph.nodes[chosen]["condition_objects"].append(clause)
-        condition_group_ids.add(chosen)
+        for atom in decompose_condition(clause.conditional):
+            inputs = {c.address for c in atom.concept_arguments}
+            candidates = [
+                gid for gid, mems in group_members.items() if inputs <= mems
+            ]
+            if not candidates:
+                continue
+            cand_set = set(candidates)
+            upstream_most = [
+                gid
+                for gid in candidates
+                if not (cand_set & nx.ancestors(group_graph, gid))
+            ]
+            chosen = upstream_most[0] if upstream_most else candidates[0]
+            chosen_ancestors = nx.ancestors(group_graph, chosen)
+            offending = d0_group_ids & chosen_ancestors
+            if offending:
+                raise ValueError(
+                    f"Atom {atom} would be injected at {chosen}, which is "
+                    f"downstream of d0 barrier(s) {sorted(offending)}; "
+                    f"conditions cannot be pushed past row-shape changes."
+                )
+            group_graph.nodes[chosen]["condition_atoms"].append(atom)
+            group_graph.nodes[chosen]["conditions"].append(str(atom))
+            condition_group_ids.add(chosen)
 
     return condition_group_ids
 

@@ -1,12 +1,26 @@
 # Query 01
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
+
+## Result comparison
+
+v4 rows: 100 (92 distinct)
+ref rows: 100 (92 distinct)
+
+## SQL size
+
+| Source | Chars | Lines |
+| --- | --- | --- |
+| v4 | 3268 | 90 |
+| reference | 1734 | 48 |
+| v4 / ref | 1.88x | 1.88x |
 
 ## Preql
 
@@ -75,29 +89,53 @@ FROM
 WHERE
     "wakeful"."returns_store_state" = 'TN' and "highfalutin"."returns_return_date_year" = 2000
 ),
-cooperative as (
+questionable as (
 SELECT
     "thoughtful"."returns_customer_id" as "returns_customer_id",
     "thoughtful"."returns_store_id" as "returns_store_id",
     sum("thoughtful"."returns_return_amount") as "total_returns"
 FROM
     "thoughtful"
-WHERE
-    "thoughtful"."returns_store_state" = 'TN' and "thoughtful"."returns_return_date_year" = 2000
-
 GROUP BY
     1,
-    2)
+    2),
+abundant as (
 SELECT
-    avg("cooperative"."total_returns") as "avg_store_returns",
-    "cooperative"."returns_store_id" as "returns_store_id"
+    "questionable"."returns_store_id" as "returns_store_id",
+    avg("questionable"."total_returns") as "avg_store_returns"
 FROM
-    "cooperative"
-WHERE
-    "thoughtful"."returns_store_state" = 'TN' and "thoughtful"."returns_return_date_year" = 2000
-
+    "questionable"
 GROUP BY
-    2
+    1),
+cooperative as (
+SELECT
+    "thoughtful"."returns_customer_id" as "returns_customer_id",
+    "thoughtful"."returns_customer_text_id" as "returns_customer_text_id"
+FROM
+    "thoughtful"
+GROUP BY
+    1,
+    2),
+uneven as (
+SELECT
+    "abundant"."avg_store_returns" as "avg_store_returns",
+    "cooperative"."returns_customer_text_id" as "returns_customer_text_id",
+    "questionable"."returns_store_id" as "returns_store_id",
+    "questionable"."total_returns" as "total_returns"
+FROM
+    "abundant"
+    INNER JOIN "questionable" on "abundant"."returns_store_id" = "questionable"."returns_store_id"
+    INNER JOIN "cooperative" on "questionable"."returns_customer_id" = "cooperative"."returns_customer_id")
+SELECT
+    "uneven"."returns_customer_text_id" as "returns_customer_text_id"
+FROM
+    "uneven"
+WHERE
+    "uneven"."total_returns" > ( 1.2 * "uneven"."avg_store_returns" )
+
+ORDER BY 
+    "uneven"."returns_customer_text_id" asc
+LIMIT (100)
 ```
 
 ## Reference SQL (zquery log)
@@ -151,21 +189,4 @@ FROM
 ORDER BY 
     "uneven"."returns_customer_text_id" asc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 151, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 98, in execute
-    return list(con.execute(sql).fetchall())
-                ~~~~~~~~~~~^^^^^
-_duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
-Candidate tables: "cooperative"
-
-LINE 63:     "thoughtful"."returns_store_state" = 'TN' and "thoughtful...
-             ^
 ```

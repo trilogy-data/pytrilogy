@@ -19,7 +19,7 @@ from .constants import (
 from .factory_dispatch import build_node_for_group
 from .group_graph import build_group_graph
 from .models import BuildInfo, GroupBucket
-from .strategy_builder import build_strategy_node, combine_clauses
+from .strategy_builder import build_strategy_node
 
 __all__ = [
     "BuildInfo",
@@ -32,5 +32,4 @@ __all__ = [
     "build_node_for_group",
     "build_strategy_node",
     "classify_depth",
-    "combine_clauses",
 ]

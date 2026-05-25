@@ -10,6 +10,7 @@ def gen_constant(
     parents: List[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
+    preexisting_conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """A constant has no inputs by definition. Parents (if any) are ignored."""
     return ConstantNode(
@@ -17,4 +18,7 @@ def gen_constant(
         output_concepts=outputs,
         environment=environment,
         conditions=conditions.conditional if conditions else None,
+        preexisting_conditions=(
+            preexisting_conditions.conditional if preexisting_conditions else None
+        ),
     )

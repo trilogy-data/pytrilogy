@@ -1,0 +1,208 @@
+# Query 88
+
+**Status:** `exec_fail`
+
+| Stage | Result |
+| --- | --- |
+| v4 SQL generation | OK |
+| v4 execution | FAILED |
+| reference execution | OK (1 rows) |
+
+## Result comparison
+
+_at least one side did not produce rows._
+
+## SQL size
+
+| Source | Chars | Lines |
+| --- | --- | --- |
+| v4 | 6613 | 85 |
+| reference | 3887 | 32 |
+| v4 / ref | 1.70x | 2.66x |
+
+## Preql
+
+```
+import store_sales as store_sales;
+
+def bucket_count(h, min_low, min_high) -> sum(
+    count(
+        store_sales.item.id
+            ? store_sales.time.hour = h
+and store_sales.time.minute >= min_low
+and store_sales.time.minute < min_high
+    )
+        by store_sales.ticket_number
+);
+
+where
+    store_sales.store.name = 'ese'
+    and store_sales.time.hour in (8, 9, 10, 11, 12)
+    and (
+        (
+            store_sales.household_demographic.dependent_count = 4
+            and store_sales.household_demographic.vehicle_count <= 6
+        )
+        or (
+            store_sales.household_demographic.dependent_count = 2
+            and store_sales.household_demographic.vehicle_count <= 4
+        )
+        or (
+            store_sales.household_demographic.dependent_count = 0
+            and store_sales.household_demographic.vehicle_count <= 2
+        )
+    )
+select
+    @bucket_count(8, 30, 60) as h8_30_to_9,
+    @bucket_count(9, 0, 30) as h9_to_9_30,
+    @bucket_count(9, 30, 60) as h9_30_to_10,
+    @bucket_count(10, 0, 30) as h10_to_10_30,
+    @bucket_count(10, 30, 60) as h10_30_to_11,
+    @bucket_count(11, 0, 30) as h11_to_11_30,
+    @bucket_count(11, 30, 60) as h11_30_to_12,
+    @bucket_count(12, 0, 30) as h12_to_12_30,
+;
+```
+
+## v4 generated SQL
+
+```sql
+WITH 
+cheerful as (
+SELECT
+    "store_sales_time_time"."T_HOUR" as "store_sales_time_hour",
+    "store_sales_time_time"."T_MINUTE" as "store_sales_time_minute",
+    "store_sales_time_time"."T_TIME_SK" as "store_sales_time_id"
+FROM
+    "memory"."time_dim" as "store_sales_time_time"),
+wakeful as (
+SELECT
+    "store_sales_store_sales"."SS_HDEMO_SK" as "store_sales_household_demographic_id",
+    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
+    "store_sales_store_sales"."SS_SOLD_TIME_SK" as "store_sales_time_id",
+    "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id",
+    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"),
+highfalutin as (
+SELECT
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
+    "store_sales_store_store"."S_STORE_SK" as "store_sales_store_id"
+FROM
+    "memory"."store" as "store_sales_store_store"),
+quizzical as (
+SELECT
+    "store_sales_household_demographic_household_demographics"."HD_DEMO_SK" as "store_sales_household_demographic_id",
+    "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" as "store_sales_household_demographic_dependent_count",
+    "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" as "store_sales_household_demographic_vehicle_count"
+FROM
+    "memory"."household_demographics" as "store_sales_household_demographic_household_demographics"),
+thoughtful as (
+SELECT
+    "cheerful"."store_sales_time_hour" as "store_sales_time_hour",
+    "cheerful"."store_sales_time_minute" as "store_sales_time_minute",
+    "highfalutin"."store_sales_store_name" as "store_sales_store_name",
+    "quizzical"."store_sales_household_demographic_dependent_count" as "store_sales_household_demographic_dependent_count",
+    "quizzical"."store_sales_household_demographic_vehicle_count" as "store_sales_household_demographic_vehicle_count",
+    "wakeful"."store_sales_item_id" as "store_sales_item_id",
+    "wakeful"."store_sales_ticket_number" as "store_sales_ticket_number"
+FROM
+    "wakeful"
+    LEFT OUTER JOIN "cheerful" on "wakeful"."store_sales_time_id" = "cheerful"."store_sales_time_id"
+    LEFT OUTER JOIN "highfalutin" on "wakeful"."store_sales_store_id" = "highfalutin"."store_sales_store_id"
+    LEFT OUTER JOIN "quizzical" on "wakeful"."store_sales_household_demographic_id" = "quizzical"."store_sales_household_demographic_id"
+WHERE
+    "highfalutin"."store_sales_store_name" = 'ese' and "cheerful"."store_sales_time_hour" in (8,9,10,11,12) and ( ( "quizzical"."store_sales_household_demographic_dependent_count" = 4 and "quizzical"."store_sales_household_demographic_vehicle_count" <= 6 ) or ( "quizzical"."store_sales_household_demographic_dependent_count" = 2 and "quizzical"."store_sales_household_demographic_vehicle_count" <= 4 ) or ( "quizzical"."store_sales_household_demographic_dependent_count" = 0 and "quizzical"."store_sales_household_demographic_vehicle_count" <= 2 ) )
+),
+cooperative as (
+SELECT
+    CASE WHEN "thoughtful"."store_sales_time_hour" = 10 and "thoughtful"."store_sales_time_minute" >= 0 and "thoughtful"."store_sales_time_minute" < 30 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_5055102866169213",
+    CASE WHEN "thoughtful"."store_sales_time_hour" = 10 and "thoughtful"."store_sales_time_minute" >= 30 and "thoughtful"."store_sales_time_minute" < 60 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_2411341819675340",
+    CASE WHEN "thoughtful"."store_sales_time_hour" = 11 and "thoughtful"."store_sales_time_minute" >= 0 and "thoughtful"."store_sales_time_minute" < 30 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_2242083618971481",
+    CASE WHEN "thoughtful"."store_sales_time_hour" = 11 and "thoughtful"."store_sales_time_minute" >= 30 and "thoughtful"."store_sales_time_minute" < 60 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_7585549965870470",
+    CASE WHEN "thoughtful"."store_sales_time_hour" = 12 and "thoughtful"."store_sales_time_minute" >= 0 and "thoughtful"."store_sales_time_minute" < 30 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_427324426708077",
+    CASE WHEN "thoughtful"."store_sales_time_hour" = 8 and "thoughtful"."store_sales_time_minute" >= 30 and "thoughtful"."store_sales_time_minute" < 60 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_2882641317878944",
+    CASE WHEN "thoughtful"."store_sales_time_hour" = 9 and "thoughtful"."store_sales_time_minute" >= 0 and "thoughtful"."store_sales_time_minute" < 30 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_4813044741167353",
+    CASE WHEN "thoughtful"."store_sales_time_hour" = 9 and "thoughtful"."store_sales_time_minute" >= 30 and "thoughtful"."store_sales_time_minute" < 60 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_1217483973813310"
+FROM
+    "thoughtful"),
+questionable as (
+SELECT
+    "thoughtful"."store_sales_ticket_number" as "store_sales_ticket_number",
+    count("cooperative"."_virt_filter_id_1217483973813310") as "_virt_agg_count_2219364601882723",
+    count("cooperative"."_virt_filter_id_2242083618971481") as "_virt_agg_count_9208026921280603",
+    count("cooperative"."_virt_filter_id_2411341819675340") as "_virt_agg_count_4915320083864949",
+    count("cooperative"."_virt_filter_id_2882641317878944") as "_virt_agg_count_6255323248253146",
+    count("cooperative"."_virt_filter_id_427324426708077") as "_virt_agg_count_6874762517186813",
+    count("cooperative"."_virt_filter_id_4813044741167353") as "_virt_agg_count_2910789853377884",
+    count("cooperative"."_virt_filter_id_5055102866169213") as "_virt_agg_count_7911186439813521",
+    count("cooperative"."_virt_filter_id_7585549965870470") as "_virt_agg_count_7914196801151291"
+FROM
+    "cooperative"
+GROUP BY
+    1)
+SELECT
+    sum("questionable"."_virt_agg_count_6255323248253146") as "h8_30_to_9",
+    sum("questionable"."_virt_agg_count_2910789853377884") as "h9_to_9_30",
+    sum("questionable"."_virt_agg_count_2219364601882723") as "h9_30_to_10",
+    sum("questionable"."_virt_agg_count_7911186439813521") as "h10_to_10_30",
+    sum("questionable"."_virt_agg_count_4915320083864949") as "h10_30_to_11",
+    sum("questionable"."_virt_agg_count_9208026921280603") as "h11_to_11_30",
+    sum("questionable"."_virt_agg_count_7914196801151291") as "h11_30_to_12",
+    sum("questionable"."_virt_agg_count_6874762517186813") as "h12_to_12_30"
+FROM
+    "questionable"
+```
+
+## Reference SQL (zquery log)
+
+```sql
+WITH 
+thoughtful as (
+SELECT
+    count(CASE WHEN "store_sales_time_time"."T_HOUR" = 10 and "store_sales_time_time"."T_MINUTE" >= 0 and "store_sales_time_time"."T_MINUTE" < 30 THEN "store_sales_store_sales"."SS_ITEM_SK" ELSE NULL END) as "_virt_agg_count_7911186439813521",
+    count(CASE WHEN "store_sales_time_time"."T_HOUR" = 10 and "store_sales_time_time"."T_MINUTE" >= 30 and "store_sales_time_time"."T_MINUTE" < 60 THEN "store_sales_store_sales"."SS_ITEM_SK" ELSE NULL END) as "_virt_agg_count_4915320083864949",
+    count(CASE WHEN "store_sales_time_time"."T_HOUR" = 11 and "store_sales_time_time"."T_MINUTE" >= 0 and "store_sales_time_time"."T_MINUTE" < 30 THEN "store_sales_store_sales"."SS_ITEM_SK" ELSE NULL END) as "_virt_agg_count_9208026921280603",
+    count(CASE WHEN "store_sales_time_time"."T_HOUR" = 11 and "store_sales_time_time"."T_MINUTE" >= 30 and "store_sales_time_time"."T_MINUTE" < 60 THEN "store_sales_store_sales"."SS_ITEM_SK" ELSE NULL END) as "_virt_agg_count_7914196801151291",
+    count(CASE WHEN "store_sales_time_time"."T_HOUR" = 12 and "store_sales_time_time"."T_MINUTE" >= 0 and "store_sales_time_time"."T_MINUTE" < 30 THEN "store_sales_store_sales"."SS_ITEM_SK" ELSE NULL END) as "_virt_agg_count_6874762517186813",
+    count(CASE WHEN "store_sales_time_time"."T_HOUR" = 8 and "store_sales_time_time"."T_MINUTE" >= 30 and "store_sales_time_time"."T_MINUTE" < 60 THEN "store_sales_store_sales"."SS_ITEM_SK" ELSE NULL END) as "_virt_agg_count_6255323248253146",
+    count(CASE WHEN "store_sales_time_time"."T_HOUR" = 9 and "store_sales_time_time"."T_MINUTE" >= 0 and "store_sales_time_time"."T_MINUTE" < 30 THEN "store_sales_store_sales"."SS_ITEM_SK" ELSE NULL END) as "_virt_agg_count_2910789853377884",
+    count(CASE WHEN "store_sales_time_time"."T_HOUR" = 9 and "store_sales_time_time"."T_MINUTE" >= 30 and "store_sales_time_time"."T_MINUTE" < 60 THEN "store_sales_store_sales"."SS_ITEM_SK" ELSE NULL END) as "_virt_agg_count_2219364601882723"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."time_dim" as "store_sales_time_time" on "store_sales_store_sales"."SS_SOLD_TIME_SK" = "store_sales_time_time"."T_TIME_SK"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."household_demographics" as "store_sales_household_demographic_household_demographics" on "store_sales_store_sales"."SS_HDEMO_SK" = "store_sales_household_demographic_household_demographics"."HD_DEMO_SK"
+WHERE
+    "store_sales_store_store"."S_STORE_NAME" = 'ese' and "store_sales_time_time"."T_HOUR" in (8,9,10,11,12) and ( ( "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 4 and "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" <= 6 ) or ( "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 2 and "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" <= 4 ) or ( "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 0 and "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" <= 2 ) )
+
+GROUP BY
+    "store_sales_store_sales"."SS_TICKET_NUMBER")
+SELECT
+    sum("thoughtful"."_virt_agg_count_6255323248253146") as "h8_30_to_9",
+    sum("thoughtful"."_virt_agg_count_2910789853377884") as "h9_to_9_30",
+    sum("thoughtful"."_virt_agg_count_2219364601882723") as "h9_30_to_10",
+    sum("thoughtful"."_virt_agg_count_7911186439813521") as "h10_to_10_30",
+    sum("thoughtful"."_virt_agg_count_4915320083864949") as "h10_30_to_11",
+    sum("thoughtful"."_virt_agg_count_9208026921280603") as "h11_to_11_30",
+    sum("thoughtful"."_virt_agg_count_7914196801151291") as "h11_30_to_12",
+    sum("thoughtful"."_virt_agg_count_6874762517186813") as "h12_to_12_30"
+FROM
+    "thoughtful"
+```
+
+## v4 execution error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
+    result.v4_rows = execute(con, v4_sql)
+                     ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+    cursor = con.execute(sql)
+_duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
+Candidate tables: "cooperative"
+
+LINE 62:     "thoughtful"."store_sales_ticket_number" as "store_sales_ti...
+             ^
+```
