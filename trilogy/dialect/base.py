@@ -1445,6 +1445,63 @@ class BaseDialect:
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
+    @staticmethod
+    def _grouped_output_is_parent_passthrough(
+        concept: BuildConcept,
+        cte: CTE | UnionCTE,
+        parents_by_name: dict[str, CTE | UnionCTE],
+    ) -> bool:
+        # A non-standard-grouped output is a "passthrough" when its source_map
+        # points exclusively at parent CTEs that already applied the same
+        # rollup/cube/grouping-sets aggregation. Re-emitting GROUP BY here
+        # would double-aggregate the parent's output (or, for ROLLUP, error
+        # because the passthrough columns aren't inside an aggregate).
+        if not isinstance(cte, CTE):
+            return False
+        aggregate = get_grouped_aggregate_wrapper(concept)
+        if aggregate is None or aggregate.grouping == AggregateGroupingMode.STANDARD:
+            return False
+        sources = cte.source_map.get(concept.address, [])
+        if not sources:
+            return False
+        by_addresses = [c.address for c in aggregate.by]
+        for src in sources:
+            parent = parents_by_name.get(src)
+            if parent is None:
+                return False
+            parent_concept = next(
+                (c for c in parent.output_columns if c.address == concept.address),
+                None,
+            )
+            if parent_concept is None:
+                return False
+            parent_aggregate = get_grouped_aggregate_wrapper(parent_concept)
+            if parent_aggregate is None:
+                return False
+            if parent_aggregate.grouping != aggregate.grouping:
+                return False
+            if [c.address for c in parent_aggregate.by] != by_addresses:
+                return False
+        return True
+
+    @classmethod
+    def _all_grouped_outputs_are_passthrough(cls, cte: CTE | UnionCTE) -> bool:
+        if not isinstance(cte, CTE) or not cte.parent_ctes:
+            return False
+        grouped_concepts = [
+            c
+            for c in cte.output_columns
+            if (agg := get_grouped_aggregate_wrapper(c)) is not None
+            and agg.grouping != AggregateGroupingMode.STANDARD
+        ]
+        if not grouped_concepts:
+            return False
+        parents_by_name = {p.name: p for p in cte.parent_ctes}
+        return all(
+            cls._grouped_output_is_parent_passthrough(c, cte, parents_by_name)
+            for c in grouped_concepts
+        )
+
     def _get_aggregate_grouping(
         self, cte: CTE | UnionCTE
     ) -> tuple[AggregateGroupingMode, list[BuildConcept], list[list[BuildConcept]]]:
@@ -1557,6 +1614,9 @@ class BaseDialect:
     ) -> Optional[list[str]]:
 
         if not cte.group_to_grain:
+            return None
+
+        if self._all_grouped_outputs_are_passthrough(cte):
             return None
 
         grouping_mode = self._render_grouping_mode(cte, select_index)

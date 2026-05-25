@@ -1782,3 +1782,81 @@ ORDER BY
         (1, None, 30, 0, 1),
         (None, None, 30, 1, 3),
     ]
+
+
+def test_duckdb_rollup_passthrough_outer_no_regroup():
+    # Regression: when an outer CTE projects rollup-aggregate outputs that are
+    # forwarded passthroughs from a parent CTE which already applied the
+    # rollup, the outer CTE must NOT re-emit GROUP BY ROLLUP. Re-emitting it
+    # produces a DuckDB BinderException because passthrough columns aren't
+    # inside an aggregate, and conceptually it would double-aggregate the
+    # parent's rolled-up rows.
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(), rendering=Rendering(parameters=False)
+    )
+    executor.parse_text("""
+key store_id int;
+property store_id.state int;
+property store_id.county int;
+key date_id int;
+property date_id.month_seq int;
+key sale_id int;
+property sale_id.profit int;
+property sale_id.sale_store_id int?;
+property sale_id.sale_date_id int?;
+
+datasource stores ( store_id: store_id, state: state, county: county )
+grain (store_id)
+query '''
+    select 1 as store_id, 10 as state, 100 as county
+    union all select 2 as store_id, 10 as state, 101 as county
+    union all select 3 as store_id, 20 as state, 200 as county
+''';
+datasource dates ( date_id: date_id, month_seq: month_seq )
+grain (date_id)
+query '''
+    select 1 as date_id, 1200 as month_seq
+    union all select 2 as date_id, 1205 as month_seq
+    union all select 3 as date_id, 1300 as month_seq
+''';
+datasource sales (
+    sale_id: sale_id,
+    profit: profit,
+    sale_store_id: sale_store_id,
+    sale_date_id: sale_date_id
+)
+grain (sale_id)
+query '''
+    select 1 as sale_id, 5 as profit, 1 as sale_store_id, 1 as sale_date_id
+    union all select 2 as sale_id, 7 as profit, 1 as sale_store_id, 1 as sale_date_id
+    union all select 3 as sale_id, 3 as profit, 2 as sale_store_id, 2 as sale_date_id
+    union all select 4 as sale_id, 8 as profit, 3 as sale_store_id, 1 as sale_date_id
+''';
+""")
+
+    sql = executor.generate_sql("""
+merge sale_store_id into ~store_id;
+merge sale_date_id into ~date_id;
+
+auto state_total <- sum(profit ? month_seq between 1200 and 1300) by state;
+auto state_rnk <- rank(state) over (order by state_total desc);
+rowset top_states <- where month_seq between 1200 and 1300
+    select state as ts_state, --state_rnk, having state_rnk <= 2;
+
+where month_seq between 1200 and 1300 and state in top_states.ts_state
+SELECT
+    sum(profit) by rollup state, county as total_sum,
+    state as s_state,
+    county as s_county,
+    grouping(state) + grouping(county) by rollup state, county as lochierarchy,
+    rank(state, county) over (partition by lochierarchy,
+        case when grouping(county) by rollup state, county = 0 then state else null end
+        order by total_sum desc) as rank_within_parent,
+ORDER BY lochierarchy desc nulls first;
+""")[-1]
+
+    # Exactly one ROLLUP — the inner aggregating CTE — not re-emitted at the
+    # outer projection layer.
+    assert sql.count("ROLLUP") == 1, sql
+    # The outer SELECT must execute without binder error.
+    list(executor.execute_raw_sql(sql).fetchall())
