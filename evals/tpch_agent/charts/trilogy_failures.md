@@ -20,34 +20,198 @@
 ### `syntax-parse`
 
 - `trilogy run -`
-  - --> 2:46 | 2 | where lineitem.shipdate <= '1998-09-02'::date; | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Location: ...shipdate <= '1998-09-…
+
+  ```text
+  --> 2:46
+    |
+  2 | where lineitem.shipdate <= '1998-09-02'::date;
+    |                                              ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...shipdate <= '1998-09-02'::date ??? ; select lineitem.returnflag,
+  ```
 - `trilogy run - --import raw/orders:orders --import raw/lineitem:lineitem`
-  - --> 3:5 | 3 | with; | ^--- | = expected IDENTIFIER Location: ...raw.lineitem as lineitem; with ??? ;
+
+  ```text
+  --> 3:5
+    |
+  3 | with;
+    |     ^---
+    |
+    = expected IDENTIFIER
+  Location:
+  ...raw.lineitem as lineitem; with ??? ;
+  ```
 - `trilogy run query16.preql`
-  - --> 4:22 | 4 | and not starts_with(ps.part.type, 'MEDIUM POLISHED') | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Locatio…
+
+  ```text
+  --> 4:22
+    |
+  4 |   and not starts_with(ps.part.type, 'MEDIUM POLISHED')
+    |                      ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail,
+  COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...rand#45'   and not starts_with ??? (ps.part.type, 'MEDIUM POLISHE...
+  ```
 - `trilogy run --import raw/customer:customer select substring(customer.phone, 1, 2) as cnt from customer order by cnt limit 5;`
-  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...(customer.phone, 1, 2) as cnt ??? from customer order by cnt lim...
+
+  ```text
+  Syntax [101]: Using FROM keyword? Trilogy does not have a
+  FROM clause (Datasource resolution is automatic).
+  Location:
+  ...(customer.phone, 1, 2) as cnt ??? from customer order by cnt lim...
+  ```
 - `trilogy run query22.preql`
-  - --> 9:165 | 9 | and customer.acctbal > avg(customer.acctbal ? customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')) by substring(customer.phone, 1, 2); | ^--- | = expecte…
-- `trilogy run --import raw/customer:customer select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey) as nu…`
-  - --> 2:235 | 2 | select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey) as numcust, sum(customer.acctbal) as totacctbal where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', …
+
+  ```text
+  --> 9:165
+    |
+  9 |   and customer.acctbal > avg(customer.acctbal ? customer.acctbal > 0 and
+  substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17'))
+  by substring(customer.phone, 1, 2);
+    |
+  ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail,
+  PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, window_sql_over, or OVER_COMPONENT_REF
+  Location:
+  ...30', '18', '17')) by substring ??? (customer.phone, 1, 2);  selec...
+  ```
+- `trilogy run --import raw/customer:customer select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey) as numcust, sum(customer.acctbal) as …customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17') group by cntrycode order by cntrycode limit 5;`
+
+  ```text
+  --> 2:235
+    |
+  2 | select substring(customer.phone, 1, 2) as cntrycode,
+  count(customer.custkey) as numcust, sum(customer.acctbal) as totacctbal where
+  customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23',
+  '29', '30', '18', '17') group by cntrycode order by cntrycode limit 5;
+    |
+  ^---
+    |
+    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
+  bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...'23', '29', '30', '18', '17') ??? group by cntrycode order by cn...
+  ```
 - `trilogy run query22.preql`
-  - --> 9:165 | 9 | and customer.acctbal > avg(customer.acctbal ? customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')) by substring(customer.phone, 1, 2); | ^--- | = expecte…
-- `trilogy run --import raw/customer:customer --import raw/orders:orders merge customer.custkey into ~orders.customer.custkey; w…`
-  - --> 3:354 | 3 | merge customer.custkey into ~orders.customer.custkey; where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17') and orders.orderkey is null and customer.…
-- `trilogy run --import raw/customer:customer --import raw/orders:orders -- merge customer.custkey into ~orders.customer.custkey…`
-  - --> 3:354 | 3 | merge customer.custkey into ~orders.customer.custkey; where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17') and orders.orderkey is null and customer.…
+
+  ```text
+  --> 9:165
+    |
+  9 |   and customer.acctbal > avg(customer.acctbal ? customer.acctbal > 0 and
+  substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17'))
+  by substring(customer.phone, 1, 2);
+    |
+  ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail,
+  PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, window_sql_over, or OVER_COMPONENT_REF
+  Location:
+  ...30', '18', '17')) by substring ??? (customer.phone, 1, 2);  selec...
+  ```
+- `trilogy run --import raw/customer:customer --import raw/orders:orders merge customer.custkey into ~orders.customer.custkey; where customer.acctbal > 0 and su…, 2) select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey) as numcust, sum(customer.acctbal) as totacctbal order by cntrycode;`
+
+  ```text
+  --> 3:354
+    |
+  3 | merge customer.custkey into ~orders.customer.custkey; where
+  customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23',
+  '29', '30', '18', '17') and orders.orderkey is null and customer.acctbal >
+  avg(customer.acctbal ? customer.acctbal > 0 and substring(customer.phone, 1, 2)
+  in ('13', '31', '23', '29', '30', '18', '17')) by substring(customer.phone, 1,
+  2) select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey)
+  as numcust, sum(customer.acctbal) as totacctbal order by cntrycode;
+    |
+  ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail,
+  PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, window_sql_over, or OVER_COMPONENT_REF
+  Location:
+  ...30', '18', '17')) by substring ??? (customer.phone, 1, 2) select
+  ```
+- `trilogy run --import raw/customer:customer --import raw/orders:orders -- merge customer.custkey into ~orders.customer.custkey; where customer.acctbal > 0 and…, 2) select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey) as numcust, sum(customer.acctbal) as totacctbal order by cntrycode;`
+
+  ```text
+  --> 3:354
+    |
+  3 | merge customer.custkey into ~orders.customer.custkey; where
+  customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23',
+  '29', '30', '18', '17') and orders.orderkey is null and customer.acctbal >
+  avg(customer.acctbal ? customer.acctbal > 0 and substring(customer.phone, 1, 2)
+  in ('13', '31', '23', '29', '30', '18', '17')) by substring(customer.phone, 1,
+  2) select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey)
+  as numcust, sum(customer.acctbal) as totacctbal order by cntrycode;
+    |
+  ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail,
+  PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, window_sql_over, or OVER_COMPONENT_REF
+  Location:
+  ...30', '18', '17')) by substring ??? (customer.phone, 1, 2) select
+  ```
 - `trilogy run test_merge.preql`
-  - --> 8:30 | 8 | and orders.orderkey is null; | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Location: and orders.orderkey is null ??? ; select c…
+
+  ```text
+  --> 8:30
+    |
+  8 |   and orders.orderkey is null;
+    |                              ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+     and orders.orderkey is null ??? ;  select     count(customer.c...
+  ```
 - `trilogy run test_merge.preql`
-  - --> 8:30 | 8 | and orders.orderkey is null; | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Location: and orders.orderkey is null ??? ; select c…
-- `trilogy run --import raw/customer:customer select count(customer.custkey) as c, sum(customer.acctbal) as t, substring(custome…`
-  - --> 2:255 | 2 | select count(customer.custkey) as c, sum(customer.acctbal) as t, substring(customer.phone, 1, 2) as cntrycode where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30…
+
+  ```text
+  --> 8:30
+    |
+  8 |   and orders.orderkey is null;
+    |                              ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+     and orders.orderkey is null ??? ;  select     count(customer.c...
+  ```
+- `trilogy run --import raw/customer:customer select count(customer.custkey) as c, sum(customer.acctbal) as t, substring(customer.phone, 1, 2) as cntrycode wher…, '30', '18', '17') and customer.custkey not in (merge customer.custkey into orders.customer.custkey) select orders.customer.custkey from raw.orders;`
+
+  ```text
+  --> 2:255
+    |
+  2 | select count(customer.custkey) as c, sum(customer.acctbal) as t,
+  substring(customer.phone, 1, 2) as cntrycode where customer.acctbal > 0 and
+  substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')
+  and customer.custkey not in (merge customer.custkey into
+  orders.customer.custkey) select orders.customer.custkey from raw.orders;
+    |
+  ^---
+    |
+    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...ustomer.custkey not in (merge ??? customer.custkey into orders.c...
+  ```
 
 ### `other`
 
 - `trilogy run -`
-  - Unable to import 'C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260526 -032601\workspace\_worker_3\lineitem.preql': [Errno 2] No such file or directory: 'C:\\Users\\ethan\\coding_projects\\pytri…
+
+  ```text
+  Unable to import
+  'C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260526
+  -032601\workspace\_worker_3\lineitem.preql': [Errno 2] No such file or
+  directory:
+  'C:\\Users\\ethan\\coding_projects\\pytrilogy_two\\evals\\tpch_agent\\results\\
+  20260526-032601\\workspace\\_worker_3\\lineitem.preql'. Did you mean:
+  raw.lineitem?
+  ```
 - `trilogy run query02.preql`
 
   ```text
