@@ -1093,6 +1093,20 @@ def test_list_files_reports_empty_directory(tmp_path):
     assert "no files under" in out
 
 
+def test_list_files_non_recursive_skips_workspace_noise(tmp_path, monkeypatch):
+    """The non-recursive branch also honors the skip-entry list (.duckdb,
+    __pycache__, _worker_*, etc.). Exercises the `continue` at the file
+    iteration line that the recursive test doesn't hit."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "keep.preql").write_text("a")
+    (tmp_path / "tpcds.duckdb").write_text("bin")
+    (tmp_path / "__pycache__").mkdir()
+    out = handle_list_files(AgentState(), {"path": ".", "recursive": False})
+    assert "keep.preql" in out
+    assert "tpcds.duckdb" not in out
+    assert "__pycache__" not in out
+
+
 def test_read_file_oserror_returns_error_message(tmp_path, monkeypatch):
     target = tmp_path / "x.txt"
     target.write_text("ok")
