@@ -1,0 +1,4 @@
+# Generated TPC-H databases (regenerated on demand) and per-run output.
+.cache/
+results/
+results_ingest/
