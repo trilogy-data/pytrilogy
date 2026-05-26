@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 4666 | 121 |
-| reference | 3444 | 59 |
-| v4 / ref | 1.35x | 2.05x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2912 | 67 | — |
+| reference | 3444 | 59 | 38.54 ms |
+| v4 / ref | 0.85x | 1.14x | — |
 
 ## Preql
 
@@ -62,17 +62,7 @@ SELECT
     "ss_store_sales"."SS_SOLD_DATE_SK" as "ss_date_id",
     "ss_store_sales"."SS_STORE_SK" as "ss_store_id"
 FROM
-    "memory"."store_sales" as "ss_store_sales"),
-abundant as (
-SELECT
-    "questionable"."ss_customer_id" as "ss_customer_id",
-    "questionable"."ss_date_id" as "ss_date_id",
-    "questionable"."ss_ext_sales_price" as "ss_ext_sales_price",
-    "questionable"."ss_item_id" as "ss_item_id",
-    "questionable"."ss_promotion_id" as "ss_promotion_id",
-    "questionable"."ss_store_id" as "ss_store_id"
-FROM
-    "questionable"
+    "memory"."store_sales" as "ss_store_sales"
 GROUP BY
     1,
     2,
@@ -80,77 +70,33 @@ GROUP BY
     4,
     5,
     6),
-cooperative as (
-SELECT
-    "ss_store_store"."S_GMT_OFFSET" as "ss_store_gmt_offset",
-    "ss_store_store"."S_STORE_SK" as "ss_store_id"
-FROM
-    "memory"."store" as "ss_store_store"),
-thoughtful as (
-SELECT
-    "ss_promotion_promotion"."P_CHANNEL_DMAIL" as "ss_promotion_channel_dmail",
-    "ss_promotion_promotion"."P_CHANNEL_EMAIL" as "ss_promotion_channel_email",
-    "ss_promotion_promotion"."P_CHANNEL_TV" as "ss_promotion_channel_tv",
-    "ss_promotion_promotion"."P_PROMO_SK" as "ss_promotion_id"
-FROM
-    "memory"."promotion" as "ss_promotion_promotion"),
-cheerful as (
-SELECT
-    "ss_item_items"."I_CATEGORY" as "ss_item_category",
-    "ss_item_items"."I_ITEM_SK" as "ss_item_id"
-FROM
-    "memory"."item" as "ss_item_items"),
-wakeful as (
-SELECT
-    "ss_date_date"."D_DATE_SK" as "ss_date_id",
-    "ss_date_date"."D_MOY" as "ss_date_month_of_year",
-    "ss_date_date"."D_YEAR" as "ss_date_year"
-FROM
-    "memory"."date_dim" as "ss_date_date"),
-highfalutin as (
-SELECT
-    "ss_customer_customers"."C_CURRENT_ADDR_SK" as "ss_customer_address_id",
-    "ss_customer_customers"."C_CUSTOMER_SK" as "ss_customer_id"
-FROM
-    "memory"."customer" as "ss_customer_customers"),
-quizzical as (
-SELECT
-    "ss_customer_address_customer_address"."CA_ADDRESS_SK" as "ss_customer_address_id",
-    "ss_customer_address_customer_address"."CA_GMT_OFFSET" as "ss_customer_address_gmt_offset"
-FROM
-    "memory"."customer_address" as "ss_customer_address_customer_address"),
 uneven as (
 SELECT
-    "abundant"."ss_ext_sales_price" as "ss_ext_sales_price",
-    "cheerful"."ss_item_category" as "ss_item_category",
-    "cooperative"."ss_store_gmt_offset" as "ss_store_gmt_offset",
-    "quizzical"."ss_customer_address_gmt_offset" as "ss_customer_address_gmt_offset",
-    "thoughtful"."ss_promotion_channel_dmail" as "ss_promotion_channel_dmail",
-    "thoughtful"."ss_promotion_channel_email" as "ss_promotion_channel_email",
-    "thoughtful"."ss_promotion_channel_tv" as "ss_promotion_channel_tv",
-    "wakeful"."ss_date_month_of_year" as "ss_date_month_of_year",
-    "wakeful"."ss_date_year" as "ss_date_year"
+    "questionable"."ss_ext_sales_price" as "ss_ext_sales_price",
+    "ss_promotion_promotion"."P_CHANNEL_DMAIL" as "ss_promotion_channel_dmail",
+    "ss_promotion_promotion"."P_CHANNEL_EMAIL" as "ss_promotion_channel_email",
+    "ss_promotion_promotion"."P_CHANNEL_TV" as "ss_promotion_channel_tv"
 FROM
-    "abundant"
-    LEFT OUTER JOIN "wakeful" on "abundant"."ss_date_id" = "wakeful"."ss_date_id"
-    INNER JOIN "cheerful" on "abundant"."ss_item_id" = "cheerful"."ss_item_id"
-    LEFT OUTER JOIN "cooperative" on "abundant"."ss_store_id" = "cooperative"."ss_store_id"
-    LEFT OUTER JOIN "highfalutin" on "abundant"."ss_customer_id" = "highfalutin"."ss_customer_id"
-    LEFT OUTER JOIN "thoughtful" on "abundant"."ss_promotion_id" = "thoughtful"."ss_promotion_id"
-    LEFT OUTER JOIN "quizzical" on "highfalutin"."ss_customer_address_id" = "quizzical"."ss_customer_address_id"
+    "questionable"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "questionable"."ss_date_id" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "ss_item_items" on "questionable"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "ss_store_store" on "questionable"."ss_store_id" = "ss_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "questionable"."ss_customer_id" = "ss_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."promotion" as "ss_promotion_promotion" on "questionable"."ss_promotion_id" = "ss_promotion_promotion"."P_PROMO_SK"
+    INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "wakeful"."ss_date_year" = 1998 and "wakeful"."ss_date_month_of_year" = 11 and "cheerful"."ss_item_category" = 'Jewelry' and "quizzical"."ss_customer_address_gmt_offset" = -5 and "cooperative"."ss_store_gmt_offset" = -5
+    "ss_date_date"."D_YEAR" = 1998 and "ss_date_date"."D_MOY" = 11 and "ss_item_items"."I_CATEGORY" = 'Jewelry' and "ss_customer_address_customer_address"."CA_GMT_OFFSET" = -5 and "ss_store_store"."S_GMT_OFFSET" = -5
 
 GROUP BY
     1,
     2,
     3,
     4,
-    5,
-    6,
-    7,
-    8,
-    9),
+    "ss_customer_address_customer_address"."CA_GMT_OFFSET",
+    "ss_date_date"."D_MOY",
+    "ss_date_date"."D_YEAR",
+    "ss_item_items"."I_CATEGORY",
+    "ss_store_store"."S_GMT_OFFSET"),
 yummy as (
 SELECT
     CASE WHEN "uneven"."ss_promotion_channel_dmail" = 'Y' or "uneven"."ss_promotion_channel_email" = 'Y' or "uneven"."ss_promotion_channel_tv" = 'Y' THEN "uneven"."ss_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_1027446398664923"
@@ -243,14 +189,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "uneven" not found!
 Candidate tables: "yummy"
 
-LINE 107:     sum("uneven"."ss_ext_sales_price") as "total",
-                  ^
+LINE 53:     sum("uneven"."ss_ext_sales_price") as "total",
+                 ^
 ```

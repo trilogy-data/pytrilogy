@@ -91,7 +91,7 @@
 | [81](query81.md) | gen_fail | - | 100 |
 | [82](query82.md) | mismatch | 34 | 2 |
 | [83](query83.md) | exec_fail | - | 24 |
-| [84](query84.md) | mismatch | 100 | 16 |
+| [84](query84.md) | mismatch | 16 | 16 |
 | [85](query85.md) | match | 1 | 1 |
 | [86](query86.md) | gen_fail | - | 100 |
 | [87](query87.md) | match | 1 | 1 |

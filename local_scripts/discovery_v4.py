@@ -490,6 +490,7 @@ def compile_sql(
         return None
     from trilogy.core.enums import BooleanOperator
     from trilogy.core.models.build import BuildConditional
+    from trilogy.core.optimization import optimize_ctes
     from trilogy.core.processing.nodes import SelectNode
     from trilogy.core.query_processor import datasource_to_cte, flatten_ctes
     from trilogy.core.statements.execute import ProcessedQuery
@@ -541,6 +542,13 @@ def compile_sql(
     if build_stmt is not None:
         root_cte.limit = build_stmt.limit
         root_cte.hidden_concepts = set(build_stmt.hidden_components)
+
+    # Match v3's process_query tail: run the optimizer pass plan (direct
+    # return, predicate pushdown, join hoist, inlining, etc.) before
+    # rendering. Without this the v4 SQL stays verbose — each scan in its
+    # own CTE, no merging — which is correct but a lot bigger.
+    if build_stmt is not None:
+        deduped = optimize_ctes(deduped, root_cte, build_stmt)
 
     outputs = [
         c for c in node.output_concepts if c.address not in node.hidden_concepts

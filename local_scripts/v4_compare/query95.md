@@ -18,13 +18,13 @@ only in v4 (showing up to 5 of 1):
 only in ref (showing up to 5 of 1):
   1x  (68, Decimal('-18202.90'), Decimal('100592.32'))
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 3455 | 75 |
-| reference | 4030 | 76 |
-| v4 / ref | 0.86x | 0.99x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 1854 | 33 | 15.89 ms |
+| reference | 4030 | 76 | 79.06 ms |
+| v4 / ref | 0.46x | 0.43x | 0.20x |
 
 ## Preql
 
@@ -54,71 +54,29 @@ limit 100
 
 ```sql
 WITH 
-thoughtful as (
-SELECT
-    "web_sales_web_site_web_site"."web_company_name" as "web_sales_web_site_company_name",
-    "web_sales_web_site_web_site"."web_site_sk" as "web_sales_web_site_id"
-FROM
-    "memory"."web_site" as "web_sales_web_site_web_site"),
-cheerful as (
-SELECT
-    "web_sales_web_sales"."WS_EXT_SHIP_COST" as "web_sales_ext_ship_cost",
-    "web_sales_web_sales"."WS_ITEM_SK" as "web_sales_item_id",
-    "web_sales_web_sales"."WS_NET_PROFIT" as "web_sales_net_profit",
-    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number",
-    "web_sales_web_sales"."WS_SHIP_ADDR_SK" as "web_sales_ship_address_id",
-    "web_sales_web_sales"."WS_SHIP_DATE_SK" as "web_sales_ship_date_id",
-    "web_sales_web_sales"."WS_WAREHOUSE_SK" as "web_sales_warehouse_id",
-    "web_sales_web_sales"."WS_WEB_SITE_SK" as "web_sales_web_site_id"
-FROM
-    "memory"."web_sales" as "web_sales_web_sales"),
-wakeful as (
-SELECT
-    "web_sales_web_returns"."WR_ITEM_SK" as "web_sales_item_id",
-    "web_sales_web_returns"."WR_ORDER_NUMBER" as "web_sales_order_number",
-    CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END as "web_sales_is_returned"
-FROM
-    "memory"."web_returns" as "web_sales_web_returns"),
-highfalutin as (
-SELECT
-    "web_sales_ship_date_date"."D_DATE_SK" as "web_sales_ship_date_id",
-    cast("web_sales_ship_date_date"."D_DATE" as date) as "web_sales_ship_date_date"
-FROM
-    "memory"."date_dim" as "web_sales_ship_date_date"),
-quizzical as (
-SELECT
-    "web_sales_ship_address_customer_address"."CA_ADDRESS_SK" as "web_sales_ship_address_id",
-    "web_sales_ship_address_customer_address"."CA_STATE" as "web_sales_ship_address_state"
-FROM
-    "memory"."customer_address" as "web_sales_ship_address_customer_address"),
 cooperative as (
 SELECT
-    "cheerful"."web_sales_ext_ship_cost" as "web_sales_ext_ship_cost",
-    "cheerful"."web_sales_net_profit" as "web_sales_net_profit",
-    "cheerful"."web_sales_order_number" as "web_sales_order_number",
-    "cheerful"."web_sales_warehouse_id" as "web_sales_warehouse_id",
-    "highfalutin"."web_sales_ship_date_date" as "web_sales_ship_date_date",
-    "quizzical"."web_sales_ship_address_state" as "web_sales_ship_address_state",
-    "thoughtful"."web_sales_web_site_company_name" as "web_sales_web_site_company_name",
-    "wakeful"."web_sales_is_returned" as "web_sales_is_returned"
+    "web_sales_web_sales"."WS_EXT_SHIP_COST" as "web_sales_ext_ship_cost",
+    "web_sales_web_sales"."WS_NET_PROFIT" as "web_sales_net_profit",
+    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number"
 FROM
-    "cheerful"
-    LEFT OUTER JOIN "wakeful" on "cheerful"."web_sales_item_id" = "wakeful"."web_sales_item_id" AND "cheerful"."web_sales_order_number" = "wakeful"."web_sales_order_number"
-    LEFT OUTER JOIN "thoughtful" on "cheerful"."web_sales_web_site_id" = "thoughtful"."web_sales_web_site_id"
-    LEFT OUTER JOIN "highfalutin" on "cheerful"."web_sales_ship_date_id" = "highfalutin"."web_sales_ship_date_id"
-    LEFT OUTER JOIN "quizzical" on "cheerful"."web_sales_ship_address_id" = "quizzical"."web_sales_ship_address_id"
+    "memory"."web_sales" as "web_sales_web_sales"
+    LEFT OUTER JOIN "memory"."web_returns" as "web_sales_web_returns" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_web_returns"."WR_ITEM_SK" AND "web_sales_web_sales"."WS_ORDER_NUMBER" = "web_sales_web_returns"."WR_ORDER_NUMBER"
+    INNER JOIN "memory"."web_site" as "web_sales_web_site_web_site" on "web_sales_web_sales"."WS_WEB_SITE_SK" = "web_sales_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "web_sales_ship_date_date" on "web_sales_web_sales"."WS_SHIP_DATE_SK" = "web_sales_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "web_sales_ship_address_customer_address" on "web_sales_web_sales"."WS_SHIP_ADDR_SK" = "web_sales_ship_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "highfalutin"."web_sales_ship_date_date" BETWEEN date '1999-02-01' AND date '1999-04-02' and "quizzical"."web_sales_ship_address_state" = 'IL' and "thoughtful"."web_sales_web_site_company_name" = 'pri'
+    cast("web_sales_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "web_sales_ship_address_customer_address"."CA_STATE" = 'IL' and "web_sales_web_site_web_site"."web_company_name" = 'pri'
 
 GROUP BY
     1,
     2,
     3,
-    4,
-    5,
-    6,
-    7,
-    8)
+    "web_sales_ship_address_customer_address"."CA_STATE",
+    "web_sales_web_sales"."WS_WAREHOUSE_SK",
+    "web_sales_web_site_web_site"."web_company_name",
+    CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END,
+    cast("web_sales_ship_date_date"."D_DATE" as date))
 SELECT
     count("cooperative"."web_sales_order_number") as "order_count",
     sum("cooperative"."web_sales_ext_ship_cost") as "total_shipping_cost",

@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 10071 | 179 |
-| reference | 6312 | 108 |
-| v4 / ref | 1.60x | 1.66x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 7331 | 127 | — |
+| reference | 6312 | 108 | 110.01 ms |
+| v4 / ref | 1.16x | 1.18x | — |
 
 ## Preql
 
@@ -74,73 +74,30 @@ limit 100
 
 ```sql
 WITH 
-cheerful as (
+thoughtful as (
 SELECT
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_id",
+    "store_sales_return_date_date"."D_DATE_SK" as "store_sales_return_date_id",
     "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
     "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id",
     "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id",
-    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number"
-FROM
-    "memory"."store_sales" as "store_sales_store_sales"),
-wakeful as (
-SELECT
-    "store_sales_store_returns"."SR_CUSTOMER_SK" as "store_sales_return_customer_id",
-    "store_sales_store_returns"."SR_ITEM_SK" as "store_sales_item_id",
-    "store_sales_store_returns"."SR_RETURNED_DATE_SK" as "store_sales_return_date_id",
-    "store_sales_store_returns"."SR_TICKET_NUMBER" as "store_sales_ticket_number"
-FROM
-    "memory"."store_returns" as "store_sales_store_returns"),
-highfalutin as (
-SELECT
+    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number",
     "store_sales_store_store"."S_CITY" as "store_sales_store_city",
     "store_sales_store_store"."S_COMPANY_ID" as "store_sales_store_company_id",
     "store_sales_store_store"."S_COUNTY" as "store_sales_store_county",
     "store_sales_store_store"."S_STATE" as "store_sales_store_state",
     "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
-    "store_sales_store_store"."S_STORE_SK" as "store_sales_store_id",
     "store_sales_store_store"."S_STREET_NAME" as "store_sales_store_street_name",
     "store_sales_store_store"."S_STREET_NUMBER" as "store_sales_store_street_number",
     "store_sales_store_store"."S_STREET_TYPE" as "store_sales_store_street_type",
     "store_sales_store_store"."S_SUITE_NUMBER" as "store_sales_store_suite_number",
     "store_sales_store_store"."S_ZIP" as "store_sales_store_zip"
 FROM
-    "memory"."store" as "store_sales_store_store"),
-quizzical as (
-SELECT
-    "store_sales_return_date_date"."D_DATE_SK" as "store_sales_return_date_id",
-    "store_sales_return_date_date"."D_MOY" as "store_sales_return_date_month_of_year",
-    "store_sales_return_date_date"."D_YEAR" as "store_sales_return_date_year"
-FROM
-    "memory"."date_dim" as "store_sales_return_date_date"),
-thoughtful as (
-SELECT
-    "cheerful"."store_sales_customer_id" as "store_sales_customer_id",
-    "cheerful"."store_sales_date_id" as "store_sales_date_id",
-    "cheerful"."store_sales_item_id" as "store_sales_item_id",
-    "cheerful"."store_sales_store_id" as "store_sales_store_id",
-    "cheerful"."store_sales_ticket_number" as "store_sales_ticket_number",
-    "highfalutin"."store_sales_store_city" as "store_sales_store_city",
-    "highfalutin"."store_sales_store_company_id" as "store_sales_store_company_id",
-    "highfalutin"."store_sales_store_county" as "store_sales_store_county",
-    "highfalutin"."store_sales_store_name" as "store_sales_store_name",
-    "highfalutin"."store_sales_store_state" as "store_sales_store_state",
-    "highfalutin"."store_sales_store_street_name" as "store_sales_store_street_name",
-    "highfalutin"."store_sales_store_street_number" as "store_sales_store_street_number",
-    "highfalutin"."store_sales_store_street_type" as "store_sales_store_street_type",
-    "highfalutin"."store_sales_store_suite_number" as "store_sales_store_suite_number",
-    "highfalutin"."store_sales_store_zip" as "store_sales_store_zip",
-    "quizzical"."store_sales_return_date_id" as "store_sales_return_date_id",
-    "quizzical"."store_sales_return_date_month_of_year" as "store_sales_return_date_month_of_year",
-    "quizzical"."store_sales_return_date_year" as "store_sales_return_date_year",
-    "wakeful"."store_sales_return_customer_id" as "store_sales_return_customer_id"
-FROM
-    "cheerful"
-    LEFT OUTER JOIN "wakeful" on "cheerful"."store_sales_item_id" = "wakeful"."store_sales_item_id" AND "cheerful"."store_sales_ticket_number" = "wakeful"."store_sales_ticket_number"
-    LEFT OUTER JOIN "highfalutin" on "cheerful"."store_sales_store_id" = "highfalutin"."store_sales_store_id"
-    LEFT OUTER JOIN "quizzical" on "wakeful"."store_sales_return_date_id" = "quizzical"."store_sales_return_date_id"
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."store_returns" as "store_sales_store_returns" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_store_returns"."SR_ITEM_SK" AND "store_sales_store_sales"."SS_TICKET_NUMBER" = "store_sales_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."date_dim" as "store_sales_return_date_date" on "store_sales_store_returns"."SR_RETURNED_DATE_SK" = "store_sales_return_date_date"."D_DATE_SK"
 WHERE
-    "quizzical"."store_sales_return_date_year" = 2001 and "quizzical"."store_sales_return_date_month_of_year" = 8 and "cheerful"."store_sales_customer_id" = "wakeful"."store_sales_return_customer_id" and "cheerful"."store_sales_store_id" is not null
+    "store_sales_return_date_date"."D_YEAR" = 2001 and "store_sales_return_date_date"."D_MOY" = 8 and "store_sales_store_sales"."SS_CUSTOMER_SK" = "store_sales_store_returns"."SR_CUSTOMER_SK" and "store_sales_store_sales"."SS_STORE_SK" is not null
 
 GROUP BY
     1,
@@ -158,20 +115,14 @@ GROUP BY
     13,
     14,
     15,
-    16,
-    17,
-    18,
-    19),
+    "store_sales_return_date_date"."D_MOY",
+    "store_sales_return_date_date"."D_YEAR",
+    "store_sales_store_returns"."SR_CUSTOMER_SK",
+    "store_sales_store_sales"."SS_CUSTOMER_SK"),
 cooperative as (
 SELECT
-    "thoughtful"."store_sales_customer_id" as "store_sales_customer_id",
-    "thoughtful"."store_sales_date_id" as "store_sales_date_id",
     "thoughtful"."store_sales_item_id" as "store_sales_item_id",
-    "thoughtful"."store_sales_return_customer_id" as "store_sales_return_customer_id",
     "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" as "days_to_return",
-    "thoughtful"."store_sales_return_date_id" as "store_sales_return_date_id",
-    "thoughtful"."store_sales_return_date_month_of_year" as "store_sales_return_date_month_of_year",
-    "thoughtful"."store_sales_return_date_year" as "store_sales_return_date_year",
     "thoughtful"."store_sales_store_city" as "store_sales_store_city",
     "thoughtful"."store_sales_store_company_id" as "store_sales_store_company_id",
     "thoughtful"."store_sales_store_county" as "store_sales_store_county",
@@ -182,8 +133,7 @@ SELECT
     "thoughtful"."store_sales_store_street_number" as "store_sales_store_street_number",
     "thoughtful"."store_sales_store_street_type" as "store_sales_store_street_type",
     "thoughtful"."store_sales_store_suite_number" as "store_sales_store_suite_number",
-    "thoughtful"."store_sales_store_zip" as "store_sales_store_zip",
-    "thoughtful"."store_sales_ticket_number" as "store_sales_ticket_number"
+    "thoughtful"."store_sales_store_zip" as "store_sales_store_zip"
 FROM
     "thoughtful"),
 questionable as (
@@ -197,8 +147,6 @@ FROM
     "cooperative"),
 abundant as (
 SELECT
-    "thoughtful"."store_sales_store_id" as "store_sales_store_id",
-    "thoughtful"."store_sales_ticket_number" as "store_sales_ticket_number",
     count("questionable"."_virt_filter_id_4994347099701481") as "_virt_agg_count_5623669394588902",
     count("questionable"."_virt_filter_id_5952815899712229") as "_virt_agg_count_7969998780980378",
     count("questionable"."_virt_filter_id_6450764138736494") as "_virt_agg_count_4020156712075239",
@@ -207,8 +155,8 @@ SELECT
 FROM
     "questionable"
 GROUP BY
-    1,
-    2),
+    "thoughtful"."store_sales_store_id",
+    "thoughtful"."store_sales_ticket_number"),
 uneven as (
 SELECT
     "thoughtful"."store_sales_store_id" as "store_sales_store_id",
@@ -371,14 +319,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
 Candidate tables: "questionable"
 
-LINE 125:     "thoughtful"."store_sales_store_id" as "store_sales_store_id...
-              ^
+LINE 83:     "thoughtful"."store_sales_store_id",
+             ^
 ```

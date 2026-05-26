@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 2731 | 76 |
-| reference | 914 | 19 |
-| v4 / ref | 2.99x | 4.00x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 1713 | 48 | — |
+| reference | 914 | 19 | 27.26 ms |
+| v4 / ref | 1.87x | 2.53x | — |
 
 ## Preql
 
@@ -46,57 +46,29 @@ limit 100
 
 ```sql
 WITH 
-wakeful as (
-SELECT
-    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_customer_id",
-    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
-    "ss_store_sales"."SS_QUANTITY" as "ss_quantity",
-    "ss_store_sales"."SS_SALES_PRICE" as "ss_sales_price",
-    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
-FROM
-    "memory"."store_sales" as "ss_store_sales"),
-highfalutin as (
-SELECT
-    "ss_store_returns"."SR_ITEM_SK" as "ss_item_id",
-    "ss_store_returns"."SR_REASON_SK" as "ss_return_reason_id",
-    "ss_store_returns"."SR_RETURN_QUANTITY" as "ss_return_quantity",
-    "ss_store_returns"."SR_TICKET_NUMBER" as "ss_ticket_number"
-FROM
-    "memory"."store_returns" as "ss_store_returns"),
-quizzical as (
-SELECT
-    "ss_return_reason_reason"."R_REASON_DESC" as "ss_return_reason_desc",
-    "ss_return_reason_reason"."R_REASON_SK" as "ss_return_reason_id"
-FROM
-    "memory"."reason" as "ss_return_reason_reason"),
 cheerful as (
 SELECT
-    "highfalutin"."ss_return_quantity" as "ss_return_quantity",
-    "quizzical"."ss_return_reason_desc" as "ss_return_reason_desc",
-    "wakeful"."ss_customer_id" as "ss_customer_id",
-    "wakeful"."ss_quantity" as "ss_quantity",
-    "wakeful"."ss_sales_price" as "ss_sales_price"
+    "ss_store_returns"."SR_RETURN_QUANTITY" as "ss_return_quantity",
+    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_customer_id",
+    "ss_store_sales"."SS_QUANTITY" as "ss_quantity",
+    "ss_store_sales"."SS_SALES_PRICE" as "ss_sales_price"
 FROM
-    "wakeful"
-    LEFT OUTER JOIN "highfalutin" on "wakeful"."ss_item_id" = "highfalutin"."ss_item_id" AND "wakeful"."ss_ticket_number" = "highfalutin"."ss_ticket_number"
-    LEFT OUTER JOIN "quizzical" on "highfalutin"."ss_return_reason_id" = "quizzical"."ss_return_reason_id"
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."reason" as "ss_return_reason_reason" on "ss_store_returns"."SR_REASON_SK" = "ss_return_reason_reason"."R_REASON_SK"
 WHERE
-    "quizzical"."ss_return_reason_desc" = 'reason 28'
+    "ss_return_reason_reason"."R_REASON_DESC" = 'reason 28'
 
 GROUP BY
     1,
     2,
     3,
     4,
-    5),
+    "ss_return_reason_reason"."R_REASON_DESC"),
 thoughtful as (
 SELECT
     "cheerful"."ss_customer_id" as "customer_sk",
     "cheerful"."ss_customer_id" as "ss_customer_id",
-    "cheerful"."ss_quantity" as "ss_quantity",
-    "cheerful"."ss_return_quantity" as "ss_return_quantity",
-    "cheerful"."ss_return_reason_desc" as "ss_return_reason_desc",
-    "cheerful"."ss_sales_price" as "ss_sales_price",
     CASE
 	WHEN "cheerful"."ss_return_quantity" is not null THEN ("cheerful"."ss_quantity" - "cheerful"."ss_return_quantity") * "cheerful"."ss_sales_price"
 	ELSE "cheerful"."ss_quantity" * "cheerful"."ss_sales_price"
@@ -151,14 +123,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
 Candidate tables: "cheerful"
 
-LINE 62:     sum("thoughtful"."act_sales") as "sumsales"
+LINE 34:     sum("thoughtful"."act_sales") as "sumsales"
                  ^
 ```

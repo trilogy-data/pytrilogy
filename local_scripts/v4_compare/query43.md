@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 4032 | 75 |
-| reference | 1919 | 31 |
-| v4 / ref | 2.10x | 2.42x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 3032 | 51 | — |
+| reference | 1919 | 31 | 35.89 ms |
+| v4 / ref | 1.58x | 1.65x | — |
 
 ## Preql
 
@@ -55,42 +55,18 @@ limit 100
 
 ```sql
 WITH 
-wakeful as (
-SELECT
-    "store_sales_store_sales"."SS_SALES_PRICE" as "store_sales_sales_price",
-    "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id",
-    "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id"
-FROM
-    "memory"."store_sales" as "store_sales_store_sales"),
-highfalutin as (
-SELECT
-    "store_sales_store_store"."S_GMT_OFFSET" as "store_sales_store_gmt_offset",
-    "store_sales_store_store"."S_STORE_ID" as "store_sales_store_text_id",
-    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
-    "store_sales_store_store"."S_STORE_SK" as "store_sales_store_id"
-FROM
-    "memory"."store" as "store_sales_store_store"),
-quizzical as (
-SELECT
-    "store_sales_date_date"."D_DATE_SK" as "store_sales_date_id",
-    "store_sales_date_date"."D_DAY_NAME" as "store_sales_date_day_name",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year"
-FROM
-    "memory"."date_dim" as "store_sales_date_date"),
 cheerful as (
 SELECT
-    "highfalutin"."store_sales_store_gmt_offset" as "store_sales_store_gmt_offset",
-    "highfalutin"."store_sales_store_name" as "store_sales_store_name",
-    "highfalutin"."store_sales_store_text_id" as "store_sales_store_text_id",
-    "quizzical"."store_sales_date_day_name" as "store_sales_date_day_name",
-    "quizzical"."store_sales_date_year" as "store_sales_date_year",
-    "wakeful"."store_sales_sales_price" as "store_sales_sales_price"
+    "store_sales_date_date"."D_DAY_NAME" as "store_sales_date_day_name",
+    "store_sales_store_sales"."SS_SALES_PRICE" as "store_sales_sales_price",
+    "store_sales_store_store"."S_STORE_ID" as "store_sales_store_text_id",
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
 FROM
-    "wakeful"
-    LEFT OUTER JOIN "quizzical" on "wakeful"."store_sales_date_id" = "quizzical"."store_sales_date_id"
-    LEFT OUTER JOIN "highfalutin" on "wakeful"."store_sales_store_id" = "highfalutin"."store_sales_store_id"
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
 WHERE
-    "highfalutin"."store_sales_store_gmt_offset" = -5 and "quizzical"."store_sales_date_year" = 2000
+    "store_sales_store_store"."S_GMT_OFFSET" = -5 and "store_sales_date_date"."D_YEAR" = 2000
 ),
 thoughtful as (
 SELECT
@@ -171,14 +147,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "cheerful" not found!
 Candidate tables: "thoughtful"
 
-LINE 58:     "cheerful"."store_sales_store_name" as "store_sales_store_name...
+LINE 34:     "cheerful"."store_sales_store_name" as "store_sales_store_name...
              ^
 ```

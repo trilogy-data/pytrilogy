@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 1236 | 23 |
-| reference | 4137 | 80 |
-| v4 / ref | 0.30x | 0.29x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 1236 | 23 | — |
+| reference | 4137 | 80 | 91.56 ms |
+| v4 / ref | 0.30x | 0.29x | — |
 
 ## Preql
 
@@ -89,10 +89,10 @@ SELECT
     count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt2",
     count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt3",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.purchase_estimate> as "customer_demographics_purchase_estimate",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.gender> as "customer_demographics_gender",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.credit_rating> as "customer_demographics_credit_rating",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.education_status> as "customer_demographics_education_status",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.marital_status> as "customer_demographics_marital_status",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.education_status> as "customer_demographics_education_status"
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.gender> as "customer_demographics_gender",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.credit_rating> as "customer_demographics_credit_rating"
 
 GROUP BY
     4,
@@ -198,10 +198,19 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 

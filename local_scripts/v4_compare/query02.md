@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 8105 | 141 |
-| reference | 4649 | 80 |
-| v4 / ref | 1.74x | 1.76x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 5865 | 98 | — |
+| reference | 4649 | 80 | 33.05 ms |
+| v4 / ref | 1.26x | 1.23x | — |
 
 ## Preql
 
@@ -54,14 +54,6 @@ limit 100
 
 ```sql
 WITH 
-cooperative as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_DOW" as "sales_date_day_of_week",
-    "sales_date_date"."D_WEEK_SEQ" as "sales_date_week_seq",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
@@ -69,13 +61,6 @@ SELECT
      'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
-UNION ALL
-SELECT
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-     'STORE'  as "sales_sales_channel"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
@@ -96,14 +81,12 @@ GROUP BY
     3),
 questionable as (
 SELECT
-    "cooperative"."sales_date_day_of_week" as "sales_date_day_of_week",
-    "cooperative"."sales_date_week_seq" as "sales_date_week_seq",
-    "cooperative"."sales_date_year" as "sales_date_year",
-    "thoughtful"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "thoughtful"."sales_sales_channel" as "sales_sales_channel"
+    "sales_date_date"."D_DOW" as "sales_date_day_of_week",
+    "sales_date_date"."D_WEEK_SEQ" as "sales_date_week_seq",
+    "thoughtful"."sales_ext_sales_price" as "sales_ext_sales_price"
 FROM
     "thoughtful"
-    LEFT OUTER JOIN "cooperative" on "thoughtful"."sales_date_id" = "cooperative"."sales_date_id"
+    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
 WHERE
     "thoughtful"."sales_sales_channel" in ('WEB','CATALOG')
 
@@ -111,8 +94,8 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    5),
+    "sales_date_date"."D_YEAR",
+    "thoughtful"."sales_sales_channel"),
 abundant as (
 SELECT
     CASE WHEN "questionable"."sales_date_day_of_week" = 0 THEN "questionable"."sales_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_6193604629288196",
@@ -149,50 +132,24 @@ SELECT
     lead("uneven"."_virt_agg_sum_5898269946212687", 53) over (order by "questionable"."sales_date_week_seq" asc ) as "_virt_window_lead_3355739386573542",
     lead("uneven"."_virt_agg_sum_6232287870778562", 53) over (order by "questionable"."sales_date_week_seq" asc ) as "_virt_window_lead_8846802885933861"
 FROM
-    "uneven"),
-juicy as (
+    "uneven")
 SELECT
-    "uneven"."_virt_agg_sum_1215995592885356" as "_virt_agg_sum_1215995592885356",
-    "uneven"."_virt_agg_sum_1755492547499297" as "_virt_agg_sum_1755492547499297",
-    "uneven"."_virt_agg_sum_3160525683686265" as "_virt_agg_sum_3160525683686265",
-    "uneven"."_virt_agg_sum_3226984322777641" as "_virt_agg_sum_3226984322777641",
-    "uneven"."_virt_agg_sum_5503961012463124" as "_virt_agg_sum_5503961012463124",
-    "uneven"."_virt_agg_sum_5898269946212687" as "_virt_agg_sum_5898269946212687",
-    "uneven"."_virt_agg_sum_6232287870778562" as "_virt_agg_sum_6232287870778562",
     "uneven"."sales_date_week_seq" as "sales_date_week_seq",
-    "yummy"."_virt_window_lead_1513977696668684" as "_virt_window_lead_1513977696668684",
-    "yummy"."_virt_window_lead_3355739386573542" as "_virt_window_lead_3355739386573542",
-    "yummy"."_virt_window_lead_5402686874923245" as "_virt_window_lead_5402686874923245",
-    "yummy"."_virt_window_lead_6726398054446491" as "_virt_window_lead_6726398054446491",
-    "yummy"."_virt_window_lead_7589933802981203" as "_virt_window_lead_7589933802981203",
-    "yummy"."_virt_window_lead_8434916643189094" as "_virt_window_lead_8434916643189094",
-    "yummy"."_virt_window_lead_8846802885933861" as "_virt_window_lead_8846802885933861",
-    round("uneven"."_virt_agg_sum_1215995592885356" / ("yummy"."_virt_window_lead_8434916643189094"),2) as "monday_increase",
-    round("uneven"."_virt_agg_sum_1755492547499297" / ("yummy"."_virt_window_lead_1513977696668684"),2) as "friday_increase",
-    round("uneven"."_virt_agg_sum_3160525683686265" / ("yummy"."_virt_window_lead_6726398054446491"),2) as "saturday_increase",
-    round("uneven"."_virt_agg_sum_3226984322777641" / ("yummy"."_virt_window_lead_7589933802981203"),2) as "thursday_increase",
-    round("uneven"."_virt_agg_sum_5503961012463124" / ("yummy"."_virt_window_lead_5402686874923245"),2) as "tuesday_increase",
     round("uneven"."_virt_agg_sum_5898269946212687" / ("yummy"."_virt_window_lead_3355739386573542"),2) as "sunday_increase",
-    round("uneven"."_virt_agg_sum_6232287870778562" / ("yummy"."_virt_window_lead_8846802885933861"),2) as "wednesday_increase"
+    round("uneven"."_virt_agg_sum_1215995592885356" / ("yummy"."_virt_window_lead_8434916643189094"),2) as "monday_increase",
+    round("uneven"."_virt_agg_sum_5503961012463124" / ("yummy"."_virt_window_lead_5402686874923245"),2) as "tuesday_increase",
+    round("uneven"."_virt_agg_sum_6232287870778562" / ("yummy"."_virt_window_lead_8846802885933861"),2) as "wednesday_increase",
+    round("uneven"."_virt_agg_sum_3226984322777641" / ("yummy"."_virt_window_lead_7589933802981203"),2) as "thursday_increase",
+    round("uneven"."_virt_agg_sum_1755492547499297" / ("yummy"."_virt_window_lead_1513977696668684"),2) as "friday_increase",
+    round("uneven"."_virt_agg_sum_3160525683686265" / ("yummy"."_virt_window_lead_6726398054446491"),2) as "saturday_increase"
 FROM
     "uneven"
-    LEFT OUTER JOIN "yummy" on "uneven"."sales_date_week_seq" = "yummy"."sales_date_week_seq")
-SELECT
-    "juicy"."sales_date_week_seq" as "sales_date_week_seq",
-    "juicy"."sunday_increase" as "sunday_increase",
-    "juicy"."monday_increase" as "monday_increase",
-    "juicy"."tuesday_increase" as "tuesday_increase",
-    "juicy"."wednesday_increase" as "wednesday_increase",
-    "juicy"."thursday_increase" as "thursday_increase",
-    "juicy"."friday_increase" as "friday_increase",
-    "juicy"."saturday_increase" as "saturday_increase"
-FROM
-    "juicy"
+    LEFT OUTER JOIN "yummy" on "uneven"."sales_date_week_seq" = "yummy"."sales_date_week_seq"
 WHERE
-    "juicy"."sunday_increase" is not null
+    round("uneven"."_virt_agg_sum_5898269946212687" / ("yummy"."_virt_window_lead_3355739386573542"),2) is not null
 
 ORDER BY 
-    "juicy"."sales_date_week_seq" asc nulls first
+    "uneven"."sales_date_week_seq" asc nulls first
 LIMIT (100)
 ```
 
@@ -285,14 +242,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "questionable" not found!
 Candidate tables: "abundant"
 
-LINE 74:     "questionable"."sales_date_week_seq" as "sales_date_week_seq...
+LINE 57:     "questionable"."sales_date_week_seq" as "sales_date_week_seq...
              ^
 ```

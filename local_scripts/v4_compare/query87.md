@@ -14,13 +14,13 @@
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 3503 | 99 |
-| reference | 2424 | 65 |
-| v4 / ref | 1.45x | 1.52x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2892 | 82 | 100.31 ms |
+| reference | 2424 | 65 | 85.08 ms |
+| v4 / ref | 1.19x | 1.26x | 1.18x |
 
 ## Preql
 
@@ -73,20 +73,6 @@ select
 
 ```sql
 WITH 
-questionable as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_MONTH_SEQ" as "sales_date_month_seq",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
-cooperative as (
-SELECT
-    "sales_customer_customers"."C_CUSTOMER_SK" as "sales_customer_id",
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name"
-FROM
-    "memory"."customer" as "sales_customer_customers"),
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
@@ -121,18 +107,18 @@ GROUP BY
     3),
 abundant as (
 SELECT
-    "cooperative"."sales_customer_first_name" as "sales_customer_first_name",
-    "cooperative"."sales_customer_last_name" as "sales_customer_last_name",
-    "questionable"."sales_date_date" as "sales_date_date",
-    "questionable"."sales_date_month_seq" as "sales_date_month_seq",
+    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
+    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
+    "sales_date_date"."D_MONTH_SEQ" as "sales_date_month_seq",
     "thoughtful"."sales_customer_id" as "sales_customer_id",
-    "thoughtful"."sales_sales_channel" as "sales_sales_channel"
+    "thoughtful"."sales_sales_channel" as "sales_sales_channel",
+    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
 FROM
     "thoughtful"
-    LEFT OUTER JOIN "questionable" on "thoughtful"."sales_date_id" = "questionable"."sales_date_id"
-    LEFT OUTER JOIN "cooperative" on "thoughtful"."sales_customer_id" = "cooperative"."sales_customer_id"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "thoughtful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "questionable"."sales_date_month_seq" BETWEEN 1200 AND 1200 + 11
+    "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11
 
 GROUP BY
     1,
@@ -143,9 +129,6 @@ GROUP BY
     6),
 uneven as (
 SELECT
-    "abundant"."sales_customer_first_name" as "sales_customer_first_name",
-    "abundant"."sales_customer_last_name" as "sales_customer_last_name",
-    "abundant"."sales_date_date" as "sales_date_date",
     sum(CASE
 	WHEN "abundant"."sales_sales_channel" = 'CATALOG' and "abundant"."sales_date_month_seq" BETWEEN 1200 AND 1200 + 11 and "abundant"."sales_customer_id" is not null THEN 1
 	ELSE 0
@@ -161,9 +144,9 @@ SELECT
 FROM
     "abundant"
 GROUP BY
-    1,
-    2,
-    3)
+    "abundant"."sales_customer_first_name",
+    "abundant"."sales_customer_last_name",
+    "abundant"."sales_date_date")
 SELECT
     sum(CASE
 	WHEN "uneven"."store_in_window" > 0 and "uneven"."catalog_in_window" = 0 and "uneven"."web_in_window" = 0 THEN 1

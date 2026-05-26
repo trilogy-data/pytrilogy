@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 32851 | 420 |
-| reference | 20171 | 147 |
-| v4 / ref | 1.63x | 2.86x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 26386 | 322 | — |
+| reference | 20171 | 147 | — |
+| v4 / ref | 1.31x | 2.19x | — |
 
 ## Preql
 
@@ -106,36 +106,6 @@ limit 100
 
 ```sql
 WITH 
-yummy as (
-SELECT
-    "sales_warehouse_warehouse"."w_city" as "sales_warehouse_city",
-    "sales_warehouse_warehouse"."w_country" as "sales_warehouse_country",
-    "sales_warehouse_warehouse"."w_county" as "sales_warehouse_county",
-    "sales_warehouse_warehouse"."w_state" as "sales_warehouse_state",
-    "sales_warehouse_warehouse"."w_warehouse_name" as "sales_warehouse_name",
-    "sales_warehouse_warehouse"."w_warehouse_sk" as "sales_warehouse_id",
-    "sales_warehouse_warehouse"."w_warehouse_sq_ft" as "sales_warehouse_square_feet"
-FROM
-    "memory"."warehouse" as "sales_warehouse_warehouse"),
-uneven as (
-SELECT
-    "sales_time_time"."T_TIME" as "sales_time_time",
-    "sales_time_time"."T_TIME_SK" as "sales_time_id"
-FROM
-    "memory"."time_dim" as "sales_time_time"),
-abundant as (
-SELECT
-    "sales_ship_mode_ship_mode"."SM_CARRIER" as "sales_ship_mode_carrier",
-    "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK" as "sales_ship_mode_id"
-FROM
-    "memory"."ship_mode" as "sales_ship_mode_ship_mode"),
-questionable as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
 thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
@@ -150,20 +120,9 @@ SELECT
     "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" as "sales_warehouse_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
-UNION ALL
-SELECT
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
-    "sales_store_sales_unified"."SS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
-     'STORE'  as "sales_sales_channel",
-    "sales_store_sales_unified"."SS_SALES_PRICE" as "sales_sales_price",
-     NULL  as "sales_ship_mode_id",
-    "sales_store_sales_unified"."SS_SOLD_TIME_SK" as "sales_time_id",
-     NULL  as "sales_warehouse_id"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
+WHERE
+    "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" is not null
+
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
@@ -177,7 +136,14 @@ SELECT
     "sales_web_sales_unified"."WS_SOLD_TIME_SK" as "sales_time_id",
     "sales_web_sales_unified"."WS_WAREHOUSE_SK" as "sales_warehouse_id"
 FROM
-    "memory"."web_sales" as "sales_web_sales_unified"),
+    "memory"."web_sales" as "sales_web_sales_unified"
+WHERE
+    "sales_web_sales_unified"."WS_WAREHOUSE_SK" is not null
+),
+quizzical as (
+SELECT
+    :ship_carriers as "ship_carriers"
+),
 cooperative as (
 SELECT
     "thoughtful"."sales_date_id" as "sales_date_id",
@@ -205,7 +171,6 @@ GROUP BY
     10),
 juicy as (
 SELECT
-    "abundant"."sales_ship_mode_carrier" as "sales_ship_mode_carrier",
     "cooperative"."sales_ext_sales_price" as "sales_ext_sales_price",
     "cooperative"."sales_net_paid" as "sales_net_paid",
     "cooperative"."sales_net_paid_inc_tax" as "sales_net_paid_inc_tax",
@@ -213,23 +178,24 @@ SELECT
     "cooperative"."sales_sales_channel" as "sales_sales_channel",
     "cooperative"."sales_sales_price" as "sales_sales_price",
     "cooperative"."sales_warehouse_id" as "sales_warehouse_id",
-    "questionable"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "questionable"."sales_date_year" as "sales_date_year",
-    "uneven"."sales_time_time" as "sales_time_time",
-    "yummy"."sales_warehouse_city" as "sales_warehouse_city",
-    "yummy"."sales_warehouse_country" as "sales_warehouse_country",
-    "yummy"."sales_warehouse_county" as "sales_warehouse_county",
-    "yummy"."sales_warehouse_name" as "sales_warehouse_name",
-    "yummy"."sales_warehouse_square_feet" as "sales_warehouse_square_feet",
-    "yummy"."sales_warehouse_state" as "sales_warehouse_state"
+    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
+    "sales_date_date"."D_YEAR" as "sales_date_year",
+    "sales_ship_mode_ship_mode"."SM_CARRIER" as "sales_ship_mode_carrier",
+    "sales_time_time"."T_TIME" as "sales_time_time",
+    "sales_warehouse_warehouse"."w_city" as "sales_warehouse_city",
+    "sales_warehouse_warehouse"."w_country" as "sales_warehouse_country",
+    "sales_warehouse_warehouse"."w_county" as "sales_warehouse_county",
+    "sales_warehouse_warehouse"."w_state" as "sales_warehouse_state",
+    "sales_warehouse_warehouse"."w_warehouse_name" as "sales_warehouse_name",
+    "sales_warehouse_warehouse"."w_warehouse_sq_ft" as "sales_warehouse_square_feet"
 FROM
     "cooperative"
-    LEFT OUTER JOIN "questionable" on "cooperative"."sales_date_id" = "questionable"."sales_date_id"
-    LEFT OUTER JOIN "uneven" on "cooperative"."sales_time_id" = "uneven"."sales_time_id"
-    LEFT OUTER JOIN "abundant" on "cooperative"."sales_ship_mode_id" = "abundant"."sales_ship_mode_id"
-    LEFT OUTER JOIN "yummy" on "cooperative"."sales_warehouse_id" = "yummy"."sales_warehouse_id"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "cooperative"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."time_dim" as "sales_time_time" on "cooperative"."sales_time_id" = "sales_time_time"."T_TIME_SK"
+    INNER JOIN "memory"."ship_mode" as "sales_ship_mode_ship_mode" on "cooperative"."sales_ship_mode_id" = "sales_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
+    LEFT OUTER JOIN "memory"."warehouse" as "sales_warehouse_warehouse" on "cooperative"."sales_warehouse_id" = "sales_warehouse_warehouse"."w_warehouse_sk"
 WHERE
-    "cooperative"."sales_sales_channel" in ('WEB','CATALOG') and "questionable"."sales_date_year" = 2001 and "uneven"."sales_time_time" BETWEEN 30838 AND 59638 and "abundant"."sales_ship_mode_carrier" in ('DHL','BARIAN') and "cooperative"."sales_warehouse_id" is not null
+    "sales_date_date"."D_YEAR" = 2001 and "sales_time_time"."T_TIME" BETWEEN 30838 AND 59638 and "sales_ship_mode_ship_mode"."SM_CARRIER" in ('DHL','BARIAN')
 
 GROUP BY
     1,
@@ -275,6 +241,28 @@ SELECT
     CASE WHEN "juicy"."sales_sales_channel" = 'WEB' and "juicy"."sales_date_month_of_year" = 7 THEN "juicy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_69001967081901",
     CASE WHEN "juicy"."sales_sales_channel" = 'WEB' and "juicy"."sales_date_month_of_year" = 8 THEN "juicy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_3183241272503874",
     CASE WHEN "juicy"."sales_sales_channel" = 'WEB' and "juicy"."sales_date_month_of_year" = 9 THEN "juicy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_976590170954777"
+FROM
+    "juicy"),
+vacuous as (
+SELECT
+    "juicy"."sales_date_month_of_year" as "sales_date_month_of_year",
+    "juicy"."sales_date_year" as "sales_date_year",
+    "juicy"."sales_date_year" as "year_",
+    "juicy"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "juicy"."sales_net_paid" as "sales_net_paid",
+    "juicy"."sales_net_paid_inc_tax" as "sales_net_paid_inc_tax",
+    "juicy"."sales_quantity" as "sales_quantity",
+    "juicy"."sales_sales_channel" as "sales_sales_channel",
+    "juicy"."sales_sales_price" as "sales_sales_price",
+    "juicy"."sales_ship_mode_carrier" as "sales_ship_mode_carrier",
+    "juicy"."sales_time_time" as "sales_time_time",
+    "juicy"."sales_warehouse_city" as "w_city",
+    "juicy"."sales_warehouse_country" as "w_country",
+    "juicy"."sales_warehouse_county" as "w_county",
+    "juicy"."sales_warehouse_id" as "sales_warehouse_id",
+    "juicy"."sales_warehouse_name" as "w_warehouse_name",
+    "juicy"."sales_warehouse_square_feet" as "w_warehouse_sq_ft",
+    "juicy"."sales_warehouse_state" as "w_state"
 FROM
     "juicy"),
 young as (
@@ -346,61 +334,7 @@ SELECT
     "juicy"."sales_sales_price" as "sales_sales_price",
     "juicy"."sales_ship_mode_carrier" as "sales_ship_mode_carrier",
     "juicy"."sales_time_time" as "sales_time_time",
-    "juicy"."sales_warehouse_city" as "sales_warehouse_city",
-    "juicy"."sales_warehouse_country" as "sales_warehouse_country",
-    "juicy"."sales_warehouse_county" as "sales_warehouse_county",
     "juicy"."sales_warehouse_id" as "sales_warehouse_id",
-    "juicy"."sales_warehouse_name" as "sales_warehouse_name",
-    "juicy"."sales_warehouse_square_feet" as "sales_warehouse_square_feet",
-    "juicy"."sales_warehouse_state" as "sales_warehouse_state",
-    "young"."_virt_agg_sum_1390508309586151" as "_virt_agg_sum_1390508309586151",
-    "young"."_virt_agg_sum_188554763413587" as "_virt_agg_sum_188554763413587",
-    "young"."_virt_agg_sum_2061365433549155" as "_virt_agg_sum_2061365433549155",
-    "young"."_virt_agg_sum_2212485246453036" as "_virt_agg_sum_2212485246453036",
-    "young"."_virt_agg_sum_2253606158097547" as "_virt_agg_sum_2253606158097547",
-    "young"."_virt_agg_sum_2328396906418239" as "_virt_agg_sum_2328396906418239",
-    "young"."_virt_agg_sum_2520745984741884" as "_virt_agg_sum_2520745984741884",
-    "young"."_virt_agg_sum_2677729335671306" as "_virt_agg_sum_2677729335671306",
-    "young"."_virt_agg_sum_3012721996579085" as "_virt_agg_sum_3012721996579085",
-    "young"."_virt_agg_sum_3143814459304520" as "_virt_agg_sum_3143814459304520",
-    "young"."_virt_agg_sum_319471464519035" as "_virt_agg_sum_319471464519035",
-    "young"."_virt_agg_sum_3260910144583005" as "_virt_agg_sum_3260910144583005",
-    "young"."_virt_agg_sum_3341659793105746" as "_virt_agg_sum_3341659793105746",
-    "young"."_virt_agg_sum_3528659342931447" as "_virt_agg_sum_3528659342931447",
-    "young"."_virt_agg_sum_3692655055376189" as "_virt_agg_sum_3692655055376189",
-    "young"."_virt_agg_sum_3882217944590141" as "_virt_agg_sum_3882217944590141",
-    "young"."_virt_agg_sum_3934334814385891" as "_virt_agg_sum_3934334814385891",
-    "young"."_virt_agg_sum_4042597010133309" as "_virt_agg_sum_4042597010133309",
-    "young"."_virt_agg_sum_41039473777436" as "_virt_agg_sum_41039473777436",
-    "young"."_virt_agg_sum_4553214412375650" as "_virt_agg_sum_4553214412375650",
-    "young"."_virt_agg_sum_4689061987840461" as "_virt_agg_sum_4689061987840461",
-    "young"."_virt_agg_sum_4708623111138392" as "_virt_agg_sum_4708623111138392",
-    "young"."_virt_agg_sum_4811909514398360" as "_virt_agg_sum_4811909514398360",
-    "young"."_virt_agg_sum_4969900746967002" as "_virt_agg_sum_4969900746967002",
-    "young"."_virt_agg_sum_5462539112795867" as "_virt_agg_sum_5462539112795867",
-    "young"."_virt_agg_sum_5640998453949741" as "_virt_agg_sum_5640998453949741",
-    "young"."_virt_agg_sum_6541755364775288" as "_virt_agg_sum_6541755364775288",
-    "young"."_virt_agg_sum_6555636113729081" as "_virt_agg_sum_6555636113729081",
-    "young"."_virt_agg_sum_6761496736742249" as "_virt_agg_sum_6761496736742249",
-    "young"."_virt_agg_sum_7001288178406415" as "_virt_agg_sum_7001288178406415",
-    "young"."_virt_agg_sum_7368404058205523" as "_virt_agg_sum_7368404058205523",
-    "young"."_virt_agg_sum_7452893998515823" as "_virt_agg_sum_7452893998515823",
-    "young"."_virt_agg_sum_7514497987676013" as "_virt_agg_sum_7514497987676013",
-    "young"."_virt_agg_sum_7614936436189749" as "_virt_agg_sum_7614936436189749",
-    "young"."_virt_agg_sum_786159922216741" as "_virt_agg_sum_786159922216741",
-    "young"."_virt_agg_sum_7927419533353604" as "_virt_agg_sum_7927419533353604",
-    "young"."_virt_agg_sum_7961556681450013" as "_virt_agg_sum_7961556681450013",
-    "young"."_virt_agg_sum_8113055632855599" as "_virt_agg_sum_8113055632855599",
-    "young"."_virt_agg_sum_8182545824564782" as "_virt_agg_sum_8182545824564782",
-    "young"."_virt_agg_sum_8249258081069440" as "_virt_agg_sum_8249258081069440",
-    "young"."_virt_agg_sum_8526672017232138" as "_virt_agg_sum_8526672017232138",
-    "young"."_virt_agg_sum_8705688610121203" as "_virt_agg_sum_8705688610121203",
-    "young"."_virt_agg_sum_891548790777269" as "_virt_agg_sum_891548790777269",
-    "young"."_virt_agg_sum_8967002870898331" as "_virt_agg_sum_8967002870898331",
-    "young"."_virt_agg_sum_9042867492442160" as "_virt_agg_sum_9042867492442160",
-    "young"."_virt_agg_sum_9519241847948353" as "_virt_agg_sum_9519241847948353",
-    "young"."_virt_agg_sum_9573906931545777" as "_virt_agg_sum_9573906931545777",
-    "young"."_virt_agg_sum_9999335580544067" as "_virt_agg_sum_9999335580544067",
     ( coalesce("young"."_virt_agg_sum_1390508309586151",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("young"."_virt_agg_sum_8249258081069440",0) / "juicy"."sales_warehouse_square_feet" ) as "oct_sales_per_sq_foot",
     ( coalesce("young"."_virt_agg_sum_2677729335671306",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("young"."_virt_agg_sum_8705688610121203",0) / "juicy"."sales_warehouse_square_feet" ) as "jun_sales_per_sq_foot",
     ( coalesce("young"."_virt_agg_sum_3143814459304520",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("young"."_virt_agg_sum_5462539112795867",0) / "juicy"."sales_warehouse_square_feet" ) as "aug_sales_per_sq_foot",
@@ -439,39 +373,7 @@ SELECT
     coalesce("young"."_virt_agg_sum_9573906931545777",0) + coalesce("young"."_virt_agg_sum_2520745984741884",0) as "dec_net"
 FROM
     "juicy"
-    LEFT OUTER JOIN "young" on "juicy"."sales_date_year" = "young"."sales_date_year" AND "juicy"."sales_warehouse_id" = "young"."sales_warehouse_id"),
-vacuous as (
-SELECT
-    "juicy"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "juicy"."sales_date_year" as "sales_date_year",
-    "juicy"."sales_date_year" as "year_",
-    "juicy"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "juicy"."sales_net_paid" as "sales_net_paid",
-    "juicy"."sales_net_paid_inc_tax" as "sales_net_paid_inc_tax",
-    "juicy"."sales_quantity" as "sales_quantity",
-    "juicy"."sales_sales_channel" as "sales_sales_channel",
-    "juicy"."sales_sales_price" as "sales_sales_price",
-    "juicy"."sales_ship_mode_carrier" as "sales_ship_mode_carrier",
-    "juicy"."sales_time_time" as "sales_time_time",
-    "juicy"."sales_warehouse_city" as "sales_warehouse_city",
-    "juicy"."sales_warehouse_city" as "w_city",
-    "juicy"."sales_warehouse_country" as "sales_warehouse_country",
-    "juicy"."sales_warehouse_country" as "w_country",
-    "juicy"."sales_warehouse_county" as "sales_warehouse_county",
-    "juicy"."sales_warehouse_county" as "w_county",
-    "juicy"."sales_warehouse_id" as "sales_warehouse_id",
-    "juicy"."sales_warehouse_name" as "sales_warehouse_name",
-    "juicy"."sales_warehouse_name" as "w_warehouse_name",
-    "juicy"."sales_warehouse_square_feet" as "sales_warehouse_square_feet",
-    "juicy"."sales_warehouse_square_feet" as "w_warehouse_sq_ft",
-    "juicy"."sales_warehouse_state" as "sales_warehouse_state",
-    "juicy"."sales_warehouse_state" as "w_state"
-FROM
-    "juicy"),
-quizzical as (
-SELECT
-    :ship_carriers as "ship_carriers"
-)
+    INNER JOIN "young" on "juicy"."sales_date_year" = "young"."sales_date_year" AND "juicy"."sales_warehouse_id" = "young"."sales_warehouse_id")
 SELECT
     "vacuous"."w_warehouse_name" as "w_warehouse_name",
     "vacuous"."w_warehouse_sq_ft" as "w_warehouse_sq_ft",
@@ -683,25 +585,43 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near ":"
 
-LINE 366:     :ship_carriers as "ship_carriers"
-              ^
+LINE 38:     :ship_carriers as "ship_carriers"
+             ^
 ```
 
 ## reference execution error
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 167, in run_one
-    result.ref_rows = execute(con, ref_sql)
-                      ~~~~~~~^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 187, in run_one
+    result.ref_exec_seconds, result.ref_rows = _time(
+                                               ~~~~~^
+        lambda: execute(con, ref_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 188, in <lambda>
+    lambda: execute(con, ref_sql)
+            ~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near ":"
 

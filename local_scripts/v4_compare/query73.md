@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 7223 | 127 |
-| reference | 2700 | 38 |
-| v4 / ref | 2.68x | 3.34x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4778 | 76 | — |
+| reference | 2700 | 38 | 32.55 ms |
+| v4 / ref | 1.77x | 2.00x | — |
 
 ## Preql
 
@@ -71,69 +71,29 @@ order by
 
 ```sql
 WITH 
-thoughtful as (
+cooperative as (
 SELECT
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_id",
-    "store_sales_store_sales"."SS_HDEMO_SK" as "store_sales_household_demographic_id",
-    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
-    "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id",
-    "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id",
-    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number"
-FROM
-    "memory"."store_sales" as "store_sales_store_sales"),
-cheerful as (
-SELECT
-    "store_sales_store_store"."S_COUNTY" as "store_sales_store_county",
-    "store_sales_store_store"."S_STORE_SK" as "store_sales_store_id"
-FROM
-    "memory"."store" as "store_sales_store_store"),
-wakeful as (
-SELECT
-    "store_sales_household_demographic_household_demographics"."HD_BUY_POTENTIAL" as "store_sales_household_demographic_buy_potential",
-    "store_sales_household_demographic_household_demographics"."HD_DEMO_SK" as "store_sales_household_demographic_id",
-    "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" as "store_sales_household_demographic_dependent_count",
-    "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" as "store_sales_household_demographic_vehicle_count"
-FROM
-    "memory"."household_demographics" as "store_sales_household_demographic_household_demographics"),
-highfalutin as (
-SELECT
-    "store_sales_date_date"."D_DATE_SK" as "store_sales_date_id",
-    "store_sales_date_date"."D_DOM" as "store_sales_date_day_of_month",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year"
-FROM
-    "memory"."date_dim" as "store_sales_date_date"),
-quizzical as (
-SELECT
-    "store_sales_customer_customers"."C_CUSTOMER_SK" as "store_sales_customer_id",
     "store_sales_customer_customers"."C_FIRST_NAME" as "store_sales_customer_first_name",
     "store_sales_customer_customers"."C_LAST_NAME" as "store_sales_customer_last_name",
     "store_sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "store_sales_customer_preferred_cust_flag",
-    "store_sales_customer_customers"."C_SALUTATION" as "store_sales_customer_salutation"
+    "store_sales_customer_customers"."C_SALUTATION" as "store_sales_customer_salutation",
+    "store_sales_date_date"."D_DOM" as "store_sales_date_day_of_month",
+    "store_sales_date_date"."D_YEAR" as "store_sales_date_year",
+    "store_sales_household_demographic_household_demographics"."HD_BUY_POTENTIAL" as "store_sales_household_demographic_buy_potential",
+    "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" as "store_sales_household_demographic_dependent_count",
+    "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" as "store_sales_household_demographic_vehicle_count",
+    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_id",
+    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
+    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number",
+    "store_sales_store_store"."S_COUNTY" as "store_sales_store_county"
 FROM
-    "memory"."customer" as "store_sales_customer_customers"),
-cooperative as (
-SELECT
-    "cheerful"."store_sales_store_county" as "store_sales_store_county",
-    "highfalutin"."store_sales_date_day_of_month" as "store_sales_date_day_of_month",
-    "highfalutin"."store_sales_date_year" as "store_sales_date_year",
-    "quizzical"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "quizzical"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "quizzical"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
-    "quizzical"."store_sales_customer_salutation" as "store_sales_customer_salutation",
-    "thoughtful"."store_sales_customer_id" as "store_sales_customer_id",
-    "thoughtful"."store_sales_item_id" as "store_sales_item_id",
-    "thoughtful"."store_sales_ticket_number" as "store_sales_ticket_number",
-    "wakeful"."store_sales_household_demographic_buy_potential" as "store_sales_household_demographic_buy_potential",
-    "wakeful"."store_sales_household_demographic_dependent_count" as "store_sales_household_demographic_dependent_count",
-    "wakeful"."store_sales_household_demographic_vehicle_count" as "store_sales_household_demographic_vehicle_count"
-FROM
-    "thoughtful"
-    LEFT OUTER JOIN "highfalutin" on "thoughtful"."store_sales_date_id" = "highfalutin"."store_sales_date_id"
-    LEFT OUTER JOIN "cheerful" on "thoughtful"."store_sales_store_id" = "cheerful"."store_sales_store_id"
-    LEFT OUTER JOIN "quizzical" on "thoughtful"."store_sales_customer_id" = "quizzical"."store_sales_customer_id"
-    LEFT OUTER JOIN "wakeful" on "thoughtful"."store_sales_household_demographic_id" = "wakeful"."store_sales_household_demographic_id"
+    "memory"."store_sales" as "store_sales_store_sales"
+    LEFT OUTER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "store_sales_store_sales"."SS_CUSTOMER_SK" = "store_sales_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."household_demographics" as "store_sales_household_demographic_household_demographics" on "store_sales_store_sales"."SS_HDEMO_SK" = "store_sales_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
-    "thoughtful"."store_sales_customer_id" is not null
+    "store_sales_store_sales"."SS_CUSTOMER_SK" is not null
 ),
 abundant as (
 SELECT
@@ -143,16 +103,6 @@ SELECT
 	END ) > 1 and "cooperative"."store_sales_date_year" in (1999,2000,2001) and "cooperative"."store_sales_store_county" in ('Orange County','Bronx County','Franklin Parish','Williamson County') THEN "cooperative"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_4484877027926973"
 FROM
     "cooperative"),
-uneven as (
-SELECT
-    "cooperative"."store_sales_customer_id" as "store_sales_customer_id",
-    "cooperative"."store_sales_ticket_number" as "store_sales_ticket_number",
-    count("abundant"."_virt_filter_id_4484877027926973") as "ticket_cnt"
-FROM
-    "cooperative"
-GROUP BY
-    1,
-    2),
 questionable as (
 SELECT
     "cooperative"."store_sales_customer_first_name" as "store_sales_customer_first_name",
@@ -168,35 +118,34 @@ GROUP BY
     3,
     4,
     5),
-yummy as (
+uneven as (
 SELECT
-    "questionable"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "questionable"."store_sales_customer_id" as "store_sales_customer_id",
+    "cooperative"."store_sales_customer_id" as "store_sales_customer_id",
+    "cooperative"."store_sales_ticket_number" as "store_sales_ticket_number",
+    count("abundant"."_virt_filter_id_4484877027926973") as "ticket_cnt"
+FROM
+    "cooperative"
+GROUP BY
+    1,
+    2)
+SELECT
     "questionable"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "questionable"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
+    "questionable"."store_sales_customer_first_name" as "store_sales_customer_first_name",
     "questionable"."store_sales_customer_salutation" as "store_sales_customer_salutation",
+    "questionable"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
     "uneven"."store_sales_ticket_number" as "store_sales_ticket_number",
     coalesce("uneven"."ticket_cnt",0) as "ticket_cnt"
 FROM
     "questionable"
-    LEFT OUTER JOIN "uneven" on "questionable"."store_sales_customer_id" = "uneven"."store_sales_customer_id")
-SELECT
-    "yummy"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "yummy"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "yummy"."store_sales_customer_salutation" as "store_sales_customer_salutation",
-    "yummy"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
-    "yummy"."store_sales_ticket_number" as "store_sales_ticket_number",
-    "yummy"."ticket_cnt" as "ticket_cnt"
-FROM
-    "yummy"
+    INNER JOIN "uneven" on "questionable"."store_sales_customer_id" = "uneven"."store_sales_customer_id"
 WHERE
-    "yummy"."ticket_cnt" >= 1 and "yummy"."ticket_cnt" <= 5
+    coalesce("uneven"."ticket_cnt",0) >= 1 and coalesce("uneven"."ticket_cnt",0) <= 5
 
 ORDER BY 
-    "yummy"."ticket_cnt" desc,
-    "yummy"."store_sales_customer_last_name" asc,
-    "yummy"."store_sales_ticket_number" asc,
-    "yummy"."store_sales_customer_id" asc
+    coalesce("uneven"."ticket_cnt",0) desc,
+    "questionable"."store_sales_customer_last_name" asc,
+    "uneven"."store_sales_ticket_number" asc,
+    "questionable"."store_sales_customer_id" asc
 ```
 
 ## Reference SQL (zquery log)
@@ -246,14 +195,23 @@ ORDER BY
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "abundant" not found!
 Candidate tables: "cooperative"
 
-LINE 78:     count("abundant"."_virt_filter_id_4484877027926973") as "ticket_cnt...
+LINE 53:     count("abundant"."_virt_filter_id_4484877027926973") as "ticket_cnt...
                    ^
 ```

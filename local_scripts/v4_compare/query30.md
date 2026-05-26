@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 9494 | 182 |
-| reference | 6399 | 99 |
-| v4 / ref | 1.48x | 1.84x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 7114 | 136 | — |
+| reference | 6399 | 99 | 66.78 ms |
+| v4 / ref | 1.11x | 1.37x | — |
 
 ## Preql
 
@@ -84,39 +84,19 @@ SELECT
     "web_returns_web_returns"."WR_RETURNING_CUSTOMER_SK" as "web_returns_customer_id",
     "web_returns_web_returns"."WR_RETURN_AMT" as "web_returns_return_amount"
 FROM
-    "memory"."web_returns" as "web_returns_web_returns"),
-cooperative as (
-SELECT
-    "thoughtful"."web_returns_customer_id" as "web_returns_customer_id",
-    "thoughtful"."web_returns_return_address_id" as "web_returns_return_address_id",
-    "thoughtful"."web_returns_return_amount" as "web_returns_return_amount",
-    "thoughtful"."web_returns_return_date_id" as "web_returns_return_date_id"
-FROM
-    "thoughtful"
+    "memory"."web_returns" as "web_returns_web_returns"
 GROUP BY
     1,
     2,
     3,
     4),
-cheerful as (
+questionable as (
 SELECT
-    "web_returns_return_date_date"."D_DATE_SK" as "web_returns_return_date_id",
-    "web_returns_return_date_date"."D_YEAR" as "web_returns_return_date_year"
-FROM
-    "memory"."date_dim" as "web_returns_return_date_date"),
-wakeful as (
-SELECT
-    "web_returns_return_address_customer_address"."CA_ADDRESS_SK" as "web_returns_return_address_id",
-    "web_returns_return_address_customer_address"."CA_STATE" as "web_returns_return_address_state"
-FROM
-    "memory"."customer_address" as "web_returns_return_address_customer_address"),
-highfalutin as (
-SELECT
+    "thoughtful"."web_returns_return_amount" as "web_returns_return_amount",
     "web_returns_customer_customers"."C_BIRTH_COUNTRY" as "web_returns_customer_birth_country",
     "web_returns_customer_customers"."C_BIRTH_DAY" as "web_returns_customer_birth_day",
     "web_returns_customer_customers"."C_BIRTH_MONTH" as "web_returns_customer_birth_month",
     "web_returns_customer_customers"."C_BIRTH_YEAR" as "web_returns_customer_birth_year",
-    "web_returns_customer_customers"."C_CURRENT_ADDR_SK" as "web_returns_customer_address_id",
     "web_returns_customer_customers"."C_CUSTOMER_ID" as "web_returns_customer_text_id",
     "web_returns_customer_customers"."C_CUSTOMER_SK" as "web_returns_customer_id",
     "web_returns_customer_customers"."C_EMAIL_ADDRESS" as "web_returns_customer_email_address",
@@ -125,42 +105,17 @@ SELECT
     "web_returns_customer_customers"."C_LAST_REVIEW_DATE_SK" as "web_returns_customer_last_review_date",
     "web_returns_customer_customers"."C_LOGIN" as "web_returns_customer_login",
     "web_returns_customer_customers"."C_PREFERRED_CUST_FLAG" as "web_returns_customer_preferred_cust_flag",
-    "web_returns_customer_customers"."C_SALUTATION" as "web_returns_customer_salutation"
+    "web_returns_customer_customers"."C_SALUTATION" as "web_returns_customer_salutation",
+    "web_returns_return_address_customer_address"."CA_STATE" as "web_returns_return_address_state",
+    "web_returns_return_date_date"."D_YEAR" as "web_returns_return_date_year"
 FROM
-    "memory"."customer" as "web_returns_customer_customers"),
-quizzical as (
-SELECT
-    "web_returns_customer_address_customer_address"."CA_ADDRESS_SK" as "web_returns_customer_address_id",
-    "web_returns_customer_address_customer_address"."CA_STATE" as "web_returns_customer_address_state"
-FROM
-    "memory"."customer_address" as "web_returns_customer_address_customer_address"),
-questionable as (
-SELECT
-    "cheerful"."web_returns_return_date_year" as "web_returns_return_date_year",
-    "cooperative"."web_returns_return_amount" as "web_returns_return_amount",
-    "highfalutin"."web_returns_customer_birth_country" as "web_returns_customer_birth_country",
-    "highfalutin"."web_returns_customer_birth_day" as "web_returns_customer_birth_day",
-    "highfalutin"."web_returns_customer_birth_month" as "web_returns_customer_birth_month",
-    "highfalutin"."web_returns_customer_birth_year" as "web_returns_customer_birth_year",
-    "highfalutin"."web_returns_customer_email_address" as "web_returns_customer_email_address",
-    "highfalutin"."web_returns_customer_first_name" as "web_returns_customer_first_name",
-    "highfalutin"."web_returns_customer_id" as "web_returns_customer_id",
-    "highfalutin"."web_returns_customer_last_name" as "web_returns_customer_last_name",
-    "highfalutin"."web_returns_customer_last_review_date" as "web_returns_customer_last_review_date",
-    "highfalutin"."web_returns_customer_login" as "web_returns_customer_login",
-    "highfalutin"."web_returns_customer_preferred_cust_flag" as "web_returns_customer_preferred_cust_flag",
-    "highfalutin"."web_returns_customer_salutation" as "web_returns_customer_salutation",
-    "highfalutin"."web_returns_customer_text_id" as "web_returns_customer_text_id",
-    "quizzical"."web_returns_customer_address_state" as "web_returns_customer_address_state",
-    "wakeful"."web_returns_return_address_state" as "web_returns_return_address_state"
-FROM
-    "cooperative"
-    INNER JOIN "highfalutin" on "cooperative"."web_returns_customer_id" = "highfalutin"."web_returns_customer_id"
-    INNER JOIN "cheerful" on "cooperative"."web_returns_return_date_id" = "cheerful"."web_returns_return_date_id"
-    INNER JOIN "wakeful" on "cooperative"."web_returns_return_address_id" = "wakeful"."web_returns_return_address_id"
-    INNER JOIN "quizzical" on "highfalutin"."web_returns_customer_address_id" = "quizzical"."web_returns_customer_address_id"
+    "thoughtful"
+    INNER JOIN "memory"."customer" as "web_returns_customer_customers" on "thoughtful"."web_returns_customer_id" = "web_returns_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."date_dim" as "web_returns_return_date_date" on "thoughtful"."web_returns_return_date_id" = "web_returns_return_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "web_returns_return_address_customer_address" on "thoughtful"."web_returns_return_address_id" = "web_returns_return_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer_address" as "web_returns_customer_address_customer_address" on "web_returns_customer_customers"."C_CURRENT_ADDR_SK" = "web_returns_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "quizzical"."web_returns_customer_address_state" = 'GA' and "wakeful"."web_returns_return_address_state" is not null
+    "web_returns_customer_address_customer_address"."CA_STATE" = 'GA' and "web_returns_return_address_customer_address"."CA_STATE" is not null
 
 GROUP BY
     1,
@@ -179,22 +134,12 @@ GROUP BY
     14,
     15,
     16,
-    17),
+    "web_returns_customer_address_customer_address"."CA_STATE"),
 uneven as (
 SELECT
     CASE WHEN "questionable"."web_returns_return_date_year" = 2002 and "questionable"."web_returns_return_address_state" is not null THEN "questionable"."web_returns_return_amount" ELSE NULL END as "_virt_filter_return_amount_7190501181391118"
 FROM
     "questionable"),
-yummy as (
-SELECT
-    "questionable"."web_returns_customer_id" as "web_returns_customer_id",
-    "questionable"."web_returns_return_address_state" as "web_returns_return_address_state",
-    sum("uneven"."_virt_filter_return_amount_7190501181391118") as "customer_state_returns_2002"
-FROM
-    "questionable"
-GROUP BY
-    1,
-    2),
 abundant as (
 SELECT
     "questionable"."web_returns_customer_birth_country" as "web_returns_customer_birth_country",
@@ -225,7 +170,16 @@ GROUP BY
     10,
     11,
     12,
-    13)
+    13),
+yummy as (
+SELECT
+    "questionable"."web_returns_customer_id" as "web_returns_customer_id",
+    sum("uneven"."_virt_filter_return_amount_7190501181391118") as "customer_state_returns_2002"
+FROM
+    "questionable"
+GROUP BY
+    1,
+    "questionable"."web_returns_return_address_state")
 SELECT
     "abundant"."web_returns_customer_text_id" as "web_returns_customer_text_id",
     "abundant"."web_returns_customer_salutation" as "web_returns_customer_salutation",
@@ -368,14 +322,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "uneven" not found!
 Candidate tables: "questionable"
 
-LINE 114:     sum("uneven"."_virt_filter_return_amount_7190501181391118")...
-                  ^
+LINE 99:     sum("uneven"."_virt_filter_return_amount_7190501181391118")...
+                 ^
 ```

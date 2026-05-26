@@ -14,13 +14,13 @@
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 8059 | 174 |
-| reference | 7255 | 135 |
-| v4 / ref | 1.11x | 1.29x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 8592 | 164 | 115.10 ms |
+| reference | 7255 | 135 | 63.22 ms |
+| v4 / ref | 1.18x | 1.21x | 1.82x |
 
 ## Preql
 
@@ -64,60 +64,27 @@ limit 100
 
 ```sql
 WITH 
-sparkling as (
+cheerful as (
 SELECT
-    "sales_promotion_promotion"."P_CHANNEL_TV" as "sales_promotion_channel_tv",
-    "sales_promotion_promotion"."P_PROMO_SK" as "sales_promotion_id"
-FROM
-    "memory"."promotion" as "sales_promotion_promotion"),
-young as (
-SELECT
-    "sales_item_items"."I_CURRENT_PRICE" as "sales_item_current_price",
-    "sales_item_items"."I_ITEM_SK" as "sales_item_id"
-FROM
-    "memory"."item" as "sales_item_items"),
-concerned as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
-vacuous as (
-SELECT
-    "sales_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "sales_channel_dim_id",
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
-    "sales_catalog_sales_unified"."CS_NET_PROFIT" as "sales_net_profit",
-    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
-    "sales_catalog_sales_unified"."CS_PROMO_SK" as "sales_promotion_id",
+    "sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "sales_channel_dim_id",
+    "sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "sales_channel_dim_text_id",
      'CATALOG'  as "sales_sales_channel"
 FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    "memory"."catalog_page" as "sales_catalog_dim_unified"
 UNION ALL
 SELECT
-    "sales_store_sales_unified"."SS_STORE_SK" as "sales_channel_dim_id",
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
-    "sales_store_sales_unified"."SS_NET_PROFIT" as "sales_net_profit",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
-    "sales_store_sales_unified"."SS_PROMO_SK" as "sales_promotion_id",
+    "sales_store_dim_unified"."S_STORE_SK" as "sales_channel_dim_id",
+    "sales_store_dim_unified"."S_STORE_ID" as "sales_channel_dim_text_id",
      'STORE'  as "sales_sales_channel"
 FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
+    "memory"."store" as "sales_store_dim_unified"
 UNION ALL
 SELECT
-    "sales_web_sales_unified"."WS_WEB_SITE_SK" as "sales_channel_dim_id",
-    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
-    "sales_web_sales_unified"."WS_NET_PROFIT" as "sales_net_profit",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
-    "sales_web_sales_unified"."WS_PROMO_SK" as "sales_promotion_id",
+    "sales_web_dim_unified"."web_site_sk" as "sales_channel_dim_id",
+    "sales_web_dim_unified"."web_site_id" as "sales_channel_dim_text_id",
      'WEB'  as "sales_sales_channel"
 FROM
-    "memory"."web_sales" as "sales_web_sales_unified"),
+    "memory"."web_site" as "sales_web_dim_unified"),
 abundant as (
 SELECT
     "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_id",
@@ -145,47 +112,77 @@ SELECT
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_returns" as "sales_web_returns_unified"),
-cheerful as (
+vacuous as (
 SELECT
-    "sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "sales_channel_dim_id",
-    "sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "sales_channel_dim_text_id",
-     'CATALOG'  as "sales_sales_channel"
+    "sales_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "sales_channel_dim_id",
+    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_NET_PROFIT" as "sales_net_profit",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+     'CATALOG'  as "sales_sales_channel",
+    cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
+    "sales_item_items"."I_CURRENT_PRICE" as "sales_item_current_price",
+    "sales_promotion_promotion"."P_CHANNEL_TV" as "sales_promotion_channel_tv"
 FROM
-    "memory"."catalog_page" as "sales_catalog_dim_unified"
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."promotion" as "sales_promotion_promotion" on "sales_catalog_sales_unified"."CS_PROMO_SK" = "sales_promotion_promotion"."P_PROMO_SK"
+WHERE
+    cast("sales_date_date"."D_DATE" as date) >= date '2000-08-23' and cast("sales_date_date"."D_DATE" as date) <= date '2000-09-22' and "sales_item_items"."I_CURRENT_PRICE" > 50 and "sales_promotion_promotion"."P_CHANNEL_TV" = 'N'
+
 UNION ALL
 SELECT
-    "sales_store_dim_unified"."S_STORE_SK" as "sales_channel_dim_id",
-    "sales_store_dim_unified"."S_STORE_ID" as "sales_channel_dim_text_id",
-     'STORE'  as "sales_sales_channel"
+    "sales_store_sales_unified"."SS_STORE_SK" as "sales_channel_dim_id",
+    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
+    "sales_store_sales_unified"."SS_NET_PROFIT" as "sales_net_profit",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+     'STORE'  as "sales_sales_channel",
+    cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
+    "sales_item_items"."I_CURRENT_PRICE" as "sales_item_current_price",
+    "sales_promotion_promotion"."P_CHANNEL_TV" as "sales_promotion_channel_tv"
 FROM
-    "memory"."store" as "sales_store_dim_unified"
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."promotion" as "sales_promotion_promotion" on "sales_store_sales_unified"."SS_PROMO_SK" = "sales_promotion_promotion"."P_PROMO_SK"
+WHERE
+    cast("sales_date_date"."D_DATE" as date) >= date '2000-08-23' and cast("sales_date_date"."D_DATE" as date) <= date '2000-09-22' and "sales_item_items"."I_CURRENT_PRICE" > 50 and "sales_promotion_promotion"."P_CHANNEL_TV" = 'N'
+
 UNION ALL
 SELECT
-    "sales_web_dim_unified"."web_site_sk" as "sales_channel_dim_id",
-    "sales_web_dim_unified"."web_site_id" as "sales_channel_dim_text_id",
-     'WEB'  as "sales_sales_channel"
+    "sales_web_sales_unified"."WS_WEB_SITE_SK" as "sales_channel_dim_id",
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+    "sales_web_sales_unified"."WS_NET_PROFIT" as "sales_net_profit",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+     'WEB'  as "sales_sales_channel",
+    cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
+    "sales_item_items"."I_CURRENT_PRICE" as "sales_item_current_price",
+    "sales_promotion_promotion"."P_CHANNEL_TV" as "sales_promotion_channel_tv"
 FROM
-    "memory"."web_site" as "sales_web_dim_unified"),
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."promotion" as "sales_promotion_promotion" on "sales_web_sales_unified"."WS_PROMO_SK" = "sales_promotion_promotion"."P_PROMO_SK"
+WHERE
+    cast("sales_date_date"."D_DATE" as date) >= date '2000-08-23' and cast("sales_date_date"."D_DATE" as date) <= date '2000-09-22' and "sales_item_items"."I_CURRENT_PRICE" > 50 and "sales_promotion_promotion"."P_CHANNEL_TV" = 'N'
+),
 abhorrent as (
 SELECT
     "abundant"."sales_return_amount" as "sales_return_amount",
     "abundant"."sales_return_net_loss" as "sales_return_net_loss",
     "cheerful"."sales_channel_dim_text_id" as "sales_channel_dim_text_id",
-    "concerned"."sales_date_date" as "sales_date_date",
-    "sparkling"."sales_promotion_channel_tv" as "sales_promotion_channel_tv",
     "vacuous"."sales_ext_sales_price" as "sales_ext_sales_price",
     "vacuous"."sales_net_profit" as "sales_net_profit",
-    "vacuous"."sales_sales_channel" as "sales_sales_channel",
-    "young"."sales_item_current_price" as "sales_item_current_price"
+    "vacuous"."sales_sales_channel" as "sales_sales_channel"
 FROM
     "vacuous"
-    LEFT OUTER JOIN "concerned" on "vacuous"."sales_date_id" = "concerned"."sales_date_id"
     LEFT OUTER JOIN "abundant" on "vacuous"."sales_item_id" = "abundant"."sales_item_id" AND "vacuous"."sales_order_id" = "abundant"."sales_order_id" AND "vacuous"."sales_sales_channel" = "abundant"."sales_sales_channel"
-    LEFT OUTER JOIN "sparkling" on "vacuous"."sales_promotion_id" = "sparkling"."sales_promotion_id"
-    LEFT OUTER JOIN "cheerful" on "vacuous"."sales_channel_dim_id" = "cheerful"."sales_channel_dim_id" AND "vacuous"."sales_sales_channel" = "cheerful"."sales_sales_channel"
-    INNER JOIN "young" on "vacuous"."sales_item_id" = "young"."sales_item_id"
+    INNER JOIN "cheerful" on "vacuous"."sales_channel_dim_id" = "cheerful"."sales_channel_dim_id" AND "vacuous"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
-    "concerned"."sales_date_date" >= date '2000-08-23' and "concerned"."sales_date_date" <= date '2000-09-22' and "young"."sales_item_current_price" > 50 and "sparkling"."sales_promotion_channel_tv" = 'N' and "cheerful"."sales_channel_dim_text_id" is not null
+    "cheerful"."sales_channel_dim_text_id" is not null
 
 GROUP BY
     1,
@@ -194,21 +191,14 @@ GROUP BY
     4,
     5,
     6,
-    7,
-    8,
-    9),
+    "vacuous"."sales_date_date",
+    "vacuous"."sales_item_current_price",
+    "vacuous"."sales_promotion_channel_tv"),
 sweltering as (
 SELECT
-    "abhorrent"."sales_channel_dim_text_id" as "sales_channel_dim_text_id",
-    "abhorrent"."sales_date_date" as "sales_date_date",
     "abhorrent"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "abhorrent"."sales_item_current_price" as "sales_item_current_price",
     "abhorrent"."sales_net_profit" - coalesce("abhorrent"."sales_return_net_loss",0) as "profit_minus_loss",
-    "abhorrent"."sales_net_profit" as "sales_net_profit",
-    "abhorrent"."sales_promotion_channel_tv" as "sales_promotion_channel_tv",
     "abhorrent"."sales_return_amount" as "sales_return_amount",
-    "abhorrent"."sales_return_net_loss" as "sales_return_net_loss",
-    "abhorrent"."sales_sales_channel" as "sales_sales_channel",
     CASE
 	WHEN "abhorrent"."sales_sales_channel" = 'STORE' THEN 'store channel'
 	WHEN "abhorrent"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
@@ -227,12 +217,12 @@ SELECT
     sum("sweltering"."sales_ext_sales_price") as "sales_total",
     sum(coalesce("sweltering"."sales_return_amount",0)) as "returns_total",
     sum("sweltering"."profit_minus_loss") as "profit_total",
-    "sweltering"."channel_label" as "channel_label",
-    "sweltering"."id_label" as "id_label"
+    "sweltering"."id_label" as "id_label",
+    "sweltering"."channel_label" as "channel_label"
 FROM
     "sweltering"
 GROUP BY
-    ROLLUP (4, 5)
+    ROLLUP (5, 4)
 ORDER BY 
     "sweltering"."channel_label" asc nulls first,
     "sweltering"."id_label" asc nulls first

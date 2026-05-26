@@ -14,13 +14,13 @@
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 4395 | 108 |
-| reference | 1394 | 20 |
-| v4 / ref | 3.15x | 5.40x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2688 | 63 | 187.18 ms |
+| reference | 1394 | 20 | 38.08 ms |
+| v4 / ref | 1.93x | 3.15x | 4.92x |
 
 ## Preql
 
@@ -52,25 +52,6 @@ limit 100
 
 ```sql
 WITH 
-cooperative as (
-SELECT
-    "cs_promotion_promotion"."P_CHANNEL_EMAIL" as "cs_promotion_channel_email",
-    "cs_promotion_promotion"."P_CHANNEL_EVENT" as "cs_promotion_channel_event",
-    "cs_promotion_promotion"."P_PROMO_SK" as "cs_promotion_id"
-FROM
-    "memory"."promotion" as "cs_promotion_promotion"),
-thoughtful as (
-SELECT
-    "cs_item_items"."I_ITEM_ID" as "cs_item_name",
-    "cs_item_items"."I_ITEM_SK" as "cs_item_id"
-FROM
-    "memory"."item" as "cs_item_items"),
-cheerful as (
-SELECT
-    "cs_date_date"."D_DATE_SK" as "cs_date_id",
-    "cs_date_date"."D_YEAR" as "cs_date_year"
-FROM
-    "memory"."date_dim" as "cs_date_date"),
 highfalutin as (
 SELECT
     "cs_catalog_sales"."CS_BILL_CDEMO_SK" as "cs_bill_customer_demographic_id",
@@ -82,19 +63,7 @@ SELECT
     "cs_catalog_sales"."CS_SALES_PRICE" as "cs_sales_price",
     "cs_catalog_sales"."CS_SOLD_DATE_SK" as "cs_date_id"
 FROM
-    "memory"."catalog_sales" as "cs_catalog_sales"),
-wakeful as (
-SELECT
-    "highfalutin"."cs_bill_customer_demographic_id" as "cs_bill_customer_demographic_id",
-    "highfalutin"."cs_coupon_amt" as "cs_coupon_amt",
-    "highfalutin"."cs_date_id" as "cs_date_id",
-    "highfalutin"."cs_item_id" as "cs_item_id",
-    "highfalutin"."cs_list_price" as "cs_list_price",
-    "highfalutin"."cs_promotion_id" as "cs_promotion_id",
-    "highfalutin"."cs_quantity" as "cs_quantity",
-    "highfalutin"."cs_sales_price" as "cs_sales_price"
-FROM
-    "highfalutin"
+    "memory"."catalog_sales" as "cs_catalog_sales"
 GROUP BY
     1,
     2,
@@ -104,35 +73,21 @@ GROUP BY
     6,
     7,
     8),
-quizzical as (
-SELECT
-    "cs_bill_customer_demographic_customer_demographics"."CD_DEMO_SK" as "cs_bill_customer_demographic_id",
-    "cs_bill_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" as "cs_bill_customer_demographic_education_status",
-    "cs_bill_customer_demographic_customer_demographics"."CD_GENDER" as "cs_bill_customer_demographic_gender",
-    "cs_bill_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" as "cs_bill_customer_demographic_marital_status"
-FROM
-    "memory"."customer_demographics" as "cs_bill_customer_demographic_customer_demographics"),
 questionable as (
 SELECT
-    "cheerful"."cs_date_year" as "cs_date_year",
-    "cooperative"."cs_promotion_channel_email" as "cs_promotion_channel_email",
-    "cooperative"."cs_promotion_channel_event" as "cs_promotion_channel_event",
-    "quizzical"."cs_bill_customer_demographic_education_status" as "cs_bill_customer_demographic_education_status",
-    "quizzical"."cs_bill_customer_demographic_gender" as "cs_bill_customer_demographic_gender",
-    "quizzical"."cs_bill_customer_demographic_marital_status" as "cs_bill_customer_demographic_marital_status",
-    "thoughtful"."cs_item_name" as "cs_item_name",
-    "wakeful"."cs_coupon_amt" as "cs_coupon_amt",
-    "wakeful"."cs_list_price" as "cs_list_price",
-    "wakeful"."cs_quantity" as "cs_quantity",
-    "wakeful"."cs_sales_price" as "cs_sales_price"
+    "cs_item_items"."I_ITEM_ID" as "cs_item_name",
+    "highfalutin"."cs_coupon_amt" as "cs_coupon_amt",
+    "highfalutin"."cs_list_price" as "cs_list_price",
+    "highfalutin"."cs_quantity" as "cs_quantity",
+    "highfalutin"."cs_sales_price" as "cs_sales_price"
 FROM
-    "wakeful"
-    LEFT OUTER JOIN "cheerful" on "wakeful"."cs_date_id" = "cheerful"."cs_date_id"
-    INNER JOIN "thoughtful" on "wakeful"."cs_item_id" = "thoughtful"."cs_item_id"
-    LEFT OUTER JOIN "cooperative" on "wakeful"."cs_promotion_id" = "cooperative"."cs_promotion_id"
-    LEFT OUTER JOIN "quizzical" on "wakeful"."cs_bill_customer_demographic_id" = "quizzical"."cs_bill_customer_demographic_id"
+    "highfalutin"
+    INNER JOIN "memory"."date_dim" as "cs_date_date" on "highfalutin"."cs_date_id" = "cs_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "cs_item_items" on "highfalutin"."cs_item_id" = "cs_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."promotion" as "cs_promotion_promotion" on "highfalutin"."cs_promotion_id" = "cs_promotion_promotion"."P_PROMO_SK"
+    INNER JOIN "memory"."customer_demographics" as "cs_bill_customer_demographic_customer_demographics" on "highfalutin"."cs_bill_customer_demographic_id" = "cs_bill_customer_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "quizzical"."cs_bill_customer_demographic_gender" = 'M' and "quizzical"."cs_bill_customer_demographic_marital_status" = 'S' and "quizzical"."cs_bill_customer_demographic_education_status" = 'College' and ( "cooperative"."cs_promotion_channel_email" = 'N' or "cooperative"."cs_promotion_channel_event" = 'N' ) and "cheerful"."cs_date_year" = 2000
+    "cs_bill_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "cs_bill_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "cs_bill_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and ( "cs_promotion_promotion"."P_CHANNEL_EMAIL" = 'N' or "cs_promotion_promotion"."P_CHANNEL_EVENT" = 'N' ) and "cs_date_date"."D_YEAR" = 2000
 
 GROUP BY
     1,
@@ -140,12 +95,12 @@ GROUP BY
     3,
     4,
     5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11)
+    "cs_bill_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS",
+    "cs_bill_customer_demographic_customer_demographics"."CD_GENDER",
+    "cs_bill_customer_demographic_customer_demographics"."CD_MARITAL_STATUS",
+    "cs_date_date"."D_YEAR",
+    "cs_promotion_promotion"."P_CHANNEL_EMAIL",
+    "cs_promotion_promotion"."P_CHANNEL_EVENT")
 SELECT
     avg("questionable"."cs_quantity") as "agg1",
     avg("questionable"."cs_list_price") as "agg2",

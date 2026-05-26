@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 4640 | 120 |
-| reference | 2102 | 42 |
-| v4 / ref | 2.21x | 2.86x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2806 | 76 | — |
+| reference | 2102 | 42 | 30.95 ms |
+| v4 / ref | 1.33x | 1.81x | — |
 
 ## Preql
 
@@ -78,12 +78,6 @@ limit 100
 
 ```sql
 WITH 
-thoughtful as (
-SELECT
-    "ws_web_site_web_site"."web_name" as "ws_web_site_name",
-    "ws_web_site_web_site"."web_site_sk" as "ws_web_site_id"
-FROM
-    "memory"."web_site" as "ws_web_site_web_site"),
 cheerful as (
 SELECT
     "ws_web_sales"."WS_SHIP_DATE_SK" as "ws_ship_date_id",
@@ -96,70 +90,32 @@ FROM
 WHERE
     "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
 ),
-wakeful as (
-SELECT
-    "ws_warehouse_warehouse"."w_warehouse_name" as "ws_warehouse_name",
-    "ws_warehouse_warehouse"."w_warehouse_sk" as "ws_warehouse_id"
-FROM
-    "memory"."warehouse" as "ws_warehouse_warehouse"),
-highfalutin as (
-SELECT
-    "ws_ship_mode_ship_mode"."SM_SHIP_MODE_SK" as "ws_ship_mode_id",
-    "ws_ship_mode_ship_mode"."SM_TYPE" as "ws_ship_mode_type"
-FROM
-    "memory"."ship_mode" as "ws_ship_mode_ship_mode"),
-quizzical as (
-SELECT
-    "ws_ship_date_date"."D_DATE_SK" as "ws_ship_date_id",
-    "ws_ship_date_date"."D_MONTH_SEQ" as "ws_ship_date_month_seq"
-FROM
-    "memory"."date_dim" as "ws_ship_date_date"),
 cooperative as (
 SELECT
     "cheerful"."ws_date_id" as "ws_date_id",
     "cheerful"."ws_ship_date_id" as "ws_ship_date_id",
-    "cheerful"."ws_ship_mode_id" as "ws_ship_mode_id",
-    "cheerful"."ws_warehouse_id" as "ws_warehouse_id",
-    "cheerful"."ws_web_site_id" as "ws_web_site_id",
-    "highfalutin"."ws_ship_mode_type" as "ws_ship_mode_type",
-    "quizzical"."ws_ship_date_month_seq" as "ws_ship_date_month_seq",
-    "thoughtful"."ws_web_site_name" as "ws_web_site_name",
-    "wakeful"."ws_warehouse_name" as "ws_warehouse_name"
+    "ws_ship_mode_ship_mode"."SM_TYPE" as "ws_ship_mode_type",
+    "ws_warehouse_warehouse"."w_warehouse_name" as "ws_warehouse_name",
+    "ws_web_site_web_site"."web_name" as "ws_web_site_name"
 FROM
     "cheerful"
-    LEFT OUTER JOIN "thoughtful" on "cheerful"."ws_web_site_id" = "thoughtful"."ws_web_site_id"
-    LEFT OUTER JOIN "quizzical" on "cheerful"."ws_ship_date_id" = "quizzical"."ws_ship_date_id"
-    LEFT OUTER JOIN "highfalutin" on "cheerful"."ws_ship_mode_id" = "highfalutin"."ws_ship_mode_id"
-    LEFT OUTER JOIN "wakeful" on "cheerful"."ws_warehouse_id" = "wakeful"."ws_warehouse_id"
+    LEFT OUTER JOIN "memory"."web_site" as "ws_web_site_web_site" on "cheerful"."ws_web_site_id" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "cheerful"."ws_ship_date_id" = "ws_ship_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."ship_mode" as "ws_ship_mode_ship_mode" on "cheerful"."ws_ship_mode_id" = "ws_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
+    LEFT OUTER JOIN "memory"."warehouse" as "ws_warehouse_warehouse" on "cheerful"."ws_warehouse_id" = "ws_warehouse_warehouse"."w_warehouse_sk"
 WHERE
-    "quizzical"."ws_ship_date_month_seq" BETWEEN 1200 AND 1211
+    "ws_ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
 ),
 abundant as (
 SELECT
-    "cooperative"."ws_date_id" as "ws_date_id",
-    "cooperative"."ws_ship_date_id" as "ws_ship_date_id",
-    "cooperative"."ws_ship_date_month_seq" as "ws_ship_date_month_seq",
-    "cooperative"."ws_ship_mode_id" as "ws_ship_mode_id",
     "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
-    "cooperative"."ws_warehouse_id" as "ws_warehouse_id",
-    "cooperative"."ws_warehouse_name" as "ws_warehouse_name",
-    "cooperative"."ws_web_site_id" as "ws_web_site_id",
     "cooperative"."ws_web_site_name" as "ws_web_site_name",
     SUBSTRING("cooperative"."ws_warehouse_name",1,20) as "w_substr"
 FROM
     "cooperative"),
 questionable as (
 SELECT
-    "cooperative"."ws_date_id" as "ws_date_id",
-    "cooperative"."ws_ship_date_id" - "cooperative"."ws_date_id" as "days_to_ship",
-    "cooperative"."ws_ship_date_id" as "ws_ship_date_id",
-    "cooperative"."ws_ship_date_month_seq" as "ws_ship_date_month_seq",
-    "cooperative"."ws_ship_mode_id" as "ws_ship_mode_id",
-    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
-    "cooperative"."ws_warehouse_id" as "ws_warehouse_id",
-    "cooperative"."ws_warehouse_name" as "ws_warehouse_name",
-    "cooperative"."ws_web_site_id" as "ws_web_site_id",
-    "cooperative"."ws_web_site_name" as "ws_web_site_name"
+    "cooperative"."ws_ship_date_id" - "cooperative"."ws_date_id" as "days_to_ship"
 FROM
     "cooperative")
 SELECT
@@ -183,8 +139,8 @@ SELECT
 	WHEN "questionable"."days_to_ship" > 120 THEN 1
 	ELSE 0
 	END) as "days_120_plus",
-    "abundant"."w_substr" as "w_substr",
     "abundant"."ws_web_site_name" as "ws_web_site_name",
+    "abundant"."w_substr" as "w_substr",
     "abundant"."ws_ship_mode_type" as "ws_ship_mode_type"
 FROM
     "abundant"
@@ -250,14 +206,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "questionable" not found!
 Candidate tables: "abundant"
 
-LINE 88: 	WHEN "questionable"."days_to_ship" <= 30 THEN 1
+LINE 44: 	WHEN "questionable"."days_to_ship" <= 30 THEN 1
               ^
 ```

@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 6083 | 138 |
-| reference | 5451 | 57 |
-| v4 / ref | 1.12x | 2.42x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4634 | 101 | — |
+| reference | 5451 | 57 | 86.07 ms |
+| v4 / ref | 0.85x | 1.77x | — |
 
 ## Preql
 
@@ -87,22 +87,7 @@ order by
 
 ```sql
 WITH 
-questionable as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_QOY" as "sales_date_quarter",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
 thoughtful as (
-SELECT
-    "sales_catalog_sales_unified"."CS_BILL_ADDR_SK" as "sales_bill_address_id",
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-     'CATALOG'  as "sales_sales_channel"
-FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
-UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_ADDR_SK" as "sales_bill_address_id",
     "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
@@ -131,25 +116,19 @@ GROUP BY
     2,
     3,
     4),
-quizzical as (
-SELECT
-    "sales_bill_address_customer_address"."CA_ADDRESS_SK" as "sales_bill_address_id",
-    "sales_bill_address_customer_address"."CA_COUNTY" as "sales_bill_address_county"
-FROM
-    "memory"."customer_address" as "sales_bill_address_customer_address"),
 abundant as (
 SELECT
     "cooperative"."sales_ext_sales_price" as "sales_ext_sales_price",
     "cooperative"."sales_sales_channel" as "sales_sales_channel",
-    "questionable"."sales_date_quarter" as "sales_date_quarter",
-    "questionable"."sales_date_year" as "sales_date_year",
-    "quizzical"."sales_bill_address_county" as "sales_bill_address_county"
+    "sales_bill_address_customer_address"."CA_COUNTY" as "sales_bill_address_county",
+    "sales_date_date"."D_QOY" as "sales_date_quarter",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
     "cooperative"
-    LEFT OUTER JOIN "questionable" on "cooperative"."sales_date_id" = "questionable"."sales_date_id"
-    LEFT OUTER JOIN "quizzical" on "cooperative"."sales_bill_address_id" = "quizzical"."sales_bill_address_id"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "cooperative"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "cooperative"."sales_bill_address_id" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "questionable"."sales_date_year" = 2000 and "cooperative"."sales_sales_channel" in ('STORE','WEB') and "questionable"."sales_date_quarter" in (1,2,3)
+    "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_QOY" in (1,2,3)
 
 GROUP BY
     1,
@@ -181,49 +160,33 @@ FROM
     "uneven"
 GROUP BY
     1,
-    2),
-juicy as (
+    2)
 SELECT
     "yummy"."sales_bill_address_county" as "sales_bill_address_county",
     "yummy"."sales_date_year" as "sales_date_year",
-    "yummy"."ss_q1" as "ss_q1",
-    "yummy"."ss_q2" / "yummy"."ss_q1" as "store_q1_q2_increase",
-    "yummy"."ss_q2" as "ss_q2",
-    "yummy"."ss_q3" / "yummy"."ss_q2" as "store_q2_q3_increase",
-    "yummy"."ss_q3" as "ss_q3",
-    "yummy"."ws_q1" as "ws_q1",
     "yummy"."ws_q2" / "yummy"."ws_q1" as "web_q1_q2_increase",
-    "yummy"."ws_q2" as "ws_q2",
+    "yummy"."ss_q2" / "yummy"."ss_q1" as "store_q1_q2_increase",
     "yummy"."ws_q3" / "yummy"."ws_q2" as "web_q2_q3_increase",
-    "yummy"."ws_q3" as "ws_q3"
+    "yummy"."ss_q3" / "yummy"."ss_q2" as "store_q2_q3_increase"
 FROM
-    "yummy")
-SELECT
-    "juicy"."sales_bill_address_county" as "sales_bill_address_county",
-    "juicy"."sales_date_year" as "sales_date_year",
-    "juicy"."web_q1_q2_increase" as "web_q1_q2_increase",
-    "juicy"."store_q1_q2_increase" as "store_q1_q2_increase",
-    "juicy"."web_q2_q3_increase" as "web_q2_q3_increase",
-    "juicy"."store_q2_q3_increase" as "store_q2_q3_increase"
-FROM
-    "juicy"
+    "yummy"
 WHERE
-    "juicy"."ss_q1" > 0 and "juicy"."ss_q2" > 0 and ( CASE
-	WHEN "juicy"."ws_q1" > 0 THEN "juicy"."ws_q2" / "juicy"."ws_q1"
+    "yummy"."ss_q1" > 0 and "yummy"."ss_q2" > 0 and ( CASE
+	WHEN "yummy"."ws_q1" > 0 THEN "yummy"."ws_q2" / "yummy"."ws_q1"
 	ELSE null
 	END > CASE
-	WHEN "juicy"."ss_q1" > 0 THEN "juicy"."ss_q2" / "juicy"."ss_q1"
+	WHEN "yummy"."ss_q1" > 0 THEN "yummy"."ss_q2" / "yummy"."ss_q1"
 	ELSE null
 	END ) and ( CASE
-	WHEN "juicy"."ws_q2" > 0 THEN "juicy"."ws_q3" / "juicy"."ws_q2"
+	WHEN "yummy"."ws_q2" > 0 THEN "yummy"."ws_q3" / "yummy"."ws_q2"
 	ELSE null
 	END > CASE
-	WHEN "juicy"."ss_q2" > 0 THEN "juicy"."ss_q3" / "juicy"."ss_q2"
+	WHEN "yummy"."ss_q2" > 0 THEN "yummy"."ss_q3" / "yummy"."ss_q2"
 	ELSE null
 	END )
 
 ORDER BY 
-    "juicy"."sales_bill_address_county" asc nulls first
+    "yummy"."sales_bill_address_county" asc nulls first
 ```
 
 ## Reference SQL (zquery log)
@@ -292,14 +255,23 @@ ORDER BY
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "abundant" not found!
 Candidate tables: "uneven"
 
-LINE 84:     "abundant"."sales_bill_address_county" as "sales_bill_addre...
+LINE 63:     "abundant"."sales_bill_address_county" as "sales_bill_addre...
              ^
 ```

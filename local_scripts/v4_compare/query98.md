@@ -14,13 +14,13 @@
 v4 rows: 2521 (2521 distinct)
 ref rows: 2521 (2521 distinct)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 5521 | 95 |
-| reference | 2918 | 58 |
-| v4 / ref | 1.89x | 1.64x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4360 | 69 | 72.95 ms |
+| reference | 2918 | 58 | 60.91 ms |
+| v4 / ref | 1.49x | 1.19x | 1.20x |
 
 ## Preql
 
@@ -51,44 +51,20 @@ order by
 
 ```sql
 WITH 
-wakeful as (
-SELECT
-    "store_sales_store_sales"."SS_EXT_SALES_PRICE" as "store_sales_ext_sales_price",
-    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
-    "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id"
-FROM
-    "memory"."store_sales" as "store_sales_store_sales"),
-highfalutin as (
+cheerful as (
 SELECT
     "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
     "store_sales_item_items"."I_CLASS" as "store_sales_item_class",
     "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
     "store_sales_item_items"."I_ITEM_DESC" as "store_sales_item_desc",
     "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_name",
-    "store_sales_item_items"."I_ITEM_SK" as "store_sales_item_id"
+    "store_sales_store_sales"."SS_EXT_SALES_PRICE" as "store_sales_ext_sales_price"
 FROM
-    "memory"."item" as "store_sales_item_items"),
-quizzical as (
-SELECT
-    "store_sales_date_date"."D_DATE_SK" as "store_sales_date_id",
-    cast("store_sales_date_date"."D_DATE" as date) as "store_sales_date_date"
-FROM
-    "memory"."date_dim" as "store_sales_date_date"),
-cheerful as (
-SELECT
-    "highfalutin"."store_sales_item_category" as "store_sales_item_category",
-    "highfalutin"."store_sales_item_class" as "store_sales_item_class",
-    "highfalutin"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "highfalutin"."store_sales_item_desc" as "store_sales_item_desc",
-    "highfalutin"."store_sales_item_name" as "store_sales_item_name",
-    "quizzical"."store_sales_date_date" as "store_sales_date_date",
-    "wakeful"."store_sales_ext_sales_price" as "store_sales_ext_sales_price"
-FROM
-    "wakeful"
-    LEFT OUTER JOIN "quizzical" on "wakeful"."store_sales_date_id" = "quizzical"."store_sales_date_id"
-    INNER JOIN "highfalutin" on "wakeful"."store_sales_item_id" = "highfalutin"."store_sales_item_id"
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
 WHERE
-    "highfalutin"."store_sales_item_category" in ('Sports','Books','Home') and "quizzical"."store_sales_date_date" BETWEEN date '1999-02-22' AND date '1999-03-24'
+    "store_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("store_sales_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 ),
 cooperative as (
 SELECT
@@ -117,8 +93,6 @@ GROUP BY
     5),
 questionable as (
 SELECT
-    "cooperative"."_virt_agg_sum_7595906549305205" as "_virt_agg_sum_7595906549305205",
-    "thoughtful"."_virt_agg_sum_9873055619986236" as "_virt_agg_sum_9873055619986236",
     "thoughtful"."store_sales_item_category" as "store_sales_item_category",
     "thoughtful"."store_sales_item_current_price" as "store_sales_item_current_price",
     "thoughtful"."store_sales_item_desc" as "store_sales_item_desc",
@@ -127,7 +101,7 @@ SELECT
     coalesce("cooperative"."store_sales_item_class","thoughtful"."store_sales_item_class") as "store_sales_item_class"
 FROM
     "thoughtful"
-    FULL JOIN "cooperative" on "thoughtful"."store_sales_item_class" is not distinct from "cooperative"."store_sales_item_class")
+    INNER JOIN "cooperative" on "thoughtful"."store_sales_item_class" is not distinct from "cooperative"."store_sales_item_class")
 SELECT
     coalesce("questionable"."store_sales_item_name","thoughtful"."store_sales_item_name") as "store_sales_item_name",
     coalesce("questionable"."store_sales_item_desc","thoughtful"."store_sales_item_desc") as "store_sales_item_desc",

@@ -11,12 +11,12 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 0 | 0 |
-| reference | 2553 | 60 |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 0 | 0 | — |
+| reference | 2553 | 60 | 109.05 ms |
 
 ## Preql
 
@@ -141,10 +141,10 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 114, in generate_v4_sql
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
     info, build_env, _, build_stmt = run_tpcds_query(query_id)
                                      ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 470, in run_tpcds_query
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
     info = search_concepts(
         mandatory_list=list(build_stmt.output_components),
     ...<4 lines>...
@@ -160,10 +160,10 @@ Traceback (most recent call last):
     strategy_node = build_strategy_node(
         group_graph, mandatory_list, environment, g, history
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 275, in build_strategy_node
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 288, in build_strategy_node
     for gid in _topological_order(group_graph):
                ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 126, in _topological_order
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 125, in _topological_order
     return list(nx.topological_sort(lineage_only))
   File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
     for generation in nx.topological_generations(G):

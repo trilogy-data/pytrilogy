@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 5554 | 140 |
-| reference | 4019 | 107 |
-| v4 / ref | 1.38x | 1.31x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4358 | 121 | — |
+| reference | 4019 | 107 | 345.28 ms |
+| v4 / ref | 1.08x | 1.13x | — |
 
 ## Preql
 
@@ -93,22 +93,7 @@ limit 100
 
 ```sql
 WITH 
-cooperative as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_MONTH_SEQ" as "sales_date_month_seq",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
 cheerful as (
-SELECT
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
-     'CATALOG'  as "sales_sales_channel",
-    "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price"
-FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
-UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
@@ -116,6 +101,9 @@ SELECT
     "sales_store_sales_unified"."SS_SALES_PRICE" as "sales_sales_price"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
+WHERE
+    "sales_store_sales_unified"."SS_ITEM_SK" is not null
+
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
@@ -123,7 +111,10 @@ SELECT
      'WEB'  as "sales_sales_channel",
     "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price"
 FROM
-    "memory"."web_sales" as "sales_web_sales_unified"),
+    "memory"."web_sales" as "sales_web_sales_unified"
+WHERE
+    "sales_web_sales_unified"."WS_ITEM_SK" is not null
+),
 thoughtful as (
 SELECT
     "cheerful"."sales_date_id" as "sales_date_id",
@@ -139,23 +130,22 @@ GROUP BY
     4),
 questionable as (
 SELECT
-    "cooperative"."sales_date_date" as "sales_date_date",
-    "cooperative"."sales_date_month_seq" as "sales_date_month_seq",
     "thoughtful"."sales_item_id" as "sales_item_id",
     "thoughtful"."sales_sales_channel" as "sales_sales_channel",
-    "thoughtful"."sales_sales_price" as "sales_sales_price"
+    "thoughtful"."sales_sales_price" as "sales_sales_price",
+    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
 FROM
     "thoughtful"
-    LEFT OUTER JOIN "cooperative" on "thoughtful"."sales_date_id" = "cooperative"."sales_date_id"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "cooperative"."sales_date_month_seq" BETWEEN 1200 AND 1211 and "thoughtful"."sales_item_id" is not null and "thoughtful"."sales_sales_channel" in ('WEB','STORE')
+    "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
 
 GROUP BY
     1,
     2,
     3,
     4,
-    5),
+    "sales_date_date"."D_MONTH_SEQ"),
 abundant as (
 SELECT
     CASE WHEN "questionable"."sales_sales_channel" = 'STORE' THEN "questionable"."sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_4892217788000653",
@@ -191,14 +181,7 @@ FROM
     "questionable"),
 juicy as (
 SELECT
-    "questionable"."sales_date_month_seq" as "sales_date_month_seq",
-    "questionable"."sales_sales_channel" as "sales_sales_channel",
-    "questionable"."sales_sales_price" as "sales_sales_price",
-    "uneven"."store_has_row" as "store_has_row",
-    "uneven"."web_has_row" as "web_has_row",
-    "yummy"."store_cume" as "store_cume",
     "yummy"."store_cume" as "store_cumulative",
-    "yummy"."web_cume" as "web_cume",
     "yummy"."web_cume" as "web_cumulative",
     CASE
 	WHEN "uneven"."store_has_row" = 1 THEN "yummy"."store_cume"
@@ -209,9 +192,7 @@ SELECT
 	ELSE null
 	END as "web_sales_visible",
     coalesce("questionable"."sales_date_date","uneven"."sales_date_date","yummy"."sales_date_date") as "d_date",
-    coalesce("questionable"."sales_date_date","uneven"."sales_date_date","yummy"."sales_date_date") as "sales_date_date",
-    coalesce("questionable"."sales_item_id","uneven"."sales_item_id","yummy"."sales_item_id") as "item_sk",
-    coalesce("questionable"."sales_item_id","uneven"."sales_item_id","yummy"."sales_item_id") as "sales_item_id"
+    coalesce("questionable"."sales_item_id","uneven"."sales_item_id","yummy"."sales_item_id") as "item_sk"
 FROM
     "yummy"
     FULL JOIN "uneven" on "yummy"."sales_date_date" is not distinct from "uneven"."sales_date_date" AND "yummy"."sales_item_id" = "uneven"."sales_item_id"
@@ -350,14 +331,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "abundant" not found!
 Candidate tables: "questionable"
 
-LINE 83:     sum("abundant"."_virt_filter_sales_price_2666160496451923")...
+LINE 73:     sum("abundant"."_virt_filter_sales_price_2666160496451923")...
                  ^
 ```

@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 3539 | 82 |
-| reference | 2111 | 48 |
-| v4 / ref | 1.68x | 1.71x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2601 | 58 | — |
+| reference | 2111 | 48 | 36.43 ms |
+| v4 / ref | 1.23x | 1.21x | — |
 
 ## Preql
 
@@ -51,44 +51,20 @@ limit 100
 
 ```sql
 WITH 
-wakeful as (
-SELECT
-    "web_sales_web_sales"."WS_EXT_SALES_PRICE" as "web_sales_ext_sales_price",
-    "web_sales_web_sales"."WS_ITEM_SK" as "web_sales_item_id",
-    "web_sales_web_sales"."WS_SOLD_DATE_SK" as "web_sales_date_id"
-FROM
-    "memory"."web_sales" as "web_sales_web_sales"),
-highfalutin as (
+cheerful as (
 SELECT
     "web_sales_item_items"."I_CATEGORY" as "web_sales_item_category",
     "web_sales_item_items"."I_CLASS" as "web_sales_item_class",
     "web_sales_item_items"."I_CURRENT_PRICE" as "web_sales_item_current_price",
     "web_sales_item_items"."I_ITEM_DESC" as "web_sales_item_desc",
     "web_sales_item_items"."I_ITEM_ID" as "web_sales_item_name",
-    "web_sales_item_items"."I_ITEM_SK" as "web_sales_item_id"
+    "web_sales_web_sales"."WS_EXT_SALES_PRICE" as "web_sales_ext_sales_price"
 FROM
-    "memory"."item" as "web_sales_item_items"),
-quizzical as (
-SELECT
-    "web_sales_date_date"."D_DATE_SK" as "web_sales_date_id",
-    cast("web_sales_date_date"."D_DATE" as date) as "web_sales_date_date"
-FROM
-    "memory"."date_dim" as "web_sales_date_date"),
-cheerful as (
-SELECT
-    "highfalutin"."web_sales_item_category" as "web_sales_item_category",
-    "highfalutin"."web_sales_item_class" as "web_sales_item_class",
-    "highfalutin"."web_sales_item_current_price" as "web_sales_item_current_price",
-    "highfalutin"."web_sales_item_desc" as "web_sales_item_desc",
-    "highfalutin"."web_sales_item_name" as "web_sales_item_name",
-    "quizzical"."web_sales_date_date" as "web_sales_date_date",
-    "wakeful"."web_sales_ext_sales_price" as "web_sales_ext_sales_price"
-FROM
-    "wakeful"
-    LEFT OUTER JOIN "quizzical" on "wakeful"."web_sales_date_id" = "quizzical"."web_sales_date_id"
-    INNER JOIN "highfalutin" on "wakeful"."web_sales_item_id" = "highfalutin"."web_sales_item_id"
+    "memory"."web_sales" as "web_sales_web_sales"
+    INNER JOIN "memory"."date_dim" as "web_sales_date_date" on "web_sales_web_sales"."WS_SOLD_DATE_SK" = "web_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "web_sales_item_items" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_item_items"."I_ITEM_SK"
 WHERE
-    "quizzical"."web_sales_date_date" BETWEEN date '1999-02-22' AND date '1999-03-24' and "highfalutin"."web_sales_item_category" in ('Sports','Books','Home')
+    cast("web_sales_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24' and "web_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home')
 ),
 thoughtful as (
 SELECT
@@ -116,15 +92,15 @@ GROUP BY
     1)
 SELECT
     ("thoughtful"."itemrevenue" * 100.0) / "cooperative"."itemclassrevenue" as "revenueratio",
-    "thoughtful"."web_sales_item_current_price" as "web_sales_item_current_price",
+    coalesce("cooperative"."web_sales_item_class","thoughtful"."web_sales_item_class") as "web_sales_item_class",
     "thoughtful"."web_sales_item_desc" as "web_sales_item_desc",
     "thoughtful"."web_sales_item_category" as "web_sales_item_category",
     "thoughtful"."web_sales_item_name" as "web_sales_item_name",
-    coalesce("cooperative"."web_sales_item_class","thoughtful"."web_sales_item_class") as "web_sales_item_class",
+    "thoughtful"."web_sales_item_current_price" as "web_sales_item_current_price",
     "thoughtful"."itemrevenue" as "itemrevenue"
 FROM
     "cooperative"
-    FULL JOIN "thoughtful" on "cooperative"."web_sales_item_class" is not distinct from "thoughtful"."web_sales_item_class"
+    INNER JOIN "thoughtful" on "cooperative"."web_sales_item_class" is not distinct from "thoughtful"."web_sales_item_class"
 ORDER BY 
     "thoughtful"."web_sales_item_category" asc,
     coalesce("cooperative"."web_sales_item_class","thoughtful"."web_sales_item_class") asc,
@@ -191,14 +167,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
 Candidate tables: "cheerful"
 
-LINE 60:     sum("thoughtful"."itemrevenue") as "itemclassrevenue"
+LINE 36:     sum("thoughtful"."itemrevenue") as "itemclassrevenue"
                  ^
 ```

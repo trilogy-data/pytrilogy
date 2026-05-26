@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 4878 | 117 |
-| reference | 2041 | 36 |
-| v4 / ref | 2.39x | 3.25x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 3742 | 97 | — |
+| reference | 2041 | 36 | 33.48 ms |
+| v4 / ref | 1.83x | 2.69x | — |
 
 ## Preql
 
@@ -75,38 +75,22 @@ order by
 
 ```sql
 WITH 
-questionable as (
+wakeful as (
 SELECT
-    1 as "dmoy1",
-    2 as "dmoy2"
-),
-highfalutin as (
-SELECT
-    "inventory_warehouse_inventory"."inv_date_sk" as "inventory_date_id",
+    "inventory_date_date"."D_MOY" as "inventory_date_month_of_year",
     "inventory_warehouse_inventory"."inv_item_sk" as "inventory_item_id",
     "inventory_warehouse_inventory"."inv_quantity_on_hand" as "inventory_quantity_on_hand",
     "inventory_warehouse_inventory"."inv_warehouse_sk" as "inventory_warehouse_id"
 FROM
-    "memory"."inventory" as "inventory_warehouse_inventory"),
-quizzical as (
-SELECT
-    "inventory_date_date"."D_DATE_SK" as "inventory_date_id",
-    "inventory_date_date"."D_MOY" as "inventory_date_month_of_year",
-    "inventory_date_date"."D_YEAR" as "inventory_date_year"
-FROM
-    "memory"."date_dim" as "inventory_date_date"),
-wakeful as (
-SELECT
-    "highfalutin"."inventory_item_id" as "inventory_item_id",
-    "highfalutin"."inventory_quantity_on_hand" as "inventory_quantity_on_hand",
-    "highfalutin"."inventory_warehouse_id" as "inventory_warehouse_id",
-    "quizzical"."inventory_date_month_of_year" as "inventory_date_month_of_year",
-    "quizzical"."inventory_date_year" as "inventory_date_year"
-FROM
-    "highfalutin"
-    INNER JOIN "quizzical" on "highfalutin"."inventory_date_id" = "quizzical"."inventory_date_id"
+    "memory"."inventory" as "inventory_warehouse_inventory"
+    INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
 WHERE
-    "quizzical"."inventory_date_year" = 2001 and "quizzical"."inventory_date_month_of_year" in (1,2) and "highfalutin"."inventory_warehouse_id" is not null
+    "inventory_date_date"."D_YEAR" = 2001 and "inventory_date_date"."D_MOY" in (1,2) and "inventory_warehouse_inventory"."inv_warehouse_sk" is not null
+),
+questionable as (
+SELECT
+    1 as "dmoy1",
+    2 as "dmoy2"
 ),
 cheerful as (
 SELECT
@@ -131,11 +115,6 @@ cooperative as (
 SELECT
     "thoughtful"."mean1" as "mean1",
     "thoughtful"."mean2" as "mean2",
-    "thoughtful"."stdev1" as "stdev1",
-    "thoughtful"."stdev2" as "stdev2",
-    "wakeful"."inventory_date_month_of_year" as "inventory_date_month_of_year",
-    "wakeful"."inventory_date_year" as "inventory_date_year",
-    "wakeful"."inventory_quantity_on_hand" as "inventory_quantity_on_hand",
     CASE
 	WHEN "thoughtful"."mean1" = 0 THEN null
 	ELSE "thoughtful"."stdev1" / "thoughtful"."mean1"
@@ -144,10 +123,8 @@ SELECT
 	WHEN "thoughtful"."mean2" = 0 THEN null
 	ELSE "thoughtful"."stdev2" / "thoughtful"."mean2"
 	END as "cov2",
-    coalesce("thoughtful"."inventory_item_id","wakeful"."inventory_item_id") as "inventory_item_id",
     coalesce("thoughtful"."inventory_item_id","wakeful"."inventory_item_id") as "isk1",
     coalesce("thoughtful"."inventory_item_id","wakeful"."inventory_item_id") as "isk2",
-    coalesce("thoughtful"."inventory_warehouse_id","wakeful"."inventory_warehouse_id") as "inventory_warehouse_id",
     coalesce("thoughtful"."inventory_warehouse_id","wakeful"."inventory_warehouse_id") as "wsk1",
     coalesce("thoughtful"."inventory_warehouse_id","wakeful"."inventory_warehouse_id") as "wsk2"
 FROM
@@ -167,7 +144,10 @@ SELECT
     "questionable"."dmoy2" as "dmoy2"
 FROM
     "cooperative"
-    FULL JOIN "questionable" on 1=1)
+    LEFT OUTER JOIN "questionable" on 1=1
+WHERE
+    "cooperative"."cov1" > 1
+)
 SELECT
     "abundant"."wsk1" as "wsk1",
     "abundant"."isk1" as "isk1",
@@ -182,7 +162,7 @@ SELECT
 FROM
     "abundant"
 WHERE
-    "abundant"."cov1" > 1 and "abundant"."cov2" > 1
+    "abundant"."cov2" > 1
 
 ORDER BY 
     "abundant"."wsk1" asc nulls first,
@@ -238,14 +218,23 @@ ORDER BY
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "cheerful" not found!
 Candidate tables: "wakeful"
 
-LINE 45:     avg("cheerful"."_virt_filter_quantity_on_hand_5056019954828139...
+LINE 29:     avg("cheerful"."_virt_filter_quantity_on_hand_5056019954828139...
                  ^
 ```

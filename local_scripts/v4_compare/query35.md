@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 2552 | 35 |
-| reference | 10103 | 157 |
-| v4 / ref | 0.25x | 0.22x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2552 | 35 | — |
+| reference | 10103 | 157 | 117.83 ms |
+| v4 / ref | 0.25x | 0.22x | — |
 
 ## Preql
 
@@ -107,12 +107,12 @@ SELECT
     min(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "min3",
     max(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "max3",
     avg(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "avg3",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.gender> as "customer_demographics_gender",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count> as "customer_demographics_college_dependent_count",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.marital_status> as "customer_demographics_marital_status",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count> as "customer_demographics_dependent_count",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count> as "customer_demographics_employed_dependent_count",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.address.state> as "customer_address_state",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count> as "customer_demographics_employed_dependent_count"
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.marital_status> as "customer_demographics_marital_status",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.gender> as "customer_demographics_gender",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count> as "customer_demographics_dependent_count",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count> as "customer_demographics_college_dependent_count"
 
 GROUP BY
     13,
@@ -297,10 +297,19 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 

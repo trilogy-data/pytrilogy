@@ -11,12 +11,12 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 0 | 0 |
-| reference | 6504 | 111 |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 0 | 0 | — |
+| reference | 6504 | 111 | 113.34 ms |
 
 ## Preql
 
@@ -198,10 +198,10 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 114, in generate_v4_sql
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
     info, build_env, _, build_stmt = run_tpcds_query(query_id)
                                      ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 470, in run_tpcds_query
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
     info = search_concepts(
         mandatory_list=list(build_stmt.output_components),
     ...<4 lines>...
@@ -217,19 +217,19 @@ Traceback (most recent call last):
     strategy_node = build_strategy_node(
         group_graph, mandatory_list, environment, g, history
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 321, in build_strategy_node
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 334, in build_strategy_node
     return _assemble_final_node(group_graph, built, mandatory_list, environment)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 246, in _assemble_final_node
-    parents.extend(_wrap_root_for_grain(node, per_group[gid], environment))
-                   ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 205, in _wrap_root_for_grain
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 259, in _assemble_final_node
+    parents.extend(_wrap_for_grain(node, per_group[gid], environment))
+                   ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 210, in _wrap_for_grain
     GroupNode(
     ~~~~~~~~~^
         output_concepts=outputs,
         ^^^^^^^^^^^^^^^^^^^^^^^^
     ...<2 lines>...
-        parents=[root_node],
-        ^^^^^^^^^^^^^^^^^^^^
+        parents=[parent_node],
+        ^^^^^^^^^^^^^^^^^^^^^^
     )
     ^
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\group_node.py", line 52, in __init__
@@ -249,5 +249,5 @@ Traceback (most recent call last):
     raise ValueError(
         f"Invalid input concepts to node! {missing} are missing non-hidden parent nodes; have {non_hidden} and hidden {hidden} from root {usable_outputs}"
     )
-ValueError: Invalid input concepts to node! ['cr.customer.address.id'] are missing non-hidden parent nodes; have {'cr.customer.address.street_number', 'cr.customer.address.gmt_offset', 'cr.customer.text_id', 'cr.customer.address.street_type', 'cr.return_address.state', 'cr.customer.address.city', 'cr.date.year', 'cr.return_amt_inc_tax', 'cr.customer.address.suite_number', 'cr.customer.address.street_name', 'cr.customer.address.zip', 'cr.customer.first_name', 'cr.customer.last_name', 'cr.customer.address.country', 'cr.customer.id', 'cr.customer.address.state', 'cr.customer.address.county', 'cr.customer.salutation', 'cr.customer.address.location_type'} and hidden set() from root {'cr.customer.address.street_number', 'cr.customer.address.gmt_offset', 'cr.customer.text_id', 'cr.customer.address.street_type', 'cr.return_address.state', 'cr.customer.address.city', 'cr.date.year', 'cr.return_amt_inc_tax', 'cr.customer.address.suite_number', 'cr.customer.address.street_name', 'cr.customer.address.zip', 'cr.customer.first_name', 'cr.customer.last_name', 'cr.customer.address.country', 'cr.customer.id', 'cr.customer.address.state', 'cr.customer.address.county', 'cr.customer.salutation', 'cr.customer.address.location_type'}
+ValueError: Invalid input concepts to node! ['cr.customer.address.id'] are missing non-hidden parent nodes; have {'cr.customer.salutation', 'cr.customer.address.street_name', 'cr.customer.address.street_type', 'cr.return_amt_inc_tax', 'cr.return_address.state', 'cr.customer.first_name', 'cr.customer.address.location_type', 'cr.customer.text_id', 'cr.customer.address.county', 'cr.customer.address.suite_number', 'cr.customer.address.street_number', 'cr.customer.address.city', 'cr.customer.address.gmt_offset', 'cr.customer.address.state', 'cr.customer.address.zip', 'cr.date.year', 'cr.customer.address.country', 'cr.customer.last_name', 'cr.customer.id'} and hidden set() from root {'cr.customer.salutation', 'cr.customer.address.street_name', 'cr.customer.address.street_type', 'cr.return_amt_inc_tax', 'cr.return_address.state', 'cr.customer.first_name', 'cr.customer.address.location_type', 'cr.customer.text_id', 'cr.customer.address.county', 'cr.customer.address.suite_number', 'cr.customer.address.street_number', 'cr.customer.address.city', 'cr.customer.address.gmt_offset', 'cr.customer.address.state', 'cr.customer.address.zip', 'cr.date.year', 'cr.customer.address.country', 'cr.customer.last_name', 'cr.customer.id'}
 ```

@@ -14,13 +14,13 @@
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 5137 | 108 |
-| reference | 2277 | 34 |
-| v4 / ref | 2.26x | 3.18x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 3302 | 66 | 377.72 ms |
+| reference | 2277 | 34 | 60.34 ms |
+| v4 / ref | 1.45x | 1.94x | 6.26x |
 
 ## Preql
 
@@ -67,19 +67,7 @@ SELECT
     "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id",
     "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"),
-cooperative as (
-SELECT
-    "thoughtful"."store_sales_coupon_amt" as "store_sales_coupon_amt",
-    "thoughtful"."store_sales_customer_demographic_id" as "store_sales_customer_demographic_id",
-    "thoughtful"."store_sales_date_id" as "store_sales_date_id",
-    "thoughtful"."store_sales_item_id" as "store_sales_item_id",
-    "thoughtful"."store_sales_list_price" as "store_sales_list_price",
-    "thoughtful"."store_sales_quantity" as "store_sales_quantity",
-    "thoughtful"."store_sales_sales_price" as "store_sales_sales_price",
-    "thoughtful"."store_sales_store_id" as "store_sales_store_id"
-FROM
-    "thoughtful"
+    "memory"."store_sales" as "store_sales_store_sales"
 GROUP BY
     1,
     2,
@@ -89,52 +77,22 @@ GROUP BY
     6,
     7,
     8),
-cheerful as (
-SELECT
-    "store_sales_store_store"."S_STATE" as "store_sales_store_state",
-    "store_sales_store_store"."S_STORE_SK" as "store_sales_store_id"
-FROM
-    "memory"."store" as "store_sales_store_store"),
-wakeful as (
-SELECT
-    "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_name",
-    "store_sales_item_items"."I_ITEM_SK" as "store_sales_item_id"
-FROM
-    "memory"."item" as "store_sales_item_items"),
-highfalutin as (
-SELECT
-    "store_sales_date_date"."D_DATE_SK" as "store_sales_date_id",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year"
-FROM
-    "memory"."date_dim" as "store_sales_date_date"),
-quizzical as (
-SELECT
-    "store_sales_customer_demographic_customer_demographics"."CD_DEMO_SK" as "store_sales_customer_demographic_id",
-    "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" as "store_sales_customer_demographic_education_status",
-    "store_sales_customer_demographic_customer_demographics"."CD_GENDER" as "store_sales_customer_demographic_gender",
-    "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" as "store_sales_customer_demographic_marital_status"
-FROM
-    "memory"."customer_demographics" as "store_sales_customer_demographic_customer_demographics"),
 questionable as (
 SELECT
-    "cheerful"."store_sales_store_state" as "store_sales_store_state",
-    "cooperative"."store_sales_coupon_amt" as "store_sales_coupon_amt",
-    "cooperative"."store_sales_list_price" as "store_sales_list_price",
-    "cooperative"."store_sales_quantity" as "store_sales_quantity",
-    "cooperative"."store_sales_sales_price" as "store_sales_sales_price",
-    "highfalutin"."store_sales_date_year" as "store_sales_date_year",
-    "quizzical"."store_sales_customer_demographic_education_status" as "store_sales_customer_demographic_education_status",
-    "quizzical"."store_sales_customer_demographic_gender" as "store_sales_customer_demographic_gender",
-    "quizzical"."store_sales_customer_demographic_marital_status" as "store_sales_customer_demographic_marital_status",
-    "wakeful"."store_sales_item_name" as "store_sales_item_name"
+    "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_name",
+    "store_sales_store_store"."S_STATE" as "store_sales_store_state",
+    "thoughtful"."store_sales_coupon_amt" as "store_sales_coupon_amt",
+    "thoughtful"."store_sales_list_price" as "store_sales_list_price",
+    "thoughtful"."store_sales_quantity" as "store_sales_quantity",
+    "thoughtful"."store_sales_sales_price" as "store_sales_sales_price"
 FROM
-    "cooperative"
-    LEFT OUTER JOIN "highfalutin" on "cooperative"."store_sales_date_id" = "highfalutin"."store_sales_date_id"
-    INNER JOIN "wakeful" on "cooperative"."store_sales_item_id" = "wakeful"."store_sales_item_id"
-    LEFT OUTER JOIN "cheerful" on "cooperative"."store_sales_store_id" = "cheerful"."store_sales_store_id"
-    LEFT OUTER JOIN "quizzical" on "cooperative"."store_sales_customer_demographic_id" = "quizzical"."store_sales_customer_demographic_id"
+    "thoughtful"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "thoughtful"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "store_sales_item_items" on "thoughtful"."store_sales_item_id" = "store_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "thoughtful"."store_sales_store_id" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer_demographics" as "store_sales_customer_demographic_customer_demographics" on "thoughtful"."store_sales_customer_demographic_id" = "store_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "quizzical"."store_sales_customer_demographic_gender" = 'M' and "quizzical"."store_sales_customer_demographic_marital_status" = 'S' and "quizzical"."store_sales_customer_demographic_education_status" = 'College' and "highfalutin"."store_sales_date_year" = 2002 and "cheerful"."store_sales_store_state" = 'TN'
+    "store_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and "store_sales_date_date"."D_YEAR" = 2002 and "store_sales_store_store"."S_STATE" = 'TN'
 
 GROUP BY
     1,
@@ -143,22 +101,22 @@ GROUP BY
     4,
     5,
     6,
-    7,
-    8,
-    9,
-    10)
+    "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS",
+    "store_sales_customer_demographic_customer_demographics"."CD_GENDER",
+    "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS",
+    "store_sales_date_date"."D_YEAR")
 SELECT
     grouping("questionable"."store_sales_store_state") as "g_state",
     avg(cast("questionable"."store_sales_quantity" as numeric(12,2))) as "agg1",
     avg(cast("questionable"."store_sales_list_price" as numeric(12,2))) as "agg2",
     avg(cast("questionable"."store_sales_coupon_amt" as numeric(12,2))) as "agg3",
     avg(cast("questionable"."store_sales_sales_price" as numeric(12,2))) as "agg4",
-    "questionable"."store_sales_item_name" as "store_sales_item_name",
-    "questionable"."store_sales_store_state" as "store_sales_store_state"
+    "questionable"."store_sales_store_state" as "store_sales_store_state",
+    "questionable"."store_sales_item_name" as "store_sales_item_name"
 FROM
     "questionable"
 GROUP BY
-    ROLLUP (6, 7)
+    ROLLUP (7, 6)
 ORDER BY 
     "questionable"."store_sales_item_name" asc nulls first,
     "questionable"."store_sales_store_state" asc nulls first

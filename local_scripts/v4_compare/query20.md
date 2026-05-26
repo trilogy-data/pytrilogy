@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 3721 | 97 |
-| reference | 1984 | 48 |
-| v4 / ref | 1.88x | 2.02x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2390 | 58 | — |
+| reference | 1984 | 48 | 25.76 ms |
+| v4 / ref | 1.20x | 1.21x | — |
 
 ## Preql
 
@@ -53,44 +53,20 @@ limit 100
 
 ```sql
 WITH 
-wakeful as (
+cheerful as (
 SELECT
-    "cs_sold_date_date"."D_DATE_SK" as "cs_sold_date_id",
-    cast("cs_sold_date_date"."D_DATE" as date) as "cs_sold_date_date"
-FROM
-    "memory"."date_dim" as "cs_sold_date_date"),
-highfalutin as (
-SELECT
+    "cs_catalog_sales"."CS_EXT_SALES_PRICE" as "cs_ext_sales_price",
     "cs_item_items"."I_CATEGORY" as "cs_item_category",
     "cs_item_items"."I_CLASS" as "cs_item_class",
     "cs_item_items"."I_CURRENT_PRICE" as "cs_item_current_price",
     "cs_item_items"."I_ITEM_DESC" as "cs_item_desc",
-    "cs_item_items"."I_ITEM_ID" as "cs_item_name",
-    "cs_item_items"."I_ITEM_SK" as "cs_item_id"
+    "cs_item_items"."I_ITEM_ID" as "cs_item_name"
 FROM
-    "memory"."item" as "cs_item_items"),
-quizzical as (
-SELECT
-    "cs_catalog_sales"."CS_EXT_SALES_PRICE" as "cs_ext_sales_price",
-    "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
-    "cs_catalog_sales"."CS_SOLD_DATE_SK" as "cs_sold_date_id"
-FROM
-    "memory"."catalog_sales" as "cs_catalog_sales"),
-cheerful as (
-SELECT
-    "highfalutin"."cs_item_category" as "cs_item_category",
-    "highfalutin"."cs_item_class" as "cs_item_class",
-    "highfalutin"."cs_item_current_price" as "cs_item_current_price",
-    "highfalutin"."cs_item_desc" as "cs_item_desc",
-    "highfalutin"."cs_item_name" as "cs_item_name",
-    "quizzical"."cs_ext_sales_price" as "cs_ext_sales_price",
-    "wakeful"."cs_sold_date_date" as "cs_sold_date_date"
-FROM
-    "quizzical"
-    INNER JOIN "highfalutin" on "quizzical"."cs_item_id" = "highfalutin"."cs_item_id"
-    LEFT OUTER JOIN "wakeful" on "quizzical"."cs_sold_date_id" = "wakeful"."cs_sold_date_id"
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "cs_sold_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_sold_date_date"."D_DATE_SK"
 WHERE
-    "highfalutin"."cs_item_category" in ('Sports','Books','Home') and "wakeful"."cs_sold_date_date" BETWEEN date '1999-02-22' AND date '1999-03-24'
+    "cs_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("cs_sold_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24' and "cs_item_items"."I_ITEM_ID" is not null
 ),
 thoughtful as (
 SELECT
@@ -115,39 +91,24 @@ SELECT
 FROM
     "cheerful"
 GROUP BY
-    1),
-questionable as (
+    1)
 SELECT
-    "cooperative"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792",
-    "thoughtful"."cs_item_category" as "cs_item_category",
-    "thoughtful"."cs_item_current_price" as "cs_item_current_price",
-    "thoughtful"."cs_item_desc" as "cs_item_desc",
     "thoughtful"."cs_item_name" as "cs_item_name",
+    "thoughtful"."cs_item_desc" as "cs_item_desc",
+    "thoughtful"."cs_item_category" as "cs_item_category",
+    coalesce("cooperative"."cs_item_class","thoughtful"."cs_item_class") as "cs_item_class",
+    "thoughtful"."cs_item_current_price" as "cs_item_current_price",
     "thoughtful"."revenue" as "revenue",
-    ( "thoughtful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio",
-    coalesce("cooperative"."cs_item_class","thoughtful"."cs_item_class") as "cs_item_class"
+    ( "thoughtful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
 FROM
     "cooperative"
-    FULL JOIN "thoughtful" on "cooperative"."cs_item_class" is not distinct from "thoughtful"."cs_item_class")
-SELECT
-    "questionable"."cs_item_name" as "cs_item_name",
-    "questionable"."cs_item_desc" as "cs_item_desc",
-    "questionable"."cs_item_category" as "cs_item_category",
-    "questionable"."cs_item_class" as "cs_item_class",
-    "questionable"."cs_item_current_price" as "cs_item_current_price",
-    "questionable"."revenue" as "revenue",
-    "questionable"."revenue_ratio" as "revenue_ratio"
-FROM
-    "questionable"
-WHERE
-    "questionable"."cs_item_name" is not null
-
+    INNER JOIN "thoughtful" on "cooperative"."cs_item_class" is not distinct from "thoughtful"."cs_item_class"
 ORDER BY 
-    "questionable"."cs_item_category" asc nulls first,
-    "questionable"."cs_item_class" asc nulls first,
-    "questionable"."cs_item_name" asc nulls first,
-    "questionable"."cs_item_desc" asc nulls first,
-    "questionable"."revenue_ratio" asc nulls first
+    "thoughtful"."cs_item_category" asc nulls first,
+    coalesce("cooperative"."cs_item_class","thoughtful"."cs_item_class") asc nulls first,
+    "thoughtful"."cs_item_name" asc nulls first,
+    "thoughtful"."cs_item_desc" asc nulls first,
+    "revenue_ratio" asc nulls first
 LIMIT (100)
 ```
 
@@ -208,14 +169,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
 Candidate tables: "cheerful"
 
-LINE 60:     sum("thoughtful"."revenue") as "_virt_agg_sum_9832457364876792"
+LINE 36:     sum("thoughtful"."revenue") as "_virt_agg_sum_9832457364876792"
                  ^
 ```

@@ -14,13 +14,13 @@
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 3168 | 83 |
-| reference | 1510 | 32 |
-| v4 / ref | 2.10x | 2.59x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 1893 | 47 | 40.61 ms |
+| reference | 1510 | 32 | 18.32 ms |
+| v4 / ref | 1.25x | 1.47x | 2.22x |
 
 ## Preql
 
@@ -62,58 +62,29 @@ limit 100
 
 ```sql
 WITH 
-cheerful as (
-SELECT
-    "inventory_warehouse_inventory"."inv_date_sk" as "inventory_date_id",
-    "inventory_warehouse_inventory"."inv_item_sk" as "inventory_item_id",
-    "inventory_warehouse_inventory"."inv_quantity_on_hand" as "inventory_quantity_on_hand",
-    "inventory_warehouse_inventory"."inv_warehouse_sk" as "inventory_warehouse_id"
-FROM
-    "memory"."inventory" as "inventory_warehouse_inventory"),
-wakeful as (
-SELECT
-    "inventory_warehouse_warehouse"."w_warehouse_name" as "inventory_warehouse_name",
-    "inventory_warehouse_warehouse"."w_warehouse_sk" as "inventory_warehouse_id"
-FROM
-    "memory"."warehouse" as "inventory_warehouse_warehouse"),
-highfalutin as (
-SELECT
-    "inventory_item_items"."I_CURRENT_PRICE" as "inventory_item_current_price",
-    "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
-    "inventory_item_items"."I_ITEM_SK" as "inventory_item_id"
-FROM
-    "memory"."item" as "inventory_item_items"),
-quizzical as (
-SELECT
-    "inventory_date_date"."D_DATE_SK" as "inventory_date_id",
-    cast("inventory_date_date"."D_DATE" as date) as "inventory_date_date"
-FROM
-    "memory"."date_dim" as "inventory_date_date"),
 thoughtful as (
 SELECT
-    "cheerful"."inventory_quantity_on_hand" as "inventory_quantity_on_hand",
-    "highfalutin"."inventory_item_current_price" as "inventory_item_current_price",
-    "highfalutin"."inventory_item_name" as "inventory_item_name",
-    "quizzical"."inventory_date_date" as "inventory_date_date",
-    "wakeful"."inventory_warehouse_name" as "inventory_warehouse_name"
+    "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
+    "inventory_warehouse_inventory"."inv_quantity_on_hand" as "inventory_quantity_on_hand",
+    "inventory_warehouse_warehouse"."w_warehouse_name" as "inventory_warehouse_name",
+    cast("inventory_date_date"."D_DATE" as date) as "inventory_date_date"
 FROM
-    "cheerful"
-    INNER JOIN "quizzical" on "cheerful"."inventory_date_id" = "quizzical"."inventory_date_id"
-    INNER JOIN "highfalutin" on "cheerful"."inventory_item_id" = "highfalutin"."inventory_item_id"
-    LEFT OUTER JOIN "wakeful" on "cheerful"."inventory_warehouse_id" = "wakeful"."inventory_warehouse_id"
+    "memory"."inventory" as "inventory_warehouse_inventory"
+    INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "inventory_item_items" on "inventory_warehouse_inventory"."inv_item_sk" = "inventory_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."warehouse" as "inventory_warehouse_warehouse" on "inventory_warehouse_inventory"."inv_warehouse_sk" = "inventory_warehouse_warehouse"."w_warehouse_sk"
 WHERE
-    "quizzical"."inventory_date_date" BETWEEN date '2000-02-10' AND date '2000-04-10' and "highfalutin"."inventory_item_current_price" BETWEEN 0.99 AND 1.49
+    cast("inventory_date_date"."D_DATE" as date) BETWEEN date '2000-02-10' AND date '2000-04-10' and "inventory_item_items"."I_CURRENT_PRICE" BETWEEN 0.99 AND 1.49
 
 GROUP BY
     1,
     2,
     3,
     4,
-    5),
-cooperative as (
+    "inventory_item_items"."I_CURRENT_PRICE")
 SELECT
-    "thoughtful"."inventory_item_name" as "inventory_item_name",
     "thoughtful"."inventory_warehouse_name" as "inventory_warehouse_name",
+    "thoughtful"."inventory_item_name" as "inventory_item_name",
     sum(CASE
 	WHEN "thoughtful"."inventory_date_date" < date '2000-03-11' THEN "thoughtful"."inventory_quantity_on_hand"
 	ELSE 0
@@ -126,23 +97,16 @@ FROM
     "thoughtful"
 GROUP BY
     1,
-    2)
-SELECT
-    "cooperative"."inventory_warehouse_name" as "inventory_warehouse_name",
-    "cooperative"."inventory_item_name" as "inventory_item_name",
-    "cooperative"."inv_before" as "inv_before",
-    "cooperative"."inv_after" as "inv_after"
-FROM
-    "cooperative"
-WHERE
+    2
+HAVING
     CASE
-	WHEN "cooperative"."inv_before" > 0 THEN ("cooperative"."inv_after" * 1.0) / "cooperative"."inv_before"
+	WHEN "inv_before" > 0 THEN ("inv_after" * 1.0) / "inv_before"
 	ELSE null
 	END BETWEEN 2.0 / 3.0 AND 3.0 / 2.0
 
 ORDER BY 
-    "cooperative"."inventory_warehouse_name" asc nulls first,
-    "cooperative"."inventory_item_name" asc nulls first
+    "thoughtful"."inventory_warehouse_name" asc nulls first,
+    "thoughtful"."inventory_item_name" asc nulls first
 LIMIT (100)
 ```
 

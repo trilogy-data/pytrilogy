@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 6372 | 128 |
-| reference | 3634 | 78 |
-| v4 / ref | 1.75x | 1.64x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4934 | 78 | — |
+| reference | 3634 | 78 | 1.009 s |
+| v4 / ref | 1.36x | 1.00x | — |
 
 ## Preql
 
@@ -60,61 +60,25 @@ limit 100
 
 ```sql
 WITH 
-cheerful as (
+thoughtful as (
 SELECT
-    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
-    "ss_store_sales"."SS_QUANTITY" as "ss_quantity",
-    "ss_store_sales"."SS_SALES_PRICE" as "ss_sales_price",
-    "ss_store_sales"."SS_SOLD_DATE_SK" as "ss_date_id",
-    "ss_store_sales"."SS_STORE_SK" as "ss_store_id",
-    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
-FROM
-    "memory"."store_sales" as "ss_store_sales"),
-wakeful as (
-SELECT
-    "ss_store_store"."S_STORE_ID" as "ss_store_text_id",
-    "ss_store_store"."S_STORE_SK" as "ss_store_id"
-FROM
-    "memory"."store" as "ss_store_store"),
-highfalutin as (
-SELECT
+    "ss_date_date"."D_MOY" as "ss_date_month_of_year",
+    "ss_date_date"."D_QOY" as "ss_date_quarter",
+    "ss_date_date"."D_YEAR" as "ss_date_year",
     "ss_item_items"."I_BRAND" as "ss_item_brand_name",
     "ss_item_items"."I_CATEGORY" as "ss_item_category",
     "ss_item_items"."I_CLASS" as "ss_item_class",
-    "ss_item_items"."I_ITEM_SK" as "ss_item_id",
-    "ss_item_items"."I_PRODUCT_NAME" as "ss_item_product_name"
+    "ss_item_items"."I_PRODUCT_NAME" as "ss_item_product_name",
+    "ss_store_sales"."SS_QUANTITY" as "ss_quantity",
+    "ss_store_sales"."SS_SALES_PRICE" as "ss_sales_price",
+    "ss_store_store"."S_STORE_ID" as "ss_store_text_id"
 FROM
-    "memory"."item" as "ss_item_items"),
-quizzical as (
-SELECT
-    "ss_date_date"."D_DATE_SK" as "ss_date_id",
-    "ss_date_date"."D_MONTH_SEQ" as "ss_date_month_seq",
-    "ss_date_date"."D_MOY" as "ss_date_month_of_year",
-    "ss_date_date"."D_QOY" as "ss_date_quarter",
-    "ss_date_date"."D_YEAR" as "ss_date_year"
-FROM
-    "memory"."date_dim" as "ss_date_date"),
-thoughtful as (
-SELECT
-    "cheerful"."ss_quantity" as "ss_quantity",
-    "cheerful"."ss_sales_price" as "ss_sales_price",
-    "cheerful"."ss_store_id" as "ss_store_id",
-    "highfalutin"."ss_item_brand_name" as "ss_item_brand_name",
-    "highfalutin"."ss_item_category" as "ss_item_category",
-    "highfalutin"."ss_item_class" as "ss_item_class",
-    "highfalutin"."ss_item_product_name" as "ss_item_product_name",
-    "quizzical"."ss_date_month_of_year" as "ss_date_month_of_year",
-    "quizzical"."ss_date_month_seq" as "ss_date_month_seq",
-    "quizzical"."ss_date_quarter" as "ss_date_quarter",
-    "quizzical"."ss_date_year" as "ss_date_year",
-    "wakeful"."ss_store_text_id" as "ss_store_text_id"
-FROM
-    "cheerful"
-    LEFT OUTER JOIN "quizzical" on "cheerful"."ss_date_id" = "quizzical"."ss_date_id"
-    INNER JOIN "highfalutin" on "cheerful"."ss_item_id" = "highfalutin"."ss_item_id"
-    LEFT OUTER JOIN "wakeful" on "cheerful"."ss_store_id" = "wakeful"."ss_store_id"
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
 WHERE
-    "quizzical"."ss_date_month_seq" BETWEEN 1200 AND 1211 and "cheerful"."ss_store_id" is not null
+    "ss_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "ss_store_sales"."SS_STORE_SK" is not null
 ),
 cooperative as (
 SELECT
@@ -143,49 +107,35 @@ SELECT
     "thoughtful"."ss_store_text_id" as "ss_store_text_id",
     rank() over (partition by "thoughtful"."ss_item_category" order by "cooperative"."sumsales" desc ) as "rk"
 FROM
-    "thoughtful"),
-abundant as (
+    "thoughtful")
 SELECT
-    "cooperative"."sumsales" as "sumsales",
-    "questionable"."rk" as "rk",
-    coalesce("cooperative"."ss_date_month_of_year","questionable"."ss_date_month_of_year") as "ss_date_month_of_year",
-    coalesce("cooperative"."ss_date_quarter","questionable"."ss_date_quarter") as "ss_date_quarter",
-    coalesce("cooperative"."ss_date_year","questionable"."ss_date_year") as "ss_date_year",
-    coalesce("cooperative"."ss_item_brand_name","questionable"."ss_item_brand_name") as "ss_item_brand_name",
     coalesce("cooperative"."ss_item_category","questionable"."ss_item_category") as "ss_item_category",
     coalesce("cooperative"."ss_item_class","questionable"."ss_item_class") as "ss_item_class",
+    coalesce("cooperative"."ss_item_brand_name","questionable"."ss_item_brand_name") as "ss_item_brand_name",
     coalesce("cooperative"."ss_item_product_name","questionable"."ss_item_product_name") as "ss_item_product_name",
-    coalesce("cooperative"."ss_store_text_id","questionable"."ss_store_text_id") as "ss_store_text_id"
+    coalesce("cooperative"."ss_date_year","questionable"."ss_date_year") as "ss_date_year",
+    coalesce("cooperative"."ss_date_quarter","questionable"."ss_date_quarter") as "ss_date_quarter",
+    coalesce("cooperative"."ss_date_month_of_year","questionable"."ss_date_month_of_year") as "ss_date_month_of_year",
+    coalesce("cooperative"."ss_store_text_id","questionable"."ss_store_text_id") as "ss_store_text_id",
+    "cooperative"."sumsales" as "sumsales",
+    "questionable"."rk" as "rk"
 FROM
     "cooperative"
-    FULL JOIN "questionable" on "cooperative"."ss_date_month_of_year" = "questionable"."ss_date_month_of_year" AND "cooperative"."ss_date_quarter" = "questionable"."ss_date_quarter" AND "cooperative"."ss_date_year" = "questionable"."ss_date_year" AND "cooperative"."ss_item_brand_name" = "questionable"."ss_item_brand_name" AND "cooperative"."ss_item_category" is not distinct from "questionable"."ss_item_category" AND "cooperative"."ss_item_class" is not distinct from "questionable"."ss_item_class" AND "cooperative"."ss_item_product_name" = "questionable"."ss_item_product_name" AND "cooperative"."ss_store_text_id" = "questionable"."ss_store_text_id")
-SELECT
-    "abundant"."ss_item_category" as "ss_item_category",
-    "abundant"."ss_item_class" as "ss_item_class",
-    "abundant"."ss_item_brand_name" as "ss_item_brand_name",
-    "abundant"."ss_item_product_name" as "ss_item_product_name",
-    "abundant"."ss_date_year" as "ss_date_year",
-    "abundant"."ss_date_quarter" as "ss_date_quarter",
-    "abundant"."ss_date_month_of_year" as "ss_date_month_of_year",
-    "abundant"."ss_store_text_id" as "ss_store_text_id",
-    "abundant"."sumsales" as "sumsales",
-    "abundant"."rk" as "rk"
-FROM
-    "abundant"
+    RIGHT OUTER JOIN "questionable" on "cooperative"."ss_date_month_of_year" = "questionable"."ss_date_month_of_year" AND "cooperative"."ss_date_quarter" = "questionable"."ss_date_quarter" AND "cooperative"."ss_date_year" = "questionable"."ss_date_year" AND "cooperative"."ss_item_brand_name" = "questionable"."ss_item_brand_name" AND "cooperative"."ss_item_category" is not distinct from "questionable"."ss_item_category" AND "cooperative"."ss_item_class" is not distinct from "questionable"."ss_item_class" AND "cooperative"."ss_item_product_name" = "questionable"."ss_item_product_name" AND "cooperative"."ss_store_text_id" = "questionable"."ss_store_text_id"
 WHERE
-    "abundant"."rk" <= 100
+    "questionable"."rk" <= 100
 
 ORDER BY 
-    "abundant"."ss_item_category" asc nulls first,
-    "abundant"."ss_item_class" asc nulls first,
-    "abundant"."ss_item_brand_name" asc nulls first,
-    "abundant"."ss_item_product_name" asc nulls first,
-    "abundant"."ss_date_year" asc nulls first,
-    "abundant"."ss_date_quarter" asc nulls first,
-    "abundant"."ss_date_month_of_year" asc nulls first,
-    "abundant"."ss_store_text_id" asc nulls first,
-    "abundant"."sumsales" asc nulls first,
-    "abundant"."rk" asc nulls first
+    coalesce("cooperative"."ss_item_category","questionable"."ss_item_category") asc nulls first,
+    coalesce("cooperative"."ss_item_class","questionable"."ss_item_class") asc nulls first,
+    coalesce("cooperative"."ss_item_brand_name","questionable"."ss_item_brand_name") asc nulls first,
+    coalesce("cooperative"."ss_item_product_name","questionable"."ss_item_product_name") asc nulls first,
+    coalesce("cooperative"."ss_date_year","questionable"."ss_date_year") asc nulls first,
+    coalesce("cooperative"."ss_date_quarter","questionable"."ss_date_quarter") asc nulls first,
+    coalesce("cooperative"."ss_date_month_of_year","questionable"."ss_date_month_of_year") asc nulls first,
+    coalesce("cooperative"."ss_store_text_id","questionable"."ss_store_text_id") asc nulls first,
+    "cooperative"."sumsales" asc nulls first,
+    "questionable"."rk" asc nulls first
 LIMIT (100)
 ```
 
@@ -276,14 +226,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "cooperative" not found!
 Candidate tables: "thoughtful"
 
-LINE 83: ...() over (partition by "thoughtful"."ss_item_category" order by "cooperative"."sumsales" desc ) as "rk"
+LINE 47: ...() over (partition by "thoughtful"."ss_item_category" order by "cooperative"."sumsales" desc ) as "rk"
                                                                            ^
 ```

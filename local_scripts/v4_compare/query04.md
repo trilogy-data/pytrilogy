@@ -14,11 +14,11 @@
 v4 rows: 100 (100 distinct)
 ref rows: 6 (6 distinct)
 only in v4 (showing up to 5 of 100):
-  1x  (None, None, None, None, None, None, None, None, None, 2002, None, Decimal('1194.91'), Decimal('860.32'), Decimal('628.90'), 'STORE')
-  1x  (None, None, None, None, None, None, None, None, None, 2001, Decimal('0.00'), None, None, Decimal('2285.76'), 'STORE')
-  1x  (None, None, None, None, None, None, None, None, None, 2002, None, None, Decimal('5016.76'), Decimal('2738.80'), 'STORE')
-  1x  (None, None, None, None, None, None, None, None, None, 2001, None, Decimal('8981.82'), Decimal('7005.42'), Decimal('4855.14'), 'STORE')
-  1x  (None, None, None, None, None, None, None, None, None, 2002, None, None, Decimal('1668.03'), None, 'STORE')
+  1x  (None, None, None, None, None, None, None, None, None, 2001, None, Decimal('1706.10'), None, Decimal('1302.84'), 'STORE')
+  1x  (None, None, None, None, None, None, None, None, None, 2001, Decimal('0.00'), None, None, Decimal('441.40'), 'STORE')
+  1x  (None, None, None, None, None, None, None, None, None, 2001, Decimal('0.00'), None, Decimal('513.59'), None, 'STORE')
+  1x  (None, None, None, None, None, None, None, None, None, 2001, None, Decimal('1923.60'), Decimal('288.54'), Decimal('1630.44'), 'STORE')
+  1x  (None, None, None, None, None, None, None, None, None, 2002, Decimal('0.00'), Decimal('422.00'), Decimal('101.20'), Decimal('390.80'), 'STORE')
 only in ref (showing up to 5 of 6):
   1x  ('David', 'AAAAAAAADIIOAAAA', 'Carroll', 'N')
   1x  ('Thomas', 'AAAAAAAAIJCIBAAA', 'Oneal', 'N')
@@ -26,13 +26,13 @@ only in ref (showing up to 5 of 6):
   1x  ('Thaddeus', 'AAAAAAAANJAMAAAA', 'Griffin', 'N')
   1x  ('Debra', 'AAAAAAAANJOLAAAA', 'Underwood', 'Y')
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 5481 | 124 |
-| reference | 11722 | 251 |
-| v4 / ref | 0.47x | 0.49x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4874 | 109 | 625.95 ms |
+| reference | 11722 | 251 | 418.25 ms |
+| v4 / ref | 0.42x | 0.43x | 1.50x |
 
 ## Preql
 
@@ -91,21 +91,6 @@ limit 100
 
 ```sql
 WITH 
-questionable as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
-cooperative as (
-SELECT
-    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
-    "sales_customer_customers"."C_CUSTOMER_SK" as "sales_customer_id",
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
-    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag"
-FROM
-    "memory"."customer" as "sales_customer_customers"),
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
@@ -160,11 +145,11 @@ GROUP BY
     7),
 abundant as (
 SELECT
-    "cooperative"."sales_customer_first_name" as "sales_customer_first_name",
-    "cooperative"."sales_customer_last_name" as "sales_customer_last_name",
-    "cooperative"."sales_customer_preferred_cust_flag" as "sales_customer_preferred_cust_flag",
-    "cooperative"."sales_customer_text_id" as "sales_customer_text_id",
-    "questionable"."sales_date_year" as "sales_date_year",
+    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
+    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
+    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
+    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag",
+    "sales_date_date"."D_YEAR" as "sales_date_year",
     "thoughtful"."sales_customer_id" as "sales_customer_id",
     "thoughtful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
     "thoughtful"."sales_ext_list_price" as "sales_ext_list_price",
@@ -173,10 +158,10 @@ SELECT
     "thoughtful"."sales_sales_channel" as "sales_sales_channel"
 FROM
     "thoughtful"
-    LEFT OUTER JOIN "questionable" on "thoughtful"."sales_date_id" = "questionable"."sales_date_id"
-    LEFT OUTER JOIN "cooperative" on "thoughtful"."sales_customer_id" = "cooperative"."sales_customer_id"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "thoughtful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "questionable"."sales_date_year" in (2001,2002)
+    "sales_date_date"."D_YEAR" in (2001,2002)
 
 GROUP BY
     1,
@@ -195,17 +180,17 @@ SELECT
     "abundant"."sales_customer_first_name" as "customer_first_name",
     "abundant"."sales_customer_last_name" as "customer_last_name",
     "abundant"."sales_customer_preferred_cust_flag" as "customer_preferred_cust_flag",
-    "abundant"."sales_customer_first_name" as "sales_customer_first_name",
-    "abundant"."sales_customer_preferred_cust_flag" as "sales_customer_preferred_cust_flag",
-    "abundant"."sales_customer_text_id" as "sales_customer_text_id",
-    "abundant"."sales_date_year" as "sales_date_year",
-    "abundant"."sales_ext_list_price" as "sales_ext_list_price",
-    "abundant"."sales_sales_channel" as "sales_sales_channel",
-    "abundant"."sales_customer_last_name" as "sales_customer_last_name",
-    "abundant"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost",
     "abundant"."sales_ext_discount_amount" as "sales_ext_discount_amount",
     "abundant"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "abundant"."sales_customer_id" as "sales_customer_id"
+    "abundant"."sales_customer_last_name" as "sales_customer_last_name",
+    "abundant"."sales_sales_channel" as "sales_sales_channel",
+    "abundant"."sales_ext_list_price" as "sales_ext_list_price",
+    "abundant"."sales_customer_first_name" as "sales_customer_first_name",
+    "abundant"."sales_customer_preferred_cust_flag" as "sales_customer_preferred_cust_flag",
+    "abundant"."sales_date_year" as "sales_date_year",
+    "abundant"."sales_customer_id" as "sales_customer_id",
+    "abundant"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost",
+    "abundant"."sales_customer_text_id" as "sales_customer_text_id"
 FROM
     "abundant"
 ORDER BY 

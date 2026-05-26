@@ -26,13 +26,13 @@ only in ref (showing up to 5 of 46):
   1x  (19, 'MD')
   1x  (19, 'NJ')
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 3772 | 93 |
-| reference | 2203 | 44 |
-| v4 / ref | 1.71x | 2.11x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2081 | 51 | 152.00 ms |
+| reference | 2203 | 44 | 24.47 ms |
+| v4 / ref | 0.94x | 1.16x | 6.21x |
 
 ## Preql
 
@@ -71,91 +71,49 @@ SELECT
     "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id",
     1 as "store_sales_row_counter"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"),
-cooperative as (
-SELECT
-    "thoughtful"."store_sales_customer_id" as "store_sales_customer_id",
-    "thoughtful"."store_sales_date_id" as "store_sales_date_id",
-    "thoughtful"."store_sales_item_id" as "store_sales_item_id",
-    "thoughtful"."store_sales_row_counter" as "store_sales_row_counter"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-cheerful as (
-SELECT
-    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
-    "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
-    "store_sales_item_items"."I_ITEM_SK" as "store_sales_item_id"
-FROM
-    "memory"."item" as "store_sales_item_items"),
-wakeful as (
-SELECT
-    "store_sales_date_date"."D_DATE_SK" as "store_sales_date_id",
-    "store_sales_date_date"."D_MOY" as "store_sales_date_month_of_year",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year"
-FROM
-    "memory"."date_dim" as "store_sales_date_date"),
-highfalutin as (
-SELECT
-    "store_sales_customer_customers"."C_CURRENT_ADDR_SK" as "store_sales_customer_address_id",
-    "store_sales_customer_customers"."C_CUSTOMER_SK" as "store_sales_customer_id"
-FROM
-    "memory"."customer" as "store_sales_customer_customers"),
-quizzical as (
-SELECT
-    "store_sales_customer_address_customer_address"."CA_ADDRESS_SK" as "store_sales_customer_address_id",
-    "store_sales_customer_address_customer_address"."CA_STATE" as "store_sales_customer_address_state"
-FROM
-    "memory"."customer_address" as "store_sales_customer_address_customer_address"),
-questionable as (
-SELECT
-    "cheerful"."store_sales_item_category" as "store_sales_item_category",
-    "cheerful"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "cooperative"."store_sales_customer_id" as "store_sales_customer_id",
-    "cooperative"."store_sales_row_counter" as "store_sales_row_counter",
-    "quizzical"."store_sales_customer_address_state" as "store_sales_customer_address_state",
-    "wakeful"."store_sales_date_month_of_year" as "store_sales_date_month_of_year",
-    "wakeful"."store_sales_date_year" as "store_sales_date_year"
-FROM
-    "cooperative"
-    LEFT OUTER JOIN "wakeful" on "cooperative"."store_sales_date_id" = "wakeful"."store_sales_date_id"
-    INNER JOIN "cheerful" on "cooperative"."store_sales_item_id" = "cheerful"."store_sales_item_id"
-    LEFT OUTER JOIN "highfalutin" on "cooperative"."store_sales_customer_id" = "highfalutin"."store_sales_customer_id"
-    LEFT OUTER JOIN "quizzical" on "highfalutin"."store_sales_customer_address_id" = "quizzical"."store_sales_customer_address_id"
+    "memory"."store_sales" as "store_sales_store_sales"
 WHERE
-    "wakeful"."store_sales_date_year" = 2001 and "cheerful"."store_sales_item_category" is not null and "wakeful"."store_sales_date_month_of_year" = 1 and "cooperative"."store_sales_customer_id" is not null
+    "store_sales_store_sales"."SS_CUSTOMER_SK" is not null
 
 GROUP BY
     1,
     2,
     3,
-    4,
-    5,
-    6,
-    7),
-abundant as (
+    4),
+questionable as (
+SELECT
+    "store_sales_customer_address_customer_address"."CA_STATE" as "store_sales_customer_address_state",
+    "thoughtful"."store_sales_row_counter" as "store_sales_row_counter"
+FROM
+    "thoughtful"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "thoughtful"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "store_sales_item_items" on "thoughtful"."store_sales_item_id" = "store_sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."customer" as "store_sales_customer_customers" on "thoughtful"."store_sales_customer_id" = "store_sales_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "store_sales_customer_address_customer_address" on "store_sales_customer_customers"."C_CURRENT_ADDR_SK" = "store_sales_customer_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "store_sales_date_date"."D_YEAR" = 2001 and "store_sales_item_items"."I_CATEGORY" is not null and "store_sales_date_date"."D_MOY" = 1
+
+GROUP BY
+    1,
+    2,
+    "store_sales_date_date"."D_MOY",
+    "store_sales_date_date"."D_YEAR",
+    "store_sales_item_items"."I_CATEGORY",
+    "store_sales_item_items"."I_CURRENT_PRICE",
+    "thoughtful"."store_sales_customer_id")
 SELECT
     "questionable"."store_sales_customer_address_state" as "store_sales_customer_address_state",
     sum("questionable"."store_sales_row_counter") as "customer_count"
 FROM
     "questionable"
 GROUP BY
-    1)
-SELECT
-    "abundant"."store_sales_customer_address_state" as "store_sales_customer_address_state",
-    "abundant"."customer_count" as "customer_count"
-FROM
-    "abundant"
-WHERE
-    "abundant"."customer_count" >= 10
+    1
+HAVING
+    "customer_count" >= 10
 
 ORDER BY 
-    "abundant"."customer_count" asc nulls first,
-    "abundant"."store_sales_customer_address_state" asc nulls first
+    "customer_count" asc nulls first,
+    "questionable"."store_sales_customer_address_state" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

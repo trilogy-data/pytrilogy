@@ -14,13 +14,13 @@
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 5085 | 84 |
-| reference | 2273 | 9 |
-| v4 / ref | 2.24x | 9.33x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 3453 | 48 | 72.55 ms |
+| reference | 2273 | 9 | 37.63 ms |
+| v4 / ref | 1.52x | 5.33x | 1.93x |
 
 ## Preql
 
@@ -83,64 +83,9 @@ SELECT
     "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id",
     "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"),
-thoughtful as (
-SELECT
-    "cheerful"."store_sales_customer_demographic_id" as "store_sales_customer_demographic_id",
-    "cheerful"."store_sales_date_id" as "store_sales_date_id",
-    "cheerful"."store_sales_net_profit" as "store_sales_net_profit",
-    "cheerful"."store_sales_quantity" as "store_sales_quantity",
-    "cheerful"."store_sales_sale_address_id" as "store_sales_sale_address_id",
-    "cheerful"."store_sales_sales_price" as "store_sales_sales_price",
-    "cheerful"."store_sales_store_id" as "store_sales_store_id"
-FROM
-    "cheerful"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7),
-wakeful as (
-SELECT
-    "store_sales_sale_address_customer_address"."CA_ADDRESS_SK" as "store_sales_sale_address_id",
-    "store_sales_sale_address_customer_address"."CA_COUNTRY" as "store_sales_sale_address_country",
-    "store_sales_sale_address_customer_address"."CA_STATE" as "store_sales_sale_address_state"
-FROM
-    "memory"."customer_address" as "store_sales_sale_address_customer_address"),
-highfalutin as (
-SELECT
-    "store_sales_date_date"."D_DATE_SK" as "store_sales_date_id",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year"
-FROM
-    "memory"."date_dim" as "store_sales_date_date"),
-quizzical as (
-SELECT
-    "store_sales_customer_demographic_customer_demographics"."CD_DEMO_SK" as "store_sales_customer_demographic_id",
-    "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" as "store_sales_customer_demographic_education_status",
-    "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" as "store_sales_customer_demographic_marital_status"
-FROM
-    "memory"."customer_demographics" as "store_sales_customer_demographic_customer_demographics"),
-cooperative as (
-SELECT
-    "highfalutin"."store_sales_date_year" as "store_sales_date_year",
-    "quizzical"."store_sales_customer_demographic_education_status" as "store_sales_customer_demographic_education_status",
-    "quizzical"."store_sales_customer_demographic_marital_status" as "store_sales_customer_demographic_marital_status",
-    "thoughtful"."store_sales_net_profit" as "store_sales_net_profit",
-    "thoughtful"."store_sales_quantity" as "store_sales_quantity",
-    "thoughtful"."store_sales_sales_price" as "store_sales_sales_price",
-    "thoughtful"."store_sales_store_id" as "store_sales_store_id",
-    "wakeful"."store_sales_sale_address_country" as "store_sales_sale_address_country",
-    "wakeful"."store_sales_sale_address_state" as "store_sales_sale_address_state"
-FROM
-    "thoughtful"
-    LEFT OUTER JOIN "highfalutin" on "thoughtful"."store_sales_date_id" = "highfalutin"."store_sales_date_id"
-    LEFT OUTER JOIN "wakeful" on "thoughtful"."store_sales_sale_address_id" = "wakeful"."store_sales_sale_address_id"
-    LEFT OUTER JOIN "quizzical" on "thoughtful"."store_sales_customer_demographic_id" = "quizzical"."store_sales_customer_demographic_id"
+    "memory"."store_sales" as "store_sales_store_sales"
 WHERE
-    "highfalutin"."store_sales_date_year" = 2000 and "thoughtful"."store_sales_store_id" is not null and ( ( "quizzical"."store_sales_customer_demographic_marital_status" = 'M' and "quizzical"."store_sales_customer_demographic_education_status" = '4 yr Degree' and "thoughtful"."store_sales_sales_price" BETWEEN 100.0 AND 150.0 ) or ( "quizzical"."store_sales_customer_demographic_marital_status" = 'D' and "quizzical"."store_sales_customer_demographic_education_status" = '2 yr Degree' and "thoughtful"."store_sales_sales_price" BETWEEN 50.0 AND 100.0 ) or ( "quizzical"."store_sales_customer_demographic_marital_status" = 'S' and "quizzical"."store_sales_customer_demographic_education_status" = 'College' and "thoughtful"."store_sales_sales_price" BETWEEN 150.0 AND 200.0 ) ) and ( ( "wakeful"."store_sales_sale_address_country" = 'United States' and "wakeful"."store_sales_sale_address_state" in ('CO','OH','TX') and "thoughtful"."store_sales_net_profit" BETWEEN 0 AND 2000 ) or ( "wakeful"."store_sales_sale_address_country" = 'United States' and "wakeful"."store_sales_sale_address_state" in ('OR','MN','KY') and "thoughtful"."store_sales_net_profit" BETWEEN 150 AND 3000 ) or ( "wakeful"."store_sales_sale_address_country" = 'United States' and "wakeful"."store_sales_sale_address_state" in ('VA','CA','MS') and "thoughtful"."store_sales_net_profit" BETWEEN 50 AND 25000 ) )
+    "store_sales_store_sales"."SS_STORE_SK" is not null
 
 GROUP BY
     1,
@@ -149,9 +94,28 @@ GROUP BY
     4,
     5,
     6,
-    7,
-    8,
-    9)
+    7),
+cooperative as (
+SELECT
+    "cheerful"."store_sales_quantity" as "store_sales_quantity"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "cheerful"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "store_sales_sale_address_customer_address" on "cheerful"."store_sales_sale_address_id" = "store_sales_sale_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer_demographics" as "store_sales_customer_demographic_customer_demographics" on "cheerful"."store_sales_customer_demographic_id" = "store_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
+WHERE
+    "store_sales_date_date"."D_YEAR" = 2000 and ( ( "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'M' and "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = '4 yr Degree' and "cheerful"."store_sales_sales_price" BETWEEN 100.0 AND 150.0 ) or ( "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'D' and "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = '2 yr Degree' and "cheerful"."store_sales_sales_price" BETWEEN 50.0 AND 100.0 ) or ( "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and "cheerful"."store_sales_sales_price" BETWEEN 150.0 AND 200.0 ) ) and ( ( "store_sales_sale_address_customer_address"."CA_COUNTRY" = 'United States' and "store_sales_sale_address_customer_address"."CA_STATE" in ('CO','OH','TX') and "cheerful"."store_sales_net_profit" BETWEEN 0 AND 2000 ) or ( "store_sales_sale_address_customer_address"."CA_COUNTRY" = 'United States' and "store_sales_sale_address_customer_address"."CA_STATE" in ('OR','MN','KY') and "cheerful"."store_sales_net_profit" BETWEEN 150 AND 3000 ) or ( "store_sales_sale_address_customer_address"."CA_COUNTRY" = 'United States' and "store_sales_sale_address_customer_address"."CA_STATE" in ('VA','CA','MS') and "cheerful"."store_sales_net_profit" BETWEEN 50 AND 25000 ) )
+
+GROUP BY
+    1,
+    "cheerful"."store_sales_net_profit",
+    "cheerful"."store_sales_sales_price",
+    "cheerful"."store_sales_store_id",
+    "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS",
+    "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS",
+    "store_sales_date_date"."D_YEAR",
+    "store_sales_sale_address_customer_address"."CA_COUNTRY",
+    "store_sales_sale_address_customer_address"."CA_STATE")
 SELECT
     sum("cooperative"."store_sales_quantity") as "total_quantity"
 FROM

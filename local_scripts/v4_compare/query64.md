@@ -23,13 +23,13 @@ only in ref (showing up to 5 of 2):
   1x  ('Georgetown', '166', '15th ', '67057', 'Clifton', '738', 'Maple Jackson', '98014', 1, 1, 'n stableableantiought', Decimal('52.89'), Decimal('95.24'), Decimal('97.31'), Decimal('140.95'), Decimal('338.38'), Decimal('1488.38'), 'eing', '35709', 2000, 1999)
   1x  ('Forest Hills', '95', 'Park Maple', '69237', 'Highland', '730', 'Pine Smith', '39454', 1, 1, 'n stableableantiought', Decimal('94.87'), Decimal('7.73'), Decimal('166.02'), Decimal('14.14'), Decimal('0.00'), Decimal('0.00'), 'ese', '31904', 2000, 1999)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 20487 | 382 |
-| reference | 16008 | 244 |
-| v4 / ref | 1.28x | 1.57x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 17288 | 260 | 405.50 ms |
+| reference | 16008 | 244 | 374.61 ms |
+| v4 / ref | 1.08x | 1.07x | 1.08x |
 
 ## Preql
 
@@ -187,141 +187,53 @@ order by
 
 ```sql
 WITH 
-late as (
-SELECT
-    "ss_store_sales"."SS_ADDR_SK" as "ss_sale_address_id",
-    "ss_store_sales"."SS_CDEMO_SK" as "ss_customer_demographic_id",
-    "ss_store_sales"."SS_COUPON_AMT" as "ss_coupon_amt",
-    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_customer_id",
-    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
-    "ss_store_sales"."SS_LIST_PRICE" as "ss_list_price",
-    "ss_store_sales"."SS_SOLD_DATE_SK" as "ss_date_id",
-    "ss_store_sales"."SS_STORE_SK" as "ss_store_id",
-    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number",
-    "ss_store_sales"."SS_WHOLESALE_COST" as "ss_wholesale_cost"
-FROM
-    "memory"."store_sales" as "ss_store_sales"),
-sweltering as (
-SELECT
-    "ss_store_returns"."SR_ITEM_SK" as "ss_item_id",
-    "ss_store_returns"."SR_TICKET_NUMBER" as "ss_ticket_number",
-    SR_RETURN_TIME_SK IS NOT NULL as "ss_is_returned"
-FROM
-    "memory"."store_returns" as "ss_store_returns"),
-abhorrent as (
-SELECT
-    "ss_store_store"."S_STORE_NAME" as "ss_store_name",
-    "ss_store_store"."S_STORE_SK" as "ss_store_id",
-    "ss_store_store"."S_ZIP" as "ss_store_zip"
-FROM
-    "memory"."store" as "ss_store_store"),
-young as (
-SELECT
-    "ss_item_items"."I_COLOR" as "ss_item_color",
-    "ss_item_items"."I_CURRENT_PRICE" as "ss_item_current_price",
-    "ss_item_items"."I_ITEM_SK" as "ss_item_id",
-    "ss_item_items"."I_PRODUCT_NAME" as "ss_item_product_name"
-FROM
-    "memory"."item" as "ss_item_items"),
-concerned as (
-SELECT
-    "ss_date_date"."D_DATE_SK" as "ss_date_id",
-    "ss_date_date"."D_YEAR" as "ss_date_year"
-FROM
-    "memory"."date_dim" as "ss_date_date"),
-vacuous as (
-SELECT
-    "ss_customer_demographic_customer_demographics"."CD_DEMO_SK" as "ss_customer_demographic_id",
-    "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" as "ss_customer_demographic_marital_status"
-FROM
-    "memory"."customer_demographics" as "ss_customer_demographic_customer_demographics"),
-uneven as (
-SELECT
-    "ss_customer_demographics_customer_demographics"."CD_DEMO_SK" as "ss_customer_demographics_id",
-    "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "ss_customer_demographics_marital_status"
-FROM
-    "memory"."customer_demographics" as "ss_customer_demographics_customer_demographics"),
-abundant as (
-SELECT
-    "ss_customer_customers"."C_CURRENT_ADDR_SK" as "ss_customer_address_id",
-    "ss_customer_customers"."C_CURRENT_CDEMO_SK" as "ss_customer_demographics_id",
-    "ss_customer_customers"."C_CUSTOMER_SK" as "ss_customer_id",
-    "ss_customer_customers"."C_FIRST_SALES_DATE_SK" as "ss_customer_first_sales_date_id",
-    "ss_customer_customers"."C_FIRST_SHIPTO_DATE_SK" as "ss_customer_first_shipto_date_id"
-FROM
-    "memory"."customer" as "ss_customer_customers"),
-highfalutin as (
-SELECT
-    "cr_sales_catalog_sales"."CS_EXT_LIST_PRICE" as "cr_sales_ext_list_price",
-    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id",
-    "cr_sales_catalog_sales"."CS_ORDER_NUMBER" as "cr_sales_order_number"
-FROM
-    "memory"."catalog_sales" as "cr_sales_catalog_sales"),
-thoughtful as (
-SELECT
-    "highfalutin"."cr_sales_item_id" as "cr_sales_item_id",
-    sum("highfalutin"."cr_sales_ext_list_price") as "cs_ui_sale"
-FROM
-    "highfalutin"
-GROUP BY
-    1),
-quizzical as (
-SELECT
-    "cr_catalog_returns"."CR_ITEM_SK" as "cr_item_id",
-    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_order_number",
-    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_sales_order_number",
-    "cr_catalog_returns"."CR_REFUNDED_CASH" as "cr_refunded_cash",
-    "cr_catalog_returns"."CR_REVERSED_CHARGE" as "cr_reversed_charge",
-    "cr_catalog_returns"."CR_STORE_CREDIT" as "cr_store_credit"
-FROM
-    "memory"."catalog_returns" as "cr_catalog_returns"),
 wakeful as (
 SELECT
-    "highfalutin"."cr_sales_item_id" as "cr_sales_item_id",
-    "quizzical"."cr_item_id" as "cr_item_id",
-    "quizzical"."cr_order_number" as "cr_order_number",
-    ( coalesce("quizzical"."cr_refunded_cash",0) + coalesce("quizzical"."cr_reversed_charge",0) ) + coalesce("quizzical"."cr_store_credit",0) as "cs_ui_refund_amt"
+    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id",
+    sum(( coalesce("cr_catalog_returns"."CR_REFUNDED_CASH",0) + coalesce("cr_catalog_returns"."CR_REVERSED_CHARGE",0) ) + coalesce("cr_catalog_returns"."CR_STORE_CREDIT",0)) as "cs_ui_refund"
 FROM
-    "highfalutin"
-    INNER JOIN "quizzical" on "highfalutin"."cr_sales_order_number" = "quizzical"."cr_sales_order_number"),
-cheerful as (
+    "memory"."catalog_sales" as "cr_sales_catalog_sales"
+    INNER JOIN "memory"."catalog_returns" as "cr_catalog_returns" on "cr_sales_catalog_sales"."CS_ORDER_NUMBER" = "cr_catalog_returns"."CR_ORDER_NUMBER"
+GROUP BY
+    1),
+thoughtful as (
 SELECT
-    "wakeful"."cr_sales_item_id" as "cr_sales_item_id",
-    sum("wakeful"."cs_ui_refund_amt") as "cs_ui_refund"
+    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id",
+    sum("cr_sales_catalog_sales"."CS_EXT_LIST_PRICE") as "cs_ui_sale"
 FROM
-    "wakeful"
+    "memory"."catalog_sales" as "cr_sales_catalog_sales"
 GROUP BY
     1),
 cooperative as (
 SELECT
-    "cheerful"."cr_sales_item_id" as "cs_ui_cs_ui_item_id"
+    "wakeful"."cr_sales_item_id" as "cs_ui_cs_ui_item_id"
 FROM
-    "cheerful"
-    INNER JOIN "thoughtful" on "cheerful"."cr_sales_item_id" = "thoughtful"."cr_sales_item_id"
+    "wakeful"
+    INNER JOIN "thoughtful" on "wakeful"."cr_sales_item_id" = "thoughtful"."cr_sales_item_id"
 WHERE
-    "thoughtful"."cs_ui_sale" > 2 * "cheerful"."cs_ui_refund"
+    "thoughtful"."cs_ui_sale" > 2 * "wakeful"."cs_ui_refund"
 ),
 divergent as (
 SELECT
-    "abhorrent"."ss_store_name" as "ss_rows_00_ss_store_name",
-    "abhorrent"."ss_store_zip" as "ss_rows_00_ss_store_zip",
-    "concerned"."ss_date_year" as "ss_rows_00_ss_date_year",
-    "late"."ss_coupon_amt" as "ss_rows_00_ss_coupon_amt",
-    "late"."ss_list_price" as "ss_rows_00_ss_list_price",
-    "late"."ss_ticket_number" as "ss_rows_00_ss_ticket_number",
-    "late"."ss_wholesale_cost" as "ss_rows_00_ss_wholesale_cost",
-    "young"."ss_item_id" as "ss_rows_00_ss_item_id"
+    "ss_date_date"."D_YEAR" as "ss_rows_00_ss_date_year",
+    "ss_item_items"."I_ITEM_SK" as "ss_rows_00_ss_item_id",
+    "ss_store_sales"."SS_COUPON_AMT" as "ss_rows_00_ss_coupon_amt",
+    "ss_store_sales"."SS_LIST_PRICE" as "ss_rows_00_ss_list_price",
+    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_rows_00_ss_ticket_number",
+    "ss_store_sales"."SS_WHOLESALE_COST" as "ss_rows_00_ss_wholesale_cost",
+    "ss_store_store"."S_STORE_NAME" as "ss_rows_00_ss_store_name",
+    "ss_store_store"."S_ZIP" as "ss_rows_00_ss_store_zip"
 FROM
-    "late"
-    LEFT OUTER JOIN "concerned" on "late"."ss_date_id" = "concerned"."ss_date_id"
-    LEFT OUTER JOIN "abhorrent" on "late"."ss_store_id" = "abhorrent"."ss_store_id"
-    LEFT OUTER JOIN "abundant" on "late"."ss_customer_id" = "abundant"."ss_customer_id"
-    LEFT OUTER JOIN "sweltering" on "late"."ss_item_id" = "sweltering"."ss_item_id" AND "late"."ss_ticket_number" = "sweltering"."ss_ticket_number"
-    LEFT OUTER JOIN "vacuous" on "late"."ss_customer_demographic_id" = "vacuous"."ss_customer_demographic_id"
-    LEFT OUTER JOIN "uneven" on "abundant"."ss_customer_demographics_id" = "uneven"."ss_customer_demographics_id"
-    INNER JOIN "young" on "late"."ss_item_id" = "young"."ss_item_id"
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographic_customer_demographics" on "ss_store_sales"."SS_CDEMO_SK" = "ss_customer_demographic_customer_demographics"."CD_DEMO_SK"
+    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographics_customer_demographics" on "ss_customer_customers"."C_CURRENT_CDEMO_SK" = "ss_customer_demographics_customer_demographics"."CD_DEMO_SK"
+    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
-    "young"."ss_item_id" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "concerned"."ss_date_year" = 2000 and "sweltering"."ss_is_returned" and "young"."ss_item_color" in ('purple','burlywood','indian','spring','floral','medium') and "young"."ss_item_current_price" BETWEEN 65 AND 74 and "late"."ss_customer_id" is not null and "late"."ss_store_id" is not null and "late"."ss_sale_address_id" is not null and "abundant"."ss_customer_address_id" is not null and "vacuous"."ss_customer_demographic_marital_status" != "uneven"."ss_customer_demographics_marital_status"
+    "ss_item_items"."I_ITEM_SK" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "ss_date_date"."D_YEAR" = 2000 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_customers"."C_CURRENT_ADDR_SK" is not null and "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" != "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
 
 GROUP BY
     1,
@@ -332,118 +244,64 @@ GROUP BY
     6,
     7,
     8),
-busy as (
-SELECT
-    "divergent"."ss_rows_00_ss_date_year" as "_q64_results_syear_00",
-    "divergent"."ss_rows_00_ss_date_year" as "ss_rows_00_ss_date_year",
-    "divergent"."ss_rows_00_ss_item_id" as "_q64_results_item_sk_00",
-    "divergent"."ss_rows_00_ss_item_id" as "item_sk",
-    "divergent"."ss_rows_00_ss_item_id" as "ss_rows_00_ss_item_id",
-    "divergent"."ss_rows_00_ss_store_name" as "_q64_results_s_name_00",
-    "divergent"."ss_rows_00_ss_store_name" as "s_name",
-    "divergent"."ss_rows_00_ss_store_name" as "ss_rows_00_ss_store_name",
-    "divergent"."ss_rows_00_ss_store_zip" as "_q64_results_s_zip_00",
-    "divergent"."ss_rows_00_ss_store_zip" as "s_zip",
-    "divergent"."ss_rows_00_ss_store_zip" as "ss_rows_00_ss_store_zip",
-    count("divergent"."ss_rows_00_ss_ticket_number") as "_q64_results_cnt_00",
-    sum("divergent"."ss_rows_00_ss_coupon_amt") as "_q64_results_s3_00",
-    sum("divergent"."ss_rows_00_ss_list_price") as "_q64_results_s2_00",
-    sum("divergent"."ss_rows_00_ss_wholesale_cost") as "_q64_results_s1_00"
-FROM
-    "divergent"
-GROUP BY
-    2,
-    5,
-    8,
-    11),
-sparkling as (
-SELECT
-    "ss_sale_address_customer_address"."CA_ADDRESS_SK" as "ss_sale_address_id",
-    "ss_sale_address_customer_address"."CA_CITY" as "ss_sale_address_city",
-    "ss_sale_address_customer_address"."CA_STREET_NAME" as "ss_sale_address_street_name",
-    "ss_sale_address_customer_address"."CA_STREET_NUMBER" as "ss_sale_address_street_number",
-    "ss_sale_address_customer_address"."CA_ZIP" as "ss_sale_address_zip"
-FROM
-    "memory"."customer_address" as "ss_sale_address_customer_address"),
-juicy as (
-SELECT
-    "ss_customer_first_shipto_date_date"."D_DATE_SK" as "ss_customer_first_shipto_date_id",
-    "ss_customer_first_shipto_date_date"."D_YEAR" as "ss_customer_first_shipto_date_year"
-FROM
-    "memory"."date_dim" as "ss_customer_first_shipto_date_date"),
-yummy as (
-SELECT
-    "ss_customer_first_sales_date_date"."D_DATE_SK" as "ss_customer_first_sales_date_id",
-    "ss_customer_first_sales_date_date"."D_YEAR" as "ss_customer_first_sales_date_year"
-FROM
-    "memory"."date_dim" as "ss_customer_first_sales_date_date"),
-questionable as (
-SELECT
-    "ss_customer_address_customer_address"."CA_ADDRESS_SK" as "ss_customer_address_id",
-    "ss_customer_address_customer_address"."CA_CITY" as "ss_customer_address_city",
-    "ss_customer_address_customer_address"."CA_STREET_NAME" as "ss_customer_address_street_name",
-    "ss_customer_address_customer_address"."CA_STREET_NUMBER" as "ss_customer_address_street_number",
-    "ss_customer_address_customer_address"."CA_ZIP" as "ss_customer_address_zip"
-FROM
-    "memory"."customer_address" as "ss_customer_address_customer_address"),
 friendly as (
 SELECT
-    "young"."ss_item_id" as "ss_rows_99_ss_item_id",
-    "young"."ss_item_product_name" as "ss_rows_99_ss_item_product_name"
+    "ss_item_items"."I_ITEM_SK" as "ss_rows_99_ss_item_id",
+    "ss_item_items"."I_PRODUCT_NAME" as "ss_rows_99_ss_item_product_name"
 FROM
-    "late"
-    LEFT OUTER JOIN "concerned" on "late"."ss_date_id" = "concerned"."ss_date_id"
-    LEFT OUTER JOIN "abhorrent" on "late"."ss_store_id" = "abhorrent"."ss_store_id"
-    LEFT OUTER JOIN "abundant" on "late"."ss_customer_id" = "abundant"."ss_customer_id"
-    LEFT OUTER JOIN "sweltering" on "late"."ss_item_id" = "sweltering"."ss_item_id" AND "late"."ss_ticket_number" = "sweltering"."ss_ticket_number"
-    LEFT OUTER JOIN "sparkling" on "late"."ss_sale_address_id" = "sparkling"."ss_sale_address_id"
-    LEFT OUTER JOIN "questionable" on "abundant"."ss_customer_address_id" = "questionable"."ss_customer_address_id"
-    LEFT OUTER JOIN "vacuous" on "late"."ss_customer_demographic_id" = "vacuous"."ss_customer_demographic_id"
-    LEFT OUTER JOIN "uneven" on "abundant"."ss_customer_demographics_id" = "uneven"."ss_customer_demographics_id"
-    LEFT OUTER JOIN "yummy" on "abundant"."ss_customer_first_sales_date_id" = "yummy"."ss_customer_first_sales_date_id"
-    LEFT OUTER JOIN "juicy" on "abundant"."ss_customer_first_shipto_date_id" = "juicy"."ss_customer_first_shipto_date_id"
-    INNER JOIN "young" on "late"."ss_item_id" = "young"."ss_item_id"
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."customer_address" as "ss_sale_address_customer_address" on "ss_store_sales"."SS_ADDR_SK" = "ss_sale_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographic_customer_demographics" on "ss_store_sales"."SS_CDEMO_SK" = "ss_customer_demographic_customer_demographics"."CD_DEMO_SK"
+    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographics_customer_demographics" on "ss_customer_customers"."C_CURRENT_CDEMO_SK" = "ss_customer_demographics_customer_demographics"."CD_DEMO_SK"
+    LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_sales_date_date" on "ss_customer_customers"."C_FIRST_SALES_DATE_SK" = "ss_customer_first_sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_shipto_date_date" on "ss_customer_customers"."C_FIRST_SHIPTO_DATE_SK" = "ss_customer_first_shipto_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
-    "young"."ss_item_id" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "concerned"."ss_date_year" = 1999 and "sweltering"."ss_is_returned" and "young"."ss_item_color" in ('purple','burlywood','indian','spring','floral','medium') and "young"."ss_item_current_price" BETWEEN 65 AND 74 and "late"."ss_customer_id" is not null and "late"."ss_store_id" is not null and "late"."ss_sale_address_id" is not null and "questionable"."ss_customer_address_id" is not null and "vacuous"."ss_customer_demographic_marital_status" != "uneven"."ss_customer_demographics_marital_status"
+    "ss_item_items"."I_ITEM_SK" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "ss_date_date"."D_YEAR" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_address_customer_address"."CA_ADDRESS_SK" is not null and "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" != "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
 
 GROUP BY
     1,
     2),
 macho as (
 SELECT
-    "abhorrent"."ss_store_name" as "ss_rows_99_ss_store_name",
-    "abhorrent"."ss_store_zip" as "ss_rows_99_ss_store_zip",
-    "concerned"."ss_date_year" as "ss_rows_99_ss_date_year",
-    "juicy"."ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
-    "late"."ss_coupon_amt" as "ss_rows_99_ss_coupon_amt",
-    "late"."ss_list_price" as "ss_rows_99_ss_list_price",
-    "late"."ss_ticket_number" as "ss_rows_99_ss_ticket_number",
-    "late"."ss_wholesale_cost" as "ss_rows_99_ss_wholesale_cost",
-    "questionable"."ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
-    "questionable"."ss_customer_address_street_name" as "ss_rows_99_ss_customer_address_street_name",
-    "questionable"."ss_customer_address_street_number" as "ss_rows_99_ss_customer_address_street_number",
-    "questionable"."ss_customer_address_zip" as "ss_rows_99_ss_customer_address_zip",
-    "sparkling"."ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
-    "sparkling"."ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
-    "sparkling"."ss_sale_address_street_number" as "ss_rows_99_ss_sale_address_street_number",
-    "sparkling"."ss_sale_address_zip" as "ss_rows_99_ss_sale_address_zip",
-    "young"."ss_item_id" as "ss_rows_99_ss_item_id",
-    "yummy"."ss_customer_first_sales_date_year" as "ss_rows_99_ss_customer_first_sales_date_year"
+    "ss_customer_address_customer_address"."CA_CITY" as "ss_rows_99_ss_customer_address_city",
+    "ss_customer_address_customer_address"."CA_STREET_NAME" as "ss_rows_99_ss_customer_address_street_name",
+    "ss_customer_address_customer_address"."CA_STREET_NUMBER" as "ss_rows_99_ss_customer_address_street_number",
+    "ss_customer_address_customer_address"."CA_ZIP" as "ss_rows_99_ss_customer_address_zip",
+    "ss_customer_first_sales_date_date"."D_YEAR" as "ss_rows_99_ss_customer_first_sales_date_year",
+    "ss_customer_first_shipto_date_date"."D_YEAR" as "ss_rows_99_ss_customer_first_shipto_date_year",
+    "ss_date_date"."D_YEAR" as "ss_rows_99_ss_date_year",
+    "ss_item_items"."I_ITEM_SK" as "ss_rows_99_ss_item_id",
+    "ss_sale_address_customer_address"."CA_CITY" as "ss_rows_99_ss_sale_address_city",
+    "ss_sale_address_customer_address"."CA_STREET_NAME" as "ss_rows_99_ss_sale_address_street_name",
+    "ss_sale_address_customer_address"."CA_STREET_NUMBER" as "ss_rows_99_ss_sale_address_street_number",
+    "ss_sale_address_customer_address"."CA_ZIP" as "ss_rows_99_ss_sale_address_zip",
+    "ss_store_sales"."SS_COUPON_AMT" as "ss_rows_99_ss_coupon_amt",
+    "ss_store_sales"."SS_LIST_PRICE" as "ss_rows_99_ss_list_price",
+    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_rows_99_ss_ticket_number",
+    "ss_store_sales"."SS_WHOLESALE_COST" as "ss_rows_99_ss_wholesale_cost",
+    "ss_store_store"."S_STORE_NAME" as "ss_rows_99_ss_store_name",
+    "ss_store_store"."S_ZIP" as "ss_rows_99_ss_store_zip"
 FROM
-    "late"
-    LEFT OUTER JOIN "concerned" on "late"."ss_date_id" = "concerned"."ss_date_id"
-    LEFT OUTER JOIN "abhorrent" on "late"."ss_store_id" = "abhorrent"."ss_store_id"
-    LEFT OUTER JOIN "abundant" on "late"."ss_customer_id" = "abundant"."ss_customer_id"
-    LEFT OUTER JOIN "sweltering" on "late"."ss_item_id" = "sweltering"."ss_item_id" AND "late"."ss_ticket_number" = "sweltering"."ss_ticket_number"
-    LEFT OUTER JOIN "sparkling" on "late"."ss_sale_address_id" = "sparkling"."ss_sale_address_id"
-    LEFT OUTER JOIN "questionable" on "abundant"."ss_customer_address_id" = "questionable"."ss_customer_address_id"
-    LEFT OUTER JOIN "vacuous" on "late"."ss_customer_demographic_id" = "vacuous"."ss_customer_demographic_id"
-    LEFT OUTER JOIN "uneven" on "abundant"."ss_customer_demographics_id" = "uneven"."ss_customer_demographics_id"
-    LEFT OUTER JOIN "yummy" on "abundant"."ss_customer_first_sales_date_id" = "yummy"."ss_customer_first_sales_date_id"
-    LEFT OUTER JOIN "juicy" on "abundant"."ss_customer_first_shipto_date_id" = "juicy"."ss_customer_first_shipto_date_id"
-    INNER JOIN "young" on "late"."ss_item_id" = "young"."ss_item_id"
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."customer_address" as "ss_sale_address_customer_address" on "ss_store_sales"."SS_ADDR_SK" = "ss_sale_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographic_customer_demographics" on "ss_store_sales"."SS_CDEMO_SK" = "ss_customer_demographic_customer_demographics"."CD_DEMO_SK"
+    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographics_customer_demographics" on "ss_customer_customers"."C_CURRENT_CDEMO_SK" = "ss_customer_demographics_customer_demographics"."CD_DEMO_SK"
+    LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_sales_date_date" on "ss_customer_customers"."C_FIRST_SALES_DATE_SK" = "ss_customer_first_sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_shipto_date_date" on "ss_customer_customers"."C_FIRST_SHIPTO_DATE_SK" = "ss_customer_first_shipto_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
-    "young"."ss_item_id" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "concerned"."ss_date_year" = 1999 and "sweltering"."ss_is_returned" and "young"."ss_item_color" in ('purple','burlywood','indian','spring','floral','medium') and "young"."ss_item_current_price" BETWEEN 65 AND 74 and "late"."ss_customer_id" is not null and "late"."ss_store_id" is not null and "late"."ss_sale_address_id" is not null and "questionable"."ss_customer_address_id" is not null and "vacuous"."ss_customer_demographic_marital_status" != "uneven"."ss_customer_demographics_marital_status"
+    "ss_item_items"."I_ITEM_SK" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "ss_date_date"."D_YEAR" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_address_customer_address"."CA_ADDRESS_SK" is not null and "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" != "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
 
 GROUP BY
     1,
@@ -464,6 +322,26 @@ GROUP BY
     16,
     17,
     18),
+busy as (
+SELECT
+    "divergent"."ss_rows_00_ss_date_year" as "_q64_results_syear_00",
+    "divergent"."ss_rows_00_ss_item_id" as "_q64_results_item_sk_00",
+    "divergent"."ss_rows_00_ss_item_id" as "item_sk",
+    "divergent"."ss_rows_00_ss_store_name" as "_q64_results_s_name_00",
+    "divergent"."ss_rows_00_ss_store_name" as "s_name",
+    "divergent"."ss_rows_00_ss_store_zip" as "_q64_results_s_zip_00",
+    "divergent"."ss_rows_00_ss_store_zip" as "s_zip",
+    count("divergent"."ss_rows_00_ss_ticket_number") as "_q64_results_cnt_00",
+    sum("divergent"."ss_rows_00_ss_coupon_amt") as "_q64_results_s3_00",
+    sum("divergent"."ss_rows_00_ss_list_price") as "_q64_results_s2_00",
+    sum("divergent"."ss_rows_00_ss_wholesale_cost") as "_q64_results_s1_00"
+FROM
+    "divergent"
+GROUP BY
+    1,
+    3,
+    5,
+    7),
 scrawny as (
 SELECT
     "macho"."ss_rows_99_ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
@@ -527,7 +405,7 @@ SELECT
     coalesce("friendly"."ss_rows_99_ss_item_id","scrawny"."ss_rows_99_ss_item_id") as "item_sk"
 FROM
     "scrawny"
-    FULL JOIN "friendly" on "scrawny"."ss_rows_99_ss_item_id" is not distinct from "friendly"."ss_rows_99_ss_item_id")
+    INNER JOIN "friendly" on "scrawny"."ss_rows_99_ss_item_id" is not distinct from "friendly"."ss_rows_99_ss_item_id")
 SELECT
     coalesce("busy"."item_sk","kaput"."item_sk") as "q64_results_item_sk",
     coalesce("busy"."s_name","kaput"."s_name") as "q64_results_s_name",

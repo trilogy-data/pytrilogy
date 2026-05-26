@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 3760 | 80 |
-| reference | 1809 | 27 |
-| v4 / ref | 2.08x | 2.96x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2343 | 44 | — |
+| reference | 1809 | 27 | — |
+| v4 / ref | 1.30x | 1.63x | — |
 
 ## Preql
 
@@ -62,57 +62,21 @@ limit 100
 
 ```sql
 WITH 
-thoughtful as (
-SELECT
-    "catalog_sales_warehouse_warehouse"."w_state" as "catalog_sales_warehouse_state",
-    "catalog_sales_warehouse_warehouse"."w_warehouse_sk" as "catalog_sales_warehouse_id"
-FROM
-    "memory"."warehouse" as "catalog_sales_warehouse_warehouse"),
-cheerful as (
-SELECT
-    "catalog_sales_sold_date_date"."D_DATE_SK" as "catalog_sales_sold_date_id",
-    cast("catalog_sales_sold_date_date"."D_DATE" as date) as "catalog_sales_sold_date_date"
-FROM
-    "memory"."date_dim" as "catalog_sales_sold_date_date"),
-wakeful as (
-SELECT
-    "catalog_sales_item_items"."I_CURRENT_PRICE" as "catalog_sales_item_current_price",
-    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_name",
-    "catalog_sales_item_items"."I_ITEM_SK" as "catalog_sales_item_id"
-FROM
-    "memory"."item" as "catalog_sales_item_items"),
-highfalutin as (
-SELECT
-    "catalog_sales_catalog_sales"."CS_ITEM_SK" as "catalog_sales_item_id",
-    "catalog_sales_catalog_sales"."CS_ORDER_NUMBER" as "catalog_sales_order_number",
-    "catalog_sales_catalog_sales"."CS_SALES_PRICE" as "catalog_sales_sales_price",
-    "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" as "catalog_sales_sold_date_id",
-    "catalog_sales_catalog_sales"."CS_WAREHOUSE_SK" as "catalog_sales_warehouse_id"
-FROM
-    "memory"."catalog_sales" as "catalog_sales_catalog_sales"),
-quizzical as (
-SELECT
-    "catalog_returns_catalog_returns"."CR_ITEM_SK" as "catalog_sales_item_id",
-    "catalog_returns_catalog_returns"."CR_ORDER_NUMBER" as "catalog_sales_order_number",
-    "catalog_returns_catalog_returns"."CR_REFUNDED_CASH" as "catalog_returns_refunded_cash"
-FROM
-    "memory"."catalog_returns" as "catalog_returns_catalog_returns"),
 cooperative as (
 SELECT
-    "cheerful"."catalog_sales_sold_date_date" as "catalog_sales_sold_date_date",
-    "highfalutin"."catalog_sales_sales_price" as "catalog_sales_sales_price",
-    "quizzical"."catalog_returns_refunded_cash" as "catalog_returns_refunded_cash",
-    "thoughtful"."catalog_sales_warehouse_state" as "catalog_sales_warehouse_state",
-    "wakeful"."catalog_sales_item_current_price" as "catalog_sales_item_current_price",
-    "wakeful"."catalog_sales_item_name" as "catalog_sales_item_name"
+    "catalog_returns_catalog_returns"."CR_REFUNDED_CASH" as "catalog_returns_refunded_cash",
+    "catalog_sales_catalog_sales"."CS_SALES_PRICE" as "catalog_sales_sales_price",
+    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_name",
+    "catalog_sales_warehouse_warehouse"."w_state" as "catalog_sales_warehouse_state",
+    cast("catalog_sales_sold_date_date"."D_DATE" as date) as "catalog_sales_sold_date_date"
 FROM
-    "highfalutin"
-    LEFT OUTER JOIN "quizzical" on "highfalutin"."catalog_sales_item_id" = "quizzical"."catalog_sales_item_id" AND "highfalutin"."catalog_sales_order_number" = "quizzical"."catalog_sales_order_number"
-    LEFT OUTER JOIN "cheerful" on "highfalutin"."catalog_sales_sold_date_id" = "cheerful"."catalog_sales_sold_date_id"
-    LEFT OUTER JOIN "thoughtful" on "highfalutin"."catalog_sales_warehouse_id" = "thoughtful"."catalog_sales_warehouse_id"
-    INNER JOIN "wakeful" on "highfalutin"."catalog_sales_item_id" = "wakeful"."catalog_sales_item_id"
+    "memory"."catalog_sales" as "catalog_sales_catalog_sales"
+    LEFT OUTER JOIN "memory"."catalog_returns" as "catalog_returns_catalog_returns" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "catalog_returns_catalog_returns"."CR_ITEM_SK" AND "catalog_sales_catalog_sales"."CS_ORDER_NUMBER" = "catalog_returns_catalog_returns"."CR_ORDER_NUMBER"
+    INNER JOIN "memory"."date_dim" as "catalog_sales_sold_date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "catalog_sales_sold_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."warehouse" as "catalog_sales_warehouse_warehouse" on "catalog_sales_catalog_sales"."CS_WAREHOUSE_SK" = "catalog_sales_warehouse_warehouse"."w_warehouse_sk"
+    INNER JOIN "memory"."item" as "catalog_sales_item_items" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "catalog_sales_item_items"."I_ITEM_SK"
 WHERE
-    "wakeful"."catalog_sales_item_current_price" BETWEEN 0.99 AND 1.49 and "cheerful"."catalog_sales_sold_date_date" BETWEEN :start_date AND :end_date
+    "catalog_sales_item_items"."I_CURRENT_PRICE" BETWEEN 0.99 AND 1.49 and cast("catalog_sales_sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 
 GROUP BY
     1,
@@ -120,7 +84,7 @@ GROUP BY
     3,
     4,
     5,
-    6)
+    "catalog_sales_item_items"."I_CURRENT_PRICE")
 SELECT
     sum(CASE
 	WHEN "cooperative"."catalog_sales_sold_date_date" < :cutoff THEN "cooperative"."catalog_sales_sales_price" - coalesce("cooperative"."catalog_returns_refunded_cash",0.0)
@@ -179,25 +143,43 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near ":"
 
-LINE 52: ... 1.49 and "cheerful"."catalog_sales_sold_date_date" BETWEEN :start_date AND :end_date
-                                                                        ^
+LINE 16: ... cast("catalog_sales_sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
+                                                                           ^
 ```
 
 ## reference execution error
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 167, in run_one
-    result.ref_rows = execute(con, ref_sql)
-                      ~~~~~~~^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 187, in run_one
+    result.ref_exec_seconds, result.ref_rows = _time(
+                                               ~~~~~^
+        lambda: execute(con, ref_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 188, in <lambda>
+    lambda: execute(con, ref_sql)
+            ~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near ":"
 

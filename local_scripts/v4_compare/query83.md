@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 6512 | 39 |
-| reference | 5946 | 132 |
-| v4 / ref | 1.10x | 0.30x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4850 | 32 | — |
+| reference | 5946 | 132 | 124.67 ms |
+| v4 / ref | 0.82x | 0.24x | — |
 
 ## Preql
 
@@ -79,18 +79,11 @@ SELECT
     ( ( (CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END * 1.0) / ( ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) ) / 3.0 ) * 100 as "sr_dev",
     ( ( (CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END * 1.0) / ( ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) ) / 3.0 ) * 100 as "wr_dev",
     ( ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) / 3.0 as "average",
-    ( ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) / 3.0 as "avg_qty",
-    ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END as "total_qty",
     CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END as "cr_item_qty",
     CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END as "sr_item_qty",
     CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END as "wr_item_qty",
-    INVALID_REFERENCE_BUG_<Missing source reference to date.date> as "date_date",
-    INVALID_REFERENCE_BUG_<Missing source reference to date.week_seq> as "date_week_seq",
     INVALID_REFERENCE_BUG_<Missing source reference to sales.item.name> as "item_id",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.item.name> as "sales_item_name",
     INVALID_REFERENCE_BUG_<Missing source reference to sales.order_id> as "sales_order_id",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.return_date.week_seq> as "sales_return_date_week_seq",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> as "sales_return_quantity",
     INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> as "sales_sales_channel"
 )
 SELECT
@@ -254,10 +247,19 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 

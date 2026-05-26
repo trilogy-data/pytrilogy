@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 5578 | 145 |
-| reference | 7652 | 178 |
-| v4 / ref | 0.73x | 0.81x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4368 | 118 | — |
+| reference | 7652 | 178 | 620.94 ms |
+| v4 / ref | 0.57x | 0.66x | — |
 
 ## Preql
 
@@ -89,20 +89,6 @@ limit 100
 
 ```sql
 WITH 
-questionable as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
-cooperative as (
-SELECT
-    "sales_customer_customers"."C_CUSTOMER_SK" as "sales_customer_id",
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name"
-FROM
-    "memory"."customer" as "sales_customer_customers"),
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
@@ -152,21 +138,17 @@ GROUP BY
     6),
 abundant as (
 SELECT
-    "cooperative"."sales_customer_first_name" as "sales_customer_first_name",
-    "cooperative"."sales_customer_last_name" as "sales_customer_last_name",
-    "questionable"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "questionable"."sales_date_year" as "sales_date_year",
-    "thoughtful"."sales_customer_id" as "sales_customer_id",
-    "thoughtful"."sales_item_id" as "sales_item_id",
+    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
+    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
     "thoughtful"."sales_list_price" as "sales_list_price",
     "thoughtful"."sales_quantity" as "sales_quantity",
     "thoughtful"."sales_sales_channel" as "sales_sales_channel"
 FROM
     "thoughtful"
-    LEFT OUTER JOIN "questionable" on "thoughtful"."sales_date_id" = "questionable"."sales_date_id"
-    LEFT OUTER JOIN "cooperative" on "thoughtful"."sales_customer_id" = "cooperative"."sales_customer_id"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "thoughtful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "questionable"."sales_date_year" = 2000 and "questionable"."sales_date_month_of_year" = 2
+    "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
 
 GROUP BY
     1,
@@ -174,26 +156,17 @@ GROUP BY
     3,
     4,
     5,
-    6,
-    7,
-    8,
-    9),
+    "sales_date_date"."D_MOY",
+    "sales_date_date"."D_YEAR",
+    "thoughtful"."sales_customer_id",
+    "thoughtful"."sales_item_id"),
 uneven as (
 SELECT
     "abundant"."sales_customer_first_name" as "c_first_name",
     "abundant"."sales_customer_first_name" as "sales_customer_first_name",
-    "abundant"."sales_customer_id" as "_best_customers_best_customer_id",
-    "abundant"."sales_customer_id" as "sales_customer_id",
     "abundant"."sales_customer_last_name" as "c_last_name",
     "abundant"."sales_customer_last_name" as "sales_customer_last_name",
-    "abundant"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "abundant"."sales_date_year" as "sales_date_year",
-    "abundant"."sales_item_id" as "_frequent_items_frequent_item_id",
-    "abundant"."sales_item_id" as "sales_item_id",
-    "abundant"."sales_list_price" as "sales_list_price",
-    "abundant"."sales_quantity" * "abundant"."sales_list_price" as "_virt_func_multiply_8507033399516423",
-    "abundant"."sales_quantity" as "sales_quantity",
-    "abundant"."sales_sales_channel" as "sales_sales_channel"
+    "abundant"."sales_quantity" * "abundant"."sales_list_price" as "_virt_func_multiply_8507033399516423"
 FROM
     "abundant"),
 yummy as (
@@ -218,16 +191,16 @@ SELECT
     "uneven"."c_last_name" as "c_last_name"
 FROM
     "juicy"
-    LEFT OUTER JOIN "uneven" on "juicy"."sales_customer_first_name" = "uneven"."sales_customer_first_name" AND "juicy"."sales_customer_last_name" = "uneven"."sales_customer_last_name")
+    LEFT OUTER JOIN "uneven" on "juicy"."sales_customer_first_name" = "uneven"."sales_customer_first_name" AND "juicy"."sales_customer_last_name" = "uneven"."sales_customer_last_name"
+WHERE
+    "juicy"."sales_total" > 0
+)
 SELECT
     "vacuous"."c_last_name" as "c_last_name",
     "vacuous"."c_first_name" as "c_first_name",
     "vacuous"."sales_total" as "sales_total"
 FROM
     "vacuous"
-WHERE
-    "vacuous"."sales_total" > 0
-
 ORDER BY 
     "vacuous"."c_last_name" asc nulls first,
     "vacuous"."c_first_name" asc nulls first,
@@ -422,14 +395,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "uneven" not found!
 Candidate tables: "abundant"
 
-LINE 111: ... "abundant"."sales_sales_channel" in ('WEB','CATALOG') THEN "uneven"."_virt_func_multiply_8507033399516423" ELSE NULL...
-                                                                         ^
+LINE 84: ... "abundant"."sales_sales_channel" in ('WEB','CATALOG') THEN "uneven"."_virt_func_multiply_8507033399516423" ELSE NULL...
+                                                                        ^
 ```

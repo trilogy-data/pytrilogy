@@ -20,13 +20,13 @@ only in v4 (showing up to 5 of 33):
   1x  ('amalgimporto #2', 2001002, Decimal('8910.82'), 17, 12)
   1x  ('edu packimporto #2', 2004002, Decimal('7897.08'), 9, 3)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 5309 | 135 |
-| reference | 3459 | 60 |
-| v4 / ref | 1.53x | 2.25x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 3999 | 103 | 158.49 ms |
+| reference | 3459 | 60 | 32.33 ms |
+| v4 / ref | 1.16x | 1.72x | 4.90x |
 
 ## Preql
 
@@ -56,29 +56,6 @@ order by
 
 ```sql
 WITH 
-abundant as (
-SELECT
-    "sales_time_time"."T_HOUR" as "sales_time_hour",
-    "sales_time_time"."T_MEAL_TIME" as "sales_time_meal_time",
-    "sales_time_time"."T_MINUTE" as "sales_time_minute",
-    "sales_time_time"."T_TIME_SK" as "sales_time_id"
-FROM
-    "memory"."time_dim" as "sales_time_time"),
-questionable as (
-SELECT
-    "sales_item_items"."I_BRAND" as "sales_item_brand_name",
-    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
-    "sales_item_items"."I_ITEM_SK" as "sales_item_id",
-    "sales_item_items"."I_MANAGER_ID" as "sales_item_manager_id"
-FROM
-    "memory"."item" as "sales_item_items"),
-cooperative as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
@@ -118,22 +95,18 @@ GROUP BY
     4),
 uneven as (
 SELECT
-    "abundant"."sales_time_hour" as "sales_time_hour",
-    "abundant"."sales_time_meal_time" as "sales_time_meal_time",
-    "abundant"."sales_time_minute" as "sales_time_minute",
-    "cooperative"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "cooperative"."sales_date_year" as "sales_date_year",
-    "questionable"."sales_item_brand_id" as "sales_item_brand_id",
-    "questionable"."sales_item_brand_name" as "sales_item_brand_name",
-    "questionable"."sales_item_manager_id" as "sales_item_manager_id",
+    "sales_item_items"."I_BRAND" as "sales_item_brand_name",
+    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
+    "sales_time_time"."T_HOUR" as "sales_time_hour",
+    "sales_time_time"."T_MINUTE" as "sales_time_minute",
     "thoughtful"."sales_ext_sales_price" as "sales_ext_sales_price"
 FROM
     "thoughtful"
-    LEFT OUTER JOIN "cooperative" on "thoughtful"."sales_date_id" = "cooperative"."sales_date_id"
-    INNER JOIN "questionable" on "thoughtful"."sales_item_id" = "questionable"."sales_item_id"
-    LEFT OUTER JOIN "abundant" on "thoughtful"."sales_time_id" = "abundant"."sales_time_id"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "thoughtful"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."time_dim" as "sales_time_time" on "thoughtful"."sales_time_id" = "sales_time_time"."T_TIME_SK"
 WHERE
-    "cooperative"."sales_date_year" = 1999 and "cooperative"."sales_date_month_of_year" = 11 and "questionable"."sales_item_manager_id" = 1 and ( "abundant"."sales_time_meal_time" = 'breakfast' or "abundant"."sales_time_meal_time" = 'dinner' )
+    "sales_date_date"."D_YEAR" = 1999 and "sales_date_date"."D_MOY" = 11 and "sales_item_items"."I_MANAGER_ID" = 1 and ( "sales_time_time"."T_MEAL_TIME" = 'breakfast' or "sales_time_time"."T_MEAL_TIME" = 'dinner' )
 
 GROUP BY
     1,
@@ -141,10 +114,10 @@ GROUP BY
     3,
     4,
     5,
-    6,
-    7,
-    8,
-    9),
+    "sales_date_date"."D_MOY",
+    "sales_date_date"."D_YEAR",
+    "sales_item_items"."I_MANAGER_ID",
+    "sales_time_time"."T_MEAL_TIME"),
 juicy as (
 SELECT
     "uneven"."sales_item_brand_id" as "sales_item_brand_id",
@@ -161,17 +134,12 @@ GROUP BY
     4),
 yummy as (
 SELECT
-    "uneven"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "uneven"."sales_date_year" as "sales_date_year",
-    "uneven"."sales_ext_sales_price" as "sales_ext_sales_price",
     "uneven"."sales_item_brand_id" as "brand_id",
     "uneven"."sales_item_brand_id" as "sales_item_brand_id",
     "uneven"."sales_item_brand_name" as "brand",
     "uneven"."sales_item_brand_name" as "sales_item_brand_name",
-    "uneven"."sales_item_manager_id" as "sales_item_manager_id",
     "uneven"."sales_time_hour" as "sales_time_hour",
     "uneven"."sales_time_hour" as "t_hour",
-    "uneven"."sales_time_meal_time" as "sales_time_meal_time",
     "uneven"."sales_time_minute" as "sales_time_minute",
     "uneven"."sales_time_minute" as "t_minute"
 FROM

@@ -154,23 +154,29 @@ def _cover_groups_for_mandatory(
     return per_group
 
 
-def _wrap_root_for_grain(
-    root_node: StrategyNode,
+def _wrap_for_grain(
+    parent_node: StrategyNode,
     needed_concepts: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> list[StrategyNode]:
-    """When a root scan feeds a merge edge, its row grain is typically wider
-    than the natural grain of the concepts the merge actually wants — joining
-    the raw row-grain into a per-key aggregate blows up cardinality. For
-    each natural-grain bucket among `needed_concepts`, emit a GroupNode that
-    aggregates `root_node` to that grain and exposes only those concepts plus
-    the grain keys. Buckets whose grain already matches `root_node.grain`
-    pass through unchanged."""
-    if not needed_concepts:
-        return [root_node]
+    """When a parent feeds a merge edge, its grain may be wider than the
+    natural grain of the concepts the merge actually wants — joining the
+    parent's wider-grain rows into a per-key aggregate blows up cardinality.
 
-    root_grain_components = (
-        frozenset(root_node.grain.components) if root_node.grain else frozenset()
+    For each natural-grain bucket among `needed_concepts`, emit a GroupNode
+    that aggregates `parent_node` to that grain and exposes only those
+    concepts plus the grain keys. Buckets whose grain already matches the
+    parent's grain pass through unchanged.
+
+    Originally root-only; generalized because intermediate aggregates can
+    also sit at a wider grain than a specific concept of theirs requires
+    (e.g. a `sum(...) by (a, b)` whose downstream merge only needs grain
+    `{a}` for one column)."""
+    if not needed_concepts:
+        return [parent_node]
+
+    parent_grain_components = (
+        frozenset(parent_node.grain.components) if parent_node.grain else frozenset()
     )
 
     # Each concept's natural grain is the key it functionally depends on
@@ -187,8 +193,8 @@ def _wrap_root_for_grain(
 
     wraps: list[StrategyNode] = []
     for grain_comps, concepts in by_grain.items():
-        if grain_comps == root_grain_components or not grain_comps:
-            wraps.append(root_node)
+        if grain_comps == parent_grain_components or not grain_comps:
+            wraps.append(parent_node)
             continue
         grain_concepts = [
             environment.concepts[a]
@@ -205,7 +211,7 @@ def _wrap_root_for_grain(
                 output_concepts=outputs,
                 input_concepts=outputs,
                 environment=environment,
-                parents=[root_node],
+                parents=[parent_node],
             )
         )
     return wraps
@@ -237,12 +243,20 @@ def _assemble_final_node(
     if len(contributing) == 1:
         return built[contributing[0]]
 
+    # Only root scans get the grain projection: their grain is the row-level
+    # source-table grain (often much wider than what a downstream merge
+    # wants), and a SELECT DISTINCT-style projection is always safe.
+    # Wrapping intermediate aggregates is *not* safe — adding a GroupNode
+    # over a `sum(x)` node would re-aggregate the partial sums (OK for SUM,
+    # wrong for AVG/STDDEV), and intermediate aggregates often don't even
+    # expose the requested grain key (their GROUP BY is their grain, not the
+    # downstream's). Q17 surfaced both pathologies when this was generalized.
     parents: list[StrategyNode] = []
     for gid in contributing:
         node = built[gid]
         is_root = group_graph.nodes[gid].get("derivation") == "root"
         if is_root:
-            parents.extend(_wrap_root_for_grain(node, per_group[gid], environment))
+            parents.extend(_wrap_for_grain(node, per_group[gid], environment))
         else:
             parents.append(node)
 

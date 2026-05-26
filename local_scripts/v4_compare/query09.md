@@ -18,13 +18,13 @@ only in v4 (showing up to 5 of 1):
 only in ref (showing up to 5 of 1):
   1x  (39.58666235453537, 116.11497611055164, 192.43918583506914, 267.1876616705382, 342.9667589085597)
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 4852 | 124 |
-| reference | 2991 | 108 |
-| v4 / ref | 1.62x | 1.15x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 4534 | 117 | 99.49 ms |
+| reference | 2991 | 108 | 43.21 ms |
+| v4 / ref | 1.52x | 1.08x | 2.30x |
 
 ## Preql
 
@@ -82,14 +82,7 @@ FROM
     "memory"."store_sales" as "store_sales_store_sales"
 WHERE
     "store_sales_store_sales"."SS_QUANTITY" BETWEEN 1 AND 100
-),
-highfalutin as (
-SELECT
-    "quizzical"."store_sales_ext_discount_amount" as "store_sales_ext_discount_amount",
-    "quizzical"."store_sales_net_paid" as "store_sales_net_paid",
-    "quizzical"."store_sales_quantity" as "store_sales_quantity"
-FROM
-    "quizzical"
+
 GROUP BY
     1,
     2,
@@ -97,67 +90,67 @@ GROUP BY
 wakeful as (
 SELECT
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 1 AND 20 THEN "highfalutin"."store_sales_ext_discount_amount"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 1 AND 20 THEN "quizzical"."store_sales_ext_discount_amount"
 	ELSE null
 	END) as "_virt_agg_avg_6330081077547932",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 1 AND 20 THEN "highfalutin"."store_sales_net_paid"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 1 AND 20 THEN "quizzical"."store_sales_net_paid"
 	ELSE null
 	END) as "_virt_agg_avg_4794444300151277",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 21 AND 40 THEN "highfalutin"."store_sales_ext_discount_amount"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 21 AND 40 THEN "quizzical"."store_sales_ext_discount_amount"
 	ELSE null
 	END) as "_virt_agg_avg_4659580449698061",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 21 AND 40 THEN "highfalutin"."store_sales_net_paid"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 21 AND 40 THEN "quizzical"."store_sales_net_paid"
 	ELSE null
 	END) as "_virt_agg_avg_1613688246980292",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 41 AND 60 THEN "highfalutin"."store_sales_ext_discount_amount"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 41 AND 60 THEN "quizzical"."store_sales_ext_discount_amount"
 	ELSE null
 	END) as "_virt_agg_avg_7477983213274050",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 41 AND 60 THEN "highfalutin"."store_sales_net_paid"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 41 AND 60 THEN "quizzical"."store_sales_net_paid"
 	ELSE null
 	END) as "_virt_agg_avg_684038137247375",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 61 AND 80 THEN "highfalutin"."store_sales_ext_discount_amount"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 61 AND 80 THEN "quizzical"."store_sales_ext_discount_amount"
 	ELSE null
 	END) as "_virt_agg_avg_2142335324413561",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 61 AND 80 THEN "highfalutin"."store_sales_net_paid"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 61 AND 80 THEN "quizzical"."store_sales_net_paid"
 	ELSE null
 	END) as "_virt_agg_avg_838076703794071",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 81 AND 100 THEN "highfalutin"."store_sales_ext_discount_amount"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 81 AND 100 THEN "quizzical"."store_sales_ext_discount_amount"
 	ELSE null
 	END) as "_virt_agg_avg_9933913877002720",
     avg(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 81 AND 100 THEN "highfalutin"."store_sales_net_paid"
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 81 AND 100 THEN "quizzical"."store_sales_net_paid"
 	ELSE null
 	END) as "_virt_agg_avg_5605106007967002",
     sum(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 1 AND 20 THEN 1
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 1 AND 20 THEN 1
 	ELSE 0
 	END) as "count1",
     sum(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 21 AND 40 THEN 1
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 21 AND 40 THEN 1
 	ELSE 0
 	END) as "count2",
     sum(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 41 AND 60 THEN 1
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 41 AND 60 THEN 1
 	ELSE 0
 	END) as "count3",
     sum(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 61 AND 80 THEN 1
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 61 AND 80 THEN 1
 	ELSE 0
 	END) as "count4",
     sum(CASE
-	WHEN "highfalutin"."store_sales_quantity" BETWEEN 81 AND 100 THEN 1
+	WHEN "quizzical"."store_sales_quantity" BETWEEN 81 AND 100 THEN 1
 	ELSE 0
 	END) as "count5"
 FROM
-    "highfalutin")
+    "quizzical")
 SELECT
     CASE
 	WHEN "wakeful"."count1" > 74129 THEN "wakeful"."_virt_agg_avg_6330081077547932"
@@ -185,15 +178,15 @@ SELECT
     "wakeful"."_virt_agg_avg_1613688246980292" as "_virt_agg_avg_1613688246980292",
     "wakeful"."count2" as "count2",
     "wakeful"."_virt_agg_avg_4659580449698061" as "_virt_agg_avg_4659580449698061",
-    "wakeful"."_virt_agg_avg_7477983213274050" as "_virt_agg_avg_7477983213274050",
-    "wakeful"."count3" as "count3",
     "wakeful"."_virt_agg_avg_684038137247375" as "_virt_agg_avg_684038137247375",
-    "wakeful"."count4" as "count4",
-    "wakeful"."_virt_agg_avg_2142335324413561" as "_virt_agg_avg_2142335324413561",
+    "wakeful"."count3" as "count3",
+    "wakeful"."_virt_agg_avg_7477983213274050" as "_virt_agg_avg_7477983213274050",
     "wakeful"."_virt_agg_avg_838076703794071" as "_virt_agg_avg_838076703794071",
+    "wakeful"."_virt_agg_avg_2142335324413561" as "_virt_agg_avg_2142335324413561",
+    "wakeful"."count4" as "count4",
     "wakeful"."_virt_agg_avg_5605106007967002" as "_virt_agg_avg_5605106007967002",
-    "wakeful"."_virt_agg_avg_9933913877002720" as "_virt_agg_avg_9933913877002720",
-    "wakeful"."count5" as "count5"
+    "wakeful"."count5" as "count5",
+    "wakeful"."_virt_agg_avg_9933913877002720" as "_virt_agg_avg_9933913877002720"
 FROM
     "wakeful"
 ```

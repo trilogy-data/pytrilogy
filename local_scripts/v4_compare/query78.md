@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 9281 | 185 |
-| reference | 6271 | 109 |
-| v4 / ref | 1.48x | 1.70x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 8729 | 176 | — |
+| reference | 6271 | 109 | 351.00 ms |
+| v4 / ref | 1.39x | 1.61x | — |
 
 ## Preql
 
@@ -86,48 +86,6 @@ limit 100
 
 ```sql
 WITH 
-uneven as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
-abundant as (
-SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
-    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
-    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
-     'CATALOG'  as "sales_sales_channel",
-    "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price",
-    "sales_catalog_sales_unified"."CS_WHOLESALE_COST" as "sales_wholesale_cost"
-FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
-UNION ALL
-SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
-    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
-     'STORE'  as "sales_sales_channel",
-    "sales_store_sales_unified"."SS_SALES_PRICE" as "sales_sales_price",
-    "sales_store_sales_unified"."SS_WHOLESALE_COST" as "sales_wholesale_cost"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-UNION ALL
-SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
-    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
-     'WEB'  as "sales_sales_channel",
-    "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price",
-    "sales_web_sales_unified"."WS_WHOLESALE_COST" as "sales_wholesale_cost"
-FROM
-    "memory"."web_sales" as "sales_web_sales_unified"),
 cheerful as (
 SELECT
      true  as "sales_is_returned",
@@ -152,22 +110,68 @@ SELECT
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_returns" as "sales_web_returns_unified"),
+abundant as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
+     'CATALOG'  as "sales_sales_channel",
+    "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price",
+    "sales_catalog_sales_unified"."CS_WHOLESALE_COST" as "sales_wholesale_cost",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" = 2000
+
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
+     'STORE'  as "sales_sales_channel",
+    "sales_store_sales_unified"."SS_SALES_PRICE" as "sales_sales_price",
+    "sales_store_sales_unified"."SS_WHOLESALE_COST" as "sales_wholesale_cost",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" = 2000
+
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
+     'WEB'  as "sales_sales_channel",
+    "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price",
+    "sales_web_sales_unified"."WS_WHOLESALE_COST" as "sales_wholesale_cost",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" = 2000
+),
 yummy as (
 SELECT
     "abundant"."sales_customer_id" as "sales_customer_id",
+    "abundant"."sales_date_year" as "sales_date_year",
     "abundant"."sales_item_id" as "sales_item_id",
     "abundant"."sales_quantity" as "sales_quantity",
     "abundant"."sales_sales_channel" as "sales_sales_channel",
     "abundant"."sales_sales_price" as "sales_sales_price",
-    "abundant"."sales_wholesale_cost" as "sales_wholesale_cost",
-    "cheerful"."sales_is_returned" as "sales_is_returned",
-    "uneven"."sales_date_year" as "sales_date_year"
+    "abundant"."sales_wholesale_cost" as "sales_wholesale_cost"
 FROM
     "abundant"
-    LEFT OUTER JOIN "uneven" on "abundant"."sales_date_id" = "uneven"."sales_date_id"
     LEFT OUTER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
-    "cheerful"."sales_is_returned" is null and "uneven"."sales_date_year" = 2000 and "abundant"."sales_customer_id" is not null
+    "cheerful"."sales_is_returned" is null
 
 GROUP BY
     1,
@@ -177,7 +181,7 @@ GROUP BY
     5,
     6,
     7,
-    8),
+    "cheerful"."sales_is_returned"),
 juicy as (
 SELECT
     CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_3246535766050298",
@@ -213,35 +217,22 @@ GROUP BY
     3),
 concerned as (
 SELECT
-    "vacuous"."cs_qty" as "cs_qty",
-    "vacuous"."cs_sp" as "cs_sp",
-    "vacuous"."cs_wc" as "cs_wc",
     "vacuous"."ss_qty" as "ss_qty",
     "vacuous"."ss_qty" as "store_qty",
-    "vacuous"."ss_sp" as "ss_sp",
     "vacuous"."ss_sp" as "store_sales_price",
-    "vacuous"."ss_wc" as "ss_wc",
     "vacuous"."ss_wc" as "store_wholesale_cost",
-    "vacuous"."ws_qty" as "ws_qty",
-    "vacuous"."ws_sp" as "ws_sp",
-    "vacuous"."ws_wc" as "ws_wc",
-    "yummy"."sales_is_returned" as "sales_is_returned",
-    "yummy"."sales_quantity" as "sales_quantity",
-    "yummy"."sales_sales_channel" as "sales_sales_channel",
-    "yummy"."sales_sales_price" as "sales_sales_price",
-    "yummy"."sales_wholesale_cost" as "sales_wholesale_cost",
-    coalesce("vacuous"."sales_customer_id","yummy"."sales_customer_id") as "sales_customer_id",
     coalesce("vacuous"."sales_customer_id","yummy"."sales_customer_id") as "ss_customer_sk",
-    coalesce("vacuous"."sales_date_year","yummy"."sales_date_year") as "sales_date_year",
     coalesce("vacuous"."sales_date_year","yummy"."sales_date_year") as "ss_sold_year",
-    coalesce("vacuous"."sales_item_id","yummy"."sales_item_id") as "sales_item_id",
     coalesce("vacuous"."sales_item_id","yummy"."sales_item_id") as "ss_item_sk",
     coalesce("vacuous"."ws_qty",0) + coalesce("vacuous"."cs_qty",0) as "other_chan_qty",
     coalesce("vacuous"."ws_sp",0) + coalesce("vacuous"."cs_sp",0) as "other_chan_sp",
     coalesce("vacuous"."ws_wc",0) + coalesce("vacuous"."cs_wc",0) as "other_chan_wc"
 FROM
     "vacuous"
-    FULL JOIN "yummy" on "vacuous"."sales_customer_id" is not distinct from "yummy"."sales_customer_id" AND "vacuous"."sales_date_year" is not distinct from "yummy"."sales_date_year" AND "vacuous"."sales_item_id" = "yummy"."sales_item_id")
+    INNER JOIN "yummy" on "vacuous"."sales_customer_id" = "yummy"."sales_customer_id" AND "vacuous"."sales_date_year" = "yummy"."sales_date_year" AND "vacuous"."sales_item_id" = "yummy"."sales_item_id"
+WHERE
+    ( coalesce("vacuous"."ws_qty",0) > 0 or coalesce("vacuous"."cs_qty",0) > 0 )
+)
 SELECT
     "concerned"."ss_sold_year" as "ss_sold_year",
     "concerned"."ss_item_sk" as "ss_item_sk",
@@ -256,7 +247,7 @@ SELECT
 FROM
     "concerned"
 WHERE
-    "concerned"."store_qty" > 0 and ( coalesce("concerned"."ws_qty",0) > 0 or coalesce("concerned"."cs_qty",0) > 0 )
+    "concerned"."store_qty" > 0
 
 ORDER BY 
     "concerned"."ss_sold_year" asc nulls first,
@@ -390,14 +381,23 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "yummy" not found!
 Candidate tables: "juicy"
 
-LINE 109:     "yummy"."sales_customer_id" as "sales_customer_id",
+LINE 113:     "yummy"."sales_customer_id" as "sales_customer_id",
               ^
 ```

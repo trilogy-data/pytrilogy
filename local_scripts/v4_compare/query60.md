@@ -26,13 +26,13 @@ only in ref (showing up to 5 of 80):
   1x  ('AAAAAAAAACNCAAAA', Decimal('3951.33'))
   1x  ('AAAAAAAAACODAAAA', Decimal('6673.40'))
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 3408 | 92 |
-| reference | 3286 | 58 |
-| v4 / ref | 1.04x | 1.59x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 2599 | 68 | 140.86 ms |
+| reference | 3286 | 58 | 50.47 ms |
+| v4 / ref | 0.79x | 1.17x | 2.79x |
 
 ## Preql
 
@@ -60,20 +60,6 @@ limit 100
 
 ```sql
 WITH 
-abundant as (
-SELECT
-    "sales_item_items"."I_CATEGORY" as "sales_item_category",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_name",
-    "sales_item_items"."I_ITEM_SK" as "sales_item_id"
-FROM
-    "memory"."item" as "sales_item_items"),
-questionable as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."date_dim" as "sales_date_date"),
 thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_ADDR_SK" as "sales_bill_address_id",
@@ -111,35 +97,25 @@ GROUP BY
     2,
     3,
     4),
-quizzical as (
-SELECT
-    "sales_bill_address_customer_address"."CA_ADDRESS_SK" as "sales_bill_address_id",
-    "sales_bill_address_customer_address"."CA_GMT_OFFSET" as "sales_bill_address_gmt_offset"
-FROM
-    "memory"."customer_address" as "sales_bill_address_customer_address"),
 uneven as (
 SELECT
-    "abundant"."sales_item_category" as "sales_item_category",
-    "abundant"."sales_item_name" as "sales_item_name",
     "cooperative"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "questionable"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "questionable"."sales_date_year" as "sales_date_year",
-    "quizzical"."sales_bill_address_gmt_offset" as "sales_bill_address_gmt_offset"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
 FROM
     "cooperative"
-    LEFT OUTER JOIN "questionable" on "cooperative"."sales_date_id" = "questionable"."sales_date_id"
-    INNER JOIN "abundant" on "cooperative"."sales_item_id" = "abundant"."sales_item_id"
-    LEFT OUTER JOIN "quizzical" on "cooperative"."sales_bill_address_id" = "quizzical"."sales_bill_address_id"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "cooperative"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "cooperative"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "cooperative"."sales_bill_address_id" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "questionable"."sales_date_year" = 1998 and "questionable"."sales_date_month_of_year" = 9 and "quizzical"."sales_bill_address_gmt_offset" = -5
+    "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 9 and "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5
 
 GROUP BY
     1,
     2,
-    3,
-    4,
-    5,
-    6)
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET",
+    "sales_date_date"."D_MOY",
+    "sales_date_date"."D_YEAR",
+    "sales_item_items"."I_CATEGORY")
 SELECT
     sum("uneven"."sales_ext_sales_price") as "total_sales",
     "uneven"."sales_item_name" as "sales_item_name"

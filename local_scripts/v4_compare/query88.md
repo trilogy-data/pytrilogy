@@ -12,13 +12,13 @@
 
 _at least one side did not produce rows._
 
-## SQL size
+## SQL size + execution time
 
-| Source | Chars | Lines |
-| --- | --- | --- |
-| v4 | 6613 | 85 |
-| reference | 3887 | 32 |
-| v4 / ref | 1.70x | 2.66x |
+| Source | Chars | Lines | Exec (min of 4) |
+| --- | --- | --- | --- |
+| v4 | 5079 | 52 | — |
+| reference | 3887 | 32 | 25.37 ms |
+| v4 / ref | 1.31x | 1.62x | — |
 
 ## Preql
 
@@ -68,51 +68,19 @@ select
 
 ```sql
 WITH 
-cheerful as (
-SELECT
-    "store_sales_time_time"."T_HOUR" as "store_sales_time_hour",
-    "store_sales_time_time"."T_MINUTE" as "store_sales_time_minute",
-    "store_sales_time_time"."T_TIME_SK" as "store_sales_time_id"
-FROM
-    "memory"."time_dim" as "store_sales_time_time"),
-wakeful as (
-SELECT
-    "store_sales_store_sales"."SS_HDEMO_SK" as "store_sales_household_demographic_id",
-    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
-    "store_sales_store_sales"."SS_SOLD_TIME_SK" as "store_sales_time_id",
-    "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id",
-    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number"
-FROM
-    "memory"."store_sales" as "store_sales_store_sales"),
-highfalutin as (
-SELECT
-    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
-    "store_sales_store_store"."S_STORE_SK" as "store_sales_store_id"
-FROM
-    "memory"."store" as "store_sales_store_store"),
-quizzical as (
-SELECT
-    "store_sales_household_demographic_household_demographics"."HD_DEMO_SK" as "store_sales_household_demographic_id",
-    "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" as "store_sales_household_demographic_dependent_count",
-    "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" as "store_sales_household_demographic_vehicle_count"
-FROM
-    "memory"."household_demographics" as "store_sales_household_demographic_household_demographics"),
 thoughtful as (
 SELECT
-    "cheerful"."store_sales_time_hour" as "store_sales_time_hour",
-    "cheerful"."store_sales_time_minute" as "store_sales_time_minute",
-    "highfalutin"."store_sales_store_name" as "store_sales_store_name",
-    "quizzical"."store_sales_household_demographic_dependent_count" as "store_sales_household_demographic_dependent_count",
-    "quizzical"."store_sales_household_demographic_vehicle_count" as "store_sales_household_demographic_vehicle_count",
-    "wakeful"."store_sales_item_id" as "store_sales_item_id",
-    "wakeful"."store_sales_ticket_number" as "store_sales_ticket_number"
+    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
+    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number",
+    "store_sales_time_time"."T_HOUR" as "store_sales_time_hour",
+    "store_sales_time_time"."T_MINUTE" as "store_sales_time_minute"
 FROM
-    "wakeful"
-    LEFT OUTER JOIN "cheerful" on "wakeful"."store_sales_time_id" = "cheerful"."store_sales_time_id"
-    LEFT OUTER JOIN "highfalutin" on "wakeful"."store_sales_store_id" = "highfalutin"."store_sales_store_id"
-    LEFT OUTER JOIN "quizzical" on "wakeful"."store_sales_household_demographic_id" = "quizzical"."store_sales_household_demographic_id"
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."time_dim" as "store_sales_time_time" on "store_sales_store_sales"."SS_SOLD_TIME_SK" = "store_sales_time_time"."T_TIME_SK"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."household_demographics" as "store_sales_household_demographic_household_demographics" on "store_sales_store_sales"."SS_HDEMO_SK" = "store_sales_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
-    "highfalutin"."store_sales_store_name" = 'ese' and "cheerful"."store_sales_time_hour" in (8,9,10,11,12) and ( ( "quizzical"."store_sales_household_demographic_dependent_count" = 4 and "quizzical"."store_sales_household_demographic_vehicle_count" <= 6 ) or ( "quizzical"."store_sales_household_demographic_dependent_count" = 2 and "quizzical"."store_sales_household_demographic_vehicle_count" <= 4 ) or ( "quizzical"."store_sales_household_demographic_dependent_count" = 0 and "quizzical"."store_sales_household_demographic_vehicle_count" <= 2 ) )
+    "store_sales_store_store"."S_STORE_NAME" = 'ese' and "store_sales_time_time"."T_HOUR" in (8,9,10,11,12) and ( ( "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 4 and "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" <= 6 ) or ( "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 2 and "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" <= 4 ) or ( "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 0 and "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" <= 2 ) )
 ),
 cooperative as (
 SELECT
@@ -128,7 +96,6 @@ FROM
     "thoughtful"),
 questionable as (
 SELECT
-    "thoughtful"."store_sales_ticket_number" as "store_sales_ticket_number",
     count("cooperative"."_virt_filter_id_1217483973813310") as "_virt_agg_count_2219364601882723",
     count("cooperative"."_virt_filter_id_2242083618971481") as "_virt_agg_count_9208026921280603",
     count("cooperative"."_virt_filter_id_2411341819675340") as "_virt_agg_count_4915320083864949",
@@ -140,7 +107,7 @@ SELECT
 FROM
     "cooperative"
 GROUP BY
-    1)
+    "thoughtful"."store_sales_ticket_number")
 SELECT
     sum("questionable"."_virt_agg_count_6255323248253146") as "h8_30_to_9",
     sum("questionable"."_virt_agg_count_2910789853377884") as "h9_to_9_30",
@@ -195,14 +162,23 @@ FROM
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 161, in run_one
-    result.v4_rows = execute(con, v4_sql)
-                     ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 102, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
 _duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
 Candidate tables: "cooperative"
 
-LINE 62:     "thoughtful"."store_sales_ticket_number" as "store_sales_ti...
+LINE 41:     "thoughtful"."store_sales_ticket_number")
              ^
 ```
