@@ -1,30 +1,24 @@
 # Query 95
 
-**Status:** `mismatch`
+**Status:** `exec_fail`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
+| v4 execution | FAILED |
 | reference execution | OK (1 rows) |
-| results identical | NO |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (135, Decimal('-37751.42'), Decimal('165736.60'))
-only in ref (showing up to 5 of 1):
-  1x  (68, Decimal('-18202.90'), Decimal('100592.32'))
+_at least one side did not produce rows._
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1854 | 33 | 15.89 ms |
-| reference | 4030 | 76 | 79.06 ms |
-| v4 / ref | 0.46x | 0.43x | 0.20x |
+| v4 | 2939 | 53 | — |
+| reference | 4030 | 76 | 74.72 ms |
+| v4 / ref | 0.73x | 0.70x | — |
 
 ## Preql
 
@@ -56,33 +50,53 @@ limit 100
 WITH 
 cooperative as (
 SELECT
-    "web_sales_web_sales"."WS_EXT_SHIP_COST" as "web_sales_ext_ship_cost",
-    "web_sales_web_sales"."WS_NET_PROFIT" as "web_sales_net_profit",
-    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number"
+    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number",
+    "web_sales_web_sales"."WS_WAREHOUSE_SK" as "web_sales_warehouse_id"
 FROM
     "memory"."web_sales" as "web_sales_web_sales"
-    LEFT OUTER JOIN "memory"."web_returns" as "web_sales_web_returns" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_web_returns"."WR_ITEM_SK" AND "web_sales_web_sales"."WS_ORDER_NUMBER" = "web_sales_web_returns"."WR_ORDER_NUMBER"
+GROUP BY
+    1,
+    2),
+questionable as (
+SELECT
+    CASE WHEN count("cooperative"."web_sales_warehouse_id") > 1 THEN "cooperative"."web_sales_order_number" ELSE NULL END as "multi_warehouse_order",
+    count("cooperative"."web_sales_warehouse_id") as "_virt_agg_count_2435454530783120"
+FROM
+    "cooperative"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    "questionable"."multi_warehouse_order" as "multi_warehouse_order"
+FROM
+    "questionable"
+WHERE
+    "questionable"."_virt_agg_count_2435454530783120" > 1
+),
+thoughtful as (
+SELECT
+    "web_sales_web_sales"."WS_ORDER_NUMBER" as "returned_orders"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+    INNER JOIN "memory"."web_returns" as "web_sales_web_returns" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_web_returns"."WR_ITEM_SK" AND "web_sales_web_sales"."WS_ORDER_NUMBER" = "web_sales_web_returns"."WR_ORDER_NUMBER"
+WHERE
+    CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select abundant."multi_warehouse_order" from abundant where abundant."multi_warehouse_order" is not null)
+
+GROUP BY
+    1)
+SELECT
+    count("web_sales_web_sales"."WS_ORDER_NUMBER") as "order_count",
+    sum("web_sales_web_sales"."WS_EXT_SHIP_COST") as "total_shipping_cost",
+    sum("web_sales_web_sales"."WS_NET_PROFIT") as "total_net_profit"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+    INNER JOIN "memory"."web_returns" as "web_sales_web_returns" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_web_returns"."WR_ITEM_SK" AND "web_sales_web_sales"."WS_ORDER_NUMBER" = "web_sales_web_returns"."WR_ORDER_NUMBER"
     INNER JOIN "memory"."web_site" as "web_sales_web_site_web_site" on "web_sales_web_sales"."WS_WEB_SITE_SK" = "web_sales_web_site_web_site"."web_site_sk"
     INNER JOIN "memory"."date_dim" as "web_sales_ship_date_date" on "web_sales_web_sales"."WS_SHIP_DATE_SK" = "web_sales_ship_date_date"."D_DATE_SK"
     INNER JOIN "memory"."customer_address" as "web_sales_ship_address_customer_address" on "web_sales_web_sales"."WS_SHIP_ADDR_SK" = "web_sales_ship_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("web_sales_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "web_sales_ship_address_customer_address"."CA_STATE" = 'IL' and "web_sales_web_site_web_site"."web_company_name" = 'pri'
+    cast("web_sales_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "web_sales_ship_address_customer_address"."CA_STATE" = 'IL' and "web_sales_web_site_web_site"."web_company_name" = 'pri' and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select abundant."multi_warehouse_order" from abundant where abundant."multi_warehouse_order" is not null) and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select thoughtful."returned_orders" from thoughtful where thoughtful."returned_orders" is not null)
 
-GROUP BY
-    1,
-    2,
-    3,
-    "web_sales_ship_address_customer_address"."CA_STATE",
-    "web_sales_web_sales"."WS_WAREHOUSE_SK",
-    "web_sales_web_site_web_site"."web_company_name",
-    CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END,
-    cast("web_sales_ship_date_date"."D_DATE" as date))
-SELECT
-    count("cooperative"."web_sales_order_number") as "order_count",
-    sum("cooperative"."web_sales_ext_ship_cost") as "total_shipping_cost",
-    sum("cooperative"."web_sales_net_profit") as "total_net_profit"
-FROM
-    "cooperative"
 ORDER BY 
     "order_count" desc
 LIMIT (100)
@@ -167,4 +181,28 @@ FROM
 ORDER BY 
     coalesce("vacuous"."order_count",0) desc
 LIMIT (100)
+```
+
+## v4 execution error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
+    cursor = con.execute(sql)
+_duckdb.BinderException: Binder Error: GROUP BY clause cannot contain aggregates!
+
+LINE 13:     CASE WHEN count("cooperative"."web_sales_warehouse_id") > 1 THEN ...
+                       ^
 ```

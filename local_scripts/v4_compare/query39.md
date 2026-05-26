@@ -1,24 +1,38 @@
 # Query 39
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (1944 rows) |
 | reference execution | OK (243 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1944 (243 distinct)
+ref rows: 243 (243 distinct)
+only in v4 (showing up to 5 of 243):
+  7x  (1.2438391781531353, 1.0151581328149208, 1, 2, 265, 265, 324.75, 329.0, 1, 1)
+  8x  (1.0319415722706489, 1.1411766752007977, 1, 2, 363, 363, 499.5, 321.0, 1, 1)
+  7x  (1.0955498064867504, 1.042970994259454, 1, 2, 679, 679, 373.75, 417.5, 1, 1)
+  7x  (1.0835888283564505, 1.1356494125569416, 1, 2, 695, 695, 450.75, 368.75, 1, 1)
+  7x  (1.03450938027956, 1.0284221852702604, 1, 2, 789, 789, 357.25, 410.0, 1, 1)
+only in ref (showing up to 5 of 40):
+  1x  (1.031941572270649, 1.1411766752007977, 1, 2, 363, 363, 499.5, 321.0, 1, 1)
+  1x  (1.1702270938111008, 1.3057281471249385, 1, 2, 815, 815, 216.5, 150.5, 1, 1)
+  1x  (1.0318296151625301, 1.1693842343776149, 1, 2, 4955, 4955, 495.25, 322.5, 1, 1)
+  1x  (1.0874396852180854, 1.0470055593145149, 1, 2, 7569, 7569, 430.5, 360.25, 1, 1)
+  1x  (1.7924231710846223, 1.0080922635507177, 1, 2, 7999, 7999, 166.25, 375.3333333333333, 1, 1)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3742 | 97 | — |
-| reference | 2041 | 36 | 33.48 ms |
-| v4 / ref | 1.83x | 2.69x | — |
+| v4 | 3541 | 91 | 87.30 ms |
+| reference | 2041 | 36 | 29.78 ms |
+| v4 / ref | 1.73x | 2.53x | 2.93x |
 
 ## Preql
 
@@ -94,18 +108,12 @@ SELECT
 ),
 cheerful as (
 SELECT
-    CASE WHEN "wakeful"."inventory_date_month_of_year" = 1 THEN "wakeful"."inventory_quantity_on_hand" ELSE NULL END as "_virt_filter_quantity_on_hand_6923713468897965",
-    CASE WHEN "wakeful"."inventory_date_month_of_year" = 2 THEN "wakeful"."inventory_quantity_on_hand" ELSE NULL END as "_virt_filter_quantity_on_hand_5056019954828139"
-FROM
-    "wakeful"),
-thoughtful as (
-SELECT
     "wakeful"."inventory_item_id" as "inventory_item_id",
     "wakeful"."inventory_warehouse_id" as "inventory_warehouse_id",
-    avg("cheerful"."_virt_filter_quantity_on_hand_5056019954828139") as "mean2",
-    avg("cheerful"."_virt_filter_quantity_on_hand_6923713468897965") as "mean1",
-    stddev_samp("cheerful"."_virt_filter_quantity_on_hand_5056019954828139") as "stdev2",
-    stddev_samp("cheerful"."_virt_filter_quantity_on_hand_6923713468897965") as "stdev1"
+    avg(CASE WHEN "wakeful"."inventory_date_month_of_year" = 1 THEN "wakeful"."inventory_quantity_on_hand" ELSE NULL END) as "mean1",
+    avg(CASE WHEN "wakeful"."inventory_date_month_of_year" = 2 THEN "wakeful"."inventory_quantity_on_hand" ELSE NULL END) as "mean2",
+    stddev_samp(CASE WHEN "wakeful"."inventory_date_month_of_year" = 1 THEN "wakeful"."inventory_quantity_on_hand" ELSE NULL END) as "stdev1",
+    stddev_samp(CASE WHEN "wakeful"."inventory_date_month_of_year" = 2 THEN "wakeful"."inventory_quantity_on_hand" ELSE NULL END) as "stdev2"
 FROM
     "wakeful"
 GROUP BY
@@ -113,23 +121,23 @@ GROUP BY
     2),
 cooperative as (
 SELECT
-    "thoughtful"."mean1" as "mean1",
-    "thoughtful"."mean2" as "mean2",
+    "cheerful"."mean1" as "mean1",
+    "cheerful"."mean2" as "mean2",
     CASE
-	WHEN "thoughtful"."mean1" = 0 THEN null
-	ELSE "thoughtful"."stdev1" / "thoughtful"."mean1"
+	WHEN "cheerful"."mean1" = 0 THEN null
+	ELSE "cheerful"."stdev1" / "cheerful"."mean1"
 	END as "cov1",
     CASE
-	WHEN "thoughtful"."mean2" = 0 THEN null
-	ELSE "thoughtful"."stdev2" / "thoughtful"."mean2"
+	WHEN "cheerful"."mean2" = 0 THEN null
+	ELSE "cheerful"."stdev2" / "cheerful"."mean2"
 	END as "cov2",
-    coalesce("thoughtful"."inventory_item_id","wakeful"."inventory_item_id") as "isk1",
-    coalesce("thoughtful"."inventory_item_id","wakeful"."inventory_item_id") as "isk2",
-    coalesce("thoughtful"."inventory_warehouse_id","wakeful"."inventory_warehouse_id") as "wsk1",
-    coalesce("thoughtful"."inventory_warehouse_id","wakeful"."inventory_warehouse_id") as "wsk2"
+    coalesce("cheerful"."inventory_item_id","wakeful"."inventory_item_id") as "isk1",
+    coalesce("cheerful"."inventory_item_id","wakeful"."inventory_item_id") as "isk2",
+    coalesce("cheerful"."inventory_warehouse_id","wakeful"."inventory_warehouse_id") as "wsk1",
+    coalesce("cheerful"."inventory_warehouse_id","wakeful"."inventory_warehouse_id") as "wsk2"
 FROM
-    "thoughtful"
-    FULL JOIN "wakeful" on "thoughtful"."inventory_item_id" = "wakeful"."inventory_item_id" AND "thoughtful"."inventory_warehouse_id" is not distinct from "wakeful"."inventory_warehouse_id"),
+    "cheerful"
+    FULL JOIN "wakeful" on "cheerful"."inventory_item_id" = "wakeful"."inventory_item_id" AND "cheerful"."inventory_warehouse_id" is not distinct from "wakeful"."inventory_warehouse_id"),
 abundant as (
 SELECT
     "cooperative"."cov1" as "cov1",
@@ -212,29 +220,4 @@ ORDER BY
     "cov1" asc nulls first,
     "mean2" asc nulls first,
     "cov2" asc nulls first
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "cheerful" not found!
-Candidate tables: "wakeful"
-
-LINE 29:     avg("cheerful"."_virt_filter_quantity_on_hand_5056019954828139...
-                 ^
 ```

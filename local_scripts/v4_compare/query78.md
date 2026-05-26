@@ -1,24 +1,38 @@
 # Query 78
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (50 distinct)
+ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 50):
+  1x  (87, Decimal('23.69'), Decimal('25.62'), 0.67, 51419, 119, 2000, 58, Decimal('7.48'), Decimal('15.60'))
+  1x  (65, Decimal('34.04'), Decimal('92.29'), 0.11, 6082, 415, 2000, 7, Decimal('125.26'), Decimal('97.86'))
+  1x  (39, Decimal('27.82'), Decimal('29.28'), 1.97, 6746, 439, 2000, 77, Decimal('90.36'), Decimal('65.40'))
+  1x  (26, Decimal('80.66'), Decimal('78.42'), 0.81, 86651, 565, 2000, 21, Decimal('5.14'), Decimal('43.53'))
+  1x  (81, Decimal('4.65'), Decimal('60.61'), 0.79, 47643, 577, 2000, 64, Decimal('4.29'), Decimal('44.48'))
+only in ref (showing up to 5 of 50):
+  1x  (80, Decimal('15.04'), Decimal('25.20'), 0.95, 81470, 5006, 2000, 76, Decimal('19.83'), Decimal('28.53'))
+  1x  (14, Decimal('91.06'), Decimal('38.91'), 3.5, 9347, 5039, 2000, 49, Decimal('65.81'), Decimal('40.60'))
+  1x  (94, Decimal('28.77'), Decimal('81.29'), 0.07, 66647, 5051, 2000, 7, Decimal('11.98'), Decimal('18.92'))
+  1x  (64, Decimal('48.97'), Decimal('95.75'), 0.31, 99109, 5087, 2000, 20, Decimal('13.61'), Decimal('27.50'))
+  1x  (68, Decimal('70.85'), Decimal('40.54'), 0.13, 57030, 5191, 2000, 9, Decimal('60.06'), Decimal('44.67'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8729 | 176 | — |
-| reference | 6271 | 109 | 351.00 ms |
-| v4 / ref | 1.39x | 1.61x | — |
+| v4 | 7673 | 154 | 461.94 ms |
+| reference | 6271 | 109 | 371.95 ms |
+| v4 / ref | 1.22x | 1.41x | 1.24x |
 
 ## Preql
 
@@ -172,66 +186,44 @@ FROM
     LEFT OUTER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_is_returned" is null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    "cheerful"."sales_is_returned"),
+),
 juicy as (
-SELECT
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_3246535766050298",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_3329311501778256",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_wholesale_cost" ELSE NULL END as "_virt_filter_wholesale_cost_12660294178139",
-    CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_3296388286284728",
-    CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_4892217788000653",
-    CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_wholesale_cost" ELSE NULL END as "_virt_filter_wholesale_cost_2417433725305726",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_4697255203951431",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_2666160496451923",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_wholesale_cost" ELSE NULL END as "_virt_filter_wholesale_cost_212062951246318"
-FROM
-    "yummy"),
-vacuous as (
 SELECT
     "yummy"."sales_customer_id" as "sales_customer_id",
     "yummy"."sales_date_year" as "sales_date_year",
     "yummy"."sales_item_id" as "sales_item_id",
-    sum("juicy"."_virt_filter_quantity_3246535766050298") as "cs_qty",
-    sum("juicy"."_virt_filter_quantity_3296388286284728") as "ss_qty",
-    sum("juicy"."_virt_filter_quantity_4697255203951431") as "ws_qty",
-    sum("juicy"."_virt_filter_sales_price_2666160496451923") as "ws_sp",
-    sum("juicy"."_virt_filter_sales_price_3329311501778256") as "cs_sp",
-    sum("juicy"."_virt_filter_sales_price_4892217788000653") as "ss_sp",
-    sum("juicy"."_virt_filter_wholesale_cost_12660294178139") as "cs_wc",
-    sum("juicy"."_virt_filter_wholesale_cost_212062951246318") as "ws_wc",
-    sum("juicy"."_virt_filter_wholesale_cost_2417433725305726") as "ss_wc"
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_quantity" ELSE NULL END) as "cs_qty",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_sales_price" ELSE NULL END) as "cs_sp",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_wholesale_cost" ELSE NULL END) as "cs_wc",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_quantity" ELSE NULL END) as "ss_qty",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_sales_price" ELSE NULL END) as "ss_sp",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_wholesale_cost" ELSE NULL END) as "ss_wc",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_quantity" ELSE NULL END) as "ws_qty",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_sales_price" ELSE NULL END) as "ws_sp",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_wholesale_cost" ELSE NULL END) as "ws_wc"
 FROM
-    "juicy"
+    "yummy"
 GROUP BY
     1,
     2,
     3),
 concerned as (
 SELECT
-    "vacuous"."ss_qty" as "ss_qty",
-    "vacuous"."ss_qty" as "store_qty",
-    "vacuous"."ss_sp" as "store_sales_price",
-    "vacuous"."ss_wc" as "store_wholesale_cost",
-    coalesce("vacuous"."sales_customer_id","yummy"."sales_customer_id") as "ss_customer_sk",
-    coalesce("vacuous"."sales_date_year","yummy"."sales_date_year") as "ss_sold_year",
-    coalesce("vacuous"."sales_item_id","yummy"."sales_item_id") as "ss_item_sk",
-    coalesce("vacuous"."ws_qty",0) + coalesce("vacuous"."cs_qty",0) as "other_chan_qty",
-    coalesce("vacuous"."ws_sp",0) + coalesce("vacuous"."cs_sp",0) as "other_chan_sp",
-    coalesce("vacuous"."ws_wc",0) + coalesce("vacuous"."cs_wc",0) as "other_chan_wc"
+    "juicy"."ss_qty" as "ss_qty",
+    "juicy"."ss_qty" as "store_qty",
+    "juicy"."ss_sp" as "store_sales_price",
+    "juicy"."ss_wc" as "store_wholesale_cost",
+    coalesce("juicy"."sales_customer_id","yummy"."sales_customer_id") as "ss_customer_sk",
+    coalesce("juicy"."sales_date_year","yummy"."sales_date_year") as "ss_sold_year",
+    coalesce("juicy"."sales_item_id","yummy"."sales_item_id") as "ss_item_sk",
+    coalesce("juicy"."ws_qty",0) + coalesce("juicy"."cs_qty",0) as "other_chan_qty",
+    coalesce("juicy"."ws_sp",0) + coalesce("juicy"."cs_sp",0) as "other_chan_sp",
+    coalesce("juicy"."ws_wc",0) + coalesce("juicy"."cs_wc",0) as "other_chan_wc"
 FROM
-    "vacuous"
-    INNER JOIN "yummy" on "vacuous"."sales_customer_id" = "yummy"."sales_customer_id" AND "vacuous"."sales_date_year" = "yummy"."sales_date_year" AND "vacuous"."sales_item_id" = "yummy"."sales_item_id"
+    "juicy"
+    LEFT OUTER JOIN "yummy" on "juicy"."sales_customer_id" is not distinct from "yummy"."sales_customer_id" AND "juicy"."sales_date_year" is not distinct from "yummy"."sales_date_year" AND "juicy"."sales_item_id" = "yummy"."sales_item_id"
 WHERE
-    ( coalesce("vacuous"."ws_qty",0) > 0 or coalesce("vacuous"."cs_qty",0) > 0 )
+    ( coalesce("juicy"."ws_qty",0) > 0 or coalesce("juicy"."cs_qty",0) > 0 )
 )
 SELECT
     "concerned"."ss_sold_year" as "ss_sold_year",
@@ -375,29 +367,4 @@ ORDER BY
     "other_chan_sales_price" asc nulls first,
     "ratio" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "yummy" not found!
-Candidate tables: "juicy"
-
-LINE 113:     "yummy"."sales_customer_id" as "sales_customer_id",
-              ^
 ```

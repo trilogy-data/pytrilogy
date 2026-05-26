@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 46):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2081 | 51 | 152.00 ms |
-| reference | 2203 | 44 | 24.47 ms |
-| v4 / ref | 0.94x | 1.16x | 6.21x |
+| v4 | 1259 | 20 | 22.83 ms |
+| reference | 2203 | 44 | 26.13 ms |
+| v4 / ref | 0.57x | 0.45x | 0.87x |
 
 ## Preql
 
@@ -63,49 +63,18 @@ order by
 ## v4 generated SQL
 
 ```sql
-WITH 
-thoughtful as (
-SELECT
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_id",
-    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
-    "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id",
-    1 as "store_sales_row_counter"
-FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-WHERE
-    "store_sales_store_sales"."SS_CUSTOMER_SK" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-questionable as (
 SELECT
     "store_sales_customer_address_customer_address"."CA_STATE" as "store_sales_customer_address_state",
-    "thoughtful"."store_sales_row_counter" as "store_sales_row_counter"
+    sum(1) as "customer_count"
 FROM
-    "thoughtful"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "thoughtful"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "thoughtful"."store_sales_item_id" = "store_sales_item_items"."I_ITEM_SK"
-    LEFT OUTER JOIN "memory"."customer" as "store_sales_customer_customers" on "thoughtful"."store_sales_customer_id" = "store_sales_customer_customers"."C_CUSTOMER_SK"
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "store_sales_store_sales"."SS_CUSTOMER_SK" = "store_sales_customer_customers"."C_CUSTOMER_SK"
     LEFT OUTER JOIN "memory"."customer_address" as "store_sales_customer_address_customer_address" on "store_sales_customer_customers"."C_CURRENT_ADDR_SK" = "store_sales_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "store_sales_date_date"."D_YEAR" = 2001 and "store_sales_item_items"."I_CATEGORY" is not null and "store_sales_date_date"."D_MOY" = 1
+    "store_sales_date_date"."D_YEAR" = 2001 and "store_sales_item_items"."I_CATEGORY" is not null and "store_sales_date_date"."D_MOY" = 1 and "store_sales_store_sales"."SS_CUSTOMER_SK" is not null
 
-GROUP BY
-    1,
-    2,
-    "store_sales_date_date"."D_MOY",
-    "store_sales_date_date"."D_YEAR",
-    "store_sales_item_items"."I_CATEGORY",
-    "store_sales_item_items"."I_CURRENT_PRICE",
-    "thoughtful"."store_sales_customer_id")
-SELECT
-    "questionable"."store_sales_customer_address_state" as "store_sales_customer_address_state",
-    sum("questionable"."store_sales_row_counter") as "customer_count"
-FROM
-    "questionable"
 GROUP BY
     1
 HAVING
@@ -113,7 +82,7 @@ HAVING
 
 ORDER BY 
     "customer_count" asc nulls first,
-    "questionable"."store_sales_customer_address_state" asc nulls first
+    "store_sales_customer_address_customer_address"."CA_STATE" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

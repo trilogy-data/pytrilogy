@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 15):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2443 | 22 | 11.77 ms |
-| reference | 1772 | 20 | 17.39 ms |
-| v4 / ref | 1.38x | 1.10x | 0.68x |
+| v4 | 2443 | 22 | 11.97 ms |
+| reference | 1772 | 20 | 20.26 ms |
+| v4 / ref | 1.38x | 1.10x | 0.59x |
 
 ## Preql
 
@@ -65,14 +65,14 @@ limit 100
 ```sql
 SELECT
     (coalesce("customer_customers"."C_LAST_NAME",'') || ', ' || coalesce("customer_customers"."C_FIRST_NAME",'')) as "customername",
-    coalesce("customer_customers"."C_CURRENT_HDEMO_SK","customer_household_demographic_household_demographics"."HD_DEMO_SK") as "customer_household_demographic_id",
     "customer_customers"."C_LAST_NAME" as "customer_last_name",
-    "customer_household_demographic_income_band_income_band"."IB_UPPER_BOUND" as "customer_household_demographic_income_band_upper_bound",
+    "customer_customers"."C_FIRST_NAME" as "customer_first_name",
     coalesce("customer_customers"."C_CURRENT_CDEMO_SK","returns_store_returns"."SR_CDEMO_SK") as "returns_customer_demographic_id",
-    "customer_address_customer_address"."CA_CITY" as "customer_address_city",
-    "customer_household_demographic_income_band_income_band"."IB_LOWER_BOUND" as "customer_household_demographic_income_band_lower_bound",
+    coalesce("customer_customers"."C_CURRENT_HDEMO_SK","customer_household_demographic_household_demographics"."HD_DEMO_SK") as "customer_household_demographic_id",
+    "customer_household_demographic_income_band_income_band"."IB_UPPER_BOUND" as "customer_household_demographic_income_band_upper_bound",
     "customer_customers"."C_CUSTOMER_ID" as "customer_text_id",
-    "customer_customers"."C_FIRST_NAME" as "customer_first_name"
+    "customer_household_demographic_income_band_income_band"."IB_LOWER_BOUND" as "customer_household_demographic_income_band_lower_bound",
+    "customer_address_customer_address"."CA_CITY" as "customer_address_city"
 FROM
     "memory"."customer_address" as "customer_address_customer_address"
     INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"

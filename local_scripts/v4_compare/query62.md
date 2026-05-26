@@ -1,24 +1,26 @@
 # Query 62
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2806 | 76 | — |
-| reference | 2102 | 42 | 30.95 ms |
-| v4 / ref | 1.33x | 1.81x | — |
+| v4 | 2112 | 51 | 34.58 ms |
+| reference | 2102 | 42 | 32.92 ms |
+| v4 / ref | 1.00x | 1.21x | 1.05x |
 
 ## Preql
 
@@ -78,80 +80,55 @@ limit 100
 
 ```sql
 WITH 
-cheerful as (
-SELECT
-    "ws_web_sales"."WS_SHIP_DATE_SK" as "ws_ship_date_id",
-    "ws_web_sales"."WS_SHIP_MODE_SK" as "ws_ship_mode_id",
-    "ws_web_sales"."WS_SOLD_DATE_SK" as "ws_date_id",
-    "ws_web_sales"."WS_WAREHOUSE_SK" as "ws_warehouse_id",
-    "ws_web_sales"."WS_WEB_SITE_SK" as "ws_web_site_id"
-FROM
-    "memory"."web_sales" as "ws_web_sales"
-WHERE
-    "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
-),
 cooperative as (
 SELECT
-    "cheerful"."ws_date_id" as "ws_date_id",
-    "cheerful"."ws_ship_date_id" as "ws_ship_date_id",
     "ws_ship_mode_ship_mode"."SM_TYPE" as "ws_ship_mode_type",
-    "ws_warehouse_warehouse"."w_warehouse_name" as "ws_warehouse_name",
-    "ws_web_site_web_site"."web_name" as "ws_web_site_name"
+    "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" as "days_to_ship",
+    "ws_web_site_web_site"."web_name" as "ws_web_site_name",
+    SUBSTRING("ws_warehouse_warehouse"."w_warehouse_name",1,20) as "w_substr"
 FROM
-    "cheerful"
-    LEFT OUTER JOIN "memory"."web_site" as "ws_web_site_web_site" on "cheerful"."ws_web_site_id" = "ws_web_site_web_site"."web_site_sk"
-    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "cheerful"."ws_ship_date_id" = "ws_ship_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."ship_mode" as "ws_ship_mode_ship_mode" on "cheerful"."ws_ship_mode_id" = "ws_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-    LEFT OUTER JOIN "memory"."warehouse" as "ws_warehouse_warehouse" on "cheerful"."ws_warehouse_id" = "ws_warehouse_warehouse"."w_warehouse_sk"
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."ship_mode" as "ws_ship_mode_ship_mode" on "ws_web_sales"."WS_SHIP_MODE_SK" = "ws_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
+    INNER JOIN "memory"."warehouse" as "ws_warehouse_warehouse" on "ws_web_sales"."WS_WAREHOUSE_SK" = "ws_warehouse_warehouse"."w_warehouse_sk"
 WHERE
-    "ws_ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
-),
-abundant as (
-SELECT
-    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
-    "cooperative"."ws_web_site_name" as "ws_web_site_name",
-    SUBSTRING("cooperative"."ws_warehouse_name",1,20) as "w_substr"
-FROM
-    "cooperative"),
-questionable as (
-SELECT
-    "cooperative"."ws_ship_date_id" - "cooperative"."ws_date_id" as "days_to_ship"
-FROM
-    "cooperative")
+    "ws_ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
+)
 SELECT
     sum(CASE
-	WHEN "questionable"."days_to_ship" <= 30 THEN 1
+	WHEN "cooperative"."days_to_ship" <= 30 THEN 1
 	ELSE 0
 	END) as "days_30",
     sum(CASE
-	WHEN "questionable"."days_to_ship" > 30 and "questionable"."days_to_ship" <= 60 THEN 1
+	WHEN "cooperative"."days_to_ship" > 30 and "cooperative"."days_to_ship" <= 60 THEN 1
 	ELSE 0
 	END) as "days_31_60",
     sum(CASE
-	WHEN "questionable"."days_to_ship" > 60 and "questionable"."days_to_ship" <= 90 THEN 1
+	WHEN "cooperative"."days_to_ship" > 60 and "cooperative"."days_to_ship" <= 90 THEN 1
 	ELSE 0
 	END) as "days_61_90",
     sum(CASE
-	WHEN "questionable"."days_to_ship" > 90 and "questionable"."days_to_ship" <= 120 THEN 1
+	WHEN "cooperative"."days_to_ship" > 90 and "cooperative"."days_to_ship" <= 120 THEN 1
 	ELSE 0
 	END) as "days_91_120",
     sum(CASE
-	WHEN "questionable"."days_to_ship" > 120 THEN 1
+	WHEN "cooperative"."days_to_ship" > 120 THEN 1
 	ELSE 0
 	END) as "days_120_plus",
-    "abundant"."ws_web_site_name" as "ws_web_site_name",
-    "abundant"."w_substr" as "w_substr",
-    "abundant"."ws_ship_mode_type" as "ws_ship_mode_type"
+    "cooperative"."ws_web_site_name" as "ws_web_site_name",
+    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
+    "cooperative"."w_substr" as "w_substr"
 FROM
-    "abundant"
+    "cooperative"
 GROUP BY
     6,
     7,
     8
 ORDER BY 
-    "abundant"."w_substr" asc nulls first,
-    "abundant"."ws_ship_mode_type" asc nulls first,
-    "abundant"."ws_web_site_name" asc nulls first
+    "cooperative"."w_substr" asc nulls first,
+    "cooperative"."ws_ship_mode_type" asc nulls first,
+    "cooperative"."ws_web_site_name" asc nulls first
 LIMIT (100)
 ```
 
@@ -200,29 +177,4 @@ ORDER BY
     "ws_ship_mode_ship_mode"."SM_TYPE" asc nulls first,
     "ws_web_site_web_site"."web_name" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "questionable" not found!
-Candidate tables: "abundant"
-
-LINE 44: 	WHEN "questionable"."days_to_ship" <= 30 THEN 1
-              ^
 ```

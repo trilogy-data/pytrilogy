@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2962 | 64 | 152.23 ms |
-| reference | 1794 | 28 | 34.05 ms |
-| v4 / ref | 1.65x | 2.29x | 4.47x |
+| v4 | 1794 | 28 | 34.28 ms |
+| reference | 1794 | 28 | 33.51 ms |
+| v4 / ref | 1.00x | 1.00x | 1.02x |
 
 ## Preql
 
@@ -51,58 +51,22 @@ limit 100
 ## v4 generated SQL
 
 ```sql
-WITH 
-cooperative as (
 SELECT
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_id",
-    "store_sales_store_sales"."SS_EXT_SALES_PRICE" as "store_sales_ext_sales_price",
-    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_id",
-    "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id",
-    "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id"
-FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-abundant as (
-SELECT
-    "cooperative"."store_sales_ext_sales_price" as "store_sales_ext_sales_price",
+    sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price",
     "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
     "store_sales_item_items"."I_BRAND_ID" as "store_sales_item_brand_id",
-    "store_sales_item_items"."I_MANUFACT" as "store_sales_item_manufact",
-    "store_sales_item_items"."I_MANUFACT_ID" as "store_sales_item_manufacturer_id"
+    "store_sales_item_items"."I_MANUFACT_ID" as "store_sales_item_manufacturer_id",
+    "store_sales_item_items"."I_MANUFACT" as "store_sales_item_manufact"
 FROM
-    "cooperative"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "cooperative"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "cooperative"."store_sales_item_id" = "store_sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."store" as "store_sales_store_store" on "cooperative"."store_sales_store_id" = "store_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "cooperative"."store_sales_customer_id" = "store_sales_customer_customers"."C_CUSTOMER_SK"
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "store_sales_store_sales"."SS_CUSTOMER_SK" = "store_sales_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."customer_address" as "store_sales_customer_address_customer_address" on "store_sales_customer_customers"."C_CURRENT_ADDR_SK" = "store_sales_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "store_sales_item_items"."I_MANAGER_ID" = 8 and "store_sales_date_date"."D_MOY" = 11 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("store_sales_store_store"."S_ZIP",1,5)
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    "store_sales_customer_address_customer_address"."CA_ZIP",
-    "store_sales_date_date"."D_MOY",
-    "store_sales_date_date"."D_YEAR",
-    "store_sales_item_items"."I_MANAGER_ID",
-    "store_sales_store_store"."S_ZIP")
-SELECT
-    sum("abundant"."store_sales_ext_sales_price") as "ext_price",
-    "abundant"."store_sales_item_brand_id" as "store_sales_item_brand_id",
-    "abundant"."store_sales_item_brand_name" as "store_sales_item_brand_name",
-    "abundant"."store_sales_item_manufact" as "store_sales_item_manufact",
-    "abundant"."store_sales_item_manufacturer_id" as "store_sales_item_manufacturer_id"
-FROM
-    "abundant"
 GROUP BY
     2,
     3,
@@ -110,10 +74,10 @@ GROUP BY
     5
 ORDER BY 
     "ext_price" desc,
-    "abundant"."store_sales_item_brand_name" asc,
-    "abundant"."store_sales_item_brand_id" asc,
-    "abundant"."store_sales_item_manufacturer_id" asc,
-    "abundant"."store_sales_item_manufact" asc
+    "store_sales_item_items"."I_BRAND" asc,
+    "store_sales_item_items"."I_BRAND_ID" asc,
+    "store_sales_item_items"."I_MANUFACT_ID" asc,
+    "store_sales_item_items"."I_MANUFACT" asc
 LIMIT (100)
 ```
 

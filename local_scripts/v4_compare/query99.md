@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4128 | 95 | — |
-| reference | 2597 | 28 | 44.11 ms |
-| v4 / ref | 1.59x | 3.39x | — |
+| v4 | 3774 | 55 | — |
+| reference | 2597 | 28 | 45.78 ms |
+| v4 / ref | 1.45x | 1.96x | — |
 
 ## Preql
 
@@ -64,99 +64,59 @@ limit 100
 
 ```sql
 WITH 
-highfalutin as (
-SELECT
-    "catalog_sales"."CS_CALL_CENTER_SK" as "call_center_id",
-    "catalog_sales"."CS_ORDER_NUMBER" as "order_number",
-    "catalog_sales"."CS_SHIP_DATE_SK" as "ship_date_id",
-    "catalog_sales"."CS_SHIP_MODE_SK" as "ship_mode_id",
-    "catalog_sales"."CS_SOLD_DATE_SK" as "sold_date_id",
-    "catalog_sales"."CS_WAREHOUSE_SK" as "warehouse_id",
-    1 as "row_counter"
-FROM
-    "memory"."catalog_sales" as "catalog_sales"
-WHERE
-    "catalog_sales"."CS_ORDER_NUMBER" is not null and "catalog_sales"."CS_CALL_CENTER_SK" is not null and "catalog_sales"."CS_WAREHOUSE_SK" is not null and "catalog_sales"."CS_SHIP_MODE_SK" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7),
-abundant as (
+questionable as (
 SELECT
     "call_center_call_center"."CC_NAME" as "call_center_name",
-    "highfalutin"."row_counter" as "row_counter",
     "ship_mode_ship_mode"."SM_TYPE" as "ship_mode_type",
     "warehouse_warehouse"."w_warehouse_name" as "warehouse_name",
+    1 as "row_counter",
     cast("ship_date_date"."D_DATE" as date) as "ship_date_date",
     cast("sold_date_date"."D_DATE" as date) as "sold_date_date"
 FROM
-    "highfalutin"
-    INNER JOIN "memory"."date_dim" as "ship_date_date" on "highfalutin"."ship_date_id" = "ship_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."ship_mode" as "ship_mode_ship_mode" on "highfalutin"."ship_mode_id" = "ship_mode_ship_mode"."SM_SHIP_MODE_SK"
-    LEFT OUTER JOIN "memory"."date_dim" as "sold_date_date" on "highfalutin"."sold_date_id" = "sold_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."warehouse" as "warehouse_warehouse" on "highfalutin"."warehouse_id" = "warehouse_warehouse"."w_warehouse_sk"
-    LEFT OUTER JOIN "memory"."call_center" as "call_center_call_center" on "highfalutin"."call_center_id" = "call_center_call_center"."CC_CALL_CENTER_SK"
+    "memory"."catalog_sales" as "catalog_sales"
+    INNER JOIN "memory"."date_dim" as "ship_date_date" on "catalog_sales"."CS_SHIP_DATE_SK" = "ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."ship_mode" as "ship_mode_ship_mode" on "catalog_sales"."CS_SHIP_MODE_SK" = "ship_mode_ship_mode"."SM_SHIP_MODE_SK"
+    LEFT OUTER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."warehouse" as "warehouse_warehouse" on "catalog_sales"."CS_WAREHOUSE_SK" = "warehouse_warehouse"."w_warehouse_sk"
+    INNER JOIN "memory"."call_center" as "call_center_call_center" on "catalog_sales"."CS_CALL_CENTER_SK" = "call_center_call_center"."CC_CALL_CENTER_SK"
 WHERE
-    "ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    "highfalutin"."call_center_id",
-    "highfalutin"."order_number",
-    "highfalutin"."ship_mode_id",
-    "highfalutin"."warehouse_id",
-    "ship_date_date"."D_MONTH_SEQ"),
+    "ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "catalog_sales"."CS_ORDER_NUMBER" is not null and "catalog_sales"."CS_CALL_CENTER_SK" is not null and "catalog_sales"."CS_WAREHOUSE_SK" is not null and "catalog_sales"."CS_SHIP_MODE_SK" is not null
+),
 yummy as (
 SELECT
-    "abundant"."row_counter" as "row_counter",
-    date_diff('day', "abundant"."sold_date_date", "abundant"."ship_date_date") as "days_to_ship"
+    "questionable"."ship_mode_type" as "ship_mode_type",
+    LOWER("questionable"."call_center_name")  as "cc_name_lower",
+    SUBSTRING("questionable"."warehouse_name",1,20) as "warehouse_short_name"
 FROM
-    "abundant"),
-uneven as (
+    "questionable"),
+abundant as (
 SELECT
-    "abundant"."ship_mode_type" as "ship_mode_type",
-    LOWER("abundant"."call_center_name")  as "cc_name_lower",
-    SUBSTRING("abundant"."warehouse_name",1,20) as "warehouse_short_name"
+    CASE WHEN date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") <= 30 THEN "questionable"."row_counter" ELSE NULL END as "_virt_filter_row_counter_5011928028596288",
+    CASE WHEN date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") > 120 THEN "questionable"."row_counter" ELSE NULL END as "_virt_filter_row_counter_3600395140186427",
+    CASE WHEN date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") > 30 and date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") <= 60 THEN "questionable"."row_counter" ELSE NULL END as "_virt_filter_row_counter_3995177617069933",
+    CASE WHEN date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") > 60 and date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") <= 90 THEN "questionable"."row_counter" ELSE NULL END as "_virt_filter_row_counter_2542054096360490",
+    CASE WHEN date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") > 90 and date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") <= 120 THEN "questionable"."row_counter" ELSE NULL END as "_virt_filter_row_counter_8267453838305074"
 FROM
-    "abundant"),
-juicy as (
+    "questionable")
 SELECT
-    CASE WHEN "yummy"."days_to_ship" <= 30 THEN "yummy"."row_counter" ELSE NULL END as "_virt_filter_row_counter_5011928028596288",
-    CASE WHEN "yummy"."days_to_ship" > 120 THEN "yummy"."row_counter" ELSE NULL END as "_virt_filter_row_counter_3600395140186427",
-    CASE WHEN "yummy"."days_to_ship" > 30 and "yummy"."days_to_ship" <= 60 THEN "yummy"."row_counter" ELSE NULL END as "_virt_filter_row_counter_3995177617069933",
-    CASE WHEN "yummy"."days_to_ship" > 60 and "yummy"."days_to_ship" <= 90 THEN "yummy"."row_counter" ELSE NULL END as "_virt_filter_row_counter_2542054096360490",
-    CASE WHEN "yummy"."days_to_ship" > 90 and "yummy"."days_to_ship" <= 120 THEN "yummy"."row_counter" ELSE NULL END as "_virt_filter_row_counter_8267453838305074"
+    count("abundant"."_virt_filter_row_counter_5011928028596288") as "less_than_30_days",
+    count("abundant"."_virt_filter_row_counter_3995177617069933") as "between_31_and_60_days",
+    count("abundant"."_virt_filter_row_counter_2542054096360490") as "between_61_and_90_days",
+    count("abundant"."_virt_filter_row_counter_8267453838305074") as "between_91_and_120_days",
+    count("abundant"."_virt_filter_row_counter_3600395140186427") as "over_120_days",
+    "yummy"."cc_name_lower" as "cc_name_lower",
+    "yummy"."ship_mode_type" as "ship_mode_type",
+    "yummy"."warehouse_short_name" as "warehouse_short_name"
 FROM
-    "yummy")
-SELECT
-    count("juicy"."_virt_filter_row_counter_5011928028596288") as "less_than_30_days",
-    count("juicy"."_virt_filter_row_counter_3995177617069933") as "between_31_and_60_days",
-    count("juicy"."_virt_filter_row_counter_2542054096360490") as "between_61_and_90_days",
-    count("juicy"."_virt_filter_row_counter_8267453838305074") as "between_91_and_120_days",
-    count("juicy"."_virt_filter_row_counter_3600395140186427") as "over_120_days",
-    "uneven"."warehouse_short_name" as "warehouse_short_name",
-    "uneven"."ship_mode_type" as "ship_mode_type",
-    "uneven"."cc_name_lower" as "cc_name_lower"
-FROM
-    "uneven"
+    "yummy"
 GROUP BY
     6,
     7,
     8
 ORDER BY 
-    "uneven"."warehouse_short_name" asc nulls first,
-    "uneven"."ship_mode_type" asc nulls first,
-    "uneven"."cc_name_lower" asc nulls first
+    "yummy"."warehouse_short_name" asc nulls first,
+    "yummy"."ship_mode_type" asc nulls first,
+    "yummy"."cc_name_lower" asc nulls first
 LIMIT (100)
 ```
 
@@ -211,9 +171,9 @@ Traceback (most recent call last):
             ~~~~~~~^^^^^^^^^^^^^
   File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "juicy" not found!
-Candidate tables: "uneven"
+_duckdb.BinderException: Binder Error: Referenced table "abundant" not found!
+Candidate tables: "yummy"
 
-LINE 77:     count("juicy"."_virt_filter_row_counter_5011928028596288") as...
+LINE 37:     count("abundant"."_virt_filter_row_counter_5011928028596288")...
                    ^
 ```

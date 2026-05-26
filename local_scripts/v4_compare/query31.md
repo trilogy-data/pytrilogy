@@ -1,24 +1,26 @@
 # Query 31
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (44 rows) |
 | reference execution | OK (44 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 44 (44 distinct)
+ref rows: 44 (44 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4634 | 101 | — |
-| reference | 5451 | 57 | 86.07 ms |
-| v4 / ref | 0.85x | 1.77x | — |
+| v4 | 3784 | 72 | 83.83 ms |
+| reference | 5451 | 57 | 83.49 ms |
+| v4 / ref | 0.69x | 1.26x | 1.00x |
 
 ## Preql
 
@@ -90,103 +92,74 @@ WITH
 thoughtful as (
 SELECT
     "sales_store_sales_unified"."SS_ADDR_SK" as "sales_bill_address_id",
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-     'STORE'  as "sales_sales_channel"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-UNION ALL
-SELECT
-    "sales_web_sales_unified"."WS_BILL_ADDR_SK" as "sales_bill_address_id",
-    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-     'WEB'  as "sales_sales_channel"
-FROM
-    "memory"."web_sales" as "sales_web_sales_unified"),
-cooperative as (
-SELECT
-    "thoughtful"."sales_bill_address_id" as "sales_bill_address_id",
-    "thoughtful"."sales_date_id" as "sales_date_id",
-    "thoughtful"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "thoughtful"."sales_sales_channel" as "sales_sales_channel"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-abundant as (
-SELECT
-    "cooperative"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "cooperative"."sales_sales_channel" as "sales_sales_channel",
-    "sales_bill_address_customer_address"."CA_COUNTY" as "sales_bill_address_county",
+     'STORE'  as "sales_sales_channel",
     "sales_date_date"."D_QOY" as "sales_date_quarter",
     "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
-    "cooperative"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "cooperative"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "cooperative"."sales_bill_address_id" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
     "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_QOY" in (1,2,3)
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-uneven as (
+UNION ALL
 SELECT
-    CASE WHEN "abundant"."sales_sales_channel" = 'STORE' and "abundant"."sales_date_quarter" = 1 THEN "abundant"."sales_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_7655500688085854",
-    CASE WHEN "abundant"."sales_sales_channel" = 'STORE' and "abundant"."sales_date_quarter" = 2 THEN "abundant"."sales_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_281852079532064",
-    CASE WHEN "abundant"."sales_sales_channel" = 'STORE' and "abundant"."sales_date_quarter" = 3 THEN "abundant"."sales_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_729201542198071",
-    CASE WHEN "abundant"."sales_sales_channel" = 'WEB' and "abundant"."sales_date_quarter" = 1 THEN "abundant"."sales_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_8458384044316949",
-    CASE WHEN "abundant"."sales_sales_channel" = 'WEB' and "abundant"."sales_date_quarter" = 2 THEN "abundant"."sales_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_4134243337115957",
-    CASE WHEN "abundant"."sales_sales_channel" = 'WEB' and "abundant"."sales_date_quarter" = 3 THEN "abundant"."sales_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_3771707931091746"
+    "sales_web_sales_unified"."WS_BILL_ADDR_SK" as "sales_bill_address_id",
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+     'WEB'  as "sales_sales_channel",
+    "sales_date_date"."D_QOY" as "sales_date_quarter",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
-    "abundant"),
-yummy as (
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_QOY" in (1,2,3)
+),
+questionable as (
 SELECT
-    "abundant"."sales_bill_address_county" as "sales_bill_address_county",
-    "abundant"."sales_date_year" as "sales_date_year",
-    sum("uneven"."_virt_filter_ext_sales_price_281852079532064") as "ss_q2",
-    sum("uneven"."_virt_filter_ext_sales_price_3771707931091746") as "ws_q3",
-    sum("uneven"."_virt_filter_ext_sales_price_4134243337115957") as "ws_q2",
-    sum("uneven"."_virt_filter_ext_sales_price_729201542198071") as "ss_q3",
-    sum("uneven"."_virt_filter_ext_sales_price_7655500688085854") as "ss_q1",
-    sum("uneven"."_virt_filter_ext_sales_price_8458384044316949") as "ws_q1"
+    "sales_bill_address_customer_address"."CA_COUNTY" as "sales_bill_address_county",
+    "thoughtful"."sales_date_year" as "sales_date_year",
+    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) as "ss_q1",
+    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) as "ss_q2",
+    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 3 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) as "ss_q3",
+    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) as "ws_q1",
+    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) as "ws_q2",
+    sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 3 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) as "ws_q3"
 FROM
-    "uneven"
+    "thoughtful"
+    LEFT OUTER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "thoughtful"."sales_bill_address_id" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "thoughtful"."sales_sales_channel" in ('STORE','WEB')
+
 GROUP BY
     1,
     2)
 SELECT
-    "yummy"."sales_bill_address_county" as "sales_bill_address_county",
-    "yummy"."sales_date_year" as "sales_date_year",
-    "yummy"."ws_q2" / "yummy"."ws_q1" as "web_q1_q2_increase",
-    "yummy"."ss_q2" / "yummy"."ss_q1" as "store_q1_q2_increase",
-    "yummy"."ws_q3" / "yummy"."ws_q2" as "web_q2_q3_increase",
-    "yummy"."ss_q3" / "yummy"."ss_q2" as "store_q2_q3_increase"
+    "questionable"."sales_bill_address_county" as "sales_bill_address_county",
+    "questionable"."sales_date_year" as "sales_date_year",
+    "questionable"."ws_q2" / "questionable"."ws_q1" as "web_q1_q2_increase",
+    "questionable"."ss_q2" / "questionable"."ss_q1" as "store_q1_q2_increase",
+    "questionable"."ws_q3" / "questionable"."ws_q2" as "web_q2_q3_increase",
+    "questionable"."ss_q3" / "questionable"."ss_q2" as "store_q2_q3_increase"
 FROM
-    "yummy"
+    "questionable"
 WHERE
-    "yummy"."ss_q1" > 0 and "yummy"."ss_q2" > 0 and ( CASE
-	WHEN "yummy"."ws_q1" > 0 THEN "yummy"."ws_q2" / "yummy"."ws_q1"
+    "questionable"."ss_q1" > 0 and "questionable"."ss_q2" > 0 and ( CASE
+	WHEN "questionable"."ws_q1" > 0 THEN "questionable"."ws_q2" / "questionable"."ws_q1"
 	ELSE null
 	END > CASE
-	WHEN "yummy"."ss_q1" > 0 THEN "yummy"."ss_q2" / "yummy"."ss_q1"
+	WHEN "questionable"."ss_q1" > 0 THEN "questionable"."ss_q2" / "questionable"."ss_q1"
 	ELSE null
 	END ) and ( CASE
-	WHEN "yummy"."ws_q2" > 0 THEN "yummy"."ws_q3" / "yummy"."ws_q2"
+	WHEN "questionable"."ws_q2" > 0 THEN "questionable"."ws_q3" / "questionable"."ws_q2"
 	ELSE null
 	END > CASE
-	WHEN "yummy"."ss_q2" > 0 THEN "yummy"."ss_q3" / "yummy"."ss_q2"
+	WHEN "questionable"."ss_q2" > 0 THEN "questionable"."ss_q3" / "questionable"."ss_q2"
 	ELSE null
 	END )
 
 ORDER BY 
-    "yummy"."sales_bill_address_county" asc nulls first
+    "questionable"."sales_bill_address_county" asc nulls first
 ```
 
 ## Reference SQL (zquery log)
@@ -249,29 +222,4 @@ HAVING
 
 ORDER BY 
     "sales_bill_address_customer_address"."CA_COUNTY" asc nulls first
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "abundant" not found!
-Candidate tables: "uneven"
-
-LINE 63:     "abundant"."sales_bill_address_county" as "sales_bill_addre...
-             ^
 ```

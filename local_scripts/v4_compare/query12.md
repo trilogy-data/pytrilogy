@@ -1,24 +1,26 @@
 # Query 12
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2601 | 58 | — |
-| reference | 2111 | 48 | 36.43 ms |
-| v4 / ref | 1.23x | 1.21x | — |
+| v4 | 2111 | 48 | 36.69 ms |
+| reference | 2111 | 48 | 45.58 ms |
+| v4 / ref | 1.00x | 1.00x | 0.81x |
 
 ## Preql
 
@@ -58,24 +60,14 @@ SELECT
     "web_sales_item_items"."I_CURRENT_PRICE" as "web_sales_item_current_price",
     "web_sales_item_items"."I_ITEM_DESC" as "web_sales_item_desc",
     "web_sales_item_items"."I_ITEM_ID" as "web_sales_item_name",
-    "web_sales_web_sales"."WS_EXT_SALES_PRICE" as "web_sales_ext_sales_price"
+    sum("web_sales_web_sales"."WS_EXT_SALES_PRICE") as "itemrevenue"
 FROM
     "memory"."web_sales" as "web_sales_web_sales"
     INNER JOIN "memory"."date_dim" as "web_sales_date_date" on "web_sales_web_sales"."WS_SOLD_DATE_SK" = "web_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "web_sales_item_items" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_item_items"."I_ITEM_SK"
 WHERE
     cast("web_sales_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24' and "web_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home')
-),
-thoughtful as (
-SELECT
-    "cheerful"."web_sales_item_category" as "web_sales_item_category",
-    "cheerful"."web_sales_item_class" as "web_sales_item_class",
-    "cheerful"."web_sales_item_current_price" as "web_sales_item_current_price",
-    "cheerful"."web_sales_item_desc" as "web_sales_item_desc",
-    "cheerful"."web_sales_item_name" as "web_sales_item_name",
-    sum("cheerful"."web_sales_ext_sales_price") as "itemrevenue"
-FROM
-    "cheerful"
+
 GROUP BY
     1,
     2,
@@ -85,27 +77,27 @@ GROUP BY
 cooperative as (
 SELECT
     "cheerful"."web_sales_item_class" as "web_sales_item_class",
-    sum("thoughtful"."itemrevenue") as "itemclassrevenue"
+    sum("cheerful"."itemrevenue") as "itemclassrevenue"
 FROM
     "cheerful"
 GROUP BY
     1)
 SELECT
-    ("thoughtful"."itemrevenue" * 100.0) / "cooperative"."itemclassrevenue" as "revenueratio",
-    coalesce("cooperative"."web_sales_item_class","thoughtful"."web_sales_item_class") as "web_sales_item_class",
-    "thoughtful"."web_sales_item_desc" as "web_sales_item_desc",
-    "thoughtful"."web_sales_item_category" as "web_sales_item_category",
-    "thoughtful"."web_sales_item_name" as "web_sales_item_name",
-    "thoughtful"."web_sales_item_current_price" as "web_sales_item_current_price",
-    "thoughtful"."itemrevenue" as "itemrevenue"
+    ("cheerful"."itemrevenue" * 100.0) / "cooperative"."itemclassrevenue" as "revenueratio",
+    coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") as "web_sales_item_class",
+    "cheerful"."web_sales_item_category" as "web_sales_item_category",
+    "cheerful"."web_sales_item_desc" as "web_sales_item_desc",
+    "cheerful"."web_sales_item_current_price" as "web_sales_item_current_price",
+    "cheerful"."web_sales_item_name" as "web_sales_item_name",
+    "cheerful"."itemrevenue" as "itemrevenue"
 FROM
     "cooperative"
-    INNER JOIN "thoughtful" on "cooperative"."web_sales_item_class" is not distinct from "thoughtful"."web_sales_item_class"
+    INNER JOIN "cheerful" on "cooperative"."web_sales_item_class" is not distinct from "cheerful"."web_sales_item_class"
 ORDER BY 
-    "thoughtful"."web_sales_item_category" asc,
-    coalesce("cooperative"."web_sales_item_class","thoughtful"."web_sales_item_class") asc,
-    "thoughtful"."web_sales_item_name" asc,
-    "thoughtful"."web_sales_item_desc" asc,
+    "cheerful"."web_sales_item_category" asc,
+    coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") asc,
+    "cheerful"."web_sales_item_name" asc,
+    "cheerful"."web_sales_item_desc" asc,
     "revenueratio" asc
 LIMIT (100)
 ```
@@ -161,29 +153,4 @@ ORDER BY
     "cheerful"."web_sales_item_desc" asc,
     "revenueratio" asc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
-Candidate tables: "cheerful"
-
-LINE 36:     sum("thoughtful"."itemrevenue") as "itemclassrevenue"
-                 ^
 ```

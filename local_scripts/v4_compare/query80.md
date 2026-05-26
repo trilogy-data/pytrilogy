@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8592 | 164 | 115.10 ms |
-| reference | 7255 | 135 | 63.22 ms |
-| v4 / ref | 1.18x | 1.21x | 1.82x |
+| v4 | 7303 | 135 | 67.24 ms |
+| reference | 7255 | 135 | 69.84 ms |
+| v4 / ref | 1.01x | 1.00x | 0.96x |
 
 ## Preql
 
@@ -119,10 +119,7 @@ SELECT
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_NET_PROFIT" as "sales_net_profit",
     "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
-     'CATALOG'  as "sales_sales_channel",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
-    "sales_item_items"."I_CURRENT_PRICE" as "sales_item_current_price",
-    "sales_promotion_promotion"."P_CHANNEL_TV" as "sales_promotion_channel_tv"
+     'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -138,10 +135,7 @@ SELECT
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_NET_PROFIT" as "sales_net_profit",
     "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
-     'STORE'  as "sales_sales_channel",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
-    "sales_item_items"."I_CURRENT_PRICE" as "sales_item_current_price",
-    "sales_promotion_promotion"."P_CHANNEL_TV" as "sales_promotion_channel_tv"
+     'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -157,10 +151,7 @@ SELECT
     "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_NET_PROFIT" as "sales_net_profit",
     "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
-     'WEB'  as "sales_sales_channel",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
-    "sales_item_items"."I_CURRENT_PRICE" as "sales_item_current_price",
-    "sales_promotion_promotion"."P_CHANNEL_TV" as "sales_promotion_channel_tv"
+     'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -172,60 +163,40 @@ WHERE
 abhorrent as (
 SELECT
     "abundant"."sales_return_amount" as "sales_return_amount",
-    "abundant"."sales_return_net_loss" as "sales_return_net_loss",
-    "cheerful"."sales_channel_dim_text_id" as "sales_channel_dim_text_id",
     "vacuous"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "vacuous"."sales_net_profit" as "sales_net_profit",
-    "vacuous"."sales_sales_channel" as "sales_sales_channel"
+    "vacuous"."sales_net_profit" - coalesce("abundant"."sales_return_net_loss",0) as "profit_minus_loss",
+    CASE
+	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN 'store channel'
+	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
+	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN 'web channel'
+	ELSE null
+	END as "channel_label",
+    CASE
+	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN ('store' || "cheerful"."sales_channel_dim_text_id")
+	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "cheerful"."sales_channel_dim_text_id")
+	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN ('web_site' || "cheerful"."sales_channel_dim_text_id")
+	ELSE null
+	END as "id_label"
 FROM
     "vacuous"
     LEFT OUTER JOIN "abundant" on "vacuous"."sales_item_id" = "abundant"."sales_item_id" AND "vacuous"."sales_order_id" = "abundant"."sales_order_id" AND "vacuous"."sales_sales_channel" = "abundant"."sales_sales_channel"
     INNER JOIN "cheerful" on "vacuous"."sales_channel_dim_id" = "cheerful"."sales_channel_dim_id" AND "vacuous"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_channel_dim_text_id" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    "vacuous"."sales_date_date",
-    "vacuous"."sales_item_current_price",
-    "vacuous"."sales_promotion_channel_tv"),
-sweltering as (
+)
 SELECT
-    "abhorrent"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "abhorrent"."sales_net_profit" - coalesce("abhorrent"."sales_return_net_loss",0) as "profit_minus_loss",
-    "abhorrent"."sales_return_amount" as "sales_return_amount",
-    CASE
-	WHEN "abhorrent"."sales_sales_channel" = 'STORE' THEN 'store channel'
-	WHEN "abhorrent"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
-	WHEN "abhorrent"."sales_sales_channel" = 'WEB' THEN 'web channel'
-	ELSE null
-	END as "channel_label",
-    CASE
-	WHEN "abhorrent"."sales_sales_channel" = 'STORE' THEN ('store' || "abhorrent"."sales_channel_dim_text_id")
-	WHEN "abhorrent"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "abhorrent"."sales_channel_dim_text_id")
-	WHEN "abhorrent"."sales_sales_channel" = 'WEB' THEN ('web_site' || "abhorrent"."sales_channel_dim_text_id")
-	ELSE null
-	END as "id_label"
+    sum("abhorrent"."sales_ext_sales_price") as "sales_total",
+    sum(coalesce("abhorrent"."sales_return_amount",0)) as "returns_total",
+    sum("abhorrent"."profit_minus_loss") as "profit_total",
+    "abhorrent"."channel_label" as "channel_label",
+    "abhorrent"."id_label" as "id_label"
 FROM
-    "abhorrent")
-SELECT
-    sum("sweltering"."sales_ext_sales_price") as "sales_total",
-    sum(coalesce("sweltering"."sales_return_amount",0)) as "returns_total",
-    sum("sweltering"."profit_minus_loss") as "profit_total",
-    "sweltering"."id_label" as "id_label",
-    "sweltering"."channel_label" as "channel_label"
-FROM
-    "sweltering"
+    "abhorrent"
 GROUP BY
-    ROLLUP (5, 4)
+    ROLLUP (4, 5)
 ORDER BY 
-    "sweltering"."channel_label" asc nulls first,
-    "sweltering"."id_label" asc nulls first
+    "abhorrent"."channel_label" asc nulls first,
+    "abhorrent"."id_label" asc nulls first
 LIMIT (100)
 ```
 

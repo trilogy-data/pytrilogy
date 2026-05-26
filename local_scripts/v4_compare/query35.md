@@ -17,7 +17,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 2552 | 35 | — |
-| reference | 10103 | 157 | 117.83 ms |
+| reference | 10103 | 157 | 110.07 ms |
 | v4 / ref | 0.25x | 0.22x | — |
 
 ## Preql
@@ -107,12 +107,12 @@ SELECT
     min(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "min3",
     max(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "max3",
     avg(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "avg3",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count> as "customer_demographics_employed_dependent_count",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count> as "customer_demographics_college_dependent_count",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count> as "customer_demographics_dependent_count",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.address.state> as "customer_address_state",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.marital_status> as "customer_demographics_marital_status",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.gender> as "customer_demographics_gender",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count> as "customer_demographics_dependent_count",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count> as "customer_demographics_college_dependent_count"
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count> as "customer_demographics_employed_dependent_count"
 
 GROUP BY
     13,

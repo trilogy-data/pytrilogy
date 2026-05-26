@@ -17,7 +17,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 1236 | 23 | — |
-| reference | 4137 | 80 | 91.56 ms |
+| reference | 4137 | 80 | 104.38 ms |
 | v4 / ref | 0.30x | 0.29x | — |
 
 ## Preql
@@ -88,11 +88,11 @@ SELECT
     count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt1",
     count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt2",
     count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt3",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.purchase_estimate> as "customer_demographics_purchase_estimate",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.education_status> as "customer_demographics_education_status",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.credit_rating> as "customer_demographics_credit_rating",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.marital_status> as "customer_demographics_marital_status",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.gender> as "customer_demographics_gender",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.credit_rating> as "customer_demographics_credit_rating"
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.purchase_estimate> as "customer_demographics_purchase_estimate",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.education_status> as "customer_demographics_education_status"
 
 GROUP BY
     4,

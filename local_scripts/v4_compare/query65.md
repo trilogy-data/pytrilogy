@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4015 | 97 | 161.39 ms |
-| reference | 2446 | 61 | 51.80 ms |
-| v4 / ref | 1.64x | 1.59x | 3.12x |
+| v4 | 4014 | 97 | 161.63 ms |
+| reference | 2446 | 61 | 53.20 ms |
+| v4 / ref | 1.64x | 1.59x | 3.04x |
 
 ## Preql
 
@@ -72,20 +72,20 @@ FROM
 WHERE
     "store_sales_date_date"."D_MONTH_SEQ" BETWEEN 1176 AND 1187 and "store_sales_store_sales"."SS_STORE_SK" is not null
 ),
-questionable as (
+yummy as (
 SELECT
-    "thoughtful"."store_sales_item_id" as "store_sales_item_id",
     "thoughtful"."store_sales_store_id" as "store_sales_store_id",
-    sum("thoughtful"."store_sales_sales_price") as "item_revenue"
+    "thoughtful"."store_sales_store_name" as "store_sales_store_name"
 FROM
     "thoughtful"
 GROUP BY
     1,
     2),
-uneven as (
+questionable as (
 SELECT
+    "thoughtful"."store_sales_item_id" as "store_sales_item_id",
     "thoughtful"."store_sales_store_id" as "store_sales_store_id",
-    "thoughtful"."store_sales_store_name" as "store_sales_store_name"
+    sum("thoughtful"."store_sales_sales_price") as "item_revenue"
 FROM
     "thoughtful"
 GROUP BY
@@ -106,7 +106,7 @@ GROUP BY
     3,
     4,
     5),
-yummy as (
+uneven as (
 SELECT
     "questionable"."store_sales_store_id" as "store_sales_store_id",
     avg("questionable"."item_revenue") as "store_avg_revenue"
@@ -128,14 +128,14 @@ SELECT
     "cooperative"."store_sales_item_current_price" as "store_sales_item_current_price",
     "cooperative"."store_sales_item_desc" as "store_sales_item_desc",
     "cooperative"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
-    "uneven"."store_sales_store_name" as "store_sales_store_name"
+    "yummy"."store_sales_store_name" as "store_sales_store_name"
 FROM
     "cooperative"
     INNER JOIN "abundant" on "cooperative"."store_sales_item_id" = "abundant"."store_sales_item_id"
-    INNER JOIN "uneven" on "abundant"."store_sales_store_id" = "uneven"."store_sales_store_id"
-    INNER JOIN "yummy" on "uneven"."store_sales_store_id" = "yummy"."store_sales_store_id"
+    INNER JOIN "yummy" on "abundant"."store_sales_store_id" = "yummy"."store_sales_store_id"
+    INNER JOIN "uneven" on "yummy"."store_sales_store_id" = "uneven"."store_sales_store_id"
 WHERE
-    "abundant"."revenue" <= 0.1 * "yummy"."store_avg_revenue"
+    "abundant"."revenue" <= 0.1 * "uneven"."store_avg_revenue"
 )
 SELECT
     "juicy"."store_sales_store_name" as "store_sales_store_name",

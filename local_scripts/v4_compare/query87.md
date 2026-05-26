@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2892 | 82 | 100.31 ms |
-| reference | 2424 | 65 | 85.08 ms |
-| v4 / ref | 1.19x | 1.26x | 1.18x |
+| v4 | 2424 | 65 | 92.84 ms |
+| reference | 2424 | 65 | 92.08 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -107,12 +107,18 @@ GROUP BY
     3),
 abundant as (
 SELECT
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
-    "sales_date_date"."D_MONTH_SEQ" as "sales_date_month_seq",
-    "thoughtful"."sales_customer_id" as "sales_customer_id",
-    "thoughtful"."sales_sales_channel" as "sales_sales_channel",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
+    sum(CASE
+	WHEN "thoughtful"."sales_sales_channel" = 'CATALOG' and "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "thoughtful"."sales_customer_id" is not null THEN 1
+	ELSE 0
+	END) as "catalog_in_window",
+    sum(CASE
+	WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "thoughtful"."sales_customer_id" is not null THEN 1
+	ELSE 0
+	END) as "store_in_window",
+    sum(CASE
+	WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "thoughtful"."sales_customer_id" is not null THEN 1
+	ELSE 0
+	END) as "web_in_window"
 FROM
     "thoughtful"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
@@ -121,39 +127,16 @@ WHERE
     "sales_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11
 
 GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6),
-uneven as (
+    "sales_customer_customers"."C_FIRST_NAME",
+    "sales_customer_customers"."C_LAST_NAME",
+    cast("sales_date_date"."D_DATE" as date))
 SELECT
     sum(CASE
-	WHEN "abundant"."sales_sales_channel" = 'CATALOG' and "abundant"."sales_date_month_seq" BETWEEN 1200 AND 1200 + 11 and "abundant"."sales_customer_id" is not null THEN 1
-	ELSE 0
-	END) as "catalog_in_window",
-    sum(CASE
-	WHEN "abundant"."sales_sales_channel" = 'STORE' and "abundant"."sales_date_month_seq" BETWEEN 1200 AND 1200 + 11 and "abundant"."sales_customer_id" is not null THEN 1
-	ELSE 0
-	END) as "store_in_window",
-    sum(CASE
-	WHEN "abundant"."sales_sales_channel" = 'WEB' and "abundant"."sales_date_month_seq" BETWEEN 1200 AND 1200 + 11 and "abundant"."sales_customer_id" is not null THEN 1
-	ELSE 0
-	END) as "web_in_window"
-FROM
-    "abundant"
-GROUP BY
-    "abundant"."sales_customer_first_name",
-    "abundant"."sales_customer_last_name",
-    "abundant"."sales_date_date")
-SELECT
-    sum(CASE
-	WHEN "uneven"."store_in_window" > 0 and "uneven"."catalog_in_window" = 0 and "uneven"."web_in_window" = 0 THEN 1
+	WHEN "abundant"."store_in_window" > 0 and "abundant"."catalog_in_window" = 0 and "abundant"."web_in_window" = 0 THEN 1
 	ELSE 0
 	END) as "cnt"
 FROM
-    "uneven"
+    "abundant"
 ```
 
 ## Reference SQL (zquery log)

@@ -1,24 +1,28 @@
 # Query 73
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (7 rows) |
 | reference execution | OK (1 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 7 (1 distinct)
+ref rows: 1 (1 distinct)
+only in v4 (showing up to 5 of 1):
+  6x  ('Maribel', 'Robinson', 'N', 'Miss', 153104, 5)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4778 | 76 | — |
-| reference | 2700 | 38 | 32.55 ms |
-| v4 / ref | 1.77x | 2.00x | — |
+| v4 | 5411 | 81 | 148.85 ms |
+| reference | 2700 | 38 | 34.29 ms |
+| v4 / ref | 2.00x | 2.13x | 4.34x |
 
 ## Preql
 
@@ -95,57 +99,62 @@ FROM
 WHERE
     "store_sales_store_sales"."SS_CUSTOMER_SK" is not null
 ),
-abundant as (
-SELECT
-    CASE WHEN "cooperative"."store_sales_date_day_of_month" >= 1 and "cooperative"."store_sales_date_day_of_month" <= 2 and ( "cooperative"."store_sales_household_demographic_buy_potential" = '>10000' or "cooperative"."store_sales_household_demographic_buy_potential" = 'Unknown' ) and "cooperative"."store_sales_household_demographic_vehicle_count" > 0 and ( CASE
-	WHEN "cooperative"."store_sales_household_demographic_vehicle_count" > 0 THEN ("cooperative"."store_sales_household_demographic_dependent_count" * 1.0) / "cooperative"."store_sales_household_demographic_vehicle_count"
-	ELSE null
-	END ) > 1 and "cooperative"."store_sales_date_year" in (1999,2000,2001) and "cooperative"."store_sales_store_county" in ('Orange County','Bronx County','Franklin Parish','Williamson County') THEN "cooperative"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_4484877027926973"
-FROM
-    "cooperative"),
 questionable as (
 SELECT
     "cooperative"."store_sales_customer_first_name" as "store_sales_customer_first_name",
     "cooperative"."store_sales_customer_id" as "store_sales_customer_id",
     "cooperative"."store_sales_customer_last_name" as "store_sales_customer_last_name",
     "cooperative"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
-    "cooperative"."store_sales_customer_salutation" as "store_sales_customer_salutation"
-FROM
-    "cooperative"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-uneven as (
-SELECT
-    "cooperative"."store_sales_customer_id" as "store_sales_customer_id",
+    "cooperative"."store_sales_customer_salutation" as "store_sales_customer_salutation",
     "cooperative"."store_sales_ticket_number" as "store_sales_ticket_number",
-    count("abundant"."_virt_filter_id_4484877027926973") as "ticket_cnt"
+    CASE WHEN "cooperative"."store_sales_date_day_of_month" >= 1 and "cooperative"."store_sales_date_day_of_month" <= 2 and ( "cooperative"."store_sales_household_demographic_buy_potential" = '>10000' or "cooperative"."store_sales_household_demographic_buy_potential" = 'Unknown' ) and "cooperative"."store_sales_household_demographic_vehicle_count" > 0 and ( CASE
+	WHEN "cooperative"."store_sales_household_demographic_vehicle_count" > 0 THEN ("cooperative"."store_sales_household_demographic_dependent_count" * 1.0) / "cooperative"."store_sales_household_demographic_vehicle_count"
+	ELSE null
+	END ) > 1 and "cooperative"."store_sales_date_year" in (1999,2000,2001) and "cooperative"."store_sales_store_county" in ('Orange County','Bronx County','Franklin Parish','Williamson County') THEN "cooperative"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_4484877027926973"
 FROM
-    "cooperative"
-GROUP BY
-    1,
-    2)
+    "cooperative"),
+abundant as (
 SELECT
-    "questionable"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "questionable"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "questionable"."store_sales_customer_salutation" as "store_sales_customer_salutation",
-    "questionable"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
-    "uneven"."store_sales_ticket_number" as "store_sales_ticket_number",
-    coalesce("uneven"."ticket_cnt",0) as "ticket_cnt"
+    "questionable"."store_sales_customer_id" as "store_sales_customer_id",
+    "questionable"."store_sales_ticket_number" as "store_sales_ticket_number",
+    count("questionable"."_virt_filter_id_4484877027926973") as "ticket_cnt"
 FROM
     "questionable"
-    INNER JOIN "uneven" on "questionable"."store_sales_customer_id" = "uneven"."store_sales_customer_id"
+GROUP BY
+    1,
+    2),
+uneven as (
+SELECT
+    "abundant"."ticket_cnt" as "ticket_cnt",
+    "questionable"."store_sales_customer_first_name" as "store_sales_customer_first_name",
+    "questionable"."store_sales_customer_id" as "store_sales_customer_id",
+    "questionable"."store_sales_customer_last_name" as "store_sales_customer_last_name",
+    "questionable"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
+    "questionable"."store_sales_customer_salutation" as "store_sales_customer_salutation",
+    "questionable"."store_sales_ticket_number" as "store_sales_ticket_number"
+FROM
+    "abundant"
+    INNER JOIN "questionable" on "abundant"."store_sales_customer_id" = "questionable"."store_sales_customer_id" AND "abundant"."store_sales_ticket_number" = "questionable"."store_sales_ticket_number"
 WHERE
-    coalesce("uneven"."ticket_cnt",0) >= 1 and coalesce("uneven"."ticket_cnt",0) <= 5
+    "abundant"."ticket_cnt" >= 1
+)
+SELECT
+    "uneven"."store_sales_customer_last_name" as "store_sales_customer_last_name",
+    "uneven"."store_sales_customer_first_name" as "store_sales_customer_first_name",
+    "uneven"."store_sales_customer_salutation" as "store_sales_customer_salutation",
+    "uneven"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
+    "uneven"."store_sales_ticket_number" as "store_sales_ticket_number",
+    "uneven"."ticket_cnt" as "ticket_cnt"
+FROM
+    "uneven"
+WHERE
+    "uneven"."ticket_cnt" <= 5
 
 ORDER BY 
-    coalesce("uneven"."ticket_cnt",0) desc,
-    "questionable"."store_sales_customer_last_name" asc,
+    "uneven"."ticket_cnt" desc,
+    "uneven"."store_sales_customer_last_name" asc,
     "uneven"."store_sales_ticket_number" asc,
-    "questionable"."store_sales_customer_id" asc
+    "uneven"."store_sales_customer_id" asc
 ```
 
 ## Reference SQL (zquery log)
@@ -189,29 +198,4 @@ ORDER BY
     "store_sales_customer_customers"."C_LAST_NAME" asc,
     "cooperative"."store_sales_ticket_number" asc,
     "store_sales_customer_customers"."C_CUSTOMER_SK" asc
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "abundant" not found!
-Candidate tables: "cooperative"
-
-LINE 53:     count("abundant"."_virt_filter_id_4484877027926973") as "ticket_cnt...
-                   ^
 ```

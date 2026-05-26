@@ -1,24 +1,38 @@
 # Query 67
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (83 distinct)
+ref rows: 100 (83 distinct)
+only in v4 (showing up to 5 of 83):
+  1x  (1, None, None, None, None, None, None, None, None, None)
+  1x  (2, None, None, None, None, None, None, None, None, None)
+  1x  (3, None, None, None, None, None, None, None, None, None)
+  1x  (4, None, None, None, None, None, None, None, None, None)
+  1x  (72, None, None, None, None, None, None, None, None, None)
+only in ref (showing up to 5 of 83):
+  1x  (72, None, None, None, None, None, None, None, None, Decimal('104996.99'))
+  1x  (4, None, None, None, None, None, None, None, None, Decimal('582893.38'))
+  1x  (3, None, None, None, None, None, None, None, None, Decimal('1641694.80'))
+  1x  (2, None, None, None, None, None, None, None, None, Decimal('3304196.14'))
+  1x  (1, None, None, None, None, None, None, None, None, Decimal('1018289131.65'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4934 | 78 | — |
-| reference | 3634 | 78 | 1.009 s |
-| v4 / ref | 1.36x | 1.00x | — |
+| v4 | 4944 | 78 | 1.008 s |
+| reference | 3634 | 78 | 1.224 s |
+| v4 / ref | 1.36x | 1.00x | 0.82x |
 
 ## Preql
 
@@ -97,17 +111,17 @@ GROUP BY
     ROLLUP (5, 6, 4, 7, 3, 2, 1, 8)),
 questionable as (
 SELECT
-    "thoughtful"."ss_date_month_of_year" as "ss_date_month_of_year",
-    "thoughtful"."ss_date_quarter" as "ss_date_quarter",
-    "thoughtful"."ss_date_year" as "ss_date_year",
-    "thoughtful"."ss_item_brand_name" as "ss_item_brand_name",
-    "thoughtful"."ss_item_category" as "ss_item_category",
-    "thoughtful"."ss_item_class" as "ss_item_class",
-    "thoughtful"."ss_item_product_name" as "ss_item_product_name",
-    "thoughtful"."ss_store_text_id" as "ss_store_text_id",
-    rank() over (partition by "thoughtful"."ss_item_category" order by "cooperative"."sumsales" desc ) as "rk"
+    "cooperative"."ss_date_month_of_year" as "ss_date_month_of_year",
+    "cooperative"."ss_date_quarter" as "ss_date_quarter",
+    "cooperative"."ss_date_year" as "ss_date_year",
+    "cooperative"."ss_item_brand_name" as "ss_item_brand_name",
+    "cooperative"."ss_item_category" as "ss_item_category",
+    "cooperative"."ss_item_class" as "ss_item_class",
+    "cooperative"."ss_item_product_name" as "ss_item_product_name",
+    "cooperative"."ss_store_text_id" as "ss_store_text_id",
+    rank() over (partition by "cooperative"."ss_item_category" order by "cooperative"."sumsales" desc ) as "rk"
 FROM
-    "thoughtful")
+    "cooperative")
 SELECT
     coalesce("cooperative"."ss_item_category","questionable"."ss_item_category") as "ss_item_category",
     coalesce("cooperative"."ss_item_class","questionable"."ss_item_class") as "ss_item_class",
@@ -220,29 +234,4 @@ ORDER BY
     "questionable"."sumsales" asc nulls first,
     "questionable"."rk" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "cooperative" not found!
-Candidate tables: "thoughtful"
-
-LINE 47: ...() over (partition by "thoughtful"."ss_item_category" order by "cooperative"."sumsales" desc ) as "rk"
-                                                                           ^
 ```

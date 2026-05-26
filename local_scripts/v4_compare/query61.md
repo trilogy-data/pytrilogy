@@ -1,24 +1,30 @@
 # Query 61
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1 (1 distinct)
+ref rows: 1 (1 distinct)
+only in v4 (showing up to 5 of 1):
+  1x  (Decimal('2894907.87'), Decimal('2894907.87'), 51.82319145188511, Decimal('5586124.26'))
+only in ref (showing up to 5 of 1):
+  1x  (Decimal('2894907.87'), 51.82319145188511, Decimal('5586124.26'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2912 | 67 | — |
-| reference | 3444 | 59 | 38.54 ms |
-| v4 / ref | 0.85x | 1.14x | — |
+| v4 | 1826 | 27 | 17.92 ms |
+| reference | 3444 | 59 | 43.00 ms |
+| v4 / ref | 0.53x | 0.46x | 0.42x |
 
 ## Preql
 
@@ -53,71 +59,31 @@ limit 100
 
 ```sql
 WITH 
-questionable as (
+abundant as (
 SELECT
-    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_customer_id",
-    "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
-    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
-    "ss_store_sales"."SS_PROMO_SK" as "ss_promotion_id",
-    "ss_store_sales"."SS_SOLD_DATE_SK" as "ss_date_id",
-    "ss_store_sales"."SS_STORE_SK" as "ss_store_id"
+    sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "total",
+    sum(CASE WHEN "ss_promotion_promotion"."P_CHANNEL_DMAIL" = 'Y' or "ss_promotion_promotion"."P_CHANNEL_EMAIL" = 'Y' or "ss_promotion_promotion"."P_CHANNEL_TV" = 'Y' THEN "ss_store_sales"."SS_EXT_SALES_PRICE" ELSE NULL END) as "promotional_sales"
 FROM
     "memory"."store_sales" as "ss_store_sales"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6),
-uneven as (
-SELECT
-    "questionable"."ss_ext_sales_price" as "ss_ext_sales_price",
-    "ss_promotion_promotion"."P_CHANNEL_DMAIL" as "ss_promotion_channel_dmail",
-    "ss_promotion_promotion"."P_CHANNEL_EMAIL" as "ss_promotion_channel_email",
-    "ss_promotion_promotion"."P_CHANNEL_TV" as "ss_promotion_channel_tv"
-FROM
-    "questionable"
-    INNER JOIN "memory"."date_dim" as "ss_date_date" on "questionable"."ss_date_id" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "ss_item_items" on "questionable"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."store" as "ss_store_store" on "questionable"."ss_store_id" = "ss_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "questionable"."ss_customer_id" = "ss_customer_customers"."C_CUSTOMER_SK"
-    LEFT OUTER JOIN "memory"."promotion" as "ss_promotion_promotion" on "questionable"."ss_promotion_id" = "ss_promotion_promotion"."P_PROMO_SK"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."promotion" as "ss_promotion_promotion" on "ss_store_sales"."SS_PROMO_SK" = "ss_promotion_promotion"."P_PROMO_SK"
     INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "ss_date_date"."D_YEAR" = 1998 and "ss_date_date"."D_MOY" = 11 and "ss_item_items"."I_CATEGORY" = 'Jewelry' and "ss_customer_address_customer_address"."CA_GMT_OFFSET" = -5 and "ss_store_store"."S_GMT_OFFSET" = -5
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    "ss_customer_address_customer_address"."CA_GMT_OFFSET",
-    "ss_date_date"."D_MOY",
-    "ss_date_date"."D_YEAR",
-    "ss_item_items"."I_CATEGORY",
-    "ss_store_store"."S_GMT_OFFSET"),
-yummy as (
+)
 SELECT
-    CASE WHEN "uneven"."ss_promotion_channel_dmail" = 'Y' or "uneven"."ss_promotion_channel_email" = 'Y' or "uneven"."ss_promotion_channel_tv" = 'Y' THEN "uneven"."ss_ext_sales_price" ELSE NULL END as "_virt_filter_ext_sales_price_1027446398664923"
+    "abundant"."promotional_sales" as "promotions",
+    ( cast("abundant"."promotional_sales" as numeric(15,4)) / cast("abundant"."total" as numeric(15,4)) ) * 100 as "ratio",
+    "abundant"."promotional_sales" as "promotional_sales",
+    "abundant"."total" as "total"
 FROM
-    "uneven"),
-juicy as (
-SELECT
-    sum("uneven"."ss_ext_sales_price") as "total",
-    sum("yummy"."_virt_filter_ext_sales_price_1027446398664923") as "promotional_sales"
-FROM
-    "yummy")
-SELECT
-    "juicy"."promotional_sales" as "promotions",
-    ( cast("juicy"."promotional_sales" as numeric(15,4)) / cast("juicy"."total" as numeric(15,4)) ) * 100 as "ratio",
-    "juicy"."promotional_sales" as "promotional_sales",
-    "juicy"."total" as "total"
-FROM
-    "juicy"
+    "abundant"
 ORDER BY 
     "promotions" asc nulls first,
-    "juicy"."total" asc nulls first
+    "abundant"."total" asc nulls first
 LIMIT (100)
 ```
 
@@ -183,29 +149,4 @@ ORDER BY
     "yummy"."promotions" asc nulls first,
     "vacuous"."total" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "uneven" not found!
-Candidate tables: "yummy"
-
-LINE 53:     sum("uneven"."ss_ext_sales_price") as "total",
-                 ^
 ```

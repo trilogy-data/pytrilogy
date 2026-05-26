@@ -18,9 +18,9 @@ ref rows: 10 (10 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1019 | 22 | 17.06 ms |
-| reference | 1019 | 22 | 17.49 ms |
-| v4 / ref | 1.00x | 1.00x | 0.98x |
+| v4 | 1019 | 22 | 14.39 ms |
+| reference | 1019 | 22 | 14.50 ms |
+| v4 / ref | 1.00x | 1.00x | 0.99x |
 
 ## Preql
 
@@ -50,9 +50,9 @@ limit 100
 ```sql
 SELECT
     sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "total_ext_sales_price",
+    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
     "store_sales_item_items"."I_CATEGORY_ID" as "store_sales_item_category_id",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year",
-    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category"
+    "store_sales_date_date"."D_YEAR" as "store_sales_date_year"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"

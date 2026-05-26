@@ -1,34 +1,26 @@
 # Query 15
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 3):
-  1x  (None, Decimal('3804.15'))
-  1x  ('32812', Decimal('1563.14'))
-  1x  ('38354', Decimal('2861.10'))
-only in ref (showing up to 5 of 3):
-  1x  (None, Decimal('3808.17'))
-  1x  ('32812', Decimal('1567.58'))
-  1x  ('38354', Decimal('2902.80'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2057 | 40 | 65.08 ms |
-| reference | 1372 | 16 | 16.17 ms |
-| v4 / ref | 1.50x | 2.50x | 4.02x |
+| v4 | 1372 | 16 | 17.51 ms |
+| reference | 1372 | 16 | 17.00 ms |
+| v4 / ref | 1.00x | 1.00x | 1.03x |
 
 ## Preql
 
@@ -55,45 +47,21 @@ limit 100
 ## v4 generated SQL
 
 ```sql
-WITH 
-wakeful as (
 SELECT
-    "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK" as "catalog_sales_bill_customer_id",
-    "catalog_sales_catalog_sales"."CS_SALES_PRICE" as "catalog_sales_sales_price",
-    "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" as "catalog_sales_date_id"
+    sum("catalog_sales_catalog_sales"."CS_SALES_PRICE") as "sales",
+    "catalog_sales_bill_customer_address_customer_address"."CA_ZIP" as "catalog_sales_bill_customer_address_zip"
 FROM
     "memory"."catalog_sales" as "catalog_sales_catalog_sales"
-GROUP BY
-    1,
-    2,
-    3),
-cooperative as (
-SELECT
-    "catalog_sales_bill_customer_address_customer_address"."CA_ZIP" as "catalog_sales_bill_customer_address_zip",
-    "wakeful"."catalog_sales_sales_price" as "catalog_sales_sales_price"
-FROM
-    "wakeful"
-    INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "wakeful"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."customer" as "catalog_sales_bill_customer_customers" on "wakeful"."catalog_sales_bill_customer_id" = "catalog_sales_bill_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "catalog_sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "catalog_sales_bill_customer_customers" on "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK" = "catalog_sales_bill_customer_customers"."C_CUSTOMER_SK"
     LEFT OUTER JOIN "memory"."customer_address" as "catalog_sales_bill_customer_address_customer_address" on "catalog_sales_bill_customer_customers"."C_CURRENT_ADDR_SK" = "catalog_sales_bill_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "catalog_sales_date_date"."D_QOY" = 2 and "catalog_sales_date_date"."D_YEAR" = 2001 and ( "catalog_sales_bill_customer_address_customer_address"."CA_STATE" in ('CA','WA','GA') or "wakeful"."catalog_sales_sales_price" > 500 or SUBSTRING("catalog_sales_bill_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') )
+    "catalog_sales_date_date"."D_QOY" = 2 and "catalog_sales_date_date"."D_YEAR" = 2001 and ( "catalog_sales_bill_customer_address_customer_address"."CA_STATE" in ('CA','WA','GA') or "catalog_sales_catalog_sales"."CS_SALES_PRICE" > 500 or SUBSTRING("catalog_sales_bill_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') )
 
-GROUP BY
-    1,
-    2,
-    "catalog_sales_bill_customer_address_customer_address"."CA_STATE",
-    "catalog_sales_date_date"."D_QOY",
-    "catalog_sales_date_date"."D_YEAR")
-SELECT
-    sum("cooperative"."catalog_sales_sales_price") as "sales",
-    "cooperative"."catalog_sales_bill_customer_address_zip" as "catalog_sales_bill_customer_address_zip"
-FROM
-    "cooperative"
 GROUP BY
     2
 ORDER BY 
-    "cooperative"."catalog_sales_bill_customer_address_zip" asc nulls first
+    "catalog_sales_bill_customer_address_customer_address"."CA_ZIP" asc nulls first
 LIMIT (100)
 ```
 

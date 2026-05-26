@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3794 | 83 | — |
-| reference | 3752 | 52 | 66.67 ms |
-| v4 / ref | 1.01x | 1.60x | — |
+| v4 | 3276 | 63 | — |
+| reference | 3752 | 52 | 62.48 ms |
+| v4 / ref | 0.87x | 1.21x | — |
 
 ## Preql
 
@@ -69,31 +69,23 @@ FROM
     INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
 WHERE
     "store_sales_store_store"."S_MARKET_ID" = 8 and "store_sales_customer_customers"."C_BIRTH_COUNTRY" != UPPER("store_sales_customer_address_customer_address"."CA_COUNTRY")  and SR_RETURN_TIME_SK IS NOT NULL is True and "store_sales_store_store"."S_ZIP" = "store_sales_customer_address_customer_address"."CA_ZIP"
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    "store_sales_customer_address_customer_address"."CA_COUNTRY",
-    "store_sales_customer_address_customer_address"."CA_ZIP",
-    "store_sales_customer_customers"."C_BIRTH_COUNTRY",
-    "store_sales_store_store"."S_MARKET_ID",
-    "store_sales_store_store"."S_ZIP",
-    SR_RETURN_TIME_SK IS NOT NULL),
+),
 quizzical as (
 SELECT
     1 as "__preql_internal_all_rows"
 ),
 juicy as (
 SELECT
-    CASE WHEN "abundant"."store_sales_item_color" = 'peach' THEN "abundant"."store_sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_7736053037874424"
+    "abundant"."store_sales_customer_first_name" as "store_sales_customer_first_name",
+    "abundant"."store_sales_customer_last_name" as "store_sales_customer_last_name",
+    "abundant"."store_sales_store_name" as "store_sales_store_name",
+    sum(CASE WHEN "abundant"."store_sales_item_color" = 'peach' THEN "abundant"."store_sales_net_paid" ELSE NULL END) as "peach_sales"
 FROM
-    "abundant"),
+    "abundant"
+GROUP BY
+    1,
+    2,
+    3),
 uneven as (
 SELECT
     sum("abundant"."store_sales_net_paid") as "_virt_agg_sum_1360566110228423"
@@ -103,18 +95,6 @@ GROUP BY
     "abundant"."store_sales_customer_id",
     "abundant"."store_sales_item_id",
     "abundant"."store_sales_store_id"),
-vacuous as (
-SELECT
-    "abundant"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "abundant"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "abundant"."store_sales_store_name" as "store_sales_store_name",
-    sum("juicy"."_virt_filter_net_paid_7736053037874424") as "peach_sales"
-FROM
-    "abundant"
-GROUP BY
-    1,
-    2,
-    3),
 yummy as (
 SELECT
     avg("uneven"."_virt_agg_sum_1360566110228423") as "avg_store_customer_sales"
@@ -123,15 +103,15 @@ FROM
 GROUP BY
     "quizzical"."__preql_internal_all_rows")
 SELECT
-    "vacuous"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "vacuous"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "vacuous"."store_sales_store_name" as "store_sales_store_name",
-    "vacuous"."peach_sales" as "peach_sales"
+    "juicy"."store_sales_customer_last_name" as "store_sales_customer_last_name",
+    "juicy"."store_sales_customer_first_name" as "store_sales_customer_first_name",
+    "juicy"."store_sales_store_name" as "store_sales_store_name",
+    "juicy"."peach_sales" as "peach_sales"
 FROM
     "yummy"
-    INNER JOIN "vacuous" on 1=1
+    INNER JOIN "juicy" on 1=1
 WHERE
-    "vacuous"."peach_sales" > 0.05 * "yummy"."avg_store_customer_sales"
+    "juicy"."peach_sales" > 0.05 * "yummy"."avg_store_customer_sales"
 ```
 
 ## Reference SQL (zquery log)
@@ -209,9 +189,9 @@ Traceback (most recent call last):
             ~~~~~~~^^^^^^^^^^^^^
   File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
     cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "juicy" not found!
-Candidate tables: "abundant"
+_duckdb.BinderException: Binder Error: Referenced table "uneven" not found!
+Candidate tables: "quizzical"
 
-LINE 60:     sum("juicy"."_virt_filter_net_paid_7736053037874424") as "peach...
+LINE 49:     avg("uneven"."_virt_agg_sum_1360566110228423") as "avg_store_cu...
                  ^
 ```

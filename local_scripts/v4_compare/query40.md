@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2343 | 44 | — |
+| v4 | 1809 | 27 | — |
 | reference | 1809 | 27 | — |
-| v4 / ref | 1.30x | 1.63x | — |
+| v4 / ref | 1.00x | 1.00x | — |
 
 ## Preql
 
@@ -61,14 +61,17 @@ limit 100
 ## v4 generated SQL
 
 ```sql
-WITH 
-cooperative as (
 SELECT
-    "catalog_returns_catalog_returns"."CR_REFUNDED_CASH" as "catalog_returns_refunded_cash",
-    "catalog_sales_catalog_sales"."CS_SALES_PRICE" as "catalog_sales_sales_price",
-    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_name",
+    sum(CASE
+	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) < :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
+	ELSE 0.0
+	END) as "sales_before",
+    sum(CASE
+	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) >= :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
+	ELSE 0.0
+	END) as "sales_after",
     "catalog_sales_warehouse_warehouse"."w_state" as "catalog_sales_warehouse_state",
-    cast("catalog_sales_sold_date_date"."D_DATE" as date) as "catalog_sales_sold_date_date"
+    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_name"
 FROM
     "memory"."catalog_sales" as "catalog_sales_catalog_sales"
     LEFT OUTER JOIN "memory"."catalog_returns" as "catalog_returns_catalog_returns" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "catalog_returns_catalog_returns"."CR_ITEM_SK" AND "catalog_sales_catalog_sales"."CS_ORDER_NUMBER" = "catalog_returns_catalog_returns"."CR_ORDER_NUMBER"
@@ -79,31 +82,11 @@ WHERE
     "catalog_sales_item_items"."I_CURRENT_PRICE" BETWEEN 0.99 AND 1.49 and cast("catalog_sales_sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 
 GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    "catalog_sales_item_items"."I_CURRENT_PRICE")
-SELECT
-    sum(CASE
-	WHEN "cooperative"."catalog_sales_sold_date_date" < :cutoff THEN "cooperative"."catalog_sales_sales_price" - coalesce("cooperative"."catalog_returns_refunded_cash",0.0)
-	ELSE 0.0
-	END) as "sales_before",
-    sum(CASE
-	WHEN "cooperative"."catalog_sales_sold_date_date" >= :cutoff THEN "cooperative"."catalog_sales_sales_price" - coalesce("cooperative"."catalog_returns_refunded_cash",0.0)
-	ELSE 0.0
-	END) as "sales_after",
-    "cooperative"."catalog_sales_warehouse_state" as "catalog_sales_warehouse_state",
-    "cooperative"."catalog_sales_item_name" as "catalog_sales_item_name"
-FROM
-    "cooperative"
-GROUP BY
     3,
     4
 ORDER BY 
-    "cooperative"."catalog_sales_warehouse_state" asc,
-    "cooperative"."catalog_sales_item_name" asc
+    "catalog_sales_warehouse_warehouse"."w_state" asc,
+    "catalog_sales_item_items"."I_ITEM_ID" asc
 LIMIT (100)
 ```
 
@@ -159,8 +142,8 @@ Traceback (most recent call last):
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near ":"
 
-LINE 16: ... cast("catalog_sales_sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
-                                                                           ^
+LINE 3: ...	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) < :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE...
+                                                                        ^
 ```
 
 ## reference execution error

@@ -14,11 +14,11 @@
 v4 rows: 100 (100 distinct)
 ref rows: 6 (6 distinct)
 only in v4 (showing up to 5 of 100):
-  1x  (None, None, None, None, None, None, None, None, None, 2001, None, Decimal('1706.10'), None, Decimal('1302.84'), 'STORE')
-  1x  (None, None, None, None, None, None, None, None, None, 2001, Decimal('0.00'), None, None, Decimal('441.40'), 'STORE')
-  1x  (None, None, None, None, None, None, None, None, None, 2001, Decimal('0.00'), None, Decimal('513.59'), None, 'STORE')
-  1x  (None, None, None, None, None, None, None, None, None, 2001, None, Decimal('1923.60'), Decimal('288.54'), Decimal('1630.44'), 'STORE')
-  1x  (None, None, None, None, None, None, None, None, None, 2002, Decimal('0.00'), Decimal('422.00'), Decimal('101.20'), Decimal('390.80'), 'STORE')
+  1x  (None, None, None, None, None, None, None, None, None, 2002, None, Decimal('756.36'), Decimal('627.77'), Decimal('727.32'), 5877, 150770, 'CATALOG')
+  1x  (None, None, None, None, None, None, None, None, None, 2002, Decimal('142.74'), None, None, Decimal('113.94'), 5172, 150668, 'CATALOG')
+  1x  (None, None, None, None, None, None, None, None, None, 2002, Decimal('276.45'), Decimal('2126.48'), None, None, 13320, 151533, 'CATALOG')
+  1x  (None, None, None, None, None, None, None, None, None, 2002, None, Decimal('392.85'), Decimal('180.42'), Decimal('204.67'), 9720, 150637, 'CATALOG')
+  1x  (None, None, None, None, None, None, None, None, None, 2002, None, None, Decimal('1402.01'), None, 6453, 153654, 'CATALOG')
 only in ref (showing up to 5 of 6):
   1x  ('David', 'AAAAAAAADIIOAAAA', 'Carroll', 'N')
   1x  ('Thomas', 'AAAAAAAAIJCIBAAA', 'Oneal', 'N')
@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 6):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4874 | 109 | 625.95 ms |
-| reference | 11722 | 251 | 418.25 ms |
-| v4 / ref | 0.42x | 0.43x | 1.50x |
+| v4 | 4285 | 79 | 50.39 ms |
+| reference | 11722 | 251 | 347.05 ms |
+| v4 / ref | 0.37x | 0.31x | 0.15x |
 
 ## Preql
 
@@ -94,105 +94,75 @@ WITH
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
     "sales_catalog_sales_unified"."CS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
     "sales_catalog_sales_unified"."CS_EXT_LIST_PRICE" as "sales_ext_list_price",
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_catalog_sales_unified"."CS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-     'CATALOG'  as "sales_sales_channel"
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+     'CATALOG'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002)
+
 UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
     "sales_store_sales_unified"."SS_EXT_LIST_PRICE" as "sales_ext_list_price",
     "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_store_sales_unified"."SS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-     'STORE'  as "sales_sales_channel"
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+     'STORE'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002)
+
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
     "sales_web_sales_unified"."WS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
     "sales_web_sales_unified"."WS_EXT_LIST_PRICE" as "sales_ext_list_price",
     "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_web_sales_unified"."WS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-     'WEB'  as "sales_sales_channel"
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+     'WEB'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
-    "memory"."web_sales" as "sales_web_sales_unified"),
-thoughtful as (
-SELECT
-    "cheerful"."sales_customer_id" as "sales_customer_id",
-    "cheerful"."sales_date_id" as "sales_date_id",
-    "cheerful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
-    "cheerful"."sales_ext_list_price" as "sales_ext_list_price",
-    "cheerful"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "cheerful"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost",
-    "cheerful"."sales_sales_channel" as "sales_sales_channel"
-FROM
-    "cheerful"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7),
-abundant as (
-SELECT
-    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
-    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag",
-    "sales_date_date"."D_YEAR" as "sales_date_year",
-    "thoughtful"."sales_customer_id" as "sales_customer_id",
-    "thoughtful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
-    "thoughtful"."sales_ext_list_price" as "sales_ext_list_price",
-    "thoughtful"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "thoughtful"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost",
-    "thoughtful"."sales_sales_channel" as "sales_sales_channel"
-FROM
-    "thoughtful"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "thoughtful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
     "sales_date_date"."D_YEAR" in (2001,2002)
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11)
+)
 SELECT
-    "abundant"."sales_customer_text_id" as "customer_id",
-    "abundant"."sales_customer_first_name" as "customer_first_name",
-    "abundant"."sales_customer_last_name" as "customer_last_name",
-    "abundant"."sales_customer_preferred_cust_flag" as "customer_preferred_cust_flag",
-    "abundant"."sales_ext_discount_amount" as "sales_ext_discount_amount",
-    "abundant"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "abundant"."sales_customer_last_name" as "sales_customer_last_name",
-    "abundant"."sales_sales_channel" as "sales_sales_channel",
-    "abundant"."sales_ext_list_price" as "sales_ext_list_price",
-    "abundant"."sales_customer_first_name" as "sales_customer_first_name",
-    "abundant"."sales_customer_preferred_cust_flag" as "sales_customer_preferred_cust_flag",
-    "abundant"."sales_date_year" as "sales_date_year",
-    "abundant"."sales_customer_id" as "sales_customer_id",
-    "abundant"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost",
-    "abundant"."sales_customer_text_id" as "sales_customer_text_id"
+    "sales_customer_customers"."C_CUSTOMER_ID" as "customer_id",
+    "sales_customer_customers"."C_FIRST_NAME" as "customer_first_name",
+    "sales_customer_customers"."C_LAST_NAME" as "customer_last_name",
+    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "customer_preferred_cust_flag",
+    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
+    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag",
+    "cheerful"."sales_ext_list_price" as "sales_ext_list_price",
+    "cheerful"."sales_date_year" as "sales_date_year",
+    "cheerful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
+    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
+    "cheerful"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "cheerful"."sales_sales_channel" as "sales_sales_channel",
+    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
+    "cheerful"."sales_item_id" as "sales_item_id",
+    "cheerful"."sales_customer_id" as "sales_customer_id",
+    "cheerful"."sales_order_id" as "sales_order_id",
+    "cheerful"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost"
 FROM
-    "abundant"
+    "cheerful"
+    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "cheerful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
 ORDER BY 
     "customer_id" asc nulls first,
     "customer_first_name" asc nulls first,

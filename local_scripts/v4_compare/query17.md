@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6550 | 105 | 51.57 ms |
-| reference | 8323 | 125 | 70.68 ms |
-| v4 / ref | 0.79x | 0.84x | 0.73x |
+| v4 | 5553 | 71 | 26.02 ms |
+| reference | 8323 | 125 | 64.80 ms |
+| v4 / ref | 0.67x | 0.57x | 0.40x |
 
 ## Preql
 
@@ -60,109 +60,75 @@ limit 100
 
 ```sql
 WITH 
-highfalutin as (
-SELECT
-    "analysis_catalog_sales"."CS_BILL_CUSTOMER_SK" as "analysis_customer_id",
-    "analysis_catalog_sales"."CS_ITEM_SK" as "analysis_item_id",
-    "analysis_catalog_sales"."CS_QUANTITY" as "analysis_catalog_quantity",
-    "analysis_catalog_sales"."CS_SOLD_DATE_SK" as "analysis_catalog_date_id"
-FROM
-    "memory"."catalog_sales" as "analysis_catalog_sales"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-yummy as (
+uneven as (
 SELECT
     "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
     "analysis_item_items"."I_ITEM_ID" as "analysis_item_name",
-    "analysis_store_returns"."SR_RETURN_QUANTITY" as "analysis_store_return_quantity",
-    "analysis_store_sales"."SS_QUANTITY" as "analysis_store_quantity",
     "analysis_store_store"."S_STATE" as "analysis_store_state",
-    "highfalutin"."analysis_catalog_quantity" as "analysis_catalog_quantity"
+    avg("analysis_catalog_sales"."CS_QUANTITY") as "_virt_agg_avg_1688371525139287",
+    avg("analysis_catalog_sales"."CS_QUANTITY") as "catalog_sales_quantityave",
+    avg("analysis_store_returns"."SR_RETURN_QUANTITY") as "_virt_agg_avg_8572613716165371",
+    avg("analysis_store_returns"."SR_RETURN_QUANTITY") as "store_returns_quantityave",
+    avg("analysis_store_sales"."SS_QUANTITY") as "_virt_agg_avg_7518273379920258",
+    avg("analysis_store_sales"."SS_QUANTITY") as "store_sales_quantityave",
+    count("analysis_catalog_sales"."CS_QUANTITY") as "catalog_sales_quantitycount",
+    count("analysis_store_returns"."SR_RETURN_QUANTITY") as "store_returns_quantitycount",
+    count("analysis_store_sales"."SS_QUANTITY") as "store_sales_quantitycount",
+    stddev_samp("analysis_catalog_sales"."CS_QUANTITY") as "_virt_agg_stddev_2693366057110854",
+    stddev_samp("analysis_catalog_sales"."CS_QUANTITY") as "catalog_sales_quantitystdev",
+    stddev_samp("analysis_store_returns"."SR_RETURN_QUANTITY") as "_virt_agg_stddev_2955055239782943",
+    stddev_samp("analysis_store_returns"."SR_RETURN_QUANTITY") as "store_returns_quantitystdev",
+    stddev_samp("analysis_store_sales"."SS_QUANTITY") as "_virt_agg_stddev_8948125603328408",
+    stddev_samp("analysis_store_sales"."SS_QUANTITY") as "store_sales_quantitystdev"
 FROM
     "memory"."store_sales" as "analysis_store_sales"
     LEFT OUTER JOIN "memory"."store" as "analysis_store_store" on "analysis_store_sales"."SS_STORE_SK" = "analysis_store_store"."S_STORE_SK"
     INNER JOIN "memory"."store_returns" as "analysis_store_returns" on "analysis_store_sales"."SS_ITEM_SK" = "analysis_store_returns"."SR_ITEM_SK" AND "analysis_store_sales"."SS_TICKET_NUMBER" = "analysis_store_returns"."SR_TICKET_NUMBER"
     INNER JOIN "memory"."date_dim" as "analysis_store_sale_date_date" on "analysis_store_sales"."SS_SOLD_DATE_SK" = "analysis_store_sale_date_date"."D_DATE_SK"
     INNER JOIN "memory"."date_dim" as "analysis_store_return_date_date" on "analysis_store_returns"."SR_RETURNED_DATE_SK" = "analysis_store_return_date_date"."D_DATE_SK"
-    INNER JOIN "highfalutin" on "analysis_store_returns"."SR_CUSTOMER_SK" = "highfalutin"."analysis_customer_id" AND "analysis_store_returns"."SR_ITEM_SK" = "highfalutin"."analysis_item_id"
-    INNER JOIN "memory"."date_dim" as "analysis_catalog_date_date" on "highfalutin"."analysis_catalog_date_id" = "analysis_catalog_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."item" as "analysis_item_items" on "highfalutin"."analysis_item_id" = "analysis_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."catalog_sales" as "analysis_catalog_sales" on "analysis_store_returns"."SR_CUSTOMER_SK" = "analysis_catalog_sales"."CS_BILL_CUSTOMER_SK" AND "analysis_store_returns"."SR_ITEM_SK" = "analysis_catalog_sales"."CS_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "analysis_catalog_date_date" on "analysis_catalog_sales"."CS_SOLD_DATE_SK" = "analysis_catalog_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."item" as "analysis_item_items" on "analysis_catalog_sales"."CS_ITEM_SK" = "analysis_item_items"."I_ITEM_SK"
 WHERE
     "analysis_store_sale_date_date"."D_QUARTER_NAME" = '2001Q1' and "analysis_store_return_date_date"."D_QUARTER_NAME" in ('2001Q1','2001Q2','2001Q3') and "analysis_catalog_date_date"."D_QUARTER_NAME" in ('2001Q1','2001Q2','2001Q3') and SR_RETURN_TIME_SK IS NOT NULL
 
 GROUP BY
     1,
     2,
-    3,
-    4,
-    5,
-    6,
-    "analysis_catalog_date_date"."D_QUARTER_NAME",
-    "analysis_store_return_date_date"."D_QUARTER_NAME",
-    "analysis_store_sale_date_date"."D_QUARTER_NAME",
-    SR_RETURN_TIME_SK IS NOT NULL),
+    3),
 juicy as (
 SELECT
-    "yummy"."analysis_item_desc" as "analysis_item_desc",
-    "yummy"."analysis_item_name" as "analysis_item_name",
-    "yummy"."analysis_store_state" as "analysis_store_state",
-    avg("yummy"."analysis_catalog_quantity") as "_virt_agg_avg_1688371525139287",
-    avg("yummy"."analysis_catalog_quantity") as "catalog_sales_quantityave",
-    avg("yummy"."analysis_store_quantity") as "_virt_agg_avg_7518273379920258",
-    avg("yummy"."analysis_store_quantity") as "store_sales_quantityave",
-    avg("yummy"."analysis_store_return_quantity") as "_virt_agg_avg_8572613716165371",
-    avg("yummy"."analysis_store_return_quantity") as "store_returns_quantityave",
-    count("yummy"."analysis_catalog_quantity") as "catalog_sales_quantitycount",
-    count("yummy"."analysis_store_quantity") as "store_sales_quantitycount",
-    count("yummy"."analysis_store_return_quantity") as "store_returns_quantitycount",
-    stddev_samp("yummy"."analysis_catalog_quantity") as "_virt_agg_stddev_2693366057110854",
-    stddev_samp("yummy"."analysis_catalog_quantity") as "catalog_sales_quantitystdev",
-    stddev_samp("yummy"."analysis_store_quantity") as "_virt_agg_stddev_8948125603328408",
-    stddev_samp("yummy"."analysis_store_quantity") as "store_sales_quantitystdev",
-    stddev_samp("yummy"."analysis_store_return_quantity") as "_virt_agg_stddev_2955055239782943",
-    stddev_samp("yummy"."analysis_store_return_quantity") as "store_returns_quantitystdev"
+    "uneven"."_virt_agg_stddev_2693366057110854" / "uneven"."_virt_agg_avg_1688371525139287" as "catalog_sales_quantitycov",
+    "uneven"."_virt_agg_stddev_2955055239782943" / "uneven"."_virt_agg_avg_8572613716165371" as "store_returns_quantitycov",
+    "uneven"."_virt_agg_stddev_8948125603328408" / "uneven"."_virt_agg_avg_7518273379920258" as "store_sales_quantitycov",
+    "uneven"."analysis_item_desc" as "analysis_item_desc",
+    "uneven"."analysis_item_name" as "analysis_item_name",
+    "uneven"."analysis_store_state" as "analysis_store_state"
 FROM
-    "yummy"
-GROUP BY
-    1,
-    2,
-    3),
-vacuous as (
+    "uneven")
 SELECT
-    "juicy"."_virt_agg_stddev_2693366057110854" / "juicy"."_virt_agg_avg_1688371525139287" as "catalog_sales_quantitycov",
-    "juicy"."_virt_agg_stddev_2955055239782943" / "juicy"."_virt_agg_avg_8572613716165371" as "store_returns_quantitycov",
-    "juicy"."_virt_agg_stddev_8948125603328408" / "juicy"."_virt_agg_avg_7518273379920258" as "store_sales_quantitycov",
-    "juicy"."analysis_item_desc" as "analysis_item_desc",
-    "juicy"."analysis_item_name" as "analysis_item_name",
-    "juicy"."analysis_store_state" as "analysis_store_state"
+    coalesce("juicy"."analysis_item_name","uneven"."analysis_item_name") as "analysis_item_name",
+    coalesce("juicy"."analysis_item_desc","uneven"."analysis_item_desc") as "analysis_item_desc",
+    coalesce("juicy"."analysis_store_state","uneven"."analysis_store_state") as "analysis_store_state",
+    coalesce("uneven"."store_sales_quantitycount",0) as "store_sales_quantitycount",
+    "uneven"."store_sales_quantityave" as "store_sales_quantityave",
+    "uneven"."store_sales_quantitystdev" as "store_sales_quantitystdev",
+    "juicy"."store_sales_quantitycov" as "store_sales_quantitycov",
+    coalesce("uneven"."store_returns_quantitycount",0) as "store_returns_quantitycount",
+    "uneven"."store_returns_quantityave" as "store_returns_quantityave",
+    "uneven"."store_returns_quantitystdev" as "store_returns_quantitystdev",
+    "juicy"."store_returns_quantitycov" as "store_returns_quantitycov",
+    coalesce("uneven"."catalog_sales_quantitycount",0) as "catalog_sales_quantitycount",
+    "uneven"."catalog_sales_quantityave" as "catalog_sales_quantityave",
+    "uneven"."catalog_sales_quantitystdev" as "catalog_sales_quantitystdev",
+    "juicy"."catalog_sales_quantitycov" as "catalog_sales_quantitycov"
 FROM
-    "juicy")
-SELECT
-    coalesce("juicy"."analysis_item_name","vacuous"."analysis_item_name") as "analysis_item_name",
-    coalesce("juicy"."analysis_item_desc","vacuous"."analysis_item_desc") as "analysis_item_desc",
-    coalesce("juicy"."analysis_store_state","vacuous"."analysis_store_state") as "analysis_store_state",
-    coalesce("juicy"."store_sales_quantitycount",0) as "store_sales_quantitycount",
-    "juicy"."store_sales_quantityave" as "store_sales_quantityave",
-    "juicy"."store_sales_quantitystdev" as "store_sales_quantitystdev",
-    "vacuous"."store_sales_quantitycov" as "store_sales_quantitycov",
-    coalesce("juicy"."store_returns_quantitycount",0) as "store_returns_quantitycount",
-    "juicy"."store_returns_quantityave" as "store_returns_quantityave",
-    "juicy"."store_returns_quantitystdev" as "store_returns_quantitystdev",
-    "vacuous"."store_returns_quantitycov" as "store_returns_quantitycov",
-    coalesce("juicy"."catalog_sales_quantitycount",0) as "catalog_sales_quantitycount",
-    "juicy"."catalog_sales_quantityave" as "catalog_sales_quantityave",
-    "juicy"."catalog_sales_quantitystdev" as "catalog_sales_quantitystdev",
-    "vacuous"."catalog_sales_quantitycov" as "catalog_sales_quantitycov"
-FROM
-    "vacuous"
-    FULL JOIN "juicy" on "vacuous"."analysis_item_desc" is not distinct from "juicy"."analysis_item_desc" AND "vacuous"."analysis_item_name" is not distinct from "juicy"."analysis_item_name" AND "vacuous"."analysis_store_state" is not distinct from "juicy"."analysis_store_state"
+    "juicy"
+    FULL JOIN "uneven" on "juicy"."analysis_item_desc" is not distinct from "uneven"."analysis_item_desc" AND "juicy"."analysis_item_name" is not distinct from "uneven"."analysis_item_name" AND "juicy"."analysis_store_state" is not distinct from "uneven"."analysis_store_state"
 ORDER BY 
-    coalesce("juicy"."analysis_item_name","vacuous"."analysis_item_name") asc nulls first,
-    coalesce("juicy"."analysis_item_desc","vacuous"."analysis_item_desc") asc nulls first,
-    coalesce("juicy"."analysis_store_state","vacuous"."analysis_store_state") asc nulls first
+    coalesce("juicy"."analysis_item_name","uneven"."analysis_item_name") asc nulls first,
+    coalesce("juicy"."analysis_item_desc","uneven"."analysis_item_desc") asc nulls first,
+    coalesce("juicy"."analysis_store_state","uneven"."analysis_store_state") asc nulls first
 LIMIT (100)
 ```
 

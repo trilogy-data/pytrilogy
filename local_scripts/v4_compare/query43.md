@@ -1,24 +1,26 @@
 # Query 43
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (6 rows) |
 | reference execution | OK (6 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 6 (6 distinct)
+ref rows: 6 (6 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3032 | 51 | — |
-| reference | 1919 | 31 | 35.89 ms |
-| v4 / ref | 1.58x | 1.65x | — |
+| v4 | 1919 | 31 | 35.30 ms |
+| reference | 1919 | 31 | 34.11 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -54,11 +56,14 @@ limit 100
 ## v4 generated SQL
 
 ```sql
-WITH 
-cheerful as (
 SELECT
-    "store_sales_date_date"."D_DAY_NAME" as "store_sales_date_day_name",
-    "store_sales_store_sales"."SS_SALES_PRICE" as "store_sales_sales_price",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Sunday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sun_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Monday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "mon_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Tuesday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "tue_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Wednesday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "wed_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Thursday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "thu_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Friday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "fri_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Saturday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sat_sales",
     "store_sales_store_store"."S_STORE_ID" as "store_sales_store_text_id",
     "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
 FROM
@@ -67,36 +72,13 @@ FROM
     INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
 WHERE
     "store_sales_store_store"."S_GMT_OFFSET" = -5 and "store_sales_date_date"."D_YEAR" = 2000
-),
-thoughtful as (
-SELECT
-    CASE WHEN "cheerful"."store_sales_date_day_name" = 'Friday' THEN "cheerful"."store_sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_3265047064841977",
-    CASE WHEN "cheerful"."store_sales_date_day_name" = 'Monday' THEN "cheerful"."store_sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_870692220845785",
-    CASE WHEN "cheerful"."store_sales_date_day_name" = 'Saturday' THEN "cheerful"."store_sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_4311435794136489",
-    CASE WHEN "cheerful"."store_sales_date_day_name" = 'Sunday' THEN "cheerful"."store_sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_615389228694613",
-    CASE WHEN "cheerful"."store_sales_date_day_name" = 'Thursday' THEN "cheerful"."store_sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_3382904634884294",
-    CASE WHEN "cheerful"."store_sales_date_day_name" = 'Tuesday' THEN "cheerful"."store_sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_1558841270808694",
-    CASE WHEN "cheerful"."store_sales_date_day_name" = 'Wednesday' THEN "cheerful"."store_sales_sales_price" ELSE NULL END as "_virt_filter_sales_price_9958261983372219"
-FROM
-    "cheerful")
-SELECT
-    sum("thoughtful"."_virt_filter_sales_price_615389228694613") as "sun_sales",
-    sum("thoughtful"."_virt_filter_sales_price_870692220845785") as "mon_sales",
-    sum("thoughtful"."_virt_filter_sales_price_1558841270808694") as "tue_sales",
-    sum("thoughtful"."_virt_filter_sales_price_9958261983372219") as "wed_sales",
-    sum("thoughtful"."_virt_filter_sales_price_3382904634884294") as "thu_sales",
-    sum("thoughtful"."_virt_filter_sales_price_3265047064841977") as "fri_sales",
-    sum("thoughtful"."_virt_filter_sales_price_4311435794136489") as "sat_sales",
-    "cheerful"."store_sales_store_name" as "store_sales_store_name",
-    "cheerful"."store_sales_store_text_id" as "store_sales_store_text_id"
-FROM
-    "thoughtful"
+
 GROUP BY
     8,
     9
 ORDER BY 
-    "cheerful"."store_sales_store_name" asc,
-    "cheerful"."store_sales_store_text_id" asc,
+    "store_sales_store_store"."S_STORE_NAME" asc,
+    "store_sales_store_store"."S_STORE_ID" asc,
     "sun_sales" asc,
     "mon_sales" asc,
     "tue_sales" asc,
@@ -141,29 +123,4 @@ ORDER BY
     "fri_sales" asc,
     "sat_sales" asc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "cheerful" not found!
-Candidate tables: "thoughtful"
-
-LINE 34:     "cheerful"."store_sales_store_name" as "store_sales_store_name...
-             ^
 ```

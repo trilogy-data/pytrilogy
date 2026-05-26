@@ -1,24 +1,38 @@
 # Query 49
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (34 rows) |
 | reference execution | OK (34 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 34 (34 distinct)
+ref rows: 34 (34 distinct)
+only in v4 (showing up to 5 of 22):
+  1x  ('catalog', 1, 5721, 1, 0.81)
+  1x  ('catalog', 1, 15179, 1, 0.6)
+  1x  ('catalog', 2, 103, 2, 0.6129032258064516)
+  1x  ('catalog', 2, 14487, 2, 0.8369565217391305)
+  1x  ('catalog', 3, 31, 3, 0.8607594936708861)
+only in ref (showing up to 5 of 22):
+  1x  ('store', 1, 5721, 1, 0.81)
+  1x  ('store', 2, 14487, 2, 0.8369565217391305)
+  1x  ('store', 3, 31, 3, 0.8607594936708861)
+  1x  ('store', 4, 5283, 4, 0.8829787234042553)
+  1x  ('store', 5, 9191, 5, 0.9111111111111111)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7356 | 162 | — |
-| reference | 5430 | 119 | 37.11 ms |
-| v4 / ref | 1.35x | 1.36x | — |
+| v4 | 6648 | 143 | 37.53 ms |
+| reference | 5430 | 119 | 31.72 ms |
+| v4 / ref | 1.22x | 1.20x | 1.18x |
 
 ## Preql
 
@@ -104,12 +118,9 @@ abundant as (
 SELECT
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
-    "sales_catalog_sales_unified"."CS_NET_PROFIT" as "sales_net_profit",
     "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
     "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
-     'CATALOG'  as "sales_sales_channel",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
+     'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -120,12 +131,9 @@ UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
-    "sales_store_sales_unified"."SS_NET_PROFIT" as "sales_net_profit",
     "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
     "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
-     'STORE'  as "sales_sales_channel",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
+     'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -136,12 +144,9 @@ UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
-    "sales_web_sales_unified"."WS_NET_PROFIT" as "sales_net_profit",
     "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
     "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
-     'WEB'  as "sales_sales_channel",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
+     'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -161,17 +166,7 @@ FROM
     INNER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_return_amount" > 10000
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    "abundant"."sales_date_month_of_year",
-    "abundant"."sales_date_year",
-    "abundant"."sales_net_profit"),
+),
 juicy as (
 SELECT
     "yummy"."sales_item_id" as "sales_item_id",
@@ -194,15 +189,15 @@ SELECT
     coalesce("juicy"."sales_sales_channel","yummy"."sales_sales_channel") as "sales_sales_channel"
 FROM
     "juicy"
-    INNER JOIN "yummy" on "juicy"."sales_item_id" = "yummy"."sales_item_id" AND "juicy"."sales_sales_channel" = "yummy"."sales_sales_channel"),
+    FULL JOIN "yummy" on "juicy"."sales_item_id" = "yummy"."sales_item_id" AND "juicy"."sales_sales_channel" = "yummy"."sales_sales_channel"),
 concerned as (
 SELECT
-    "yummy"."sales_item_id" as "sales_item_id",
-    "yummy"."sales_sales_channel" as "sales_sales_channel",
-    rank() over (partition by "yummy"."sales_sales_channel" order by "vacuous"."currency_ratio" asc ) as "currency_rank",
-    rank() over (partition by "yummy"."sales_sales_channel" order by "vacuous"."return_ratio" asc ) as "return_rank"
+    "vacuous"."sales_item_id" as "sales_item_id",
+    "vacuous"."sales_sales_channel" as "sales_sales_channel",
+    rank() over (partition by "vacuous"."sales_sales_channel" order by "vacuous"."currency_ratio" asc ) as "currency_rank",
+    rank() over (partition by "vacuous"."sales_sales_channel" order by "vacuous"."return_ratio" asc ) as "return_rank"
 FROM
-    "yummy"),
+    "vacuous"),
 young as (
 SELECT
     "concerned"."currency_rank" as "currency_rank",
@@ -358,29 +353,4 @@ ORDER BY
     "vacuous"."currency_rank" asc nulls first,
     "item" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "vacuous" not found!
-Candidate tables: "yummy"
-
-LINE 128: ...() over (partition by "yummy"."sales_sales_channel" order by "vacuous"."currency_ratio" asc ) as "currency_rank",
-                                                                          ^
 ```

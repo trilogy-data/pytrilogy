@@ -49,6 +49,39 @@ def _atoms_at(group_graph: nx.DiGraph, gid: str) -> list[BoolExpr]:
     return list(group_graph.nodes[gid].get("condition_atoms", []) or [])
 
 
+def _existence_for_group(
+    group_graph: nx.DiGraph,
+    built: dict[str, StrategyNode],
+    gid: str,
+) -> tuple[list[BuildConcept], list[StrategyNode]]:
+    """For each atom at `gid`, gather its existence_arguments (right-side
+    concepts of a SubselectComparison) and the built groups that supply
+    them. These become the host node's `existence_concepts` plus extra
+    parents — the SQL renderer emits the right side as a subselect lookup
+    against the parent CTE rather than joining it into the row stream."""
+    existence_concepts: list[BuildConcept] = []
+    existence_parents: list[StrategyNode] = []
+    seen_concepts: set[str] = set()
+    seen_parents: set[int] = set()
+    for atom in _atoms_at(group_graph, gid):
+        for arg_group in atom.existence_arguments:
+            for concept in arg_group:
+                if concept.address in seen_concepts:
+                    continue
+                seen_concepts.add(concept.address)
+                existence_concepts.append(concept)
+                # Find the built group that supplies this concept.
+                for source_gid, source_node in built.items():
+                    if source_gid == gid:
+                        continue
+                    if any(o.address == concept.address for o in source_node.output_concepts):
+                        if id(source_node) not in seen_parents:
+                            seen_parents.add(id(source_node))
+                            existence_parents.append(source_node.copy())
+                        break
+    return existence_concepts, existence_parents
+
+
 def _accumulated_atoms_above(
     group_graph: nx.DiGraph, gid: str
 ) -> list[BoolExpr]:
@@ -70,16 +103,45 @@ def _parent_nodes_for(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     gid: str,
+    *,
+    needed: set[str],
 ) -> list[StrategyNode]:
     """Look up the already-built StrategyNodes for `gid`'s lineage
     predecessors. Topological order guarantees they exist (or that the
-    generator was skipped, in which case we just skip that parent)."""
-    parents: list[StrategyNode] = []
+    generator was skipped, in which case we just skip that parent).
+
+    Drop an ancestor predecessor X when some descendant predecessor Y
+    already provides everything X would contribute to `needed` (the set
+    of concepts this group actually consumes). Pass-through nodes like
+    filter re-expose their parent's columns, so root often ends up
+    redundant once filter is in the candidate set. Including both creates
+    multi-parent ambiguity for non-merge generators — no JOIN gets
+    emitted and the SQL renderer references the dropped parent by name,
+    yielding a binder error."""
+    candidates: list[tuple[str, StrategyNode]] = []
     for pgid in group_graph.predecessors(gid):
         if pgid == FINAL_NODE_ID:
             continue
         node = built.get(pgid)
         if node is not None:
+            candidates.append((pgid, node))
+
+    def provides(node: StrategyNode) -> set[str]:
+        return {o.address for o in node.output_concepts} & needed
+
+    parents: list[StrategyNode] = []
+    for pgid, node in candidates:
+        my_provides = provides(node)
+        covered_by_descendant = False
+        for other_pgid, other_node in candidates:
+            if other_pgid == pgid:
+                continue
+            if pgid not in nx.ancestors(group_graph, other_pgid):
+                continue
+            if my_provides <= provides(other_node):
+                covered_by_descendant = True
+                break
+        if not covered_by_descendant:
             parents.append(node.copy())
     return parents
 
@@ -306,7 +368,17 @@ def build_strategy_node(
             continue
         injected = _wrap_atoms(_atoms_at(group_graph, gid))
         preexisting = _wrap_atoms(_accumulated_atoms_above(group_graph, gid))
-        parents = _parent_nodes_for(group_graph, built, gid)
+        # The "needed" set drives ancestor-dedup: a parent is kept only if
+        # it contributes something to it that no descendant parent also
+        # provides. Includes both the output addresses themselves and the
+        # lineage args those outputs consume.
+        needed: set[str] = set()
+        for c in outputs:
+            needed.add(c.address)
+            if c.lineage is not None:
+                for arg in c.lineage.concept_arguments:
+                    needed.add(arg.address)
+        parents = _parent_nodes_for(group_graph, built, gid, needed=needed)
         outputs = _satisfiable_outputs(outputs, parents)
         if not outputs:
             continue
@@ -327,6 +399,18 @@ def build_strategy_node(
             f"-> {type(node).__name__ if node else None}"
         )
         if node is not None:
+            # Attach existence parents+concepts for any SubselectComparison
+            # atoms at this group. Done post-build so the generators stay
+            # ignorant of existence handling — the host node just learns it
+            # has extra side-channel parents whose concepts render as
+            # subselects rather than joins.
+            ex_concepts, ex_parents = _existence_for_group(group_graph, built, gid)
+            if ex_concepts:
+                node.parents = list(node.parents) + ex_parents
+                node.existence_concepts = (
+                    list(node.existence_concepts) + ex_concepts
+                )
+                node.rebuild_cache()
             built[gid] = node
 
     if not built:

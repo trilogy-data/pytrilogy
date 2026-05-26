@@ -24,9 +24,9 @@ only in v4 (showing up to 5 of 33):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3999 | 103 | 158.49 ms |
-| reference | 3459 | 60 | 32.33 ms |
-| v4 / ref | 1.16x | 1.72x | 4.90x |
+| v4 | 4885 | 91 | 39.90 ms |
+| reference | 3459 | 60 | 38.54 ms |
+| v4 / ref | 1.41x | 1.52x | 1.04x |
 
 ## Preql
 
@@ -58,36 +58,63 @@ order by
 WITH 
 cheerful as (
 SELECT
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_SOLD_TIME_SK" as "sales_time_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."time_dim" as "sales_time_time" on "sales_catalog_sales_unified"."CS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 1999 and "sales_date_date"."D_MOY" = 11 and "sales_item_items"."I_MANAGER_ID" = 1 and ( "sales_time_time"."T_MEAL_TIME" = 'breakfast' or "sales_time_time"."T_MEAL_TIME" = 'dinner' )
+
 UNION ALL
 SELECT
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_SOLD_TIME_SK" as "sales_time_id"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."time_dim" as "sales_time_time" on "sales_store_sales_unified"."SS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 1999 and "sales_date_date"."D_MOY" = 11 and "sales_item_items"."I_MANAGER_ID" = 1 and ( "sales_time_time"."T_MEAL_TIME" = 'breakfast' or "sales_time_time"."T_MEAL_TIME" = 'dinner' )
+
 UNION ALL
 SELECT
-    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
     "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_SOLD_TIME_SK" as "sales_time_id"
 FROM
-    "memory"."web_sales" as "sales_web_sales_unified"),
-thoughtful as (
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."time_dim" as "sales_time_time" on "sales_web_sales_unified"."WS_SOLD_TIME_SK" = "sales_time_time"."T_TIME_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 1999 and "sales_date_date"."D_MOY" = 11 and "sales_item_items"."I_MANAGER_ID" = 1 and ( "sales_time_time"."T_MEAL_TIME" = 'breakfast' or "sales_time_time"."T_MEAL_TIME" = 'dinner' )
+),
+abundant as (
 SELECT
-    "cheerful"."sales_date_id" as "sales_date_id",
     "cheerful"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "cheerful"."sales_item_id" as "sales_item_id",
-    "cheerful"."sales_time_id" as "sales_time_id"
+    "sales_item_items"."I_BRAND" as "sales_item_brand_name",
+    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
+    "sales_time_time"."T_HOUR" as "sales_time_hour",
+    "sales_time_time"."T_MINUTE" as "sales_time_minute"
 FROM
     "cheerful"
+    INNER JOIN "memory"."item" as "sales_item_items" on "cheerful"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."time_dim" as "sales_time_time" on "cheerful"."sales_time_id" = "sales_time_time"."T_TIME_SK"),
+yummy as (
+SELECT
+    "abundant"."sales_item_brand_id" as "sales_item_brand_id",
+    "abundant"."sales_item_brand_name" as "sales_item_brand_name",
+    "abundant"."sales_time_hour" as "sales_time_hour",
+    "abundant"."sales_time_minute" as "sales_time_minute",
+    sum("abundant"."sales_ext_sales_price") as "ext_price"
+FROM
+    "abundant"
 GROUP BY
     1,
     2,
@@ -95,69 +122,30 @@ GROUP BY
     4),
 uneven as (
 SELECT
-    "sales_item_items"."I_BRAND" as "sales_item_brand_name",
-    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
-    "sales_time_time"."T_HOUR" as "sales_time_hour",
-    "sales_time_time"."T_MINUTE" as "sales_time_minute",
-    "thoughtful"."sales_ext_sales_price" as "sales_ext_sales_price"
+    "abundant"."sales_item_brand_id" as "brand_id",
+    "abundant"."sales_item_brand_id" as "sales_item_brand_id",
+    "abundant"."sales_item_brand_name" as "brand",
+    "abundant"."sales_item_brand_name" as "sales_item_brand_name",
+    "abundant"."sales_time_hour" as "sales_time_hour",
+    "abundant"."sales_time_hour" as "t_hour",
+    "abundant"."sales_time_minute" as "sales_time_minute",
+    "abundant"."sales_time_minute" as "t_minute"
 FROM
-    "thoughtful"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "sales_item_items" on "thoughtful"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."time_dim" as "sales_time_time" on "thoughtful"."sales_time_id" = "sales_time_time"."T_TIME_SK"
-WHERE
-    "sales_date_date"."D_YEAR" = 1999 and "sales_date_date"."D_MOY" = 11 and "sales_item_items"."I_MANAGER_ID" = 1 and ( "sales_time_time"."T_MEAL_TIME" = 'breakfast' or "sales_time_time"."T_MEAL_TIME" = 'dinner' )
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    "sales_date_date"."D_MOY",
-    "sales_date_date"."D_YEAR",
-    "sales_item_items"."I_MANAGER_ID",
-    "sales_time_time"."T_MEAL_TIME"),
-juicy as (
+    "abundant")
 SELECT
-    "uneven"."sales_item_brand_id" as "sales_item_brand_id",
-    "uneven"."sales_item_brand_name" as "sales_item_brand_name",
-    "uneven"."sales_time_hour" as "sales_time_hour",
-    "uneven"."sales_time_minute" as "sales_time_minute",
-    sum("uneven"."sales_ext_sales_price") as "ext_price"
+    "uneven"."brand_id" as "brand_id",
+    "uneven"."brand" as "brand",
+    "uneven"."t_hour" as "t_hour",
+    "uneven"."t_minute" as "t_minute",
+    "yummy"."ext_price" as "ext_price"
 FROM
-    "uneven"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-yummy as (
-SELECT
-    "uneven"."sales_item_brand_id" as "brand_id",
-    "uneven"."sales_item_brand_id" as "sales_item_brand_id",
-    "uneven"."sales_item_brand_name" as "brand",
-    "uneven"."sales_item_brand_name" as "sales_item_brand_name",
-    "uneven"."sales_time_hour" as "sales_time_hour",
-    "uneven"."sales_time_hour" as "t_hour",
-    "uneven"."sales_time_minute" as "sales_time_minute",
-    "uneven"."sales_time_minute" as "t_minute"
-FROM
-    "uneven")
-SELECT
-    "yummy"."brand_id" as "brand_id",
-    "yummy"."brand" as "brand",
-    "yummy"."t_hour" as "t_hour",
-    "yummy"."t_minute" as "t_minute",
-    "juicy"."ext_price" as "ext_price"
-FROM
-    "juicy"
-    LEFT OUTER JOIN "yummy" on "juicy"."sales_item_brand_id" = "yummy"."sales_item_brand_id" AND "juicy"."sales_item_brand_name" = "yummy"."sales_item_brand_name" AND "juicy"."sales_time_hour" = "yummy"."sales_time_hour" AND "juicy"."sales_time_minute" = "yummy"."sales_time_minute"
+    "yummy"
+    LEFT OUTER JOIN "uneven" on "yummy"."sales_item_brand_id" = "uneven"."sales_item_brand_id" AND "yummy"."sales_item_brand_name" = "uneven"."sales_item_brand_name" AND "yummy"."sales_time_hour" = "uneven"."sales_time_hour" AND "yummy"."sales_time_minute" = "uneven"."sales_time_minute"
 ORDER BY 
-    "juicy"."ext_price" desc nulls first,
-    "yummy"."brand_id" asc nulls first,
-    "yummy"."t_hour" asc nulls first,
-    "yummy"."t_minute" asc nulls first
+    "yummy"."ext_price" desc nulls first,
+    "uneven"."brand_id" asc nulls first,
+    "uneven"."t_hour" asc nulls first,
+    "uneven"."t_minute" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

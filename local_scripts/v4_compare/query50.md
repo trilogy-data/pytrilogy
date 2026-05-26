@@ -1,24 +1,34 @@
 # Query 50
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (6 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (1 distinct)
+ref rows: 6 (6 distinct)
+only in v4 (showing up to 5 of 1):
+  99x  (108, 64, 61, 58, 56, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
+only in ref (showing up to 5 of 5):
+  1x  (99, 75, 57, 55, 41, 'Midway', 1, 'Williamson County', 'ation', 'TN', 'Lee ', '811', 'Circle', 'Suite T', '31904')
+  1x  (108, 73, 51, 46, 55, 'Midway', 1, 'Williamson County', 'bar', 'TN', '4th ', '175', 'Court', 'Suite C', '31904')
+  1x  (113, 81, 46, 44, 50, 'Fairview', 1, 'Williamson County', 'eing', 'TN', '12th ', '226', 'Lane', 'Suite D', '35709')
+  1x  (108, 73, 42, 44, 41, 'Midway', 1, 'Williamson County', 'ese', 'TN', 'Lake ', '27', 'Ln', 'Suite 260', '31904')
+  1x  (100, 69, 65, 55, 56, 'Midway', 1, 'Williamson County', 'ought', 'TN', 'Spring ', '767', 'Wy', 'Suite 250', '31904')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7331 | 127 | — |
-| reference | 6312 | 108 | 110.01 ms |
-| v4 / ref | 1.16x | 1.18x | — |
+| v4 | 7692 | 123 | 84.67 ms |
+| reference | 6312 | 108 | 99.02 ms |
+| v4 / ref | 1.22x | 1.14x | 0.86x |
 
 ## Preql
 
@@ -121,8 +131,6 @@ GROUP BY
     "store_sales_store_sales"."SS_CUSTOMER_SK"),
 cooperative as (
 SELECT
-    "thoughtful"."store_sales_item_id" as "store_sales_item_id",
-    "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" as "days_to_return",
     "thoughtful"."store_sales_store_city" as "store_sales_store_city",
     "thoughtful"."store_sales_store_company_id" as "store_sales_store_company_id",
     "thoughtful"."store_sales_store_county" as "store_sales_store_county",
@@ -133,33 +141,31 @@ SELECT
     "thoughtful"."store_sales_store_street_number" as "store_sales_store_street_number",
     "thoughtful"."store_sales_store_street_type" as "store_sales_store_street_type",
     "thoughtful"."store_sales_store_suite_number" as "store_sales_store_suite_number",
-    "thoughtful"."store_sales_store_zip" as "store_sales_store_zip"
+    "thoughtful"."store_sales_store_zip" as "store_sales_store_zip",
+    "thoughtful"."store_sales_ticket_number" as "store_sales_ticket_number",
+    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > -1 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 30 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_9423286833555721",
+    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > 120 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 99999 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_5952815899712229",
+    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > 30 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 60 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_7510659595786166",
+    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > 60 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 90 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_6450764138736494",
+    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > 90 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 120 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_4994347099701481"
 FROM
     "thoughtful"),
-questionable as (
-SELECT
-    CASE WHEN "cooperative"."days_to_return" > -1 and "cooperative"."days_to_return" <= 30 THEN "cooperative"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_9423286833555721",
-    CASE WHEN "cooperative"."days_to_return" > 120 and "cooperative"."days_to_return" <= 99999 THEN "cooperative"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_5952815899712229",
-    CASE WHEN "cooperative"."days_to_return" > 30 and "cooperative"."days_to_return" <= 60 THEN "cooperative"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_7510659595786166",
-    CASE WHEN "cooperative"."days_to_return" > 60 and "cooperative"."days_to_return" <= 90 THEN "cooperative"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_6450764138736494",
-    CASE WHEN "cooperative"."days_to_return" > 90 and "cooperative"."days_to_return" <= 120 THEN "cooperative"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_4994347099701481"
-FROM
-    "cooperative"),
 abundant as (
 SELECT
-    count("questionable"."_virt_filter_id_4994347099701481") as "_virt_agg_count_5623669394588902",
-    count("questionable"."_virt_filter_id_5952815899712229") as "_virt_agg_count_7969998780980378",
-    count("questionable"."_virt_filter_id_6450764138736494") as "_virt_agg_count_4020156712075239",
-    count("questionable"."_virt_filter_id_7510659595786166") as "_virt_agg_count_3393740962845140",
-    count("questionable"."_virt_filter_id_9423286833555721") as "_virt_agg_count_7691116690045464"
+    "cooperative"."store_sales_store_id" as "store_sales_store_id",
+    count("cooperative"."_virt_filter_id_4994347099701481") as "_virt_agg_count_5623669394588902",
+    count("cooperative"."_virt_filter_id_5952815899712229") as "_virt_agg_count_7969998780980378",
+    count("cooperative"."_virt_filter_id_6450764138736494") as "_virt_agg_count_4020156712075239",
+    count("cooperative"."_virt_filter_id_7510659595786166") as "_virt_agg_count_3393740962845140",
+    count("cooperative"."_virt_filter_id_9423286833555721") as "_virt_agg_count_7691116690045464"
 FROM
-    "questionable"
+    "cooperative"
 GROUP BY
-    "thoughtful"."store_sales_store_id",
-    "thoughtful"."store_sales_ticket_number"),
+    1,
+    "cooperative"."store_sales_ticket_number"),
 uneven as (
 SELECT
-    "thoughtful"."store_sales_store_id" as "store_sales_store_id",
+    "abundant"."store_sales_store_id" as "store_sales_store_id",
     sum("abundant"."_virt_agg_count_3393740962845140") as "days_31_60",
     sum("abundant"."_virt_agg_count_4020156712075239") as "days_61_90",
     sum("abundant"."_virt_agg_count_5623669394588902") as "days_91_120",
@@ -313,29 +319,4 @@ ORDER BY
     "thoughtful"."store_sales_store_state" asc nulls first,
     "thoughtful"."store_sales_store_zip" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
-Candidate tables: "questionable"
-
-LINE 83:     "thoughtful"."store_sales_store_id",
-             ^
 ```

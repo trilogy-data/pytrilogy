@@ -165,9 +165,16 @@ def _inject_conditions(
 
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
-            inputs = {c.address for c in atom.concept_arguments}
+            # Only the row arguments need to live in the host group's row
+            # stream. Existence arguments (the right-hand side of an IN
+            # subquery) are reached via a side-channel subselect — they
+            # don't constrain placement and are threaded into the host
+            # node as `existence_concepts` later. Without this distinction,
+            # an atom like `week_seq IN relevent_week_seq` finds no group
+            # that contains both inputs and drops on the floor.
+            row_inputs = {c.address for c in atom.row_arguments}
             candidates = [
-                gid for gid, mems in group_members.items() if inputs <= mems
+                gid for gid, mems in group_members.items() if row_inputs <= mems
             ]
             if not candidates:
                 continue

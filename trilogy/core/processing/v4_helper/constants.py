@@ -21,4 +21,6 @@ GROUPING_DERIVATIONS: set[str] = {
     Derivation.GROUP_TO.value,
 }
 
+LABEL_DEPTH = "depth_label"
+
 FINAL_NODE_ID = "__final__"

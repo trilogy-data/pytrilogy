@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5077 | 62 | 39.51 ms |
-| reference | 3830 | 25 | 32.43 ms |
-| v4 / ref | 1.33x | 2.48x | 1.22x |
+| v4 | 4499 | 48 | 56.22 ms |
+| reference | 3830 | 25 | 36.67 ms |
+| v4 / ref | 1.17x | 1.92x | 1.53x |
 
 ## Preql
 
@@ -104,21 +104,7 @@ FROM
     INNER JOIN "memory"."customer_demographics" as "wr_returning_demographic_customer_demographics" on "wr_web_returns"."WR_RETURNING_CDEMO_SK" = "wr_returning_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
     "wr_web_sales_date_date"."D_YEAR" = 2000 and ( ( "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'M' and "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = "wr_returning_demographic_customer_demographics"."CD_MARITAL_STATUS" and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'Advanced Degree' and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = "wr_returning_demographic_customer_demographics"."CD_EDUCATION_STATUS" and "wr_web_sales_web_sales"."WS_SALES_PRICE" BETWEEN 100.0 AND 150.0 ) or ( "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = "wr_returning_demographic_customer_demographics"."CD_MARITAL_STATUS" and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = "wr_returning_demographic_customer_demographics"."CD_EDUCATION_STATUS" and "wr_web_sales_web_sales"."WS_SALES_PRICE" BETWEEN 50.0 AND 100.0 ) or ( "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'W' and "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = "wr_returning_demographic_customer_demographics"."CD_MARITAL_STATUS" and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = '2 yr Degree' and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = "wr_returning_demographic_customer_demographics"."CD_EDUCATION_STATUS" and "wr_web_sales_web_sales"."WS_SALES_PRICE" BETWEEN 150.0 AND 200.0 ) ) and ( ( "wr_refunded_address_customer_address"."CA_COUNTRY" = 'United States' and "wr_refunded_address_customer_address"."CA_STATE" in ('IN','OH','NJ') and "wr_web_sales_web_sales"."WS_NET_PROFIT" BETWEEN 100 AND 200 ) or ( "wr_refunded_address_customer_address"."CA_COUNTRY" = 'United States' and "wr_refunded_address_customer_address"."CA_STATE" in ('WI','CT','KY') and "wr_web_sales_web_sales"."WS_NET_PROFIT" BETWEEN 150 AND 300 ) or ( "wr_refunded_address_customer_address"."CA_COUNTRY" = 'United States' and "wr_refunded_address_customer_address"."CA_STATE" in ('LA','IA','AR') and "wr_web_sales_web_sales"."WS_NET_PROFIT" BETWEEN 50 AND 250 ) )
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    "wr_refunded_address_customer_address"."CA_COUNTRY",
-    "wr_refunded_address_customer_address"."CA_STATE",
-    "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS",
-    "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS",
-    "wr_returning_demographic_customer_demographics"."CD_EDUCATION_STATUS",
-    "wr_returning_demographic_customer_demographics"."CD_MARITAL_STATUS",
-    "wr_web_sales_date_date"."D_YEAR",
-    "wr_web_sales_web_sales"."WS_NET_PROFIT",
-    "wr_web_sales_web_sales"."WS_SALES_PRICE"),
+),
 yummy as (
 SELECT
     "abundant"."wr_reason_desc" as "wr_reason_desc",

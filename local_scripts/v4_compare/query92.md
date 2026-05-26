@@ -104,9 +104,9 @@ Traceback (most recent call last):
     )
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
     group_graph = build_group_graph(concept_graph, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 252, in build_group_graph
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 259, in build_group_graph
     condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 184, in _inject_conditions
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 191, in _inject_conditions
     raise ValueError(
     ...<3 lines>...
     )

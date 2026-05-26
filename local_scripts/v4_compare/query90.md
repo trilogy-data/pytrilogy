@@ -22,9 +22,9 @@ only in ref (showing up to 5 of 1):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1234 | 25 | 8.01 ms |
-| reference | 1110 | 16 | 7.90 ms |
-| v4 / ref | 1.11x | 1.56x | 1.01x |
+| v4 | 1234 | 25 | 7.98 ms |
+| reference | 1110 | 16 | 7.54 ms |
+| v4 / ref | 1.11x | 1.56x | 1.06x |
 
 ## Preql
 
@@ -70,8 +70,8 @@ SELECT
 	WHEN "thoughtful"."pmc" = 0 THEN null
 	ELSE cast("thoughtful"."amc" as numeric(15,4)) / cast("thoughtful"."pmc" as numeric(15,4))
 	END as "am_pm_ratio",
-    "thoughtful"."pmc" as "pmc",
-    "thoughtful"."amc" as "amc"
+    "thoughtful"."amc" as "amc",
+    "thoughtful"."pmc" as "pmc"
 FROM
     "thoughtful"
 ORDER BY 

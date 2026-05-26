@@ -1,24 +1,26 @@
 # Query 20
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2390 | 58 | — |
-| reference | 1984 | 48 | 25.76 ms |
-| v4 / ref | 1.20x | 1.21x | — |
+| v4 | 1984 | 48 | 29.13 ms |
+| reference | 1984 | 48 | 27.69 ms |
+| v4 / ref | 1.00x | 1.00x | 1.05x |
 
 ## Preql
 
@@ -55,29 +57,19 @@ limit 100
 WITH 
 cheerful as (
 SELECT
-    "cs_catalog_sales"."CS_EXT_SALES_PRICE" as "cs_ext_sales_price",
     "cs_item_items"."I_CATEGORY" as "cs_item_category",
     "cs_item_items"."I_CLASS" as "cs_item_class",
     "cs_item_items"."I_CURRENT_PRICE" as "cs_item_current_price",
     "cs_item_items"."I_ITEM_DESC" as "cs_item_desc",
-    "cs_item_items"."I_ITEM_ID" as "cs_item_name"
+    "cs_item_items"."I_ITEM_ID" as "cs_item_name",
+    sum("cs_catalog_sales"."CS_EXT_SALES_PRICE") as "revenue"
 FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "cs_sold_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_sold_date_date"."D_DATE_SK"
 WHERE
     "cs_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("cs_sold_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24' and "cs_item_items"."I_ITEM_ID" is not null
-),
-thoughtful as (
-SELECT
-    "cheerful"."cs_item_category" as "cs_item_category",
-    "cheerful"."cs_item_class" as "cs_item_class",
-    "cheerful"."cs_item_current_price" as "cs_item_current_price",
-    "cheerful"."cs_item_desc" as "cs_item_desc",
-    "cheerful"."cs_item_name" as "cs_item_name",
-    sum("cheerful"."cs_ext_sales_price") as "revenue"
-FROM
-    "cheerful"
+
 GROUP BY
     1,
     2,
@@ -87,27 +79,27 @@ GROUP BY
 cooperative as (
 SELECT
     "cheerful"."cs_item_class" as "cs_item_class",
-    sum("thoughtful"."revenue") as "_virt_agg_sum_9832457364876792"
+    sum("cheerful"."revenue") as "_virt_agg_sum_9832457364876792"
 FROM
     "cheerful"
 GROUP BY
     1)
 SELECT
-    "thoughtful"."cs_item_name" as "cs_item_name",
-    "thoughtful"."cs_item_desc" as "cs_item_desc",
-    "thoughtful"."cs_item_category" as "cs_item_category",
-    coalesce("cooperative"."cs_item_class","thoughtful"."cs_item_class") as "cs_item_class",
-    "thoughtful"."cs_item_current_price" as "cs_item_current_price",
-    "thoughtful"."revenue" as "revenue",
-    ( "thoughtful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
+    "cheerful"."cs_item_name" as "cs_item_name",
+    "cheerful"."cs_item_desc" as "cs_item_desc",
+    "cheerful"."cs_item_category" as "cs_item_category",
+    coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") as "cs_item_class",
+    "cheerful"."cs_item_current_price" as "cs_item_current_price",
+    "cheerful"."revenue" as "revenue",
+    ( "cheerful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
 FROM
     "cooperative"
-    INNER JOIN "thoughtful" on "cooperative"."cs_item_class" is not distinct from "thoughtful"."cs_item_class"
+    INNER JOIN "cheerful" on "cooperative"."cs_item_class" is not distinct from "cheerful"."cs_item_class"
 ORDER BY 
-    "thoughtful"."cs_item_category" asc nulls first,
-    coalesce("cooperative"."cs_item_class","thoughtful"."cs_item_class") asc nulls first,
-    "thoughtful"."cs_item_name" asc nulls first,
-    "thoughtful"."cs_item_desc" asc nulls first,
+    "cheerful"."cs_item_category" asc nulls first,
+    coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") asc nulls first,
+    "cheerful"."cs_item_name" asc nulls first,
+    "cheerful"."cs_item_desc" asc nulls first,
     "revenue_ratio" asc nulls first
 LIMIT (100)
 ```
@@ -163,29 +155,4 @@ ORDER BY
     "cheerful"."cs_item_desc" asc nulls first,
     "revenue_ratio" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
-Candidate tables: "cheerful"
-
-LINE 36:     sum("thoughtful"."revenue") as "_virt_agg_sum_9832457364876792"
-                 ^
 ```

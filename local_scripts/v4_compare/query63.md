@@ -1,24 +1,26 @@
 # Query 63
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2813 | 55 | — |
-| reference | 2522 | 48 | 11.71 ms |
-| v4 / ref | 1.12x | 1.15x | — |
+| v4 | 2522 | 48 | 11.31 ms |
+| reference | 2522 | 48 | 11.01 ms |
+| v4 / ref | 1.00x | 1.00x | 1.03x |
 
 ## Preql
 
@@ -67,44 +69,37 @@ limit 100
 WITH 
 cheerful as (
 SELECT
-    "store_sales_date_date"."D_MOY" as "store_sales_date_month_of_year",
     "store_sales_item_items"."I_MANAGER_ID" as "store_sales_item_manager_id",
-    "store_sales_store_sales"."SS_SALES_PRICE" as "store_sales_sales_price"
+    sum("store_sales_store_sales"."SS_SALES_PRICE") as "sum_sales"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
 WHERE
     "store_sales_date_date"."D_MONTH_SEQ" in (1200,1201,1202,1203,1204,1205,1206,1207,1208,1209,1210,1211) and "store_sales_store_sales"."SS_STORE_SK" is not null and ( ( "store_sales_item_items"."I_CATEGORY" in ('Books','Children','Electronics') and "store_sales_item_items"."I_CLASS" in ('personal','portable','reference','self-help') and "store_sales_item_items"."I_BRAND" in ('scholaramalgamalg #14','scholaramalgamalg #7','exportiunivamalg #9','scholaramalgamalg #9') ) or ( "store_sales_item_items"."I_CATEGORY" in ('Women','Music','Men') and "store_sales_item_items"."I_CLASS" in ('accessories','classical','fragrances','pants') and "store_sales_item_items"."I_BRAND" in ('amalgimporto #1','edu packscholar #1','exportiimporto #1','importoamalg #1') ) )
-),
-thoughtful as (
-SELECT
-    "cheerful"."store_sales_item_manager_id" as "store_sales_item_manager_id",
-    sum("cheerful"."store_sales_sales_price") as "sum_sales"
-FROM
-    "cheerful"
+
 GROUP BY
     1,
-    "cheerful"."store_sales_date_month_of_year"),
+    "store_sales_date_date"."D_MOY"),
 cooperative as (
 SELECT
     "cheerful"."store_sales_item_manager_id" as "store_sales_item_manager_id",
-    avg("thoughtful"."sum_sales") as "avg_monthly_sales"
+    avg("cheerful"."sum_sales") as "avg_monthly_sales"
 FROM
     "cheerful"
 GROUP BY
     1),
 questionable as (
 SELECT
+    "cheerful"."sum_sales" as "sum_sales",
     "cooperative"."avg_monthly_sales" as "avg_monthly_sales",
-    "thoughtful"."sum_sales" as "sum_sales",
-    coalesce("cooperative"."store_sales_item_manager_id","thoughtful"."store_sales_item_manager_id") as "store_sales_item_manager_id"
+    coalesce("cheerful"."store_sales_item_manager_id","cooperative"."store_sales_item_manager_id") as "store_sales_item_manager_id"
 FROM
     "cooperative"
-    INNER JOIN "thoughtful" on "cooperative"."store_sales_item_manager_id" is not distinct from "thoughtful"."store_sales_item_manager_id"
+    INNER JOIN "cheerful" on "cooperative"."store_sales_item_manager_id" is not distinct from "cheerful"."store_sales_item_manager_id"
 WHERE
     CASE
-	WHEN "cooperative"."avg_monthly_sales" > 0 THEN abs("thoughtful"."sum_sales" - "cooperative"."avg_monthly_sales") / "cooperative"."avg_monthly_sales"
+	WHEN "cooperative"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_monthly_sales") / "cooperative"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 )
@@ -172,29 +167,4 @@ ORDER BY
     "questionable"."avg_monthly_sales" asc,
     "questionable"."sum_sales" asc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "thoughtful" not found!
-Candidate tables: "cheerful"
-
-LINE 26:     avg("thoughtful"."sum_sales") as "avg_monthly_sales"
-                 ^
 ```

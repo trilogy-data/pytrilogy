@@ -14,11 +14,11 @@
 v4 rows: 100 (100 distinct)
 ref rows: 90 (90 distinct)
 only in v4 (showing up to 5 of 100):
-  1x  ('Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2001, Decimal('0.00'), Decimal('2355.20'), 'STORE')
-  1x  ('Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2002, Decimal('0.00'), Decimal('256.74'), 'STORE')
-  1x  ('Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2001, Decimal('0.00'), Decimal('5446.80'), 'STORE')
-  1x  ('Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2001, Decimal('0.00'), Decimal('981.33'), 'STORE')
-  1x  ('Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2001, Decimal('0.00'), Decimal('1511.27'), 'STORE')
+  1x  (Decimal('1307.11'), None, None, None, 'Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2001, Decimal('1307.11'), Decimal('2242.86'), 6669, 182451, 'STORE')
+  1x  (None, None, None, Decimal('0.00'), 'Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2002, Decimal('0.00'), Decimal('2582.97'), 10878, 130220, 'STORE')
+  1x  (Decimal('0.00'), None, None, None, 'Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2001, Decimal('0.00'), Decimal('5446.80'), 13429, 182451, 'STORE')
+  1x  (Decimal('27.20'), None, None, None, 'Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2001, Decimal('27.20'), Decimal('1903.68'), 14597, 182451, 'STORE')
+  1x  (Decimal('0.00'), None, None, None, 'Sandra', 4096, 'Williams', 'N', 'AAAAAAAAAAABAAAA', 2001, Decimal('0.00'), Decimal('2355.20'), 9103, 182451, 'STORE')
 only in ref (showing up to 5 of 90):
   1x  ('Kenneth', 'Harlan', 'Y', 'AAAAAAAAAMGDAAAA')
   1x  ('Jerry', 'Fields', 'N', 'AAAAAAAAAOPFBAAA')
@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 90):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2748 | 73 | 518.95 ms |
-| reference | 5077 | 97 | 151.87 ms |
-| v4 / ref | 0.54x | 0.75x | 3.42x |
+| v4 | 4893 | 76 | 58.25 ms |
+| reference | 5077 | 97 | 131.57 ms |
+| v4 / ref | 0.96x | 0.78x | 0.44x |
 
 ## Preql
 
@@ -98,74 +98,77 @@ WITH
 cheerful as (
 SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
     "sales_store_sales_unified"."SS_EXT_LIST_PRICE" as "sales_ext_list_price",
-     'STORE'  as "sales_sales_channel"
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+     'STORE'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_store_sales_unified"."SS_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" in (2001,2002)
 
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
     "sales_web_sales_unified"."WS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
     "sales_web_sales_unified"."WS_EXT_LIST_PRICE" as "sales_ext_list_price",
-     'WEB'  as "sales_sales_channel"
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+     'WEB'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" in (2001,2002)
 ),
-thoughtful as (
+questionable as (
 SELECT
     "cheerful"."sales_customer_id" as "sales_customer_id",
-    "cheerful"."sales_date_id" as "sales_date_id",
+    "cheerful"."sales_date_year" as "sales_date_year",
     "cheerful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
     "cheerful"."sales_ext_list_price" as "sales_ext_list_price",
-    "cheerful"."sales_sales_channel" as "sales_sales_channel"
+    "cheerful"."sales_item_id" as "sales_item_id",
+    "cheerful"."sales_order_id" as "sales_order_id",
+    "cheerful"."sales_sales_channel" as "sales_sales_channel",
+    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
+    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
+    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
+    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag"
 FROM
     "cheerful"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5)
-SELECT
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "thoughtful"."sales_customer_id" as "sales_customer_id",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
-    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag",
-    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
-    "sales_date_date"."D_YEAR" as "sales_date_year",
-    "thoughtful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
-    "thoughtful"."sales_ext_list_price" as "sales_ext_list_price",
-    "thoughtful"."sales_sales_channel" as "sales_sales_channel"
-FROM
-    "thoughtful"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "thoughtful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "cheerful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "sales_date_date"."D_YEAR" in (2001,2002)
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9
+    "cheerful"."sales_sales_channel" in ('STORE','WEB')
+)
+SELECT
+    CASE WHEN "questionable"."sales_sales_channel" = 'STORE' and "questionable"."sales_date_year" = 2001 THEN "questionable"."sales_ext_discount_amount" ELSE NULL END as "_virt_filter_ext_discount_amount_395455544288330",
+    CASE WHEN "questionable"."sales_sales_channel" = 'WEB' and "questionable"."sales_date_year" = 2001 THEN "questionable"."sales_ext_discount_amount" ELSE NULL END as "_virt_filter_ext_discount_amount_7010839941366238",
+    CASE WHEN "questionable"."sales_sales_channel" = 'WEB' and "questionable"."sales_date_year" = 2002 THEN "questionable"."sales_ext_discount_amount" ELSE NULL END as "_virt_filter_ext_discount_amount_6221491164862016",
+    CASE WHEN "questionable"."sales_sales_channel" = 'STORE' and "questionable"."sales_date_year" = 2002 THEN "questionable"."sales_ext_discount_amount" ELSE NULL END as "_virt_filter_ext_discount_amount_7918928754398955",
+    "questionable"."sales_customer_first_name" as "sales_customer_first_name",
+    "questionable"."sales_customer_id" as "sales_customer_id",
+    "questionable"."sales_customer_last_name" as "sales_customer_last_name",
+    "questionable"."sales_customer_preferred_cust_flag" as "sales_customer_preferred_cust_flag",
+    "questionable"."sales_customer_text_id" as "sales_customer_text_id",
+    "questionable"."sales_date_year" as "sales_date_year",
+    "questionable"."sales_ext_discount_amount" as "sales_ext_discount_amount",
+    "questionable"."sales_ext_list_price" as "sales_ext_list_price",
+    "questionable"."sales_item_id" as "sales_item_id",
+    "questionable"."sales_order_id" as "sales_order_id",
+    "questionable"."sales_sales_channel" as "sales_sales_channel"
+FROM
+    "questionable"
 ORDER BY 
-    "sales_customer_customers"."C_CUSTOMER_ID" asc nulls first,
-    "sales_customer_customers"."C_FIRST_NAME" asc nulls first,
-    "sales_customer_customers"."C_LAST_NAME" asc nulls first,
-    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" asc nulls first
+    "questionable"."sales_customer_text_id" asc nulls first,
+    "questionable"."sales_customer_first_name" asc nulls first,
+    "questionable"."sales_customer_last_name" asc nulls first,
+    "questionable"."sales_customer_preferred_cust_flag" asc nulls first
 LIMIT (100)
 ```
 

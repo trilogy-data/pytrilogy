@@ -1,24 +1,26 @@
 # Query 89
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4739 | 79 | — |
-| reference | 4123 | 68 | 85.20 ms |
-| v4 / ref | 1.15x | 1.16x | — |
+| v4 | 4123 | 68 | 89.52 ms |
+| reference | 4123 | 68 | 81.98 ms |
+| v4 / ref | 1.00x | 1.00x | 1.09x |
 
 ## Preql
 
@@ -82,9 +84,9 @@ SELECT
     "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
     "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
     "store_sales_item_items"."I_CLASS" as "store_sales_item_class",
-    "store_sales_store_sales"."SS_SALES_PRICE" as "store_sales_sales_price",
     "store_sales_store_store"."S_COMPANY_NAME" as "store_sales_store_company_name",
-    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
+    sum("store_sales_store_sales"."SS_SALES_PRICE") as "sum_sales"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
@@ -92,18 +94,7 @@ FROM
     INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
 WHERE
     "store_sales_date_date"."D_YEAR" = 1999 and "store_sales_store_sales"."SS_STORE_SK" is not null and ( ( "store_sales_item_items"."I_CATEGORY" in ('Books','Electronics','Sports') and "store_sales_item_items"."I_CLASS" in ('computers','stereo','football') ) or ( "store_sales_item_items"."I_CATEGORY" in ('Men','Jewelry','Women') and "store_sales_item_items"."I_CLASS" in ('shirts','birdal','dresses') ) )
-),
-cooperative as (
-SELECT
-    "thoughtful"."store_sales_date_month_of_year" as "store_sales_date_month_of_year",
-    "thoughtful"."store_sales_item_brand_name" as "store_sales_item_brand_name",
-    "thoughtful"."store_sales_item_category" as "store_sales_item_category",
-    "thoughtful"."store_sales_item_class" as "store_sales_item_class",
-    "thoughtful"."store_sales_store_company_name" as "store_sales_store_company_name",
-    "thoughtful"."store_sales_store_name" as "store_sales_store_name",
-    sum("thoughtful"."store_sales_sales_price") as "sum_sales"
-FROM
-    "thoughtful"
+
 GROUP BY
     1,
     2,
@@ -117,7 +108,7 @@ SELECT
     "thoughtful"."store_sales_item_category" as "store_sales_item_category",
     "thoughtful"."store_sales_store_company_name" as "store_sales_store_company_name",
     "thoughtful"."store_sales_store_name" as "store_sales_store_name",
-    avg("cooperative"."sum_sales") as "avg_monthly_sales"
+    avg("thoughtful"."sum_sales") as "avg_monthly_sales"
 FROM
     "thoughtful"
 GROUP BY
@@ -126,32 +117,32 @@ GROUP BY
     3,
     4)
 SELECT
-    coalesce("cooperative"."store_sales_item_category","questionable"."store_sales_item_category") as "store_sales_item_category",
-    "cooperative"."store_sales_item_class" as "store_sales_item_class",
-    coalesce("cooperative"."store_sales_item_brand_name","questionable"."store_sales_item_brand_name") as "store_sales_item_brand_name",
-    coalesce("cooperative"."store_sales_store_name","questionable"."store_sales_store_name") as "store_sales_store_name",
-    coalesce("cooperative"."store_sales_store_company_name","questionable"."store_sales_store_company_name") as "store_sales_store_company_name",
-    "cooperative"."store_sales_date_month_of_year" as "store_sales_date_month_of_year",
-    "cooperative"."sum_sales" as "sum_sales",
+    coalesce("questionable"."store_sales_item_category","thoughtful"."store_sales_item_category") as "store_sales_item_category",
+    "thoughtful"."store_sales_item_class" as "store_sales_item_class",
+    coalesce("questionable"."store_sales_item_brand_name","thoughtful"."store_sales_item_brand_name") as "store_sales_item_brand_name",
+    coalesce("questionable"."store_sales_store_name","thoughtful"."store_sales_store_name") as "store_sales_store_name",
+    coalesce("questionable"."store_sales_store_company_name","thoughtful"."store_sales_store_company_name") as "store_sales_store_company_name",
+    "thoughtful"."store_sales_date_month_of_year" as "store_sales_date_month_of_year",
+    "thoughtful"."sum_sales" as "sum_sales",
     "questionable"."avg_monthly_sales" as "avg_monthly_sales"
 FROM
     "questionable"
-    INNER JOIN "cooperative" on "questionable"."store_sales_item_brand_name" = "cooperative"."store_sales_item_brand_name" AND "questionable"."store_sales_item_category" is not distinct from "cooperative"."store_sales_item_category" AND "questionable"."store_sales_store_company_name" is not distinct from "cooperative"."store_sales_store_company_name" AND "questionable"."store_sales_store_name" is not distinct from "cooperative"."store_sales_store_name"
+    INNER JOIN "thoughtful" on "questionable"."store_sales_item_brand_name" = "thoughtful"."store_sales_item_brand_name" AND "questionable"."store_sales_item_category" is not distinct from "thoughtful"."store_sales_item_category" AND "questionable"."store_sales_store_company_name" is not distinct from "thoughtful"."store_sales_store_company_name" AND "questionable"."store_sales_store_name" is not distinct from "thoughtful"."store_sales_store_name"
 WHERE
     CASE
-	WHEN "questionable"."avg_monthly_sales" != 0 THEN abs("cooperative"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"
+	WHEN "questionable"."avg_monthly_sales" != 0 THEN abs("thoughtful"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    "cooperative"."sum_sales" - "questionable"."avg_monthly_sales" asc,
-    coalesce("cooperative"."store_sales_store_name","questionable"."store_sales_store_name") asc,
-    coalesce("cooperative"."store_sales_item_category","questionable"."store_sales_item_category") asc,
-    "cooperative"."store_sales_item_class" asc,
-    coalesce("cooperative"."store_sales_item_brand_name","questionable"."store_sales_item_brand_name") asc,
-    coalesce("cooperative"."store_sales_store_company_name","questionable"."store_sales_store_company_name") asc,
-    "cooperative"."store_sales_date_month_of_year" asc,
-    "cooperative"."sum_sales" asc,
+    "thoughtful"."sum_sales" - "questionable"."avg_monthly_sales" asc,
+    coalesce("questionable"."store_sales_store_name","thoughtful"."store_sales_store_name") asc,
+    coalesce("questionable"."store_sales_item_category","thoughtful"."store_sales_item_category") asc,
+    "thoughtful"."store_sales_item_class" asc,
+    coalesce("questionable"."store_sales_item_brand_name","thoughtful"."store_sales_item_brand_name") asc,
+    coalesce("questionable"."store_sales_store_company_name","thoughtful"."store_sales_store_company_name") asc,
+    "thoughtful"."store_sales_date_month_of_year" asc,
+    "thoughtful"."sum_sales" asc,
     "questionable"."avg_monthly_sales" asc
 LIMIT (100)
 ```
@@ -227,29 +218,4 @@ ORDER BY
     "thoughtful"."sum_sales" asc,
     "questionable"."avg_monthly_sales" asc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "cooperative" not found!
-Candidate tables: "thoughtful"
-
-LINE 43:     avg("cooperative"."sum_sales") as "avg_monthly_sales"
-                 ^
 ```

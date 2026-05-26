@@ -18,9 +18,9 @@ ref rows: 89 (89 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 893 | 21 | 25.06 ms |
-| reference | 893 | 21 | 23.65 ms |
-| v4 / ref | 1.00x | 1.00x | 1.06x |
+| v4 | 893 | 21 | 23.29 ms |
+| reference | 893 | 21 | 22.96 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -49,8 +49,8 @@ limit 100
 ```sql
 SELECT
     sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "sum_agg",
-    "store_sales_item_items"."I_BRAND_ID" as "store_sales_item_brand_id",
     "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
+    "store_sales_item_items"."I_BRAND_ID" as "store_sales_item_brand_id",
     "store_sales_date_date"."D_YEAR" as "store_sales_date_year"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"

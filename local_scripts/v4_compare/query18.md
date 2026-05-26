@@ -17,7 +17,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 3891 | 66 | — |
-| reference | 7284 | 111 | 87.25 ms |
+| reference | 7284 | 111 | 82.85 ms |
 | v4 / ref | 0.53x | 0.59x | — |
 
 ## Preql
@@ -116,14 +116,14 @@ SELECT
     avg(cast("questionable"."cs_net_profit" as numeric(12,2))) as "agg5",
     avg(cast("abundant"."row_birth_year" as numeric(12,2))) as "agg6",
     avg(cast("uneven"."row_dep_count" as numeric(12,2))) as "agg7",
-    "questionable"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
     "questionable"."cs_item_name" as "cs_item_name",
+    "questionable"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
     "questionable"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
     "questionable"."cs_bill_customer_address_county" as "cs_bill_customer_address_county"
 FROM
     "questionable"
 GROUP BY
-    ROLLUP (9, 10, 8, 11)
+    ROLLUP (8, 10, 9, 11)
 ORDER BY 
     "questionable"."cs_bill_customer_address_country" asc nulls first,
     "questionable"."cs_bill_customer_address_state" asc nulls first,
