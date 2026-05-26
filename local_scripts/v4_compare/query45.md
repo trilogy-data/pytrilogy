@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 485 | 12 | — |
-| reference | 2114 | 41 | 24.85 ms |
-| v4 / ref | 0.23x | 0.29x | — |
+| v4 | 423 | 7 | — |
+| reference | 2114 | 41 | 25.47 ms |
+| v4 / ref | 0.20x | 0.17x | — |
 
 ## Preql
 
@@ -50,16 +50,11 @@ limit 100
 
 ```sql
 SELECT
-    sum(INVALID_REFERENCE_BUG_<Missing source reference to web_sales.sales_price>) as "total_sales",
-    INVALID_REFERENCE_BUG_<Missing source reference to web_sales.customer.address.zip> as "web_sales_customer_address_zip",
-    INVALID_REFERENCE_BUG_<Missing source reference to web_sales.customer.address.city> as "web_sales_customer_address_city"
+    CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to item2.id> in (2,3,5,7,11,13,17,19,23,29) THEN INVALID_REFERENCE_BUG_<Missing source reference to item2.name> ELSE NULL END as "special_item_ids"
 
-GROUP BY
-    2,
-    3
 ORDER BY 
-    "web_sales_customer_address_zip" asc,
-    "web_sales_customer_address_city" asc
+    INVALID_REFERENCE_BUG_<Missing source reference to web_sales.customer.address.zip> asc,
+    INVALID_REFERENCE_BUG_<Missing source reference to web_sales.customer.address.city> asc
 LIMIT (100)
 ```
 
@@ -129,6 +124,6 @@ Traceback (most recent call last):
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 2:     sum(INVALID_REFERENCE_BUG_<Missing source reference to web_sales.sales_price>) as "total_sales...
-                                               ^
+LINE 2:     CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to item2.id> in (2,3,5,7,11,13,17,19,23...
+                                                     ^
 ```

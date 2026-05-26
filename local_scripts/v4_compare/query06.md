@@ -1,38 +1,26 @@
 # Query 06
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (52 rows) |
+| v4 execution | OK (46 rows) |
 | reference execution | OK (46 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 52 (52 distinct)
+v4 rows: 46 (46 distinct)
 ref rows: 46 (46 distinct)
-only in v4 (showing up to 5 of 52):
-  1x  (11, 'DC')
-  1x  (23, 'HI')
-  1x  (28, 'DE')
-  1x  (42, 'RI')
-  1x  (91, 'CT')
-only in ref (showing up to 5 of 46):
-  1x  (11, 'WY')
-  1x  (16, 'VT')
-  1x  (17, 'ME')
-  1x  (19, 'MD')
-  1x  (19, 'NJ')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1259 | 20 | 22.83 ms |
-| reference | 2203 | 44 | 26.13 ms |
-| v4 / ref | 0.57x | 0.45x | 0.87x |
+| v4 | 2142 | 41 | 21.08 ms |
+| reference | 2203 | 44 | 20.05 ms |
+| v4 / ref | 0.97x | 0.93x | 1.05x |
 
 ## Preql
 
@@ -63,9 +51,13 @@ order by
 ## v4 generated SQL
 
 ```sql
+WITH 
+cooperative as (
 SELECT
     "store_sales_customer_address_customer_address"."CA_STATE" as "store_sales_customer_address_state",
-    sum(1) as "customer_count"
+    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
+    "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
+    1 as "store_sales_row_counter"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
@@ -74,6 +66,23 @@ FROM
     LEFT OUTER JOIN "memory"."customer_address" as "store_sales_customer_address_customer_address" on "store_sales_customer_customers"."C_CURRENT_ADDR_SK" = "store_sales_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "store_sales_date_date"."D_YEAR" = 2001 and "store_sales_item_items"."I_CATEGORY" is not null and "store_sales_date_date"."D_MOY" = 1 and "store_sales_store_sales"."SS_CUSTOMER_SK" is not null
+),
+questionable as (
+SELECT
+    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
+    avg("store_sales_item_items"."I_CURRENT_PRICE") as "_virt_agg_avg_2054483076469165"
+FROM
+    "memory"."item" as "store_sales_item_items"
+GROUP BY
+    1)
+SELECT
+    "cooperative"."store_sales_customer_address_state" as "store_sales_customer_address_state",
+    sum("cooperative"."store_sales_row_counter") as "customer_count"
+FROM
+    "cooperative"
+    INNER JOIN "questionable" on "cooperative"."store_sales_item_category" is not distinct from "questionable"."store_sales_item_category"
+WHERE
+    "cooperative"."store_sales_item_current_price" > 1.2 * "questionable"."_virt_agg_avg_2054483076469165"
 
 GROUP BY
     1
@@ -82,7 +91,7 @@ HAVING
 
 ORDER BY 
     "customer_count" asc nulls first,
-    "store_sales_customer_address_customer_address"."CA_STATE" asc nulls first
+    "cooperative"."store_sales_customer_address_state" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

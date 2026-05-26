@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1794 | 28 | 34.28 ms |
-| reference | 1794 | 28 | 33.51 ms |
-| v4 / ref | 1.00x | 1.00x | 1.02x |
+| v4 | 1794 | 28 | 35.59 ms |
+| reference | 1794 | 28 | 35.20 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -53,10 +53,10 @@ limit 100
 ```sql
 SELECT
     sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price",
-    "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
     "store_sales_item_items"."I_BRAND_ID" as "store_sales_item_brand_id",
-    "store_sales_item_items"."I_MANUFACT_ID" as "store_sales_item_manufacturer_id",
-    "store_sales_item_items"."I_MANUFACT" as "store_sales_item_manufact"
+    "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
+    "store_sales_item_items"."I_MANUFACT" as "store_sales_item_manufact",
+    "store_sales_item_items"."I_MANUFACT_ID" as "store_sales_item_manufacturer_id"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"

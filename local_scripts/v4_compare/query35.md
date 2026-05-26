@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2552 | 35 | — |
-| reference | 10103 | 157 | 110.07 ms |
-| v4 / ref | 0.25x | 0.22x | — |
+| v4 | 1926 | 23 | — |
+| reference | 10103 | 157 | 123.79 ms |
+| v4 / ref | 0.19x | 0.15x | — |
 
 ## Preql
 
@@ -95,32 +95,20 @@ limit 100
 
 ```sql
 SELECT
-    count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt1",
-    min(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count>) as "min1",
-    max(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count>) as "max1",
-    avg(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count>) as "avg1",
-    count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt2",
-    min(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count>) as "min2",
-    max(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count>) as "max2",
-    avg(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count>) as "avg2",
-    count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt3",
-    min(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "min3",
-    max(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "max3",
-    avg(INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count>) as "avg3",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count> as "customer_demographics_college_dependent_count",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count> as "customer_demographics_dependent_count",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.address.state> as "customer_address_state",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.id> as "_store_buyers_store_cust_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.id> as "_web_buyers_web_cust_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.ship_customer.id> as "_catalog_buyers_cat_cust_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.ship_customer.id> as "sales_ship_customer_id",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.marital_status> as "customer_demographics_marital_status",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.gender> as "customer_demographics_gender",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count> as "customer_demographics_employed_dependent_count"
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.employed_dependent_count> as "customer_demographics_employed_dependent_count",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.id> as "customer_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.address.state> as "customer_address_state",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.id> as "sales_customer_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.id> as "customer_demographics_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.college_dependent_count> as "customer_demographics_college_dependent_count",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.dependent_count> as "customer_demographics_dependent_count"
 
-GROUP BY
-    13,
-    14,
-    15,
-    16,
-    17,
-    18
 ORDER BY 
     "customer_address_state" asc nulls first,
     "customer_demographics_gender" asc nulls first,
@@ -313,6 +301,6 @@ Traceback (most recent call last):
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 2:     count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt1",
-                                                 ^
+LINE 2:     INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.id> as "_store_buyers_st...
+                                           ^
 ```

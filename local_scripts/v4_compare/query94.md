@@ -1,11 +1,10 @@
 # Query 94
 
-**Status:** `exec_fail`
+**Status:** `gen_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 SQL generation | FAILED |
 | reference execution | OK (1 rows) |
 
 ## Result comparison
@@ -16,9 +15,8 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 371 | 8 | — |
-| reference | 3548 | 83 | 72.65 ms |
-| v4 / ref | 0.10x | 0.10x | — |
+| v4 | 0 | 0 | — |
+| reference | 3548 | 83 | 79.20 ms |
 
 ## Preql
 
@@ -46,16 +44,7 @@ limit 100
 
 ## v4 generated SQL
 
-```sql
-SELECT
-    CASE WHENINVALID_REFERENCE_BUG_<Missing source reference to ws.order_number> IS NOT NULL THEN 1 ELSE 0 END as "order_count",
-    INVALID_REFERENCE_BUG_<Missing source reference to ws.ext_ship_cost> as "total_shipping_cost",
-    INVALID_REFERENCE_BUG_<Missing source reference to ws.net_profit> as "total_net_profit"
-
-ORDER BY 
-    "order_count" asc
-LIMIT (100)
-```
+_v4 did not produce SQL._
 
 ## Reference SQL (zquery log)
 
@@ -145,26 +134,40 @@ ORDER BY
 LIMIT (100)
 ```
 
-## v4 execution error
+## v4 generation error
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
+    info, build_env, _, build_stmt = run_tpcds_query(query_id)
+                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
+    info = search_concepts(
+        mandatory_list=list(build_stmt.output_components),
+    ...<4 lines>...
+        conditions=[conditions] if conditions else [],
     )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
-
-LINE 2:     CASE WHENINVALID_REFERENCE_BUG_<Missing source reference to ws.order_number> IS NOT NULL THEN 1...
-                                                    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
+    result = _search_concepts(
+        mandatory_list,
+    ...<5 lines>...
+        conditions=conditions,
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 58, in _search_concepts
+    strategy_node = build_strategy_node(
+        group_graph, mandatory_list, environment, g, history
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 386, in build_strategy_node
+    for gid in _topological_order(group_graph):
+               ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 223, in _topological_order
+    return list(nx.topological_sort(lineage_only))
+  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
+    for generation in nx.topological_generations(G):
+                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
+    raise nx.NetworkXUnfeasible(
+        "Graph contains a cycle or graph changed during iteration"
+    )
+networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```

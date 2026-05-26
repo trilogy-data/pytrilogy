@@ -15,24 +15,24 @@ v4 rows: 1944 (243 distinct)
 ref rows: 243 (243 distinct)
 only in v4 (showing up to 5 of 243):
   7x  (1.2438391781531353, 1.0151581328149208, 1, 2, 265, 265, 324.75, 329.0, 1, 1)
-  8x  (1.0319415722706489, 1.1411766752007977, 1, 2, 363, 363, 499.5, 321.0, 1, 1)
+  7x  (1.031941572270649, 1.1411766752007977, 1, 2, 363, 363, 499.5, 321.0, 1, 1)
   7x  (1.0955498064867504, 1.042970994259454, 1, 2, 679, 679, 373.75, 417.5, 1, 1)
   7x  (1.0835888283564505, 1.1356494125569416, 1, 2, 695, 695, 450.75, 368.75, 1, 1)
   7x  (1.03450938027956, 1.0284221852702604, 1, 2, 789, 789, 357.25, 410.0, 1, 1)
-only in ref (showing up to 5 of 40):
-  1x  (1.031941572270649, 1.1411766752007977, 1, 2, 363, 363, 499.5, 321.0, 1, 1)
+only in ref (showing up to 5 of 49):
   1x  (1.1702270938111008, 1.3057281471249385, 1, 2, 815, 815, 216.5, 150.5, 1, 1)
+  1x  (1.1285483279713715, 1.2717809002195564, 1, 2, 1623, 1623, 338.25, 261.3333333333333, 1, 1)
+  1x  (1.0604290412504491, 1.0362984739390064, 1, 2, 2581, 2581, 448.5, 476.25, 1, 1)
   1x  (1.0318296151625301, 1.1693842343776149, 1, 2, 4955, 4955, 495.25, 322.5, 1, 1)
   1x  (1.0874396852180854, 1.0470055593145149, 1, 2, 7569, 7569, 430.5, 360.25, 1, 1)
-  1x  (1.7924231710846223, 1.0080922635507177, 1, 2, 7999, 7999, 166.25, 375.3333333333333, 1, 1)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3541 | 91 | 87.30 ms |
-| reference | 2041 | 36 | 29.78 ms |
-| v4 / ref | 1.73x | 2.53x | 2.93x |
+| v4 | 3487 | 91 | 89.00 ms |
+| reference | 2041 | 36 | 32.37 ms |
+| v4 / ref | 1.71x | 2.53x | 2.75x |
 
 ## Preql
 
@@ -101,7 +101,7 @@ FROM
 WHERE
     "inventory_date_date"."D_YEAR" = 2001 and "inventory_date_date"."D_MOY" in (1,2) and "inventory_warehouse_inventory"."inv_warehouse_sk" is not null
 ),
-questionable as (
+abundant as (
 SELECT
     1 as "dmoy1",
     2 as "dmoy2"
@@ -138,8 +138,10 @@ SELECT
 FROM
     "cheerful"
     FULL JOIN "wakeful" on "cheerful"."inventory_item_id" = "wakeful"."inventory_item_id" AND "cheerful"."inventory_warehouse_id" is not distinct from "wakeful"."inventory_warehouse_id"),
-abundant as (
+uneven as (
 SELECT
+    "abundant"."dmoy1" as "dmoy1",
+    "abundant"."dmoy2" as "dmoy2",
     "cooperative"."cov1" as "cov1",
     "cooperative"."cov2" as "cov2",
     "cooperative"."isk1" as "isk1",
@@ -147,38 +149,36 @@ SELECT
     "cooperative"."mean1" as "mean1",
     "cooperative"."mean2" as "mean2",
     "cooperative"."wsk1" as "wsk1",
-    "cooperative"."wsk2" as "wsk2",
-    "questionable"."dmoy1" as "dmoy1",
-    "questionable"."dmoy2" as "dmoy2"
+    "cooperative"."wsk2" as "wsk2"
 FROM
     "cooperative"
-    LEFT OUTER JOIN "questionable" on 1=1
+    LEFT OUTER JOIN "abundant" on 1=1
 WHERE
     "cooperative"."cov1" > 1
 )
 SELECT
-    "abundant"."wsk1" as "wsk1",
-    "abundant"."isk1" as "isk1",
-    "abundant"."dmoy1" as "dmoy1",
-    "abundant"."mean1" as "mean1",
-    "abundant"."cov1" as "cov1",
-    "abundant"."wsk2" as "wsk2",
-    "abundant"."isk2" as "isk2",
-    "abundant"."dmoy2" as "dmoy2",
-    "abundant"."mean2" as "mean2",
-    "abundant"."cov2" as "cov2"
+    "uneven"."wsk1" as "wsk1",
+    "uneven"."isk1" as "isk1",
+    "uneven"."dmoy1" as "dmoy1",
+    "uneven"."mean1" as "mean1",
+    "uneven"."cov1" as "cov1",
+    "uneven"."wsk2" as "wsk2",
+    "uneven"."isk2" as "isk2",
+    "uneven"."dmoy2" as "dmoy2",
+    "uneven"."mean2" as "mean2",
+    "uneven"."cov2" as "cov2"
 FROM
-    "abundant"
+    "uneven"
 WHERE
-    "abundant"."cov2" > 1
+    "uneven"."cov2" > 1
 
 ORDER BY 
-    "abundant"."wsk1" asc nulls first,
-    "abundant"."isk1" asc nulls first,
-    "abundant"."mean1" asc nulls first,
-    "abundant"."cov1" asc nulls first,
-    "abundant"."mean2" asc nulls first,
-    "abundant"."cov2" asc nulls first
+    "uneven"."wsk1" asc nulls first,
+    "uneven"."isk1" asc nulls first,
+    "uneven"."mean1" asc nulls first,
+    "uneven"."cov1" asc nulls first,
+    "uneven"."mean2" asc nulls first,
+    "uneven"."cov2" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

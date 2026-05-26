@@ -1,35 +1,22 @@
 # Query 64
 
-**Status:** `mismatch`
+**Status:** `gen_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | OK |
-| v4 execution | OK (37 rows) |
+| v4 SQL generation | FAILED |
 | reference execution | OK (2 rows) |
-| results identical | NO |
 
 ## Result comparison
 
-v4 rows: 37 (37 distinct)
-ref rows: 2 (2 distinct)
-only in v4 (showing up to 5 of 37):
-  1x  ('Lakewood', '820', 'West ', '68877', 'Mountain View', '66', 'Lake Pine', '44466', None, 1, 1996, 5950, None, 5950, 'barantin stanti', None, Decimal('47.68'), None, Decimal('51.01'), 1996, None, Decimal('103.53'), 'ation', None, 'ation', '31904', None, '31904', None, 1999)
-  1x  ('Centerville', '358', 'Chestnut ', '50059', 'Lincoln', '407', 'First ', '61289', None, 1, 1999, 5950, None, 5950, 'barantin stanti', None, Decimal('79.46'), None, Decimal('140.64'), 1999, None, Decimal('0.00'), 'ation', None, 'ation', '31904', None, '31904', None, 1999)
-  1x  ('Red Hill', '441', 'Oak Elm', '34338', 'King', '705', 'Cedar Highland', '60008', None, 1, 2000, 5950, None, 5950, 'barantin stanti', None, Decimal('4.49'), None, Decimal('8.35'), 2000, None, Decimal('0.00'), 'bar', None, 'bar', '31904', None, '31904', None, 1999)
-  1x  ('Florence', '301', '5th Main', '43394', 'Clinton', '180', 'Lake ', '58222', None, 1, 1997, 5950, None, 5950, 'barantin stanti', None, Decimal('72.84'), None, Decimal('114.35'), 1997, None, Decimal('0.00'), 'bar', None, 'bar', '31904', None, '31904', None, 1999)
-  1x  ('Leesville', '985', 'Center Pine', '35423', 'Pleasant Valley', '489', 'Church ', '22477', None, 1, 1994, 5950, None, 5950, 'barantin stanti', None, Decimal('7.33'), None, Decimal('13.56'), 1994, None, Decimal('0.00'), 'eing', None, 'eing', '35709', None, '35709', None, 1999)
-only in ref (showing up to 5 of 2):
-  1x  ('Georgetown', '166', '15th ', '67057', 'Clifton', '738', 'Maple Jackson', '98014', 1, 1, 'n stableableantiought', Decimal('52.89'), Decimal('95.24'), Decimal('97.31'), Decimal('140.95'), Decimal('338.38'), Decimal('1488.38'), 'eing', '35709', 2000, 1999)
-  1x  ('Forest Hills', '95', 'Park Maple', '69237', 'Highland', '730', 'Pine Smith', '39454', 1, 1, 'n stableableantiought', Decimal('94.87'), Decimal('7.73'), Decimal('166.02'), Decimal('14.14'), Decimal('0.00'), Decimal('0.00'), 'ese', '31904', 2000, 1999)
+_at least one side did not produce rows._
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 17288 | 260 | 391.43 ms |
-| reference | 16008 | 244 | 393.94 ms |
-| v4 / ref | 1.08x | 1.07x | 0.99x |
+| v4 | 0 | 0 | — |
+| reference | 16008 | 244 | 459.26 ms |
 
 ## Preql
 
@@ -185,268 +172,7 @@ order by
 
 ## v4 generated SQL
 
-```sql
-WITH 
-wakeful as (
-SELECT
-    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id",
-    sum(( coalesce("cr_catalog_returns"."CR_REFUNDED_CASH",0) + coalesce("cr_catalog_returns"."CR_REVERSED_CHARGE",0) ) + coalesce("cr_catalog_returns"."CR_STORE_CREDIT",0)) as "cs_ui_refund"
-FROM
-    "memory"."catalog_sales" as "cr_sales_catalog_sales"
-    INNER JOIN "memory"."catalog_returns" as "cr_catalog_returns" on "cr_sales_catalog_sales"."CS_ORDER_NUMBER" = "cr_catalog_returns"."CR_ORDER_NUMBER"
-GROUP BY
-    1),
-thoughtful as (
-SELECT
-    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id",
-    sum("cr_sales_catalog_sales"."CS_EXT_LIST_PRICE") as "cs_ui_sale"
-FROM
-    "memory"."catalog_sales" as "cr_sales_catalog_sales"
-GROUP BY
-    1),
-cooperative as (
-SELECT
-    "wakeful"."cr_sales_item_id" as "cs_ui_cs_ui_item_id"
-FROM
-    "wakeful"
-    INNER JOIN "thoughtful" on "wakeful"."cr_sales_item_id" = "thoughtful"."cr_sales_item_id"
-WHERE
-    "thoughtful"."cs_ui_sale" > 2 * "wakeful"."cs_ui_refund"
-),
-divergent as (
-SELECT
-    "ss_date_date"."D_YEAR" as "ss_rows_00_ss_date_year",
-    "ss_item_items"."I_ITEM_SK" as "ss_rows_00_ss_item_id",
-    "ss_store_sales"."SS_COUPON_AMT" as "ss_rows_00_ss_coupon_amt",
-    "ss_store_sales"."SS_LIST_PRICE" as "ss_rows_00_ss_list_price",
-    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_rows_00_ss_ticket_number",
-    "ss_store_sales"."SS_WHOLESALE_COST" as "ss_rows_00_ss_wholesale_cost",
-    "ss_store_store"."S_STORE_NAME" as "ss_rows_00_ss_store_name",
-    "ss_store_store"."S_ZIP" as "ss_rows_00_ss_store_zip"
-FROM
-    "memory"."store_sales" as "ss_store_sales"
-    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
-    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographic_customer_demographics" on "ss_store_sales"."SS_CDEMO_SK" = "ss_customer_demographic_customer_demographics"."CD_DEMO_SK"
-    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographics_customer_demographics" on "ss_customer_customers"."C_CURRENT_CDEMO_SK" = "ss_customer_demographics_customer_demographics"."CD_DEMO_SK"
-    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
-WHERE
-    "ss_item_items"."I_ITEM_SK" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "ss_date_date"."D_YEAR" = 2000 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_customers"."C_CURRENT_ADDR_SK" is not null and "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" != "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8),
-friendly as (
-SELECT
-    "ss_item_items"."I_ITEM_SK" as "ss_rows_99_ss_item_id",
-    "ss_item_items"."I_PRODUCT_NAME" as "ss_rows_99_ss_item_product_name"
-FROM
-    "memory"."store_sales" as "ss_store_sales"
-    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
-    INNER JOIN "memory"."customer_address" as "ss_sale_address_customer_address" on "ss_store_sales"."SS_ADDR_SK" = "ss_sale_address_customer_address"."CA_ADDRESS_SK"
-    INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
-    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographic_customer_demographics" on "ss_store_sales"."SS_CDEMO_SK" = "ss_customer_demographic_customer_demographics"."CD_DEMO_SK"
-    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographics_customer_demographics" on "ss_customer_customers"."C_CURRENT_CDEMO_SK" = "ss_customer_demographics_customer_demographics"."CD_DEMO_SK"
-    LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_sales_date_date" on "ss_customer_customers"."C_FIRST_SALES_DATE_SK" = "ss_customer_first_sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_shipto_date_date" on "ss_customer_customers"."C_FIRST_SHIPTO_DATE_SK" = "ss_customer_first_shipto_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
-WHERE
-    "ss_item_items"."I_ITEM_SK" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "ss_date_date"."D_YEAR" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_address_customer_address"."CA_ADDRESS_SK" is not null and "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" != "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
-
-GROUP BY
-    1,
-    2),
-macho as (
-SELECT
-    "ss_customer_address_customer_address"."CA_CITY" as "ss_rows_99_ss_customer_address_city",
-    "ss_customer_address_customer_address"."CA_STREET_NAME" as "ss_rows_99_ss_customer_address_street_name",
-    "ss_customer_address_customer_address"."CA_STREET_NUMBER" as "ss_rows_99_ss_customer_address_street_number",
-    "ss_customer_address_customer_address"."CA_ZIP" as "ss_rows_99_ss_customer_address_zip",
-    "ss_customer_first_sales_date_date"."D_YEAR" as "ss_rows_99_ss_customer_first_sales_date_year",
-    "ss_customer_first_shipto_date_date"."D_YEAR" as "ss_rows_99_ss_customer_first_shipto_date_year",
-    "ss_date_date"."D_YEAR" as "ss_rows_99_ss_date_year",
-    "ss_item_items"."I_ITEM_SK" as "ss_rows_99_ss_item_id",
-    "ss_sale_address_customer_address"."CA_CITY" as "ss_rows_99_ss_sale_address_city",
-    "ss_sale_address_customer_address"."CA_STREET_NAME" as "ss_rows_99_ss_sale_address_street_name",
-    "ss_sale_address_customer_address"."CA_STREET_NUMBER" as "ss_rows_99_ss_sale_address_street_number",
-    "ss_sale_address_customer_address"."CA_ZIP" as "ss_rows_99_ss_sale_address_zip",
-    "ss_store_sales"."SS_COUPON_AMT" as "ss_rows_99_ss_coupon_amt",
-    "ss_store_sales"."SS_LIST_PRICE" as "ss_rows_99_ss_list_price",
-    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_rows_99_ss_ticket_number",
-    "ss_store_sales"."SS_WHOLESALE_COST" as "ss_rows_99_ss_wholesale_cost",
-    "ss_store_store"."S_STORE_NAME" as "ss_rows_99_ss_store_name",
-    "ss_store_store"."S_ZIP" as "ss_rows_99_ss_store_zip"
-FROM
-    "memory"."store_sales" as "ss_store_sales"
-    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
-    INNER JOIN "memory"."customer_address" as "ss_sale_address_customer_address" on "ss_store_sales"."SS_ADDR_SK" = "ss_sale_address_customer_address"."CA_ADDRESS_SK"
-    INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
-    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographic_customer_demographics" on "ss_store_sales"."SS_CDEMO_SK" = "ss_customer_demographic_customer_demographics"."CD_DEMO_SK"
-    LEFT OUTER JOIN "memory"."customer_demographics" as "ss_customer_demographics_customer_demographics" on "ss_customer_customers"."C_CURRENT_CDEMO_SK" = "ss_customer_demographics_customer_demographics"."CD_DEMO_SK"
-    LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_sales_date_date" on "ss_customer_customers"."C_FIRST_SALES_DATE_SK" = "ss_customer_first_sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_shipto_date_date" on "ss_customer_customers"."C_FIRST_SHIPTO_DATE_SK" = "ss_customer_first_shipto_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
-WHERE
-    "ss_item_items"."I_ITEM_SK" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "ss_date_date"."D_YEAR" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_address_customer_address"."CA_ADDRESS_SK" is not null and "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" != "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18),
-busy as (
-SELECT
-    "divergent"."ss_rows_00_ss_date_year" as "_q64_results_syear_00",
-    "divergent"."ss_rows_00_ss_item_id" as "_q64_results_item_sk_00",
-    "divergent"."ss_rows_00_ss_item_id" as "item_sk",
-    "divergent"."ss_rows_00_ss_store_name" as "_q64_results_s_name_00",
-    "divergent"."ss_rows_00_ss_store_name" as "s_name",
-    "divergent"."ss_rows_00_ss_store_zip" as "_q64_results_s_zip_00",
-    "divergent"."ss_rows_00_ss_store_zip" as "s_zip",
-    count("divergent"."ss_rows_00_ss_ticket_number") as "_q64_results_cnt_00",
-    sum("divergent"."ss_rows_00_ss_coupon_amt") as "_q64_results_s3_00",
-    sum("divergent"."ss_rows_00_ss_list_price") as "_q64_results_s2_00",
-    sum("divergent"."ss_rows_00_ss_wholesale_cost") as "_q64_results_s1_00"
-FROM
-    "divergent"
-GROUP BY
-    1,
-    3,
-    5,
-    7),
-scrawny as (
-SELECT
-    "macho"."ss_rows_99_ss_customer_address_city" as "ss_rows_99_ss_customer_address_city",
-    "macho"."ss_rows_99_ss_customer_address_street_name" as "ss_rows_99_ss_customer_address_street_name",
-    "macho"."ss_rows_99_ss_customer_address_street_number" as "ss_rows_99_ss_customer_address_street_number",
-    "macho"."ss_rows_99_ss_customer_address_zip" as "ss_rows_99_ss_customer_address_zip",
-    "macho"."ss_rows_99_ss_customer_first_sales_date_year" as "ss_rows_99_ss_customer_first_sales_date_year",
-    "macho"."ss_rows_99_ss_customer_first_shipto_date_year" as "ss_rows_99_ss_customer_first_shipto_date_year",
-    "macho"."ss_rows_99_ss_date_year" as "ss_rows_99_ss_date_year",
-    "macho"."ss_rows_99_ss_item_id" as "ss_rows_99_ss_item_id",
-    "macho"."ss_rows_99_ss_sale_address_city" as "ss_rows_99_ss_sale_address_city",
-    "macho"."ss_rows_99_ss_sale_address_street_name" as "ss_rows_99_ss_sale_address_street_name",
-    "macho"."ss_rows_99_ss_sale_address_street_number" as "ss_rows_99_ss_sale_address_street_number",
-    "macho"."ss_rows_99_ss_sale_address_zip" as "ss_rows_99_ss_sale_address_zip",
-    "macho"."ss_rows_99_ss_store_name" as "ss_rows_99_ss_store_name",
-    "macho"."ss_rows_99_ss_store_zip" as "ss_rows_99_ss_store_zip",
-    count("macho"."ss_rows_99_ss_ticket_number") as "_q64_results_cnt_99",
-    sum("macho"."ss_rows_99_ss_coupon_amt") as "_q64_results_s3_99",
-    sum("macho"."ss_rows_99_ss_list_price") as "_q64_results_s2_99",
-    sum("macho"."ss_rows_99_ss_wholesale_cost") as "_q64_results_s1_99"
-FROM
-    "macho"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14),
-kaput as (
-SELECT
-    "friendly"."ss_rows_99_ss_item_product_name" as "_q64_results_p_name_99",
-    "scrawny"."_q64_results_cnt_99" as "_q64_results_cnt_99",
-    "scrawny"."_q64_results_s1_99" as "_q64_results_s1_99",
-    "scrawny"."_q64_results_s2_99" as "_q64_results_s2_99",
-    "scrawny"."_q64_results_s3_99" as "_q64_results_s3_99",
-    "scrawny"."ss_rows_99_ss_customer_address_city" as "_q64_results_c_city_99",
-    "scrawny"."ss_rows_99_ss_customer_address_street_name" as "_q64_results_c_str_99",
-    "scrawny"."ss_rows_99_ss_customer_address_street_number" as "_q64_results_c_sn_99",
-    "scrawny"."ss_rows_99_ss_customer_address_zip" as "_q64_results_c_zip_99",
-    "scrawny"."ss_rows_99_ss_customer_first_sales_date_year" as "_q64_results_fsyear_99",
-    "scrawny"."ss_rows_99_ss_customer_first_shipto_date_year" as "_q64_results_s2year_99",
-    "scrawny"."ss_rows_99_ss_date_year" as "_q64_results_syear_99",
-    "scrawny"."ss_rows_99_ss_sale_address_city" as "_q64_results_b_city_99",
-    "scrawny"."ss_rows_99_ss_sale_address_street_name" as "_q64_results_b_str_99",
-    "scrawny"."ss_rows_99_ss_sale_address_street_number" as "_q64_results_b_sn_99",
-    "scrawny"."ss_rows_99_ss_sale_address_zip" as "_q64_results_b_zip_99",
-    "scrawny"."ss_rows_99_ss_store_name" as "_q64_results_s_name_99",
-    "scrawny"."ss_rows_99_ss_store_name" as "s_name",
-    "scrawny"."ss_rows_99_ss_store_zip" as "_q64_results_s_zip_99",
-    "scrawny"."ss_rows_99_ss_store_zip" as "s_zip",
-    coalesce("friendly"."ss_rows_99_ss_item_id","scrawny"."ss_rows_99_ss_item_id") as "_q64_results_item_sk_99",
-    coalesce("friendly"."ss_rows_99_ss_item_id","scrawny"."ss_rows_99_ss_item_id") as "item_sk"
-FROM
-    "scrawny"
-    INNER JOIN "friendly" on "scrawny"."ss_rows_99_ss_item_id" is not distinct from "friendly"."ss_rows_99_ss_item_id")
-SELECT
-    coalesce("busy"."item_sk","kaput"."item_sk") as "q64_results_item_sk",
-    coalesce("busy"."s_name","kaput"."s_name") as "q64_results_s_name",
-    coalesce("busy"."s_zip","kaput"."s_zip") as "q64_results_s_zip",
-    "kaput"."_q64_results_item_sk_99" as "q64_results_item_sk_99",
-    "kaput"."_q64_results_s_name_99" as "q64_results_s_name_99",
-    "kaput"."_q64_results_s_zip_99" as "q64_results_s_zip_99",
-    "kaput"."_q64_results_p_name_99" as "q64_results_p_name_99",
-    "kaput"."_q64_results_b_sn_99" as "q64_results_b_sn_99",
-    "kaput"."_q64_results_b_str_99" as "q64_results_b_str_99",
-    "kaput"."_q64_results_b_city_99" as "q64_results_b_city_99",
-    "kaput"."_q64_results_b_zip_99" as "q64_results_b_zip_99",
-    "kaput"."_q64_results_c_sn_99" as "q64_results_c_sn_99",
-    "kaput"."_q64_results_c_str_99" as "q64_results_c_str_99",
-    "kaput"."_q64_results_c_city_99" as "q64_results_c_city_99",
-    "kaput"."_q64_results_c_zip_99" as "q64_results_c_zip_99",
-    "kaput"."_q64_results_syear_99" as "q64_results_syear_99",
-    "kaput"."_q64_results_fsyear_99" as "q64_results_fsyear_99",
-    "kaput"."_q64_results_s2year_99" as "q64_results_s2year_99",
-    "kaput"."_q64_results_cnt_99" as "q64_results_cnt_99",
-    "kaput"."_q64_results_s1_99" as "q64_results_s1_99",
-    "kaput"."_q64_results_s2_99" as "q64_results_s2_99",
-    "kaput"."_q64_results_s3_99" as "q64_results_s3_99",
-    "busy"."_q64_results_item_sk_00" as "q64_results_item_sk_00",
-    "busy"."_q64_results_s_name_00" as "q64_results_s_name_00",
-    "busy"."_q64_results_s_zip_00" as "q64_results_s_zip_00",
-    "busy"."_q64_results_syear_00" as "q64_results_syear_00",
-    "busy"."_q64_results_cnt_00" as "q64_results_cnt_00",
-    "busy"."_q64_results_s1_00" as "q64_results_s1_00",
-    "busy"."_q64_results_s2_00" as "q64_results_s2_00",
-    "busy"."_q64_results_s3_00" as "q64_results_s3_00"
-FROM
-    "kaput"
-    FULL JOIN "busy" on "kaput"."item_sk" is not distinct from "busy"."item_sk" AND "kaput"."s_name" is not distinct from "busy"."s_name" AND "kaput"."s_zip" is not distinct from "busy"."s_zip"
-ORDER BY 
-    "q64_results_p_name_99" asc nulls first,
-    "q64_results_s_name" asc nulls first,
-    "q64_results_cnt_00" asc nulls first,
-    "q64_results_s1_99" asc nulls first,
-    "q64_results_s1_00" asc nulls first
-```
+_v4 did not produce SQL._
 
 ## Reference SQL (zquery log)
 
@@ -695,4 +421,34 @@ ORDER BY
     "q64_results_cnt_00" asc nulls first,
     "q64_results_s1_99" asc nulls first,
     "q64_results_s1_00" asc nulls first
+```
+
+## v4 generation error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
+    info, build_env, _, build_stmt = run_tpcds_query(query_id)
+                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
+    info = search_concepts(
+        mandatory_list=list(build_stmt.output_components),
+    ...<4 lines>...
+        conditions=[conditions] if conditions else [],
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
+    result = _search_concepts(
+        mandatory_list,
+    ...<5 lines>...
+        conditions=conditions,
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
+    group_graph = build_group_graph(concept_graph, conditions)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 422, in build_group_graph
+    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 345, in _inject_conditions
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Atom q64_results.cnt_00 <= q64_results.cnt_99 would be injected at grp:rowset:d0:q64_results.item_sk_99, which is downstream of d0 barrier(s) ['grp:aggregate:d0:ss_rows_00.ss.date.year|ss_rows_00.ss.item.id|ss_rows_00.ss.store.name|ss_rows_00.ss.store.zip', 'grp:aggregate:d0:ss_rows_99.ss.customer.address.city|ss_rows_99.ss.customer.address.street_name|ss_rows_99.ss.customer.address.street_number|ss_rows_99.ss.customer.address.zip|ss_rows_99.ss.customer.first_sales_date.year|ss_rows_99.ss.customer.first_shipto_date.year|ss_rows_99.ss.date.year|ss_rows_99.ss.item.id|ss_rows_99.ss.sale_address.city|ss_rows_99.ss.sale_address.street_name|ss_rows_99.ss.sale_address.street_number|ss_rows_99.ss.sale_address.zip|ss_rows_99.ss.store.name|ss_rows_99.ss.store.zip', 'grp:rowset:d0:ss_rows_00.ss.coupon_amt|ss_rows_00.ss.customer.demographics.marital_status|ss_rows_00.ss.customer_demographic.marital_status|ss_rows_00.ss.date.year|ss_rows_00.ss.item.id|ss_rows_00.ss.list_price|ss_rows_00.ss.store.name|ss_rows_00.ss.store.zip|ss_rows_00.ss.ticket_number|ss_rows_00.ss.wholesale_cost', 'grp:rowset:d0:ss_rows_00.ss.item.id', 'grp:rowset:d0:ss_rows_00.ss.item.id|ss_rows_00.ss.ticket_number', 'grp:rowset:d0:ss_rows_00.ss.ticket_number', 'grp:rowset:d0:ss_rows_99.ss.coupon_amt|ss_rows_99.ss.customer.address.city|ss_rows_99.ss.customer.address.street_name|ss_rows_99.ss.customer.address.street_number|ss_rows_99.ss.customer.address.zip|ss_rows_99.ss.customer.demographics.marital_status|ss_rows_99.ss.customer.first_sales_date.year|ss_rows_99.ss.customer.first_shipto_date.year|ss_rows_99.ss.customer_demographic.marital_status|ss_rows_99.ss.date.year|ss_rows_99.ss.item.id|ss_rows_99.ss.item.product_name|ss_rows_99.ss.list_price|ss_rows_99.ss.sale_address.city|ss_rows_99.ss.sale_address.street_name|ss_rows_99.ss.sale_address.street_number|ss_rows_99.ss.sale_address.zip|ss_rows_99.ss.store.name|ss_rows_99.ss.store.zip|ss_rows_99.ss.ticket_number|ss_rows_99.ss.wholesale_cost', 'grp:rowset:d0:ss_rows_99.ss.item.id', 'grp:rowset:d0:ss_rows_99.ss.item.id|ss_rows_99.ss.ticket_number', 'grp:rowset:d0:ss_rows_99.ss.ticket_number']; conditions cannot be pushed past row-shape changes.
 ```

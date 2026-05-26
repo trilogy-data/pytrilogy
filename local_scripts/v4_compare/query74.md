@@ -1,38 +1,22 @@
 # Query 74
 
-**Status:** `mismatch`
+**Status:** `gen_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
+| v4 SQL generation | FAILED |
 | reference execution | OK (92 rows) |
-| results identical | NO |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 92 (92 distinct)
-only in v4 (showing up to 5 of 100):
-  1x  ('Sandra', 'AAAAAAAAAAABAAAA', 'Williams', 'Sandra', 4096, 'Williams', 'AAAAAAAAAAABAAAA', 1999, 17326, Decimal('340.78'), 65997, 'STORE')
-  1x  ('Sandra', 'AAAAAAAAAAABAAAA', 'Williams', 'Sandra', 4096, 'Williams', 'AAAAAAAAAAABAAAA', 1999, 17426, Decimal('3.03'), 11200, 'WEB')
-  1x  ('Sandra', 'AAAAAAAAAAABAAAA', 'Williams', 'Sandra', 4096, 'Williams', 'AAAAAAAAAAABAAAA', 1999, 4570, Decimal('1572.85'), 65997, 'STORE')
-  1x  ('Sandra', 'AAAAAAAAAAABAAAA', 'Williams', 'Sandra', 4096, 'Williams', 'AAAAAAAAAAABAAAA', 2001, 13429, Decimal('1306.52'), 182451, 'STORE')
-  1x  ('Sandra', 'AAAAAAAAAAABAAAA', 'Williams', 'Sandra', 4096, 'Williams', 'AAAAAAAAAAABAAAA', 2001, 13877, Decimal('2525.04'), 182451, 'STORE')
-only in ref (showing up to 5 of 92):
-  1x  ('Tricia', 'AAAAAAAAAEDMAAAA', 'Medina')
-  1x  ('Howard', 'AAAAAAAAAFGBBAAA', 'Major')
-  1x  ('Kenneth', 'AAAAAAAAAMGDAAAA', 'Harlan')
-  1x  ('Jerry', 'AAAAAAAAAOPFBAAA', 'Fields')
-  1x  ('James', 'AAAAAAAABIJBAAAA', 'White')
+_at least one side did not produce rows._
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2574 | 52 | 49.45 ms |
-| reference | 3347 | 71 | 114.47 ms |
-| v4 / ref | 0.77x | 0.73x | 0.43x |
+| v4 | 0 | 0 | — |
+| reference | 3347 | 71 | 156.28 ms |
 
 ## Preql
 
@@ -77,60 +61,7 @@ limit 100
 
 ## v4 generated SQL
 
-```sql
-WITH 
-cheerful as (
-SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
-    "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
-     'STORE'  as "sales_sales_channel"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-    INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_store_sales_unified"."SS_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
-WHERE
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
-
-UNION ALL
-SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
-    "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
-     'WEB'  as "sales_sales_channel"
-FROM
-    "memory"."web_sales" as "sales_web_sales_unified"
-    INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
-WHERE
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null
-)
-SELECT
-    "sales_customer_customers"."C_CUSTOMER_ID" as "customer_id",
-    "sales_customer_customers"."C_FIRST_NAME" as "customer_first_name",
-    "sales_customer_customers"."C_LAST_NAME" as "customer_last_name",
-    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
-    "sales_date_date"."D_YEAR" as "sales_date_year",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
-    "cheerful"."sales_sales_channel" as "sales_sales_channel",
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "cheerful"."sales_net_paid" as "sales_net_paid",
-    "cheerful"."sales_item_id" as "sales_item_id",
-    "cheerful"."sales_customer_id" as "sales_customer_id",
-    "cheerful"."sales_order_id" as "sales_order_id"
-FROM
-    "cheerful"
-    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "cheerful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
-WHERE
-    "cheerful"."sales_sales_channel" in ('STORE','WEB')
-
-ORDER BY 
-    "customer_id" asc nulls first
-LIMIT (100)
-```
+_v4 did not produce SQL._
 
 ## Reference SQL (zquery log)
 
@@ -206,4 +137,34 @@ GROUP BY
 ORDER BY 
     "customer_id" asc nulls first
 LIMIT (100)
+```
+
+## v4 generation error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
+    info, build_env, _, build_stmt = run_tpcds_query(query_id)
+                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
+    info = search_concepts(
+        mandatory_list=list(build_stmt.output_components),
+    ...<4 lines>...
+        conditions=[conditions] if conditions else [],
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
+    result = _search_concepts(
+        mandatory_list,
+    ...<5 lines>...
+        conditions=conditions,
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
+    group_graph = build_group_graph(concept_graph, conditions)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 422, in build_group_graph
+    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 331, in _inject_conditions
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: Could not place condition atom local.store_first_year > 0: row inputs ['local.store_first_year'] not reachable from any group.
 ```

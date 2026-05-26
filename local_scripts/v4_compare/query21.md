@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1510 | 32 | 17.67 ms |
-| reference | 1510 | 32 | 17.84 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 1893 | 47 | 43.45 ms |
+| reference | 1510 | 32 | 17.94 ms |
+| v4 / ref | 1.25x | 1.47x | 2.42x |
 
 ## Preql
 
@@ -61,17 +61,13 @@ limit 100
 ## v4 generated SQL
 
 ```sql
+WITH 
+thoughtful as (
 SELECT
-    "inventory_warehouse_warehouse"."w_warehouse_name" as "inventory_warehouse_name",
     "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
-    sum(CASE
-	WHEN cast("inventory_date_date"."D_DATE" as date) < date '2000-03-11' THEN "inventory_warehouse_inventory"."inv_quantity_on_hand"
-	ELSE 0
-	END) as "inv_before",
-    sum(CASE
-	WHEN cast("inventory_date_date"."D_DATE" as date) >= date '2000-03-11' THEN "inventory_warehouse_inventory"."inv_quantity_on_hand"
-	ELSE 0
-	END) as "inv_after"
+    "inventory_warehouse_inventory"."inv_quantity_on_hand" as "inventory_quantity_on_hand",
+    "inventory_warehouse_warehouse"."w_warehouse_name" as "inventory_warehouse_name",
+    cast("inventory_date_date"."D_DATE" as date) as "inventory_date_date"
 FROM
     "memory"."inventory" as "inventory_warehouse_inventory"
     INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
@@ -82,6 +78,25 @@ WHERE
 
 GROUP BY
     1,
+    2,
+    3,
+    4,
+    "inventory_item_items"."I_CURRENT_PRICE")
+SELECT
+    "thoughtful"."inventory_warehouse_name" as "inventory_warehouse_name",
+    "thoughtful"."inventory_item_name" as "inventory_item_name",
+    sum(CASE
+	WHEN "thoughtful"."inventory_date_date" < date '2000-03-11' THEN "thoughtful"."inventory_quantity_on_hand"
+	ELSE 0
+	END) as "inv_before",
+    sum(CASE
+	WHEN "thoughtful"."inventory_date_date" >= date '2000-03-11' THEN "thoughtful"."inventory_quantity_on_hand"
+	ELSE 0
+	END) as "inv_after"
+FROM
+    "thoughtful"
+GROUP BY
+    1,
     2
 HAVING
     CASE
@@ -90,8 +105,8 @@ HAVING
 	END BETWEEN 2.0 / 3.0 AND 3.0 / 2.0
 
 ORDER BY 
-    "inventory_warehouse_warehouse"."w_warehouse_name" asc nulls first,
-    "inventory_item_items"."I_ITEM_ID" asc nulls first
+    "thoughtful"."inventory_warehouse_name" asc nulls first,
+    "thoughtful"."inventory_item_name" asc nulls first
 LIMIT (100)
 ```
 

@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1236 | 23 | — |
-| reference | 4137 | 80 | 104.38 ms |
-| v4 / ref | 0.30x | 0.29x | — |
+| v4 | 1660 | 21 | — |
+| reference | 4137 | 80 | 124.35 ms |
+| v4 / ref | 0.40x | 0.26x | — |
 
 ## Preql
 
@@ -85,21 +85,19 @@ limit 100
 
 ```sql
 SELECT
-    count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt1",
-    count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt2",
-    count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt3",
-    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.credit_rating> as "customer_demographics_credit_rating",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.id> as "_store_buyers_store_cust_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.id> as "_web_buyers_web_cust_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.ship_customer.id> as "_catalog_buyers_cat_cust_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.ship_customer.id> as "sales_ship_customer_id",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.marital_status> as "customer_demographics_marital_status",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.gender> as "customer_demographics_gender",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.purchase_estimate> as "customer_demographics_purchase_estimate",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.credit_rating> as "customer_demographics_credit_rating",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.id> as "customer_id",
+    INVALID_REFERENCE_BUG_<Missing source reference to customer.address.state> as "customer_address_state",
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.id> as "sales_customer_id",
     INVALID_REFERENCE_BUG_<Missing source reference to customer.demographics.education_status> as "customer_demographics_education_status"
 
-GROUP BY
-    4,
-    5,
-    6,
-    7,
-    8
 ORDER BY 
     "customer_demographics_gender" asc,
     "customer_demographics_marital_status" asc,
@@ -214,6 +212,6 @@ Traceback (most recent call last):
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 2:     count(INVALID_REFERENCE_BUG_<Missing source reference to customer.id>) as "cnt1",
-                                                 ^
+LINE 2:     INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.id> as "_store_buyers_st...
+                                           ^
 ```

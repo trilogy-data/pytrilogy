@@ -1,38 +1,22 @@
 # Query 04
 
-**Status:** `mismatch`
+**Status:** `gen_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
+| v4 SQL generation | FAILED |
 | reference execution | OK (6 rows) |
-| results identical | NO |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 6 (6 distinct)
-only in v4 (showing up to 5 of 100):
-  1x  (None, None, None, None, None, None, None, None, None, 2002, None, Decimal('756.36'), Decimal('627.77'), Decimal('727.32'), 5877, 150770, 'CATALOG')
-  1x  (None, None, None, None, None, None, None, None, None, 2002, Decimal('142.74'), None, None, Decimal('113.94'), 5172, 150668, 'CATALOG')
-  1x  (None, None, None, None, None, None, None, None, None, 2002, Decimal('276.45'), Decimal('2126.48'), None, None, 13320, 151533, 'CATALOG')
-  1x  (None, None, None, None, None, None, None, None, None, 2002, None, Decimal('392.85'), Decimal('180.42'), Decimal('204.67'), 9720, 150637, 'CATALOG')
-  1x  (None, None, None, None, None, None, None, None, None, 2002, None, None, Decimal('1402.01'), None, 6453, 153654, 'CATALOG')
-only in ref (showing up to 5 of 6):
-  1x  ('David', 'AAAAAAAADIIOAAAA', 'Carroll', 'N')
-  1x  ('Thomas', 'AAAAAAAAIJCIBAAA', 'Oneal', 'N')
-  1x  ('Kerry', 'AAAAAAAAKJBLAAAA', 'Davis', 'Y')
-  1x  ('Thaddeus', 'AAAAAAAANJAMAAAA', 'Griffin', 'N')
-  1x  ('Debra', 'AAAAAAAANJOLAAAA', 'Underwood', 'Y')
+_at least one side did not produce rows._
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4285 | 79 | 50.39 ms |
-| reference | 11722 | 251 | 347.05 ms |
-| v4 / ref | 0.37x | 0.31x | 0.15x |
+| v4 | 0 | 0 | — |
+| reference | 11722 | 251 | 335.21 ms |
 
 ## Preql
 
@@ -89,87 +73,7 @@ limit 100
 
 ## v4 generated SQL
 
-```sql
-WITH 
-cheerful as (
-SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_catalog_sales_unified"."CS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
-    "sales_catalog_sales_unified"."CS_EXT_LIST_PRICE" as "sales_ext_list_price",
-    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_catalog_sales_unified"."CS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
-    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
-     'CATALOG'  as "sales_sales_channel",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_date_date"."D_YEAR" in (2001,2002)
-
-UNION ALL
-SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
-    "sales_store_sales_unified"."SS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
-    "sales_store_sales_unified"."SS_EXT_LIST_PRICE" as "sales_ext_list_price",
-    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_store_sales_unified"."SS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
-     'STORE'  as "sales_sales_channel",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_date_date"."D_YEAR" in (2001,2002)
-
-UNION ALL
-SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_web_sales_unified"."WS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
-    "sales_web_sales_unified"."WS_EXT_LIST_PRICE" as "sales_ext_list_price",
-    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_web_sales_unified"."WS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
-     'WEB'  as "sales_sales_channel",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."web_sales" as "sales_web_sales_unified"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_date_date"."D_YEAR" in (2001,2002)
-)
-SELECT
-    "sales_customer_customers"."C_CUSTOMER_ID" as "customer_id",
-    "sales_customer_customers"."C_FIRST_NAME" as "customer_first_name",
-    "sales_customer_customers"."C_LAST_NAME" as "customer_last_name",
-    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "customer_preferred_cust_flag",
-    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
-    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag",
-    "cheerful"."sales_ext_list_price" as "sales_ext_list_price",
-    "cheerful"."sales_date_year" as "sales_date_year",
-    "cheerful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
-    "cheerful"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "cheerful"."sales_sales_channel" as "sales_sales_channel",
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "cheerful"."sales_item_id" as "sales_item_id",
-    "cheerful"."sales_customer_id" as "sales_customer_id",
-    "cheerful"."sales_order_id" as "sales_order_id",
-    "cheerful"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost"
-FROM
-    "cheerful"
-    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "cheerful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
-ORDER BY 
-    "customer_id" asc nulls first,
-    "customer_first_name" asc nulls first,
-    "customer_last_name" asc nulls first,
-    "customer_preferred_cust_flag" asc nulls first
-LIMIT (100)
-```
+_v4 did not produce SQL._
 
 ## Reference SQL (zquery log)
 
@@ -425,4 +329,34 @@ ORDER BY
     "customer_last_name" asc nulls first,
     "customer_preferred_cust_flag" asc nulls first
 LIMIT (100)
+```
+
+## v4 generation error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
+    info, build_env, _, build_stmt = run_tpcds_query(query_id)
+                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
+    info = search_concepts(
+        mandatory_list=list(build_stmt.output_components),
+    ...<4 lines>...
+        conditions=[conditions] if conditions else [],
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
+    result = _search_concepts(
+        mandatory_list,
+    ...<5 lines>...
+        conditions=conditions,
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
+    group_graph = build_group_graph(concept_graph, conditions)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 422, in build_group_graph
+    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 331, in _inject_conditions
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: Could not place condition atom local.store_first_year > 0: row inputs ['local.store_first_year'] not reachable from any group.
 ```

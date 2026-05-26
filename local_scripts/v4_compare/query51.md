@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 10):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4078 | 95 | 343.47 ms |
-| reference | 4019 | 107 | 312.23 ms |
-| v4 / ref | 1.01x | 0.89x | 1.10x |
+| v4 | 4384 | 105 | 366.84 ms |
+| reference | 4019 | 107 | 324.14 ms |
+| v4 / ref | 1.09x | 0.98x | 1.13x |
 
 ## Preql
 
@@ -169,37 +169,47 @@ FROM
     "questionable"),
 yummy as (
 SELECT
-    "uneven"."store_cume" as "store_cumulative",
-    "uneven"."web_cume" as "web_cumulative",
-    CASE
-	WHEN "questionable"."store_has_row" = 1 THEN "uneven"."store_cume"
-	ELSE null
-	END as "store_sales_visible",
-    CASE
-	WHEN "questionable"."web_has_row" = 1 THEN "uneven"."web_cume"
-	ELSE null
-	END as "web_sales_visible",
-    coalesce("cooperative"."sales_date_date","questionable"."sales_date_date","uneven"."sales_date_date") as "d_date",
-    coalesce("cooperative"."sales_item_id","questionable"."sales_item_id","uneven"."sales_item_id") as "item_sk"
+    "questionable"."store_has_row" as "store_has_row",
+    "questionable"."web_has_row" as "web_has_row",
+    "uneven"."store_cume" as "store_cume",
+    "uneven"."web_cume" as "web_cume",
+    coalesce("cooperative"."sales_date_date","questionable"."sales_date_date","uneven"."sales_date_date") as "sales_date_date",
+    coalesce("cooperative"."sales_item_id","questionable"."sales_item_id","uneven"."sales_item_id") as "sales_item_id"
 FROM
     "uneven"
     INNER JOIN "questionable" on "uneven"."sales_date_date" = "questionable"."sales_date_date" AND "uneven"."sales_item_id" = "questionable"."sales_item_id"
-    FULL JOIN "cooperative" on "uneven"."sales_date_date" is not distinct from "cooperative"."sales_date_date" AND "uneven"."sales_item_id" = "cooperative"."sales_item_id")
+    FULL JOIN "cooperative" on "uneven"."sales_date_date" is not distinct from "cooperative"."sales_date_date" AND "uneven"."sales_item_id" = "cooperative"."sales_item_id"),
+juicy as (
 SELECT
-    "yummy"."item_sk" as "item_sk",
-    "yummy"."d_date" as "d_date",
-    "yummy"."web_sales_visible" as "web_sales",
-    "yummy"."store_sales_visible" as "store_sales",
-    "yummy"."web_cumulative" as "web_cumulative",
-    "yummy"."store_cumulative" as "store_cumulative"
+    "yummy"."sales_date_date" as "d_date",
+    "yummy"."sales_item_id" as "item_sk",
+    "yummy"."store_cume" as "store_cumulative",
+    "yummy"."web_cume" as "web_cumulative",
+    CASE
+	WHEN "yummy"."store_has_row" = 1 THEN "yummy"."store_cume"
+	ELSE null
+	END as "store_sales_visible",
+    CASE
+	WHEN "yummy"."web_has_row" = 1 THEN "yummy"."web_cume"
+	ELSE null
+	END as "web_sales_visible"
 FROM
-    "yummy"
+    "yummy")
+SELECT
+    "juicy"."item_sk" as "item_sk",
+    "juicy"."d_date" as "d_date",
+    "juicy"."web_sales_visible" as "web_sales",
+    "juicy"."store_sales_visible" as "store_sales",
+    "juicy"."web_cumulative" as "web_cumulative",
+    "juicy"."store_cumulative" as "store_cumulative"
+FROM
+    "juicy"
 WHERE
-    "yummy"."web_cumulative" > "yummy"."store_cumulative"
+    "juicy"."web_cumulative" > "juicy"."store_cumulative"
 
 ORDER BY 
-    "yummy"."item_sk" asc nulls first,
-    "yummy"."d_date" asc nulls first
+    "juicy"."item_sk" asc nulls first,
+    "juicy"."d_date" asc nulls first
 LIMIT (100)
 ```
 

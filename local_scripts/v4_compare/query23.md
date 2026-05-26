@@ -1,26 +1,36 @@
 # Query 23
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (4 rows) |
 | reference execution | OK (4 rows) |
-| results identical | YES |
+| results identical | NO |
 
 ## Result comparison
 
 v4 rows: 4 (4 distinct)
 ref rows: 4 (4 distinct)
+only in v4 (showing up to 5 of 4):
+  1x  ('Gordon', 'Collins', Decimal('495372633.60'))
+  1x  ('Steven', 'Fowler', Decimal('995220642.00'))
+  1x  ('Jesse', 'Green', Decimal('220824285.76'))
+  1x  ('Chester', 'Moore', Decimal('2143381715.28'))
+only in ref (showing up to 5 of 4):
+  1x  ('Gordon', 'Collins', Decimal('2025.60'))
+  1x  ('Steven', 'Fowler', Decimal('4069.50'))
+  1x  ('Jesse', 'Green', Decimal('902.96'))
+  1x  ('Chester', 'Moore', Decimal('8764.38'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9172 | 214 | 544.29 ms |
-| reference | 7652 | 178 | 586.98 ms |
-| v4 / ref | 1.20x | 1.20x | 0.93x |
+| v4 | 9413 | 221 | 562.93 ms |
+| reference | 7652 | 178 | 600.83 ms |
+| v4 / ref | 1.23x | 1.24x | 0.94x |
 
 ## Preql
 
@@ -180,14 +190,19 @@ FROM
     "yummy"
 WHERE
     "yummy"."ss_combo_count" > 4
-
-GROUP BY
-    1),
+),
 macho as (
 SELECT
     "late"."_best_customers_best_customer_id" as "best_customers_best_customer_id"
 FROM
     "late"),
+vacuous as (
+SELECT
+    "juicy"."frequent_items_frequent_item_id" as "frequent_items_frequent_item_id"
+FROM
+    "juicy"
+GROUP BY
+    1),
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
@@ -203,7 +218,7 @@ FROM
     INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select juicy."frequent_items_frequent_item_id" from juicy where juicy."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select vacuous."frequent_items_frequent_item_id" from vacuous where vacuous."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
 
 UNION ALL
 SELECT
@@ -220,7 +235,7 @@ FROM
     INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_store_sales_unified"."SS_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_store_sales_unified"."SS_ITEM_SK" in (select juicy."frequent_items_frequent_item_id" from juicy where juicy."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_store_sales_unified"."SS_ITEM_SK" in (select vacuous."frequent_items_frequent_item_id" from vacuous where vacuous."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
 
 UNION ALL
 SELECT
@@ -237,7 +252,7 @@ FROM
     INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_web_sales_unified"."WS_ITEM_SK" in (select juicy."frequent_items_frequent_item_id" from juicy where juicy."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_web_sales_unified"."WS_ITEM_SK" in (select vacuous."frequent_items_frequent_item_id" from vacuous where vacuous."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
 ),
 scrawny as (
 SELECT
@@ -250,7 +265,7 @@ FROM
     "cheerful"
     LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "cheerful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "cheerful"."sales_item_id" in (select juicy."frequent_items_frequent_item_id" from juicy where juicy."frequent_items_frequent_item_id" is not null)
+    "cheerful"."sales_item_id" in (select vacuous."frequent_items_frequent_item_id" from vacuous where vacuous."frequent_items_frequent_item_id" is not null)
 
 GROUP BY
     1,
@@ -278,31 +293,33 @@ SELECT
     "friendly"."sales_customer_last_name" as "sales_customer_last_name",
     sum("friendly"."_virt_filter_7664750597049030") as "sales_total"
 FROM
-    "friendly"
+    "macho"
+    FULL JOIN "juicy" on 1=1
+    FULL JOIN "friendly" on 1=1
 GROUP BY
     1,
     2),
-busy as (
+charming as (
 SELECT
     "divergent"."sales_total" as "sales_total",
     "friendly"."c_first_name" as "c_first_name",
     "friendly"."c_last_name" as "c_last_name"
 FROM
     "divergent"
-    INNER JOIN "friendly" on "divergent"."sales_customer_first_name" = "friendly"."sales_customer_first_name" AND "divergent"."sales_customer_last_name" = "friendly"."sales_customer_last_name"
+    LEFT OUTER JOIN "friendly" on "divergent"."sales_customer_first_name" = "friendly"."sales_customer_first_name" AND "divergent"."sales_customer_last_name" = "friendly"."sales_customer_last_name"
 WHERE
     "divergent"."sales_total" > 0
 )
 SELECT
-    "busy"."c_last_name" as "c_last_name",
-    "busy"."c_first_name" as "c_first_name",
-    "busy"."sales_total" as "sales_total"
+    "charming"."c_last_name" as "c_last_name",
+    "charming"."c_first_name" as "c_first_name",
+    "charming"."sales_total" as "sales_total"
 FROM
-    "busy"
+    "charming"
 ORDER BY 
-    "busy"."c_last_name" asc nulls first,
-    "busy"."c_first_name" asc nulls first,
-    "busy"."sales_total" asc nulls first
+    "charming"."c_last_name" asc nulls first,
+    "charming"."c_first_name" asc nulls first,
+    "charming"."sales_total" asc nulls first
 LIMIT (100)
 ```
 

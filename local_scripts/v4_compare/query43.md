@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1919 | 31 | 35.30 ms |
-| reference | 1919 | 31 | 34.11 ms |
-| v4 / ref | 1.00x | 1.00x | 1.04x |
+| v4 | 1919 | 31 | 35.99 ms |
+| reference | 1919 | 31 | 33.68 ms |
+| v4 / ref | 1.00x | 1.00x | 1.07x |
 
 ## Preql
 
@@ -64,8 +64,8 @@ SELECT
     sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Thursday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "thu_sales",
     sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Friday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "fri_sales",
     sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Saturday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sat_sales",
-    "store_sales_store_store"."S_STORE_ID" as "store_sales_store_text_id",
-    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
+    "store_sales_store_store"."S_STORE_ID" as "store_sales_store_text_id"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"

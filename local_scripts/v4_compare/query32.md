@@ -100,15 +100,23 @@ Traceback (most recent call last):
     ...<5 lines>...
         conditions=conditions,
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 259, in build_group_graph
-    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 191, in _inject_conditions
-    raise ValueError(
-    ...<3 lines>...
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 58, in _search_concepts
+    strategy_node = build_strategy_node(
+        group_graph, mandatory_list, environment, g, history
     )
-ValueError: Atom local.discount_amount > local.avg_item_disc would be injected at grp:basic:d1:item.id|local.order_number, which is downstream of d0 barrier(s) ['grp:aggregate:d0:item.id']; conditions cannot be pushed past row-shape changes.
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 386, in build_strategy_node
+    for gid in _topological_order(group_graph):
+               ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 223, in _topological_order
+    return list(nx.topological_sort(lineage_only))
+  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
+    for generation in nx.topological_generations(G):
+                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
+    raise nx.NetworkXUnfeasible(
+        "Graph contains a cycle or graph changed during iteration"
+    )
+networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```
 
 ## reference execution error

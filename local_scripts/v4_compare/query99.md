@@ -1,24 +1,32 @@
 # Query 99
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (96 rows) |
 | reference execution | OK (90 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 96 (96 distinct)
+ref rows: 90 (90 distinct)
+only in v4 (showing up to 5 of 6):
+  1x  (0, 0, 0, None, 0, 0, 'EXPRESS', None)
+  1x  (0, 0, 0, None, 0, 0, 'LIBRARY', None)
+  1x  (0, 0, 0, None, 0, 0, 'NEXT DAY', None)
+  1x  (0, 0, 0, None, 0, 0, 'OVERNIGHT', None)
+  1x  (0, 0, 0, None, 0, 0, 'REGULAR', None)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3774 | 55 | — |
-| reference | 2597 | 28 | 45.78 ms |
-| v4 / ref | 1.45x | 1.96x | — |
+| v4 | 4816 | 69 | 96.08 ms |
+| reference | 2597 | 28 | 55.16 ms |
+| v4 / ref | 1.85x | 2.46x | 1.74x |
 
 ## Preql
 
@@ -67,6 +75,9 @@ WITH
 questionable as (
 SELECT
     "call_center_call_center"."CC_NAME" as "call_center_name",
+    "catalog_sales"."CS_ITEM_SK" as "item_id",
+    "catalog_sales"."CS_ORDER_NUMBER" as "order_number",
+    "ship_date_date"."D_MONTH_SEQ" as "ship_date_month_seq",
     "ship_mode_ship_mode"."SM_TYPE" as "ship_mode_type",
     "warehouse_warehouse"."w_warehouse_name" as "warehouse_name",
     1 as "row_counter",
@@ -84,13 +95,23 @@ WHERE
 ),
 yummy as (
 SELECT
-    "questionable"."ship_mode_type" as "ship_mode_type",
+    "questionable"."item_id" as "item_id",
+    "questionable"."order_number" as "order_number",
+    "questionable"."ship_date_date" as "ship_date_date",
+    "questionable"."ship_date_month_seq" as "ship_date_month_seq",
+    "questionable"."sold_date_date" as "sold_date_date",
     LOWER("questionable"."call_center_name")  as "cc_name_lower",
     SUBSTRING("questionable"."warehouse_name",1,20) as "warehouse_short_name"
 FROM
     "questionable"),
 abundant as (
 SELECT
+    "questionable"."item_id" as "item_id",
+    "questionable"."order_number" as "order_number",
+    "questionable"."ship_date_date" as "ship_date_date",
+    "questionable"."ship_date_month_seq" as "ship_date_month_seq",
+    "questionable"."ship_mode_type" as "ship_mode_type",
+    "questionable"."sold_date_date" as "sold_date_date",
     CASE WHEN date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") <= 30 THEN "questionable"."row_counter" ELSE NULL END as "_virt_filter_row_counter_5011928028596288",
     CASE WHEN date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") > 120 THEN "questionable"."row_counter" ELSE NULL END as "_virt_filter_row_counter_3600395140186427",
     CASE WHEN date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") > 30 and date_diff('day', "questionable"."sold_date_date", "questionable"."ship_date_date") <= 60 THEN "questionable"."row_counter" ELSE NULL END as "_virt_filter_row_counter_3995177617069933",
@@ -104,18 +125,19 @@ SELECT
     count("abundant"."_virt_filter_row_counter_2542054096360490") as "between_61_and_90_days",
     count("abundant"."_virt_filter_row_counter_8267453838305074") as "between_91_and_120_days",
     count("abundant"."_virt_filter_row_counter_3600395140186427") as "over_120_days",
-    "yummy"."cc_name_lower" as "cc_name_lower",
-    "yummy"."ship_mode_type" as "ship_mode_type",
-    "yummy"."warehouse_short_name" as "warehouse_short_name"
+    "yummy"."warehouse_short_name" as "warehouse_short_name",
+    "abundant"."ship_mode_type" as "ship_mode_type",
+    "yummy"."cc_name_lower" as "cc_name_lower"
 FROM
-    "yummy"
+    "abundant"
+    LEFT OUTER JOIN "yummy" on "abundant"."item_id" = "yummy"."item_id" AND "abundant"."order_number" = "yummy"."order_number" AND "abundant"."ship_date_date" = "yummy"."ship_date_date" AND "abundant"."ship_date_month_seq" = "yummy"."ship_date_month_seq" AND "abundant"."sold_date_date" = "yummy"."sold_date_date"
 GROUP BY
     6,
     7,
     8
 ORDER BY 
     "yummy"."warehouse_short_name" asc nulls first,
-    "yummy"."ship_mode_type" asc nulls first,
+    "abundant"."ship_mode_type" asc nulls first,
     "yummy"."cc_name_lower" asc nulls first
 LIMIT (100)
 ```
@@ -151,29 +173,4 @@ ORDER BY
     "ship_mode_ship_mode"."SM_TYPE" asc nulls first,
     "cc_name_lower" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "abundant" not found!
-Candidate tables: "yummy"
-
-LINE 37:     count("abundant"."_virt_filter_row_counter_5011928028596288")...
-                   ^
 ```

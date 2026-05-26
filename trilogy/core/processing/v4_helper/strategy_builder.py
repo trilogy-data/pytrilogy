@@ -18,15 +18,22 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import combine_condition_atoms
+from trilogy.core.enums import Derivation
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
     MergeNode,
+    SelectNode,
     StrategyNode,
 )
 from trilogy.core.processing.v4_node_generators import build_node
 
 from .constants import FINAL_NODE_ID
+
+_AGGREGATING_DERIVATIONS = {
+    Derivation.AGGREGATE.value,
+    Derivation.GROUP_TO.value,
+}
 
 
 def _wrap_atoms(atoms: list[BoolExpr]) -> BuildWhereClause | None:
@@ -144,6 +151,35 @@ def _parent_nodes_for(
         if not covered_by_descendant:
             parents.append(node.copy())
     return parents
+
+
+def _pre_merge_parents(
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """Collapse a multi-parent set into a single MergeNode that auto-joins
+    on shared output concepts. Non-merging generators (GroupNode for
+    aggregate/group_to, WindowNode, FilterNode) emit `joins=[]` and let the
+    renderer pick one parent as base, so multi-parent without a merge
+    yields `Referenced table "X" not found` binder errors when the SELECT
+    references the dropped parent. Wrapping here keeps the generators
+    simple and the join logic in one place."""
+    if len(parents) <= 1:
+        return parents
+    seen: set[str] = set()
+    all_outputs: list[BuildConcept] = []
+    for p in parents:
+        for o in p.output_concepts:
+            if o.address not in seen:
+                seen.add(o.address)
+                all_outputs.append(o)
+    merged = MergeNode(
+        input_concepts=all_outputs,
+        output_concepts=all_outputs,
+        environment=environment,
+        parents=parents,
+    )
+    return [merged]
 
 
 def _satisfiable_outputs(
@@ -370,24 +406,58 @@ def build_strategy_node(
         preexisting = _wrap_atoms(_accumulated_atoms_above(group_graph, gid))
         # The "needed" set drives ancestor-dedup: a parent is kept only if
         # it contributes something to it that no descendant parent also
-        # provides. Includes both the output addresses themselves and the
-        # lineage args those outputs consume.
+        # provides. Includes the output addresses themselves, the lineage
+        # args those outputs consume, and the inputs of any conditions
+        # applied at this group — a filter like `price > avg(...) by cat`
+        # needs `avg(...)` reachable through a parent, otherwise the
+        # avg-providing group gets dedup'd out and the WHERE renders with
+        # nothing to bind to.
         needed: set[str] = set()
         for c in outputs:
             needed.add(c.address)
             if c.lineage is not None:
                 for arg in c.lineage.concept_arguments:
                     needed.add(arg.address)
+        if injected is not None:
+            for arg in injected.concept_arguments:
+                needed.add(arg.address)
         parents = _parent_nodes_for(group_graph, built, gid, needed=needed)
+        parents = _pre_merge_parents(parents, environment)
         outputs = _satisfiable_outputs(outputs, parents)
         if not outputs:
             continue
+        # For aggregating derivations, peel `injected` off into a pre-filter
+        # wrapper so the GroupNode itself sees no `conditions`. GroupNode's
+        # non-scalar-condition path (group_node.py:199) reacts to a
+        # condition that references an aggregate concept (like our
+        # `cp > 1.2 * avg`) by appending the condition's row args to the
+        # group's outputs — which then leak into the GROUP BY and shrink
+        # every row to a unique (state, cp, avg) bucket. Wrapping in a
+        # SelectNode does the WHERE first; the GroupNode then aggregates
+        # the filtered rows with a clean GROUP BY at the intended grain.
+        condition_for_generator = injected
+        if (
+            injected is not None
+            and derivation in _AGGREGATING_DERIVATIONS
+            and parents
+        ):
+            parent_outputs = list(parents[0].output_concepts)
+            parents = [
+                SelectNode(
+                    input_concepts=parent_outputs,
+                    output_concepts=parent_outputs,
+                    environment=environment,
+                    parents=parents,
+                    conditions=injected.conditional,
+                )
+            ]
+            condition_for_generator = None
         node = build_node(
             derivation=derivation,
             outputs=outputs,
             parents=parents,
             environment=environment,
-            conditions=injected,
+            conditions=condition_for_generator,
             preexisting_conditions=preexisting,
             history=history,
             g=g,

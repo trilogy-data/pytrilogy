@@ -24,8 +24,8 @@ only in v4 (showing up to 5 of 33):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4885 | 91 | 39.90 ms |
-| reference | 3459 | 60 | 38.54 ms |
+| v4 | 4885 | 91 | 50.19 ms |
+| reference | 3459 | 60 | 48.27 ms |
 | v4 / ref | 1.41x | 1.52x | 1.04x |
 
 ## Preql

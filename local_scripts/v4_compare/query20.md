@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1984 | 48 | 29.13 ms |
-| reference | 1984 | 48 | 27.69 ms |
-| v4 / ref | 1.00x | 1.00x | 1.05x |
+| v4 | 2439 | 59 | 28.04 ms |
+| reference | 1984 | 48 | 24.12 ms |
+| v4 / ref | 1.23x | 1.23x | 1.16x |
 
 ## Preql
 
@@ -83,23 +83,34 @@ SELECT
 FROM
     "cheerful"
 GROUP BY
-    1)
+    1),
+questionable as (
 SELECT
-    "cheerful"."cs_item_name" as "cs_item_name",
-    "cheerful"."cs_item_desc" as "cs_item_desc",
     "cheerful"."cs_item_category" as "cs_item_category",
-    coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") as "cs_item_class",
     "cheerful"."cs_item_current_price" as "cs_item_current_price",
+    "cheerful"."cs_item_desc" as "cs_item_desc",
+    "cheerful"."cs_item_name" as "cs_item_name",
     "cheerful"."revenue" as "revenue",
-    ( "cheerful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
+    "cooperative"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792",
+    coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") as "cs_item_class"
 FROM
     "cooperative"
-    INNER JOIN "cheerful" on "cooperative"."cs_item_class" is not distinct from "cheerful"."cs_item_class"
+    INNER JOIN "cheerful" on "cooperative"."cs_item_class" is not distinct from "cheerful"."cs_item_class")
+SELECT
+    "questionable"."cs_item_name" as "cs_item_name",
+    "questionable"."cs_item_desc" as "cs_item_desc",
+    "questionable"."cs_item_category" as "cs_item_category",
+    "questionable"."cs_item_class" as "cs_item_class",
+    "questionable"."cs_item_current_price" as "cs_item_current_price",
+    "questionable"."revenue" as "revenue",
+    ( "questionable"."revenue" * 100.0 ) / ("questionable"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
+FROM
+    "questionable"
 ORDER BY 
-    "cheerful"."cs_item_category" asc nulls first,
-    coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") asc nulls first,
-    "cheerful"."cs_item_name" asc nulls first,
-    "cheerful"."cs_item_desc" asc nulls first,
+    "questionable"."cs_item_category" asc nulls first,
+    "questionable"."cs_item_class" asc nulls first,
+    "questionable"."cs_item_name" asc nulls first,
+    "questionable"."cs_item_desc" asc nulls first,
     "revenue_ratio" asc nulls first
 LIMIT (100)
 ```

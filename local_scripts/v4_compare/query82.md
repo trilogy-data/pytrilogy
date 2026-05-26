@@ -14,11 +14,11 @@
 v4 rows: 34 (34 distinct)
 ref rows: 2 (2 distinct)
 only in v4 (showing up to 5 of 34):
-  1x  (datetime.date(2000, 6, 22), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 394, 11300)
-  1x  (datetime.date(2000, 7, 20), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 482, 11300)
-  1x  (datetime.date(2000, 6, 1), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 298, 11300)
-  1x  (datetime.date(2000, 6, 1), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 199, 11300)
   1x  (datetime.date(2000, 6, 8), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 282, 11300)
+  1x  (datetime.date(2000, 7, 13), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 277, 11300)
+  1x  (datetime.date(2000, 6, 29), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 110, 11300)
+  1x  (datetime.date(2000, 7, 13), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 317, 11300)
+  1x  (datetime.date(2000, 6, 1), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 298, 11300)
 only in ref (showing up to 5 of 2):
   1x  (Decimal('67.28'), 'Arab, financial pol', 'AAAAAAAAECMCAAAA')
   1x  (Decimal('86.90'), 'Clinical, labour aspects might sit enough like a problems. Remarkably mysterious experts shall learn to th', 'AAAAAAAALIHCAAAA')
@@ -27,9 +27,9 @@ only in ref (showing up to 5 of 2):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1909 | 42 | 188.73 ms |
-| reference | 1583 | 34 | 188.23 ms |
-| v4 / ref | 1.21x | 1.24x | 1.00x |
+| v4 | 1909 | 42 | 214.21 ms |
+| reference | 1583 | 34 | 211.76 ms |
+| v4 / ref | 1.21x | 1.24x | 1.01x |
 
 ## Preql
 

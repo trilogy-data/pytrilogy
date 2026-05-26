@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1512 | 32 | 262.94 ms |
-| reference | 1512 | 32 | 257.91 ms |
-| v4 / ref | 1.00x | 1.00x | 1.02x |
+| v4 | 1512 | 32 | 276.37 ms |
+| reference | 1512 | 32 | 279.47 ms |
+| v4 / ref | 1.00x | 1.00x | 0.99x |
 
 ## Preql
 
@@ -67,13 +67,13 @@ WHERE
 SELECT
     avg("cheerful"."inventory_quantity_on_hand") as "qoh",
     "cheerful"."inventory_item_class" as "inventory_item_class",
-    "cheerful"."inventory_item_product_name" as "inventory_item_product_name",
     "cheerful"."inventory_item_brand_name" as "inventory_item_brand_name",
+    "cheerful"."inventory_item_product_name" as "inventory_item_product_name",
     "cheerful"."inventory_item_category" as "inventory_item_category"
 FROM
     "cheerful"
 GROUP BY
-    ROLLUP (3, 4, 2, 5)
+    ROLLUP (4, 3, 2, 5)
 ORDER BY 
     "qoh" asc nulls first,
     "cheerful"."inventory_item_product_name" asc nulls first,

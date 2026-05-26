@@ -28,6 +28,21 @@ from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import GroupBucket
 
+# depth_label used for the secondary root bucket dedicated to feeding d1
+# (in-WHERE) aggregate calculations. Distinct from "root" so the bucket
+# gets its own group id and doesn't collide with the main root bucket.
+ROOT_D1_DEPTH = "root_d1"
+
+# Derivations that compute over an input row POPULATION — only these need
+# to be sourced from a pristine, unfiltered scan when they appear in a
+# WHERE clause. AGGREGATE/WINDOW/GROUP_TO are population-sensitive: avg/
+# sum/rank depend on which rows are present. ROWSET / SUBSELECT / UNNEST
+# / UNION / RECURSIVE are NOT — a rowset used inside `IN` is its own
+# subquery scope, an unnest is pointwise, etc. Including them would split
+# roots for every `x IN some_rowset` clause and break parent wiring
+# downstream (q23 regression).
+_POPULATION_SENSITIVE_DERIVATIONS = GROUPING_DERIVATIONS
+
 
 def _lineage_parents(concept_graph: nx.DiGraph, node: str) -> frozenset[str]:
     return frozenset(
@@ -40,6 +55,77 @@ def _lineage_parents(concept_graph: nx.DiGraph, node: str) -> frozenset[str]:
 def _group_id_for(bucket: GroupBucket) -> str:
     grain_key = "|".join(sorted(bucket.grain_components)) or "∅"
     return f"grp:{bucket.derivation}:{bucket.depth_label}:{grain_key}"
+
+
+def _lineage_only_subgraph(concept_graph: nx.DiGraph) -> nx.DiGraph:
+    edges = [
+        (u, v)
+        for u, v, ed in concept_graph.edges(data=True)
+        if ed.get("kind") == "lineage"
+    ]
+    sub = concept_graph.edge_subgraph(edges).copy()
+    for n in concept_graph.nodes:
+        if n not in sub:
+            sub.add_node(n)
+    return sub
+
+
+def _d1_calc_subgraph(concept_graph: nx.DiGraph) -> tuple[set[str], set[str]]:
+    """Identify (d1_calc_roots, d1_subgraph_nodes).
+
+    A 'd1 calc node' is a derived concept (non-root) classified as d1 — an
+    aggregate (or window/etc.) referenced inside a WHERE clause. Its lineage
+    inputs must be sourced from a scan that does NOT have sibling WHERE atoms
+    pushed onto it (an avg-in-where has to run over the unfiltered population,
+    not the rows that survive other filters).
+
+    - d1_calc_roots: root concepts that are lineage-ancestors of any d1 calc.
+      These become primary members of an extra ROOT bucket (R_d1).
+    - d1_subgraph_nodes: the d1 calc nodes plus all their lineage ancestors.
+      Used by edge routing to decide whether a root→X edge should source from
+      R_d1 (X in d1_subgraph) or R_other (the default root bucket)."""
+    d1_calc_nodes = [
+        n
+        for n, d in concept_graph.nodes(data=True)
+        if d.get("depth_label") == "d1"
+        and d.get("derivation") in _POPULATION_SENSITIVE_DERIVATIONS
+    ]
+    if not d1_calc_nodes:
+        return set(), set()
+    lineage_only = _lineage_only_subgraph(concept_graph)
+    subgraph_nodes: set[str] = set(d1_calc_nodes)
+    for n in d1_calc_nodes:
+        subgraph_nodes.update(nx.ancestors(lineage_only, n))
+    d1_calc_roots = {
+        n
+        for n in subgraph_nodes
+        if concept_graph.nodes[n].get("derivation") == Derivation.ROOT.value
+    }
+    return d1_calc_roots, subgraph_nodes
+
+
+def _add_d1_root_bucket(
+    concept_graph: nx.DiGraph,
+    buckets: dict[str, GroupBucket],
+    d1_calc_roots: set[str],
+) -> str | None:
+    """Add an extra ROOT bucket containing just the d1-feeding roots. Returns
+    the new bucket's group id (or None if no d1 calc roots)."""
+    if not d1_calc_roots:
+        return None
+    bucket = GroupBucket(
+        depth_label=ROOT_D1_DEPTH,
+        derivation=Derivation.ROOT.value,
+        grain_components=frozenset(),
+    )
+    for addr in sorted(d1_calc_roots):
+        bucket.primary_members.append(addr)
+        bucket.member_depths[addr] = concept_graph.nodes[addr].get(
+            "depth_label", "d*"
+        )
+    gid = _group_id_for(bucket)
+    buckets[gid] = bucket
+    return gid
 
 
 def _assign_groups(
@@ -106,6 +192,9 @@ def _materialize_group_graph(
     concept_graph: nx.DiGraph,
     primary_group: dict[str, str],
     buckets: dict[str, GroupBucket],
+    d1_root_gid: str | None = None,
+    d1_calc_roots: set[str] | None = None,
+    d1_subgraph: set[str] | None = None,
 ) -> nx.DiGraph:
     """Realize the in-flight `GroupBucket` map as an nx.DiGraph with node
     attributes the downstream consumers (strategy walker, visualizer) read."""
@@ -131,10 +220,37 @@ def _materialize_group_graph(
             conditions=[],
         )
 
+    # Propagate concept-level edges to the group level. Both `lineage` and
+    # `constraint` edges become group predecessor relationships: lineage is
+    # a computational dependency; constraint is a d1→d0 must-be-above
+    # ordering that downstream consumers (the strategy walker, condition
+    # placement) treat identically — both mean "this group's outputs must
+    # be in the input CTE for the consumer." Without propagating
+    # constraints, a d1 aggregate (e.g. `avg(price) by category`, when used
+    # in a filter) ends up an island — the filter atom has nowhere to land
+    # and the d0 aggregate that consumes the filtered rows never gets the
+    # d1 group as a parent.
+    #
+    # Root edge routing: when a d1 calc node exists (an aggregate inside a
+    # WHERE clause), its lineage-feeding roots are duplicated into a second
+    # ROOT bucket (R_d1). Any root → d1-subgraph edge sources from R_d1 so
+    # the d1 calc reads from a pristine scan; root → anything-else still
+    # routes through the default R_other bucket and inherits its pushed-down
+    # WHEREs. Without the split, sibling filters pollute the avg's input.
+    d1_calc_roots = d1_calc_roots or set()
+    d1_subgraph = d1_subgraph or set()
     for u, v, edata in concept_graph.edges(data=True):
-        if edata.get("kind") != "lineage":
+        if edata.get("kind") not in ("lineage", "constraint"):
             continue
-        gu, gv = primary_group[u], primary_group[v]
+        if (
+            d1_root_gid is not None
+            and u in d1_calc_roots
+            and v in d1_subgraph
+        ):
+            gu = d1_root_gid
+        else:
+            gu = primary_group[u]
+        gv = primary_group[v]
         if gu == gv:
             continue
         group_graph.add_edge(gu, gv, kind="lineage")
@@ -157,11 +273,39 @@ def _inject_conditions(
     cannot be pushed past a row-shape change). Returns the set of groups
     that received at least one atom."""
     d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == "d0"}
+    # The d1-feeding root bucket exists exactly so its scan stays unfiltered
+    # — sibling WHERE atoms would corrupt the avg-in-where. Conditions whose
+    # row inputs only fit in R_d1 still have to land somewhere, so we exclude
+    # R_d1 from the candidate set and let the d1's downstream paths host the
+    # filter (R_other, or a basic/aggregate below it).
+    d1_root_ids = {
+        gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH
+    }
     group_members: dict[str, set[str]] = {
         gid: set(b.primary_members) | set(b.secondary_members)
         for gid, b in buckets.items()
     }
     condition_group_ids: set[str] = set()
+
+    # A group can host an atom iff every row-arg is in its INPUT row
+    # stream — i.e. what its FROM clause provides. That's:
+    #   - for a source group (no ancestors): its own members (the
+    #     datasource scan IS its input)
+    #   - for any other group: the union of its ancestors' members (its
+    #     parents' CTEs feed its FROM)
+    # NOT including its own primaries — those are the *outputs* of this
+    # group's derivation. You can't WHERE on `avg(price)` inside the same
+    # SELECT that computes it; that filter must live downstream where
+    # `avg(price)` is an input column. The "ancestors-only" rule below
+    # forces those atoms to land on a consumer.
+    def _reachable_input(gid: str) -> set[str]:
+        ancestors = nx.ancestors(group_graph, gid)
+        if not ancestors:
+            return set(group_members.get(gid, set()))
+        reachable: set[str] = set()
+        for anc in ancestors:
+            reachable |= group_members.get(anc, set())
+        return reachable
 
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
@@ -174,10 +318,20 @@ def _inject_conditions(
             # that contains both inputs and drops on the floor.
             row_inputs = {c.address for c in atom.row_arguments}
             candidates = [
-                gid for gid, mems in group_members.items() if row_inputs <= mems
+                gid
+                for gid in group_members
+                if gid not in d1_root_ids
+                and row_inputs <= _reachable_input(gid)
             ]
             if not candidates:
-                continue
+                # Fail fast — silently dropping an atom changes query
+                # semantics. If you hit this, the atom needs either a
+                # synthetic merge group to land on or a richer
+                # row-args/existence-args split.
+                raise ValueError(
+                    f"Could not place condition atom {atom}: row inputs "
+                    f"{sorted(row_inputs)} not reachable from any group."
+                )
             cand_set = set(candidates)
             upstream_most = [
                 gid
@@ -254,8 +408,17 @@ def build_group_graph(
     collapses to one bucket; BASIC merges by grain subset/equality.
     """
     primary_group, buckets = _assign_groups(concept_graph)
+    d1_calc_roots, d1_subgraph = _d1_calc_subgraph(concept_graph)
+    d1_root_gid = _add_d1_root_bucket(concept_graph, buckets, d1_calc_roots)
     _attach_secondary_members(concept_graph, buckets)
-    group_graph = _materialize_group_graph(concept_graph, primary_group, buckets)
+    group_graph = _materialize_group_graph(
+        concept_graph,
+        primary_group,
+        buckets,
+        d1_root_gid=d1_root_gid,
+        d1_calc_roots=d1_calc_roots,
+        d1_subgraph=d1_subgraph,
+    )
     condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
     downstream = _color_phases(group_graph, condition_group_ids)
     _add_final_node(group_graph, concept_graph, buckets, conditions, downstream)

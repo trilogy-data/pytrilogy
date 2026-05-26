@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5385 | 81 | 72.19 ms |
-| reference | 3694 | 60 | 48.79 ms |
-| v4 / ref | 1.46x | 1.35x | 1.48x |
+| v4 | 5380 | 81 | 64.35 ms |
+| reference | 3694 | 60 | 44.19 ms |
+| v4 / ref | 1.46x | 1.35x | 1.46x |
 
 ## Preql
 
@@ -148,7 +148,7 @@ SELECT
     "yummy"."store_sales_store_text_id" as "store_sales_store_text_id"
 FROM
     "juicy"
-    LEFT OUTER JOIN "yummy" on "juicy"."correlated_store_sales_item_desc" = "yummy"."correlated_store_sales_item_desc" AND "juicy"."correlated_store_sales_item_name" = "yummy"."correlated_store_sales_item_name" AND "juicy"."correlated_store_sales_store_name" = "yummy"."correlated_store_sales_store_name" AND "juicy"."correlated_store_sales_store_text_id" = "yummy"."correlated_store_sales_store_text_id"
+    INNER JOIN "yummy" on "juicy"."correlated_store_sales_item_desc" = "yummy"."correlated_store_sales_item_desc" AND "juicy"."correlated_store_sales_item_name" = "yummy"."correlated_store_sales_item_name" AND "juicy"."correlated_store_sales_store_name" = "yummy"."correlated_store_sales_store_name" AND "juicy"."correlated_store_sales_store_text_id" = "yummy"."correlated_store_sales_store_text_id"
 WHERE
     "juicy"."catalog_sales_quantity" > 0
 )

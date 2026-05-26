@@ -2,14 +2,14 @@
 roots and produce a DAG of concept-level lineage + d1→d0 constraint edges.
 
 For each concept added, an upstream-fetcher (dispatched on
-`concept.derivation`) decides what additional concepts must be in the
-graph for this concept to actually be sourceable. The default fetcher
-returns `lineage.concept_arguments` — the computational dependencies that
-also get `kind="lineage"` edges. Specialized fetchers (AGGREGATE, FILTER,
-WINDOW, SUBSELECT) add row-identity concepts that aren't visible from the
-lineage walk alone: property keys, grain components, partition keys. They
-don't get lineage edges — they're structural deps, not parents — but the
-grouping pass picks them up and places them in the appropriate group.
+`concept.derivation`) decides what additional concepts the input CTE for
+this node must contain. The default fetcher returns
+`lineage.concept_arguments` — the parents the expression directly
+consumes. Specialized fetchers (AGGREGATE, FILTER, WINDOW, SUBSELECT) add
+row-identity concepts that aren't visible from the lineage walk alone:
+property keys, grain components, partition keys. Everything the fetcher
+returns gets a `kind="lineage"` edge — an aggregate's grain keys aren't
+optional metadata, they're what keeps row identity intact through the SUM.
 
 This mirrors the per-derivation `resolve_*_parent_concepts` helpers used
 by the v3 generators (`gen_group_node`, `gen_filter_node`,
@@ -166,21 +166,17 @@ def _add_concept(
         ),
     )
 
-    # Per-derivation upstream fetcher (see `_UPSTREAM`): walks both the
-    # lineage args (computational parents) and the row-identity deps the
-    # lineage walk alone misses (property keys for filters and aggregates,
-    # grain components and partition keys for windows and subselects).
-    # Lineage edges below come only from `concept_arguments`; structural
-    # extras land in the graph without edges and are placed by the
-    # grouping pass.
+    # Per-derivation upstream fetcher (see `_UPSTREAM`): everything the
+    # fetcher returns is a real lineage dependency — the concept's input
+    # CTE has to contain it for this node to render correctly. An
+    # aggregate's grain keys aren't optional metadata; they're what keeps
+    # row identity intact through the SUM. Same story for window
+    # partition keys and filter property keys. So every fetcher result
+    # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     for upstream in fetcher(concept, environment):
         _add_concept(upstream, environment, graph, condition_addresses)
-    if concept.lineage is None:
-        return
-    for parent in concept.lineage.concept_arguments:
-        resolved = environment.concepts.get(parent.address, parent)
-        graph.add_edge(resolved.address, concept.address, kind="lineage")
+        graph.add_edge(upstream.address, concept.address, kind="lineage")
 
 
 def build_concept_graph(

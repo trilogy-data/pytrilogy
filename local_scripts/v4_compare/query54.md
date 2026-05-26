@@ -16,7 +16,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 0 | 0 | — |
-| reference | 4183 | 91 | 35.37 ms |
+| reference | 4183 | 91 | 39.42 ms |
 
 ## Preql
 
@@ -207,10 +207,10 @@ Traceback (most recent call last):
     strategy_node = build_strategy_node(
         group_graph, mandatory_list, environment, g, history
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 350, in build_strategy_node
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 386, in build_strategy_node
     for gid in _topological_order(group_graph):
                ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 187, in _topological_order
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 223, in _topological_order
     return list(nx.topological_sort(lineage_only))
   File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
     for generation in nx.topological_generations(G):

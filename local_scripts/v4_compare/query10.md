@@ -29,9 +29,9 @@ only in ref (showing up to 5 of 6):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6832 | 121 | 235.84 ms |
-| reference | 4839 | 84 | 103.40 ms |
-| v4 / ref | 1.41x | 1.44x | 2.28x |
+| v4 | 6832 | 121 | 204.33 ms |
+| reference | 4839 | 84 | 87.00 ms |
+| v4 / ref | 1.41x | 1.44x | 2.35x |
 
 ## Preql
 
@@ -182,14 +182,14 @@ SELECT
     count("young"."customer_id") as "cnt4",
     count("young"."customer_id") as "cnt5",
     count("young"."customer_id") as "cnt6",
-    "young"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
-    "young"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
     "young"."customer_demographics_marital_status" as "customer_demographics_marital_status",
     "young"."customer_demographics_gender" as "customer_demographics_gender",
+    "young"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
     "young"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
-    "young"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    "young"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
     "young"."customer_demographics_education_status" as "customer_demographics_education_status",
-    "young"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count"
+    "young"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    "young"."customer_demographics_dependent_count" as "customer_demographics_dependent_count"
 FROM
     "young"
 GROUP BY

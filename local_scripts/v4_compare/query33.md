@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 344 | 10 | — |
-| reference | 4287 | 76 | 28.27 ms |
-| v4 / ref | 0.08x | 0.13x | — |
+| v4 | 440 | 7 | — |
+| reference | 4287 | 76 | 29.63 ms |
+| v4 / ref | 0.10x | 0.09x | — |
 
 ## Preql
 
@@ -47,14 +47,11 @@ limit 100
 
 ```sql
 SELECT
-    sum(INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price>) as "total_sales",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.item.manufacturer_id> as "sales_item_manufacturer_id"
+    CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to items.category> = 'Electronics' THEN INVALID_REFERENCE_BUG_<Missing source reference to items.manufacturer_id> ELSE NULL END as "electronics_manuf_ids"
 
-GROUP BY
-    2
 ORDER BY 
-    "total_sales" asc nulls first,
-    "sales_item_manufacturer_id" asc nulls first
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> asc nulls first,
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.item.manufacturer_id> asc nulls first
 LIMIT (100)
 ```
 
@@ -159,6 +156,6 @@ Traceback (most recent call last):
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 2:     sum(INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price>) as "total_sales...
-                                               ^
+LINE 2:     CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to items.category> = 'Electronics' THEN...
+                                                     ^
 ```

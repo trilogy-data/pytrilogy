@@ -20,9 +20,9 @@ only in v4 (showing up to 5 of 1):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5411 | 81 | 148.85 ms |
-| reference | 2700 | 38 | 34.29 ms |
-| v4 / ref | 2.00x | 2.13x | 4.34x |
+| v4 | 5411 | 81 | 172.82 ms |
+| reference | 2700 | 38 | 40.28 ms |
+| v4 / ref | 2.00x | 2.13x | 4.29x |
 
 ## Preql
 

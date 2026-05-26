@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 22):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6648 | 143 | 37.53 ms |
-| reference | 5430 | 119 | 31.72 ms |
-| v4 / ref | 1.22x | 1.20x | 1.18x |
+| v4 | 6651 | 143 | 41.05 ms |
+| reference | 5430 | 119 | 36.88 ms |
+| v4 / ref | 1.22x | 1.20x | 1.11x |
 
 ## Preql
 
@@ -190,7 +190,7 @@ SELECT
 FROM
     "juicy"
     FULL JOIN "yummy" on "juicy"."sales_item_id" = "yummy"."sales_item_id" AND "juicy"."sales_sales_channel" = "yummy"."sales_sales_channel"),
-concerned as (
+young as (
 SELECT
     "vacuous"."sales_item_id" as "sales_item_id",
     "vacuous"."sales_sales_channel" as "sales_sales_channel",
@@ -198,17 +198,17 @@ SELECT
     rank() over (partition by "vacuous"."sales_sales_channel" order by "vacuous"."return_ratio" asc ) as "return_rank"
 FROM
     "vacuous"),
-young as (
+sparkling as (
 SELECT
-    "concerned"."currency_rank" as "currency_rank",
-    "concerned"."return_rank" as "return_rank",
     "vacuous"."item" as "item",
-    "vacuous"."return_ratio" as "return_ratio"
+    "vacuous"."return_ratio" as "return_ratio",
+    "young"."currency_rank" as "currency_rank",
+    "young"."return_rank" as "return_rank"
 FROM
-    "vacuous"
-    RIGHT OUTER JOIN "concerned" on "vacuous"."sales_item_id" = "concerned"."sales_item_id" AND "vacuous"."sales_sales_channel" = "concerned"."sales_sales_channel"
+    "young"
+    LEFT OUTER JOIN "vacuous" on "young"."sales_item_id" = "vacuous"."sales_item_id" AND "young"."sales_sales_channel" = "vacuous"."sales_sales_channel"
 WHERE
-    "concerned"."return_rank" <= 10 or "concerned"."currency_rank" <= 10
+    "young"."return_rank" <= 10 or "young"."currency_rank" <= 10
 )
 SELECT
     CASE
@@ -217,17 +217,17 @@ SELECT
 	WHEN  'CATALOG'  = 'STORE' THEN 'store'
 	ELSE null
 	END as "channel",
-    "young"."item" as "item",
-    "young"."return_ratio" as "return_ratio",
-    "young"."return_rank" as "return_rank",
-    "young"."currency_rank" as "currency_rank"
+    "sparkling"."item" as "item",
+    "sparkling"."return_ratio" as "return_ratio",
+    "sparkling"."return_rank" as "return_rank",
+    "sparkling"."currency_rank" as "currency_rank"
 FROM
-    "young"
+    "sparkling"
 ORDER BY 
     "channel" asc nulls first,
-    "young"."return_rank" asc nulls first,
-    "young"."currency_rank" asc nulls first,
-    "young"."item" asc nulls first
+    "sparkling"."return_rank" asc nulls first,
+    "sparkling"."currency_rank" asc nulls first,
+    "sparkling"."item" asc nulls first
 LIMIT (100)
 ```
 

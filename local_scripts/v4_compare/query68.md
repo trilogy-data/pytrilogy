@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 100):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3365 | 55 | 59.34 ms |
-| reference | 3059 | 50 | 62.54 ms |
-| v4 / ref | 1.10x | 1.10x | 0.95x |
+| v4 | 3365 | 55 | 65.89 ms |
+| reference | 3059 | 50 | 67.17 ms |
+| v4 / ref | 1.10x | 1.10x | 0.98x |
 
 ## Preql
 

@@ -1,24 +1,26 @@
 # Query 24
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1 (1 distinct)
+ref rows: 1 (1 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3276 | 63 | — |
-| reference | 3752 | 52 | 62.48 ms |
-| v4 / ref | 0.87x | 1.21x | — |
+| v4 | 3320 | 64 | 27.54 ms |
+| reference | 3752 | 52 | 62.45 ms |
+| v4 / ref | 0.88x | 1.23x | 0.44x |
 
 ## Preql
 
@@ -74,7 +76,7 @@ quizzical as (
 SELECT
     1 as "__preql_internal_all_rows"
 ),
-juicy as (
+vacuous as (
 SELECT
     "abundant"."store_sales_customer_first_name" as "store_sales_customer_first_name",
     "abundant"."store_sales_customer_last_name" as "store_sales_customer_last_name",
@@ -100,18 +102,19 @@ SELECT
     avg("uneven"."_virt_agg_sum_1360566110228423") as "avg_store_customer_sales"
 FROM
     "quizzical"
+    FULL JOIN "uneven" on 1=1
 GROUP BY
     "quizzical"."__preql_internal_all_rows")
 SELECT
-    "juicy"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "juicy"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "juicy"."store_sales_store_name" as "store_sales_store_name",
-    "juicy"."peach_sales" as "peach_sales"
+    "vacuous"."store_sales_customer_last_name" as "store_sales_customer_last_name",
+    "vacuous"."store_sales_customer_first_name" as "store_sales_customer_first_name",
+    "vacuous"."store_sales_store_name" as "store_sales_store_name",
+    "vacuous"."peach_sales" as "peach_sales"
 FROM
     "yummy"
-    INNER JOIN "juicy" on 1=1
+    INNER JOIN "vacuous" on 1=1
 WHERE
-    "juicy"."peach_sales" > 0.05 * "yummy"."avg_store_customer_sales"
+    "vacuous"."peach_sales" > 0.05 * "yummy"."avg_store_customer_sales"
 ```
 
 ## Reference SQL (zquery log)
@@ -169,29 +172,4 @@ FROM
     INNER JOIN "questionable" on 1=1
 WHERE
     "questionable"."peach_sales" > 0.05 * "vacuous"."avg_store_customer_sales"
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.BinderException: Binder Error: Referenced table "uneven" not found!
-Candidate tables: "quizzical"
-
-LINE 49:     avg("uneven"."_virt_agg_sum_1360566110228423") as "avg_store_cu...
-                 ^
 ```
