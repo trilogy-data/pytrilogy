@@ -47,7 +47,7 @@ PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
 }
 
 
-def get_agent_instructions(include_show:bool = True) -> str:
+def get_agent_instructions(include_show: bool = True) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
 Available tools:
@@ -104,12 +104,10 @@ Discipline:
    different action. Repeating an identical call with the same arguments is
    never the right move."""
     if include_show:
-        base +="""
+        base += """
 5. Use `show_message` rarely — only for a genuine status change, never to
    narrate intent or restate the plan."""
     return base
-
-
 
 
 # The Trilogy language reference has one source of truth, get_trilogy_prompt()
@@ -120,10 +118,8 @@ _TRILOGY_PROMPT_SECTION = get_trilogy_prompt(
         "reference exactly — Trilogy is NOT SQL:"
     )
 )
-SYSTEM_PROMPT =  get_agent_instructions(True) + "\n\n" + _TRILOGY_PROMPT_SECTION
-QUIET_SYSTEM_PROMPT = (
-     get_agent_instructions(False) + "\n\n" + _TRILOGY_PROMPT_SECTION
-)
+SYSTEM_PROMPT = get_agent_instructions(True) + "\n\n" + _TRILOGY_PROMPT_SECTION
+QUIET_SYSTEM_PROMPT = get_agent_instructions(False) + "\n\n" + _TRILOGY_PROMPT_SECTION
 
 
 @dataclass

@@ -296,9 +296,7 @@ def test_missing_import_skips_hidden_and_worker_dirs(tmp_path):
         "key id int;", encoding="utf-8"
     )
     (tmp_path / "raw").mkdir()
-    (tmp_path / "raw" / "store_sales.preql").write_text(
-        "key id int;", encoding="utf-8"
-    )
+    (tmp_path / "raw" / "store_sales.preql").write_text("key id int;", encoding="utf-8")
     env = Environment(working_path=tmp_path)
     with pytest.raises(ImportError) as exc_info:
         env.parse("import store_sales as store_sales; select 1 -> x;")

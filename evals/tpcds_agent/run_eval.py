@@ -734,11 +734,19 @@ def main() -> int:
                     )
                 per_query_scores[i] = scoring.apply_timeout(
                     per_query_scores[i],
-                    per_query_runs[i].get("timed_out", False) if per_query_runs[i] else False,
+                    (
+                        per_query_runs[i].get("timed_out", False)
+                        if per_query_runs[i]
+                        else False
+                    ),
                 )
         query_results = [
-            s if s is not None else scoring.QueryResult(
-                id=entry["id"], status="error", detail="never scored"
+            (
+                s
+                if s is not None
+                else scoring.QueryResult(
+                    id=entry["id"], status="error", detail="never scored"
+                )
             )
             for s, entry in zip(per_query_scores, active)
         ]
@@ -755,7 +763,12 @@ def main() -> int:
         # Apply timeout overlay even in the batch-fallback path.
         query_results = [
             scoring.apply_timeout(
-                qr, per_query_runs[i].get("timed_out", False) if per_query_runs[i] else False
+                qr,
+                (
+                    per_query_runs[i].get("timed_out", False)
+                    if per_query_runs[i]
+                    else False
+                ),
             )
             for i, qr in enumerate(query_results)
         ]

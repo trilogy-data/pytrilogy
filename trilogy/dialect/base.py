@@ -32,6 +32,7 @@ from trilogy.core.enums import (
     CreateMode,
     DatePart,
     Derivation,
+    FunctionClass,
     FunctionType,
     GroupMode,
     Modifier,
@@ -688,10 +689,6 @@ class BaseDialect:
         self.rendering = rendering or CONFIG.rendering
         self.config = config
         self.used_map: dict[str, set[str]] = defaultdict(set)
-        # When rendering a group CTE's HAVING on an alias-capable dialect,
-        # holds the set of SELECT-output addresses so concept references emit
-        # the alias instead of re-inlining the aggregate expression.
-        self._having_alias_addresses: set[str] | None = None
 
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.QUERY:
@@ -1174,10 +1171,11 @@ class BaseDialect:
         cte: CTE | UnionCTE | None = None,
         cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
+        materialized_addresses: set[str] | None = None,
     ) -> str:
         """Default rendering for a binary comparison. Dialects override when an
         operator needs translation (e.g. SQLite ``ILIKE``)."""
-        return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+        return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
 
     def render_expr(
         self,
@@ -1221,7 +1219,15 @@ class BaseDialect:
         cte: Optional[CTE | UnionCTE] = None,
         cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
+        materialized_addresses: set[str] | None = None,
     ) -> str:
+        # ``materialized_addresses`` is the set of concept addresses available
+        # as SELECT-list aliases at this point in the render. Propagated through
+        # every recursion except the aggregate-function branch — dialects can
+        # reference an alias from a top-level position in HAVING and from
+        # inside CASE/arithmetic/non-aggregate functions, but not from inside
+        # an aggregate (DuckDB resolves aggregate inputs against FROM, not the
+        # projection).
         if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
             right: Any = e.right
             while isinstance(right, BuildParenthetical):
@@ -1261,9 +1267,9 @@ class BaseDialect:
                     target = cte.source_key_for(target)
                     self.used_map[target].add(right.address)
                     new_base = inlined_parent.datasource.safe_location
-                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
                 self.used_map[target].add(right.address)
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
             elif isinstance(right, BuildParamaterizedConceptReference):
                 if isinstance(right.concept.lineage, BuildFunction) and isinstance(
                     right.concept.lineage.arguments[0], ListWrapper
@@ -1276,14 +1282,14 @@ class BaseDialect:
                         cte_map=cte_map,
                         raise_invalid=raise_invalid,
                     )
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
             elif isinstance(
                 right,
                 (ListWrapper, TupleWrapper, BuildParenthetical),
             ):
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
-            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
+            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} ({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):
             return self.render_comparison(
                 e.left,
@@ -1292,22 +1298,29 @@ class BaseDialect:
                 cte=cte,
                 cte_map=cte_map,
                 raise_invalid=raise_invalid,
+                materialized_addresses=materialized_addresses,
             )
         elif isinstance(e, CONDITIONAL_ITEMS):
-            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
         elif isinstance(e, BETWEEN_ITEMS):
             return (
-                f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} "
-                f"BETWEEN {self.render_expr(e.low, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} "
-                f"AND {self.render_expr(e.high, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+                f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} "
+                f"BETWEEN {self.render_expr(e.low, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} "
+                f"AND {self.render_expr(e.high, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
             )
         elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
-                f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid)} {x.order.value}"
+                f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {x.order.value}"
                 for x in e.order_by
             ]
             rendered_over_components = [
-                self.render_expr(x, cte, cte_map=cte_map, raise_invalid=raise_invalid)
+                self.render_expr(
+                    x,
+                    cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
+                )
                 for x in e.over
             ]
             window_str = ",".join(rendered_over_components)
@@ -1316,7 +1329,11 @@ class BaseDialect:
                 return self.NUMBERING_WINDOW_FUNCTION_MAP[e.type](window_str, sort_str)
             return self.NAVIGATION_WINDOW_FUNCTION_MAP[e.type](
                 self.render_expr(
-                    e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                    e.content,
+                    cte=cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
                 ),
                 window_str,
                 sort_str,
@@ -1325,15 +1342,22 @@ class BaseDialect:
         elif isinstance(e, PARENTHETICAL_ITEMS):
             # conditions need to be nested in parentheses
             if isinstance(e.content, list):
-                return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e.content])} )"
-            return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} )"
+                return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) for x in e.content])} )"
+            return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} )"
         elif isinstance(e, CASE_WHEN_ITEMS):
-            return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
+            return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) }"
         elif isinstance(e, BuildCaseSimpleWhen):
-            return f"{self.render_expr(e.value_expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            return f"{self.render_expr(e.value_expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
         elif isinstance(e, CASE_ELSE_ITEMS):
-            return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
+            return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) }"
         elif isinstance(e, FUNCTION_ITEMS):
+            # propagate aliases for scalar functions, drop for aggregates
+            # (DuckDB resolves aggregate inputs against FROM, not projection)
+            arg_aliases = (
+                None
+                if e.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+                else materialized_addresses
+            )
             arguments = []
             for arg in e.arguments:
                 if _needs_arithmetic_parentheses(arg, e.operator):
@@ -1343,12 +1367,17 @@ class BaseDialect:
                             cte=cte,
                             cte_map=cte_map,
                             raise_invalid=raise_invalid,
+                            materialized_addresses=arg_aliases,
                         )
                     )
                 else:
                     arguments.append(
                         self.render_expr(
-                            arg, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                            arg,
+                            cte=cte,
+                            cte_map=cte_map,
+                            raise_invalid=raise_invalid,
+                            materialized_addresses=arg_aliases,
                         )
                     )
             if cte and cte.group_to_grain:
@@ -1360,11 +1389,13 @@ class BaseDialect:
                 arguments, [arg_to_datatype(x) for x in arguments]
             )
         elif isinstance(e, AGGREGATE_ITEMS):
+            # aggregate input columns must resolve from FROM, not the
+            # projection — don't propagate alias addresses into the function
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
             )
         elif isinstance(e, FILTER_ITEMS):
-            return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid)} ELSE NULL END"
+            return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} ELSE NULL END"
         elif isinstance(e, BuildConcept):
             if (
                 isinstance(e.lineage, FUNCTION_ITEMS)
@@ -1375,11 +1406,12 @@ class BaseDialect:
             ):
                 return f":{e.safe_address}"
             if (
-                self._having_alias_addresses is not None
-                and e.address in self._having_alias_addresses
+                materialized_addresses is not None
+                and e.address in materialized_addresses
             ):
-                # rendering a HAVING on an alias-capable dialect: the SELECT
-                # already computes this expression under e.safe_address
+                # we're at a top-level position in a HAVING on an alias-capable
+                # dialect and the SELECT already computes this expression
+                # under e.safe_address
                 return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             if cte:
                 return self.render_concept_sql(
@@ -1812,12 +1844,13 @@ class BaseDialect:
 
         rendered_where = self.render_expr(where, cte) if where else None
         if having is not None and self.SUPPORTS_ALIAS_IN_HAVING:
-            # reference the SELECT alias rather than re-inlining the aggregate
-            self._having_alias_addresses = set(select_columns.keys())
-            try:
-                rendered_having: str | None = self.render_expr(having, cte)
-            finally:
-                self._having_alias_addresses = None
+            # reference the SELECT alias rather than re-inlining the aggregate.
+            # Only valid at the top of the HAVING tree — dialects resolve
+            # aliases against the projection only at the outermost comparison
+            # operands, not inside nested functions/aggregates/case/etc.
+            rendered_having: str | None = self.render_expr(
+                having, cte, materialized_addresses=set(select_columns.keys())
+            )
         else:
             rendered_having = self.render_expr(having, cte) if having else None
 

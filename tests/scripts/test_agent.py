@@ -518,9 +518,7 @@ def test_run_turn_return_control_drops_open_todos(monkeypatch):
     assert state.farewell == "done"
     assert state.todos == []
     # No refusal message — the gate is gone.
-    assert not any(
-        "refused" in m.content for m in conv.messages if m.role == "user"
-    )
+    assert not any("refused" in m.content for m in conv.messages if m.role == "user")
 
 
 def test_run_turn_raises_after_max_iterations():

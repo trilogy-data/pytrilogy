@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path as PathlibPath
 
+import click
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
@@ -134,15 +135,15 @@ def run(
     validate_dialect(dialect, "run")
 
     # `-` reads the query body from stdin (the conventional CLI sentinel).
+    # Empty stdin is allowed — combined with `--import`, this lets a caller
+    # validate that the imports parse without running any query body.
     if input == "-":
         input = sys.stdin.read()
-        if not input.strip():
-            from trilogy.scripts.display import print_error
 
-            print_error("No input on stdin.")
-            raise Exit(2)
-
-    is_inline = not PathlibPath(input).exists()
+    # Empty input (from `-` with empty stdin) is always inline — without this
+    # guard, Path("").exists() returns True on most platforms (it resolves to
+    # the cwd), causing the --import check below to reject the call.
+    is_inline = not input or not PathlibPath(input).exists()
     # If the input clearly looks like a file path (.preql/.sql extension or
     # contains a path separator) but does not exist, fail explicitly instead of
     # falling through to inline-query mode and reporting a confusing "No
@@ -169,9 +170,19 @@ def run(
         if stripped and not stripped.endswith(";"):
             input = stripped + ";"
 
+    if dialect:
+        try:
+            dialect_enum = Dialects(dialect)
+        except ValueError as exc:
+            valid = ", ".join(d.value for d in Dialects)
+            raise click.UsageError(
+                f"'{dialect}' is not a valid dialect. Choose one of: {valid}."
+            ) from exc
+    else:
+        dialect_enum = None
     cli_params = CLIRuntimeParams(
         input=input,
-        dialect=Dialects(dialect) if dialect else None,
+        dialect=dialect_enum,
         parallelism=parallelism,
         param=param,
         conn_args=conn_args,

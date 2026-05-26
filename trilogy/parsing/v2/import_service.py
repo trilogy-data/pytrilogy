@@ -86,12 +86,8 @@ def _read_import_text(
             suggestions = _suggest_import_paths(
                 missing_basename, Path(environment.working_path)
             )
-            hint = (
-                f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
-            )
-            raise ImportError(
-                f"Unable to import '{address}': {exc}.{hint}"
-            ) from exc
+            hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
+            raise ImportError(f"Unable to import '{address}': {exc}.{hint}") from exc
     if isinstance(environment.config.import_resolver, DictImportResolver):
         if address not in environment.config.import_resolver.content:
             raise ImportError(

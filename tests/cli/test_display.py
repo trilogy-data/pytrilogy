@@ -98,14 +98,19 @@ def capture_rich_console_output():
         output_buffer = StringIO()
         test_console = Console(file=output_buffer, force_terminal=True, width=80)
 
-        # Patch display_core.console so all submodules pick up the test console
+        # Patch both consoles so print_info AND print_error/print_warning
+        # land in the same buffer for assertion (the production split is
+        # stdout vs stderr; the test only cares about the rendered text).
         original_console = display_core.console
+        original_error_console = display_core.error_console
         display_core.console = test_console
+        display_core.error_console = test_console
 
         try:
             yield output_buffer
         finally:
             display_core.console = original_console
+            display_core.error_console = original_error_console
     else:
         # If Rich isn't available, just use regular output capture
         with capture_all_output() as (stdout, stderr):
@@ -1079,13 +1084,19 @@ def _cp1252_strict_console():
     )
 
     original_console = display_core.console
+    original_error_console = display_core.error_console
     original_available = display_core.RICH_AVAILABLE
+    # Patch both consoles — print_error / print_warning go through
+    # error_console; this test simulates a process where the underlying
+    # stderr stream is also cp1252-strict, so both paths must survive.
     display_core.console = test_console
+    display_core.error_console = test_console
     display_core.RICH_AVAILABLE = True
     try:
         yield cp1252_buffer, cp1252_stream
     finally:
         display_core.console = original_console
+        display_core.error_console = original_error_console
         display_core.RICH_AVAILABLE = original_available
 
 
@@ -1158,7 +1169,8 @@ class TestNonCp1252Encoding:
 
     def test_print_error_fallback_mode_handles_non_cp1252(self):
         """In rich-disabled mode the click echo path still has to survive
-        non-cp1252 characters when sys.stdout is a cp1252-strict stream."""
+        non-cp1252 characters. print_error now writes to stderr, so patch
+        sys.stderr (not stdout) to the cp1252-strict stream."""
         cp1252_buffer = io.BytesIO()
         cp1252_stream = io.TextIOWrapper(
             cp1252_buffer,
@@ -1167,16 +1179,16 @@ class TestNonCp1252Encoding:
             write_through=True,
         )
 
-        original_stdout = sys.stdout
+        original_stderr = sys.stderr
         original_available = display_core.RICH_AVAILABLE
         original_console = display_core.console
-        sys.stdout = cp1252_stream
+        sys.stderr = cp1252_stream
         display_core.RICH_AVAILABLE = False
         display_core.console = None
         try:
             display.print_error(NON_CP1252_MESSAGE)
         finally:
-            sys.stdout = original_stdout
+            sys.stderr = original_stderr
             display_core.RICH_AVAILABLE = original_available
             display_core.console = original_console
 

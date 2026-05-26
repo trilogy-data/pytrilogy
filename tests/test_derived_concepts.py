@@ -152,9 +152,7 @@ def test_filtering_having_on_unincluded_value(test_environment):
         """)
     except Exception as e:
         exception = True
-        assert "HAVING references 'local.x'" in str(e) and "--local.x" in str(e), str(
-            e
-        )
+        assert "HAVING references 'local.x'" in str(e) and "--local.x" in str(e), str(e)
     assert exception, "should have an exception"
 
 

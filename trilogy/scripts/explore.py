@@ -41,7 +41,9 @@ def _compact_datatype(dt: str) -> str:
         if idx > 0:
             base = _compact_datatype(body[:idx])
             traits = ", ".join(
-                t.strip().strip("'\"") for t in body[idx + len(sep) :].split(",") if t.strip()
+                t.strip().strip("'\"")
+                for t in body[idx + len(sep) :].split(",")
+                if t.strip()
             )
             return f"{base}::{traits}" if traits else base
     if dt.startswith("enum<") and len(dt) > 60:
