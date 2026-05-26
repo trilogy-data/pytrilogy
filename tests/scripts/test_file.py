@@ -346,3 +346,49 @@ def test_local_backend_direct_read_missing(tmp_path: Path):
     backend = LocalFileBackend()
     with pytest.raises(FileNotFoundError):
         backend.read(str(tmp_path / "missing.preql"))
+
+
+def test_file_resolve_unknown_scheme_exits_with_print_error(runner):
+    """A path with an unsupported scheme surfaces FileOperationError → exit 2.
+    Exercises the FileOperationError branch in `_resolve`."""
+    result = runner.invoke(cli, ["file", "list", "s3://bucket/key"])
+    assert result.exit_code == 2
+
+
+def test_file_write_invalid_escape_exits_2(runner, tmp_path: Path):
+    """`--escapes` with an invalid \\x sequence surfaces an exit-2 error message."""
+    target = tmp_path / "x.txt"
+    # Invalid escape: \xZZ is not a valid hex byte → unicode_escape decoder raises.
+    result = runner.invoke(
+        cli, ["file", "write", str(target), "--escapes", "--content", "bad \\xZZ"]
+    )
+    assert result.exit_code == 2
+    assert "Invalid escape" in result.output
+
+
+def test_file_move_cross_backend_rejected(runner, tmp_path: Path, monkeypatch):
+    """Moving from local → dummy backend should refuse with an exit-2 error."""
+    from trilogy.scripts.file_helpers import LocalFileBackend, register_backend
+
+    class _Dummy(LocalFileBackend):
+        scheme = "xbk"
+
+    register_backend("xbk", lambda: _Dummy())
+    src = tmp_path / "src.txt"
+    src.write_text("data")
+    result = runner.invoke(cli, ["file", "move", str(src), "xbk://dst"])
+    assert result.exit_code == 2
+    assert "Cross-backend" in result.output
+
+
+def test_format_size_handles_all_units():
+    from trilogy.scripts.file import _format_size
+
+    assert _format_size(0) == "0B"
+    assert _format_size(900) == "900B"
+    assert _format_size(2048) == "2.0KB"
+    assert _format_size(5 * 1024 * 1024) == "5.0MB"
+    assert _format_size(2 * 1024 * 1024 * 1024) == "2.0GB"
+    # Above PB-ish — stays in TB
+    assert _format_size(5 * 1024**4) == "5.0TB"
+    assert _format_size(10**18).endswith("TB")

@@ -250,3 +250,145 @@ def test_etl_dependency_parse_error_raises():
 
         assert "Failed to parse" in str(exc_info.value)
         assert "invalid.preql" in str(exc_info.value)
+
+
+def test_script_node_eq_repr_and_hash():
+    a = ScriptNode(path=Path("/foo/a.preql"))
+    b = ScriptNode(path=Path("/foo/a.preql"))
+    c = ScriptNode(path=Path("/foo/b.preql"))
+    assert a == b
+    assert a != c
+    assert a != "not-a-scriptnode"
+    assert hash(a) == hash(b)
+    assert repr(a) == "ScriptNode(a.preql)"
+
+
+def test_managed_refresh_node_eq_repr_and_hash():
+    from trilogy.scripts.dependency import ManagedRefreshNode
+
+    sn = ScriptNode(path=Path("/x/y.preql"))
+    a = ManagedRefreshNode(address="ds.addr", owner_script=sn, assets=[])
+    b = ManagedRefreshNode(address="ds.addr", owner_script=sn, assets=[])
+    c = ManagedRefreshNode(address="other", owner_script=sn, assets=[])
+    assert a == b
+    assert a != c
+    assert a != "not-a-node"
+    assert hash(a) == hash(b)
+    assert repr(a) == "ManagedRefreshNode(ds.addr)"
+
+
+def test_etl_strategy_rejects_files_from_multiple_directories():
+    nodes = [
+        ScriptNode(path=Path("/dir1/a.preql")),
+        ScriptNode(path=Path("/dir2/b.preql")),
+    ]
+    with pytest.raises(ValueError, match="same directory"):
+        ETLDependencyStrategy().build_graph(nodes)
+
+
+def test_etl_strategy_single_node_returns_isolated_node():
+    nodes = [ScriptNode(path=Path("/dir1/a.preql"))]
+    g = ETLDependencyStrategy().build_graph(nodes)
+    assert list(g.nodes) == [str(Path("/dir1/a.preql"))]
+    assert list(g.edges) == []
+
+
+def test_dependency_resolver_uses_default_strategy_when_none():
+    from trilogy.scripts.dependency import DependencyResolver
+
+    resolver = DependencyResolver()
+    assert isinstance(resolver.strategy, ETLDependencyStrategy)
+
+
+def test_dependency_resolver_validates_acyclic():
+    from trilogy.scripts.dependency import DependencyResolver, _validate_acyclic
+
+    g = nx.DiGraph()
+    g.add_edge("a", "b")
+    g.add_edge("b", "a")
+    with pytest.raises(ValueError, match="Circular dependencies"):
+        _validate_acyclic(g)
+
+    class _CyclicStrategy:
+        def build_graph(self, nodes):
+            graph = nx.DiGraph()
+            graph.add_edge("a", "b")
+            graph.add_edge("b", "a")
+            return graph
+
+        def build_folder_graph(self, folder):
+            return self.build_graph([])
+
+    with pytest.raises(ValueError, match="Circular dependencies"):
+        DependencyResolver(strategy=_CyclicStrategy()).build_graph([])
+    with pytest.raises(ValueError, match="Circular dependencies"):
+        DependencyResolver(strategy=_CyclicStrategy()).build_folder_graph(Path("/x"))
+
+
+def test_resolve_with_errors_import_error_when_resolver_missing(monkeypatch):
+    """If `_preql_import_resolver` isn't on the import path, both helpers raise
+    a friendly ImportError. Simulate that by inserting a sentinel into
+    sys.modules and patching the import machinery."""
+    import sys
+
+    from trilogy.scripts.dependency import (
+        resolve_script_with_errors,
+        resolve_with_errors,
+    )
+
+    original = sys.modules.pop("_preql_import_resolver", None)
+
+    class _BlockingFinder:
+        def find_module(self, name, path=None):
+            if name == "_preql_import_resolver":
+                return self
+            return None
+
+        def load_module(self, name):
+            raise ImportError(name)
+
+        def find_spec(self, name, path=None, target=None):
+            if name == "_preql_import_resolver":
+                raise ImportError(name)
+            return None
+
+    monkeypatch.setattr(
+        sys, "meta_path", [_BlockingFinder()] + sys.meta_path, raising=False
+    )
+    try:
+        with pytest.raises(ImportError, match="dependency resolution script"):
+            resolve_with_errors(Path("/tmp/anywhere"))
+        with pytest.raises(ImportError, match="dependency resolution script"):
+            resolve_script_with_errors(Path("/tmp/anywhere.preql"))
+    finally:
+        if original is not None:
+            sys.modules["_preql_import_resolver"] = original
+
+
+def test_resolve_script_with_errors_parse_error_propagates_from_warnings(
+    monkeypatch, tmp_path
+):
+    """The warnings-path raises ParseError when a 'Parse error' string is present."""
+    from trilogy.scripts import dependency
+
+    f = tmp_path / "ok.preql"
+    f.write_text("key id int;\n")
+
+    class _StubResolver:
+        def resolve(self, path):
+            return {"warnings": ["Parse error in foo.preql: bad token"]}
+
+    monkeypatch.setattr(
+        "_preql_import_resolver.PyImportResolver", lambda: _StubResolver()
+    )
+    with pytest.raises(ParseError):
+        dependency.resolve_script_with_errors(f)
+
+
+def test_resolve_script_with_errors_returns_for_valid(tmp_path):
+    from trilogy.scripts.dependency import resolve_script_with_errors
+
+    f = tmp_path / "ok.preql"
+    f.write_text("key id int;\n")
+    result = resolve_script_with_errors(f)
+    assert isinstance(result, dict)

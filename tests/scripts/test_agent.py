@@ -988,3 +988,183 @@ def test_tool_schemas_are_valid_json_schema_objects():
     for tool in ALL_TOOLS:
         assert tool.input_schema["type"] == "object"
         assert "properties" in tool.input_schema
+
+
+def test_write_file_html_escapes_refused(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    out = handle_write_file(
+        AgentState(),
+        {"path": "q.preql", "content": "select x where y &lt;= 3 -> z;"},
+    )
+    assert "refused" in out
+    assert "HTML" in out
+    assert not (tmp_path / "q.preql").exists()
+
+
+def test_write_file_validation_safety_net_on_unexpected_exception(
+    monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+
+    def explode(_):
+        raise RuntimeError("kaboom in parser")
+
+    from trilogy.parsing.v2 import lark_backend
+
+    monkeypatch.setattr(lark_backend, "parse_lark", explode)
+    out = handle_write_file(
+        AgentState(), {"path": "q.preql", "content": "select 1 -> x;"}
+    )
+    assert "refused" in out
+    assert "RuntimeError" in out
+    assert "kaboom" in out
+
+
+def test_write_file_oserror_during_write_returns_error(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    from pathlib import Path as _Path
+
+    original_write = _Path.write_text
+
+    def boom(self, *args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(_Path, "write_text", boom)
+    try:
+        out = handle_write_file(AgentState(), {"path": "qq.txt", "content": "hello"})
+    finally:
+        monkeypatch.setattr(_Path, "write_text", original_write)
+    assert "write_file error" in out
+    assert "disk full" in out
+
+
+def test_write_file_oserror_on_stat_treated_as_no_clobber(tmp_path, monkeypatch):
+    """An OSError reading the existing file's stat is treated as 'no existing
+    content', so an empty write proceeds (creating an empty file). Verifies the
+    OSError branch of the clobber probe doesn't crash."""
+    monkeypatch.chdir(tmp_path)
+    from pathlib import Path as _Path
+
+    real_stat = _Path.stat
+
+    def boom_stat(self, *args, **kwargs):
+        # Only raise for the target path; other paths (e.g. parent dir mkdir)
+        # need their original stat to work.
+        if self.name == "boom.txt":
+            raise OSError("nope")
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(_Path, "stat", boom_stat)
+    # Pre-create the file with content so the "clobbers" probe would normally
+    # fire — but stat raises so the OSError fallback path runs.
+    (tmp_path / "boom.txt").write_text("existing", encoding="utf-8")
+    out = handle_write_file(AgentState(), {"path": "boom.txt", "content": ""})
+    assert "wrote 0 chars" in out
+
+
+def test_list_files_truncates_at_max_entries(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from trilogy.scripts import agent as ag
+
+    monkeypatch.setattr(ag, "_LIST_FILES_MAX_ENTRIES", 3)
+    for i in range(10):
+        (tmp_path / f"file_{i:02d}.txt").write_text("x")
+    out = handle_list_files(AgentState(), {"path": "."})
+    # header reports truncation marker
+    assert "+" in out.splitlines()[0]
+
+
+def test_list_files_non_recursive_shows_only_top_level_with_slash(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "nested.txt").write_text("x")
+    (tmp_path / "top.txt").write_text("y")
+    out = handle_list_files(AgentState(), {"path": ".", "recursive": False})
+    assert "top.txt" in out
+    assert "sub/" in out
+    assert "nested.txt" not in out
+
+
+def test_list_files_reports_empty_directory(tmp_path):
+    out = handle_list_files(AgentState(), {"path": str(tmp_path)})
+    assert "no files under" in out
+
+
+def test_read_file_oserror_returns_error_message(tmp_path, monkeypatch):
+    target = tmp_path / "x.txt"
+    target.write_text("ok")
+    from pathlib import Path as _Path
+
+    def boom(self, *args, **kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(_Path, "read_text", boom)
+    out = handle_read_file(AgentState(), {"path": str(target)})
+    assert "read_file error" in out
+    assert "permission denied" in out
+
+
+def test_first_non_flag_arg_skips_debug_file_value():
+    from trilogy.scripts.agent import _first_non_flag_arg
+
+    assert (
+        _first_non_flag_arg(["--debug-file", "log.txt", "agent-info"]) == "agent-info"
+    )
+
+
+def test_first_non_flag_arg_returns_none_for_all_flags():
+    from trilogy.scripts.agent import _first_non_flag_arg
+
+    assert _first_non_flag_arg(["--debug", "--verbose"]) is None
+
+
+def test_trilogy_file_write_hint_no_content_flag_returns_none():
+    from trilogy.scripts.agent import _trilogy_file_write_hint
+
+    assert _trilogy_file_write_hint(["file", "write", "q.preql"]) is None
+
+
+def test_trilogy_file_write_hint_single_token_no_hint():
+    from trilogy.scripts.agent import _trilogy_file_write_hint
+
+    assert (
+        _trilogy_file_write_hint(["file", "write", "q.preql", "--content", "body"])
+        is None
+    )
+
+
+def test_trilogy_tool_subprocess_timeout(monkeypatch):
+    import subprocess
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="x", timeout=1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    out = handle_trilogy(AgentState(), {"args": ["run"]})
+    assert "timed out" in out
+
+
+def test_trilogy_tool_agent_info_passthrough_no_truncation(monkeypatch):
+    import subprocess
+
+    payload = "x" * 20000
+
+    class _Fake:
+        returncode = 0
+        stdout = payload
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Fake())
+    out = handle_trilogy(AgentState(tool_output_limit=100), {"args": ["agent-info"]})
+    # agent-info skips truncation, so the full payload is in the output.
+    assert payload in out
+    assert "truncated" not in out
+
+
+def test_validate_preql_syntax_returns_none_on_valid():
+    from trilogy.scripts.agent import _validate_preql_syntax
+
+    assert _validate_preql_syntax("select 1 -> x;") is None

@@ -6,6 +6,7 @@ from textwrap import dedent
 import pytest
 from click.testing import CliRunner
 
+from trilogy.scripts.explore import _compact_datatype, _display_address
 from trilogy.scripts.run import _format_import, _normalize_import
 from trilogy.scripts.trilogy import cli
 
@@ -207,6 +208,44 @@ def test_run_import_alias_namespaces(
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
+
+
+def test_compact_datatype_trait_collapses_to_double_colon():
+    assert _compact_datatype("Trait<STRING, ['us_state']>") == "string::us_state"
+
+
+def test_compact_datatype_trait_with_nested_generic():
+    out = _compact_datatype("Trait<enum<'TN','OR'>, ['us_state']>")
+    assert out == "enum<'TN','OR'>::us_state"
+
+
+def test_compact_datatype_trait_empty_traits_falls_to_base():
+    assert _compact_datatype("Trait<INTEGER, []>") == "integer"
+
+
+def test_compact_datatype_long_enum_truncates():
+    enum = "enum<" + ",".join(f"'value_{i}'" for i in range(10)) + ">"
+    assert len(enum) > 60
+    out = _compact_datatype(enum)
+    assert out.startswith("enum<'value_0','value_1','value_2',")
+    assert "+7" in out
+
+
+def test_compact_datatype_short_enum_passes_through():
+    assert _compact_datatype("enum<'A','B'>") == "enum<'A','B'>"
+
+
+def test_compact_datatype_passes_unknown_through():
+    assert _compact_datatype("varchar") == "varchar"
+
+
+def test_compact_datatype_lowercases_uppercase_simple_types():
+    assert _compact_datatype("STRING") == "string"
+
+
+def test_display_address_strips_local_prefix():
+    assert _display_address("local.id") == "id"
+    assert _display_address("foo.bar") == "foo.bar"
 
 
 def test_run_inline_appends_missing_terminator(
