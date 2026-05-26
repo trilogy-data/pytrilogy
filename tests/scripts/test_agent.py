@@ -482,7 +482,160 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
     monkeypatch.setitem(agent_mod.TOOL_HANDLERS, "show_message", boom)
     result = _dispatch(AgentState(), LLMToolCall(name="show_message"))
     assert "RuntimeError" in result
-    assert "kaboom" in result
+
+
+# --- Additional coverage for handlers and helpers ---
+
+
+def test_validate_preql_syntax_wraps_unexpected_exception(monkeypatch):
+    """The validator's safety net converts non-InvalidSyntaxException errors
+    into a typed string so a buggy parser never crashes the write."""
+
+    def boom(_):
+        raise RuntimeError("parser exploded")
+
+    import trilogy.parsing.v2.lark_backend as lark_backend
+
+    monkeypatch.setattr(lark_backend, "parse_lark", boom)
+    msg = agent_mod._validate_preql_syntax("select 1 -> x;")
+    assert msg is not None
+    assert "RuntimeError" in msg
+    assert "parser exploded" in msg
+
+
+def test_write_file_flags_html_escapes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = handle_write_file(
+        AgentState(),
+        {"path": "q.preql", "content": "where x &lt;= 1 select x;"},
+    )
+    assert "HTML-escaped" in result
+    assert "&lt;" in result
+    # The file must not have been written.
+    assert not (tmp_path / "q.preql").exists()
+
+
+def test_write_file_reports_oserror(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    from pathlib import Path
+
+    real_write_text = Path.write_text
+
+    def boom(self, *a, **kw):
+        if self.name.endswith("boom.preql"):
+            raise OSError("disk full")
+        return real_write_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "write_text", boom)
+    result = handle_write_file(
+        AgentState(),
+        {"path": "boom.preql", "content": "select 1 -> x;"},
+    )
+    assert "write_file error" in result
+    assert "disk full" in result
+
+
+def test_list_files_truncates_at_max_entries(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_mod, "_LIST_FILES_MAX_ENTRIES", 3)
+    for i in range(10):
+        (tmp_path / f"f{i:02d}.preql").write_text("x", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": "."})
+    # Header carries the `+` truncation marker.
+    assert "+" in out.splitlines()[0]
+
+
+def test_list_files_non_recursive_marks_directories(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "__pycache__").mkdir()  # exercises the skip-continue branch
+    (tmp_path / "q.preql").write_text("x", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": ".", "recursive": False})
+    assert "raw/" in out
+    assert "q.preql" in out
+    assert "__pycache__" not in out
+
+
+def test_write_file_handles_oserror_on_stat(monkeypatch, tmp_path):
+    """When stat() raises (e.g. permission denied), the clobber check falls
+    back to False and the write still attempts (then succeeds)."""
+    monkeypatch.chdir(tmp_path)
+    from pathlib import Path
+
+    real_stat = Path.stat
+
+    def boom_stat(self, *a, **kw):
+        if self.name == "perms.preql":
+            raise OSError("stat denied")
+        return real_stat(self, *a, **kw)
+
+    (tmp_path / "perms.preql").write_text("old", encoding="utf-8")
+    monkeypatch.setattr(Path, "stat", boom_stat)
+    result = handle_write_file(
+        AgentState(), {"path": "perms.preql", "content": "select 1 -> x;"}
+    )
+    assert "wrote" in result
+
+
+def test_list_files_reports_empty_directory(tmp_path):
+    out = handle_list_files(AgentState(), {"path": str(tmp_path)})
+    assert "no files under" in out
+
+
+def test_read_file_reports_oserror(monkeypatch, tmp_path):
+    target = tmp_path / "q.preql"
+    target.write_text("x", encoding="utf-8")
+    from pathlib import Path
+
+    def boom(self, *a, **kw):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    result = handle_read_file(AgentState(), {"path": str(target)})
+    assert "read_file error" in result
+    assert "permission denied" in result
+
+
+def test_first_non_flag_arg_skips_value_flag_and_options():
+    fn = agent_mod._first_non_flag_arg
+    assert fn(["--debug-file", "log.txt", "agent-info"]) == "agent-info"
+    assert fn(["--debug", "agent-info"]) == "agent-info"
+    assert fn(["--debug-file"]) is None
+    assert fn([]) is None
+
+
+def test_trilogy_file_write_hint_returns_none_without_content_flag():
+    assert agent_mod._trilogy_file_write_hint(["file", "write", "x.preql"]) is None
+
+
+def test_handle_trilogy_reports_subprocess_timeout(monkeypatch):
+    import subprocess
+
+    def boom(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="trilogy", timeout=600)
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    result = handle_trilogy(AgentState(), {"args": ["--version"]})
+    assert "timed out" in result
+
+
+def test_handle_trilogy_preserves_full_output_for_agent_info(monkeypatch):
+    """agent-info is the language reference — middle-truncating it eats the
+    syntax rules. The handler skips truncate_middle on the agent-info path."""
+    import subprocess
+
+    big = "x" * 5000
+
+    class _Fake:
+        returncode = 0
+        stdout = big
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _Fake())
+    state = AgentState(tool_output_limit=80)
+    result = handle_trilogy(state, {"args": ["agent-info"]})
+    assert big in result
+    assert "truncated" not in result
 
 
 # --- _run_turn loop ---
