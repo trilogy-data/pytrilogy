@@ -92,17 +92,14 @@ Available tools:
   are auto-discarded so you never need to clean them up just to exit.
 
 Discipline:
-1. Bias toward action and use of the trilogy CLI Never repeat exploration you have already done.
+1. Bias toward action and use of the trilogy CLI. Never repeat exploration you have already done.
 2. Skip TODOs unless the task has 3+ truly independent steps. A single-query
    task does not. Never use a TODO entry as a substitute for doing the work.
 3. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
-   the task is fully done or you are genuinely blocked.
+   the task is completely finished.
 4. If a tool call fails or returns the same error you have already seen, do
    NOT immediately re-issue the same call. First emit a short plain-text
-   message naming the failure and what you will try differently (e.g. "stdin
-   was empty — re-issue with the query body in `stdin`"). Then take the
-   different action. Repeating an identical call with the same arguments is
-   never the right move."""
+   message naming the failure and what you will try differently."""
     if include_show:
         base += """
 5. Use `show_message` rarely — only for a genuine status change, never to
@@ -285,8 +282,9 @@ TODO_TOOL = LLMToolDefinition(
 RETURN_CONTROL_TOOL = LLMToolDefinition(
     name="return_control_to_user",
     description=(
-        "Hand control back to the user with a final message. Any open TODOs "
-        "are auto-discarded — no need to clean them up just to exit."
+        "Hand control back to the user when a task is finished, with an"
+        " optional message. Any open TODOs are auto-discarded — no need"
+        " to clean them up just to exit."
     ),
     input_schema={
         "type": "object",

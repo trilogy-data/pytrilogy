@@ -1,23 +1,52 @@
-# Trilogy failure analysis — 20260526-021153
+# Trilogy failure analysis — 20260526-032601
 
-- Run `20260526-021153` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.01
-- `trilogy` calls: 285 | failed: 48 (17%)
+- Run `20260526-032601` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.01
+- `trilogy` calls: 281 | failed: 35 (12%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 22 | 46% |
-| `join-resolution` | 15 | 31% |
-| `syntax-parse` | 4 | 8% |
-| `undefined-concept` | 3 | 6% |
-| `cli-misuse` | 3 | 6% |
-| `file-not-found` | 1 | 2% |
+| `syntax-parse` | 12 | 34% |
+| `other` | 11 | 31% |
+| `undefined-concept` | 4 | 11% |
+| `join-resolution` | 4 | 11% |
+| `cli-misuse` | 3 | 9% |
+| `syntax-missing-alias` | 1 | 3% |
 
 ## Detail
 
+### `syntax-parse`
+
+- `trilogy run -`
+  - --> 2:46 | 2 | where lineitem.shipdate <= '1998-09-02'::date; | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Location: ...shipdate <= '1998-09-…
+- `trilogy run - --import raw/orders:orders --import raw/lineitem:lineitem`
+  - --> 3:5 | 3 | with; | ^--- | = expected IDENTIFIER Location: ...raw.lineitem as lineitem; with ??? ;
+- `trilogy run query16.preql`
+  - --> 4:22 | 4 | and not starts_with(ps.part.type, 'MEDIUM POLISHED') | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Locatio…
+- `trilogy run --import raw/customer:customer select substring(customer.phone, 1, 2) as cnt from customer order by cnt limit 5;`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...(customer.phone, 1, 2) as cnt ??? from customer order by cnt lim...
+- `trilogy run query22.preql`
+  - --> 9:165 | 9 | and customer.acctbal > avg(customer.acctbal ? customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')) by substring(customer.phone, 1, 2); | ^--- | = expecte…
+- `trilogy run --import raw/customer:customer select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey) as nu…`
+  - --> 2:235 | 2 | select substring(customer.phone, 1, 2) as cntrycode, count(customer.custkey) as numcust, sum(customer.acctbal) as totacctbal where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', …
+- `trilogy run query22.preql`
+  - --> 9:165 | 9 | and customer.acctbal > avg(customer.acctbal ? customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')) by substring(customer.phone, 1, 2); | ^--- | = expecte…
+- `trilogy run --import raw/customer:customer --import raw/orders:orders merge customer.custkey into ~orders.customer.custkey; w…`
+  - --> 3:354 | 3 | merge customer.custkey into ~orders.customer.custkey; where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17') and orders.orderkey is null and customer.…
+- `trilogy run --import raw/customer:customer --import raw/orders:orders -- merge customer.custkey into ~orders.customer.custkey…`
+  - --> 3:354 | 3 | merge customer.custkey into ~orders.customer.custkey; where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17') and orders.orderkey is null and customer.…
+- `trilogy run test_merge.preql`
+  - --> 8:30 | 8 | and orders.orderkey is null; | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Location: and orders.orderkey is null ??? ; select c…
+- `trilogy run test_merge.preql`
+  - --> 8:30 | 8 | and orders.orderkey is null; | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Location: and orders.orderkey is null ??? ; select c…
+- `trilogy run --import raw/customer:customer select count(customer.custkey) as c, sum(customer.acctbal) as t, substring(custome…`
+  - --> 2:255 | 2 | select count(customer.custkey) as c, sum(customer.acctbal) as t, substring(customer.phone, 1, 2) as cntrycode where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30…
+
 ### `other`
 
+- `trilogy run -`
+  - Unable to import 'C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpch_agent\results\20260526 -032601\workspace\_worker_3\lineitem.preql': [Errno 2] No such file or directory: 'C:\\Users\\ethan\\coding_projects\\pytri…
 - `trilogy run query02.preql`
   - Unable to import '.\partsupp.preql': [Errno 2] No such file or directory: '.\\partsupp.preql'. Did you mean: raw.partsupp?
 - `trilogy run query04.preql`
@@ -27,105 +56,50 @@
 - `trilogy run query11.preql`
   - Unable to import '.\partsupp.preql': [Errno 2] No such file or directory: '.\\partsupp.preql'. Did you mean: raw.partsupp?
 - `trilogy run query13.preql`
-  - Unable to import '.\orders.preql': [Errno 2] No such file or directory: '.\\orders.preql'. Did you mean: raw.orders?
-- `trilogy run query14.preql`
+  - Unable to import '.\customer.preql': [Errno 2] No such file or directory: '.\\customer.preql'. Did you mean: raw.customer?
+- `trilogy run query15.preql`
   - Unable to import '.\lineitem.preql': [Errno 2] No such file or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
 - `trilogy run query15.preql`
   - Unable to import '.\lineitem.preql': [Errno 2] No such file or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
 - `trilogy run query16.preql`
   - Unable to import '.\partsupp.preql': [Errno 2] No such file or directory: '.\\partsupp.preql'. Did you mean: raw.partsupp?
-- `trilogy run query16.preql`
-  - Cannot parse arg purpose for ref:part.type like MEDIUM POLISHED% of type <class 'trilogy.core.models.author.Comparison'>
-- `trilogy run query16.preql`
-  - Cannot parse arg purpose for ref:partsupp.part.type like MEDIUM POLISHED% of type <class 'trilogy.core.models.author.Comparison'>
-- `trilogy run query16.preql`
-  - Cannot parse arg purpose for ref:partsupp.part.type like MEDIUM POLISHED% of type <class 'trilogy.core.models.author.Comparison'>
-- `trilogy run --debug query16.preql`
-  - Cannot parse arg purpose for ref:partsupp.part.type like MEDIUM POLISHED% of type <class 'trilogy.core.models.author.Comparison'> Full traceback: Traceback (most recent call last): File "C:\Users\ethan\coding_projects\py…
-- `trilogy run query16.preql`
-  - Cannot parse arg purpose for ref:partsupp.part.type like MEDIUM POLISHED% of type <class 'trilogy.core.models.author.Comparison'>
-- `trilogy run --import raw/partsupp:partsupp select partsupp.part.type where not(partsupp.part.type like 'MEDIUM POLISHED%') li…`
-  - Cannot parse arg purpose for ref:partsupp.part.type like MEDIUM POLISHED% of type <class 'trilogy.core.models.author.Comparison'>
 - `trilogy run query17.preql`
   - Unable to import '.\lineitem.preql': [Errno 2] No such file or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
-- `trilogy run query18.preql`
-  - Unable to import '.\orders.preql': [Errno 2] No such file or directory: '.\\orders.preql'. Did you mean: raw.orders?
 - `trilogy run query19.preql`
   - Unable to import '.\lineitem.preql': [Errno 2] No such file or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
-- `trilogy run query20.preql`
-  - Unable to import '.\partsupp.preql': [Errno 2] No such file or directory: '.\\partsupp.preql'. Did you mean: raw.partsupp?
-- `trilogy `
-  - Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 125 (char 124). Re-issue the call with valid JSON arguments.
-- `trilogy run query22.preql`
-  - Unable to import '.\customer.preql': [Errno 2] No such file or directory: '.\\customer.preql'. Did you mean: raw.customer?
-- `trilogy run query22.preql`
-  - (_duckdb.BinderException) Binder Error: Table "orders_customer_customer" does not have a column named "orders_customer_custkey" Candidate bindings: : "c_custkey" LINE 12: ...r_custkey" from customer as orders_customer_cu…
-- `trilogy run query22.preql`
-  - (_duckdb.BinderException) Binder Error: Table "orders_customer_customer" does not have a column named "orders_customer_custkey" Candidate bindings: : "c_custkey" LINE 12: ...r_custkey" from customer as orders_customer_cu…
-
-### `join-resolution`
-
-- `trilogy run query04.preql`
-  - Could not resolve connections for query with output ['orders.orderpriority<Purpose.PROPERTY>Derivation.ROOT>', 'local.order_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-- `trilogy run --import raw/orders:orders --import raw/lineitem:lineitem select orders.orderpriority, count(orders.orderkey) as …`
-  - Could not resolve connections for query with output ['orders.orderpriority<Purpose.PROPERTY>Derivation.ROOT>', 'local.order_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-- `trilogy run query14.preql`
-  - Could not resolve connections for query with output ['local.promo_revenue<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['local.avg_yearly<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['local.avg_yearly<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['local.avg_yearly<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['local.avg_yearly<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['local.avg_yearly<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['local.avg_yearly<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['local.avg_yearly<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['local.avg_yearly<Purpose.METRIC>Derivation.BASIC>'] from current model.
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['lineitem.quantity<Purpose.PROPERTY>Derivation.ROOT>', 'lineitem.extendedprice<Purpose.PROPERTY>Derivation.ROOT>', 'local.threshold<Purpose.PROPERTY>Derivation.BASIC>'…
-- `trilogy run query17.preql`
-  - Could not resolve connections for query with output ['lineitem.quantity<Purpose.PROPERTY>Derivation.ROOT>', 'lineitem.extendedprice<Purpose.PROPERTY>Derivation.ROOT>', 'local.threshold<Purpose.PROPERTY>Derivation.BASIC>'…
-- `trilogy run --import raw/orders:orders --import raw/lineitem:lineitem --import raw/customer:customer select customer.name, or…`
-  - Could not resolve connections for query with output ['customer.name<Purpose.PROPERTY>Derivation.ROOT>', 'orders.orderkey<Purpose.KEY>Derivation.ROOT>', 'lineitem.orders.orderkey<Purpose.KEY>Derivation.ROOT>'] from curren…
-- `trilogy run --import raw/lineitem:lineitem --import raw/part:part select lineitem.extendedprice, lineitem.discount, lineitem.…`
-  - Could not resolve connections for query with output ['lineitem.extendedprice<Purpose.PROPERTY>Derivation.ROOT>', 'lineitem.discount<Purpose.PROPERTY>Derivation.ROOT>', 'lineitem.quantity<Purpose.PROPERTY>Derivation.ROOT>…
-
-### `syntax-parse`
-
-- `trilogy run -e query16.preql select partsupp.part.type, partsupp.part.brand, partsupp.part.size, partsupp.supplier.suppkey fr…`
-  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...ze, partsupp.supplier.suppkey ??? from partsupp limit 5;
-- `trilogy run --import raw/lineitem:lineitem auto late_flag = lineitem.receiptdate > lineitem.commitdate; select late_flag limi…`
-  - --> 2:6 | 2 | auto late_flag = lineitem.receiptdate > lineitem.commitdate; select late_flag limit 5; | ^--- | = expected prop_ident or prop_ident_wildcard Location: ...aw.lineitem as lineitem; auto ??? late_flag = lineit…
-- `trilogy run --import raw/lineitem:lineitem late_flag := lineitem.receiptdate > lineitem.commitdate; select late_flag limit 5;`
-  - --> 2:1 | 2 | late_flag := lineitem.receiptdate > lineitem.commitdate; select late_flag limit 5; | ^--- | = expected EOI, block, or show_statement Location: ...ort raw.lineitem as lineitem; ??? late_flag := lineitem.rece…
-- `trilogy run query22.preql`
-  - --> 10:32 | 10 | and customer.custkey not in (select orders.customer.custkey) | ^--- | = expected access_chain or literal Location: and customer.custkey not in ( ??? select orders.customer.custkey...
 
 ### `undefined-concept`
 
-- `trilogy run query07.preql`
-  - (UndefinedConceptException(...), "Undefined concept: supplier.nation.nationkey. Suggestions: ['lineitem.supplier.nation.nationkey', 'nation.nationkey', 'lineitem.supplier.nation.name']")
-- `trilogy run query07.preql`
-  - (UndefinedConceptException(...), "Undefined concept: nation.nationkey. Suggestions: ['lineitem.supplier.nation.nationkey']")
-- `trilogy run -e query16.preql select partsupp.part.type, partsupp.part.brand, partsupp.part.size, partsupp.supplier.suppkey li…`
-  - (UndefinedConceptException(...), 'line: 1: Undefined concept: partsupp.part.type.')
+- `trilogy run query02.preql`
+  - (UndefinedConceptException(...), "line: 4: Undefined concept: supplier.acctbal. Suggestions: ['partsupp.supplier.acctbal']")
+- `trilogy run query03.preql`
+  - (UndefinedConceptException(...), "Undefined concept: lineitem.orderkey. Suggestions: ['lineitem.orders.orderkey', 'lineitem.orders.clerk', 'lineitem.orders.comment']")
+- `trilogy run -`
+  - (UndefinedConceptException(...), 'line: 1: Undefined concept: orders.orderdate.')
+- `trilogy run query17.preql`
+  - (UndefinedConceptException(...), "Undefined concept: part.brand. Suggestions: ['lineitem.part.brand']")
+
+### `join-resolution`
+
+- `trilogy run - --import raw/orders:orders --import raw/lineitem:lineitem`
+  - Could not resolve connections for query with output ['orders.orderkey<Purpose.KEY>Derivation.ROOT>', 'lineitem.commitdate<Purpose.PROPERTY>Derivation.ROOT>', 'lineitem.receiptdate<Purpose.PROPERTY>Derivation.ROOT>'] from…
+- `trilogy run --import raw/supplier:supplier --import raw/lineitem:lineitem select supplier.suppkey, sum(lineitem.extendedprice…`
+  - Could not resolve connections for query with output ['supplier.suppkey<Purpose.KEY>Derivation.ROOT>', 'local.total_revenue<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+- `trilogy run query15.preql`
+  - Could not resolve connections for query with output ['supplier.suppkey<Purpose.KEY>Derivation.ROOT>', 'supplier.name<Purpose.PROPERTY>Derivation.ROOT>', 'supplier.address<Purpose.PROPERTY>Derivation.ROOT>', 'supplier.pho…
+- `trilogy run --import raw/customer:customer --import raw/orders:orders select substring(customer.phone, 1, 2) as cntrycode, co…`
+  - Could not resolve connections for query with output ['local.cntrycode<Purpose.PROPERTY>Derivation.BASIC>', 'local.numcust<Purpose.METRIC>Derivation.AGGREGATE>', 'local.totacctbal<Purpose.METRIC>Derivation.AGGREGATE>'] fr…
 
 ### `cli-misuse`
 
-- `trilogy read_file raw/lineitem.preql`
-  - No such command 'read_file'.
-- `trilogy raw lineitem`
-  - No such command 'raw'.
-- `trilogy run --import raw/lineitem.preql:lineitem - select lineitem.supplier.suppkey, sum(lineitem.extendedprice * (1 - lineit…`
-  - 'select lineitem.supplier.suppkey, sum(lineitem.extendedprice * (1 - lineitem.discount)) as total_revenue where lineitem.shipdate >= '1996-01-01'::date and lineitem.shipdate < '1996-04-01'::date group by lineitem.supplie…
+- `trilogy `
+  - exit_code: 2 --- stdout --- --- stderr --- Usage: python -m trilogy.scripts.trilogy [OPTIONS] COMMAND [ARGS]... Trilogy CLI - A beautiful data productivity tool. Options: --version Show version and exit. --debug Enable d…
+- `trilogy run --import raw/customer:customer --import raw/orders:orders merge customer.custkey into ~orders.customer.custkey; w…`
+  - 'where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17') and orders.orderkey is null and customer.acctbal > avg(customer.acctbal ? customer.acctbal > 0 and substring(c…
+- `trilogy run --import raw/customer:customer --import raw/orders:orders merge customer.custkey into ~orders.customer.custkey; s…`
+  - 'select count(customer.custkey) as c where customer.acctbal > 0 and substring(customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17') and orders.orderkey is null;' is not a valid dialect. Choose one of: bigqu…
 
-### `file-not-found`
+### `syntax-missing-alias`
 
-- `trilogy run query15.preql`
-  - exit_code: 2 --- stdout --- --- stderr --- Input 'query15.preql' does not exist.
+- `trilogy run --import raw/lineitem:lineitem select count(lineitem.linenumber), count(lineitem.linenumber ? lineitem.part.brand…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...ect count(lineitem.linenumber) ??? , count(lineitem.linenumber ?

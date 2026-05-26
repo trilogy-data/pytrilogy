@@ -28,6 +28,14 @@ SELECT RULES:
       where item.price > 1.2 * avg(item.price) by item.category
       select item.name, item.price
 - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
+- Condition scoping: WHERE conditions DO NOT filter each other, and they DO NOT scope aggregates inside other conditions. Each aggregate computes over its own input, independent of sibling WHERE clauses. To scope an aggregate's input, push the filter INSIDE the aggregate with `?`:
+  * Wrong (the `region = 'EUROPE'` clause does NOT restrict the `min(price)` in the other clause; min is over ALL rows):
+      where region = 'EUROPE'
+        and price = min(price) by part_id
+  * Right (the `?` filter restricts the min's input to EUROPE rows per part):
+      where region = 'EUROPE'
+        and price = min(price ? region = 'EUROPE') by part_id
+  This applies to aggregates anywhere — WHERE, HAVING, SELECT projections. If an aggregate should see only a subset, that subset goes inside `?`, never as a sibling WHERE condition.
 - Operator precedence (highest binds first; use `(...)` to override):
   1. Primaries: literal, identifier, function call, parenthetical `(...)`, member access (`.`, `[]`, `::` cast).
   2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).
