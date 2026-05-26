@@ -214,6 +214,25 @@ def test_write_file_refuses_empty_overwrite_of_nonempty_file(tmp_path, monkeypat
     assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
 
 
+def test_write_file_syntax_error_surfaces_parse_message(tmp_path, monkeypatch):
+    """A .preql write that fails to parse must refuse AND surface the parser's
+    own error inline — the agent needs the specific syntax message to fix the
+    content. Previous wording ('did not parse as Trilogy') was vague enough
+    that the agent often retried with the same broken content."""
+    monkeypatch.chdir(tmp_path)
+    # Truncated mid-statement (no `select`, no `;`) — mirrors the q01 failure
+    # pattern from the tpch eval where the model output got cut off.
+    result = handle_write_file(
+        AgentState(),
+        {"path": "query01.preql", "content": "where lineitem.shipdate::date"},
+    )
+    assert "refused" in result
+    assert "syntactically valid" in result
+    assert "Parse error:" in result
+    # The file must not have been written.
+    assert not (tmp_path / "query01.preql").exists()
+
+
 def test_write_file_flags_writes_into_raw(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     result = handle_write_file(

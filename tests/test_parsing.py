@@ -173,6 +173,34 @@ def test_argument_to_purpose(test_environment: Environment):
     )
 
 
+def test_concept_from_comparison():
+    """Declaring a concept whose lineage is a Comparison/FilterItem must not crash
+    argument_to_purpose when the comparison gets wrapped (e.g. by ``not``)."""
+    env, _ = parse_text("""
+const x <- 'hello';
+auto y <- x like 'h%';
+auto y_neg <- not (x like 'h%');
+auto z_neg <- not (x = 'hello');
+""")
+    assert env.concepts["y"].purpose == Purpose.CONSTANT
+    assert env.concepts["y_neg"].purpose == Purpose.CONSTANT
+    assert env.concepts["z_neg"].purpose == Purpose.CONSTANT
+
+    env2, _ = parse_text("""
+key id int;
+property id.name string;
+auto starts_with_a <- name like 'a%';
+auto not_starts_with_a <- not (name like 'a%');
+""")
+    assert env2.concepts["starts_with_a"].purpose == Purpose.PROPERTY
+    assert env2.concepts["not_starts_with_a"].purpose == Purpose.PROPERTY
+
+    assert (
+        argument_to_purpose(Comparison(left=1, right=2, operator=ComparisonOperator.EQ))
+        == Purpose.PROPERTY
+    )
+
+
 def test_show(test_environment):
     _, parsed = parse_text(
         "const order_id <- 4; SHOW SELECT order_id  WHERE order_id is not null;"

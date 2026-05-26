@@ -286,9 +286,7 @@ def test_snowflake():
         ],
     )
     combined = results.stdout + results.stderr
-    assert (
-        "Missing required Snowflake connection parameters:" not in combined
-    ), combined
+    assert "Missing required Snowflake connection parameters:" not in combined, combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -300,9 +298,7 @@ def test_snowflake():
         ],
     )
     combined = results.stdout + results.stderr
-    assert (
-        "Missing required Snowflake connection parameters:" in combined
-    ), combined
+    assert "Missing required Snowflake connection parameters:" in combined, combined
 
 
 def test_sql_server():
@@ -364,9 +360,7 @@ def test_postgres():
         ],
     )
     combined = results.stdout + results.stderr
-    assert (
-        "Missing required Postgres connection parameters:" not in combined
-    ), combined
+    assert "Missing required Postgres connection parameters:" not in combined, combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -378,9 +372,7 @@ def test_postgres():
         ],
     )
     combined = results.stdout + results.stderr
-    assert (
-        "Missing required Postgres connection parameters:" in combined
-    ), combined
+    assert "Missing required Postgres connection parameters:" in combined, combined
 
 
 def test_presto():
@@ -405,9 +397,7 @@ def test_presto():
         ],
     )
     combined = results.stdout + results.stderr
-    assert (
-        "Missing required Presto connection parameters:" not in combined
-    ), combined
+    assert "Missing required Presto connection parameters:" not in combined, combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -419,9 +409,7 @@ def test_presto():
         ],
     )
     combined = results.stdout + results.stderr
-    assert (
-        "Missing required Presto connection parameters:" in combined
-    ), combined
+    assert "Missing required Presto connection parameters:" in combined, combined
 
 
 def test_duck_db():

@@ -32,14 +32,15 @@ Trilogy project in this directory. `trilogy.toml` configures a DuckDB database
 
 Your goal:
 1. Build a Trilogy semantic data model with `trilogy ingest --all` — writes
-   one .preql model file per table under `raw/`. Do NOT overwrite files in
+   one .preql model file per table under the subfolder `raw/`. Do NOT overwrite files in
    `raw/` unless deliberately correcting a model definition.
 2. Answer each of the {{n}} business questions below by writing a Trilogy query.
 
 Write one query file per question alongside `trilogy.toml` (NOT inside `raw/`).
 Each question below states its exact filename (`queryNN.preql`, where NN is the
 question number). Validate each file with `trilogy run <file>` before moving
-on.
+on. Typically, you will import one fact file from raw/ per question, though
+some rare ones may require merging multiple facts.
 
 Business questions
 ==================

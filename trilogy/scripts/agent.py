@@ -401,9 +401,10 @@ def handle_write_file(state: AgentState, args: dict) -> str:
         syntax_error = _validate_preql_syntax(content)
         if syntax_error:
             return (
-                f"write_file refused: '{path}' did not parse as Trilogy.\n"
-                f"{syntax_error}\n"
-                "Fix the syntax and call write_file again with the full file."
+                f"write_file refused: '{path}' was not syntactically valid Trilogy.\n"
+                f"\nParse error:\n{syntax_error}\n"
+                "\nCorrect the syntax error above and call write_file again with "
+                "the COMPLETE file body."
             )
     try:
         target.parent.mkdir(parents=True, exist_ok=True)

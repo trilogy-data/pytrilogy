@@ -112,9 +112,7 @@ def run_agent(
     }
 
 
-def prepare_worker_workspace(
-    src: Path, worker_idx: int, db_filename: str
-) -> Path:
+def prepare_worker_workspace(src: Path, worker_idx: int, db_filename: str) -> Path:
     """Materialise a self-contained per-worker copy of the eval workspace.
 
     DuckDB takes an exclusive file lock on open; parallel agents pointing at the
