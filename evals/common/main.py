@@ -174,13 +174,13 @@ def run(spec: BenchmarkSpec) -> int:
         f"[3/5] Running agent per query ({len(active)} queries, fresh context each,"
         f" concurrency={concurrency}) — {args.provider}/{args.model} ..."
     )
-    if concurrency > 1:
-        worker_dirs = [
-            agent_runner.prepare_worker_workspace(workspace, i, spec.db_filename)
-            for i in range(concurrency)
-        ]
-    else:
-        worker_dirs = [workspace]
+    # Always materialise per-worker workspaces — even at concurrency=1 — so the
+    # agent's DuckDB file lock doesn't collide with the long-lived scoring
+    # engine, which holds the workspace db open in read-write mode for the run.
+    worker_dirs = [
+        agent_runner.prepare_worker_workspace(workspace, i, spec.db_filename)
+        for i in range(concurrency)
+    ]
 
     per_query_runs: list[dict] = [None] * len(active)  # type: ignore[list-item]
     per_query_metrics: list[scoring.AgentMetrics] = [

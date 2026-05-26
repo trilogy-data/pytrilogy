@@ -2511,7 +2511,10 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced):
             by=[_by_item_with_merge(c, source, target, modifiers) for c in self.by],
             grouping=self.grouping,
             grouping_sets=[
-                [_by_item_with_merge(c, source, target, modifiers) for c in grouping_set]
+                [
+                    _by_item_with_merge(c, source, target, modifiers)
+                    for c in grouping_set
+                ]
                 for grouping_set in self.grouping_sets
             ],
         )
