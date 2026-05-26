@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from scoring import _is_error_result
+from .scoring import _is_error_result
 
 RESULT_INDENT = " " * 21
 

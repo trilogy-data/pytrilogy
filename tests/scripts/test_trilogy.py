@@ -285,9 +285,10 @@ def test_snowflake():
             "myaccount",
         ],
     )
+    combined = results.stdout + results.stderr
     assert (
-        "Missing required Snowflake connection parameters:" not in results.stdout
-    ), results.stdout
+        "Missing required Snowflake connection parameters:" not in combined
+    ), combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -298,9 +299,10 @@ def test_snowflake():
             "snowflake",
         ],
     )
+    combined = results.stdout + results.stderr
     assert (
-        "Missing required Snowflake connection parameters:" in results.stdout
-    ), results.stdout
+        "Missing required Snowflake connection parameters:" in combined
+    ), combined
 
 
 def test_sql_server():
@@ -324,7 +326,8 @@ def test_sql_server():
             "mydatabase",
         ],
     )
-    assert "Missing required SQL Server" not in results.stdout, results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required SQL Server" not in combined, combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -335,7 +338,8 @@ def test_sql_server():
             "sql_server",
         ],
     )
-    assert "Missing required SQL Server" in results.stdout, results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required SQL Server" in combined, combined
 
 
 def test_postgres():
@@ -359,9 +363,10 @@ def test_postgres():
             "mydatabase",
         ],
     )
+    combined = results.stdout + results.stderr
     assert (
-        "Missing required Postgres connection parameters:" not in results.stdout
-    ), results.stdout
+        "Missing required Postgres connection parameters:" not in combined
+    ), combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -372,9 +377,10 @@ def test_postgres():
             "postgres",
         ],
     )
+    combined = results.stdout + results.stderr
     assert (
-        "Missing required Postgres connection parameters:" in results.stdout
-    ), results.stdout
+        "Missing required Postgres connection parameters:" in combined
+    ), combined
 
 
 def test_presto():
@@ -398,9 +404,10 @@ def test_presto():
             "mycatalog",
         ],
     )
+    combined = results.stdout + results.stderr
     assert (
-        "Missing required Presto connection parameters:" not in results.stdout
-    ), results.stdout
+        "Missing required Presto connection parameters:" not in combined
+    ), combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -411,9 +418,10 @@ def test_presto():
             "presto",
         ],
     )
+    combined = results.stdout + results.stderr
     assert (
-        "Missing required Presto connection parameters:" in results.stdout
-    ), results.stdout
+        "Missing required Presto connection parameters:" in combined
+    ), combined
 
 
 def test_duck_db():
@@ -534,11 +542,12 @@ def test_engine_missing_single_parameter(dialect, required_params, test_params):
         results = runner.invoke(cli, args)
 
         # Should fail with missing parameter error
+        combined = results.stdout + results.stderr
         assert (
-            "Missing required" in results.stdout
-        ), f"Expected missing {missing_param} error for {dialect}, got: {results.stdout}"
+            "Missing required" in combined
+        ), f"Expected missing {missing_param} error for {dialect}, got: {combined}"
         assert (
-            missing_param in results.stdout
+            missing_param in combined
         ), f"Missing parameter {missing_param} should be mentioned in error for {dialect}"
 
 

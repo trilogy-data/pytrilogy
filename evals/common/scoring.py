@@ -1,5 +1,6 @@
 """Score an agent run: parse the JSONL trace into harness metrics, and check
-each generated query against the TPC-DS reference (``PRAGMA tpcds(n)``)."""
+each generated query against the benchmark's reference query (``PRAGMA
+<extension>(n)``, where ``<extension>`` is supplied by the BenchmarkSpec)."""
 
 from __future__ import annotations
 
@@ -220,10 +221,10 @@ def _find_query_file(workspace: Path, idx: int) -> Path | None:
     return None
 
 
-def make_scoring_engine(db_path: Path, workspace: Path):
-    """Build a Trilogy executor on the workspace's duckdb, with TPC-DS loaded.
-    Reusable across per-query scoring calls so we don't pay engine setup +
-    extension load on every query."""
+def make_scoring_engine(db_path: Path, workspace: Path, extension: str):
+    """Build a Trilogy executor on the workspace's duckdb, with the benchmark's
+    extension loaded. Reusable across per-query scoring calls so we don't pay
+    engine setup + extension load on every query."""
     from trilogy import Dialects
     from trilogy.core.models.environment import Environment
     from trilogy.dialect.config import DuckDBConfig
@@ -232,14 +233,14 @@ def make_scoring_engine(db_path: Path, workspace: Path):
         environment=Environment(working_path=workspace),
         conf=DuckDBConfig(path=str(db_path)),
     )
-    engine.execute_raw_sql("INSTALL tpcds; LOAD tpcds;")
+    engine.execute_raw_sql(f"INSTALL {extension}; LOAD {extension};")
     return engine
 
 
-def score_query(engine, workspace: Path, idx: int) -> QueryResult:
+def score_query(engine, workspace: Path, idx: int, extension: str) -> QueryResult:
     """Score a single query — for live dashboard updates that don't want to
     wait for the whole run to finish before grading."""
-    return _score_one(engine, workspace, idx)
+    return _score_one(engine, workspace, idx, extension)
 
 
 def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
@@ -256,15 +257,17 @@ def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
     return result
 
 
-def score_queries(db_path: Path, workspace: Path, ids: list[int]) -> list[QueryResult]:
+def score_queries(
+    db_path: Path, workspace: Path, ids: list[int], extension: str
+) -> list[QueryResult]:
     """Run each agent-produced query against ``db_path`` and compare results to
-    the TPC-DS reference for that query id (``query<id>.preql`` vs
-    ``PRAGMA tpcds(<id>)``)."""
-    engine = make_scoring_engine(db_path, workspace)
-    return [_score_one(engine, workspace, idx) for idx in ids]
+    the benchmark's reference for that query id (``query<id>.preql`` vs
+    ``PRAGMA <extension>(<id>)``)."""
+    engine = make_scoring_engine(db_path, workspace, extension)
+    return [_score_one(engine, workspace, idx, extension) for idx in ids]
 
 
-def _score_one(engine, workspace: Path, idx: int) -> QueryResult:
+def _score_one(engine, workspace: Path, idx: int, extension: str) -> QueryResult:
     from trilogy.core.models.environment import Environment
 
     query_file = _find_query_file(workspace, idx)
@@ -298,7 +301,9 @@ def _score_one(engine, workspace: Path, idx: int) -> QueryResult:
         )
 
     try:
-        reference = list(engine.execute_raw_sql(f"PRAGMA tpcds({idx});").fetchall())
+        reference = list(
+            engine.execute_raw_sql(f"PRAGMA {extension}({idx});").fetchall()
+        )
     except Exception as exc:
         return QueryResult(
             id=idx,

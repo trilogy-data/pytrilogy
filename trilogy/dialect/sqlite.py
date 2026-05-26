@@ -243,15 +243,30 @@ class SQLiteDialect(BaseDialect):
     COLUMN_NOT_FOUND_PATTERN = "no such column"
 
     def render_comparison(
-        self, left, right, operator, cte=None, cte_map=None, raise_invalid=False
+        self,
+        left,
+        right,
+        operator,
+        cte=None,
+        cte_map=None,
+        raise_invalid=False,
+        materialized_addresses: set[str] | None = None,
     ):
         # SQLite has no native ``ILIKE``; emulate via case-folded LIKE.
         if operator == ComparisonOperator.ILIKE:
             left_sql = self.render_expr(
-                left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                left,
+                cte=cte,
+                cte_map=cte_map,
+                raise_invalid=raise_invalid,
+                materialized_addresses=materialized_addresses,
             )
             right_sql = self.render_expr(
-                right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                right,
+                cte=cte,
+                cte_map=cte_map,
+                raise_invalid=raise_invalid,
+                materialized_addresses=materialized_addresses,
             )
             return f"(lower({left_sql}) like lower({right_sql}))"
         return super().render_comparison(
@@ -261,6 +276,7 @@ class SQLiteDialect(BaseDialect):
             cte=cte,
             cte_map=cte_map,
             raise_invalid=raise_invalid,
+            materialized_addresses=materialized_addresses,
         )
 
     def compile_create_table_statement(self, target, create_mode):

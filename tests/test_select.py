@@ -156,7 +156,7 @@ def test_having_without_select():
     try:
         env, parsed = parse(q1)
     except Exception as e:
-        assert "that is not in the select projection in the HAVING clause" in str(e)
+        assert "which is not in the SELECT projection" in str(e)
         failed = True
     assert failed
 
