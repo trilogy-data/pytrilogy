@@ -2588,9 +2588,10 @@ class Factory:
                 for c in self.grain.component_order
             ]
         else:
-            by = [self.build(x) for x in base.by]
+            by = self._build_over_items(list(base.by))
         grouping_sets = [
-            [self.build(x) for x in grouping_set] for grouping_set in base.grouping_sets
+            self._build_over_items(list(grouping_set))
+            for grouping_set in base.grouping_sets
         ]
         if base.grouping == AggregateGroupingMode.STANDARD:
             by = sorted(by, key=lambda x: x.address)

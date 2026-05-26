@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from os.path import dirname, join
 from re import IGNORECASE
 from typing import TYPE_CHECKING, Any
@@ -61,6 +62,47 @@ def parse_lark(text: str) -> SyntaxDocument:
         raise create_generic_syntax_error(str(e), e.pos_in_stream or 0, text) from e
 
 
+_BY_KEYWORD_RE = re.compile(r"\bby\b", IGNORECASE)
+
+
+def _lark_parses(text: str) -> bool:
+    try:
+        _get_parser().parse(text)
+        return True
+    except Exception:
+        return False
+
+
+def _detect_unparenthesized_by_expr_lark(text: str, pos: int) -> int | None:
+    """Lark counterpart of the pest probe: scans back for `by` and reparses
+    with `(...)` inserted around the BY expression."""
+    head = text[:pos]
+    last_by = None
+    for m in _BY_KEYWORD_RE.finditer(head):
+        last_by = m
+    if last_by is None:
+        return None
+    by_end = last_by.end()
+    if not text[by_end:pos].strip():
+        return None
+    candidates = [pos]
+    tail = text[pos:]
+    boundary = re.search(
+        r"\b(as|select|where|having|order|group|limit)\b|;",
+        tail,
+        IGNORECASE,
+    )
+    if boundary is not None:
+        end = pos + boundary.start()
+        if end > pos:
+            candidates.append(end)
+    for end in candidates:
+        probe = text[:by_end] + " (" + text[by_end:end].rstrip() + ")" + text[end:]
+        if _lark_parses(probe):
+            return last_by.start()
+    return None
+
+
 def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     from lark import Token
     from lark.exceptions import UnexpectedToken as _UnexpectedToken
@@ -74,6 +116,10 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     parsed_tokens = [x.value for x in e.token_history if x] if e.token_history else []
     if parsed_tokens == ["FROM"]:
         raise create_syntax_error(101, pos, text)
+
+    by_pos = _detect_unparenthesized_by_expr_lark(text, pos)
+    if by_pos is not None:
+        raise create_syntax_error(211, by_pos, text)
 
     if last_token and e.token.type == "$END":
         try:

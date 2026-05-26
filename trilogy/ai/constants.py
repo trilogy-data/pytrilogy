@@ -18,7 +18,8 @@ SELECT RULES:
 - Aliases cannot happen inside calculations or in the where/having/order clause. Never alias fields with existing names. 'sum(revenue) as total_revenue' is valid, but '(sum(births) as total_revenue) +1 as revenue_plus_one' is not.
 - Implicit grouping: NEVER include a group by clause. Grouping is by non-aggregated fields in the SELECT clause.
 - You can dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
-- Count must specify a field (no `count(*)`) Counts are automatically deduplicated. Do not ever use DISTINCT.
+- The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens (`by (substring(phone, 1, 2), upper(name))`). Use parens whenever a `by` entry is anything other than a simple identifier — function calls, casts, arithmetic, etc. — e.g. `avg(price) by (substring(phone, 1, 2))`. Without the parens the parser will reject the expression form.
+- Count must specify a field (no `count(*)`) Counts are automatically deduplicated for keys. A count of a property counts the key. Use count_distinct for unique property members; do not use it on keys as it is identical to count.
 - Since there are no underlying tables, sum/count of a constant should always specify a grain field (e.g. `sum(1) by x as count`). 
 - Filtering on aggregates:
   * HAVING filters on an aggregate that IS in the SELECT output. HAVING can ONLY reference fields that appear in the SELECT projection — select the aggregate with an alias, then reference that alias:

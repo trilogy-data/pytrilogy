@@ -132,14 +132,50 @@ def categorize_failure(result: str) -> str:
     return "other"
 
 
-def _error_snippet(result: str, limit: int = 220) -> str:
-    """The meaningful error text from a `trilogy` tool result."""
-    flat = " ".join(result.split())
+_ERROR_ANCHORS = ("^---", "Location:", "-->")
+
+
+def _error_snippet(result: str, limit: int = 1200) -> str:
+    """The meaningful error text from a `trilogy` tool result.
+
+    Preserves newlines so the parser's caret diagram (``  | ^---``) remains
+    readable. When the message is longer than ``limit``, center-truncates
+    around the caret (or `Location:` / `-->` marker) so the failing column
+    stays in view.
+    """
+    text = result
+    if "--- stderr ---" in text:
+        text = text.split("--- stderr ---", 1)[1]
+    text = text.strip()
     for marker in ("Unexpected error:", "Error:"):
-        if marker in flat:
-            flat = flat.split(marker, 1)[1].strip()
+        if marker in text:
+            text = text.split(marker, 1)[1].lstrip()
             break
-    return flat[:limit] + ("…" if len(flat) > limit else "")
+    if len(text) <= limit:
+        return text
+    idx = -1
+    for anchor in _ERROR_ANCHORS:
+        idx = text.find(anchor)
+        if idx != -1:
+            break
+    half = (limit - 1) // 2
+    if idx == -1:
+        return text[:half] + "\n…\n" + text[-half:]
+    start = max(0, idx - half)
+    end = min(len(text), idx + half)
+    prefix = "…\n" if start > 0 else ""
+    suffix = "\n…" if end < len(text) else ""
+    return prefix + text[start:end] + suffix
+
+
+def _format_args(args: list[str], limit: int = 300) -> str:
+    """Render a tool-call argv for the report, middle-truncating so the
+    leading subcommand AND the trailing inline query both stay visible."""
+    s = " ".join(args)
+    if len(s) <= limit:
+        return s
+    half = (limit - 1) // 2
+    return s[:half] + "…" + s[-half:]
 
 
 def collect_failures(events: list[dict]) -> list[dict]:
@@ -196,10 +232,12 @@ def write_failures_report(
         lines.append("")
         for f in failures:
             if f["category"] == cat:
-                args = " ".join(f["args"])
-                args = args if len(args) <= 120 else args[:117] + "…"
-                lines.append(f"- `trilogy {args}`")
-                lines.append(f"  - {f['error']}")
+                lines.append(f"- `trilogy {_format_args(f['args'])}`")
+                lines.append("")
+                lines.append("  ```text")
+                for err_line in f["error"].splitlines() or [""]:
+                    lines.append(f"  {err_line}".rstrip())
+                lines.append("  ```")
         lines.append("")
     if not failures:
         lines += ["_No `trilogy` calls failed in this run._", ""]
