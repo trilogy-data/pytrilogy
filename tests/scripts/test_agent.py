@@ -935,6 +935,35 @@ def test_interactive_followup_runs_then_exits(monkeypatch):
     assert turn_count["n"] == 2  # initial command + one followup
 
 
+def test_interactive_with_log_file_dumps_conversation_on_followup(
+    monkeypatch, tmp_path
+):
+    """The interactive followup loop dumps the conversation sidecar each turn,
+    not just on the initial turn."""
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    log_path = tmp_path / "trace.jsonl"
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+        state.done = True
+        state.farewell = "ok"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+
+    result = CliRunner().invoke(
+        cli,
+        ["agent", "-i", "-l", str(log_path), "first task"],
+        input="follow-up\nexit\n",
+    )
+    assert result.exit_code == 0, result.output
+    # Per-turn sidecar exists.
+    sidecar = log_path.with_suffix(".conversation.txt")
+    assert sidecar.exists()
+
+
 def test_interactive_aborts_cleanly_on_eof(monkeypatch):
     """Ctrl-D / EOF in the REPL must return cleanly, not crash."""
     from click.testing import CliRunner
