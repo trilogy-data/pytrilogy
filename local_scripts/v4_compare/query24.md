@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3320 | 64 | 27.54 ms |
-| reference | 3752 | 52 | 62.45 ms |
-| v4 / ref | 0.88x | 1.23x | 0.44x |
+| v4 | 3460 | 67 | 30.40 ms |
+| reference | 3752 | 52 | 61.36 ms |
+| v4 / ref | 0.92x | 1.29x | 0.50x |
 
 ## Preql
 
@@ -94,9 +94,12 @@ SELECT
 FROM
     "abundant"
 GROUP BY
+    "abundant"."store_sales_customer_first_name",
     "abundant"."store_sales_customer_id",
+    "abundant"."store_sales_customer_last_name",
     "abundant"."store_sales_item_id",
-    "abundant"."store_sales_store_id"),
+    "abundant"."store_sales_store_id",
+    "abundant"."store_sales_store_name"),
 yummy as (
 SELECT
     avg("uneven"."_virt_agg_sum_1360566110228423") as "avg_store_customer_sales"

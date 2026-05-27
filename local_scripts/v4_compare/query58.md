@@ -1,11 +1,10 @@
 # Query 58
 
-**Status:** `exec_fail`
+**Status:** `gen_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 SQL generation | FAILED |
 | reference execution | OK (5 rows) |
 
 ## Result comparison
@@ -16,9 +15,8 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4802 | 30 | — |
-| reference | 5265 | 78 | 98.16 ms |
-| v4 / ref | 0.91x | 0.38x | — |
+| v4 | 0 | 0 | — |
+| reference | 5265 | 78 | 82.35 ms |
 
 ## Preql
 
@@ -66,38 +64,7 @@ limit 100
 
 ## v4 generated SQL
 
-```sql
-WITH 
-quizzical as (
-SELECT
-    ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END / ( (( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END) / 3 ) ) * 100 as "cs_dev",
-    ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END / ( (( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END) / 3 ) ) * 100 as "ss_dev",
-    ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END / ( (( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END) / 3 ) ) * 100 as "ws_dev",
-    (( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END ) + CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END) / 3 as "avg_rev",
-    CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END as "cs_item_rev",
-    CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END as "ss_item_rev",
-    CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price> ELSE NULL END as "ws_item_rev",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.item.name> as "item_id"
-)
-SELECT
-    "quizzical"."item_id" as "item_id",
-    "quizzical"."ss_item_rev" as "ss_item_rev",
-    "quizzical"."ss_dev" as "ss_dev",
-    "quizzical"."cs_item_rev" as "cs_item_rev",
-    "quizzical"."cs_dev" as "cs_dev",
-    "quizzical"."ws_item_rev" as "ws_item_rev",
-    "quizzical"."ws_dev" as "ws_dev",
-    "quizzical"."avg_rev" as "avg_rev"
-FROM
-    "quizzical"
-WHERE
-    "quizzical"."ss_item_rev" BETWEEN 0.9 * "quizzical"."cs_item_rev" AND 1.1 * "quizzical"."cs_item_rev" and "quizzical"."ss_item_rev" BETWEEN 0.9 * "quizzical"."ws_item_rev" AND 1.1 * "quizzical"."ws_item_rev" and "quizzical"."cs_item_rev" BETWEEN 0.9 * "quizzical"."ss_item_rev" AND 1.1 * "quizzical"."ss_item_rev" and "quizzical"."cs_item_rev" BETWEEN 0.9 * "quizzical"."ws_item_rev" AND 1.1 * "quizzical"."ws_item_rev" and "quizzical"."ws_item_rev" BETWEEN 0.9 * "quizzical"."ss_item_rev" AND 1.1 * "quizzical"."ss_item_rev" and "quizzical"."ws_item_rev" BETWEEN 0.9 * "quizzical"."cs_item_rev" AND 1.1 * "quizzical"."cs_item_rev"
-
-ORDER BY 
-    "quizzical"."item_id" asc nulls first,
-    "quizzical"."ss_item_rev" asc nulls first
-LIMIT (100)
-```
+_v4 did not produce SQL._
 
 ## Reference SQL (zquery log)
 
@@ -182,26 +149,52 @@ ORDER BY
 LIMIT (100)
 ```
 
-## v4 execution error
+## v4 generation error
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 138, in generate_v4_sql
+    sql = compile_sql(info, build_env, build_stmt)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 532, in compile_sql
+    node.rebuild_cache()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 440, in rebuild_cache
+    return self.resolve()
+           ~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\select_node_v2.py", line 188, in _resolve
+    return super()._resolve()
+           ~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 406, in _resolve
+    p.resolve() for p in self.parents
+    ~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 262, in _resolve
+    p.resolve() for p in self.parents
+    ~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\select_node_v2.py", line 188, in _resolve
+    return super()._resolve()
+           ~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 406, in _resolve
+    p.resolve() for p in self.parents
+    ~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\group_node.py", line 90, in _resolve
+    grains = self.check_if_required(
+        self.output_concepts, parent_sources, self.environment, self.depth
     )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
-
-LINE 4:     ( CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN...
-                                                       ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\group_node.py", line 83, in check_if_required
+    return check_if_group_required(downstream_concepts, parents, environment, depth)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\discovery_utility.py", line 124, in check_if_group_required
+    comp_grain += calculate_effective_parent_grain(source)
+                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\discovery_utility.py", line 65, in calculate_effective_parent_grain
+    return qds.datasources[0].grain
+           ~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range
 ```

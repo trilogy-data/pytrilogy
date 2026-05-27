@@ -18,8 +18,8 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1512 | 32 | 276.37 ms |
-| reference | 1512 | 32 | 279.47 ms |
+| v4 | 1512 | 32 | 253.46 ms |
+| reference | 1512 | 32 | 254.95 ms |
 | v4 / ref | 1.00x | 1.00x | 0.99x |
 
 ## Preql
@@ -65,15 +65,15 @@ WHERE
     "inventory_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
 )
 SELECT
-    avg("cheerful"."inventory_quantity_on_hand") as "qoh",
-    "cheerful"."inventory_item_class" as "inventory_item_class",
     "cheerful"."inventory_item_brand_name" as "inventory_item_brand_name",
+    "cheerful"."inventory_item_category" as "inventory_item_category",
+    "cheerful"."inventory_item_class" as "inventory_item_class",
     "cheerful"."inventory_item_product_name" as "inventory_item_product_name",
-    "cheerful"."inventory_item_category" as "inventory_item_category"
+    avg("cheerful"."inventory_quantity_on_hand") as "qoh"
 FROM
     "cheerful"
 GROUP BY
-    ROLLUP (4, 3, 2, 5)
+    ROLLUP (4, 1, 3, 2)
 ORDER BY 
     "qoh" asc nulls first,
     "cheerful"."inventory_item_product_name" asc nulls first,

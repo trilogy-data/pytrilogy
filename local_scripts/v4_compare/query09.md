@@ -14,7 +14,7 @@
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
 only in v4 (showing up to 5 of 1):
-  1x  (1263.297645377911, 508.37700039693226, 220.39143376813084, 434.9869957132319, 3753.4283962477907, 75.25301674037534, 2086.945296522591, 365.74542659779036, 2919.9783477640012, 653.5553966080046, 75.25301674037534, 220.39143376813084, 365.74542659779036, 508.37700039693226, 653.5553966080046, 288649, 288305, 288229, 288429, 288208)
+  1x  (75.25301674037534, 220.39143376813084, 365.74542659779036, 508.37700039693226, 653.5553966080046)
 only in ref (showing up to 5 of 1):
   1x  (39.58666235453537, 116.11497611055164, 192.43918583506914, 267.1876616705382, 342.9667589085597)
 
@@ -22,9 +22,9 @@ only in ref (showing up to 5 of 1):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4534 | 117 | 91.64 ms |
-| reference | 2991 | 108 | 39.90 ms |
-| v4 / ref | 1.52x | 1.08x | 2.30x |
+| v4 | 3518 | 102 | 117.41 ms |
+| reference | 2991 | 108 | 45.40 ms |
+| v4 / ref | 1.18x | 0.94x | 2.59x |
 
 ## Preql
 
@@ -171,22 +171,7 @@ SELECT
     CASE
 	WHEN "wakeful"."count5" > 165306 THEN "wakeful"."_virt_agg_avg_9933913877002720"
 	ELSE "wakeful"."_virt_agg_avg_5605106007967002"
-	END as "bucket5",
-    "wakeful"."count1" as "count1",
-    "wakeful"."_virt_agg_avg_6330081077547932" as "_virt_agg_avg_6330081077547932",
-    "wakeful"."_virt_agg_avg_4794444300151277" as "_virt_agg_avg_4794444300151277",
-    "wakeful"."_virt_agg_avg_4659580449698061" as "_virt_agg_avg_4659580449698061",
-    "wakeful"."count2" as "count2",
-    "wakeful"."_virt_agg_avg_1613688246980292" as "_virt_agg_avg_1613688246980292",
-    "wakeful"."count3" as "count3",
-    "wakeful"."_virt_agg_avg_7477983213274050" as "_virt_agg_avg_7477983213274050",
-    "wakeful"."_virt_agg_avg_684038137247375" as "_virt_agg_avg_684038137247375",
-    "wakeful"."_virt_agg_avg_2142335324413561" as "_virt_agg_avg_2142335324413561",
-    "wakeful"."_virt_agg_avg_838076703794071" as "_virt_agg_avg_838076703794071",
-    "wakeful"."count4" as "count4",
-    "wakeful"."_virt_agg_avg_9933913877002720" as "_virt_agg_avg_9933913877002720",
-    "wakeful"."count5" as "count5",
-    "wakeful"."_virt_agg_avg_5605106007967002" as "_virt_agg_avg_5605106007967002"
+	END as "bucket5"
 FROM
     "wakeful"
 ```

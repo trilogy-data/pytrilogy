@@ -14,11 +14,11 @@
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
 only in v4 (showing up to 5 of 100):
-  1x  (0, 268, 297, 315, 323, None, 'EXPRESS', 'site_0')
-  1x  (0, 302, 314, 306, 308, None, 'EXPRESS', 'site_1')
-  1x  (0, 305, 312, 324, 319, None, 'EXPRESS', 'site_2')
-  1x  (0, 288, 263, 245, 255, None, 'EXPRESS', 'site_3')
-  1x  (0, 232, 279, 301, 272, None, 'EXPRESS', 'site_4')
+  1x  (0, 39697080, 47809092, 46457090, 50340500, None, 'EXPRESS', 'site_0')
+  1x  (0, 45220152, 45881770, 44817428, 47809092, None, 'EXPRESS', 'site_1')
+  1x  (0, 44616066, 46687218, 47492666, 47435134, None, 'EXPRESS', 'site_2')
+  1x  (0, 44673598, 41538104, 37136906, 38776568, None, 'EXPRESS', 'site_3')
+  1x  (0, 33224730, 42170956, 46226962, 43666788, None, 'EXPRESS', 'site_4')
 only in ref (showing up to 5 of 100):
   1x  (0, 266, 293, 315, 321, None, 'EXPRESS', 'site_0')
   1x  (0, 298, 312, 304, 308, None, 'EXPRESS', 'site_1')
@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 100):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3935 | 90 | 63.27 ms |
-| reference | 2102 | 42 | 33.24 ms |
-| v4 / ref | 1.87x | 2.14x | 1.90x |
+| v4 | 3179 | 79 | 772.509 s |
+| reference | 2102 | 42 | 49.37 ms |
+| v4 / ref | 1.51x | 1.88x | 15646.98x |
 
 ## Preql
 
@@ -108,9 +108,6 @@ cooperative as (
 SELECT
     "cheerful"."ws_date_id" as "ws_date_id",
     "cheerful"."ws_ship_date_id" as "ws_ship_date_id",
-    "cheerful"."ws_ship_mode_id" as "ws_ship_mode_id",
-    "cheerful"."ws_warehouse_id" as "ws_warehouse_id",
-    "cheerful"."ws_web_site_id" as "ws_web_site_id",
     "ws_ship_mode_ship_mode"."SM_TYPE" as "ws_ship_mode_type",
     "ws_warehouse_warehouse"."w_warehouse_name" as "ws_warehouse_name",
     "ws_web_site_web_site"."web_name" as "ws_web_site_name"
@@ -125,11 +122,7 @@ WHERE
 ),
 abundant as (
 SELECT
-    "cooperative"."ws_date_id" as "ws_date_id",
-    "cooperative"."ws_ship_date_id" as "ws_ship_date_id",
-    "cooperative"."ws_ship_mode_id" as "ws_ship_mode_id",
-    "cooperative"."ws_warehouse_id" as "ws_warehouse_id",
-    "cooperative"."ws_web_site_id" as "ws_web_site_id",
+    "cooperative"."ws_warehouse_name" as "ws_warehouse_name",
     SUBSTRING("cooperative"."ws_warehouse_name",1,20) as "w_substr"
 FROM
     "cooperative"),
@@ -137,12 +130,7 @@ questionable as (
 SELECT
     "cooperative"."ws_date_id" as "ws_date_id",
     "cooperative"."ws_ship_date_id" - "cooperative"."ws_date_id" as "days_to_ship",
-    "cooperative"."ws_ship_date_id" as "ws_ship_date_id",
-    "cooperative"."ws_ship_mode_id" as "ws_ship_mode_id",
-    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
-    "cooperative"."ws_warehouse_id" as "ws_warehouse_id",
-    "cooperative"."ws_web_site_id" as "ws_web_site_id",
-    "cooperative"."ws_web_site_name" as "ws_web_site_name"
+    "cooperative"."ws_ship_date_id" as "ws_ship_date_id"
 FROM
     "cooperative")
 SELECT
@@ -166,20 +154,21 @@ SELECT
 	WHEN "questionable"."days_to_ship" > 120 THEN 1
 	ELSE 0
 	END) as "days_120_plus",
-    "questionable"."ws_ship_mode_type" as "ws_ship_mode_type",
+    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
     "abundant"."w_substr" as "w_substr",
-    "questionable"."ws_web_site_name" as "ws_web_site_name"
+    "cooperative"."ws_web_site_name" as "ws_web_site_name"
 FROM
     "questionable"
-    FULL JOIN "abundant" on "questionable"."ws_date_id" is not distinct from "abundant"."ws_date_id" AND "questionable"."ws_ship_date_id" is not distinct from "abundant"."ws_ship_date_id" AND "questionable"."ws_ship_mode_id" = "abundant"."ws_ship_mode_id" AND "questionable"."ws_warehouse_id" = "abundant"."ws_warehouse_id" AND "questionable"."ws_web_site_id" = "abundant"."ws_web_site_id"
+    FULL JOIN "cooperative" on "questionable"."ws_date_id" is not distinct from "cooperative"."ws_date_id" AND "questionable"."ws_ship_date_id" is not distinct from "cooperative"."ws_ship_date_id"
+    FULL JOIN "abundant" on "cooperative"."ws_warehouse_name" is not distinct from "abundant"."ws_warehouse_name"
 GROUP BY
     6,
     7,
     8
 ORDER BY 
     "abundant"."w_substr" asc nulls first,
-    "questionable"."ws_ship_mode_type" asc nulls first,
-    "questionable"."ws_web_site_name" asc nulls first
+    "cooperative"."ws_ship_mode_type" asc nulls first,
+    "cooperative"."ws_web_site_name" asc nulls first
 LIMIT (100)
 ```
 

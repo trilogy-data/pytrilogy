@@ -5,24 +5,25 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (3 rows) |
+| v4 execution | OK (6 rows) |
 | reference execution | OK (2 rows) |
 | results identical | NO |
 
 ## Result comparison
 
-v4 rows: 3 (2 distinct)
+v4 rows: 6 (2 distinct)
 ref rows: 2 (2 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  ('AAAAAAAABAAAAAAA', 'NY Metro', 'Bob Belcher', Decimal('4725.36'))
+only in v4 (showing up to 5 of 2):
+  2x  ('AAAAAAAABAAAAAAA', 'NY Metro', 'Bob Belcher', Decimal('4725.36'))
+  2x  ('AAAAAAAABAAAAAAA', 'NY Metro', 'Bob Belcher', Decimal('574.43'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4181 | 58 | 26.22 ms |
-| reference | 2219 | 24 | 26.82 ms |
-| v4 / ref | 1.88x | 2.42x | 0.98x |
+| v4 | 3647 | 54 | 37.54 ms |
+| reference | 2219 | 24 | 36.00 ms |
+| v4 / ref | 1.64x | 2.25x | 1.04x |
 
 ## Preql
 
@@ -83,8 +84,6 @@ SELECT
     "abundant"."cr_call_center_manager" as "cr_call_center_manager",
     "abundant"."cr_call_center_name" as "cr_call_center_name",
     "abundant"."cr_call_center_text_id" as "cr_call_center_text_id",
-    "abundant"."cr_customer_demographics_education_status" as "cr_customer_demographics_education_status",
-    "abundant"."cr_customer_demographics_marital_status" as "cr_customer_demographics_marital_status",
     sum("abundant"."cr_net_loss") as "returns_loss"
 FROM
     "abundant"
@@ -92,8 +91,8 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    5),
+    "abundant"."cr_customer_demographics_education_status",
+    "abundant"."cr_customer_demographics_marital_status"),
 uneven as (
 SELECT
     "abundant"."cr_call_center_manager" as "cr_call_center_manager",
@@ -101,9 +100,7 @@ SELECT
     "abundant"."cr_call_center_name" as "call_center_name",
     "abundant"."cr_call_center_name" as "cr_call_center_name",
     "abundant"."cr_call_center_text_id" as "call_center",
-    "abundant"."cr_call_center_text_id" as "cr_call_center_text_id",
-    "abundant"."cr_customer_demographics_education_status" as "cr_customer_demographics_education_status",
-    "abundant"."cr_customer_demographics_marital_status" as "cr_customer_demographics_marital_status"
+    "abundant"."cr_call_center_text_id" as "cr_call_center_text_id"
 FROM
     "abundant")
 SELECT
@@ -113,7 +110,7 @@ SELECT
     "yummy"."returns_loss" as "returns_loss"
 FROM
     "yummy"
-    FULL JOIN "uneven" on "yummy"."cr_call_center_manager" is not distinct from "uneven"."cr_call_center_manager" AND "yummy"."cr_call_center_name" = "uneven"."cr_call_center_name" AND "yummy"."cr_call_center_text_id" = "uneven"."cr_call_center_text_id" AND "yummy"."cr_customer_demographics_education_status" = "uneven"."cr_customer_demographics_education_status" AND "yummy"."cr_customer_demographics_marital_status" = "uneven"."cr_customer_demographics_marital_status"
+    FULL JOIN "uneven" on "yummy"."cr_call_center_manager" is not distinct from "uneven"."cr_call_center_manager" AND "yummy"."cr_call_center_name" = "uneven"."cr_call_center_name" AND "yummy"."cr_call_center_text_id" = "uneven"."cr_call_center_text_id"
 ORDER BY 
     "yummy"."returns_loss" desc nulls first
 ```

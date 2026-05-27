@@ -10,6 +10,7 @@ from collections import defaultdict
 import networkx as nx
 
 from trilogy.constants import logger
+from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
@@ -18,7 +19,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import combine_condition_atoms
-from trilogy.core.enums import Derivation
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
@@ -338,8 +338,28 @@ def _assemble_final_node(
     if not per_group:
         return next(iter(built.values()))
     contributing = list(per_group.keys())
+    mandatory_addresses = {c.address for c in mandatory_list}
     if len(contributing) == 1:
-        return built[contributing[0]]
+        gid = contributing[0]
+        sole_node = built[gid]
+        # The contributing group's outputs include grain keys it exposed
+        # for sibling JOINs (see `_compute_concept_sets`). At the user-
+        # facing FINAL projection those keys aren't part of mandatory and
+        # would otherwise leak into the SELECT. Mask them with
+        # hidden_concepts — only valid at the FINAL layer, since hiding
+        # them at an intermediate group blocks downstream consumers from
+        # using them as JOIN keys (MergeNode validates non-hidden parent
+        # outputs only).
+        output_addrs = {o.address for o in sole_node.output_concepts}
+        grain_addrs = set(
+            group_graph.nodes[gid].get("grain_components") or ()
+        )
+        hide = (grain_addrs & output_addrs) - mandatory_addresses
+        if hide:
+            existing = set(sole_node.hidden_concepts or set())
+            sole_node.hidden_concepts = existing | hide
+            sole_node.rebuild_cache()
+        return sole_node
 
     # Only root scans get the grain projection: their grain is the row-level
     # source-table grain (often much wider than what a downstream merge
@@ -388,16 +408,22 @@ def build_strategy_node(
             continue
         data = group_graph.nodes[gid]
         derivation = data.get("derivation")
-        # Outputs = primaries + secondaries. Secondary members are the
-        # concepts a group can also expose for free: grain components on
-        # aggregates/windows (which appear in the GROUP BY and need to be
-        # in the SELECT), and lineage parents/roots for basics (so downstream
-        # groups can reach them via this node).
-        primary_addrs = data.get("primary_members", ())
-        secondary_addrs = data.get("secondary_members", ())
+        # Prefer the per-group output/hidden sets computed by the backward
+        # pass in `_compute_concept_sets`. The SELECT needs to project the
+        # union (output ∪ hidden) so GROUP-BY keys stay in the row stream;
+        # `hidden_concepts` then masks them from any downstream consumer
+        # that doesn't ask for them. When the backward pass didn't run
+        # (no mandatory_list supplied), fall back to "every member".
+        output_addrs = data.get("output_concepts")
+        hidden_addrs: tuple[str, ...] = data.get("hidden_concepts") or ()
+        if output_addrs is None:
+            primary_addrs = data.get("primary_members", ())
+            secondary_addrs = data.get("secondary_members", ())
+            output_addrs = (*primary_addrs, *secondary_addrs)
+        select_addrs = (*output_addrs, *hidden_addrs)
         outputs = [
             environment.concepts[a]
-            for a in (*primary_addrs, *secondary_addrs)
+            for a in select_addrs
             if a in environment.concepts
         ]
         if not outputs:
@@ -407,15 +433,19 @@ def build_strategy_node(
         # The "needed" set drives ancestor-dedup: a parent is kept only if
         # it contributes something to it that no descendant parent also
         # provides. Includes the output addresses themselves, the lineage
-        # args those outputs consume, and the inputs of any conditions
-        # applied at this group — a filter like `price > avg(...) by cat`
-        # needs `avg(...)` reachable through a parent, otherwise the
-        # avg-providing group gets dedup'd out and the WHERE renders with
-        # nothing to bind to.
+        # args of *primary* outputs (the columns this group actually
+        # computes), and the inputs of any conditions applied at this
+        # group. Passthroughs' lineage is intentionally NOT walked — a
+        # passthrough output like `sum_sales` rides through this group
+        # from an aggregate parent; if we walked its lineage we'd add
+        # `sales_price` to `needed`, which ROOT provides but the aggregate
+        # doesn't, and ROOT would escape dedup. The aggregate already
+        # owns that lineage upstream.
+        primary_addrs = set(data.get("primary_members", ()))
         needed: set[str] = set()
         for c in outputs:
             needed.add(c.address)
-            if c.lineage is not None:
+            if c.address in primary_addrs and c.lineage is not None:
                 for arg in c.lineage.concept_arguments:
                     needed.add(arg.address)
         if injected is not None:

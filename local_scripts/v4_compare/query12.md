@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2111 | 48 | 29.92 ms |
-| reference | 2111 | 48 | 30.06 ms |
-| v4 / ref | 1.00x | 1.00x | 1.00x |
+| v4 | 2111 | 48 | 26.00 ms |
+| reference | 2111 | 48 | 25.18 ms |
+| v4 / ref | 1.00x | 1.00x | 1.03x |
 
 ## Preql
 
@@ -83,13 +83,13 @@ FROM
 GROUP BY
     1)
 SELECT
+    "cheerful"."itemrevenue" as "itemrevenue",
     ("cheerful"."itemrevenue" * 100.0) / "cooperative"."itemclassrevenue" as "revenueratio",
     "cheerful"."web_sales_item_category" as "web_sales_item_category",
     coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") as "web_sales_item_class",
-    "cheerful"."web_sales_item_name" as "web_sales_item_name",
-    "cheerful"."web_sales_item_desc" as "web_sales_item_desc",
     "cheerful"."web_sales_item_current_price" as "web_sales_item_current_price",
-    "cheerful"."itemrevenue" as "itemrevenue"
+    "cheerful"."web_sales_item_desc" as "web_sales_item_desc",
+    "cheerful"."web_sales_item_name" as "web_sales_item_name"
 FROM
     "cooperative"
     INNER JOIN "cheerful" on "cooperative"."web_sales_item_class" is not distinct from "cheerful"."web_sales_item_class"

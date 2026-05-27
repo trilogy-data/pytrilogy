@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4850 | 32 | — |
-| reference | 5946 | 132 | 155.04 ms |
-| v4 / ref | 0.82x | 0.24x | — |
+| v4 | 4884 | 30 | — |
+| reference | 5946 | 132 | 203.03 ms |
+| v4 / ref | 0.82x | 0.23x | — |
 
 ## Preql
 
@@ -82,9 +82,7 @@ SELECT
     CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END as "cr_item_qty",
     CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END as "sr_item_qty",
     CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.return_quantity> ELSE NULL END as "wr_item_qty",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.item.name> as "item_id",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.order_id> as "sales_order_id",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> as "sales_sales_channel"
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.item.name> as "item_id"
 )
 SELECT
     "quizzical"."item_id" as "item_id",
@@ -98,7 +96,7 @@ SELECT
 FROM
     "quizzical"
 WHERE
-    CASE WHEN CASE WHEN "quizzical"."sales_sales_channel" = 'STORE' THEN "quizzical"."sales_order_id" ELSE NULL END IS NOT NULL THEN 1 ELSE 0 END > 0 and CASE WHEN CASE WHEN "quizzical"."sales_sales_channel" = 'CATALOG' THEN "quizzical"."sales_order_id" ELSE NULL END IS NOT NULL THEN 1 ELSE 0 END > 0 and CASE WHEN CASE WHEN "quizzical"."sales_sales_channel" = 'WEB' THEN "quizzical"."sales_order_id" ELSE NULL END IS NOT NULL THEN 1 ELSE 0 END > 0
+    CASE WHEN CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.order_id> ELSE NULL END IS NOT NULL THEN 1 ELSE 0 END > 0 and CASE WHEN CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.order_id> ELSE NULL END IS NOT NULL THEN 1 ELSE 0 END > 0 and CASE WHEN CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_channel> = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.order_id> ELSE NULL END IS NOT NULL THEN 1 ELSE 0 END > 0
 
 ORDER BY 
     "quizzical"."item_id" asc nulls first,

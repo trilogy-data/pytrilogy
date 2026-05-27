@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4499 | 48 | 53.07 ms |
-| reference | 3830 | 25 | 37.13 ms |
-| v4 / ref | 1.17x | 1.92x | 1.43x |
+| v4 | 4499 | 48 | 77.31 ms |
+| reference | 3830 | 25 | 50.09 ms |
+| v4 / ref | 1.17x | 1.92x | 1.54x |
 
 ## Preql
 
@@ -127,8 +127,8 @@ SELECT
     "yummy"."avg2" as "avg2",
     "yummy"."avg3" as "avg3"
 FROM
-    "uneven"
-    FULL JOIN "yummy" on "uneven"."wr_reason_desc" is not distinct from "yummy"."wr_reason_desc"
+    "yummy"
+    FULL JOIN "uneven" on "yummy"."wr_reason_desc" is not distinct from "uneven"."wr_reason_desc"
 ORDER BY 
     "uneven"."reason_desc" asc,
     "yummy"."avg1" asc,

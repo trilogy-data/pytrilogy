@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5553 | 71 | 24.23 ms |
-| reference | 8323 | 125 | 63.96 ms |
-| v4 / ref | 0.67x | 0.57x | 0.38x |
+| v4 | 4572 | 60 | 25.55 ms |
+| reference | 8323 | 125 | 65.72 ms |
+| v4 / ref | 0.55x | 0.48x | 0.39x |
 
 ## Preql
 
@@ -95,40 +95,29 @@ WHERE
 GROUP BY
     1,
     2,
-    3),
-juicy as (
+    3)
 SELECT
-    "uneven"."_virt_agg_stddev_2693366057110854" / "uneven"."_virt_agg_avg_1688371525139287" as "catalog_sales_quantitycov",
-    "uneven"."_virt_agg_stddev_2955055239782943" / "uneven"."_virt_agg_avg_8572613716165371" as "store_returns_quantitycov",
-    "uneven"."_virt_agg_stddev_8948125603328408" / "uneven"."_virt_agg_avg_7518273379920258" as "store_sales_quantitycov",
-    "uneven"."analysis_item_desc" as "analysis_item_desc",
     "uneven"."analysis_item_name" as "analysis_item_name",
-    "uneven"."analysis_store_state" as "analysis_store_state"
-FROM
-    "uneven")
-SELECT
-    coalesce("juicy"."analysis_item_name","uneven"."analysis_item_name") as "analysis_item_name",
-    coalesce("juicy"."analysis_item_desc","uneven"."analysis_item_desc") as "analysis_item_desc",
-    coalesce("juicy"."analysis_store_state","uneven"."analysis_store_state") as "analysis_store_state",
-    coalesce("uneven"."store_sales_quantitycount",0) as "store_sales_quantitycount",
+    "uneven"."analysis_item_desc" as "analysis_item_desc",
+    "uneven"."analysis_store_state" as "analysis_store_state",
+    "uneven"."store_sales_quantitycount" as "store_sales_quantitycount",
     "uneven"."store_sales_quantityave" as "store_sales_quantityave",
     "uneven"."store_sales_quantitystdev" as "store_sales_quantitystdev",
-    "juicy"."store_sales_quantitycov" as "store_sales_quantitycov",
-    coalesce("uneven"."store_returns_quantitycount",0) as "store_returns_quantitycount",
+    "uneven"."_virt_agg_stddev_8948125603328408" / "uneven"."_virt_agg_avg_7518273379920258" as "store_sales_quantitycov",
+    "uneven"."store_returns_quantitycount" as "store_returns_quantitycount",
     "uneven"."store_returns_quantityave" as "store_returns_quantityave",
     "uneven"."store_returns_quantitystdev" as "store_returns_quantitystdev",
-    "juicy"."store_returns_quantitycov" as "store_returns_quantitycov",
-    coalesce("uneven"."catalog_sales_quantitycount",0) as "catalog_sales_quantitycount",
+    "uneven"."_virt_agg_stddev_2955055239782943" / "uneven"."_virt_agg_avg_8572613716165371" as "store_returns_quantitycov",
+    "uneven"."catalog_sales_quantitycount" as "catalog_sales_quantitycount",
     "uneven"."catalog_sales_quantityave" as "catalog_sales_quantityave",
     "uneven"."catalog_sales_quantitystdev" as "catalog_sales_quantitystdev",
-    "juicy"."catalog_sales_quantitycov" as "catalog_sales_quantitycov"
+    "uneven"."_virt_agg_stddev_2693366057110854" / "uneven"."_virt_agg_avg_1688371525139287" as "catalog_sales_quantitycov"
 FROM
-    "juicy"
-    FULL JOIN "uneven" on "juicy"."analysis_item_desc" is not distinct from "uneven"."analysis_item_desc" AND "juicy"."analysis_item_name" is not distinct from "uneven"."analysis_item_name" AND "juicy"."analysis_store_state" is not distinct from "uneven"."analysis_store_state"
+    "uneven"
 ORDER BY 
-    coalesce("juicy"."analysis_item_name","uneven"."analysis_item_name") asc nulls first,
-    coalesce("juicy"."analysis_item_desc","uneven"."analysis_item_desc") asc nulls first,
-    coalesce("juicy"."analysis_store_state","uneven"."analysis_store_state") asc nulls first
+    "uneven"."analysis_item_name" asc nulls first,
+    "uneven"."analysis_item_desc" asc nulls first,
+    "uneven"."analysis_store_state" asc nulls first
 LIMIT (100)
 ```
 

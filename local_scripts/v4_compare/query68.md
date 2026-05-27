@@ -14,11 +14,11 @@
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
 only in v4 (showing up to 5 of 100):
-  1x  ('Unionville', None, 4344, 4344, None, Decimal('15617.02'), Decimal('1059.20'), Decimal('35200.10'), 4344, 'Woodlawn', 70)
-  1x  ('Midway', None, 67575, 67575, None, Decimal('16050.99'), Decimal('361.53'), Decimal('25084.90'), 67575, 'Oakwood', 11488)
-  1x  ('Caledonia', 'Rene', 88496, 88496, None, Decimal('18982.21'), Decimal('851.66'), Decimal('61572.90'), 88496, 'Stringtown', 16638)
-  1x  ('Parkwood', 'John', 95304, 95304, None, Decimal('27211.89'), Decimal('1604.38'), Decimal('43810.22'), 95304, 'Edgewood', 24159)
-  1x  ('Deerfield', 'Ana', 55591, 55591, None, Decimal('29588.22'), Decimal('1896.98'), Decimal('44933.70'), 55591, 'Jamestown', 26329)
+  1x  ('Unionville', None, 4344, 4344, None, Decimal('15617.02'), Decimal('1059.20'), Decimal('35200.10'), 'Woodlawn', 70)
+  1x  ('Midway', None, 67575, 67575, None, Decimal('16050.99'), Decimal('361.53'), Decimal('25084.90'), 'Oakwood', 11488)
+  1x  ('Caledonia', 'Rene', 88496, 88496, None, Decimal('18982.21'), Decimal('851.66'), Decimal('61572.90'), 'Stringtown', 16638)
+  1x  ('Parkwood', 'John', 95304, 95304, None, Decimal('27211.89'), Decimal('1604.38'), Decimal('43810.22'), 'Edgewood', 24159)
+  1x  ('Deerfield', 'Ana', 55591, 55591, None, Decimal('29588.22'), Decimal('1896.98'), Decimal('44933.70'), 'Jamestown', 26329)
 only in ref (showing up to 5 of 100):
   1x  ('Unionville', None, None, Decimal('15617.02'), Decimal('1059.20'), Decimal('35200.10'), 'Woodlawn', 70)
   1x  ('Midway', None, None, Decimal('16050.99'), Decimal('361.53'), Decimal('25084.90'), 'Oakwood', 11488)
@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 100):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3365 | 55 | 65.89 ms |
-| reference | 3059 | 50 | 67.17 ms |
-| v4 / ref | 1.10x | 1.10x | 0.98x |
+| v4 | 3293 | 54 | 63.53 ms |
+| reference | 3059 | 50 | 63.20 ms |
+| v4 / ref | 1.08x | 1.08x | 1.01x |
 
 ## Preql
 
@@ -123,7 +123,6 @@ GROUP BY
 SELECT
     "wakeful"."customer_id" as "dn_customer_id",
     "uneven"."store_sales_ticket_number" as "dn_store_sales_ticket_number",
-    "uneven"."store_sales_customer_id" as "dn_store_sales_customer_id",
     "uneven"."store_sales_sale_address_city" as "dn_store_sales_sale_address_city",
     "uneven"."_dn_extended_price" as "dn_extended_price",
     "uneven"."_dn_extended_tax" as "dn_extended_tax",

@@ -1,22 +1,26 @@
 # Query 04
 
-**Status:** `gen_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (6 rows) |
 | reference execution | OK (6 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 6 (6 distinct)
+ref rows: 6 (6 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 11722 | 251 | 335.21 ms |
+| v4 | 7837 | 161 | 813.13 ms |
+| reference | 11722 | 251 | 421.35 ms |
+| v4 / ref | 0.67x | 0.64x | 1.93x |
 
 ## Preql
 
@@ -73,7 +77,169 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+cheerful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
+    "sales_catalog_sales_unified"."CS_EXT_LIST_PRICE" as "sales_ext_list_price",
+    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_catalog_sales_unified"."CS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_store_sales_unified"."SS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
+    "sales_store_sales_unified"."SS_EXT_LIST_PRICE" as "sales_ext_list_price",
+    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_store_sales_unified"."SS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
+     'STORE'  as "sales_sales_channel"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_web_sales_unified"."WS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
+    "sales_web_sales_unified"."WS_EXT_LIST_PRICE" as "sales_ext_list_price",
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_web_sales_unified"."WS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
+     'WEB'  as "sales_sales_channel"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"),
+uneven as (
+SELECT
+    "cheerful"."sales_customer_id" as "sales_customer_id",
+    "cheerful"."sales_date_id" as "sales_date_id",
+    "cheerful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
+    "cheerful"."sales_ext_list_price" as "sales_ext_list_price",
+    "cheerful"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "cheerful"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost",
+    "cheerful"."sales_sales_channel" as "sales_sales_channel"
+FROM
+    "cheerful"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7),
+thoughtful as (
+SELECT
+    "cheerful"."sales_customer_id" as "sales_customer_id",
+    "cheerful"."sales_date_id" as "sales_date_id"
+FROM
+    "cheerful"
+GROUP BY
+    1,
+    2),
+yummy as (
+SELECT
+    "sales_date_date"."D_YEAR" as "sales_date_year",
+    "uneven"."sales_customer_id" as "sales_customer_id",
+    "uneven"."sales_ext_discount_amount" as "sales_ext_discount_amount",
+    "uneven"."sales_ext_list_price" as "sales_ext_list_price",
+    "uneven"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "uneven"."sales_ext_wholesale_cost" as "sales_ext_wholesale_cost",
+    "uneven"."sales_sales_channel" as "sales_sales_channel"
+FROM
+    "uneven"
+    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "uneven"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7),
+abundant as (
+SELECT
+    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
+    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
+    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
+    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag",
+    "thoughtful"."sales_customer_id" as "sales_customer_id"
+FROM
+    "thoughtful"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "thoughtful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5),
+juicy as (
+SELECT
+    "yummy"."sales_customer_id" as "sales_customer_id",
+    sum((( ( "yummy"."sales_ext_list_price" - "yummy"."sales_ext_wholesale_cost" ) - "yummy"."sales_ext_discount_amount" ) + "yummy"."sales_ext_sales_price") / CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_year" = 2001 THEN 2 ELSE NULL END) as "catalog_first_year",
+    sum((( ( "yummy"."sales_ext_list_price" - "yummy"."sales_ext_wholesale_cost" ) - "yummy"."sales_ext_discount_amount" ) + "yummy"."sales_ext_sales_price") / CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "catalog_second_year",
+    sum((( ( "yummy"."sales_ext_list_price" - "yummy"."sales_ext_wholesale_cost" ) - "yummy"."sales_ext_discount_amount" ) + "yummy"."sales_ext_sales_price") / CASE WHEN "yummy"."sales_sales_channel" = 'STORE' and "yummy"."sales_date_year" = 2001 THEN 2 ELSE NULL END) as "store_first_year",
+    sum((( ( "yummy"."sales_ext_list_price" - "yummy"."sales_ext_wholesale_cost" ) - "yummy"."sales_ext_discount_amount" ) + "yummy"."sales_ext_sales_price") / CASE WHEN "yummy"."sales_sales_channel" = 'STORE' and "yummy"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "store_second_year",
+    sum((( ( "yummy"."sales_ext_list_price" - "yummy"."sales_ext_wholesale_cost" ) - "yummy"."sales_ext_discount_amount" ) + "yummy"."sales_ext_sales_price") / CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_year" = 2001 THEN 2 ELSE NULL END) as "web_first_year",
+    sum((( ( "yummy"."sales_ext_list_price" - "yummy"."sales_ext_wholesale_cost" ) - "yummy"."sales_ext_discount_amount" ) + "yummy"."sales_ext_sales_price") / CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "web_second_year"
+FROM
+    "yummy"
+GROUP BY
+    1),
+concerned as (
+SELECT
+    "abundant"."sales_customer_first_name" as "sales_customer_first_name",
+    "abundant"."sales_customer_last_name" as "sales_customer_last_name",
+    "abundant"."sales_customer_preferred_cust_flag" as "sales_customer_preferred_cust_flag",
+    "abundant"."sales_customer_text_id" as "sales_customer_text_id",
+    "juicy"."catalog_first_year" as "catalog_first_year",
+    "juicy"."catalog_second_year" as "catalog_second_year",
+    "juicy"."store_first_year" as "store_first_year",
+    "juicy"."store_second_year" as "store_second_year",
+    "juicy"."web_first_year" as "web_first_year",
+    "juicy"."web_second_year" as "web_second_year"
+FROM
+    "juicy"
+    LEFT OUTER JOIN "abundant" on "juicy"."sales_customer_id" is not distinct from "abundant"."sales_customer_id"
+WHERE
+    "juicy"."store_first_year" > 0
+)
+SELECT
+    "concerned"."sales_customer_first_name" as "customer_first_name",
+    "concerned"."sales_customer_text_id" as "customer_id",
+    "concerned"."sales_customer_last_name" as "customer_last_name",
+    "concerned"."sales_customer_preferred_cust_flag" as "customer_preferred_cust_flag"
+FROM
+    "concerned"
+WHERE
+    "concerned"."catalog_first_year" > 0 and "concerned"."web_first_year" > 0 and ( CASE
+	WHEN "concerned"."catalog_first_year" > 0 THEN "concerned"."catalog_second_year" / "concerned"."catalog_first_year"
+	ELSE null
+	END ) > ( CASE
+	WHEN "concerned"."store_first_year" > 0 THEN "concerned"."store_second_year" / "concerned"."store_first_year"
+	ELSE null
+	END ) and ( CASE
+	WHEN "concerned"."catalog_first_year" > 0 THEN "concerned"."catalog_second_year" / "concerned"."catalog_first_year"
+	ELSE null
+	END ) > ( CASE
+	WHEN "concerned"."web_first_year" > 0 THEN "concerned"."web_second_year" / "concerned"."web_first_year"
+	ELSE null
+	END )
+
+ORDER BY 
+    "customer_id" asc nulls first,
+    "customer_first_name" asc nulls first,
+    "customer_last_name" asc nulls first,
+    "customer_preferred_cust_flag" asc nulls first
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -329,34 +495,4 @@ ORDER BY
     "customer_last_name" asc nulls first,
     "customer_preferred_cust_flag" asc nulls first
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 422, in build_group_graph
-    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 331, in _inject_conditions
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: Could not place condition atom local.store_first_year > 0: row inputs ['local.store_first_year'] not reachable from any group.
 ```

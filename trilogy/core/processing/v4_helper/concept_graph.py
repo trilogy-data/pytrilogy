@@ -28,12 +28,12 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.node_generators.common import (
     _walk_aggregate_grain_inputs,
 )
 
 from .constants import LABEL_DEPTH, ROW_SHAPE_BARRIER_DERIVATIONS
-
 
 UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], List[BuildConcept]]
 
@@ -212,4 +212,46 @@ def build_concept_graph(
                 graph.edges[src, dst]["is_constraint"] = True
             else:
                 graph.add_edge(src, dst, kind="constraint", is_constraint=True)
+
+    # If a d1 calc still has no outgoing edge (no d0 barrier sinks it),
+    # connect it to the mandatory output concepts so the condition has a
+    # consumer group to land on. Without this, a query whose SELECT is
+    # purely scalar (no aggregate output) but whose WHERE references an
+    # aggregate-by-grain — e.g. q04's `store_first_year > 0` over
+    # customer-grain rows — leaves the aggregate node as a sink, and
+    # `_inject_conditions` can't find any group whose reachable input
+    # contains the aggregate.
+    #
+    # Constraints, to avoid demoting lineage or closing a cycle:
+    #   - Skip d1 roots (condition inputs that already live in the scan);
+    #     mandatory basics typically descend from them.
+    #   - Skip d1 calcs that only appear as existence args (e.g. a rowset
+    #     on the right of `x IN rowset`) — they don't need a row-stream
+    #     consumer, only a side-channel subselect. A filter group used
+    #     this way shares a group with the root scan that consumes it,
+    #     so adding a back-edge here closes the cycle (q37 regression).
+    #   - Don't add to a dst that is already a lineage ancestor of src.
+    row_arg_addresses: set[str] = set()
+    for clause in conditions:
+        for atom in decompose_condition(clause.conditional):
+            for c in atom.row_arguments:
+                row_arg_addresses.add(c.address)
+    mandatory_addresses = {c.address for c in mandatory_list}
+    ancestors_of: dict[str, set[str]] = {}
+    for src in d1_nodes:
+        if graph.nodes[src].get("derivation") == Derivation.ROOT.value:
+            continue
+        if src not in row_arg_addresses:
+            continue
+        if any(True for _ in graph.successors(src)):
+            continue
+        if src not in ancestors_of:
+            ancestors_of[src] = nx.ancestors(graph, src)
+        src_ancestors = ancestors_of[src]
+        for dst in mandatory_addresses:
+            if dst == src or dst not in graph.nodes:
+                continue
+            if dst in src_ancestors or graph.has_edge(src, dst):
+                continue
+            graph.add_edge(src, dst, kind="constraint", is_constraint=True)
     return graph

@@ -24,9 +24,9 @@ only in v4 (showing up to 5 of 6):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4816 | 69 | 96.08 ms |
-| reference | 2597 | 28 | 55.16 ms |
-| v4 / ref | 1.85x | 2.46x | 1.74x |
+| v4 | 4816 | 69 | 91.15 ms |
+| reference | 2597 | 28 | 47.96 ms |
+| v4 / ref | 1.85x | 2.46x | 1.90x |
 
 ## Preql
 
@@ -125,9 +125,9 @@ SELECT
     count("abundant"."_virt_filter_row_counter_2542054096360490") as "between_61_and_90_days",
     count("abundant"."_virt_filter_row_counter_8267453838305074") as "between_91_and_120_days",
     count("abundant"."_virt_filter_row_counter_3600395140186427") as "over_120_days",
+    "yummy"."cc_name_lower" as "cc_name_lower",
     "yummy"."warehouse_short_name" as "warehouse_short_name",
-    "abundant"."ship_mode_type" as "ship_mode_type",
-    "yummy"."cc_name_lower" as "cc_name_lower"
+    "abundant"."ship_mode_type" as "ship_mode_type"
 FROM
     "abundant"
     LEFT OUTER JOIN "yummy" on "abundant"."item_id" = "yummy"."item_id" AND "abundant"."order_number" = "yummy"."order_number" AND "abundant"."ship_date_date" = "yummy"."ship_date_date" AND "abundant"."ship_date_month_seq" = "yummy"."ship_date_month_seq" AND "abundant"."sold_date_date" = "yummy"."sold_date_date"

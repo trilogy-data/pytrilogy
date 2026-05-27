@@ -21,10 +21,11 @@ from collections import defaultdict
 import networkx as nx
 
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildWhereClause
+from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition
 
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
+from .group_behaviors import behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import GroupBucket
 
@@ -155,16 +156,18 @@ def _attach_secondary_members(
     concept_graph: nx.DiGraph,
     buckets: dict[str, GroupBucket],
 ) -> None:
-    """Each group lists every concept it can also expose (grain columns from
-    a GROUP BY/PARTITION BY; roots and lineage parents that co-project
-    alongside a basic). Secondary membership is for display/availability only
-    — it does NOT suppress upstream lineage edges, since the downstream group
-    still needs the upstream scan to feed it."""
-    root_addresses = {
-        n
-        for n, d in concept_graph.nodes(data=True)
-        if d.get("derivation") == Derivation.ROOT.value
-    }
+    """Attach the concepts each grouping bucket implicitly carries beyond
+    its primary set. Right now this is only the grain components of a
+    GROUP-BY / PARTITION-BY bucket — they appear in the SELECT alongside
+    the aggregates, so we record them as members for visualization and
+    for the condition-placement pass.
+
+    BASIC groups deliberately get nothing here: their passthrough
+    capability is derived from topology in `_compute_concept_sets`
+    (parent capability ∩ grain-compatible), not pre-declared. Earlier
+    attempts to enumerate BASIC secondaries up front (all roots / lineage
+    parents / lineage-parent grains) each leaked or starved a different
+    test query."""
 
     def add(bucket: GroupBucket, address: str) -> None:
         if address in bucket.primary_members or address in bucket.secondary_members:
@@ -180,12 +183,6 @@ def _attach_secondary_members(
         if bucket.derivation in GROUPING_DERIVATIONS:
             for grain_addr in bucket.grain_components:
                 add(bucket, grain_addr)
-        elif bucket.derivation == Derivation.BASIC.value:
-            for root_addr in root_addresses:
-                add(bucket, root_addr)
-            for member in list(bucket.primary_members):
-                for parent in _lineage_parents(concept_graph, member):
-                    add(bucket, parent)
 
 
 def _materialize_group_graph(
@@ -397,9 +394,156 @@ def _add_final_node(
         group_graph.add_edge(gid, FINAL_NODE_ID, kind="merge", phase=phase)
 
 
+def _compute_concept_sets(
+    group_graph: nx.DiGraph,
+    concept_graph: nx.DiGraph,
+    buckets: dict[str, GroupBucket],
+    mandatory_list: list[BuildConcept],
+) -> None:
+    """Per-group input/output/hidden concept sets, computed in two passes.
+
+    Pass 1 (forward topo) — `capability`: the upper bound of what each
+    group CAN expose. ROOT is its primaries (the scan provides them).
+    Every other group's capability = own primaries plus every column from
+    a parent's capability that's grain-compatible with this group's
+    native grain. The grain filter applies uniformly: a grouping
+    derivation (AGGREGATE/GROUP_TO/WINDOW) would change row shape if it
+    projected a finer-grain column; a BASIC would inflate its implicit
+    GROUP-BY for the same reason (this is what bit q04 when every root
+    was attached optimistically).
+
+    Pass 2 (reverse topo) — demand-driven `output_concepts`. For each
+    successor S, expose `S.input_concepts ∩ capability`. Add own grain
+    when this group is a grouping derivation (its SELECT must include
+    those columns anyway). Add sibling-grain join keys: when a successor
+    has multiple predecessors, any sibling-grain that we also carry
+    becomes the merge key downstream.
+
+    `input_concepts` = lineage parents of primary outputs (we compute
+    those columns and need their args) + non-primary outputs
+    (passthrough — must come from upstream) + condition row-args at
+    this group.
+
+    `hidden_concepts` stays empty at intermediate groups — hiding a
+    column there makes it invisible to downstream merges (their join
+    keys are read from non-hidden outputs only). The user-facing mask is
+    applied to the FINAL contributor in `_assemble_final_node`."""
+    mandatory_addresses = {c.address for c in mandatory_list}
+
+    # Concept-level lineage parents indexed by child, for input derivation.
+    lineage_parents: dict[str, set[str]] = {}
+    for u, v, ed in concept_graph.edges(data=True):
+        if ed.get("kind") == "lineage":
+            lineage_parents.setdefault(v, set()).add(u)
+
+    primary_of: dict[str, set[str]] = {}
+    grain_of: dict[str, frozenset[str]] = {}
+    derivation_of: dict[str, str] = {}
+    native_grain_of: dict[str, frozenset[str]] = {}
+    behavior_of = {}
+    for gid in group_graph.nodes:
+        data = group_graph.nodes[gid]
+        primary_of[gid] = set(data.get("primary_members", ()))
+        grain_of[gid] = frozenset(data.get("grain_components", frozenset()))
+        derivation_of[gid] = data.get("derivation", "")
+    for gid, bucket in buckets.items():
+        beh = behavior_for(derivation_of[gid])
+        behavior_of[gid] = beh
+        native_grain_of[gid] = beh.native_grain(bucket, concept_graph)
+
+    lineage_edges = [
+        (u, v)
+        for u, v, ed in group_graph.edges(data=True)
+        if ed.get("kind") == "lineage"
+    ]
+    lineage_only = group_graph.edge_subgraph(lineage_edges).copy()
+    for n in group_graph.nodes:
+        if n not in lineage_only:
+            lineage_only.add_node(n)
+    topo = list(nx.topological_sort(lineage_only))
+
+    # Pass 1: forward capability propagation. Per-derivation `can_preserve`
+    # decides which upstream columns ride through each group.
+    capability: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
+    for gid in topo:
+        if gid == FINAL_NODE_ID:
+            continue
+        cap: set[str] = set(primary_of[gid])
+        beh = behavior_of.get(gid)
+        if beh is None or derivation_of[gid] == Derivation.ROOT.value:
+            capability[gid] = cap
+            continue
+        native = native_grain_of[gid]
+        for pgid in group_graph.predecessors(gid):
+            if pgid == FINAL_NODE_ID:
+                continue
+            for addr in capability.get(pgid, set()):
+                if beh.can_preserve(concept_graph, native, addr):
+                    cap.add(addr)
+        capability[gid] = cap
+
+    # Pass 2: backward demand-driven outputs / inputs.
+    output_concepts: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
+    input_concepts: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
+    hidden_concepts: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
+
+    output_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
+    input_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
+
+    for gid in reversed(topo):
+        if gid == FINAL_NODE_ID:
+            continue
+        cap_gid = capability[gid]
+        outs: set[str] = set()
+        for succ in group_graph.successors(gid):
+            if succ == FINAL_NODE_ID:
+                outs |= cap_gid & mandatory_addresses
+                continue
+            outs |= input_concepts.get(succ, set()) & cap_gid
+            # Sibling-grain JOIN keys: when this successor has another
+            # predecessor whose grain we also expose, project that key
+            # so the downstream merge can JOIN us to the sibling on it.
+            for sibling in group_graph.predecessors(succ):
+                if sibling == gid or sibling == FINAL_NODE_ID:
+                    continue
+                outs |= grain_of.get(sibling, frozenset()) & cap_gid
+        # Grouping derivations: own grain components must be in the SELECT
+        # (they're the GROUP-BY / PARTITION-BY keys). Non-grouping groups
+        # don't get this — their `grain_components` is the source row
+        # identity, projecting it unconditionally would be noise.
+        if derivation_of[gid] in GROUPING_DERIVATIONS:
+            outs |= grain_of[gid] & cap_gid
+        output_concepts[gid] = outs
+
+        # Inputs: a primary's lineage args, a passthrough's own address,
+        # plus condition row-args we haven't computed locally.
+        primaries = primary_of[gid]
+        ins: set[str] = set()
+        for c in outs:
+            if c in primaries:
+                for p in lineage_parents.get(c, set()):
+                    if p not in primaries:
+                        ins.add(p)
+            else:
+                ins.add(c)
+        for atom in group_graph.nodes[gid].get("condition_atoms", []) or []:
+            for arg in atom.row_arguments:
+                if arg.address not in primaries:
+                    ins.add(arg.address)
+        input_concepts[gid] = ins
+
+    for gid in group_graph.nodes:
+        group_graph.nodes[gid]["output_concepts"] = tuple(sorted(output_concepts[gid]))
+        group_graph.nodes[gid]["hidden_concepts"] = tuple(sorted(hidden_concepts[gid]))
+        group_graph.nodes[gid]["input_concepts"] = tuple(sorted(input_concepts[gid]))
+
+
+
+
 def build_group_graph(
     concept_graph: nx.DiGraph,
     conditions: list[BuildWhereClause],
+    mandatory_list: list[BuildConcept] | None = None,
 ) -> nx.DiGraph:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
@@ -422,4 +566,6 @@ def build_group_graph(
     condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
     downstream = _color_phases(group_graph, condition_group_ids)
     _add_final_node(group_graph, concept_graph, buckets, conditions, downstream)
+    if mandatory_list is not None:
+        _compute_concept_sets(group_graph, concept_graph, buckets, mandatory_list)
     return group_graph

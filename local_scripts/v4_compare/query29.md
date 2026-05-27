@@ -1,26 +1,22 @@
 # Query 29
 
-**Status:** `match`
+**Status:** `gen_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
+| v4 SQL generation | FAILED |
 | reference execution | OK (1 rows) |
-| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+_at least one side did not produce rows._
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5380 | 81 | 64.35 ms |
-| reference | 3694 | 60 | 44.19 ms |
-| v4 / ref | 1.46x | 1.35x | 1.46x |
+| v4 | 0 | 0 | — |
+| reference | 3694 | 60 | 40.39 ms |
 
 ## Preql
 
@@ -86,89 +82,7 @@ limit 100
 
 ## v4 generated SQL
 
-```sql
-WITH 
-uneven as (
-SELECT
-    "catalog_sales_catalog_sales"."CS_QUANTITY" as "correlated_catalog_sales_quantity",
-    "store_sales_item_items"."I_ITEM_DESC" as "correlated_store_sales_item_desc",
-    "store_sales_item_items"."I_ITEM_ID" as "correlated_store_sales_item_name",
-    "store_sales_store_returns"."SR_RETURN_QUANTITY" as "correlated_store_sales_return_quantity",
-    "store_sales_store_sales"."SS_QUANTITY" as "correlated_store_sales_quantity",
-    "store_sales_store_store"."S_STORE_ID" as "correlated_store_sales_store_text_id",
-    "store_sales_store_store"."S_STORE_NAME" as "correlated_store_sales_store_name"
-FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."store_returns" as "store_sales_store_returns" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_store_returns"."SR_ITEM_SK" AND "store_sales_store_sales"."SS_TICKET_NUMBER" = "store_sales_store_returns"."SR_TICKET_NUMBER"
-    INNER JOIN "memory"."date_dim" as "store_sales_return_date_date" on "store_sales_store_returns"."SR_RETURNED_DATE_SK" = "store_sales_return_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."catalog_sales" as "catalog_sales_catalog_sales" on "store_sales_store_returns"."SR_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK" AND "store_sales_store_sales"."SS_ITEM_SK" = "catalog_sales_catalog_sales"."CS_ITEM_SK"
-    INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "catalog_sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."item" as "store_sales_item_items" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
-WHERE
-    "store_sales_date_date"."D_MOY" = 9 and "store_sales_date_date"."D_YEAR" = 1999 and "store_sales_return_date_date"."D_MOY" BETWEEN 9 AND 12 and "store_sales_return_date_date"."D_YEAR" = 1999 and "catalog_sales_date_date"."D_YEAR" in (1999,2000,2001) and "catalog_sales_catalog_sales"."CS_QUANTITY" > 0 and SR_RETURN_TIME_SK IS NOT NULL and "store_sales_store_sales"."SS_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK"
-),
-juicy as (
-SELECT
-    "uneven"."correlated_store_sales_item_desc" as "correlated_store_sales_item_desc",
-    "uneven"."correlated_store_sales_item_name" as "correlated_store_sales_item_name",
-    "uneven"."correlated_store_sales_store_name" as "correlated_store_sales_store_name",
-    "uneven"."correlated_store_sales_store_text_id" as "correlated_store_sales_store_text_id",
-    sum("uneven"."correlated_catalog_sales_quantity") as "catalog_sales_quantity",
-    sum("uneven"."correlated_store_sales_quantity") as "store_sales_quantity",
-    sum("uneven"."correlated_store_sales_return_quantity") as "store_returns_quantity"
-FROM
-    "uneven"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-yummy as (
-SELECT
-    "uneven"."correlated_store_sales_item_desc" as "correlated_store_sales_item_desc",
-    "uneven"."correlated_store_sales_item_desc" as "store_sales_item_desc",
-    "uneven"."correlated_store_sales_item_name" as "correlated_store_sales_item_name",
-    "uneven"."correlated_store_sales_item_name" as "store_sales_item_name",
-    "uneven"."correlated_store_sales_store_name" as "correlated_store_sales_store_name",
-    "uneven"."correlated_store_sales_store_name" as "store_name",
-    "uneven"."correlated_store_sales_store_text_id" as "correlated_store_sales_store_text_id",
-    "uneven"."correlated_store_sales_store_text_id" as "store_sales_store_text_id"
-FROM
-    "uneven"),
-vacuous as (
-SELECT
-    "juicy"."catalog_sales_quantity" as "catalog_sales_quantity",
-    "juicy"."store_returns_quantity" as "store_returns_quantity",
-    "juicy"."store_sales_quantity" as "store_sales_quantity",
-    "yummy"."store_name" as "store_name",
-    "yummy"."store_sales_item_desc" as "store_sales_item_desc",
-    "yummy"."store_sales_item_name" as "store_sales_item_name",
-    "yummy"."store_sales_store_text_id" as "store_sales_store_text_id"
-FROM
-    "juicy"
-    INNER JOIN "yummy" on "juicy"."correlated_store_sales_item_desc" = "yummy"."correlated_store_sales_item_desc" AND "juicy"."correlated_store_sales_item_name" = "yummy"."correlated_store_sales_item_name" AND "juicy"."correlated_store_sales_store_name" = "yummy"."correlated_store_sales_store_name" AND "juicy"."correlated_store_sales_store_text_id" = "yummy"."correlated_store_sales_store_text_id"
-WHERE
-    "juicy"."catalog_sales_quantity" > 0
-)
-SELECT
-    "vacuous"."store_sales_item_name" as "store_sales_item_name",
-    "vacuous"."store_sales_item_desc" as "store_sales_item_desc",
-    "vacuous"."store_sales_store_text_id" as "store_sales_store_text_id",
-    "vacuous"."store_name" as "store_name",
-    "vacuous"."store_sales_quantity" as "store_sales_quantity",
-    "vacuous"."store_returns_quantity" as "store_returns_quantity",
-    "vacuous"."catalog_sales_quantity" as "catalog_sales_quantity"
-FROM
-    "vacuous"
-ORDER BY 
-    "vacuous"."store_sales_item_name" asc,
-    "vacuous"."store_sales_item_desc" asc,
-    "vacuous"."store_sales_store_text_id" asc,
-    "vacuous"."store_name" asc
-LIMIT (100)
-```
+_v4 did not produce SQL._
 
 ## Reference SQL (zquery log)
 
@@ -233,4 +147,49 @@ ORDER BY
     "juicy"."store_sales_store_text_id" asc,
     "juicy"."store_name" asc
 LIMIT (100)
+```
+
+## v4 generation error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 138, in generate_v4_sql
+    sql = compile_sql(info, build_env, build_stmt)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 532, in compile_sql
+    node.rebuild_cache()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 440, in rebuild_cache
+    return self.resolve()
+           ~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\select_node_v2.py", line 188, in _resolve
+    return super()._resolve()
+           ~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 406, in _resolve
+    p.resolve() for p in self.parents
+    ~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 359, in _resolve
+    joins: List[BaseJoin | UnnestJoin] = self.generate_joins(
+                                         ~~~~~~~~~~~~~~~~~~~^
+        join_candidates, final_joins, raw_pregrain, grain, self.environment
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 243, in generate_joins
+    joins = get_node_joins(dataset_list, environment=environment)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\join_resolution.py", line 696, in get_node_joins
+    right=resolve_instantiated_concept(
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        concept_map[concept], ds_node_map[j.right]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\join_resolution.py", line 508, in resolve_instantiated_concept
+    raise SyntaxError(
+    ...<3 lines>...
+    )
+SyntaxError: Could not find correlated.store_sales.item.name in catalog_sales.catalog_sales_at_catalog_sales_order_number_store_sales_item_id_join_catalog_sales.date.date_at_catalog_sales_date_id_join_store_sales.date.date_at_store_sales_date_id_join_store_sales.item.items_at_store_sales_item_id_join_store_sales.return_date.date_at_store_sales_return_date_id_join_store_sales.store.store_at_store_sales_store_id_join_store_sales.store_returns_at_store_sales_item_id_store_sales_ticket_number_join_store_sales.store_sales_at_store_sales_item_id_store_sales_ticket_number_at_correlated_catalog_sales_order_number_correlated_store_sales_item_id_correlated_store_sales_store_name_correlated_store_sales_store_text_id_correlated_store_sales_ticket_number_filtered_by_8306884892883996_at_local_store_name_local_store_sales_item_desc_local_store_sales_item_name_local_store_sales_store_text_id output ['local.store_name', 'local.store_sales_item_desc', 'local.store_sales_item_name', 'local.store_sales_store_text_id'], acceptable synonyms set()
 ```

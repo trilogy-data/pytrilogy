@@ -18,9 +18,9 @@ ref rows: 100 (92 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2146 | 59 | 53.98 ms |
-| reference | 1734 | 48 | 25.86 ms |
-| v4 / ref | 1.24x | 1.23x | 2.09x |
+| v4 | 1575 | 42 | 39.52 ms |
+| reference | 1734 | 48 | 24.22 ms |
+| v4 / ref | 0.91x | 0.88x | 1.63x |
 
 ## Preql
 
@@ -50,9 +50,8 @@ WITH
 thoughtful as (
 SELECT
     "returns_customer_customers"."C_CUSTOMER_ID" as "returns_customer_text_id",
-    "returns_customer_customers"."C_CUSTOMER_SK" as "returns_customer_id",
-    "returns_store_returns"."SR_RETURN_AMT" as "returns_return_amount",
-    "returns_store_store"."S_STORE_SK" as "returns_store_id"
+    "returns_store_store"."S_STORE_SK" as "returns_store_id",
+    sum("returns_store_returns"."SR_RETURN_AMT") as "total_returns"
 FROM
     "memory"."store_returns" as "returns_store_returns"
     INNER JOIN "memory"."store" as "returns_store_store" on "returns_store_returns"."SR_STORE_SK" = "returns_store_store"."S_STORE_SK"
@@ -60,50 +59,34 @@ FROM
     INNER JOIN "memory"."date_dim" as "returns_return_date_date" on "returns_store_returns"."SR_RETURNED_DATE_SK" = "returns_return_date_date"."D_DATE_SK"
 WHERE
     "returns_store_store"."S_STATE" = 'TN' and "returns_return_date_date"."D_YEAR" = 2000
-),
+
+GROUP BY
+    1,
+    2,
+    "returns_customer_customers"."C_CUSTOMER_SK"),
 questionable as (
 SELECT
-    "thoughtful"."returns_customer_id" as "returns_customer_id",
     "thoughtful"."returns_store_id" as "returns_store_id",
-    sum("thoughtful"."returns_return_amount") as "total_returns"
+    avg("thoughtful"."total_returns") as "avg_store_returns"
 FROM
     "thoughtful"
-GROUP BY
-    1,
-    2),
-cooperative as (
-SELECT
-    "thoughtful"."returns_customer_id" as "returns_customer_id",
-    "thoughtful"."returns_customer_text_id" as "returns_customer_text_id"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    2),
-abundant as (
-SELECT
-    "questionable"."returns_store_id" as "returns_store_id",
-    avg("questionable"."total_returns") as "avg_store_returns"
-FROM
-    "questionable"
 GROUP BY
     1),
-uneven as (
+abundant as (
 SELECT
-    "cooperative"."returns_customer_text_id" as "returns_customer_text_id"
+    "thoughtful"."returns_customer_text_id" as "returns_customer_text_id"
 FROM
-    "abundant"
-    INNER JOIN "questionable" on "abundant"."returns_store_id" = "questionable"."returns_store_id"
-    INNER JOIN "cooperative" on "questionable"."returns_customer_id" = "cooperative"."returns_customer_id"
+    "questionable"
+    INNER JOIN "thoughtful" on "questionable"."returns_store_id" = "thoughtful"."returns_store_id"
 WHERE
-    "questionable"."total_returns" > ( 1.2 * "abundant"."avg_store_returns" )
+    "thoughtful"."total_returns" > ( 1.2 * "questionable"."avg_store_returns" )
 )
 SELECT
-    "uneven"."returns_customer_text_id" as "returns_customer_text_id"
+    "abundant"."returns_customer_text_id" as "returns_customer_text_id"
 FROM
-    "uneven"
+    "abundant"
 ORDER BY 
-    "uneven"."returns_customer_text_id" asc
+    "abundant"."returns_customer_text_id" asc
 LIMIT (100)
 ```
 

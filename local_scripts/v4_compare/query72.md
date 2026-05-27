@@ -11,28 +11,24 @@
 
 ## Result comparison
 
-v4 rows: 100 (84 distinct)
+v4 rows: 100 (1 distinct)
 ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 16):
-  1x  (None, 0, 2, 2, 'Of course ot', 5207)
+only in v4 (showing up to 5 of 1):
+  99x  (None, 0, 2, 2, 'Of course ot', 5207)
+only in ref (showing up to 5 of 99):
   1x  ('Alone rights cannot w', 0, 2, 2, 'Social, royal laws m', 5204)
   1x  ('Authorities offer complete, ', 0, 2, 2, 'Social, royal laws m', 5212)
   1x  ('Available, major villages may use long over a daughters. Involved personnel sleep weak police. Physical names may lose extra arr', 0, 2, 2, 'Terms overcome instr', 5217)
   1x  ('Businesses gain never early physical officials. More labour others would respect. Contemporary stones enhance courts. Sexual taxes might think. Times will hold neither traditional ', 0, 2, 2, 'Of course ot', 5198)
-only in ref (showing up to 5 of 16):
-  1x  ('Almost leading hills access frequently. Awkward schools increase today for a items. Linguistic cells see below that strategic representati', 0, 1, 1, 'Terms overcome instr', 5205)
-  1x  ('Almost mild levels could not prove there coming, different seconds; culturally conservative products relax from a others. Ready days permit. Even good pictures provide forces. Weekly, good rules raise', 0, 1, 1, 'Of course ot', 5196)
-  1x  ('Alone large policies would drown more impossible shelves. Interests make very children. Local qualities facilitate most countries; objectives can agree', 0, 1, 1, 'Of course ot', 5210)
-  1x  ('Alone large policies would drown more impossible shelves. Interests make very children. Local qualities facilitate most countries; objectives can agree', 0, 1, 1, 'Terms overcome instr', 5210)
-  1x  ('Alone windows will not fashion. Evenly small foods live sooner large plants. Criminal journalists should not ring closely medical, numerous books. Parti', 0, 1, 1, 'Conventional childr', 5216)
+  1x  ('Businesses gain never early physical officials. More labour others would respect. Contemporary stones enhance courts. Sexual taxes might think. Times will hold neither traditional ', 0, 2, 2, 'Terms overcome instr', 5198)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4142 | 81 | 136.62 ms |
-| reference | 6297 | 115 | 429.03 ms |
-| v4 / ref | 0.66x | 0.70x | 0.32x |
+| v4 | 4251 | 91 | 536.32 ms |
+| reference | 6297 | 115 | 671.51 ms |
+| v4 / ref | 0.68x | 0.79x | 0.80x |
 
 ## Preql
 
@@ -113,7 +109,7 @@ GROUP BY
     "inv_warehouse_inventory"."inv_quantity_on_hand",
     cast("cs_ship_date_date"."D_DATE" as date),
     cast("cs_sold_date_date"."D_DATE" as date)),
-vacuous as (
+young as (
 SELECT
     "yummy"."cs_item_desc" as "cs_item_desc",
     "yummy"."cs_sold_date_week_seq" as "cs_sold_date_week_seq",
@@ -133,31 +129,41 @@ GROUP BY
     1,
     2,
     3),
+concerned as (
+SELECT
+    "yummy"."inv_warehouse_name" as "inv_warehouse_name",
+    "yummy"."inv_warehouse_name" as "warehouse_name"
+FROM
+    "yummy"),
+vacuous as (
+SELECT
+    "yummy"."cs_sold_date_week_seq" as "cs_sold_date_week_seq",
+    "yummy"."cs_sold_date_week_seq" as "week_seq"
+FROM
+    "yummy"),
 juicy as (
 SELECT
     "yummy"."cs_item_desc" as "cs_item_desc",
-    "yummy"."cs_item_desc" as "item_desc",
-    "yummy"."cs_sold_date_week_seq" as "cs_sold_date_week_seq",
-    "yummy"."cs_sold_date_week_seq" as "week_seq",
-    "yummy"."inv_warehouse_name" as "inv_warehouse_name",
-    "yummy"."inv_warehouse_name" as "warehouse_name"
+    "yummy"."cs_item_desc" as "item_desc"
 FROM
     "yummy")
 SELECT
     "juicy"."item_desc" as "item_desc",
-    "juicy"."warehouse_name" as "warehouse_name",
-    "juicy"."week_seq" as "week_seq",
-    "vacuous"."no_promo" as "no_promo",
-    "vacuous"."promo" as "promo",
-    coalesce("vacuous"."total_cnt",0) as "total_cnt"
+    "concerned"."warehouse_name" as "warehouse_name",
+    "vacuous"."week_seq" as "week_seq",
+    "young"."no_promo" as "no_promo",
+    "young"."promo" as "promo",
+    "young"."total_cnt" as "total_cnt"
 FROM
-    "juicy"
-    FULL JOIN "vacuous" on "juicy"."cs_item_desc" is not distinct from "vacuous"."cs_item_desc" AND "juicy"."cs_sold_date_week_seq" = "vacuous"."cs_sold_date_week_seq" AND "juicy"."inv_warehouse_name" is not distinct from "vacuous"."inv_warehouse_name"
+    "young"
+    FULL JOIN "juicy" on "young"."cs_item_desc" is not distinct from "juicy"."cs_item_desc"
+    FULL JOIN "concerned" on "young"."inv_warehouse_name" is not distinct from "concerned"."inv_warehouse_name"
+    RIGHT OUTER JOIN "vacuous" on "young"."cs_sold_date_week_seq" = "vacuous"."cs_sold_date_week_seq"
 ORDER BY 
-    coalesce("vacuous"."total_cnt",0) desc nulls first,
+    "young"."total_cnt" desc nulls first,
     "juicy"."item_desc" asc nulls first,
-    "juicy"."warehouse_name" asc nulls first,
-    "juicy"."week_seq" asc nulls first
+    "concerned"."warehouse_name" asc nulls first,
+    "vacuous"."week_seq" asc nulls first
 LIMIT (100)
 ```
 

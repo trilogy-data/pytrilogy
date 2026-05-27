@@ -1,22 +1,28 @@
 # Query 74
 
-**Status:** `gen_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (93 rows) |
 | reference execution | OK (92 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 93 (93 distinct)
+ref rows: 92 (92 distinct)
+only in v4 (showing up to 5 of 1):
+  1x  (None, None, None)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 3347 | 71 | 156.28 ms |
+| v4 | 3019 | 65 | 218.63 ms |
+| reference | 3347 | 71 | 238.80 ms |
+| v4 / ref | 0.90x | 0.92x | 0.92x |
 
 ## Preql
 
@@ -61,7 +67,73 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+cheerful as (
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
+     'STORE'  as "sales_sales_channel"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
+     'WEB'  as "sales_sales_channel"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"),
+abundant as (
+SELECT
+    "cheerful"."sales_customer_id" as "sales_customer_id",
+    sum(CASE WHEN "cheerful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "cheerful"."sales_net_paid" ELSE NULL END) as "store_first_year",
+    sum(CASE WHEN "cheerful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2002 THEN "cheerful"."sales_net_paid" ELSE NULL END) as "store_second_year",
+    sum(CASE WHEN "cheerful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "cheerful"."sales_net_paid" ELSE NULL END) as "web_first_year",
+    sum(CASE WHEN "cheerful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2002 THEN "cheerful"."sales_net_paid" ELSE NULL END) as "web_second_year"
+FROM
+    "cheerful"
+    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+GROUP BY
+    1),
+questionable as (
+SELECT
+    "cheerful"."sales_customer_id" as "sales_customer_id",
+    "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
+    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
+    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name"
+FROM
+    "cheerful"
+    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer" as "sales_customer_customers" on "cheerful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
+WHERE
+    "cheerful"."sales_customer_id" is not null
+)
+SELECT
+    "questionable"."sales_customer_text_id" as "customer_id",
+    "questionable"."sales_customer_first_name" as "customer_first_name",
+    "questionable"."sales_customer_last_name" as "customer_last_name"
+FROM
+    "abundant"
+    LEFT OUTER JOIN "questionable" on "abundant"."sales_customer_id" is not distinct from "questionable"."sales_customer_id"
+WHERE
+    "abundant"."store_first_year" > 0 and "abundant"."web_first_year" > 0 and ( CASE
+	WHEN "abundant"."web_first_year" > 0 THEN "abundant"."web_second_year" / "abundant"."web_first_year"
+	ELSE null
+	END ) > ( CASE
+	WHEN "abundant"."store_first_year" > 0 THEN "abundant"."store_second_year" / "abundant"."store_first_year"
+	ELSE null
+	END )
+
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    "customer_id" asc nulls first
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -137,34 +209,4 @@ GROUP BY
 ORDER BY 
     "customer_id" asc nulls first
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 422, in build_group_graph
-    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 331, in _inject_conditions
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: Could not place condition atom local.store_first_year > 0: row inputs ['local.store_first_year'] not reachable from any group.
 ```

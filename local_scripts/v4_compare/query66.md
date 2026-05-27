@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 26304 | 284 | — |
+| v4 | 23822 | 236 | — |
 | reference | 20171 | 147 | — |
-| v4 / ref | 1.30x | 1.93x | — |
+| v4 / ref | 1.18x | 1.61x | — |
 
 ## Preql
 
@@ -110,16 +110,12 @@ thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
     "sales_catalog_sales_unified"."CS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
     "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
      'CATALOG'  as "sales_sales_channel",
     "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price",
-    "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" as "sales_warehouse_id",
-    "sales_ship_mode_ship_mode"."SM_CARRIER" as "sales_ship_mode_carrier",
-    "sales_time_time"."T_TIME" as "sales_time_time"
+    "sales_catalog_sales_unified"."CS_WAREHOUSE_SK" as "sales_warehouse_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -133,16 +129,12 @@ UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
     "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
     "sales_web_sales_unified"."WS_NET_PAID_INC_TAX" as "sales_net_paid_inc_tax",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
     "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
      'WEB'  as "sales_sales_channel",
     "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price",
-    "sales_web_sales_unified"."WS_WAREHOUSE_SK" as "sales_warehouse_id",
-    "sales_ship_mode_ship_mode"."SM_CARRIER" as "sales_ship_mode_carrier",
-    "sales_time_time"."T_TIME" as "sales_time_time"
+    "sales_web_sales_unified"."WS_WAREHOUSE_SK" as "sales_warehouse_id"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -167,15 +159,11 @@ SELECT
     "sales_warehouse_warehouse"."w_warehouse_name" as "sales_warehouse_name",
     "sales_warehouse_warehouse"."w_warehouse_sq_ft" as "sales_warehouse_square_feet",
     "thoughtful"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "thoughtful"."sales_item_id" as "sales_item_id",
     "thoughtful"."sales_net_paid" as "sales_net_paid",
     "thoughtful"."sales_net_paid_inc_tax" as "sales_net_paid_inc_tax",
-    "thoughtful"."sales_order_id" as "sales_order_id",
     "thoughtful"."sales_quantity" as "sales_quantity",
     "thoughtful"."sales_sales_channel" as "sales_sales_channel",
     "thoughtful"."sales_sales_price" as "sales_sales_price",
-    "thoughtful"."sales_ship_mode_carrier" as "sales_ship_mode_carrier",
-    "thoughtful"."sales_time_time" as "sales_time_time",
     "thoughtful"."sales_warehouse_id" as "sales_warehouse_id"
 FROM
     "thoughtful"
@@ -184,131 +172,95 @@ FROM
 WHERE
     "thoughtful"."sales_sales_channel" in ('WEB','CATALOG')
 ),
-juicy as (
+sparkling as (
 SELECT
-    "yummy"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "yummy"."sales_date_year" as "sales_date_year",
-    "yummy"."sales_date_year" as "year_",
-    "yummy"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "yummy"."sales_item_id" as "sales_item_id",
-    "yummy"."sales_net_paid" as "sales_net_paid",
-    "yummy"."sales_net_paid_inc_tax" as "sales_net_paid_inc_tax",
-    "yummy"."sales_order_id" as "sales_order_id",
-    "yummy"."sales_sales_channel" as "sales_sales_channel",
-    "yummy"."sales_sales_price" as "sales_sales_price",
-    "yummy"."sales_ship_mode_carrier" as "sales_ship_mode_carrier",
-    "yummy"."sales_time_time" as "sales_time_time",
     "yummy"."sales_warehouse_city" as "w_city",
     "yummy"."sales_warehouse_country" as "w_country",
     "yummy"."sales_warehouse_county" as "w_county",
     "yummy"."sales_warehouse_id" as "sales_warehouse_id",
     "yummy"."sales_warehouse_name" as "w_warehouse_name",
     "yummy"."sales_warehouse_square_feet" as "w_warehouse_sq_ft",
-    "yummy"."sales_warehouse_state" as "w_state",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 1 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_365940749322998",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 10 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_7341386665681030",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 11 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_1148596332439773",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 12 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_3296429665285112",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 2 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_4016378706869496",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 3 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_2883978212435284",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 4 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_9499066719832909",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 5 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_8208513572871560",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 6 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_9758437701699823",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 7 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_3141372366258041",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 8 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_2931653060700223",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 9 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_1978654162068005",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 1 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_2837080467906867",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 10 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_1342843002437667",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 11 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_9379933304253161",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 12 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_801052224367704",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 2 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_2721221057066883",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 3 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_8978338387114107",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 4 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_3114776401831096",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 5 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_5980997910580908",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 6 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_9017544908925452",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 7 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_69001967081901",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 8 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_3183241272503874",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 9 THEN "yummy"."sales_quantity" ELSE NULL END as "_virt_filter_quantity_976590170954777"
+    "yummy"."sales_warehouse_state" as "w_state"
 FROM
     "yummy"),
 vacuous as (
 SELECT
-    "juicy"."sales_date_year" as "sales_date_year",
-    "juicy"."sales_warehouse_id" as "sales_warehouse_id",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_1342843002437667") as "_virt_agg_sum_1390508309586151",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_2721221057066883") as "_virt_agg_sum_7927419533353604",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_2837080467906867") as "_virt_agg_sum_6761496736742249",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_3114776401831096") as "_virt_agg_sum_41039473777436",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_3183241272503874") as "_virt_agg_sum_3143814459304520",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_5980997910580908") as "_virt_agg_sum_3260910144583005",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_69001967081901") as "_virt_agg_sum_7614936436189749",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_801052224367704") as "_virt_agg_sum_7452893998515823",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_8978338387114107") as "_virt_agg_sum_3934334814385891",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_9017544908925452") as "_virt_agg_sum_2677729335671306",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_9379933304253161") as "_virt_agg_sum_4811909514398360",
-    sum("juicy"."sales_ext_sales_price" * "juicy"."_virt_filter_quantity_976590170954777") as "_virt_agg_sum_319471464519035",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_1342843002437667") as "_virt_agg_sum_4553214412375650",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_2721221057066883") as "_virt_agg_sum_786159922216741",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_2837080467906867") as "_virt_agg_sum_4969900746967002",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_3114776401831096") as "_virt_agg_sum_3528659342931447",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_3183241272503874") as "_virt_agg_sum_2061365433549155",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_5980997910580908") as "_virt_agg_sum_7514497987676013",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_69001967081901") as "_virt_agg_sum_9519241847948353",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_801052224367704") as "_virt_agg_sum_9573906931545777",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_8978338387114107") as "_virt_agg_sum_8182545824564782",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_9017544908925452") as "_virt_agg_sum_188554763413587",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_9379933304253161") as "_virt_agg_sum_9042867492442160",
-    sum("juicy"."sales_net_paid" * "juicy"."_virt_filter_quantity_976590170954777") as "_virt_agg_sum_4689061987840461",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_1148596332439773") as "_virt_agg_sum_891548790777269",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_1978654162068005") as "_virt_agg_sum_5640998453949741",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_2883978212435284") as "_virt_agg_sum_8967002870898331",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_2931653060700223") as "_virt_agg_sum_7961556681450013",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_3141372366258041") as "_virt_agg_sum_4042597010133309",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_3296429665285112") as "_virt_agg_sum_2520745984741884",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_365940749322998") as "_virt_agg_sum_3692655055376189",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_4016378706869496") as "_virt_agg_sum_4708623111138392",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_7341386665681030") as "_virt_agg_sum_2328396906418239",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_8208513572871560") as "_virt_agg_sum_3882217944590141",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_9499066719832909") as "_virt_agg_sum_3012721996579085",
-    sum("juicy"."sales_net_paid_inc_tax" * "juicy"."_virt_filter_quantity_9758437701699823") as "_virt_agg_sum_8113055632855599",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_1148596332439773") as "_virt_agg_sum_7368404058205523",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_1978654162068005") as "_virt_agg_sum_9999335580544067",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_2883978212435284") as "_virt_agg_sum_2253606158097547",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_2931653060700223") as "_virt_agg_sum_5462539112795867",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_3141372366258041") as "_virt_agg_sum_6541755364775288",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_3296429665285112") as "_virt_agg_sum_8526672017232138",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_365940749322998") as "_virt_agg_sum_2212485246453036",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_4016378706869496") as "_virt_agg_sum_3341659793105746",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_7341386665681030") as "_virt_agg_sum_8249258081069440",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_8208513572871560") as "_virt_agg_sum_6555636113729081",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_9499066719832909") as "_virt_agg_sum_7001288178406415",
-    sum("juicy"."sales_sales_price" * "juicy"."_virt_filter_quantity_9758437701699823") as "_virt_agg_sum_8705688610121203"
+    "yummy"."sales_warehouse_id" as "sales_warehouse_id",
+    "yummy"."sales_warehouse_square_feet" as "sales_warehouse_square_feet",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 1 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_6761496736742249",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 10 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_1390508309586151",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 11 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_4811909514398360",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 12 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_7452893998515823",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 2 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_7927419533353604",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 3 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_3934334814385891",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 4 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_41039473777436",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 5 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_3260910144583005",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 6 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_2677729335671306",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 7 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_7614936436189749",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 8 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_3143814459304520",
+    sum("yummy"."sales_ext_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 9 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_319471464519035",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 1 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_4969900746967002",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 10 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_4553214412375650",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 11 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_9042867492442160",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 12 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_9573906931545777",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 2 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_786159922216741",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 3 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_8182545824564782",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 4 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_3528659342931447",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 5 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_7514497987676013",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 6 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_188554763413587",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 7 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_9519241847948353",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 8 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_2061365433549155",
+    sum("yummy"."sales_net_paid" * CASE WHEN "yummy"."sales_sales_channel" = 'WEB' and "yummy"."sales_date_month_of_year" = 9 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_4689061987840461",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 1 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_3692655055376189",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 10 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_2328396906418239",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 11 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_891548790777269",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 12 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_2520745984741884",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 2 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_4708623111138392",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 3 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_8967002870898331",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 4 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_3012721996579085",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 5 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_3882217944590141",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 6 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_8113055632855599",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 7 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_4042597010133309",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 8 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_7961556681450013",
+    sum("yummy"."sales_net_paid_inc_tax" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 9 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_5640998453949741",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 1 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_2212485246453036",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 10 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_8249258081069440",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 11 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_7368404058205523",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 12 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_8526672017232138",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 2 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_3341659793105746",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 3 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_2253606158097547",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 4 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_7001288178406415",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 5 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_6555636113729081",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 6 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_8705688610121203",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 7 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_6541755364775288",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 8 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_5462539112795867",
+    sum("yummy"."sales_sales_price" * CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' and "yummy"."sales_date_month_of_year" = 9 THEN "yummy"."sales_quantity" ELSE NULL END) as "_virt_agg_sum_9999335580544067"
 FROM
-    "juicy"
+    "yummy"
 GROUP BY
     1,
-    2),
-concerned as (
+    2,
+    "yummy"."sales_date_year"),
+juicy as (
 SELECT
-    "yummy"."sales_date_month_of_year" as "sales_date_month_of_year",
-    "yummy"."sales_date_year" as "sales_date_year",
-    "yummy"."sales_item_id" as "sales_item_id",
-    "yummy"."sales_order_id" as "sales_order_id",
-    "yummy"."sales_sales_channel" as "sales_sales_channel",
-    "yummy"."sales_ship_mode_carrier" as "sales_ship_mode_carrier",
-    "yummy"."sales_time_time" as "sales_time_time",
-    ( coalesce("vacuous"."_virt_agg_sum_1390508309586151",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_8249258081069440",0) / "yummy"."sales_warehouse_square_feet" ) as "oct_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_2677729335671306",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_8705688610121203",0) / "yummy"."sales_warehouse_square_feet" ) as "jun_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_3143814459304520",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_5462539112795867",0) / "yummy"."sales_warehouse_square_feet" ) as "aug_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_319471464519035",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_9999335580544067",0) / "yummy"."sales_warehouse_square_feet" ) as "sep_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_3260910144583005",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_6555636113729081",0) / "yummy"."sales_warehouse_square_feet" ) as "may_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_3934334814385891",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_2253606158097547",0) / "yummy"."sales_warehouse_square_feet" ) as "mar_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_41039473777436",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_7001288178406415",0) / "yummy"."sales_warehouse_square_feet" ) as "apr_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_4811909514398360",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_7368404058205523",0) / "yummy"."sales_warehouse_square_feet" ) as "nov_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_6761496736742249",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_2212485246453036",0) / "yummy"."sales_warehouse_square_feet" ) as "jan_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_7452893998515823",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_8526672017232138",0) / "yummy"."sales_warehouse_square_feet" ) as "dec_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_7614936436189749",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_6541755364775288",0) / "yummy"."sales_warehouse_square_feet" ) as "jul_sales_per_sq_foot",
-    ( coalesce("vacuous"."_virt_agg_sum_7927419533353604",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_3341659793105746",0) / "yummy"."sales_warehouse_square_feet" ) as "feb_sales_per_sq_foot",
+    "yummy"."sales_date_year" as "year_"
+FROM
+    "yummy"),
+young as (
+SELECT
+    "vacuous"."sales_warehouse_id" as "sales_warehouse_id",
+    ( coalesce("vacuous"."_virt_agg_sum_1390508309586151",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_8249258081069440",0) / "vacuous"."sales_warehouse_square_feet" ) as "oct_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_2677729335671306",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_8705688610121203",0) / "vacuous"."sales_warehouse_square_feet" ) as "jun_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_3143814459304520",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_5462539112795867",0) / "vacuous"."sales_warehouse_square_feet" ) as "aug_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_319471464519035",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_9999335580544067",0) / "vacuous"."sales_warehouse_square_feet" ) as "sep_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_3260910144583005",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_6555636113729081",0) / "vacuous"."sales_warehouse_square_feet" ) as "may_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_3934334814385891",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_2253606158097547",0) / "vacuous"."sales_warehouse_square_feet" ) as "mar_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_41039473777436",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_7001288178406415",0) / "vacuous"."sales_warehouse_square_feet" ) as "apr_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_4811909514398360",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_7368404058205523",0) / "vacuous"."sales_warehouse_square_feet" ) as "nov_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_6761496736742249",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_2212485246453036",0) / "vacuous"."sales_warehouse_square_feet" ) as "jan_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_7452893998515823",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_8526672017232138",0) / "vacuous"."sales_warehouse_square_feet" ) as "dec_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_7614936436189749",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_6541755364775288",0) / "vacuous"."sales_warehouse_square_feet" ) as "jul_sales_per_sq_foot",
+    ( coalesce("vacuous"."_virt_agg_sum_7927419533353604",0) / "vacuous"."sales_warehouse_square_feet" ) + ( coalesce("vacuous"."_virt_agg_sum_3341659793105746",0) / "vacuous"."sales_warehouse_square_feet" ) as "feb_sales_per_sq_foot",
     coalesce("vacuous"."_virt_agg_sum_1390508309586151",0) + coalesce("vacuous"."_virt_agg_sum_8249258081069440",0) as "oct_sales",
     coalesce("vacuous"."_virt_agg_sum_188554763413587",0) + coalesce("vacuous"."_virt_agg_sum_8113055632855599",0) as "jun_net",
     coalesce("vacuous"."_virt_agg_sum_2061365433549155",0) + coalesce("vacuous"."_virt_agg_sum_7961556681450013",0) as "aug_net",
@@ -334,59 +286,59 @@ SELECT
     coalesce("vacuous"."_virt_agg_sum_9519241847948353",0) + coalesce("vacuous"."_virt_agg_sum_4042597010133309",0) as "jul_net",
     coalesce("vacuous"."_virt_agg_sum_9573906931545777",0) + coalesce("vacuous"."_virt_agg_sum_2520745984741884",0) as "dec_net"
 FROM
-    "yummy"
-    LEFT OUTER JOIN "vacuous" on "yummy"."sales_date_year" = "vacuous"."sales_date_year" AND "yummy"."sales_warehouse_id" = "vacuous"."sales_warehouse_id")
+    "vacuous")
 SELECT
-    "juicy"."w_warehouse_name" as "w_warehouse_name",
-    "juicy"."w_warehouse_sq_ft" as "w_warehouse_sq_ft",
-    "juicy"."w_city" as "w_city",
-    "juicy"."w_county" as "w_county",
-    "juicy"."w_state" as "w_state",
-    "juicy"."w_country" as "w_country",
+    "sparkling"."w_warehouse_name" as "w_warehouse_name",
+    "sparkling"."w_warehouse_sq_ft" as "w_warehouse_sq_ft",
+    "sparkling"."w_city" as "w_city",
+    "sparkling"."w_county" as "w_county",
+    "sparkling"."w_state" as "w_state",
+    "sparkling"."w_country" as "w_country",
     "quizzical"."ship_carriers" as "ship_carriers",
     "juicy"."year_" as "year_",
-    "concerned"."jan_sales" as "jan_sales",
-    "concerned"."feb_sales" as "feb_sales",
-    "concerned"."mar_sales" as "mar_sales",
-    "concerned"."apr_sales" as "apr_sales",
-    "concerned"."may_sales" as "may_sales",
-    "concerned"."jun_sales" as "jun_sales",
-    "concerned"."jul_sales" as "jul_sales",
-    "concerned"."aug_sales" as "aug_sales",
-    "concerned"."sep_sales" as "sep_sales",
-    "concerned"."oct_sales" as "oct_sales",
-    "concerned"."nov_sales" as "nov_sales",
-    "concerned"."dec_sales" as "dec_sales",
-    "concerned"."jan_sales_per_sq_foot" as "jan_sales_per_sq_foot",
-    "concerned"."feb_sales_per_sq_foot" as "feb_sales_per_sq_foot",
-    "concerned"."mar_sales_per_sq_foot" as "mar_sales_per_sq_foot",
-    "concerned"."apr_sales_per_sq_foot" as "apr_sales_per_sq_foot",
-    "concerned"."may_sales_per_sq_foot" as "may_sales_per_sq_foot",
-    "concerned"."jun_sales_per_sq_foot" as "jun_sales_per_sq_foot",
-    "concerned"."jul_sales_per_sq_foot" as "jul_sales_per_sq_foot",
-    "concerned"."aug_sales_per_sq_foot" as "aug_sales_per_sq_foot",
-    "concerned"."sep_sales_per_sq_foot" as "sep_sales_per_sq_foot",
-    "concerned"."oct_sales_per_sq_foot" as "oct_sales_per_sq_foot",
-    "concerned"."nov_sales_per_sq_foot" as "nov_sales_per_sq_foot",
-    "concerned"."dec_sales_per_sq_foot" as "dec_sales_per_sq_foot",
-    "concerned"."jan_net" as "jan_net",
-    "concerned"."feb_net" as "feb_net",
-    "concerned"."mar_net" as "mar_net",
-    "concerned"."apr_net" as "apr_net",
-    "concerned"."may_net" as "may_net",
-    "concerned"."jun_net" as "jun_net",
-    "concerned"."jul_net" as "jul_net",
-    "concerned"."aug_net" as "aug_net",
-    "concerned"."sep_net" as "sep_net",
-    "concerned"."oct_net" as "oct_net",
-    "concerned"."nov_net" as "nov_net",
-    "concerned"."dec_net" as "dec_net"
+    "young"."jan_sales" as "jan_sales",
+    "young"."feb_sales" as "feb_sales",
+    "young"."mar_sales" as "mar_sales",
+    "young"."apr_sales" as "apr_sales",
+    "young"."may_sales" as "may_sales",
+    "young"."jun_sales" as "jun_sales",
+    "young"."jul_sales" as "jul_sales",
+    "young"."aug_sales" as "aug_sales",
+    "young"."sep_sales" as "sep_sales",
+    "young"."oct_sales" as "oct_sales",
+    "young"."nov_sales" as "nov_sales",
+    "young"."dec_sales" as "dec_sales",
+    "young"."jan_sales_per_sq_foot" as "jan_sales_per_sq_foot",
+    "young"."feb_sales_per_sq_foot" as "feb_sales_per_sq_foot",
+    "young"."mar_sales_per_sq_foot" as "mar_sales_per_sq_foot",
+    "young"."apr_sales_per_sq_foot" as "apr_sales_per_sq_foot",
+    "young"."may_sales_per_sq_foot" as "may_sales_per_sq_foot",
+    "young"."jun_sales_per_sq_foot" as "jun_sales_per_sq_foot",
+    "young"."jul_sales_per_sq_foot" as "jul_sales_per_sq_foot",
+    "young"."aug_sales_per_sq_foot" as "aug_sales_per_sq_foot",
+    "young"."sep_sales_per_sq_foot" as "sep_sales_per_sq_foot",
+    "young"."oct_sales_per_sq_foot" as "oct_sales_per_sq_foot",
+    "young"."nov_sales_per_sq_foot" as "nov_sales_per_sq_foot",
+    "young"."dec_sales_per_sq_foot" as "dec_sales_per_sq_foot",
+    "young"."jan_net" as "jan_net",
+    "young"."feb_net" as "feb_net",
+    "young"."mar_net" as "mar_net",
+    "young"."apr_net" as "apr_net",
+    "young"."may_net" as "may_net",
+    "young"."jun_net" as "jun_net",
+    "young"."jul_net" as "jul_net",
+    "young"."aug_net" as "aug_net",
+    "young"."sep_net" as "sep_net",
+    "young"."oct_net" as "oct_net",
+    "young"."nov_net" as "nov_net",
+    "young"."dec_net" as "dec_net"
 FROM
-    "concerned"
-    FULL JOIN "juicy" on "concerned"."sales_date_month_of_year" = "juicy"."sales_date_month_of_year" AND "concerned"."sales_date_year" = "juicy"."sales_date_year" AND "concerned"."sales_item_id" = "juicy"."sales_item_id" AND "concerned"."sales_order_id" = "juicy"."sales_order_id" AND "concerned"."sales_sales_channel" = "juicy"."sales_sales_channel" AND "concerned"."sales_ship_mode_carrier" is not distinct from "juicy"."sales_ship_mode_carrier" AND "concerned"."sales_time_time" = "juicy"."sales_time_time"
+    "young"
+    INNER JOIN "sparkling" on "young"."sales_warehouse_id" = "sparkling"."sales_warehouse_id"
     FULL JOIN "quizzical" on 1=1
+    FULL JOIN "juicy" on 1=1
 ORDER BY 
-    "juicy"."w_warehouse_name" asc nulls first,
+    "sparkling"."w_warehouse_name" asc nulls first,
     "juicy"."year_" asc nulls first
 LIMIT (100)
 ```
@@ -563,7 +515,7 @@ Traceback (most recent call last):
     cursor = con.execute(sql)
 _duckdb.ParserException: Parser Error: syntax error at or near ":"
 
-LINE 50:     :ship_carriers as "ship_carriers"
+LINE 42:     :ship_carriers as "ship_carriers"
              ^
 ```
 

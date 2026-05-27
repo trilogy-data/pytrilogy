@@ -535,15 +535,13 @@ Traceback (most recent call last):
     ...<5 lines>...
         conditions=conditions,
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 58, in _search_concepts
-    strategy_node = build_strategy_node(
-        group_graph, mandatory_list, environment, g, history
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 386, in build_strategy_node
-    for gid in _topological_order(group_graph):
-               ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 223, in _topological_order
-    return list(nx.topological_sort(lineage_only))
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
+    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
+    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
+    topo = list(nx.topological_sort(lineage_only))
   File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
     for generation in nx.topological_generations(G):
                       ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^

@@ -1,38 +1,26 @@
 # Query 67
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 100 (83 distinct)
 ref rows: 100 (83 distinct)
-only in v4 (showing up to 5 of 83):
-  1x  (1, None, None, None, None, None, None, None, None, None)
-  1x  (2, None, None, None, None, None, None, None, None, None)
-  1x  (3, None, None, None, None, None, None, None, None, None)
-  1x  (4, None, None, None, None, None, None, None, None, None)
-  1x  (72, None, None, None, None, None, None, None, None, None)
-only in ref (showing up to 5 of 83):
-  1x  (72, None, None, None, None, None, None, None, None, Decimal('104996.99'))
-  1x  (4, None, None, None, None, None, None, None, None, Decimal('582893.38'))
-  1x  (3, None, None, None, None, None, None, None, None, Decimal('1641694.80'))
-  1x  (2, None, None, None, None, None, None, None, None, Decimal('3304196.14'))
-  1x  (1, None, None, None, None, None, None, None, None, Decimal('1018289131.65'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4944 | 78 | 1.153 s |
-| reference | 3634 | 78 | 1.525 s |
-| v4 / ref | 1.36x | 1.00x | 0.76x |
+| v4 | 3634 | 78 | 915.25 ms |
+| reference | 3634 | 78 | 1.371 s |
+| v4 / ref | 1.00x | 1.00x | 0.67x |
 
 ## Preql
 
@@ -119,36 +107,36 @@ SELECT
     "cooperative"."ss_item_class" as "ss_item_class",
     "cooperative"."ss_item_product_name" as "ss_item_product_name",
     "cooperative"."ss_store_text_id" as "ss_store_text_id",
+    "cooperative"."sumsales" as "sumsales",
     rank() over (partition by "cooperative"."ss_item_category" order by "cooperative"."sumsales" desc ) as "rk"
 FROM
     "cooperative")
 SELECT
-    coalesce("cooperative"."ss_item_category","questionable"."ss_item_category") as "ss_item_category",
-    coalesce("cooperative"."ss_item_class","questionable"."ss_item_class") as "ss_item_class",
-    coalesce("cooperative"."ss_item_brand_name","questionable"."ss_item_brand_name") as "ss_item_brand_name",
-    coalesce("cooperative"."ss_item_product_name","questionable"."ss_item_product_name") as "ss_item_product_name",
-    coalesce("cooperative"."ss_date_year","questionable"."ss_date_year") as "ss_date_year",
-    coalesce("cooperative"."ss_date_quarter","questionable"."ss_date_quarter") as "ss_date_quarter",
-    coalesce("cooperative"."ss_date_month_of_year","questionable"."ss_date_month_of_year") as "ss_date_month_of_year",
-    coalesce("cooperative"."ss_store_text_id","questionable"."ss_store_text_id") as "ss_store_text_id",
-    "cooperative"."sumsales" as "sumsales",
+    "questionable"."ss_item_category" as "ss_item_category",
+    "questionable"."ss_item_class" as "ss_item_class",
+    "questionable"."ss_item_brand_name" as "ss_item_brand_name",
+    "questionable"."ss_item_product_name" as "ss_item_product_name",
+    "questionable"."ss_date_year" as "ss_date_year",
+    "questionable"."ss_date_quarter" as "ss_date_quarter",
+    "questionable"."ss_date_month_of_year" as "ss_date_month_of_year",
+    "questionable"."ss_store_text_id" as "ss_store_text_id",
+    "questionable"."sumsales" as "sumsales",
     "questionable"."rk" as "rk"
 FROM
-    "cooperative"
-    RIGHT OUTER JOIN "questionable" on "cooperative"."ss_date_month_of_year" = "questionable"."ss_date_month_of_year" AND "cooperative"."ss_date_quarter" = "questionable"."ss_date_quarter" AND "cooperative"."ss_date_year" = "questionable"."ss_date_year" AND "cooperative"."ss_item_brand_name" = "questionable"."ss_item_brand_name" AND "cooperative"."ss_item_category" is not distinct from "questionable"."ss_item_category" AND "cooperative"."ss_item_class" is not distinct from "questionable"."ss_item_class" AND "cooperative"."ss_item_product_name" = "questionable"."ss_item_product_name" AND "cooperative"."ss_store_text_id" = "questionable"."ss_store_text_id"
+    "questionable"
 WHERE
     "questionable"."rk" <= 100
 
 ORDER BY 
-    coalesce("cooperative"."ss_item_category","questionable"."ss_item_category") asc nulls first,
-    coalesce("cooperative"."ss_item_class","questionable"."ss_item_class") asc nulls first,
-    coalesce("cooperative"."ss_item_brand_name","questionable"."ss_item_brand_name") asc nulls first,
-    coalesce("cooperative"."ss_item_product_name","questionable"."ss_item_product_name") asc nulls first,
-    coalesce("cooperative"."ss_date_year","questionable"."ss_date_year") asc nulls first,
-    coalesce("cooperative"."ss_date_quarter","questionable"."ss_date_quarter") asc nulls first,
-    coalesce("cooperative"."ss_date_month_of_year","questionable"."ss_date_month_of_year") asc nulls first,
-    coalesce("cooperative"."ss_store_text_id","questionable"."ss_store_text_id") asc nulls first,
-    "cooperative"."sumsales" asc nulls first,
+    "questionable"."ss_item_category" asc nulls first,
+    "questionable"."ss_item_class" asc nulls first,
+    "questionable"."ss_item_brand_name" asc nulls first,
+    "questionable"."ss_item_product_name" asc nulls first,
+    "questionable"."ss_date_year" asc nulls first,
+    "questionable"."ss_date_quarter" asc nulls first,
+    "questionable"."ss_date_month_of_year" asc nulls first,
+    "questionable"."ss_store_text_id" asc nulls first,
+    "questionable"."sumsales" asc nulls first,
     "questionable"."rk" asc nulls first
 LIMIT (100)
 ```

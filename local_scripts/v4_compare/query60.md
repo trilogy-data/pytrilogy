@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3428 | 59 | 41.14 ms |
-| reference | 3286 | 58 | 60.14 ms |
-| v4 / ref | 1.04x | 1.02x | 0.68x |
+| v4 | 3286 | 58 | 45.81 ms |
+| reference | 3286 | 58 | 45.44 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -61,7 +61,7 @@ GROUP BY
 thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "sales_catalog_sales_unified"."CS_BILL_ADDR_SK" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
@@ -73,7 +73,7 @@ WHERE
 UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
     INNER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "sales_store_sales_unified"."SS_ADDR_SK" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
@@ -85,7 +85,7 @@ WHERE
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "sales_web_sales_unified"."WS_BILL_ADDR_SK" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
@@ -96,14 +96,13 @@ WHERE
 )
 SELECT
     sum("thoughtful"."sales_ext_sales_price") as "total_sales",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
+    "thoughtful"."sales_item_name" as "sales_item_name"
 FROM
     "thoughtful"
-    INNER JOIN "memory"."item" as "sales_item_items" on "thoughtful"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
 GROUP BY
     2
 ORDER BY 
-    "sales_item_items"."I_ITEM_ID" asc,
+    "thoughtful"."sales_item_name" asc,
     "total_sales" asc
 LIMIT (100)
 ```

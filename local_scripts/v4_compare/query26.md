@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1394 | 20 | 34.85 ms |
-| reference | 1394 | 20 | 33.73 ms |
-| v4 / ref | 1.00x | 1.00x | 1.03x |
+| v4 | 1394 | 20 | 36.14 ms |
+| reference | 1394 | 20 | 36.71 ms |
+| v4 / ref | 1.00x | 1.00x | 0.98x |
 
 ## Preql
 
@@ -52,11 +52,11 @@ limit 100
 
 ```sql
 SELECT
+    "cs_item_items"."I_ITEM_ID" as "cs_item_name",
     avg("cs_catalog_sales"."CS_QUANTITY") as "agg1",
     avg("cs_catalog_sales"."CS_LIST_PRICE") as "agg2",
     avg("cs_catalog_sales"."CS_COUPON_AMT") as "agg3",
-    avg("cs_catalog_sales"."CS_SALES_PRICE") as "agg4",
-    "cs_item_items"."I_ITEM_ID" as "cs_item_name"
+    avg("cs_catalog_sales"."CS_SALES_PRICE") as "agg4"
 FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
@@ -67,7 +67,7 @@ WHERE
     "cs_bill_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "cs_bill_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "cs_bill_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and ( "cs_promotion_promotion"."P_CHANNEL_EMAIL" = 'N' or "cs_promotion_promotion"."P_CHANNEL_EVENT" = 'N' ) and "cs_date_date"."D_YEAR" = 2000
 
 GROUP BY
-    5
+    1
 ORDER BY 
     "cs_item_items"."I_ITEM_ID" asc
 LIMIT (100)

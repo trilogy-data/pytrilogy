@@ -1,35 +1,26 @@
 # Query 82
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (34 rows) |
+| v4 execution | OK (2 rows) |
 | reference execution | OK (2 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 34 (34 distinct)
+v4 rows: 2 (2 distinct)
 ref rows: 2 (2 distinct)
-only in v4 (showing up to 5 of 34):
-  1x  (datetime.date(2000, 6, 8), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 282, 11300)
-  1x  (datetime.date(2000, 7, 13), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 277, 11300)
-  1x  (datetime.date(2000, 6, 29), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 110, 11300)
-  1x  (datetime.date(2000, 7, 13), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 317, 11300)
-  1x  (datetime.date(2000, 6, 1), Decimal('67.28'), 'Arab, financial pol', 270, 'AAAAAAAAECMCAAAA', 298, 11300)
-only in ref (showing up to 5 of 2):
-  1x  (Decimal('67.28'), 'Arab, financial pol', 'AAAAAAAAECMCAAAA')
-  1x  (Decimal('86.90'), 'Clinical, labour aspects might sit enough like a problems. Remarkably mysterious experts shall learn to th', 'AAAAAAAALIHCAAAA')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1909 | 42 | 214.21 ms |
-| reference | 1583 | 34 | 211.76 ms |
-| v4 / ref | 1.21x | 1.24x | 1.01x |
+| v4 | 1583 | 34 | 289.68 ms |
+| reference | 1583 | 34 | 882.17 ms |
+| v4 / ref | 1.00x | 1.00x | 0.33x |
 
 ## Preql
 
@@ -74,13 +65,9 @@ GROUP BY
     2,
     3)
 SELECT
-    cast("inventory_date_date"."D_DATE" as date) as "inventory_date_date",
-    "inventory_item_items"."I_CURRENT_PRICE" as "inventory_item_current_price",
-    "inventory_item_items"."I_ITEM_DESC" as "inventory_item_desc",
-    "inventory_item_items"."I_MANUFACT_ID" as "inventory_item_manufacturer_id",
     "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
-    "wakeful"."inventory_quantity_on_hand" as "inventory_quantity_on_hand",
-    "store_sales_item_items"."I_ITEM_SK" as "store_sales_item_id"
+    "inventory_item_items"."I_ITEM_DESC" as "inventory_item_desc",
+    "inventory_item_items"."I_CURRENT_PRICE" as "inventory_item_current_price"
 FROM
     "wakeful"
     INNER JOIN "memory"."date_dim" as "inventory_date_date" on "wakeful"."inventory_date_id" = "inventory_date_date"."D_DATE_SK"
@@ -92,11 +79,7 @@ WHERE
 GROUP BY
     1,
     2,
-    3,
-    4,
-    5,
-    6,
-    7
+    3
 ORDER BY 
     "inventory_item_items"."I_ITEM_ID" asc
 LIMIT (100)

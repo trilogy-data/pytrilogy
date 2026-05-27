@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2343 | 44 | — |
+| v4 | 2293 | 43 | — |
 | reference | 1809 | 27 | — |
-| v4 / ref | 1.30x | 1.63x | — |
+| v4 / ref | 1.27x | 1.59x | — |
 
 ## Preql
 
@@ -83,24 +83,23 @@ GROUP BY
     2,
     3,
     4,
-    5,
-    "catalog_sales_item_items"."I_CURRENT_PRICE")
+    5)
 SELECT
-    sum(CASE
-	WHEN "cooperative"."catalog_sales_sold_date_date" < :cutoff THEN "cooperative"."catalog_sales_sales_price" - coalesce("cooperative"."catalog_returns_refunded_cash",0.0)
-	ELSE 0.0
-	END) as "sales_before",
+    "cooperative"."catalog_sales_item_name" as "catalog_sales_item_name",
+    "cooperative"."catalog_sales_warehouse_state" as "catalog_sales_warehouse_state",
     sum(CASE
 	WHEN "cooperative"."catalog_sales_sold_date_date" >= :cutoff THEN "cooperative"."catalog_sales_sales_price" - coalesce("cooperative"."catalog_returns_refunded_cash",0.0)
 	ELSE 0.0
 	END) as "sales_after",
-    "cooperative"."catalog_sales_item_name" as "catalog_sales_item_name",
-    "cooperative"."catalog_sales_warehouse_state" as "catalog_sales_warehouse_state"
+    sum(CASE
+	WHEN "cooperative"."catalog_sales_sold_date_date" < :cutoff THEN "cooperative"."catalog_sales_sales_price" - coalesce("cooperative"."catalog_returns_refunded_cash",0.0)
+	ELSE 0.0
+	END) as "sales_before"
 FROM
     "cooperative"
 GROUP BY
-    3,
-    4
+    1,
+    2
 ORDER BY 
     "cooperative"."catalog_sales_warehouse_state" asc,
     "cooperative"."catalog_sales_item_name" asc

@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1372 | 16 | 16.44 ms |
-| reference | 1372 | 16 | 16.05 ms |
-| v4 / ref | 1.00x | 1.00x | 1.02x |
+| v4 | 1372 | 16 | 16.14 ms |
+| reference | 1372 | 16 | 16.83 ms |
+| v4 / ref | 1.00x | 1.00x | 0.96x |
 
 ## Preql
 
@@ -48,8 +48,8 @@ limit 100
 
 ```sql
 SELECT
-    sum("catalog_sales_catalog_sales"."CS_SALES_PRICE") as "sales",
-    "catalog_sales_bill_customer_address_customer_address"."CA_ZIP" as "catalog_sales_bill_customer_address_zip"
+    "catalog_sales_bill_customer_address_customer_address"."CA_ZIP" as "catalog_sales_bill_customer_address_zip",
+    sum("catalog_sales_catalog_sales"."CS_SALES_PRICE") as "sales"
 FROM
     "memory"."catalog_sales" as "catalog_sales_catalog_sales"
     INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "catalog_sales_date_date"."D_DATE_SK"
@@ -59,7 +59,7 @@ WHERE
     "catalog_sales_date_date"."D_QOY" = 2 and "catalog_sales_date_date"."D_YEAR" = 2001 and ( "catalog_sales_bill_customer_address_customer_address"."CA_STATE" in ('CA','WA','GA') or "catalog_sales_catalog_sales"."CS_SALES_PRICE" > 500 or SUBSTRING("catalog_sales_bill_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') )
 
 GROUP BY
-    2
+    1
 ORDER BY 
     "catalog_sales_bill_customer_address_customer_address"."CA_ZIP" asc nulls first
 LIMIT (100)

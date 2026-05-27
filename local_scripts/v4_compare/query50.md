@@ -5,30 +5,34 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
+| v4 execution | OK (6 rows) |
 | reference execution | OK (6 rows) |
 | results identical | NO |
 
 ## Result comparison
 
-v4 rows: 100 (1 distinct)
+v4 rows: 6 (6 distinct)
 ref rows: 6 (6 distinct)
-only in v4 (showing up to 5 of 1):
-  99x  (108, 64, 61, 58, 56, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
-only in ref (showing up to 5 of 5):
+only in v4 (showing up to 5 of 6):
+  1x  (222600, 152250, 112700, 105700, 104650, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
+  1x  (211152, 144420, 106904, 100264, 99268, 'Midway', 1, 'Williamson County', 'ation', 'TN', 'Lee ', '811', 'Circle', 'Suite T', '31904')
+  1x  (213696, 146160, 108192, 101472, 100464, 'Midway', 1, 'Williamson County', 'bar', 'TN', '4th ', '175', 'Court', 'Suite C', '31904')
+  1x  (216876, 148335, 109802, 102982, 101959, 'Fairview', 1, 'Williamson County', 'eing', 'TN', '12th ', '226', 'Lane', 'Suite D', '35709')
+  1x  (199068, 136155, 100786, 94526, 93587, 'Midway', 1, 'Williamson County', 'ese', 'TN', 'Lake ', '27', 'Ln', 'Suite 260', '31904')
+only in ref (showing up to 5 of 6):
+  1x  (108, 64, 61, 58, 56, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
   1x  (99, 75, 57, 55, 41, 'Midway', 1, 'Williamson County', 'ation', 'TN', 'Lee ', '811', 'Circle', 'Suite T', '31904')
   1x  (108, 73, 51, 46, 55, 'Midway', 1, 'Williamson County', 'bar', 'TN', '4th ', '175', 'Court', 'Suite C', '31904')
   1x  (113, 81, 46, 44, 50, 'Fairview', 1, 'Williamson County', 'eing', 'TN', '12th ', '226', 'Lane', 'Suite D', '35709')
   1x  (108, 73, 42, 44, 41, 'Midway', 1, 'Williamson County', 'ese', 'TN', 'Lake ', '27', 'Ln', 'Suite 260', '31904')
-  1x  (100, 69, 65, 55, 56, 'Midway', 1, 'Williamson County', 'ought', 'TN', 'Spring ', '767', 'Wy', 'Suite 250', '31904')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7692 | 123 | 92.08 ms |
-| reference | 6312 | 108 | 105.76 ms |
-| v4 / ref | 1.22x | 1.14x | 0.87x |
+| v4 | 6366 | 123 | 190.50 ms |
+| reference | 6312 | 108 | 92.17 ms |
+| v4 / ref | 1.01x | 1.14x | 2.07x |
 
 ## Preql
 
@@ -124,12 +128,13 @@ GROUP BY
     12,
     13,
     14,
-    15,
-    "store_sales_return_date_date"."D_MOY",
-    "store_sales_return_date_date"."D_YEAR",
-    "store_sales_store_returns"."SR_CUSTOMER_SK",
-    "store_sales_store_sales"."SS_CUSTOMER_SK"),
+    15),
 cooperative as (
+SELECT
+    "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" as "days_to_return"
+FROM
+    "thoughtful"),
+questionable as (
 SELECT
     "thoughtful"."store_sales_store_city" as "store_sales_store_city",
     "thoughtful"."store_sales_store_company_id" as "store_sales_store_company_id",
@@ -142,69 +147,68 @@ SELECT
     "thoughtful"."store_sales_store_street_type" as "store_sales_store_street_type",
     "thoughtful"."store_sales_store_suite_number" as "store_sales_store_suite_number",
     "thoughtful"."store_sales_store_zip" as "store_sales_store_zip",
-    "thoughtful"."store_sales_ticket_number" as "store_sales_ticket_number",
-    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > -1 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 30 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_9423286833555721",
-    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > 120 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 99999 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_5952815899712229",
-    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > 30 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 60 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_7510659595786166",
-    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > 60 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 90 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_6450764138736494",
-    CASE WHEN "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" > 90 and "thoughtful"."store_sales_return_date_id" - "thoughtful"."store_sales_date_id" <= 120 THEN "thoughtful"."store_sales_item_id" ELSE NULL END as "_virt_filter_id_4994347099701481"
-FROM
-    "thoughtful"),
-abundant as (
-SELECT
-    "cooperative"."store_sales_store_id" as "store_sales_store_id",
-    count("cooperative"."_virt_filter_id_4994347099701481") as "_virt_agg_count_5623669394588902",
-    count("cooperative"."_virt_filter_id_5952815899712229") as "_virt_agg_count_7969998780980378",
-    count("cooperative"."_virt_filter_id_6450764138736494") as "_virt_agg_count_4020156712075239",
-    count("cooperative"."_virt_filter_id_7510659595786166") as "_virt_agg_count_3393740962845140",
-    count("cooperative"."_virt_filter_id_9423286833555721") as "_virt_agg_count_7691116690045464"
+    count(CASE WHEN "cooperative"."days_to_return" > -1 and "cooperative"."days_to_return" <= 30 THEN "thoughtful"."store_sales_item_id" ELSE NULL END) as "_virt_agg_count_7691116690045464",
+    count(CASE WHEN "cooperative"."days_to_return" > 120 and "cooperative"."days_to_return" <= 99999 THEN "thoughtful"."store_sales_item_id" ELSE NULL END) as "_virt_agg_count_7969998780980378",
+    count(CASE WHEN "cooperative"."days_to_return" > 30 and "cooperative"."days_to_return" <= 60 THEN "thoughtful"."store_sales_item_id" ELSE NULL END) as "_virt_agg_count_3393740962845140",
+    count(CASE WHEN "cooperative"."days_to_return" > 60 and "cooperative"."days_to_return" <= 90 THEN "thoughtful"."store_sales_item_id" ELSE NULL END) as "_virt_agg_count_4020156712075239",
+    count(CASE WHEN "cooperative"."days_to_return" > 90 and "cooperative"."days_to_return" <= 120 THEN "thoughtful"."store_sales_item_id" ELSE NULL END) as "_virt_agg_count_5623669394588902"
 FROM
     "cooperative"
+    FULL JOIN "thoughtful" on 1=1
 GROUP BY
     1,
-    "cooperative"."store_sales_ticket_number"),
-uneven as (
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    "thoughtful"."store_sales_ticket_number")
 SELECT
-    "abundant"."store_sales_store_id" as "store_sales_store_id",
-    sum("abundant"."_virt_agg_count_3393740962845140") as "days_31_60",
-    sum("abundant"."_virt_agg_count_4020156712075239") as "days_61_90",
-    sum("abundant"."_virt_agg_count_5623669394588902") as "days_91_120",
-    sum("abundant"."_virt_agg_count_7691116690045464") as "days_30",
-    sum("abundant"."_virt_agg_count_7969998780980378") as "days_120_plus"
+    sum("questionable"."_virt_agg_count_7969998780980378") as "days_120_plus",
+    sum("questionable"."_virt_agg_count_7691116690045464") as "days_30",
+    sum("questionable"."_virt_agg_count_3393740962845140") as "days_31_60",
+    sum("questionable"."_virt_agg_count_4020156712075239") as "days_61_90",
+    sum("questionable"."_virt_agg_count_5623669394588902") as "days_91_120",
+    "questionable"."store_sales_store_city" as "store_sales_store_city",
+    "questionable"."store_sales_store_company_id" as "store_sales_store_company_id",
+    "questionable"."store_sales_store_county" as "store_sales_store_county",
+    "questionable"."store_sales_store_name" as "store_sales_store_name",
+    "questionable"."store_sales_store_state" as "store_sales_store_state",
+    "questionable"."store_sales_store_street_name" as "store_sales_store_street_name",
+    "questionable"."store_sales_store_street_number" as "store_sales_store_street_number",
+    "questionable"."store_sales_store_street_type" as "store_sales_store_street_type",
+    "questionable"."store_sales_store_suite_number" as "store_sales_store_suite_number",
+    "questionable"."store_sales_store_zip" as "store_sales_store_zip"
 FROM
-    "abundant"
+    "questionable"
 GROUP BY
-    1)
-SELECT
-    "cooperative"."store_sales_store_name" as "store_sales_store_name",
-    "cooperative"."store_sales_store_company_id" as "store_sales_store_company_id",
-    "cooperative"."store_sales_store_street_number" as "store_sales_store_street_number",
-    "cooperative"."store_sales_store_street_name" as "store_sales_store_street_name",
-    "cooperative"."store_sales_store_street_type" as "store_sales_store_street_type",
-    "cooperative"."store_sales_store_suite_number" as "store_sales_store_suite_number",
-    "cooperative"."store_sales_store_city" as "store_sales_store_city",
-    "cooperative"."store_sales_store_county" as "store_sales_store_county",
-    "cooperative"."store_sales_store_state" as "store_sales_store_state",
-    "cooperative"."store_sales_store_zip" as "store_sales_store_zip",
-    "uneven"."days_30" as "days_30",
-    "uneven"."days_31_60" as "days_31_60",
-    "uneven"."days_61_90" as "days_61_90",
-    "uneven"."days_91_120" as "days_91_120",
-    "uneven"."days_120_plus" as "days_120_plus"
-FROM
-    "uneven"
-    INNER JOIN "cooperative" on "uneven"."store_sales_store_id" = "cooperative"."store_sales_store_id"
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    "questionable"."store_sales_store_id"
 ORDER BY 
-    "cooperative"."store_sales_store_name" asc nulls first,
-    "cooperative"."store_sales_store_company_id" asc nulls first,
-    "cooperative"."store_sales_store_street_number" asc nulls first,
-    "cooperative"."store_sales_store_street_name" asc nulls first,
-    "cooperative"."store_sales_store_street_type" asc nulls first,
-    "cooperative"."store_sales_store_suite_number" asc nulls first,
-    "cooperative"."store_sales_store_city" asc nulls first,
-    "cooperative"."store_sales_store_county" asc nulls first,
-    "cooperative"."store_sales_store_state" asc nulls first,
-    "cooperative"."store_sales_store_zip" asc nulls first
+    "questionable"."store_sales_store_name" asc nulls first,
+    "questionable"."store_sales_store_company_id" asc nulls first,
+    "questionable"."store_sales_store_street_number" asc nulls first,
+    "questionable"."store_sales_store_street_name" asc nulls first,
+    "questionable"."store_sales_store_street_type" asc nulls first,
+    "questionable"."store_sales_store_suite_number" asc nulls first,
+    "questionable"."store_sales_store_city" asc nulls first,
+    "questionable"."store_sales_store_county" asc nulls first,
+    "questionable"."store_sales_store_state" asc nulls first,
+    "questionable"."store_sales_store_zip" asc nulls first
 LIMIT (100)
 ```
 

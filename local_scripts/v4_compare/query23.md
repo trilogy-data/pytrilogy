@@ -1,36 +1,22 @@
 # Query 23
 
-**Status:** `mismatch`
+**Status:** `gen_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | OK |
-| v4 execution | OK (4 rows) |
+| v4 SQL generation | FAILED |
 | reference execution | OK (4 rows) |
-| results identical | NO |
 
 ## Result comparison
 
-v4 rows: 4 (4 distinct)
-ref rows: 4 (4 distinct)
-only in v4 (showing up to 5 of 4):
-  1x  ('Gordon', 'Collins', Decimal('495372633.60'))
-  1x  ('Steven', 'Fowler', Decimal('995220642.00'))
-  1x  ('Jesse', 'Green', Decimal('220824285.76'))
-  1x  ('Chester', 'Moore', Decimal('2143381715.28'))
-only in ref (showing up to 5 of 4):
-  1x  ('Gordon', 'Collins', Decimal('2025.60'))
-  1x  ('Steven', 'Fowler', Decimal('4069.50'))
-  1x  ('Jesse', 'Green', Decimal('902.96'))
-  1x  ('Chester', 'Moore', Decimal('8764.38'))
+_at least one side did not produce rows._
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9413 | 221 | 562.93 ms |
-| reference | 7652 | 178 | 600.83 ms |
-| v4 / ref | 1.23x | 1.24x | 0.94x |
+| v4 | 0 | 0 | — |
+| reference | 7652 | 178 | 542.92 ms |
 
 ## Preql
 
@@ -99,229 +85,7 @@ limit 100
 
 ## v4 generated SQL
 
-```sql
-WITH 
-concerned as (
-SELECT
-     'STORE'  as "sales_sales_channel",
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
-    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
-    "sales_store_sales_unified"."SS_SALES_PRICE" as "sales_sales_price",
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-WHERE
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
-),
-questionable as (
-SELECT
-    "sales_date_date"."D_DATE_SK" as "sales_date_id",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
-FROM
-    "memory"."date_dim" as "sales_date_date"
-WHERE
-    "sales_date_date"."D_YEAR" in (2000,2001,2002,2003)
-),
-sweltering as (
-SELECT
-    "concerned"."sales_customer_id" as "_best_customers_best_customer_id",
-    sum("concerned"."sales_quantity" * "concerned"."sales_sales_price") as "customer_total_overall"
-FROM
-    "concerned"
-GROUP BY
-    1),
-young as (
-SELECT
-    sum("concerned"."sales_quantity" * "concerned"."sales_sales_price") as "customer_total_in_window"
-FROM
-    "concerned"
-    INNER JOIN "questionable" on "concerned"."sales_date_id" = "questionable"."sales_date_id"
-WHERE
-    "concerned"."sales_sales_channel" = 'STORE'
-
-GROUP BY
-    "concerned"."sales_customer_id"),
-uneven as (
-SELECT
-    "questionable"."sales_date_date" as "sales_date_date",
-    "sales_item_items"."I_ITEM_SK" as "sales_item_id",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
-    SUBSTRING("sales_item_items"."I_ITEM_DESC",1,30) as "sales_item_desc_truncated"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-    INNER JOIN "questionable" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "questionable"."sales_date_id"
-    INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
-WHERE
-     'STORE'  = 'STORE'
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-abhorrent as (
-SELECT
-    max("young"."customer_total_in_window") as "max_total_cmax"
-FROM
-    "young"),
-yummy as (
-SELECT
-    "uneven"."sales_item_id" as "_frequent_items_frequent_item_id",
-    count("uneven"."sales_order_id") as "ss_combo_count"
-FROM
-    "uneven"
-GROUP BY
-    1,
-    "uneven"."sales_date_date",
-    "uneven"."sales_item_desc_truncated"),
-late as (
-SELECT
-    "sweltering"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
-FROM
-    "sweltering"
-    INNER JOIN "abhorrent" on 1=1
-WHERE
-    "sweltering"."customer_total_overall" > 0.5 * "abhorrent"."max_total_cmax"
-),
-juicy as (
-SELECT
-    "yummy"."_frequent_items_frequent_item_id" as "frequent_items_frequent_item_id"
-FROM
-    "yummy"
-WHERE
-    "yummy"."ss_combo_count" > 4
-),
-macho as (
-SELECT
-    "late"."_best_customers_best_customer_id" as "best_customers_best_customer_id"
-FROM
-    "late"),
-vacuous as (
-SELECT
-    "juicy"."frequent_items_frequent_item_id" as "frequent_items_frequent_item_id"
-FROM
-    "juicy"
-GROUP BY
-    1),
-cheerful as (
-SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
-    "sales_catalog_sales_unified"."CS_LIST_PRICE" as "sales_list_price",
-    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
-    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
-     'CATALOG'  as "sales_sales_channel",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
-    INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select vacuous."frequent_items_frequent_item_id" from vacuous where vacuous."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
-
-UNION ALL
-SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
-    "sales_store_sales_unified"."SS_LIST_PRICE" as "sales_list_price",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
-    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
-     'STORE'  as "sales_sales_channel",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-    INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_store_sales_unified"."SS_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_store_sales_unified"."SS_ITEM_SK" in (select vacuous."frequent_items_frequent_item_id" from vacuous where vacuous."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
-
-UNION ALL
-SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
-    "sales_web_sales_unified"."WS_LIST_PRICE" as "sales_list_price",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
-    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
-     'WEB'  as "sales_sales_channel",
-    "sales_date_date"."D_MOY" as "sales_date_month_of_year",
-    "sales_date_date"."D_YEAR" as "sales_date_year"
-FROM
-    "memory"."web_sales" as "sales_web_sales_unified"
-    INNER JOIN "memory"."customer" as "sales_customer_customers" on "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" = "sales_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_web_sales_unified"."WS_ITEM_SK" in (select vacuous."frequent_items_frequent_item_id" from vacuous where vacuous."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
-),
-scrawny as (
-SELECT
-    "cheerful"."sales_list_price" as "sales_list_price",
-    "cheerful"."sales_quantity" as "sales_quantity",
-    "cheerful"."sales_sales_channel" as "sales_sales_channel",
-    "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
-    "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name"
-FROM
-    "cheerful"
-    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "cheerful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
-WHERE
-    "cheerful"."sales_item_id" in (select vacuous."frequent_items_frequent_item_id" from vacuous where vacuous."frequent_items_frequent_item_id" is not null)
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    "cheerful"."sales_customer_id",
-    "cheerful"."sales_date_month_of_year",
-    "cheerful"."sales_date_year",
-    "cheerful"."sales_item_id",
-    "cheerful"."sales_order_id"),
-friendly as (
-SELECT
-    "scrawny"."sales_customer_first_name" as "c_first_name",
-    "scrawny"."sales_customer_first_name" as "sales_customer_first_name",
-    "scrawny"."sales_customer_last_name" as "c_last_name",
-    "scrawny"."sales_customer_last_name" as "sales_customer_last_name",
-    CASE WHEN "scrawny"."sales_sales_channel" in ('WEB','CATALOG') THEN "scrawny"."sales_quantity" * "scrawny"."sales_list_price" ELSE NULL END as "_virt_filter_7664750597049030"
-FROM
-    "scrawny"),
-divergent as (
-SELECT
-    "friendly"."sales_customer_first_name" as "sales_customer_first_name",
-    "friendly"."sales_customer_last_name" as "sales_customer_last_name",
-    sum("friendly"."_virt_filter_7664750597049030") as "sales_total"
-FROM
-    "macho"
-    FULL JOIN "juicy" on 1=1
-    FULL JOIN "friendly" on 1=1
-GROUP BY
-    1,
-    2),
-charming as (
-SELECT
-    "divergent"."sales_total" as "sales_total",
-    "friendly"."c_first_name" as "c_first_name",
-    "friendly"."c_last_name" as "c_last_name"
-FROM
-    "divergent"
-    LEFT OUTER JOIN "friendly" on "divergent"."sales_customer_first_name" = "friendly"."sales_customer_first_name" AND "divergent"."sales_customer_last_name" = "friendly"."sales_customer_last_name"
-WHERE
-    "divergent"."sales_total" > 0
-)
-SELECT
-    "charming"."c_last_name" as "c_last_name",
-    "charming"."c_first_name" as "c_first_name",
-    "charming"."sales_total" as "sales_total"
-FROM
-    "charming"
-ORDER BY 
-    "charming"."c_last_name" asc nulls first,
-    "charming"."c_first_name" asc nulls first,
-    "charming"."sales_total" asc nulls first
-LIMIT (100)
-```
+_v4 did not produce SQL._
 
 ## Reference SQL (zquery log)
 
@@ -504,4 +268,59 @@ ORDER BY
     "c_first_name" asc nulls first,
     "sales_total" asc nulls first
 LIMIT (100)
+```
+
+## v4 generation error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 138, in generate_v4_sql
+    sql = compile_sql(info, build_env, build_stmt)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 532, in compile_sql
+    node.rebuild_cache()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 440, in rebuild_cache
+    return self.resolve()
+           ~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\select_node_v2.py", line 188, in _resolve
+    return super()._resolve()
+           ~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 406, in _resolve
+    p.resolve() for p in self.parents
+    ~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 262, in _resolve
+    p.resolve() for p in self.parents
+    ~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\group_node.py", line 87, in _resolve
+    p.resolve() for p in self.parents
+    ~~~~~~~~~^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
+    qds = self._resolve()
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 359, in _resolve
+    joins: List[BaseJoin | UnnestJoin] = self.generate_joins(
+                                         ~~~~~~~~~~~~~~~~~~~^
+        join_candidates, final_joins, raw_pregrain, grain, self.environment
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 243, in generate_joins
+    joins = get_node_joins(dataset_list, environment=environment)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\join_resolution.py", line 693, in get_node_joins
+    left=resolve_instantiated_concept(
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        concept_map[concept], ds_node_map[k]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\join_resolution.py", line 508, in resolve_instantiated_concept
+    raise SyntaxError(
+    ...<3 lines>...
+    )
+SyntaxError: Could not find sales.customer.first_name in sales.catalog_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_union_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_union_sales.web_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_unioned_join_sales.customer.customers_at_sales_customer_id_join_sales.date.date_at_sales_date_id_join_sales.date.date_at_sales_date_id_filtered_by_1381268244931442_join_sales.item.items_at_sales_item_id_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_grouped_by_sales.date.date_sales.item.desc_truncated_sales.item.id_sales.order_id_at_sales_date_date_sales_item_id_sales_order_id_filtered_by_9080651742928098_grouped_by_local._frequent_items_frequent_item_id_sales.date.date_sales.item.desc_truncated_sales.item.id_at_sales_date_date_sales_item_id_at_frequent_items_frequent_item_id_filtered_by_578530982766841_grouped_by_frequent_items.frequent_item_id_at_frequent_items_frequent_item_id_join_sales.date.date_at_sales_date_id_filtered_by_1381268244931442_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_3403810150931339_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_794436733259538_grouped_by_sales.customer.id_at_sales_customer_id_grouped_by__at_abstract_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_3403810150931339_grouped_by_local._best_customers_best_customer_id_sales.customer.id_at_sales_customer_id_at_sales_customer_id_at_best_customers_best_customer_id_filtered_by_2484749007924451_grouped_by_sales.customer.first_name_sales.customer.id_sales.customer.last_name_sales.item.id_sales.list_price_sales.order_id_sales.quantity_sales.sales_channel_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_1902506739459039_at_local_c_first_name_local_c_last_name_sales_item_id_sales_order_id_sales_sales_channel_at_local_c_first_name_local_c_last_name_sales_item_id_sales_order_id_sales_sales_channel output ['local._virt_filter_7664750597049030', 'sales.item.id', 'sales.order_id', 'sales.sales_channel', 'local._virt_func_multiply_8507033399516423', 'local.c_first_name', 'local.c_last_name'], acceptable synonyms set()
 ```

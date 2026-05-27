@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4014 | 97 | 214.41 ms |
-| reference | 2446 | 61 | 57.39 ms |
-| v4 / ref | 1.64x | 1.59x | 3.74x |
+| v4 | 3234 | 72 | 93.44 ms |
+| reference | 2446 | 61 | 59.85 ms |
+| v4 / ref | 1.32x | 1.18x | 1.56x |
 
 ## Preql
 
@@ -59,11 +59,10 @@ SELECT
     "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
     "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
     "store_sales_item_items"."I_ITEM_DESC" as "store_sales_item_desc",
-    "store_sales_item_items"."I_ITEM_SK" as "store_sales_item_id",
     "store_sales_item_items"."I_WHOLESALE_COST" as "store_sales_item_wholesale_cost",
-    "store_sales_store_sales"."SS_SALES_PRICE" as "store_sales_sales_price",
     "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_id",
-    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
+    sum("store_sales_store_sales"."SS_SALES_PRICE") as "item_revenue"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
@@ -71,84 +70,60 @@ FROM
     INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
 WHERE
     "store_sales_date_date"."D_MONTH_SEQ" BETWEEN 1176 AND 1187 and "store_sales_store_sales"."SS_STORE_SK" is not null
-),
-yummy as (
-SELECT
-    "thoughtful"."store_sales_store_id" as "store_sales_store_id",
-    "thoughtful"."store_sales_store_name" as "store_sales_store_name"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    2),
-questionable as (
-SELECT
-    "thoughtful"."store_sales_item_id" as "store_sales_item_id",
-    "thoughtful"."store_sales_store_id" as "store_sales_store_id",
-    sum("thoughtful"."store_sales_sales_price") as "item_revenue"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    2),
-cooperative as (
-SELECT
-    "thoughtful"."store_sales_item_brand_name" as "store_sales_item_brand_name",
-    "thoughtful"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "thoughtful"."store_sales_item_desc" as "store_sales_item_desc",
-    "thoughtful"."store_sales_item_id" as "store_sales_item_id",
-    "thoughtful"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost"
-FROM
-    "thoughtful"
+
 GROUP BY
     1,
     2,
     3,
     4,
-    5),
-uneven as (
-SELECT
-    "questionable"."store_sales_store_id" as "store_sales_store_id",
-    avg("questionable"."item_revenue") as "store_avg_revenue"
-FROM
-    "questionable"
-GROUP BY
-    1),
+    5,
+    6,
+    "store_sales_item_items"."I_ITEM_SK"),
 abundant as (
 SELECT
-    "questionable"."item_revenue" as "revenue",
-    "questionable"."store_sales_item_id" as "store_sales_item_id",
-    "questionable"."store_sales_store_id" as "store_sales_store_id"
+    "thoughtful"."store_sales_store_name" as "store_sales_store_name",
+    avg("thoughtful"."item_revenue") as "store_avg_revenue"
 FROM
-    "questionable"),
-juicy as (
+    "thoughtful"
+GROUP BY
+    1,
+    "thoughtful"."store_sales_store_id"),
+questionable as (
 SELECT
-    "abundant"."revenue" as "revenue",
-    "cooperative"."store_sales_item_brand_name" as "store_sales_item_brand_name",
-    "cooperative"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "cooperative"."store_sales_item_desc" as "store_sales_item_desc",
-    "cooperative"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
-    "yummy"."store_sales_store_name" as "store_sales_store_name"
+    "thoughtful"."item_revenue" as "revenue",
+    "thoughtful"."store_sales_item_brand_name" as "store_sales_item_brand_name",
+    "thoughtful"."store_sales_item_current_price" as "store_sales_item_current_price",
+    "thoughtful"."store_sales_item_desc" as "store_sales_item_desc",
+    "thoughtful"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
+    "thoughtful"."store_sales_store_name" as "store_sales_store_name"
 FROM
-    "cooperative"
-    INNER JOIN "abundant" on "cooperative"."store_sales_item_id" = "abundant"."store_sales_item_id"
-    INNER JOIN "yummy" on "abundant"."store_sales_store_id" = "yummy"."store_sales_store_id"
-    INNER JOIN "uneven" on "yummy"."store_sales_store_id" = "uneven"."store_sales_store_id"
+    "thoughtful"),
+uneven as (
+SELECT
+    "abundant"."store_sales_store_name" as "store_sales_store_name",
+    "questionable"."revenue" as "revenue",
+    "questionable"."store_sales_item_brand_name" as "store_sales_item_brand_name",
+    "questionable"."store_sales_item_current_price" as "store_sales_item_current_price",
+    "questionable"."store_sales_item_desc" as "store_sales_item_desc",
+    "questionable"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost"
+FROM
+    "abundant"
+    INNER JOIN "questionable" on "abundant"."store_sales_store_name" = "questionable"."store_sales_store_name"
 WHERE
-    "abundant"."revenue" <= 0.1 * "uneven"."store_avg_revenue"
+    "questionable"."revenue" <= 0.1 * "abundant"."store_avg_revenue"
 )
 SELECT
-    "juicy"."store_sales_store_name" as "store_sales_store_name",
-    "juicy"."store_sales_item_desc" as "store_sales_item_desc",
-    "juicy"."revenue" as "revenue",
-    "juicy"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "juicy"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
-    "juicy"."store_sales_item_brand_name" as "store_sales_item_brand_name"
+    "uneven"."store_sales_store_name" as "store_sales_store_name",
+    "uneven"."store_sales_item_desc" as "store_sales_item_desc",
+    "uneven"."revenue" as "revenue",
+    "uneven"."store_sales_item_current_price" as "store_sales_item_current_price",
+    "uneven"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
+    "uneven"."store_sales_item_brand_name" as "store_sales_item_brand_name"
 FROM
-    "juicy"
+    "uneven"
 ORDER BY 
-    "juicy"."store_sales_store_name" asc nulls first,
-    "juicy"."store_sales_item_desc" asc nulls first
+    "uneven"."store_sales_store_name" asc nulls first,
+    "uneven"."store_sales_item_desc" asc nulls first
 LIMIT (100)
 ```
 

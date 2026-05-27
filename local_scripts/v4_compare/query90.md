@@ -1,30 +1,26 @@
 # Query 90
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (0.5621890547263682, 113, 201)
-only in ref (showing up to 5 of 1):
-  1x  (0.5621890547263682,)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1234 | 25 | 8.93 ms |
-| reference | 1110 | 16 | 9.45 ms |
-| v4 / ref | 1.11x | 1.56x | 0.95x |
+| v4 | 1168 | 23 | 13.75 ms |
+| reference | 1110 | 16 | 12.43 ms |
+| v4 / ref | 1.05x | 1.44x | 1.11x |
 
 ## Preql
 
@@ -69,9 +65,7 @@ SELECT
     CASE
 	WHEN "thoughtful"."pmc" = 0 THEN null
 	ELSE cast("thoughtful"."amc" as numeric(15,4)) / cast("thoughtful"."pmc" as numeric(15,4))
-	END as "am_pm_ratio",
-    "thoughtful"."amc" as "amc",
-    "thoughtful"."pmc" as "pmc"
+	END as "am_pm_ratio"
 FROM
     "thoughtful"
 ORDER BY 

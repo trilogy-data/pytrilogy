@@ -1,30 +1,26 @@
 # Query 61
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (Decimal('2894907.87'), Decimal('2894907.87'), 51.82319145188511, Decimal('5586124.26'))
-only in ref (showing up to 5 of 1):
-  1x  (Decimal('2894907.87'), 51.82319145188511, Decimal('5586124.26'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1826 | 27 | 20.75 ms |
-| reference | 3444 | 59 | 47.81 ms |
-| v4 / ref | 0.53x | 0.46x | 0.43x |
+| v4 | 1767 | 26 | 17.38 ms |
+| reference | 3444 | 59 | 42.75 ms |
+| v4 / ref | 0.51x | 0.44x | 0.41x |
 
 ## Preql
 
@@ -77,7 +73,6 @@ WHERE
 SELECT
     "abundant"."promotional_sales" as "promotions",
     ( cast("abundant"."promotional_sales" as numeric(15,4)) / cast("abundant"."total" as numeric(15,4)) ) * 100 as "ratio",
-    "abundant"."promotional_sales" as "promotional_sales",
     "abundant"."total" as "total"
 FROM
     "abundant"

@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3343 | 67 | 243.40 ms |
-| reference | 2277 | 34 | 55.37 ms |
-| v4 / ref | 1.47x | 1.97x | 4.40x |
+| v4 | 3065 | 63 | 223.53 ms |
+| reference | 2277 | 34 | 56.78 ms |
+| v4 / ref | 1.35x | 1.85x | 3.94x |
 
 ## Preql
 
@@ -101,17 +101,13 @@ GROUP BY
     4,
     5,
     6,
-    "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS",
-    "store_sales_customer_demographic_customer_demographics"."CD_GENDER",
-    "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS",
-    "store_sales_date_date"."D_YEAR",
     "thoughtful"."store_sales_store_id")
 SELECT
-    grouping("questionable"."store_sales_store_state") as "g_state",
     avg(cast("questionable"."store_sales_quantity" as numeric(12,2))) as "agg1",
     avg(cast("questionable"."store_sales_list_price" as numeric(12,2))) as "agg2",
     avg(cast("questionable"."store_sales_coupon_amt" as numeric(12,2))) as "agg3",
     avg(cast("questionable"."store_sales_sales_price" as numeric(12,2))) as "agg4",
+    grouping("questionable"."store_sales_store_state") as "g_state",
     "questionable"."store_sales_item_name" as "store_sales_item_name",
     "questionable"."store_sales_store_state" as "store_sales_store_state"
 FROM

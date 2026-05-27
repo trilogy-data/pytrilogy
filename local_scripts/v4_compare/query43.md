@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1919 | 31 | 35.99 ms |
-| reference | 1919 | 31 | 33.68 ms |
-| v4 / ref | 1.00x | 1.00x | 1.07x |
+| v4 | 1919 | 31 | 30.18 ms |
+| reference | 1919 | 31 | 27.12 ms |
+| v4 / ref | 1.00x | 1.00x | 1.11x |
 
 ## Preql
 
@@ -57,13 +57,13 @@ limit 100
 
 ```sql
 SELECT
-    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Sunday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sun_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Friday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "fri_sales",
     sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Monday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "mon_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Saturday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sat_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Sunday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sun_sales",
+    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Thursday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "thu_sales",
     sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Tuesday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "tue_sales",
     sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Wednesday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "wed_sales",
-    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Thursday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "thu_sales",
-    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Friday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "fri_sales",
-    sum(CASE WHEN "store_sales_date_date"."D_DAY_NAME" = 'Saturday' THEN "store_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sat_sales",
     "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
     "store_sales_store_store"."S_STORE_ID" as "store_sales_store_text_id"
 FROM

@@ -16,7 +16,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 0 | 0 | — |
-| reference | 3548 | 83 | 79.20 ms |
+| reference | 3548 | 83 | 154.75 ms |
 
 ## Preql
 
@@ -157,9 +157,8 @@ Traceback (most recent call last):
     strategy_node = build_strategy_node(
         group_graph, mandatory_list, environment, g, history
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 386, in build_strategy_node
-    for gid in _topological_order(group_graph):
-               ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 412, in build_strategy_node
+    # pass in `_compute_concept_sets`. The SELECT needs to project the
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 223, in _topological_order
     return list(nx.topological_sort(lineage_only))
   File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort

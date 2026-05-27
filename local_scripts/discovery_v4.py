@@ -519,10 +519,15 @@ def compile_sql(
         )
 
     if build_stmt is not None:
-        node.hidden_concepts = set(build_stmt.hidden_components)
+        # Merge user-declared hidden components with whatever the strategy
+        # node already carries from the per-group backward pass — grain
+        # keys promoted to hidden by `_compute_concept_sets` would
+        # otherwise be wiped here and leak into the user-visible SELECT.
+        existing_hidden = set(node.hidden_concepts or set())
+        node.hidden_concepts = existing_hidden | set(build_stmt.hidden_components)
         node.ordering = build_stmt.order_by
     else:
-        node.hidden_concepts = set()
+        node.hidden_concepts = set(node.hidden_concepts or set())
         node.ordering = None
     node.rebuild_cache()
 

@@ -1,26 +1,30 @@
 # Query 80
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | YES |
+| results identical | NO |
 
 ## Result comparison
 
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 1):
+  1x  (None, None, Decimal('-3597567.20'), Decimal('692603.11'), Decimal('13592451.59'))
+only in ref (showing up to 5 of 1):
+  1x  (None, None, Decimal('-3597547.40'), Decimal('692603.11'), Decimal('13560113.88'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7303 | 135 | 74.39 ms |
-| reference | 7255 | 135 | 69.68 ms |
-| v4 / ref | 1.01x | 1.00x | 1.07x |
+| v4 | 8573 | 157 | 181.96 ms |
+| reference | 7255 | 135 | 102.28 ms |
+| v4 / ref | 1.18x | 1.16x | 1.78x |
 
 ## Preql
 
@@ -163,40 +167,62 @@ WHERE
 abhorrent as (
 SELECT
     "abundant"."sales_return_amount" as "sales_return_amount",
+    "abundant"."sales_return_net_loss" as "sales_return_net_loss",
+    "cheerful"."sales_channel_dim_text_id" as "sales_channel_dim_text_id",
     "vacuous"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "vacuous"."sales_net_profit" - coalesce("abundant"."sales_return_net_loss",0) as "profit_minus_loss",
-    CASE
-	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN 'store channel'
-	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
-	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN 'web channel'
-	ELSE null
-	END as "channel_label",
-    CASE
-	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN ('store' || "cheerful"."sales_channel_dim_text_id")
-	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "cheerful"."sales_channel_dim_text_id")
-	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN ('web_site' || "cheerful"."sales_channel_dim_text_id")
-	ELSE null
-	END as "id_label"
+    "vacuous"."sales_net_profit" as "sales_net_profit",
+    "vacuous"."sales_sales_channel" as "sales_sales_channel"
 FROM
     "vacuous"
     LEFT OUTER JOIN "abundant" on "vacuous"."sales_item_id" = "abundant"."sales_item_id" AND "vacuous"."sales_order_id" = "abundant"."sales_order_id" AND "vacuous"."sales_sales_channel" = "abundant"."sales_sales_channel"
     INNER JOIN "cheerful" on "vacuous"."sales_channel_dim_id" = "cheerful"."sales_channel_dim_id" AND "vacuous"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_channel_dim_text_id" is not null
-)
+),
+sweltering as (
 SELECT
-    sum("abhorrent"."sales_ext_sales_price") as "sales_total",
-    sum(coalesce("abhorrent"."sales_return_amount",0)) as "returns_total",
-    sum("abhorrent"."profit_minus_loss") as "profit_total",
-    "abhorrent"."channel_label" as "channel_label",
-    "abhorrent"."id_label" as "id_label"
+    "abhorrent"."sales_channel_dim_text_id" as "sales_channel_dim_text_id",
+    "abhorrent"."sales_net_profit" - coalesce("abhorrent"."sales_return_net_loss",0) as "profit_minus_loss",
+    "abhorrent"."sales_net_profit" as "sales_net_profit",
+    "abhorrent"."sales_return_net_loss" as "sales_return_net_loss",
+    "abhorrent"."sales_sales_channel" as "sales_sales_channel",
+    CASE
+	WHEN "abhorrent"."sales_sales_channel" = 'STORE' THEN 'store channel'
+	WHEN "abhorrent"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
+	WHEN "abhorrent"."sales_sales_channel" = 'WEB' THEN 'web channel'
+	ELSE null
+	END as "channel_label",
+    CASE
+	WHEN "abhorrent"."sales_sales_channel" = 'STORE' THEN ('store' || "abhorrent"."sales_channel_dim_text_id")
+	WHEN "abhorrent"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "abhorrent"."sales_channel_dim_text_id")
+	WHEN "abhorrent"."sales_sales_channel" = 'WEB' THEN ('web_site' || "abhorrent"."sales_channel_dim_text_id")
+	ELSE null
+	END as "id_label"
 FROM
-    "abhorrent"
+    "abhorrent"),
+late as (
+SELECT
+    "abhorrent"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "abhorrent"."sales_return_amount" as "sales_return_amount",
+    "sweltering"."channel_label" as "channel_label",
+    "sweltering"."id_label" as "id_label",
+    "sweltering"."profit_minus_loss" as "profit_minus_loss"
+FROM
+    "sweltering"
+    FULL JOIN "abhorrent" on "sweltering"."sales_channel_dim_text_id" is not distinct from "abhorrent"."sales_channel_dim_text_id" AND "sweltering"."sales_net_profit" is not distinct from "abhorrent"."sales_net_profit" AND "sweltering"."sales_return_net_loss" is not distinct from "abhorrent"."sales_return_net_loss" AND "sweltering"."sales_sales_channel" = "abhorrent"."sales_sales_channel")
+SELECT
+    sum("late"."sales_ext_sales_price") as "sales_total",
+    sum(coalesce("late"."sales_return_amount",0)) as "returns_total",
+    sum("late"."profit_minus_loss") as "profit_total",
+    "late"."channel_label" as "channel_label",
+    "late"."id_label" as "id_label"
+FROM
+    "late"
 GROUP BY
     ROLLUP (4, 5)
 ORDER BY 
-    "abhorrent"."channel_label" asc nulls first,
-    "abhorrent"."id_label" asc nulls first
+    "late"."channel_label" asc nulls first,
+    "late"."id_label" asc nulls first
 LIMIT (100)
 ```
 

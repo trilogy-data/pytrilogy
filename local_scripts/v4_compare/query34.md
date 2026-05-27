@@ -18,9 +18,9 @@ ref rows: 455 (455 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4119 | 66 | 62.99 ms |
-| reference | 2808 | 39 | 38.18 ms |
-| v4 / ref | 1.47x | 1.69x | 1.65x |
+| v4 | 2641 | 35 | 45.54 ms |
+| reference | 2808 | 39 | 39.91 ms |
+| v4 / ref | 0.94x | 0.90x | 1.14x |
 
 ## Preql
 
@@ -68,16 +68,13 @@ order by
 ## v4 generated SQL
 
 ```sql
-WITH 
-cooperative as (
 SELECT
-    "store_sales_customer_customers"."C_FIRST_NAME" as "store_sales_customer_first_name",
     "store_sales_customer_customers"."C_LAST_NAME" as "store_sales_customer_last_name",
-    "store_sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "store_sales_customer_preferred_cust_flag",
+    "store_sales_customer_customers"."C_FIRST_NAME" as "store_sales_customer_first_name",
     "store_sales_customer_customers"."C_SALUTATION" as "store_sales_customer_salutation",
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_id",
+    "store_sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "store_sales_customer_preferred_cust_flag",
     "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number",
-    1 as "store_sales_row_counter"
+    sum(1) as "cnt"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
@@ -89,51 +86,23 @@ WHERE
 	WHEN "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" > 0 THEN ("store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" * 1.0) / "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT"
 	ELSE null
 	END ) > 1.2 and "store_sales_date_date"."D_YEAR" in (1999,2000,2001) and "store_sales_store_store"."S_COUNTY" = 'Williamson County' and "store_sales_store_sales"."SS_CUSTOMER_SK" is not null and "store_sales_store_sales"."SS_TICKET_NUMBER" is not null
-),
-abundant as (
-SELECT
-    "cooperative"."store_sales_customer_id" as "store_sales_customer_id",
-    "cooperative"."store_sales_ticket_number" as "store_sales_ticket_number",
-    sum("cooperative"."store_sales_row_counter") as "cnt"
-FROM
-    "cooperative"
-GROUP BY
-    1,
-    2),
-questionable as (
-SELECT
-    "cooperative"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "cooperative"."store_sales_customer_id" as "store_sales_customer_id",
-    "cooperative"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "cooperative"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
-    "cooperative"."store_sales_customer_salutation" as "store_sales_customer_salutation"
-FROM
-    "cooperative"
+
 GROUP BY
     1,
     2,
     3,
     4,
-    5)
-SELECT
-    "questionable"."store_sales_customer_last_name" as "store_sales_customer_last_name",
-    "questionable"."store_sales_customer_first_name" as "store_sales_customer_first_name",
-    "questionable"."store_sales_customer_salutation" as "store_sales_customer_salutation",
-    "questionable"."store_sales_customer_preferred_cust_flag" as "store_sales_customer_preferred_cust_flag",
-    "abundant"."store_sales_ticket_number" as "store_sales_ticket_number",
-    "abundant"."cnt" as "cnt"
-FROM
-    "questionable"
-    INNER JOIN "abundant" on "questionable"."store_sales_customer_id" = "abundant"."store_sales_customer_id"
-WHERE
-    "abundant"."cnt" BETWEEN 15 AND 20
+    5,
+    "store_sales_store_sales"."SS_CUSTOMER_SK"
+HAVING
+    "cnt" BETWEEN 15 AND 20
 
 ORDER BY 
-    "questionable"."store_sales_customer_last_name" asc nulls first,
-    "questionable"."store_sales_customer_first_name" asc nulls first,
-    "questionable"."store_sales_customer_salutation" asc nulls first,
-    "questionable"."store_sales_customer_preferred_cust_flag" desc nulls first,
-    "abundant"."store_sales_ticket_number" asc nulls first
+    "store_sales_customer_customers"."C_LAST_NAME" asc nulls first,
+    "store_sales_customer_customers"."C_FIRST_NAME" asc nulls first,
+    "store_sales_customer_customers"."C_SALUTATION" asc nulls first,
+    "store_sales_customer_customers"."C_PREFERRED_CUST_FLAG" desc nulls first,
+    "store_sales_store_sales"."SS_TICKET_NUMBER" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

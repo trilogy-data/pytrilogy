@@ -5,28 +5,28 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1064 rows) |
+| v4 execution | OK (69685 rows) |
 | reference execution | OK (1031 rows) |
 | results identical | NO |
 
 ## Result comparison
 
-v4 rows: 1064 (1031 distinct)
+v4 rows: 69685 (1031 distinct)
 ref rows: 1031 (1031 distinct)
-only in v4 (showing up to 5 of 33):
-  1x  ('exportiamalg #2', 1003002, Decimal('17042.54'), 18, 35)
-  1x  ('edu packimporto #2', 2004002, Decimal('15247.20'), 19, 14)
-  1x  ('scholarcorp #1', 6005001, Decimal('12361.32'), 6, 58)
-  1x  ('amalgimporto #2', 2001002, Decimal('8910.82'), 17, 12)
-  1x  ('edu packimporto #2', 2004002, Decimal('7897.08'), 9, 3)
+only in v4 (showing up to 5 of 1031):
+  215x  ('exportischolar #1', 5003001, None, 9, 3)
+  23x  ('edu packnameless #9', 8004009, None, 8, 59)
+  35x  ('amalgmaxi #9', 8011009, None, 19, 15)
+  17x  ('corpunivamalg #3', 9016003, None, 8, 42)
+  5x  ('namelesscorp #5', 6008005, Decimal('20597.76'), 17, 47)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4885 | 91 | 50.19 ms |
-| reference | 3459 | 60 | 48.27 ms |
-| v4 / ref | 1.41x | 1.52x | 1.04x |
+| v4 | 4940 | 96 | 960.25 ms |
+| reference | 3459 | 60 | 82.79 ms |
+| v4 / ref | 1.43x | 1.60x | 11.60x |
 
 ## Preql
 
@@ -106,7 +106,7 @@ FROM
     "cheerful"
     INNER JOIN "memory"."item" as "sales_item_items" on "cheerful"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
     LEFT OUTER JOIN "memory"."time_dim" as "sales_time_time" on "cheerful"."sales_time_id" = "sales_time_time"."T_TIME_SK"),
-yummy as (
+juicy as (
 SELECT
     "abundant"."sales_item_brand_id" as "sales_item_brand_id",
     "abundant"."sales_item_brand_name" as "sales_item_brand_name",
@@ -120,32 +120,37 @@ GROUP BY
     2,
     3,
     4),
-uneven as (
+yummy as (
 SELECT
-    "abundant"."sales_item_brand_id" as "brand_id",
-    "abundant"."sales_item_brand_id" as "sales_item_brand_id",
-    "abundant"."sales_item_brand_name" as "brand",
-    "abundant"."sales_item_brand_name" as "sales_item_brand_name",
     "abundant"."sales_time_hour" as "sales_time_hour",
     "abundant"."sales_time_hour" as "t_hour",
     "abundant"."sales_time_minute" as "sales_time_minute",
     "abundant"."sales_time_minute" as "t_minute"
 FROM
+    "abundant"),
+uneven as (
+SELECT
+    "abundant"."sales_item_brand_id" as "brand_id",
+    "abundant"."sales_item_brand_id" as "sales_item_brand_id",
+    "abundant"."sales_item_brand_name" as "brand",
+    "abundant"."sales_item_brand_name" as "sales_item_brand_name"
+FROM
     "abundant")
 SELECT
     "uneven"."brand_id" as "brand_id",
     "uneven"."brand" as "brand",
-    "uneven"."t_hour" as "t_hour",
-    "uneven"."t_minute" as "t_minute",
-    "yummy"."ext_price" as "ext_price"
+    "yummy"."t_hour" as "t_hour",
+    "yummy"."t_minute" as "t_minute",
+    "juicy"."ext_price" as "ext_price"
 FROM
-    "yummy"
-    LEFT OUTER JOIN "uneven" on "yummy"."sales_item_brand_id" = "uneven"."sales_item_brand_id" AND "yummy"."sales_item_brand_name" = "uneven"."sales_item_brand_name" AND "yummy"."sales_time_hour" = "uneven"."sales_time_hour" AND "yummy"."sales_time_minute" = "uneven"."sales_time_minute"
+    "juicy"
+    LEFT OUTER JOIN "yummy" on "juicy"."sales_time_hour" = "yummy"."sales_time_hour" AND "juicy"."sales_time_minute" = "yummy"."sales_time_minute"
+    INNER JOIN "uneven" on "juicy"."sales_item_brand_id" = "uneven"."sales_item_brand_id" AND "juicy"."sales_item_brand_name" = "uneven"."sales_item_brand_name"
 ORDER BY 
-    "yummy"."ext_price" desc nulls first,
+    "juicy"."ext_price" desc nulls first,
     "uneven"."brand_id" asc nulls first,
-    "uneven"."t_hour" asc nulls first,
-    "uneven"."t_minute" asc nulls first
+    "yummy"."t_hour" asc nulls first,
+    "yummy"."t_minute" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

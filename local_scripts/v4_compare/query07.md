@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1617 | 20 | 50.19 ms |
-| reference | 1617 | 20 | 46.73 ms |
-| v4 / ref | 1.00x | 1.00x | 1.07x |
+| v4 | 1617 | 20 | 54.50 ms |
+| reference | 1617 | 20 | 59.04 ms |
+| v4 / ref | 1.00x | 1.00x | 0.92x |
 
 ## Preql
 
@@ -52,9 +52,9 @@ limit 100
 
 ```sql
 SELECT
-    avg("store_sales_store_sales"."SS_QUANTITY") as "avg_quantity",
-    avg("store_sales_store_sales"."SS_LIST_PRICE") as "avg_list_price",
     avg("store_sales_store_sales"."SS_COUPON_AMT") as "avg_coupon_amt",
+    avg("store_sales_store_sales"."SS_LIST_PRICE") as "avg_list_price",
+    avg("store_sales_store_sales"."SS_QUANTITY") as "avg_quantity",
     avg("store_sales_store_sales"."SS_SALES_PRICE") as "avg_sales_price",
     "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_name"
 FROM

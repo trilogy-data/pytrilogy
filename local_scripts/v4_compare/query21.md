@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1893 | 47 | 43.45 ms |
-| reference | 1510 | 32 | 17.94 ms |
-| v4 / ref | 1.25x | 1.47x | 2.42x |
+| v4 | 1847 | 46 | 37.99 ms |
+| reference | 1510 | 32 | 17.18 ms |
+| v4 / ref | 1.22x | 1.44x | 2.21x |
 
 ## Preql
 
@@ -80,8 +80,7 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    "inventory_item_items"."I_CURRENT_PRICE")
+    4)
 SELECT
     "thoughtful"."inventory_warehouse_name" as "inventory_warehouse_name",
     "thoughtful"."inventory_item_name" as "inventory_item_name",

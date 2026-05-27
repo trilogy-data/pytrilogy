@@ -54,7 +54,7 @@ def _search_concepts(
     accept_partial: bool = False,
 ) -> BuildInfo:
     concept_graph = build_concept_graph(mandatory_list, environment, conditions)
-    group_graph = build_group_graph(concept_graph, conditions)
+    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
     strategy_node = build_strategy_node(
         group_graph, mandatory_list, environment, g, history
     )

@@ -1,10 +1,11 @@
 # Query 11
 
-**Status:** `gen_fail`
+**Status:** `exec_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | FAILED |
 | reference execution | OK (90 rows) |
 
 ## Result comparison
@@ -15,8 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 5077 | 97 | 161.68 ms |
+| v4 | 2700 | 51 | — |
+| reference | 5077 | 97 | 126.52 ms |
+| v4 / ref | 0.53x | 0.53x | — |
 
 ## Preql
 
@@ -77,7 +79,59 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+cheerful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
+    "sales_catalog_sales_unified"."CS_EXT_LIST_PRICE" as "sales_ext_list_price",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_store_sales_unified"."SS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
+    "sales_store_sales_unified"."SS_EXT_LIST_PRICE" as "sales_ext_list_price",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+     'STORE'  as "sales_sales_channel"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_web_sales_unified"."WS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
+    "sales_web_sales_unified"."WS_EXT_LIST_PRICE" as "sales_ext_list_price",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+     'WEB'  as "sales_sales_channel"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified")
+SELECT
+    "cheerful"."sales_customer_id" as "sales_customer_id",
+    "sales_date_date"."D_YEAR" as "sales_date_year",
+    "cheerful"."sales_ext_discount_amount" as "sales_ext_discount_amount",
+    "cheerful"."sales_ext_list_price" as "sales_ext_list_price",
+    "cheerful"."sales_item_id" as "sales_item_id",
+    "cheerful"."sales_order_id" as "sales_order_id",
+    "cheerful"."sales_sales_channel" as "sales_sales_channel"
+FROM
+    "cheerful"
+    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+ORDER BY 
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.text_id> asc nulls first,
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.first_name> asc nulls first,
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.last_name> asc nulls first,
+    INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.preferred_cust_flag> asc nulls first
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -181,32 +235,26 @@ ORDER BY
 LIMIT (100)
 ```
 
-## v4 generation error
+## v4 execution error
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(
+                                             ~~~~~^
+        lambda: execute(con, v4_sql)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 422, in build_group_graph
-    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 331, in _inject_conditions
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: Could not place condition atom local.store_first_year > 0: row inputs ['local.store_first_year'] not reachable from any group.
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
+    lambda: execute(con, v4_sql)
+            ~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
+    cursor = con.execute(sql)
+_duckdb.ParserException: Parser Error: syntax error at or near "source"
+
+LINE 47:     INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.text_id> asc nulls first...
+                                            ^
 ```

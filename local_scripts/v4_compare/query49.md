@@ -1,38 +1,26 @@
 # Query 49
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (34 rows) |
 | reference execution | OK (34 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 34 (34 distinct)
 ref rows: 34 (34 distinct)
-only in v4 (showing up to 5 of 22):
-  1x  ('catalog', 1, 5721, 1, 0.81)
-  1x  ('catalog', 1, 15179, 1, 0.6)
-  1x  ('catalog', 2, 103, 2, 0.6129032258064516)
-  1x  ('catalog', 2, 14487, 2, 0.8369565217391305)
-  1x  ('catalog', 3, 31, 3, 0.8607594936708861)
-only in ref (showing up to 5 of 22):
-  1x  ('store', 1, 5721, 1, 0.81)
-  1x  ('store', 2, 14487, 2, 0.8369565217391305)
-  1x  ('store', 3, 31, 3, 0.8607594936708861)
-  1x  ('store', 4, 5283, 4, 0.8829787234042553)
-  1x  ('store', 5, 9191, 5, 0.9111111111111111)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6651 | 143 | 41.05 ms |
-| reference | 5430 | 119 | 36.88 ms |
-| v4 / ref | 1.22x | 1.20x | 1.11x |
+| v4 | 5526 | 115 | 29.56 ms |
+| reference | 5430 | 119 | 33.54 ms |
+| v4 / ref | 1.02x | 0.97x | 0.88x |
 
 ## Preql
 
@@ -156,78 +144,50 @@ WHERE
 yummy as (
 SELECT
     "abundant"."sales_item_id" as "sales_item_id",
-    "abundant"."sales_net_paid" as "sales_net_paid",
-    "abundant"."sales_quantity" as "sales_quantity",
     "abundant"."sales_sales_channel" as "sales_sales_channel",
-    "cheerful"."sales_return_amount" as "sales_return_amount",
-    "cheerful"."sales_return_quantity" as "sales_return_quantity"
+    sum("abundant"."sales_net_paid") as "sale_paid",
+    sum("abundant"."sales_quantity") as "sale_qty",
+    sum("cheerful"."sales_return_amount") as "return_amt",
+    sum("cheerful"."sales_return_quantity") as "return_qty"
 FROM
     "abundant"
     INNER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_return_amount" > 10000
-),
-juicy as (
-SELECT
-    "yummy"."sales_item_id" as "sales_item_id",
-    "yummy"."sales_sales_channel" as "sales_sales_channel",
-    sum("yummy"."sales_net_paid") as "sale_paid",
-    sum("yummy"."sales_quantity") as "sale_qty",
-    sum("yummy"."sales_return_amount") as "return_amt",
-    sum("yummy"."sales_return_quantity") as "return_qty"
-FROM
-    "yummy"
+
 GROUP BY
     1,
     2),
 vacuous as (
 SELECT
-    cast("juicy"."return_amt" as numeric(15,4)) / cast("juicy"."sale_paid" as numeric(15,4)) as "currency_ratio",
-    cast("juicy"."return_qty" as numeric(15,4)) / cast("juicy"."sale_qty" as numeric(15,4)) as "return_ratio",
-    coalesce("juicy"."sales_item_id","yummy"."sales_item_id") as "item",
-    coalesce("juicy"."sales_item_id","yummy"."sales_item_id") as "sales_item_id",
-    coalesce("juicy"."sales_sales_channel","yummy"."sales_sales_channel") as "sales_sales_channel"
+    "yummy"."sales_item_id" as "item",
+    "yummy"."sales_sales_channel" as "sales_sales_channel",
+    cast("yummy"."return_qty" as numeric(15,4)) / cast("yummy"."sale_qty" as numeric(15,4)) as "return_ratio",
+    rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_amt" as numeric(15,4)) / cast("yummy"."sale_paid" as numeric(15,4)) asc ) as "currency_rank",
+    rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_qty" as numeric(15,4)) / cast("yummy"."sale_qty" as numeric(15,4)) asc ) as "return_rank"
 FROM
-    "juicy"
-    FULL JOIN "yummy" on "juicy"."sales_item_id" = "yummy"."sales_item_id" AND "juicy"."sales_sales_channel" = "yummy"."sales_sales_channel"),
-young as (
-SELECT
-    "vacuous"."sales_item_id" as "sales_item_id",
-    "vacuous"."sales_sales_channel" as "sales_sales_channel",
-    rank() over (partition by "vacuous"."sales_sales_channel" order by "vacuous"."currency_ratio" asc ) as "currency_rank",
-    rank() over (partition by "vacuous"."sales_sales_channel" order by "vacuous"."return_ratio" asc ) as "return_rank"
-FROM
-    "vacuous"),
-sparkling as (
-SELECT
-    "vacuous"."item" as "item",
-    "vacuous"."return_ratio" as "return_ratio",
-    "young"."currency_rank" as "currency_rank",
-    "young"."return_rank" as "return_rank"
-FROM
-    "young"
-    LEFT OUTER JOIN "vacuous" on "young"."sales_item_id" = "vacuous"."sales_item_id" AND "young"."sales_sales_channel" = "vacuous"."sales_sales_channel"
-WHERE
-    "young"."return_rank" <= 10 or "young"."currency_rank" <= 10
-)
+    "yummy")
 SELECT
     CASE
-	WHEN  'CATALOG'  = 'WEB' THEN 'web'
-	WHEN  'CATALOG'  = 'CATALOG' THEN 'catalog'
-	WHEN  'CATALOG'  = 'STORE' THEN 'store'
+	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN 'web'
+	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
+	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN 'store'
 	ELSE null
 	END as "channel",
-    "sparkling"."item" as "item",
-    "sparkling"."return_ratio" as "return_ratio",
-    "sparkling"."return_rank" as "return_rank",
-    "sparkling"."currency_rank" as "currency_rank"
+    "vacuous"."item" as "item",
+    "vacuous"."return_ratio" as "return_ratio",
+    "vacuous"."return_rank" as "return_rank",
+    "vacuous"."currency_rank" as "currency_rank"
 FROM
-    "sparkling"
+    "vacuous"
+WHERE
+    "vacuous"."return_rank" <= 10 or "vacuous"."currency_rank" <= 10
+
 ORDER BY 
     "channel" asc nulls first,
-    "sparkling"."return_rank" asc nulls first,
-    "sparkling"."currency_rank" asc nulls first,
-    "sparkling"."item" asc nulls first
+    "vacuous"."return_rank" asc nulls first,
+    "vacuous"."currency_rank" asc nulls first,
+    "vacuous"."item" asc nulls first
 LIMIT (100)
 ```
 
