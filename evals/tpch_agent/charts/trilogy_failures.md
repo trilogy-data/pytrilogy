@@ -1,45 +1,20 @@
-# Trilogy failure analysis — 20260526-130241
+# Trilogy failure analysis — 20260527-025802
 
-- Run `20260526-130241` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.01
-- `trilogy` calls: 241 | failed: 25 (10%)
+- Run `20260527-025802` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.01
+- `trilogy` calls: 8 | failed: 2 (25%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 7 | 28% |
-| `file-not-found` | 7 | 28% |
-| `syntax-parse` | 4 | 16% |
-| `undefined-concept` | 2 | 8% |
-| `join-resolution` | 2 | 8% |
-| `cli-misuse` | 2 | 8% |
-| `syntax-missing-alias` | 1 | 4% |
+| `other` | 1 | 50% |
+| `join-resolution` | 1 | 50% |
 
 ## Detail
 
 ### `other`
 
-- `trilogy run query02.preql`
-
-  ```text
-  Unable to import '.\partsupp.preql': [Errno 2] No such file
-  or directory: '.\\partsupp.preql'. Did you mean: raw.partsupp?
-  ```
-- `trilogy run query02.preql`
-
-  ```text
-  HAVING references 'partsupp.supplycost', which is not in the
-  SELECT projection (line 4). Fix one of: (a) add it to SELECT — prefix with `--`
-  to keep it out of the output rows, e.g. `select ..., --partsupp.supplycost`;
-  (b) move the filter to WHERE — for an aggregate condition on a non-output
-  grain, write the aggregate inline as `agg(x) by grain` directly in WHERE.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 55 (char 54). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run query18.preql`
+- `trilogy run query13.preql`
 
   ```text
   Unable to import '.\orders.preql': [Errno 2] No such file or
@@ -195,49 +170,11 @@
 
 ### `join-resolution`
 
-- `trilogy run query09.preql`
+- `trilogy run query13.preql`
 
   ```text
   Could not resolve connections for query with output
-  ['local.nation<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.o_year<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.profit<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy run --import raw/part:part --import raw/lineitem:lineitem select part.brand, part.container, part.size, lineitem.quantity, lineitem.shipmode, lineitem.shipinstruct, lineitem.extendedprice, lineitem.discount, lineitem.linenumber limit 1;`
-
-  ```text
-  Could not resolve connections for query with output
-  ['part.brand<Purpose.PROPERTY>Derivation.ROOT>',
-  'part.container<Purpose.PROPERTY>Derivation.ROOT>',
-  'part.size<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.quantity<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.shipmode<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.shipinstruct<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.extendedprice<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.discount<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.linenumber<Purpose.KEY>Derivation.ROOT>'] from current model.
-  ```
-
-### `cli-misuse`
-
-- `trilogy datexplore raw/partsupp.preql`
-
-  ```text
-  No such command 'datexplore'.
-  ```
-- `trilogy run --import raw/lineitem:lineitem where lineitem.part.brand = 'Brand#12' and lineitem.part.container in ('SM CASE','SM BOX','SM PACK','SM PKG') and …hipmode in ('AIR','AIR REG') and lineitem.shipinstruct = 'DELIVER IN PERSON' select sum(lineitem.extendedprice * (1 - lineitem.discount)) as revenue;`
-
-  ```text
-  'select sum(lineitem.extendedprice * (1 - lineitem.discount)) as revenue;' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
-  ```
-
-### `syntax-missing-alias`
-
-- `trilogy run --import raw/lineitem:lineitem select lineitem.part.brand, lineitem.part.container, count(lineitem.linenumber) limit 10;`
-
-  ```text
-  Syntax [201]: Missing alias? Alias must be specified with
-  "AS" - e.g. `SELECT x+1 AS y`
-  Location:
-  ...r, count(lineitem.linenumber) ??? limit 10;
+  ['local.order_count<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current
+  model.
   ```

@@ -6,6 +6,7 @@ ERROR_CODES: dict[int, str] = {
     101: "Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).",
     201: 'Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y`',
     202: "Missing closing semicolon? Statements must be terminated with a semicolon `;`.",
+    203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
     210: "Missing order direction? Order by must be explicit about direction - specify `asc` or `desc`.",
     211: "Expression in `by` clause must be wrapped in parens — write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.",
 }

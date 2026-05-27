@@ -272,7 +272,33 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     if _pest_parses(text[:pos] + "as trilogy_alias_probe;"):
         return create_syntax_error(201, pos, text)
 
+    # 203: derivation keyword + name but no `<- expression`. Pest reports
+    # the EOF/next-token position; probe with `<- 1;` inserted to confirm.
+    if _derivation_missing_arrow(text, pos):
+        return create_syntax_error(203, pos, text)
+
     return create_generic_syntax_error(raw_error, pos, text)
+
+
+_DERIVATION_HEAD_RE = re.compile(
+    r"\b(auto|metric|property|rowset)\s+[A-Za-z_][\w.]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def _derivation_missing_arrow(text: str, pos: int) -> bool:
+    """Pest reports the error column slightly before the missing arrow's
+    position (often at the identifier or its trailing space), so scan the
+    line up to and PAST pos to find a `<keyword> <name>` head, then probe."""
+    line_end = text.find("\n", pos)
+    if line_end == -1:
+        line_end = len(text)
+    match = _DERIVATION_HEAD_RE.search(text[:line_end])
+    if not match:
+        return False
+    # rowset/with take a select; the others take an expression.
+    rhs = " <- select 1 as one;\n" if match.group(1).lower() == "rowset" else " <- 1;\n"
+    return _pest_parses(text[:line_end] + rhs + text[line_end:])
 
 
 def parse_pest(text: str) -> SyntaxDocument:
