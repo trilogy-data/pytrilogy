@@ -453,7 +453,11 @@ aggregate_rollup = { ^"rollup" ~ (("(" ~ ")") | over_list) }
 aggregate_cube = { ^"cube" ~ over_list }
 grouping_set = { "(" ~ expr_over_list? ~ ")" }
 aggregate_grouping_sets = { ^"grouping" ~ ^"sets" ~ grouping_set ~ ("," ~ grouping_set)* }
-aggregate_over = { ^"by" ~ (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | over_list) }
+// Paren-wrapped expression list: `by (substring(x,1,2), other)`. Parens supply
+// the unambiguous boundary needed for arbitrary expressions; the build phase
+// materializes non-concept entries via instantiate_concept.
+aggregate_paren_by = { "(" ~ expr_over_list ~ ")" }
+aggregate_over = { ^"by" ~ (aggregate_all | aggregate_grouping_sets | aggregate_rollup | aggregate_cube | aggregate_paren_by | over_list) }
 
 // Mirrors lark's single-token regex: /(group)\s+([a-zA-Z_][a-zA-Z0-9_.]*)/i
 // Emits "group <identname>" as a single string so the hydrator's

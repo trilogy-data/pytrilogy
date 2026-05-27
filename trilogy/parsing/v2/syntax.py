@@ -81,6 +81,7 @@ class SyntaxNodeKind(str, Enum):
     AGGREGATE_GROUPING_SETS = "aggregate_grouping_sets"
     GROUPING_SET = "grouping_set"
     AGGREGATE_BY = "aggregate_by"
+    AGGREGATE_PAREN_BY = "aggregate_paren_by"
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"
     GROUPING = "grouping"
@@ -405,6 +406,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "aggregate_grouping_sets": SyntaxNodeKind.AGGREGATE_GROUPING_SETS,
     "grouping_set": SyntaxNodeKind.GROUPING_SET,
     "aggregate_by": SyntaxNodeKind.AGGREGATE_BY,
+    "aggregate_paren_by": SyntaxNodeKind.AGGREGATE_PAREN_BY,
     "count": SyntaxNodeKind.COUNT,
     "count_distinct": SyntaxNodeKind.COUNT_DISTINCT,
     "grouping": SyntaxNodeKind.GROUPING,

@@ -12,6 +12,9 @@ Trilogy is a semantic ETL and reporting tool providing a SQL-like language with
 optimizations. This CLI enables workspace management, script execution, testing,
 and data ingestion.
 
+Defaults are managed by a trilogy.toml config file; convention
+will be to manage connection info there. CLI flags available for exceptions.
+
 ## Quick Start
 
 ```bash
@@ -88,34 +91,61 @@ trilogy run jobs/ duckdb -p 4
 trilogy run report.preql duckdb --param date=2024-01-01 --param region=US
 
 # Inline query against a file's concepts — `:alias` namespaces them as alias.*
-trilogy run --import flight.preql:flight "select flight.carrier, count(flight.id);" duckdb
+trilogy run --import flight.preql:flight "select flight.carrier, count(flight.id);" 
+
+# Read the query from stdin (use `-` as input)
+echo "select item.id limit 5;" | trilogy run --import raw/item:item - 
 ```
 
 ---
 
 ### trilogy explore <path>
 
-Parse a `.preql` file and print the concepts, datasources, and imports
-available from its environment. Useful for agents and humans to discover
-what's queryable before writing a `trilogy run --import <path> "..."` query.
-No dialect or connection needed.
+The canonical schema-discovery tool. Parses a `.preql` file and prints every
+concept (with purpose + datatype), every datasource, and every import that the
+file's environment exposes. No dialect or connection needed.
+
+**Imports chain in** — exploring a fact file lists the dimensions it imports
+in the same output. After `import raw.store_sales as store_sales;` the
+explore output for `raw/store_sales.preql` ALSO contains every concept under
+`store_sales.customer.*`, `store_sales.date_dim.*`, `store_sales.item.*`, etc.
+You do NOT need to call `explore` separately on each dimension file — one call
+on the fact file shows the full queryable surface.
+
+**Trilogy auto-resolves joins.** Trilogy automatically resolves
+joins from the model's declared key/property relationships — there is no
+manual `JOIN` clause in this language. If `store_sales.date_dim.year` shows
+up in explore, you write `select store_sales.date_dim.year, ...;` and the
+engine does the join planning. When using an existing model, you can 
+typically query all fields safely.
+
+Prefer this over `read_file` on a model file: the same content arrives as a
+structured listing, smaller and easier to scan. Default `--show groups`
+collapses concepts by namespace so a 300+ concept fact collapses to ~25 group
+lines. Datatype is rendered using the `value::trait` authoring syntax
+(`string::us_state`, `enum<'TN'>::us_state`) so what you see is what you
+write.
 
 **Arguments:**
 - `path` (required): Path to a `.preql` file.
 
 **Options:**
-- `--show {all|concepts|datasources|imports}`: Limit output to one section.
+- `--show {groups|concepts|datasources|imports|all}`: Section to print
+  (default: `groups` — concepts collapsed by namespace prefix). `concepts`
+  gives the flat table; `all` adds datasources + imports.
 - `--purpose NAME`: Filter concepts by purpose (`key`, `property`, `metric`,
-  `constant`, `rowset`).
+  `constant`, `rowset`). Repeatable: `--purpose key --purpose property`.
 - `--grep TEXT`: Case-insensitive substring filter over concept addresses.
+  Repeatable: `--grep customer --grep date` matches concepts containing
+  either needle.
 - `--include-hidden`: Include concepts normally hidden from public view.
 - `--include-builtins`: Include internal/builtin concepts (hidden by default).
 
 **Examples:**
 ```bash
-trilogy explore flight.preql
-trilogy explore flight.preql --show concepts --purpose metric
-trilogy explore flight.preql --grep carrier
+trilogy explore raw/store_sales.preql                    # full schema, grouped
+trilogy explore raw/store_sales.preql --grep customer --grep date
+trilogy explore raw/store_sales.preql --show concepts --purpose key --purpose property
 ```
 
 ---

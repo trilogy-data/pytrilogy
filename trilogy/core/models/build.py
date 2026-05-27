@@ -137,6 +137,15 @@ def _gen_comp_name(parent: "BuildComparison") -> str:
     return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
+def _constant_bool_comparison(value: bool) -> "BuildComparison":
+    # WHERE/HAVING that constant-folds to a bool needs to round-trip through
+    # the BoolExpr pipeline. `1=1` / `1=0` renders portably and has no
+    # row_arguments, so downstream optimizers see a no-op condition.
+    return BuildComparison(
+        left=1, right=1 if value else 0, operator=ComparisonOperator.EQ
+    )
+
+
 def _gen_msl_name(parent: "BuildMultiSelectLineage") -> str:
     return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(str(parent))}"
 
@@ -2588,9 +2597,10 @@ class Factory:
                 for c in self.grain.component_order
             ]
         else:
-            by = [self.build(x) for x in base.by]
+            by = self._build_over_items(list(base.by))
         grouping_sets = [
-            [self.build(x) for x in grouping_set] for grouping_set in base.grouping_sets
+            self._build_over_items(list(grouping_set))
+            for grouping_set in base.grouping_sets
         ]
         if base.grouping == AggregateGroupingMode.STANDARD:
             by = sorted(by, key=lambda x: x.address)
@@ -2683,11 +2693,7 @@ class Factory:
 
         conditional = self.build(base.conditional)
         if isinstance(conditional, bool):
-            return BuildWhereClause(
-                conditional=BuildComparison(
-                    left=conditional, right=conditional, operator=ComparisonOperator.IS
-                )
-            )
+            return BuildWhereClause(conditional=_constant_bool_comparison(conditional))
         if isinstance(
             conditional,
             BoolExpr,
@@ -2700,7 +2706,10 @@ class Factory:
         return self._build_having_clause(base)
 
     def _build_having_clause(self, base: HavingClause) -> BuildHavingClause:
-        return BuildHavingClause(conditional=self.build(base.conditional))
+        conditional = self.build(base.conditional)
+        if isinstance(conditional, bool):
+            return BuildHavingClause(conditional=_constant_bool_comparison(conditional))
+        return BuildHavingClause(conditional=conditional)
 
     @_build_dispatch.register
     def _(self, base: NumberingWindowItem) -> BuildNumberingWindowItem:

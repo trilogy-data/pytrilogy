@@ -49,14 +49,24 @@ def _make_console() -> "Console | None":
     return Console(file=safe_file) if safe_file is not None else Console()
 
 
+def _make_error_console() -> "Console | None":
+    """Rich console pointed at stderr — used by print_error / print_warning so
+    error text doesn't pollute stdout (which gets parsed by tool callers)."""
+    from rich.console import Console
+
+    return Console(stderr=True)
+
+
 try:
     from rich.console import Console
 
     RICH_AVAILABLE = True
     console: Optional[Console] = _make_console()
+    error_console: Optional[Console] = _make_error_console()
 except ImportError:
     RICH_AVAILABLE = False
     console = None
+    error_console = None
 
 FETCH_LIMIT = 51
 
@@ -101,18 +111,21 @@ class SetRichMode:
         return prior
 
     def _set_mode(self, enabled: bool) -> None:
-        global RICH_AVAILABLE, console
+        global RICH_AVAILABLE, console, error_console
 
         if enabled:
             try:
                 RICH_AVAILABLE = True
                 console = _make_console()
+                error_console = _make_error_console()
             except ImportError:
                 RICH_AVAILABLE = False
                 console = None
+                error_console = None
         else:
             RICH_AVAILABLE = False
             console = None
+            error_console = None
 
 
 class RichModeContext:
@@ -122,20 +135,23 @@ class RichModeContext:
         self.enabled = enabled
         self.old_rich_available = current
         self.old_console: Optional["Console"] = None
+        self.old_error_console: Optional["Console"] = None
 
     def __enter__(self) -> "RichModeContext":
-        global RICH_AVAILABLE, console
+        global RICH_AVAILABLE, console, error_console
 
         self.old_console = console
+        self.old_error_console = error_console
         # The mode was already set by __call__, so we're good
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        global RICH_AVAILABLE, console
+        global RICH_AVAILABLE, console, error_console
 
         # Restore previous state
         RICH_AVAILABLE = self.old_rich_available
         console = self.old_console
+        error_console = self.old_error_console
 
 
 set_rich_mode = SetRichMode()
@@ -146,18 +162,28 @@ def is_rich_available() -> bool:
     return RICH_AVAILABLE
 
 
-def _print_styled(message: str, rich_style: str, click_fg: str) -> None:
+def _print_styled(
+    message: str, rich_style: str, click_fg: str, err: bool = False
+) -> None:
+    """``err=True`` routes the message to stderr — used by print_error /
+    print_warning so tool-result consumers (agent subprocess capture, shell
+    pipelines, CI logs) can distinguish failure text from regular output. Rich
+    routes via a stderr Console; click ``echo`` accepts ``err=True`` directly."""
     try:
         if RICH_AVAILABLE and console is not None:
-            console.print(message, style=rich_style)
+            # err path uses error_console (stderr); the test fixture that
+            # toggles RICH_AVAILABLE on without rebuilding consoles can land
+            # error_console=None — fall back to the stdout console there.
+            target = error_console if (err and error_console is not None) else console
+            target.print(message, style=rich_style)
         else:
-            echo(style(message, fg=click_fg, bold=True))
+            echo(style(message, fg=click_fg, bold=True), err=err)
     except UnicodeEncodeError:
         # Belt-and-suspenders: if a stream still can't encode the message,
         # fall back to ASCII so an unencodable char in an error message
         # (e.g. '→' on cp1252) never masks the original error.
         safe = message.encode("ascii", "replace").decode("ascii")
-        echo(safe)
+        echo(safe, err=err)
 
 
 def print_success(message: str) -> None:
@@ -169,11 +195,11 @@ def print_info(message: str) -> None:
 
 
 def print_warning(message: str) -> None:
-    _print_styled(message, STYLE_WARNING, "yellow")
+    _print_styled(message, STYLE_WARNING, "yellow", err=True)
 
 
 def print_error(message: str) -> None:
-    _print_styled(message, STYLE_ERROR, "red")
+    _print_styled(message, STYLE_ERROR, "red", err=True)
 
 
 def print_header(message: str) -> None:

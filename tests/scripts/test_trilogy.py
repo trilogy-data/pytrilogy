@@ -285,9 +285,8 @@ def test_snowflake():
             "myaccount",
         ],
     )
-    assert (
-        "Missing required Snowflake connection parameters:" not in results.stdout
-    ), results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required Snowflake connection parameters:" not in combined, combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -298,9 +297,8 @@ def test_snowflake():
             "snowflake",
         ],
     )
-    assert (
-        "Missing required Snowflake connection parameters:" in results.stdout
-    ), results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required Snowflake connection parameters:" in combined, combined
 
 
 def test_sql_server():
@@ -324,7 +322,8 @@ def test_sql_server():
             "mydatabase",
         ],
     )
-    assert "Missing required SQL Server" not in results.stdout, results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required SQL Server" not in combined, combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -335,7 +334,8 @@ def test_sql_server():
             "sql_server",
         ],
     )
-    assert "Missing required SQL Server" in results.stdout, results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required SQL Server" in combined, combined
 
 
 def test_postgres():
@@ -359,9 +359,8 @@ def test_postgres():
             "mydatabase",
         ],
     )
-    assert (
-        "Missing required Postgres connection parameters:" not in results.stdout
-    ), results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required Postgres connection parameters:" not in combined, combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -372,9 +371,8 @@ def test_postgres():
             "postgres",
         ],
     )
-    assert (
-        "Missing required Postgres connection parameters:" in results.stdout
-    ), results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required Postgres connection parameters:" in combined, combined
 
 
 def test_presto():
@@ -398,9 +396,8 @@ def test_presto():
             "mycatalog",
         ],
     )
-    assert (
-        "Missing required Presto connection parameters:" not in results.stdout
-    ), results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required Presto connection parameters:" not in combined, combined
 
     # Test missing required parameters
     results = runner.invoke(
@@ -411,9 +408,8 @@ def test_presto():
             "presto",
         ],
     )
-    assert (
-        "Missing required Presto connection parameters:" in results.stdout
-    ), results.stdout
+    combined = results.stdout + results.stderr
+    assert "Missing required Presto connection parameters:" in combined, combined
 
 
 def test_duck_db():
@@ -534,11 +530,12 @@ def test_engine_missing_single_parameter(dialect, required_params, test_params):
         results = runner.invoke(cli, args)
 
         # Should fail with missing parameter error
+        combined = results.stdout + results.stderr
         assert (
-            "Missing required" in results.stdout
-        ), f"Expected missing {missing_param} error for {dialect}, got: {results.stdout}"
+            "Missing required" in combined
+        ), f"Expected missing {missing_param} error for {dialect}, got: {combined}"
         assert (
-            missing_param in results.stdout
+            missing_param in combined
         ), f"Missing parameter {missing_param} should be mentioned in error for {dialect}"
 
 
@@ -884,19 +881,24 @@ def test_debug_flag_before_subcommand(cmd, args):
 
 
 @pytest.mark.parametrize("cmd", ["refresh", "run"])
-def test_flag_after_subcommand_gives_helpful_error(cmd):
-    """Placing --debug after the subcommand should give a clear error, not a cryptic ValueError."""
+def test_flag_after_subcommand_is_hoisted(cmd):
+    """``trilogy run --debug ...`` reads as naturally as ``trilogy --debug run ...``
+    — the group-level ``--debug`` is hoisted by ``LazyGroup.parse_args``."""
     runner = CliRunner()
     result = runner.invoke(cli, [cmd, "select 1-> test;", "--debug"])
-    assert "looks like a flag" in result.output, result.output
-    assert "must come before the subcommand" in result.output, result.output
+    assert "Debug mode enabled" in result.output, result.output
     assert "is not a valid Dialects" not in result.output, result.output
+    assert "looks like a flag" not in result.output, result.output
 
 
 @pytest.mark.parametrize("cmd", ["refresh", "run"])
-def test_debug_before_file_path_gives_helpful_error(cmd):
-    """`trilogy run --debug raw/foo.preql` puts the path in the dialect slot; emit a clear hint."""
+def test_debug_before_file_path_resolves_cleanly(cmd):
+    """``trilogy <cmd> --debug raw/foo.preql`` no longer collides with the
+    dialect slot — ``--debug`` is consumed by the group and the missing path
+    surfaces a clean "does not exist" message instead of the legacy "looks
+    like a file path" hint."""
     runner = CliRunner()
     result = runner.invoke(cli, [cmd, "--debug", "raw/inventory.preql"])
-    assert "looks like a file path" in result.output, result.output
+    assert "Debug mode enabled" in result.output, result.output
+    assert "does not exist" in result.output, result.output
     assert "is not a valid Dialects" not in result.output, result.output

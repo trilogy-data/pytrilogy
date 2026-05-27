@@ -1,7 +1,9 @@
 """Run command for Trilogy CLI."""
 
+import sys
 from pathlib import Path as PathlibPath
 
+import click
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
@@ -26,7 +28,13 @@ def execute_script_for_run(
 
 
 def _looks_like_missing_path(value: str) -> bool:
-    """True if ``value`` looks like a file path (extension or separator)."""
+    """True if ``value`` looks like a file path (extension or separator).
+
+    Inline SQL legitimately contains ``/`` (division) and ``\\`` (rare escape),
+    so any whitespace or statement terminator means we treat it as inline.
+    """
+    if any(c.isspace() for c in value) or ";" in value:
+        return False
     return (
         value.endswith(".preql")
         or value.endswith(".sql")
@@ -98,6 +106,22 @@ def _format_import(value: str) -> str:
         "file-based 'import ... as ...'. Repeatable."
     ),
 )
+@option(
+    "--rows",
+    type=int,
+    default=10,
+    show_default=True,
+    help=(
+        "Cap on result rows displayed per statement. The query still runs in "
+        "full — this caps the dump only. Use `--all-rows` to disable the cap."
+    ),
+)
+@option(
+    "--all-rows",
+    is_flag=True,
+    default=False,
+    help="Show every result row, overriding --rows. Useful for piping.",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def run(
@@ -109,12 +133,23 @@ def run(
     config,
     env,
     imports: tuple[str, ...],
+    rows: int,
+    all_rows: bool,
     conn_args,
 ):
     """Execute a Trilogy script or query."""
     validate_dialect(dialect, "run")
 
-    is_inline = not PathlibPath(input).exists()
+    # `-` reads the query body from stdin (the conventional CLI sentinel).
+    # Empty stdin is allowed — combined with `--import`, this lets a caller
+    # validate that the imports parse without running any query body.
+    if input == "-":
+        input = sys.stdin.read()
+
+    # Empty input (from `-` with empty stdin) is always inline — without this
+    # guard, Path("").exists() returns True on most platforms (it resolves to
+    # the cwd), causing the --import check below to reject the call.
+    is_inline = not input or not PathlibPath(input).exists()
     # If the input clearly looks like a file path (.preql/.sql extension or
     # contains a path separator) but does not exist, fail explicitly instead of
     # falling through to inline-query mode and reporting a confusing "No
@@ -141,9 +176,19 @@ def run(
         if stripped and not stripped.endswith(";"):
             input = stripped + ";"
 
+    if dialect:
+        try:
+            dialect_enum = Dialects(dialect)
+        except ValueError as exc:
+            valid = ", ".join(d.value for d in Dialects)
+            raise click.UsageError(
+                f"'{dialect}' is not a valid dialect. Choose one of: {valid}."
+            ) from exc
+    else:
+        dialect_enum = None
     cli_params = CLIRuntimeParams(
         input=input,
-        dialect=Dialects(dialect) if dialect else None,
+        dialect=dialect_enum,
         parallelism=parallelism,
         param=param,
         conn_args=conn_args,
@@ -152,6 +197,7 @@ def run(
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
         env=env,
+        row_limit=None if all_rows else rows,
     )
 
     try:

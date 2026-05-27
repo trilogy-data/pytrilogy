@@ -261,6 +261,169 @@ def test_imported_file_parsed_once_via_multiple_paths(monkeypatch):
     assert parse_counts[leaf] == 1, parse_counts
 
 
+def test_missing_import_suggests_nested_match(tmp_path):
+    """When `import store_sales` fails at workspace root but `raw/store_sales.preql`
+    exists, the parser surfaces a `Did you mean: raw.store_sales?` hint instead
+    of leaking a raw OSError. This was the dominant agent dead-end in the
+    tpc_ds_agent eval (~7 wasted calls/run)."""
+    import pytest
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "store_sales.preql").write_text("key id int;", encoding="utf-8")
+    env = Environment(working_path=tmp_path)
+    with pytest.raises(ImportError, match="Did you mean: raw.store_sales"):
+        env.parse("import store_sales as store_sales; select 1 -> x;")
+
+
+def test_missing_import_no_match_omits_hint(tmp_path):
+    """No matching `.preql` anywhere under working_path → no `Did you mean` line."""
+    import pytest
+
+    env = Environment(working_path=tmp_path)
+    with pytest.raises(ImportError) as exc_info:
+        env.parse("import nonexistent as nx; select 1 -> x;")
+    assert "Did you mean" not in str(exc_info.value)
+
+
+def test_missing_import_skips_hidden_and_worker_dirs(tmp_path):
+    """Suggestions skip `_worker_*`, `__pycache__`, `.git`, etc. — without
+    this the eval workspace's parallel-worker copies dominated the hint list."""
+    import pytest
+
+    (tmp_path / "_worker_0" / "raw").mkdir(parents=True)
+    (tmp_path / "_worker_0" / "raw" / "store_sales.preql").write_text(
+        "key id int;", encoding="utf-8"
+    )
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "store_sales.preql").write_text("key id int;", encoding="utf-8")
+    env = Environment(working_path=tmp_path)
+    with pytest.raises(ImportError) as exc_info:
+        env.parse("import store_sales as store_sales; select 1 -> x;")
+    msg = str(exc_info.value)
+    assert "raw.store_sales" in msg
+    assert "_worker_0" not in msg
+
+
+def test_suggest_paths_returns_empty_when_root_missing(tmp_path):
+    """_suggest_import_paths bails when the working path doesn't exist or
+    isn't a directory, rather than crashing with FileNotFoundError."""
+    from trilogy.parsing.v2.import_service import _suggest_import_paths
+
+    assert _suggest_import_paths("foo", tmp_path / "missing") == []
+    f = tmp_path / "file"
+    f.write_text("x", encoding="utf-8")
+    assert _suggest_import_paths("foo", f) == []
+
+
+def test_suggest_paths_respects_max_depth(tmp_path):
+    from trilogy.parsing.v2.import_service import _suggest_import_paths
+
+    deep = tmp_path / "a" / "b" / "c" / "d" / "e"
+    deep.mkdir(parents=True)
+    (deep / "target.preql").write_text("x", encoding="utf-8")
+    # max_depth=4 means rel.parts longer than 4 is dropped — this hit is 5.
+    assert _suggest_import_paths("target", tmp_path, max_depth=4) == []
+    assert _suggest_import_paths("target", tmp_path, max_depth=10) == [
+        "a.b.c.d.e.target"
+    ]
+
+
+def test_suggest_paths_caps_hits_and_swallows_oserror(monkeypatch, tmp_path):
+    from trilogy.parsing.v2 import import_service
+
+    for i in range(30):
+        sub = tmp_path / f"d{i}"
+        sub.mkdir()
+        (sub / "store.preql").write_text("x", encoding="utf-8")
+    hits = import_service._suggest_import_paths("store", tmp_path, max_hits=2)
+    assert len(hits) == 2
+
+    def boom(*a, **kw):
+        raise OSError("io error")
+
+    monkeypatch.setattr(import_service.Path, "rglob", boom)
+    assert import_service._suggest_import_paths("store", tmp_path) == []
+
+
+def test_read_import_text_stdlib_raises_directly():
+    """``is_stdlib=True`` skips the suggestion fallback and propagates the
+    underlying OSError — stdlib lookups are absolute, suggestions don't apply."""
+    import pytest
+
+    from trilogy.parsing.v2.import_service import _read_import_text
+
+    env = Environment()
+    with pytest.raises(OSError):
+        _read_import_text("/no/such/stdlib.preql", env, is_stdlib=True)
+
+
+def test_read_import_text_dict_resolver_missing_key():
+    import pytest
+
+    from trilogy.parsing.v2.import_service import _read_import_text
+
+    config = EnvironmentConfig(import_resolver=DictImportResolver(content={}))
+    env = Environment(config=config)
+    with pytest.raises(ImportError, match="not resolvable"):
+        _read_import_text("nope", env)
+
+
+def test_read_import_text_unsupported_resolver():
+    import pytest
+
+    from trilogy.parsing.v2.import_service import _read_import_text
+
+    class _StubResolver:
+        pass
+
+    config = EnvironmentConfig(import_resolver=_StubResolver())  # type: ignore[arg-type]
+    env = Environment(config=config)
+    with pytest.raises(ImportError, match="not supported"):
+        _read_import_text("foo", env)
+
+
+def test_cyclic_import_returns_stub_import_statement():
+    """When two files import each other, the second entry into a target on
+    the in-flight stack returns a stub ImportStatement rather than recursing
+    until max_parse_depth."""
+    a_content = "import b as b;\nkey a int;"
+    b_content = "import a as a;\nkey b int;"
+    config = EnvironmentConfig(
+        import_resolver=DictImportResolver(content={"a": a_content, "b": b_content})
+    )
+    env = Environment(config=config)
+    # No raise — both sides resolve via cycle break.
+    env.parse("import a as a;")
+    assert "a.a" in env.concepts
+    assert "a.b.b" in env.concepts
+
+
+def test_max_parse_depth_returns_stub(monkeypatch):
+    """Going past ``max_parse_depth`` returns a stub instead of an unbounded
+    recursive parse."""
+    # Build a chain longer than the default depth (10).
+    files = {f"f{i}": f"import f{i + 1} as nxt;\nkey k{i} int;" for i in range(15)}
+    files["f15"] = "key terminal int;"
+    config = EnvironmentConfig(import_resolver=DictImportResolver(content=files))
+    env = Environment(config=config)
+    # Doesn't crash even though depth exceeds the limit.
+    env.parse("import f0 as f0;")
+
+
+def test_import_hydration_service_wraps_parse_error():
+    """A child-document parse failure surfaces as an ImportError with the
+    underlying message — never a raw exception bubble."""
+    import pytest
+
+    config = EnvironmentConfig(
+        import_resolver=DictImportResolver(content={"broken": "this is not trilogy"})
+    )
+    env = Environment(config=config)
+    with pytest.raises(ImportError, match="parsing error"):
+        env.parse("import broken as b;")
+
+
 def test_self_import_dict_resolver():
     self_content = """
 self import as parent;

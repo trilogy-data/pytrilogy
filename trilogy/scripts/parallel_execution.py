@@ -542,6 +542,7 @@ def run_single_script_execution(
     config,
     refresh_params: RefreshParams | None = None,
     debug_file: str | None = None,
+    row_limit: int | None = None,
 ) -> int:
     """Run single script execution. Returns count of assets refreshed (for refresh mode)."""
     from trilogy.scripts.common import (
@@ -577,7 +578,7 @@ def run_single_script_execution(
             queries = exec.parse_text(
                 text, root=base if isinstance(base, Path) else None
             )
-            execute_run_mode(exec, queries)
+            execute_run_mode(exec, queries, row_limit=row_limit)
         elif execution_mode == ExecutionMode.INTEGRATION:
             exec.parse_text(text, root=base if isinstance(base, Path) else None)
             execute_integration_mode(exec)
@@ -693,6 +694,7 @@ def run_parallel_execution(
             config=config,
             refresh_params=cli_params.refresh_params,
             debug_file=cli_params.debug_file,
+            row_limit=cli_params.row_limit,
         )
         # For refresh mode: skipped=1 if nothing was refreshed, successful=1 otherwise
         if execution_mode == ExecutionMode.REFRESH:

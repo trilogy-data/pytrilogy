@@ -134,6 +134,10 @@ class CLIRuntimeParams:
     execution_strategy: str = "eager_bfs"
     env: tuple[str, ...] = ()
     refresh_params: RefreshParams | None = None
+    # Cap on rows displayed per statement result. ``None`` falls back to the
+    # global ``FETCH_LIMIT``. Lowered for agents (sample, not firehose); humans
+    # can raise it explicitly with ``--rows`` or use ``--all-rows``.
+    row_limit: int | None = None
 
 
 def merge_runtime_config(
@@ -226,7 +230,13 @@ def get_runtime_config(
 
 
 def _looks_like_path(input: str) -> bool:
-    """Check if input looks like a file/directory path rather than inline query."""
+    """Check if input looks like a file/directory path rather than inline query.
+
+    Inline SQL legitimately contains ``/`` (division), so whitespace or a
+    statement terminator means we treat it as inline regardless of separators.
+    """
+    if any(c.isspace() for c in input) or ";" in input:
+        return False
     # Contains path separators
     if "/" in input or "\\" in input:
         return True

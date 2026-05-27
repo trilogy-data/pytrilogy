@@ -26,7 +26,12 @@ Functions:
 Valid types:
 {[x.value for x in DataType]}
 
-Some types may have additional metadata, which will help you understand them. For example, 'latitude', 'longitude' and 'currency' are all of type 'float', but have additional meaning."""
+Some types may have additional metadata, which will help you understand them. For example, 'latitude', 'longitude' and 'currency' are all of type 'float', but have additional meaning.
+
+To merge two domains, use a MERGE statement to merge one concept into another; ex `merge concept_a into ~concept_b`. This marks concept_a as being identical to a partial subset
+of concept_b, enabling discoveyr to bridge the two.
+
+"""
 
 
 def get_trilogy_prompt(intro: str | None = None, outro: str | None = None) -> str:

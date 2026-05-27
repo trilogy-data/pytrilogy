@@ -1,0 +1,625 @@
+# Trilogy failure analysis — 20260525-003133
+
+- Run `20260525-003133` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.01
+- `trilogy` calls: 2459 | failed: 290 (12%)
+
+## Categories
+
+| Category | Count | Share |
+|---|---:|---:|
+| `other` | 100 | 34% |
+| `cli-misuse` | 52 | 18% |
+| `join-resolution` | 39 | 13% |
+| `undefined-concept` | 31 | 11% |
+| `syntax-parse` | 29 | 10% |
+| `syntax-missing-alias` | 19 | 7% |
+| `file-not-found` | 18 | 6% |
+| `type-error` | 2 | 1% |
+
+## Detail
+
+### `other`
+
+- `trilogy run query01.preql`
+  - HAVING references 'store_returns.store.id', which is not in the SELECT projection (line 19). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_returns.store.…
+- `trilogy run query01.preql`
+  - WHERE clause aggregates at multiple grains are not allowed: `ref:sr.return_date.year = 2000 and ref:sr.store.state = TN and sum(ref:sr.return_amount)<['ref:sr.customer.id', 'ref:sr.store.id']> > multiply(1.2,avg(sum(ref:…
+- `trilogy `
+  - Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 196 (char 195). Re-issue the call with valid JSON arguments.
+- `trilogy run --import raw/web_sales.preql:web_sales --import raw/catalog_sales.preql:catalog_sales merge catalog_sales.sold_da…`
+  - 'select web_sales.date.week_seq, web_sales.date.day_name, sum(web_sales.ext_sales_price) as ws_sum, sum(catalog_sales.ext_sales_price) as cs_sum where web_sales.date.year = 2001 group by web_sales.date.week_seq, web_sale…
+- `trilogy run query02.preql duckdb`
+  - ORDER BY references 'web_sales.date.year', which is not in the SELECT projection (line 8). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --web_sales.date.year orde…
+- `trilogy run --import raw/web_sales.preql:web_sales --import raw/catalog_sales.preql:catalog_sales select web_sales.date.year,…`
+  - Cannot resolve query. No remaining priority concepts, have attempted {'local._virt_filter_ext_sales_price_2830060250376451', 'local._virt_agg_sum_8269549842735410'} out of with found {'local._virt_filter_ext_sales_price_…
+- `trilogy run query06.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query06.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query06.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query06.preql`
+  - Cannot compare BOOL (ref:store_sales.is_returned) and INTEGER (0) of different types with operator = in ref:store_sales.is_returned = 0 --- stderr ---
+- `trilogy database describe date`
+  - exit_code: 1 --- stdout --- Table 'date' not found, or it has no columns. --- stderr ---
+- `trilogy run query09.preql`
+  - Tuple must have same type for all elements --- stderr ---
+- `trilogy run query10.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query10.preql duckdb tpcds.duckdb`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy explore query10.preql`
+  - exit_code: 1 --- stdout --- Failed to parse query10.preql: [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query10.preql duckdb tpcds.duckdb`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query13.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query16.preql`
+  - HAVING references 'catalog_sales.order_number', which is not in the SELECT projection (line 9). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --catalog_sales.ord…
+- `trilogy run query17.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run query21.preql duckdb`
+  - [Errno 2] No such file or directory: '.\\inventory.preql' --- stderr ---
+- `trilogy run query21.preql duckdb`
+  - [Errno 2] No such file or directory: '.\\inventory.preql' --- stderr ---
+- `trilogy run query27.preql`
+  - All arguments to coalesce must be of the same type, have {<DataType.STRING: 'string'>, <DataType.INTEGER: 'int'>} for --- stderr ---
+- `trilogy run query29.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales --import raw/store_returns:store_returns --import raw/catalog_sales:catalog_…`
+  - exit_code: 2 --- stdout --- --import only applies to inline queries, not file/directory inputs. --- stderr ---
+- `trilogy run query30.preql`
+  - HAVING references 'wr.customer.address.state', which is not in the SELECT projection (line 13). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --wr.customer.addre…
+- `trilogy run query30.preql`
+  - Recursion error building concept local.total_web_return_amount with grain Grain<local.avg_by_state,wr.customer.id> and lineage sum(ref:wr.return_amount)<['ref:wr.customer.id', 'ref:local.avg_by_state']>. This is likely d…
+- `trilogy run query36.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run --import raw/inventory:inv`
+  - exit_code: 2 --- stdout --- --import only applies to inline queries, not file/directory inputs. --- stderr ---
+- `trilogy `
+  - Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 66 (char 65). Re-issue the call with valid JSON arguments.
+- `trilogy `
+  - Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 73 (char 72). Re-issue the call with valid JSON arguments.
+- `trilogy run query41.preql`
+  - ORDER BY references 'item.product_name', which is not in the SELECT projection (line 3). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --item.product_name order by…
+- `trilogy run --import raw/item:item - duck_db`
+  - ORDER BY references 'item.product_name', which is not in the SELECT projection (line 2). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --item.product_name order by…
+- `trilogy run -e SELECT 1; duck_db`
+  - exit_code: 1 --- stdout --- Environment variable must be in KEY=VALUE format or be a path to an existing env file: SELECT 1; --- stderr ---
+- `trilogy run -e test=1 select date.month_of_year, date.year, count(date.id) as cnt having month_of_year = 12 and year = 2001 l…`
+  - HAVING references 'local.month_of_year', which is not in the SELECT projection (line 2). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --local.month_of_year`; (b…
+- `trilogy run select
+    1 as a, 
+    count(1) ? 1=1 as b;`
+  - list index out of range --- stderr ---
+- `trilogy run query53.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales --import raw/store_sales:store_sales --…`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales --import raw/store_sales:store_sales --…`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales --import raw/store_sales:store_sales --…`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr --- [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different actio…
+- `trilogy run --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales --import raw/store_sales:store_sales --…`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr --- [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different actio…
+- `trilogy `
+  - Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 92 (char 91). Re-issue the call with valid JSON arguments.
+- `trilogy run query57.preql`
+  - ORDER BY references 'catalog_sales.call_center.name', which is not in the SELECT projection (line 11). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --catalog_sale…
+- `trilogy run query59.preql`
+  - ORDER BY references 'store.id', which is not in the SELECT projection (line 27). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store.id order by store.id asc`. -…
+- `trilogy run query59.preql`
+  - ORDER BY references 'store_sales.store.id', which is not in the SELECT projection (line 3). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.store.id or…
+- `trilogy run query59.preql`
+  - ORDER BY references 'store_sales.store.id', which is not in the SELECT projection (line 3). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.store.id or…
+- `trilogy run query62.preql`
+  - [Errno 2] No such file or directory: '.\\web_sales.preql' --- stderr ---
+- `trilogy run query62.preql --config trilogy.toml`
+  - [Errno 2] No such file or directory: '.\\web_sales.preql' --- stderr ---
+- `trilogy run query62.preql duckdb`
+  - [Errno 2] No such file or directory: '.\\web_sales.preql' --- stderr ---
+- `trilogy run query62.preql duckdb`
+  - [Errno 2] No such file or directory: '.\\raw\\ship_date.preql' --- stderr ---
+- `trilogy file exists raw/ship_date.preql`
+  - exit_code: 1 --- stdout --- false --- stderr ---
+- `trilogy run query64.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query64.preql`
+  - [Errno 2] No such file or directory: '.\\customer_demographic.preql' --- stderr ---
+- `trilogy run query64.preql`
+  - WHERE clause aggregates at multiple grains are not allowed: `SubselectComparison(left=ref:item.color, right=('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium'), operator=<ComparisonOperator.IN: 'in'>) and ref…
+- `trilogy run query64.preql`
+  - HAVING references 'catalog_sales.ext_list_price', which is not in the SELECT projection (line 20). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --catalog_sales.…
+- `trilogy run query64.preql`
+  - HAVING references 'catalog_sales.ext_list_price', which is not in the SELECT projection (line 18). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --catalog_sales.…
+- `trilogy run query64.preql`
+  - HAVING references 'store_returns.return_amount', which is not in the SELECT projection (line 18). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_returns.r…
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item --import raw/store:store merge item.id into ~store_sa…`
+  - HAVING references 'store_sales.ext_sales_price', which is not in the SELECT projection (line 4). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.ext_…
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item --import raw/store:store merge item.id into ~store_sa…`
+  - HAVING references 'store_sales.store.id', which is not in the SELECT projection (line 4). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.store.id`; …
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item --import raw/store:store merge item.id into ~store_sa…`
+  - WHERE clause aggregates at multiple grains are not allowed: `ref:store_sales.date.year = 1998 and sum(ref:store_sales.ext_sales_price)<['ref:store_sales.store.id', 'ref:store_sales.item.id']> <= multiply(0.1,avg(sum(ref:…
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item --import raw/store:store merge item.id into ~store_sa…`
+  - HAVING references 'store_sales.store.id', which is not in the SELECT projection (line 4). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.store.id`; …
+- `trilogy run query67.preql`
+  - ORDER BY references 'store_sales.date.quarter', which is not in the SELECT projection (line 8). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.date.qu…
+- `trilogy run query67.preql`
+  - ORDER BY references 'store_sales.date.quarter', which is not in the SELECT projection (line 8). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.date.qu…
+- `trilogy run query67.preql`
+  - ORDER BY references 'store_sales.store.id', which is not in the SELECT projection (line 8). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.store.id or…
+- `trilogy run query68.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr --- [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different actio…
+- `trilogy run --import raw/store_sales:store_sales - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr --- [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different actio…
+- `trilogy run --import raw/store_sales:store_sales - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr --- [guidance] You have issued this identical call 5 times in a row with the same result — it is not making progress. Stop repeating it and take a different actio…
+- `trilogy run --import raw/store_sales:store_sales - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr --- [guidance] You have issued this identical call 6 times in a row with the same result — it is not making progress. Stop repeating it and take a different actio…
+- `trilogy run --import raw/store_sales:store_sales - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr --- [guidance] You have issued this identical call 7 times in a row with the same result — it is not making progress. Stop repeating it and take a different actio…
+- `trilogy run - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr ---
+- `trilogy run - duckdb`
+  - exit_code: 2 --- stdout --- No input on stdin. --- stderr --- [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different actio…
+- `trilogy run query72.preql duckdb`
+  - [Errno 2] No such file or directory: '.\\catalog_sales.preql' --- stderr ---
+- `trilogy run --import raw/catalog_sales:catalog_sales --import raw/inventory:inventory merge inventory.item.id into ~catalog_s…`
+  - (AmbiguousRelationshipResolutionException(...), "Multiple possible concept additions (intermediate join keys) found to resolve ['catalog_sales.order_number', 'catalog_sales.sold_date.year'], have {'catalog_sales.sold_dat…
+- `trilogy run query74.preql`
+  - [Errno 2] No such file or directory: '.\\store_sales.preql' --- stderr ---
+- `trilogy run query75.preql`
+  - All arguments to coalesce must be of the same type, have {<DataType.FLOAT: 'float'>, NumericType(precision=15, scale=2)} for --- stderr ---
+- `trilogy run query78.preql`
+  - Cannot parse arg purpose for <Filter: ref:web_sales.quantity where ref:web_sales.is_returned = False> of type <class 'trilogy.core.models.author.FilterItem'> --- stderr ---
+- `trilogy run query78.preql`
+  - Cannot parse arg purpose for <Filter: ref:web_sales.quantity where ref:web_sales.is_returned = False> of type <class 'trilogy.core.models.author.FilterItem'> --- stderr ---
+- `trilogy run query78.preql`
+  - HAVING references 'web_sales.quantity', which is not in the SELECT projection (line 15). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --web_sales.quantity`; (b)…
+- `trilogy run query81.preql`
+  - HAVING references 'catalog_returns.return_address.state', which is not in the SELECT projection (line 8). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --catalog…
+- `trilogy run query81.preql`
+  - WHERE clause aggregates at multiple grains are not allowed: `ref:date.year = 2000 and ref:catalog_returns.customer.address.state = GA and sum(ref:catalog_returns.return_amt_inc_tax)<['ref:catalog_returns.customer.id', 'r…
+- `trilogy run query81.preql`
+  - HAVING references 'catalog_returns.return_address.state', which is not in the SELECT projection (line 8). Fix one of: (a) add it to SELECT — prefix with `--` to keep it out of the output rows, e.g. `select ..., --catalog…
+- `trilogy run query83.preql duckdb tpcds.duckdb`
+  - (_duckdb.IOException) IO Error: Cannot open file "c:\users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\2026052 5-003133\workspace\_worker_3\tpcds.duckdb": The process cannot access the file because it i…
+- `trilogy run query83.preql duckdb tpcds.duckdb`
+  - [Errno 2] No such file or directory: '.\\raw\\return_date.preql' --- stderr ---
+- `trilogy run query84.preql`
+  - [Errno 2] No such file or directory: '.\\store_returns.preql' --- stderr ---
+- `trilogy run query92.preql`
+  - [Errno 2] No such file or directory: '.\\web_sales.preql' --- stderr ---
+- `trilogy run query97.preql`
+  - Duplicate select output for catalog_sales.item.id; Line: 6 --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales merge store_sales.item.id into ~cat…`
+  - Duplicate select output for catalog_sales.bill_customer.id; Line: 3 --- stderr ---
+- `trilogy run query98.preql`
+  - [Errno 2] No such file or directory: '.\\raw\\store_sales\\date.preql' --- stderr ---
+- `trilogy run query98.preql`
+  - [Errno 2] No such file or directory: '.\\raw\\store_sales\\date.preql' --- stderr ---
+
+### `cli-misuse`
+
+- `trilogy explore raw/customer_preql --show all`
+  - Invalid value for 'PATH': File 'raw/customer_preql' does not exist.
+- `trilogy read_file raw/date.preql`
+  - No such command 'read_file'.
+- `trilogy explore raw/customer_address.preql`
+  - Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
+- `trilogy explore raw/customer_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/customer_demographics.preql' does not exist.
+- `trilogy read raw/store_sales.preql`
+  - No such command 'read'.
+- `trilogy explore raw/customer_address.preql`
+  - Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy read_file raw/store_sales.preql`
+  - No such command 'read_file'.
+- `trilogy explore raw/customer_address.preql`
+  - Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
+- `trilogy explore raw/date_dim.preql --show groups`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy list raw/`
+  - No such command 'list'.
+- `trilogy explore raw/household_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/household_demographics.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/customer_address.preql`
+  - Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
+- `trilogy explore raw/customer_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/customer_demographics.preql' does not exist.
+- `trilogy read_file`
+  - No such command 'read_file'.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/sale_address.preql`
+  - Invalid value for 'PATH': File 'raw/sale_address.preql' does not exist.
+- `trilogy explore raw/store_sales.preql show datasources`
+  - Got unexpected extra arguments (show datasources)
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/customer_address.preql`
+  - Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
+- `trilogy read_file`
+  - No such command 'read_file'.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql --grep month_of_year --grep year`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql --show concepts --grep d_date_sk --grep d_date --grep week`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy read_file raw/web_sales.preql`
+  - No such command 'read_file'.
+- `trilogy explore raw/web_sales.preql --show concepts --grep date.id -i`
+  - No such option: -i
+- `trilogy read_file raw/web_sales.preql`
+  - No such command 'read_file'.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/store_sales.preql --grep store_sales.item.id store_sales.store.id --show all`
+  - Got unexpected extra argument (store_sales.store.id)
+- `trilogy read_file raw/store_sales.preql`
+  - No such command 'read_file'.
+- `trilogy read_file raw/customer.preql`
+  - No such command 'read_file'.
+- `trilogy explore raw/customer_address.preql`
+  - Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
+- `trilogy explore raw/customer_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/customer_demographics.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/customer_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/customer_demographics.preql' does not exist.
+- `trilogy explore raw/household_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/household_demographics.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql --show concepts --grep week_seq`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/customer_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/customer_demographics.preql' does not exist.
+- `trilogy explore raw/root/customer_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/root/customer_demographics.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/time_dim.preql`
+  - Invalid value for 'PATH': File 'raw/time_dim.preql' does not exist.
+- `trilogy explore raw/household_demographics.preql`
+  - Invalid value for 'PATH': File 'raw/household_demographics.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy explore raw/date_dim.preql`
+  - Invalid value for 'PATH': File 'raw/date_dim.preql' does not exist.
+- `trilogy read_file raw/web_sales.preql`
+  - No such command 'read_file'.
+
+### `join-resolution`
+
+- `trilogy run --import raw/web_sales.preql:web_sales --import raw/catalog_sales.preql:catalog_sales select web_sales.date.week_…`
+  - Could not resolve connections for query with output ['web_sales.date.week_seq<Purpose.PROPERTY>Derivation.ROOT>', 'web_sales.date.day_name<Purpose.PROPERTY>Derivation.ROOT>', 'local.ws_sum<Purpose.METRIC>Derivation.AGGRE…
+- `trilogy run --import raw/web_sales.preql:web_sales --import raw/catalog_sales.preql:catalog_sales select web_sales.date.week_…`
+  - Could not resolve connections for query with output ['web_sales.date.week_seq<Purpose.PROPERTY>Derivation.ROOT>', 'web_sales.date.day_name<Purpose.PROPERTY>Derivation.ROOT>', 'local.cs_sum<Purpose.METRIC>Derivation.AGGRE…
+- `trilogy run --import raw/web_sales.preql:web_sales --import raw/catalog_sales.preql:catalog_sales select web_sales.date.week_…`
+  - Could not resolve connections for query with output ['web_sales.date.week_seq<Purpose.PROPERTY>Derivation.ROOT>', 'web_sales.date.day_name<Purpose.PROPERTY>Derivation.ROOT>', 'local.total<Purpose.METRIC>Derivation.BASIC>…
+- `trilogy run query16.preql`
+  - No datasource exists for root concept catalog_sales.warehouse_id@Grain<catalog_sales.warehouse_id>, and no resolvable pseudonyms found from set(). This query is unresolvable from your environment. Check your datasources …
+- `trilogy run --import raw/inventory:inv --import raw/warehouse:w --import raw/item:i --import raw/date:d - duckdb`
+  - Could not resolve connections for query with output ['inv.quantity_on_hand<Purpose.PROPERTY>Derivation.ROOT>', 'd.date<Purpose.PROPERTY>Derivation.ROOT>', 'i.current_price<Purpose.PROPERTY>Derivation.ROOT>', 'w.name<Purp…
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - Could not resolve connections for query with output ['inv.quantity_on_hand<Purpose.PROPERTY>Derivation.ROOT>', 'i.current_price<Purpose.PROPERTY>Derivation.ROOT>'] from current model. --- stderr ---
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - Could not resolve connections for query with output ['inv.quantity_on_hand<Purpose.PROPERTY>Derivation.ROOT>', 'inv.item.id<Purpose.KEY>Derivation.ROOT>', 'i.current_price<Purpose.PROPERTY>Derivation.ROOT>'] from current…
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - Could not resolve connections for query with output ['inv.quantity_on_hand<Purpose.PROPERTY>Derivation.ROOT>', 'inv.item.id<Purpose.KEY>Derivation.ROOT>', 'd.date<Purpose.PROPERTY>Derivation.ROOT>'] from current model. -…
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - Could not resolve connections for query with output ['inv.item.id<Purpose.KEY>Derivation.ROOT>', 'i.current_price<Purpose.PROPERTY>Derivation.ROOT>'] from current model. --- stderr ---
+- `trilogy run query21.preql duckdb`
+  - Could not resolve connections for query with output ['local.warehouse_name<Purpose.PROPERTY>Derivation.BASIC>', 'local.item_id<Purpose.KEY>Derivation.BASIC>', 'local.before_total<Purpose.METRIC>Derivation.AGGREGATE>', 'l…
+- `trilogy run query27.preql`
+  - Could not resolve connections for query with output ['item.id<Purpose.KEY>Derivation.ROOT>', 'store.state<Purpose.PROPERTY>Derivation.ROOT>', 'local.avg_ticket_quantity<Purpose.METRIC>Derivation.AGGREGATE>', 'local.avg_p…
+- `trilogy run query27.preql --debug`
+  - Could not resolve connections for query with output ['item.id<Purpose.KEY>Derivation.ROOT>', 'store.state<Purpose.PROPERTY>Derivation.ROOT>', 'local.avg_ticket_quantity<Purpose.METRIC>Derivation.AGGREGATE>', 'local.avg_p…
+- `trilogy run query27.preql`
+  - Could not resolve connections for query with output ['item.id<Purpose.KEY>Derivation.ROOT>', 'store.state<Purpose.PROPERTY>Derivation.ROOT>', 'local.avg_ticket_quantity<Purpose.METRIC>Derivation.AGGREGATE>', 'local.avg_p…
+- `trilogy run --import raw/store_sales.preql:store_sales --import raw/web_sales.preql:web_sales select web_sales.bill_address.c…`
+  - Could not resolve connections for query with output ['web_sales.bill_address.county<Purpose.PROPERTY>Derivation.ROOT>', 'store_sales.date.date<Purpose.PROPERTY>Derivation.ROOT>', 'web_sales.date.date<Purpose.PROPERTY>Der…
+- `trilogy run query40.preql`
+  - Could not resolve connections for query with output ['warehouse.state<Purpose.PROPERTY>Derivation.ROOT>', 'item.id<Purpose.KEY>Derivation.ROOT>', 'local.total_net<Purpose.METRIC>Derivation.AGGREGATE>'] from current model…
+- `trilogy run query40.preql`
+  - Could not resolve connections for query with output ['warehouse.state<Purpose.PROPERTY>Derivation.ROOT>', 'item.id<Purpose.KEY>Derivation.ROOT>', 'local.total_net<Purpose.METRIC>Derivation.AGGREGATE>'] from current model…
+- `trilogy run query43.preql`
+  - Could not resolve connections for query with output ['store.name<Purpose.PROPERTY>Derivation.ROOT>', 'store.id<Purpose.KEY>Derivation.ROOT>', 'local.sunday<Purpose.METRIC>Derivation.AGGREGATE>', 'local.monday<Purpose.MET…
+- `trilogy run query47.preql`
+  - Could not resolve connections for query with output ['item.category<Purpose.PROPERTY>Derivation.ROOT>', 'item.brand_name<Purpose.PROPERTY>Derivation.ROOT>', 'store.name<Purpose.PROPERTY>Derivation.ROOT>', 'store.company_…
+- `trilogy run --import raw/store_sales:store_sales --import raw/date:date --import raw/item:item --import raw/store:store selec…`
+  - Could not resolve connections for query with output ['item.category<Purpose.PROPERTY>Derivation.ROOT>', 'item.brand_name<Purpose.PROPERTY>Derivation.ROOT>', 'store.name<Purpose.PROPERTY>Derivation.ROOT>', 'store.company_…
+- `trilogy run query51.preql`
+  - Could not resolve connections for query with output ['local.item_id<Purpose.KEY>Derivation.BASIC>', 'local.sale_date<Purpose.PROPERTY>Derivation.BASIC>', 'local.web_daily<Purpose.METRIC>Derivation.AGGREGATE>', 'local.sto…
+- `trilogy run query51.preql`
+  - Could not resolve connections for query with output ['local.item_id<Purpose.KEY>Derivation.BASIC>', 'local.sale_date<Purpose.PROPERTY>Derivation.BASIC>', 'local.web_daily<Purpose.METRIC>Derivation.AGGREGATE>', 'local.sto…
+- `trilogy run --import raw/web_sales:web_sales --import raw/store_sales:store_sales --import raw/item:item --import raw/date:da…`
+  - Could not resolve connections for query with output ['web_sales.sales_price<Purpose.PROPERTY>Derivation.ROOT>', 'store_sales.sales_price<Purpose.PROPERTY>Derivation.ROOT>'] from current model. --- stderr ---
+- `trilogy run query51.preql`
+  - Could not resolve connections for query with output ['local.item_id<Purpose.KEY>Derivation.BASIC>', 'local.sale_date<Purpose.PROPERTY>Derivation.BASIC>', 'local.web_daily<Purpose.METRIC>Derivation.AGGREGATE>', 'local.sto…
+- `trilogy run query51.preql`
+  - Could not resolve connections for query with output ['local.item_id<Purpose.KEY>Derivation.BASIC>', 'local.sale_date<Purpose.PROPERTY>Derivation.BASIC>', 'local.web_daily<Purpose.METRIC>Derivation.AGGREGATE>', 'local.sto…
+- `trilogy run query58.preql`
+  - Could not resolve connections for query with output ['web.item.id<Purpose.KEY>Derivation.ROOT>', 'local.store_total<Purpose.METRIC>Derivation.AGGREGATE>', 'local.catalog_total<Purpose.METRIC>Derivation.AGGREGATE>', 'loca…
+- `trilogy run query58.preql`
+  - Could not resolve connections for query with output ['web.item.id<Purpose.KEY>Derivation.ROOT>', 'local.store_total<Purpose.METRIC>Derivation.AGGREGATE>', 'local.catalog_total<Purpose.METRIC>Derivation.AGGREGATE>', 'loca…
+- `trilogy run query58.preql`
+  - Could not resolve connections for query with output ['web.item.id<Purpose.KEY>Derivation.ROOT>', 'local.store_total<Purpose.METRIC>Derivation.AGGREGATE>', 'local.catalog_total<Purpose.METRIC>Derivation.AGGREGATE>', 'loca…
+- `trilogy run --import raw/web_sales.preql:web --import raw/date.preql:date_dim select web.ext_sales_price, date_dim.id, web.it…`
+  - Could not resolve connections for query with output ['web.ext_sales_price<Purpose.PROPERTY>Derivation.ROOT>', 'date_dim.id<Purpose.KEY>Derivation.ROOT>', 'web.item.id<Purpose.KEY>Derivation.ROOT>'] from current model. --…
+- `trilogy run --import raw/store_sales:store_sales --import raw/date --import raw/item:item --import raw/store:store select sto…`
+  - Could not resolve connections for query with output ['store.name<Purpose.PROPERTY>Derivation.ROOT>', 'item.desc<Purpose.PROPERTY>Derivation.ROOT>', 'local.rev<Purpose.METRIC>Derivation.AGGREGATE>'] from current model. --…
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item --import raw/store:store select store.name, item.desc…`
+  - Could not resolve connections for query with output ['store.name<Purpose.PROPERTY>Derivation.ROOT>', 'item.desc<Purpose.PROPERTY>Derivation.ROOT>', 'store_sales.item.id<Purpose.KEY>Derivation.ROOT>', 'local.rev<Purpose.M…
+- `trilogy run --import raw/store_sales:store_sales --import raw/store:store select store.name, store_sales.item.id, sum(store_s…`
+  - Could not resolve connections for query with output ['store.name<Purpose.PROPERTY>Derivation.ROOT>', 'store_sales.item.id<Purpose.KEY>Derivation.ROOT>', 'local.rev<Purpose.METRIC>Derivation.AGGREGATE>'] from current mode…
+- `trilogy run test_connect.preql duckdb`
+  - Could not resolve connections for query with output ['store.name<Purpose.PROPERTY>Derivation.ROOT>', 'store_sales.item.id<Purpose.KEY>Derivation.ROOT>', 'item.desc<Purpose.PROPERTY>Derivation.ROOT>', 'local.rev<Purpose.M…
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item --import raw/store:store where store_sales.date.year …`
+  - Could not resolve connections for query with output ['store.name<Purpose.PROPERTY>Derivation.ROOT>', 'item.desc<Purpose.PROPERTY>Derivation.ROOT>', 'local.per_item_revenue<Purpose.METRIC>Derivation.AGGREGATE>', 'item.cur…
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item where store_sales.date.year = 1998 select store_sales…`
+  - Could not resolve connections for query with output ['store_sales.item.id<Purpose.KEY>Derivation.ROOT>', 'item.desc<Purpose.PROPERTY>Derivation.ROOT>', 'local.per_item_revenue<Purpose.METRIC>Derivation.AGGREGATE>', 'item…
+- `trilogy run --import raw/store_sales:store_sales --import raw/web_sales:web_sales select store_sales.quantity, web_sales.quan…`
+  - Could not resolve connections for query with output ['store_sales.quantity<Purpose.PROPERTY>Derivation.ROOT>', 'web_sales.quantity<Purpose.PROPERTY>Derivation.ROOT>'] from current model. --- stderr ---
+- `trilogy run query91.preql`
+  - Could not resolve connections for query with output ['call_center.id<Purpose.KEY>Derivation.ROOT>', 'call_center.name<Purpose.PROPERTY>Derivation.ROOT>', 'call_center.manager<Purpose.PROPERTY>Derivation.ROOT>', 'local.to…
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales where store_sales.date.year = 2000 …`
+  - Could not resolve connections for query with output ['store_sales.customer.id<Purpose.KEY>Derivation.ROOT>', 'store_sales.item.id<Purpose.KEY>Derivation.ROOT>', 'catalog_sales.bill_customer.id<Purpose.KEY>Derivation.ROOT…
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales where store_sales.date.year = 2000 …`
+  - Could not resolve connections for query with output ['store_sales.customer.id<Purpose.KEY>Derivation.ROOT>', 'store_sales.item.id<Purpose.KEY>Derivation.ROOT>', 'catalog_sales.bill_customer.id<Purpose.KEY>Derivation.ROOT…
+- `trilogy run query97.preql`
+  - Could not resolve connections for query with output ['store_sales.customer.id<Purpose.KEY>Derivation.ROOT>', 'store_sales.item.id<Purpose.KEY>Derivation.ROOT>', 'catalog_sales.bill_customer.id<Purpose.KEY>Derivation.ROOT…
+
+### `undefined-concept`
+
+- `trilogy run query01.preql`
+  - (UndefinedConceptException(...), "Undefined concept: store.id. Suggestions: ['customer.id']") --- stderr ---
+- `trilogy run query03.preql`
+  - (UndefinedConceptException(...), "line: 3: Undefined concept: item.brand_id. Suggestions: ['store_sales.item.brand_id']") --- stderr ---
+- `trilogy run query11.preql`
+  - (UndefinedConceptException(...), "Undefined concept: first_name. Suggestions: ['customer.first_name']") --- stderr ---
+- `trilogy run query11.preql`
+  - (UndefinedConceptException(...), "Undefined concept: first_name. Suggestions: ['customer.first_name']") --- stderr ---
+- `trilogy run query13.preql`
+  - (UndefinedConceptException(...), "Undefined concept: date.year. Suggestions: ['store_sales.date.year']") --- stderr ---
+- `trilogy run query30.preql`
+  - (UndefinedConceptException(...), "line: 8: Undefined concept: customer.salutation. Suggestions: ['web_returns.customer.salutation', 'web_returns.refunded_customer.salutation', 'web_returns.web_sales.customer.salutation']…
+- `trilogy run query31.preql`
+  - (UndefinedConceptException(...), "Undefined concept: bill_address.county. Suggestions: ['web_sales.bill_address.county', 'web_sales.bill_address.country', 'web_sales.ship_address.county']") --- stderr ---
+- `trilogy run query35.preql`
+  - (UndefinedConceptException(...), "Undefined concept: catalog_sales.ship_customer.id. Suggestions: ['catalog_sales.customer.id', 'catalog_sales.bill_customer.id', 'catalog_sales.ship_mode.id']") --- stderr ---
+- `trilogy run query40.preql`
+  - (UndefinedConceptException(...), "Undefined concept: item.current_price. Suggestions: ['catalog_sales.item.current_price', 'catalog_returns.item.current_price', 'catalog_returns.sales.item.current_price']") --- stderr --…
+- `trilogy run query46.preql`
+  - (UndefinedConceptException(...), "Undefined concept: ticket_number. Suggestions: ['store_sales.ticket_number']") --- stderr ---
+- `trilogy run query50.preql`
+  - (UndefinedConceptException(...), "line: 13: Undefined concept: store.name. Suggestions: ['store_sales.item.name', 'store_sales.store.name', 'store_returns.item.name']") --- stderr ---
+- `trilogy run --import raw/date:date - duckdb`
+  - (UndefinedConceptException(...), "Undefined concept: year. Suggestions: ['yr', 'date.year']") --- stderr ---
+- `trilogy run --import raw/store_sales.preql:store_sales - duckdb`
+  - (UndefinedConceptException(...), "line: 2: Undefined concept: item.brand_id. Suggestions: ['store_sales.item.brand_id']") --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales where date.month_of_year = 2 and date.year = 2001 and sale_address.gmt_offse…`
+  - (UndefinedConceptException(...), "Undefined concept: date.month_of_year. Suggestions: ['store_sales.date.month_of_year', 'store_sales.store.date.month_of_year', 'store_sales.return_date.month_of_year']") --- stderr ---
+- `trilogy run query57.preql`
+  - (UndefinedConceptException(...), "line: 11: Undefined concept: item.category. Suggestions: ['catalog_sales.item.category', 'catalog_sales.item.category_id']") --- stderr ---
+- `trilogy run query59.preql`
+  - (UndefinedConceptException(...), "line: 12: Undefined concept: store.name. Suggestions: ['store_sales.item.name', 'store_sales.store.name']") --- stderr ---
+- `trilogy run query59.preql`
+  - (UndefinedConceptException(...), "Undefined concept: store.name. Suggestions: ['store_sales.item.name', 'store_sales.store.name']") --- stderr ---
+- `trilogy run query61.preql`
+  - (UndefinedConceptException(...), "Undefined concept: date.date. Suggestions: ['store_sales.date.date']") --- stderr ---
+- `trilogy run query61.preql`
+  - (UndefinedConceptException(...), "Undefined concept: date.date. Suggestions: ['store_sales.date.date']") --- stderr ---
+- `trilogy run query66.preql`
+  - (UndefinedConceptException(...), "Undefined concept: ws.wh_name. Suggestions: ['ws.web_site.name', 'ws.warehouse.name', 'ws.item.name']") --- stderr ---
+- `trilogy run --import raw/catalog_sales:catalog_sales select sold_date.year, count(order_number) as cnt limit 5; duckdb`
+  - (UndefinedConceptException(...), "line: 2: Undefined concept: sold_date.year. Suggestions: ['catalog_sales.sold_date.year']") --- stderr ---
+- `trilogy run query78.preql`
+  - (UndefinedConceptException(...), "Undefined concept: web_sales.ext_wholesale_cost. Suggestions: ['store_sales.ext_wholesale_cost', 'web_sales.item.wholesale_cost', 'catalog_sales.ext_wholesale_cost']") --- stderr ---
+- `trilogy run query81.preql`
+  - (UndefinedConceptException(...), 'Undefined concept: date.year.') --- stderr ---
+- `trilogy run test_date.preql`
+  - (UndefinedConceptException(...), 'line: 3: Undefined concept: date.year.') --- stderr ---
+- `trilogy run query84.preql`
+  - (UndefinedConceptException(...), "line: 3: Undefined concept: customer.id. Suggestions: ['store_returns.customer.id']") --- stderr ---
+- `trilogy run query85.preql`
+  - (UndefinedConceptException(...), "Undefined concept: web_sales.return_amount_ws. Suggestions: ['web_returns.return_amount', 'web_returns.web_sales.return_amount', 'web_returns.return_date.month_seq']") --- stderr ---
+- `trilogy run query86.preql duckdb tpcds.duckdb`
+  - (UndefinedConceptException(...), 'line: 3: Undefined concept: local.hierarchy_level.') --- stderr ---
+- `trilogy run query89.preql`
+  - (UndefinedConceptException(...), "Undefined concept: ss.store_id. Suggestions: ['ss.store.id', 'ss.store.text_id', 'ss.store.zip']") --- stderr ---
+- `trilogy run query99.preql`
+  - (UndefinedConceptException(...), "Undefined concept: order_number. Suggestions: ['catalog_sales.order_number']") --- stderr ---
+- `trilogy run query99.preql`
+  - (UndefinedConceptException(...), "Undefined concept: order_number. Suggestions: ['catalog_sales.order_number']") --- stderr ---
+- `trilogy run query99.preql`
+  - (UndefinedConceptException(...), "Undefined concept: order_number. Suggestions: ['catalog_sales.order_number']") --- stderr ---
+
+### `syntax-parse`
+
+- `trilogy run --import raw/web_sales.preql:web_sales --import raw/catalog_sales.preql:catalog_sales merge catalog_sales.sold_da…`
+  - --> 3:236 | 3 | merge catalog_sales.sold_date.id into ~web_sales.date.id; select web_sales.date.week_seq, web_sales.date.day_name, sum(web_sales.ext_sales_price) as ws_sum, sum(catalog_sales.ext_sales_price) as cs_sum wh…
+- `trilogy run --import raw/item.preql:item select item.manufacturer_id, count(item.id) as cnt group by item.manufacturer_id ord…`
+  - --> 2:52 | 2 | select item.manufacturer_id, count(item.id) as cnt group by item.manufacturer_id order by cnt desc limit 10; | ^--- | = expected metadata, limit, order_by, where, or having Location: ...rer_id, count(item.…
+- `trilogy run select item.manufacturer_id, sum(1) as cnt from item group by item.manufacturer_id order by cnt desc limit 20; du…`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...anufacturer_id, sum(1) as cnt ??? from item group by item.manufa... --- stderr ---
+- `trilogy run query09.preql`
+  - --> 9:16 | 9 | simple_case( | ^--- | = expected limit, order_by, where, having, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT Location: ...id = 1 select simple_case ?…
+- `trilogy run query09.preql`
+  - --> 13:7 | 13 | ) as bucket_1_result, | ^--- | = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or fcase_simple_when Location: ...ntity between 1 and 20) ) ??? …
+- `trilogy run query09.preql`
+  - Syntax [202]: Missing closing semicolon? Statements must be terminated with a semicolon `;`. Location: ...20) end as bucket_1_result ??? --- stderr ---
+- `trilogy run --import raw/catalog_sales.preql:catalog_sales --import raw/date.preql:date --import raw/date.preql:sold_date mer…`
+  - --> 4:100 | 4 | merge date.id into ~catalog_sales.sold_date.id; where year(sold_date.date) = 2000 and month_of_year(sold_date.date) = 2 select count(*) limit 5; | ^--- | = expected LOGICAL_OR, LOGICAL_AND, dot_tail, brac…
+- `trilogy run --import raw/catalog_sales.preql:catalog_sales --import raw/date.preql:date --import raw/date.preql:sold_date mer…`
+  - --> 4:114 | 4 | merge date.id into ~catalog_sales.sold_date.id; where year(catalog_sales.sold_date.date) = 2000 and month_of_year(catalog_sales.sold_date.date) = 2 select count(catalog_sales.order_number) as cnt limit 5;…
+- `trilogy run --import raw/catalog_sales.preql:catalog_sales --import raw/date.preql:date merge date.id into ~catalog_sales.dat…`
+  - --> 3:104 | 3 | merge date.id into ~catalog_sales.date.id; where year(catalog_sales.date.date) = 2000 and month_of_year(catalog_sales.date.date) = 2 select count(catalog_sales.order_number) as cnt limit 5; | ^--- | = exp…
+- `trilogy run --import raw/address.preql:address select address.county, count(address.id) as cnt group by address.county order …`
+  - --> 2:49 | 2 | select address.county, count(address.id) as cnt group by address.county order by cnt desc limit 20; | ^--- | = expected metadata, limit, order_by, where, or having Location: ...nty, count(address.id) as cn…
+- `trilogy run - duckdb`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...ales.discount_amount as dscnt ??? from raw.catalog_sales as cata... --- stderr ---
+- `trilogy run - duckdb`
+  - --> 1:1 | 1 | 977; | ^--- | = expected start Location: ??? 977; --- stderr ---
+- `trilogy run --import raw/inventory:inv select inv.date.month_of_year, count(inv.warehouse.id) as cnt, count(inv.item.id) as c…`
+  - --> 2:118 | 2 | select inv.date.month_of_year, count(inv.warehouse.id) as cnt, count(inv.item.id) as cnt2 where inv.date.year = 2001 group by inv.date.month_of_year; | ^--- | = expected limit, order_by, having, LOGICAL_O…
+- `trilogy run --import raw/inventory:inv -`
+  - --> 2:1 | 2 | >; | ^--- | = expected EOI, block, or show_statement Location: import raw.inventory as inv; ??? >; --- stderr ---
+- `trilogy run --import raw/inventory:inv -`
+  - --> 2:1 | 2 | > limit 5; | ^--- | = expected EOI, block, or show_statement Location: import raw.inventory as inv; ??? > limit 5; --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.id, avg(store_sales.net_profit) as avg_profit where …`
+  - --> 2:102 | 2 | select store_sales.item.id, avg(store_sales.net_profit) as avg_profit where store_sales.store.id = 1 group by store_sales.item.id limit 10; | ^--- | = expected limit, order_by, having, LOGICAL_OR, LOGICAL…
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.category, store_sales.item.brand_name, store_sales.s…`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...tore_sales.date.month_of_year ??? from store_sales limit 5; --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select store_sales.store.name, store_sales.store.company_name, store_sales.i…`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ....month_of_year asc as seq_num ??? from store_sales limit 5; --- stderr ---
+- `trilogy run -e test=1 duck_db`
+  - --> 1:1 | 1 | duck_db; | ^--- | = expected start Location: ??? duck_db; --- stderr ---
+- `trilogy run --import raw/date:date - duckdb`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...date.year, date.month_of_year ??? from date where year = 1998 or... --- stderr ---
+- `trilogy run --import raw/item:item - duckdb`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...; select item.category as cat ??? from item order by cat limit 3... --- stderr ---
+- `trilogy run --import raw/item:item - duckdb`
+  - --> 2:79 | 2 | select item.class as cls, count(item.id) as cnt where item.category = 'Women' group by cls order by cnt desc limit 10; | ^--- | = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracke…
+- `trilogy run --import raw/item:item select item.id, item.color from item where item.color in ('slate','blanched','burnished') …`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ...m; select item.id, item.color ??? from item where item.color in --- stderr ---
+- `trilogy run --import raw/item:item target_color_items.id <- select item.id from item where item.color in ('slate','blanched',…`
+  - --> 2:1 | 2 | target_color_items.id <- select item.id from item where item.color in ('slate','blanched','burnished'); | ^--- | = expected EOI, block, or show_statement Location: import raw.item as item; ??? target_color_…
+- `trilogy run --import raw/item:item --import raw/store_sales:ss where ss.date.month_of_year = 2 and ss.date.year = 2001 and ss…`
+  - --> 3:121 | 3 | where ss.date.month_of_year = 2 and ss.date.year = 2001 and ss.sale_address.gmt_offset = -5 and ss.item.category_id in (select item.category_id from item where item.color in ('slate', 'blanched', 'burnish…
+- `trilogy run --import raw/item:item --import raw/store_sales:ss select ss.item.id, ss.item.category_id from ss where ss.date.m…`
+  - Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic). Location: ....item.id, ss.item.category_id ??? from ss where ss.date.month_of... --- stderr ---
+- `trilogy run --import raw/store_sales.preql:store_sales select store_sales.date.year, store_sales.date.week_seq, count_distinc…`
+  - --> 2:218 | 2 | select store_sales.date.year, store_sales.date.week_seq, count_distinct(store_sales.date.day_name) as days, sum(store_sales.ext_sales_price) as total where store_sales.date.year in (2001) and store_sales.…
+- `trilogy run --import raw/web_sales.preql:ws select ws.date.date, count(ws.order_number) as cnt where ws.item.manufacturer_id …`
+  - --> 2:88 | 2 | select ws.date.date, count(ws.order_number) as cnt where ws.item.manufacturer_id = 350 group by ws.date.date limit 10; | ^--- | = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracke…
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales merge store_sales.item.id into ~cat…`
+  - --> 3:1 | 3 | merge store_sales.item.id into ~catalog_sales.item.id where store_sales.date.year = 2000 and catalog_sales.sold_date.year = 2000 select store_sales.customer.id, store_sales.item.id limit 5; | ^--- | = expec…
+
+### `syntax-missing-alias`
+
+- `trilogy run --import raw/store_sales.preql:store_sales select count(store_sales.item.id); duckdb`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...ect count(store_sales.item.id) ??? ; --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select count_distinct(store_sales.customer.id) limit 5;`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...inct(store_sales.customer.id) ??? limit 5; --- stderr ---
+- `trilogy run - duckdb`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...atalog_sales; select distinct ??? catalog_sales.discount_amount --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select store_sales.store.id, count(store_sales.ticket_number) where store_sa…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...nt(store_sales.ticket_number) ??? where store_sales.store.id is --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales --import raw/date:date --import raw/item:item --import raw/store:store selec…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...(store_sales.ext_sales_price) ??? limit 5; --- stderr ---
+- `trilogy run --import raw/web_sales:ws --import raw/web_returns:wr select count(ws.order_number); duck_db`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: select count(ws.order_number) ??? ; --- stderr ---
+- `trilogy run --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales --import raw/store_sales:store_sales --…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...t(catalog_sales.order_number) ??? limit 5; --- stderr ---
+- `trilogy run --import raw/item:item - duckdb`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...item as item; select distinct ??? item.category from item order --- stderr ---
+- `trilogy run --import raw/store_sales.preql:store_sales select store_sales.date.year, count_distinct(store_sales.date.week_seq…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...ct(store_sales.date.week_seq) ??? limit 5; --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item select store_sales.item.id, max(store_sales.item.cate…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...ales.item.category = 'Music') ??? limit 3; --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.manager_id, store_sales.date.month_of_year, sum(stor…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...les, avg(total_monthly_sales) ??? over store_sales.item.manager_... --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.manager_id, store_sales.date.month_of_year, sum(stor…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...ore_sales.date.month_of_year) ??? over store_sales.item.manager_... --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.manager_id, store_sales.date.month_of_year, sum(stor…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...ore_sales.date.month_of_year) ??? over store_sales.item.manager_... --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.manager_id, store_sales.date.month_of_year, sum(stor…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...(store_sales.ext_sales_price) ??? over store_sales.item.manager_... --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales --import raw/date --import raw/item:item --import raw/store:store select sto…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...(store_sales.ext_sales_price) ??? limit 5; --- stderr ---
+- `trilogy run --import raw/web_sales.preql:ws select ws.warehouse.name, year(ws.date.date), month(ws.date.date), sum(ws.ext_sal…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...house.name, year(ws.date.date) ??? , month(ws.date.date), sum(ws.... --- stderr ---
+- `trilogy run --import raw/catalog_sales:catalog_sales select sold_date.year, count(order_number) limit 5; duckdb`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...ate.year, count(order_number) ??? limit 5; --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales --import raw/web_sales:web_sales select sum(store_sales.quantity), sum(web_s…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...lect sum(store_sales.quantity) ??? , sum(web_sales.quantity) wher... --- stderr ---
+- `trilogy run --import raw/web_sales.preql:ws select ws.item.manufacturer_id, min(ws.ext_discount_amount), max(ws.ext_discount_…`
+  - Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Location: ...d, min(ws.ext_discount_amount) ??? , max(ws.ext_discount_amount) --- stderr ---
+
+### `file-not-found`
+
+- `trilogy run --import raw/store_sales.preql:store --import raw/catalog_sales.preql:catalog --import raw/web_sales.preql:web se…`
+  - exit_code: 2 --- stdout --- Input 'select store.customer.id as c_id, year(store.date.date) as yr, sum(store.ext_list_price - store.ext_wholesale_cost - store.ext_discount_amount + store.ext_sales_price)/2 as st_yr, sum(c…
+- `trilogy run --import raw/store_sales.preql:store --import raw/catalog_sales.preql:catalog --import raw/web_sales.preql:web me…`
+  - exit_code: 2 --- stdout --- Input 'merge store.customer.id into ~catalog.customer.id; merge store.customer.id into ~web.customer.id; select store.customer.id as c_id, year(store.date.date) as yr, sum(store.ext_list_price…
+- `trilogy run --import raw/store_sales.preql:store --import raw/catalog_sales.preql:catalog --import raw/web_sales.preql:web se…`
+  - exit_code: 2 --- stdout --- Input 'select store.customer.id, sum(store.ext_list_price - store.ext_wholesale_cost - store.ext_discount_amount + store.ext_sales_price)/2 as st_yr, sum(catalog.ext_list_price - catalog.ext_w…
+- `trilogy run --import raw/store_sales.preql:store select store.customer.id, count(store.ticket_number) as cnt, sum(store.ext_l…`
+  - exit_code: 2 --- stdout --- Input 'select store.customer.id, count(store.ticket_number) as cnt, sum(store.ext_list_price - store.ext_wholesale_cost - store.ext_discount_amount + store.ext_sales_price)/2 as st_yr where ye…
+- `trilogy run --import raw/inventory:inv --import raw/item:i --import raw/warehouse:w --import raw/date:d - duckdb`
+  - exit_code: 2 --- stdout --- Input 'select inv.warehouse.name as warehouse_name, inv.item.id as item_id, sum(inv.quantity_on_hand ? inv.date.date >= '2000-02-10'::date and inv.date.date < '2000-03-11'::date) as before_tot…
+- `trilogy run --import raw/store_sales.preql:store_sales --import raw/item.preql:item --import raw/date.preql:date --import raw…`
+  - exit_code: 2 --- stdout --- Input 'merge item.id into ~store_sales.item.id; merge date.id into ~store_sales.date.id; merge customer.id into ~store_sales.customer.id; where year(store_sales.date.date) between 2000 and 200…
+- `trilogy run --import raw/inventory:inv select inv.warehouse.id as wid, inv.item.id as iid, inv.date.month_of_year as moy, avg…`
+  - exit_code: 2 --- stdout --- Input 'select inv.warehouse.id as wid, inv.item.id as iid, inv.date.month_of_year as moy, avg(inv.quantity_on_hand) as avg_qoh, stddev(inv.quantity_on_hand) as std_qoh, std_qoh / avg_qoh as cv…
+- `trilogy run --import raw/inventory:inv select inv.warehouse.id as wid, inv.item.id as iid, avg(inv.quantity_on_hand) as avg_q…`
+  - exit_code: 2 --- stdout --- Input 'select inv.warehouse.id as wid, inv.item.id as iid, avg(inv.quantity_on_hand) as avg_qoh, stddev(inv.quantity_on_hand) as std_qoh, std_qoh / avg_qoh as cv where inv.date.year = 2001 hav…
+- `trilogy run --import raw/inventory:inv select inv.warehouse.id as wid, inv.item.id as iid, avg(inv.quantity_on_hand) as avg_q…`
+  - exit_code: 2 --- stdout --- Input 'select inv.warehouse.id as wid, inv.item.id as iid, avg(inv.quantity_on_hand) as avg_qoh, stddev(inv.quantity_on_hand) as std_qoh, std_qoh / avg_qoh as cv where inv.date.year = 2001;' d…
+- `trilogy run --import raw/inventory:inv -`
+  - exit_code: 2 --- stdout --- Input '> select inv.warehouse.id as wid, inv.item.id as iid, inv.date.month_of_year as moy, avg(inv.quantity_on_hand) as avg_qoh, stddev(inv.quantity_on_hand) as std_qoh, std_qoh / avg_qoh as …
+- `trilogy run --import raw/item:item select item.manufact, count(item.id) as cnt where item.manufacturer_id between 738 and 778…`
+  - exit_code: 2 --- stdout --- Input 'select item.manufact, count(item.id) as cnt where item.manufacturer_id between 738 and 778 and ( (item.category = 'Women' and item.color in ('powder', 'khaki') and item.units in ('Ounce…
+- `trilogy run --import raw/item:item - duck_db`
+  - exit_code: 2 --- stdout --- Input 'select item.manufact, count(item.id) as cnt where item.manufacturer_id between 738 and 778 and ((item.category='Women' and item.color in ('powder','khaki') and item.units in ('Ounce','O…
+- `trilogy run --import raw/item:item - duck_db`
+  - exit_code: 2 --- stdout --- Input 'select item.manufact, count(item.id) as cnt where item.manufacturer_id between 738 and 778 and ( (item.category = 'Women' and item.color in ('powder', 'khaki') and item.units in ('Ounce…
+- `trilogy run query44.preql`
+  - exit_code: 2 --- stdout --- Input 'query44.preql' does not exist. --- stderr ---
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.category, store_sales.item.brand_name, store_sales.s…`
+  - exit_code: 2 --- stdout --- Input 'select store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.date.year, store_sales.date.month_of_year, sum(store_s…
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.category as cat, store_sales.item.brand_name as bran…`
+  - exit_code: 2 --- stdout --- Input 'select store_sales.item.category as cat, store_sales.item.brand_name as brand, store_sales.store.name as store_name, store_sales.store.company_name as company, store_sales.date.year as …
+- `trilogy run --import raw/web_sales:ws --import raw/web_returns:wr merge wr.web_sales.order_number into ~ws.order_number; merg…`
+  - exit_code: 2 --- stdout --- Input 'merge wr.web_sales.order_number into ~ws.order_number; merge wr.web_sales.item.id into ~ws.item.id; where ws.date.month_of_year = 12 and ws.date.year = 2001 and ws.net_profit > 0 and ws…
+- `trilogy run --import raw/web_sales:ws --import raw/web_returns:wr merge wr.web_sales.order_number into ~ws.order_number; merg…`
+  - exit_code: 2 --- stdout --- Input 'merge wr.web_sales.order_number into ~ws.order_number; merge wr.web_sales.item.id into ~ws.item.id; where ws.date.month_of_year = 12 and ws.date.year = 2001 and ws.net_profit > 0 and ws…
+
+### `type-error`
+
+- `trilogy run query05.preql`
+  - Invalid argument type 'INTEGER' passed into CONCAT function in position 2 from concept: store_sales.store.id. Valid: 'STRING'. --- stderr ---
+- `trilogy run query97.preql`
+  - Invalid argument type 'INTEGER' passed into CONCAT function in position 1 from concept: catalog_sales.bill_customer.id. Valid: 'STRING'. --- stderr ---

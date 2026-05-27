@@ -24,6 +24,7 @@ from trilogy.scripts.agent import (
     _maybe_flag_loop,
     _run_turn,
     _status_message,
+    handle_list_files,
     handle_read_file,
     handle_return_control,
     handle_show_message,
@@ -213,6 +214,25 @@ def test_write_file_refuses_empty_overwrite_of_nonempty_file(tmp_path, monkeypat
     assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
 
 
+def test_write_file_syntax_error_surfaces_parse_message(tmp_path, monkeypatch):
+    """A .preql write that fails to parse must refuse AND surface the parser's
+    own error inline — the agent needs the specific syntax message to fix the
+    content. Previous wording ('did not parse as Trilogy') was vague enough
+    that the agent often retried with the same broken content."""
+    monkeypatch.chdir(tmp_path)
+    # Truncated mid-statement (no `select`, no `;`) — mirrors the q01 failure
+    # pattern from the tpch eval where the model output got cut off.
+    result = handle_write_file(
+        AgentState(),
+        {"path": "query01.preql", "content": "where lineitem.shipdate::date"},
+    )
+    assert "refused" in result
+    assert "syntactically valid" in result
+    assert "Parse error:" in result
+    # The file must not have been written.
+    assert not (tmp_path / "query01.preql").exists()
+
+
 def test_write_file_flags_writes_into_raw(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     result = handle_write_file(
@@ -238,6 +258,47 @@ def test_write_file_validates_arguments():
     )
 
 
+def test_list_files_recursive_shows_nested_paths(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "store_sales.preql").write_text("x", encoding="utf-8")
+    (tmp_path / "trilogy.toml").write_text("y", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "trilogy.toml" in out
+    assert "raw/store_sales.preql" in out
+
+
+def test_list_files_skips_workspace_noise(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "tpcds.duckdb").write_text("bin", encoding="utf-8")
+    (tmp_path / "_worker_0").mkdir()
+    (tmp_path / "_worker_0" / "junk.preql").write_text("z", encoding="utf-8")
+    (tmp_path / "__pycache__").mkdir()
+    (tmp_path / "__pycache__" / "x.pyc").write_text("z", encoding="utf-8")
+    (tmp_path / "query01.preql").write_text("q", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "query01.preql" in out
+    assert "tpcds.duckdb" not in out
+    assert "_worker_0" not in out
+    assert "__pycache__" not in out
+
+
+def test_list_files_reports_missing_and_non_directory(tmp_path):
+    assert "no such path" in handle_list_files(
+        AgentState(), {"path": str(tmp_path / "missing")}
+    )
+    f = tmp_path / "f.txt"
+    f.write_text("x", encoding="utf-8")
+    assert "not a directory" in handle_list_files(AgentState(), {"path": str(f)})
+
+
+def test_list_files_validates_args():
+    assert "non-empty string" in handle_list_files(AgentState(), {"path": ""})
+    assert "must be a boolean" in handle_list_files(
+        AgentState(), {"path": ".", "recursive": "yes"}
+    )
+
+
 def test_read_file_validates_path():
     assert "non-empty string" in handle_read_file(AgentState(), {})
     assert "non-empty string" in handle_read_file(AgentState(), {"path": ""})
@@ -250,29 +311,56 @@ def test_return_control_rejects_non_string_message():
     assert state.done is False
 
 
-def test_handle_trilogy_redirects_file_write_and_read():
-    write = handle_trilogy(AgentState(), {"args": ["file", "write", "q.preql"]})
-    assert "write_file" in write
-    read = handle_trilogy(AgentState(), {"args": ["file", "read", "q.preql"]})
-    assert "read_file" in read
+def test_handle_trilogy_file_write_hints_on_split_content(tmp_path):
+    # The CLI `file write` is allowed (it's a real, useful command). What we
+    # intercept is the common misuse where the agent split the file body
+    # across multiple positional args instead of one --content string.
+    target = tmp_path / "q.preql"
+    bad = handle_trilogy(
+        AgentState(),
+        {
+            "args": [
+                "file",
+                "write",
+                str(target),
+                "--content",
+                "import",
+                "raw.store_sales",
+                "as",
+                "store_sales;",
+            ]
+        },
+    )
+    assert "SINGLE string" in bad
+    # And valid usage isn't intercepted — falls through to the subprocess.
+    ok = handle_trilogy(
+        AgentState(),
+        {
+            "args": [
+                "file",
+                "write",
+                str(target),
+                "--content",
+                "select 1+1 -> answer;",
+            ]
+        },
+    )
+    assert "exit_code: 0" in ok
 
 
 # --- return_control_to_user gating ---
 
 
-def test_return_control_blocked_by_open_todos():
+def test_return_control_auto_discards_open_todos():
+    # Earlier behavior refused exit with uncompleted TODOs; the eval showed
+    # agents burning iterations on complete/remove just to satisfy the gate.
+    # Open items are now auto-discarded so exit is always cheap.
     state = AgentState(todos=[TodoItem(id="a", description="x")])
     result = handle_return_control(state, {"message": "done"})
-    assert "refused" in result
-    assert state.done is False
-
-
-def test_return_control_succeeds_when_todos_complete():
-    state = AgentState(todos=[TodoItem(id="a", description="x", completed=True)])
-    result = handle_return_control(state, {"message": "all good"})
     assert result == "return_control_to_user: ok"
     assert state.done is True
-    assert state.farewell == "all good"
+    assert state.todos == []
+    assert state.farewell == "done"
 
 
 def test_return_control_succeeds_with_no_todos():
@@ -394,7 +482,160 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
     monkeypatch.setitem(agent_mod.TOOL_HANDLERS, "show_message", boom)
     result = _dispatch(AgentState(), LLMToolCall(name="show_message"))
     assert "RuntimeError" in result
-    assert "kaboom" in result
+
+
+# --- Additional coverage for handlers and helpers ---
+
+
+def test_validate_preql_syntax_wraps_unexpected_exception(monkeypatch):
+    """The validator's safety net converts non-InvalidSyntaxException errors
+    into a typed string so a buggy parser never crashes the write."""
+
+    def boom(_):
+        raise RuntimeError("parser exploded")
+
+    import trilogy.parsing.v2.lark_backend as lark_backend
+
+    monkeypatch.setattr(lark_backend, "parse_lark", boom)
+    msg = agent_mod._validate_preql_syntax("select 1 -> x;")
+    assert msg is not None
+    assert "RuntimeError" in msg
+    assert "parser exploded" in msg
+
+
+def test_write_file_flags_html_escapes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = handle_write_file(
+        AgentState(),
+        {"path": "q.preql", "content": "where x &lt;= 1 select x;"},
+    )
+    assert "HTML-escaped" in result
+    assert "&lt;" in result
+    # The file must not have been written.
+    assert not (tmp_path / "q.preql").exists()
+
+
+def test_write_file_reports_oserror(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    from pathlib import Path
+
+    real_write_text = Path.write_text
+
+    def boom(self, *a, **kw):
+        if self.name.endswith("boom.preql"):
+            raise OSError("disk full")
+        return real_write_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "write_text", boom)
+    result = handle_write_file(
+        AgentState(),
+        {"path": "boom.preql", "content": "select 1 -> x;"},
+    )
+    assert "write_file error" in result
+    assert "disk full" in result
+
+
+def test_list_files_truncates_at_max_entries(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(agent_mod, "_LIST_FILES_MAX_ENTRIES", 3)
+    for i in range(10):
+        (tmp_path / f"f{i:02d}.preql").write_text("x", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": "."})
+    # Header carries the `+` truncation marker.
+    assert "+" in out.splitlines()[0]
+
+
+def test_list_files_non_recursive_marks_directories(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "__pycache__").mkdir()  # exercises the skip-continue branch
+    (tmp_path / "q.preql").write_text("x", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": ".", "recursive": False})
+    assert "raw/" in out
+    assert "q.preql" in out
+    assert "__pycache__" not in out
+
+
+def test_write_file_handles_oserror_on_stat(monkeypatch, tmp_path):
+    """When stat() raises (e.g. permission denied), the clobber check falls
+    back to False and the write still attempts (then succeeds)."""
+    monkeypatch.chdir(tmp_path)
+    from pathlib import Path
+
+    real_stat = Path.stat
+
+    def boom_stat(self, *a, **kw):
+        if self.name == "perms.preql":
+            raise OSError("stat denied")
+        return real_stat(self, *a, **kw)
+
+    (tmp_path / "perms.preql").write_text("old", encoding="utf-8")
+    monkeypatch.setattr(Path, "stat", boom_stat)
+    result = handle_write_file(
+        AgentState(), {"path": "perms.preql", "content": "select 1 -> x;"}
+    )
+    assert "wrote" in result
+
+
+def test_list_files_reports_empty_directory(tmp_path):
+    out = handle_list_files(AgentState(), {"path": str(tmp_path)})
+    assert "no files under" in out
+
+
+def test_read_file_reports_oserror(monkeypatch, tmp_path):
+    target = tmp_path / "q.preql"
+    target.write_text("x", encoding="utf-8")
+    from pathlib import Path
+
+    def boom(self, *a, **kw):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    result = handle_read_file(AgentState(), {"path": str(target)})
+    assert "read_file error" in result
+    assert "permission denied" in result
+
+
+def test_first_non_flag_arg_skips_value_flag_and_options():
+    fn = agent_mod._first_non_flag_arg
+    assert fn(["--debug-file", "log.txt", "agent-info"]) == "agent-info"
+    assert fn(["--debug", "agent-info"]) == "agent-info"
+    assert fn(["--debug-file"]) is None
+    assert fn([]) is None
+
+
+def test_trilogy_file_write_hint_returns_none_without_content_flag():
+    assert agent_mod._trilogy_file_write_hint(["file", "write", "x.preql"]) is None
+
+
+def test_handle_trilogy_reports_subprocess_timeout(monkeypatch):
+    import subprocess
+
+    def boom(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="trilogy", timeout=600)
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    result = handle_trilogy(AgentState(), {"args": ["--version"]})
+    assert "timed out" in result
+
+
+def test_handle_trilogy_preserves_full_output_for_agent_info(monkeypatch):
+    """agent-info is the language reference — middle-truncating it eats the
+    syntax rules. The handler skips truncate_middle on the agent-info path."""
+    import subprocess
+
+    big = "x" * 5000
+
+    class _Fake:
+        returncode = 0
+        stdout = big
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _Fake())
+    state = AgentState(tool_output_limit=80)
+    result = handle_trilogy(state, {"args": ["agent-info"]})
+    assert big in result
+    assert "truncated" not in result
 
 
 # --- _run_turn loop ---
@@ -429,28 +670,27 @@ def test_run_turn_reprompts_when_no_tool_calls():
     )
 
 
-def test_run_turn_blocks_return_until_todos_completed(monkeypatch):
+def test_run_turn_return_control_drops_open_todos(monkeypatch):
     class _FixedUUID:
         hex = "abcd1234ffff"
 
     monkeypatch.setattr(agent_mod.uuid, "uuid4", lambda: _FixedUUID())
+    # Open TODOs no longer gate exit. The agent adds one, then returns
+    # control immediately; the open item is discarded and the run ends.
     provider = ScriptedProvider(
         responses=[
             make_response(call("todo", action="add", description="step one")),
-            make_response(call("return_control_to_user", message="premature")),
-            make_response(call("todo", action="complete", id="abcd1234")),
-            make_response(call("return_control_to_user", message="done now")),
+            make_response(call("return_control_to_user", message="done")),
         ]
     )
     conv = make_conv(provider)
     state = AgentState()
     _run_turn(conv, state, max_iterations=10)
     assert state.done is True
-    assert state.farewell == "done now"
-    refusal_msgs = [
-        m.content for m in conv.messages if m.role == "user" and "refused" in m.content
-    ]
-    assert len(refusal_msgs) == 1
+    assert state.farewell == "done"
+    assert state.todos == []
+    # No refusal message — the gate is gone.
+    assert not any("refused" in m.content for m in conv.messages if m.role == "user")
 
 
 def test_run_turn_raises_after_max_iterations():
@@ -890,6 +1130,7 @@ def test_all_tools_registered():
         "trilogy",
         "write_file",
         "read_file",
+        "list_files",
         "todo",
         "return_control_to_user",
     }

@@ -380,6 +380,33 @@ def expr_over_list(
     return hydrated_children(node, hydrate)
 
 
+def aggregate_paren_by(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> list[Any]:
+    """``sum(x) by (expr, …)`` — paren-wrapped expression list. Unlike windows'
+    ``partition by``, an aggregate's grain is the materialized expression
+    itself, so we promote non-concept entries to virtual concept refs here.
+    The build phase's ``instantiate_concept`` will produce concepts with the
+    same deterministic addresses."""
+    args = hydrated_children(node, hydrate)
+    items = args[0] if args else []
+    refs: list[Any] = []
+    for item in items:
+        if isinstance(item, ConceptRef):
+            refs.append(context.concepts.require(item.address).reference)
+        elif isinstance(item, Concept):
+            refs.append(item.reference)
+        elif isinstance(item, str):
+            refs.append(context.concepts.require(item).reference)
+        else:
+            virt = arbitrary_to_concept_v2(item, context=context)
+            context.add_virtual_concept(virt, meta=core_meta(node.meta))
+            refs.append(virt.reference)
+    return refs
+
+
 # --- Special function handlers ---
 
 
@@ -996,6 +1023,7 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.AGGREGATE_GROUPING_SETS: aggregate_grouping_sets,
     SyntaxNodeKind.GROUPING_SET: grouping_set,
     SyntaxNodeKind.AGGREGATE_BY: aggregate_by,
+    SyntaxNodeKind.AGGREGATE_PAREN_BY: aggregate_paren_by,
     SyntaxNodeKind.FGROUP: fgroup,
     SyntaxNodeKind.OVER_LIST: over_list,
     SyntaxNodeKind.OVER_COMPONENT: over_component,

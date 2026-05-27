@@ -1113,15 +1113,21 @@ def agg_wrapper_to_concept(
     environment: Environment,
     metadata: Metadata | None = None,
 ) -> Concept:
+    # `by` items must be concept refs by the time we get here — the
+    # ``aggregate_paren_by`` rule materializes expressions to virtual concepts
+    # so that grain/keys can be computed against a stable address. Window
+    # ``partition by`` keeps raw expressions because windows don't redefine
+    # grain; aggregates do.
+    by_refs: list[ConceptRef | Concept] = list(parent.by) if parent.by else []
     _, keys = get_purpose_and_keys(
-        Purpose.METRIC, tuple(parent.by) if parent.by else None, environment=environment
+        Purpose.METRIC, tuple(by_refs) if by_refs else None, environment=environment
     )
     # anything grouped to a grain should be a property
     # at that grain
     fmetadata = metadata or Metadata()
     aggfunction = parent.function
     modifiers = get_lineage_modifiers(parent, environment)
-    grain = Grain.from_concepts(parent.by, environment) if parent.by else Grain()
+    grain = Grain.from_concepts(by_refs, environment) if by_refs else Grain()
     granularity = Concept.calculate_granularity(Derivation.AGGREGATE, grain, parent)
 
     out = Concept(
@@ -1132,7 +1138,7 @@ def agg_wrapper_to_concept(
         lineage=parent,
         grain=grain,
         namespace=namespace,
-        keys=set([x.address for x in parent.by]) if parent.by else keys,
+        keys=set([x.address for x in by_refs]) if by_refs else keys,
         modifiers=modifiers,
         derivation=Derivation.AGGREGATE,
         granularity=granularity,

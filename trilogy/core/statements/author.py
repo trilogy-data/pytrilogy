@@ -250,7 +250,6 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                 self.where_clause = self.where_clause.with_reference_replacement(
                     replacements
                 )
-        all_in_output = [x for x in self.output_components]
         if self.where_clause:
             for cref in self.where_clause.concept_arguments:
                 concept = environment.concepts[cref.address]
@@ -282,17 +281,30 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                         raise SyntaxError(
                             f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
                         )
+        output_addresses = {x.address for x in self.output_components}
+        alias_sources = self.alias_source_addresses
+        allowed_addresses = output_addresses | alias_sources
         if self.having_clause:
             for cref in self.having_clause.concept_arguments:
-                if cref.address not in [x for x in self.output_components]:
+                if cref.address not in allowed_addresses:
                     raise SyntaxError(
-                        f"Cannot reference a column ({cref.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
+                        f"HAVING references '{cref.address}', which is not in the "
+                        f"SELECT projection (line {self.meta.line_number}). Fix one of: "
+                        f"(a) add it to SELECT — prefix with `--` to keep it out of "
+                        f"the output rows, e.g. `select ..., --{cref.address}`; "
+                        f"(b) move the filter to WHERE — for an aggregate condition "
+                        f"on a non-output grain, write the aggregate inline as "
+                        f"`agg(x) by grain` directly in WHERE."
                     )
         if self.order_by:
             for cref in self.order_by.concept_arguments:
-                if cref.address not in all_in_output:
+                if cref.address not in allowed_addresses:
                     raise SyntaxError(
-                        f"Cannot order by column {cref.address} that is not in the output projection; line: {self.meta.line_number}"
+                        f"ORDER BY references '{cref.address}', which is not in the "
+                        f"SELECT projection (line {self.meta.line_number}). Add it to "
+                        f"SELECT to sort by it — prefix with `--` to keep it out of "
+                        f"the output rows, e.g. `select ..., --{cref.address} "
+                        f"order by {cref.address} asc`."
                     )
 
     def __str__(self):
@@ -307,6 +319,15 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             if isinstance(item.content, ConceptTransform):
                 locally_derived.add(item.concept.address)
         return locally_derived
+
+    @property
+    def alias_source_addresses(self) -> set[str]:
+        sources: set[str] = set()
+        for item in self.selection:
+            if isinstance(item.content, ConceptTransform):
+                for arg in item.content.function.concept_arguments:
+                    sources.add(arg.address)
+        return sources
 
     @property
     def output_components(self) -> List[ConceptRef]:

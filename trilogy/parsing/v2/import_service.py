@@ -31,6 +31,44 @@ class ImportRequest:
     leading_dots: int = 0
 
 
+def _suggest_import_paths(
+    missing_basename: str, search_root: Path, max_depth: int = 4, max_hits: int = 5
+) -> list[str]:
+    """Return dotted import paths for .preql files matching ``missing_basename``
+    under ``search_root``. Used to turn ``[Errno 2] No such file: store_sales.preql``
+    into ``Did you mean: raw.store_sales?`` — a downward scan only, no `..`
+    upward traversal (per agent-eval feedback, upward paths produced noisier
+    suggestions than they were worth)."""
+    if not search_root.exists() or not search_root.is_dir():
+        return []
+    target = f"{missing_basename}.preql"
+    hits: list[str] = []
+    try:
+        for path in search_root.rglob(target):
+            try:
+                rel = path.relative_to(search_root).with_suffix("")
+            except ValueError:
+                continue
+            if len(rel.parts) > max_depth:
+                continue
+            # Skip hidden / dunder / venv-ish dirs so the suggestion isn't
+            # polluted by `__pycache__`, `.git`, eval worker copies, etc.
+            if any(
+                part.startswith(".")
+                or part.startswith("_")
+                or part in ("node_modules", "venv")
+                for part in rel.parts
+            ):
+                continue
+            hits.append(".".join(rel.parts))
+            if len(hits) >= max_hits * 4:  # bail before the disk burns
+                break
+    except OSError:
+        return []
+    # Stable sort + dedupe; closer (fewer path parts) first, then alphabetical.
+    return sorted(set(hits), key=lambda p: (p.count("."), p))[:max_hits]
+
+
 def _read_import_text(
     address: str, environment: Environment, is_stdlib: bool = False
 ) -> str:
@@ -38,8 +76,18 @@ def _read_import_text(
         isinstance(environment.config.import_resolver, FileSystemImportResolver)
         or is_stdlib
     ):
-        with safe_open(address) as f:
-            return f.read()
+        try:
+            with safe_open(address) as f:
+                return f.read()
+        except OSError as exc:
+            if is_stdlib:
+                raise
+            missing_basename = Path(address).stem
+            suggestions = _suggest_import_paths(
+                missing_basename, Path(environment.working_path)
+            )
+            hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
+            raise ImportError(f"Unable to import '{address}': {exc}.{hint}") from exc
     if isinstance(environment.config.import_resolver, DictImportResolver):
         if address not in environment.config.import_resolver.content:
             raise ImportError(

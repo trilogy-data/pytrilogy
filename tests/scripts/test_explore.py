@@ -35,12 +35,21 @@ def sample_preql(tmp_path: Path) -> Path:
 
 
 def test_explore_lists_concepts(runner, sample_preql: Path):
+    # Default output is the namespace-grouped view, which still names every
+    # concept by leaf — just collapsed under a header.
     result = runner.invoke(cli, ["explore", str(sample_preql)])
     assert result.exit_code == 0, result.output
+    assert "Concept groups" in result.output
+    assert "carrier" in result.output
+    assert "distance" in result.output
+
+
+def test_explore_show_all_includes_datasources_and_imports(runner, sample_preql: Path):
+    result = runner.invoke(cli, ["explore", str(sample_preql), "--show", "all"])
+    assert result.exit_code == 0
+    assert "Concept groups" in result.output
     assert "Concepts" in result.output
-    assert "local.id" in result.output
-    assert "local.carrier" in result.output
-    assert "local.distance" in result.output
+    assert "Datasources" in result.output
     assert "flights" in result.output
 
 
@@ -75,15 +84,55 @@ def test_explore_show_datasources_only(runner, sample_preql: Path):
 def test_explore_purpose_filter(runner, sample_preql: Path):
     result = runner.invoke(cli, ["explore", str(sample_preql), "--purpose", "key"])
     assert result.exit_code == 0
-    assert "local.id" in result.output
-    assert "local.carrier" not in result.output
+    # In grouped output, ``id`` shows up under "keys:" — and the only-properties
+    # leaves (carrier, distance) are filtered out.
+    assert "id" in result.output
+    assert "carrier" not in result.output
+    assert "distance" not in result.output
+
+
+def test_explore_purpose_filter_accepts_multiple(runner, sample_preql: Path):
+    result = runner.invoke(
+        cli,
+        [
+            "explore",
+            str(sample_preql),
+            "--purpose",
+            "key",
+            "--purpose",
+            "property",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "id" in result.output
+    assert "carrier" in result.output
+    assert "distance" in result.output
 
 
 def test_explore_grep_filter(runner, sample_preql: Path):
     result = runner.invoke(cli, ["explore", str(sample_preql), "--grep", "carrier"])
     assert result.exit_code == 0
-    assert "local.carrier" in result.output
-    assert "local.distance" not in result.output
+    assert "carrier" in result.output
+    assert "distance" not in result.output
+
+
+def test_explore_grep_filter_accepts_multiple(runner, sample_preql: Path):
+    result = runner.invoke(
+        cli,
+        [
+            "explore",
+            str(sample_preql),
+            "--grep",
+            "carrier",
+            "--grep",
+            "distance",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "carrier" in result.output
+    assert "distance" in result.output
+    # `id` is neither — should be filtered out, even though it's a key concept.
+    assert "keys:" not in result.output
 
 
 def test_explore_missing_file(runner, tmp_path: Path):
@@ -170,3 +219,44 @@ def test_run_inline_appends_missing_terminator(
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
+
+
+def test_compact_datatype_handles_traits_enums_and_lower():
+    from trilogy.scripts.explore import _compact_datatype
+
+    assert _compact_datatype("Trait<STRING, ['us_state']>") == "string::us_state"
+    assert (
+        _compact_datatype("Trait<Trait<STRING, ['us_state']>, ['code']>")
+        == "string::us_state::code"
+    )
+    long_enum = "enum<" + ",".join(f"'value_{i}'" for i in range(12)) + ">"
+    assert len(long_enum) > 60
+    out = _compact_datatype(long_enum)
+    assert out.startswith("enum<'value_0','value_1','value_2',")
+    assert "+9" in out
+    assert _compact_datatype("INT") == "int"
+
+
+def test_explore_metrics_appear_in_group_view(runner, tmp_path: Path):
+    """Hits the ``metrics:`` branch in `_emit_groups` — a metric concept in a
+    group surfaces under ``metrics:`` rather than under keys/props."""
+    path = tmp_path / "sales.preql"
+    path.write_text(
+        "key id int;\n" "property id.amount int;\n" "auto total <- sum(amount);\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(cli, ["explore", str(path)])
+    assert result.exit_code == 0, result.output
+    assert "metrics:" in result.output
+    assert "total" in result.output
+
+
+def test_explore_show_imports_lists_alias_and_path(runner, tmp_path: Path):
+    leaf = tmp_path / "leaf.preql"
+    leaf.write_text("key x int;", encoding="utf-8")
+    main = tmp_path / "main.preql"
+    main.write_text("import leaf as leaf;\nkey y int;\n", encoding="utf-8")
+    result = runner.invoke(cli, ["explore", str(main), "--show", "imports"])
+    assert result.exit_code == 0, result.output
+    assert "Imports" in result.output
+    assert "leaf" in result.output

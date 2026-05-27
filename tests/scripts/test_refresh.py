@@ -940,7 +940,7 @@ incremental by src.ev_ts;
 
     assert exc_info.value.exit_code == 1
     captured = capsys.readouterr()
-    assert "root watermark concepts were planned but never collected" in captured.out
+    assert "root watermark concepts were planned but never collected" in captured.err
 
 
 def test_refresh_multiple_aggregate_persists_with_shared_count(tmp_path):

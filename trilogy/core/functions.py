@@ -21,10 +21,12 @@ from trilogy.core.models.author import (
     CaseElse,
     CaseSimpleWhen,
     CaseWhen,
+    Comparison,
     Concept,
     ConceptRef,
     Conditional,
     CustomType,
+    FilterItem,
     Function,
     NavigationWindowItem,
     NumberingWindowItem,
@@ -1288,7 +1290,13 @@ def argument_to_purpose(arg) -> Purpose:
         case Parenthetical(content=content):
             return argument_to_purpose(content)
 
-        case NumberingWindowItem() | NavigationWindowItem() | Conditional():
+        case (
+            NumberingWindowItem()
+            | NavigationWindowItem()
+            | Conditional()
+            | Comparison()
+            | FilterItem()
+        ):
             return Purpose.PROPERTY
 
         case Concept(purpose=base, lineage=lineage):

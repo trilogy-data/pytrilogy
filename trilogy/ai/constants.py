@@ -18,7 +18,15 @@ SELECT RULES:
 - Aliases cannot happen inside calculations or in the where/having/order clause. Never alias fields with existing names. 'sum(revenue) as total_revenue' is valid, but '(sum(births) as total_revenue) +1 as revenue_plus_one' is not.
 - Implicit grouping: NEVER include a group by clause. Grouping is by non-aggregated fields in the SELECT clause.
 - You can dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
-- Count must specify a field (no `count(*)`) Counts are automatically deduplicated. Do not ever use DISTINCT.
+- The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens (`by (substring(phone, 1, 2), upper(name))`). Use parens whenever a `by` entry is anything other than a simple identifier — function calls, casts, arithmetic, etc. — e.g. `avg(price) by (substring(phone, 1, 2))`. Without the parens the parser will reject the expression form.
+- Histograms / bucket-of-aggregates (counting entities by a per-entity metric): define the per-key metric with `by`, then SELECT it alongside `count(<other_key>)` — the outer select buckets by the metric and counts how many entities fall into each bucket. Wrap with `coalesce(..., 0)` to include entities whose underlying rows are missing (the left-join equivalent — entities with zero matching child rows stay in the histogram). Example: bucket customers by how many of their orders match a predicate, including customers with zero matches:
+      auto orders_per_customer <- count(orders.id ? not orders.comment like '%X%') by customer.id;
+      select
+          coalesce(orders_per_customer, 0) as order_count,
+          count(customer.id) as customer_count
+      order by customer_count desc, order_count desc;
+  Do NOT instead write a per-customer SELECT (one row per customer) — that's the input to the bucketing, not the output.
+- Count must specify a field (no `count(*)`) Counts are automatically deduplicated for keys. A count of a property counts the key. Use count_distinct for unique property members; do not use it on keys as it is identical to count.
 - Since there are no underlying tables, sum/count of a constant should always specify a grain field (e.g. `sum(1) by x as count`). 
 - Filtering on aggregates:
   * HAVING filters on an aggregate that IS in the SELECT output. HAVING can ONLY reference fields that appear in the SELECT projection — select the aggregate with an alias, then reference that alias:
@@ -28,6 +36,14 @@ SELECT RULES:
       where item.price > 1.2 * avg(item.price) by item.category
       select item.name, item.price
 - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
+- Condition scoping: WHERE conditions DO NOT filter each other, and they DO NOT scope aggregates inside other conditions. Each aggregate computes over its own input, independent of sibling WHERE clauses. To scope an aggregate's input, push the filter INSIDE the aggregate with `?`:
+  * Wrong (the `region = 'EUROPE'` clause does NOT restrict the `min(price)` in the other clause; min is over ALL rows):
+      where region = 'EUROPE'
+        and price = min(price) by part_id
+  * Right (the `?` filter restricts the min's input to EUROPE rows per part):
+      where region = 'EUROPE'
+        and price = min(price ? region = 'EUROPE') by part_id
+  This applies to aggregates anywhere — WHERE, HAVING, SELECT projections. If an aggregate should see only a subset, that subset goes inside `?`, never as a sibling WHERE condition.
 - Operator precedence (highest binds first; use `(...)` to override):
   1. Primaries: literal, identifier, function call, parenthetical `(...)`, member access (`.`, `[]`, `::` cast).
   2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).

@@ -49,14 +49,24 @@ def execute_single_statement(
     idx: int,
     total_queries: int,
     use_progress=False,
+    row_limit: int | None = None,
 ) -> tuple[bool, ResultSet | ChartResult | None, Any, Union[Exception, None]]:
-    """Execute a single statement and handle results/errors consistently."""
+    """Execute a single statement and handle results/errors consistently.
+
+    ``row_limit`` caps how many rows are fetched from the cursor for display.
+    The query itself executes fully on the dialect engine — this only affects
+    the size of the buffered, displayed result set. ``None`` falls back to the
+    global ``FETCH_LIMIT``."""
     # Log the statement type before execution
     statement_type = get_statement_type(query)
     if not use_progress:  # Only show type when not using progress bar
         show_statement_type(idx, total_queries, statement_type)
 
     start_time = datetime.now()
+    # ``cap`` is the displayed-rows ceiling. We fetch one extra to detect
+    # "more rows exist" without a second query. Default tracks the legacy
+    # behaviour (50 rows shown, one extra fetched ⇒ FETCH_LIMIT == 51).
+    cap = FETCH_LIMIT - 1 if row_limit is None else row_limit
 
     try:
         raw_results = exec.execute_statement(query)
@@ -69,9 +79,7 @@ def execute_single_statement(
             return True, raw_results, duration, None
 
         results = (
-            ResultSet(
-                rows=raw_results.fetchmany(FETCH_LIMIT + 1), columns=raw_results.keys()
-            )
+            ResultSet(rows=raw_results.fetchmany(cap + 1), columns=raw_results.keys())
             if raw_results
             else None
         )
@@ -92,7 +100,9 @@ def execute_single_statement(
 
 
 def execute_queries_with_progress(
-    exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]
+    exec: Executor,
+    queries: list[PROCESSED_STATEMENT_TYPES],
+    row_limit: int | None = None,
 ) -> Exception | None:
     """Execute queries with Rich progress bar. Returns True if all succeeded, False if any failed."""
     progress = create_progress_context()
@@ -109,7 +119,12 @@ def execute_queries_with_progress(
             )
 
             success, results, duration, error = execute_single_statement(
-                exec, query, idx, len(queries), use_progress=True
+                exec,
+                query,
+                idx,
+                len(queries),
+                use_progress=True,
+                row_limit=row_limit,
             )
 
             if not success:
@@ -136,13 +151,15 @@ def execute_queries_with_progress(
                 if isinstance(results, ChartResult):
                     print_chart_terminal(results.data, results.statement)
                 else:
-                    print_results_table(results)
+                    print_results_table(results, row_limit=row_limit)
 
     return exception
 
 
 def execute_queries_simple(
-    exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]
+    exec: Executor,
+    queries: list[PROCESSED_STATEMENT_TYPES],
+    row_limit: int | None = None,
 ) -> Exception | None:
     """Execute queries with simple output. Returns True if all succeeded, False if any failed."""
     exception = None
@@ -152,7 +169,12 @@ def execute_queries_simple(
             print_info(f"Executing statement {idx+1} of {len(queries)}...")
 
         success, results, duration, error = execute_single_statement(
-            exec, query, idx, len(queries), use_progress=False
+            exec,
+            query,
+            idx,
+            len(queries),
+            use_progress=False,
+            row_limit=row_limit,
         )
 
         if not success:
@@ -167,7 +189,11 @@ def execute_queries_simple(
     return exception
 
 
-def execute_run_mode(exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]) -> None:
+def execute_run_mode(
+    exec: Executor,
+    queries: list[PROCESSED_STATEMENT_TYPES],
+    row_limit: int | None = None,
+) -> None:
     """Execute queries in run mode with progress tracking."""
     start = datetime.now()
     show_execution_start(len(queries))
@@ -177,9 +203,9 @@ def execute_run_mode(exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]) -
     )
 
     if progress:
-        exception = execute_queries_with_progress(exec, queries)
+        exception = execute_queries_with_progress(exec, queries, row_limit=row_limit)
     else:
-        exception = execute_queries_simple(exec, queries)
+        exception = execute_queries_simple(exec, queries, row_limit=row_limit)
 
     total_duration = datetime.now() - start
     show_execution_summary(len(queries), total_duration, exception is None)

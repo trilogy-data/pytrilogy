@@ -1,4 +1,5 @@
 ignore:
   - "examples"
   - "tests"
+  - "evals"
   - "trilogy/hooks/graph_hook.py"

@@ -1,0 +1,112 @@
+[
+  {
+    "id": 1,
+    "grade": "easy",
+    "prompt": "Summarize lineitems shipped on or before 1998-09-02, broken out by return flag and line status. For each combination report: total quantity, total extended price, total revenue (extended price net of discount), total revenue after tax (extended price * (1 - discount) * (1 + tax)), average quantity, average extended price, average discount, and the number of lineitems. Sort by return flag then line status."
+  },
+  {
+    "id": 2,
+    "grade": "hard",
+    "prompt": "Among EUROPE-region suppliers, find the cheapest source for each size-15 part whose type ends in BRASS (matched with LIKE %BRASS). For each such part, the cheapest source is the supplier with the minimum supply cost across all EUROPE suppliers of that part. Report supplier account balance, supplier name, nation name, part key, part manufacturer, supplier address, supplier phone, and supplier comment. Sort by account balance descending, then nation name, supplier name, part key. Show the top 100 rows."
+  },
+  {
+    "id": 3,
+    "grade": "easy",
+    "prompt": "For BUILDING market-segment customers whose orders were placed before 1995-03-15 and whose lineitems shipped after 1995-03-15, report revenue (sum of extended price * (1 - discount)) by order key, order date, and ship priority. Sort by revenue descending then order date; show the top 10 rows."
+  },
+  {
+    "id": 4,
+    "grade": "medium",
+    "prompt": "For orders placed between 1993-07-01 (inclusive) and 1993-10-01 (exclusive) that have at least one lineitem whose commit date is before its receipt date, report the order count for each order priority. Sort by order priority ascending."
+  },
+  {
+    "id": 5,
+    "grade": "medium",
+    "prompt": "For orders placed between 1994-01-01 (inclusive) and 1995-01-01 (exclusive) in the ASIA region, where the lineitem supplier and the order customer are in the same nation, report revenue (sum of extended price * (1 - discount)) by nation name. Sort by revenue descending."
+  },
+  {
+    "id": 6,
+    "grade": "easy",
+    "prompt": "Report revenue as the sum of extended price * discount across lineitems shipped between 1994-01-01 (inclusive) and 1995-01-01 (exclusive), with discount between 0.05 and 0.07 inclusive and quantity below 24."
+  },
+  {
+    "id": 7,
+    "grade": "hard",
+    "prompt": "Limit lineitems to those shipped between 1995-01-01 and 1996-12-31 inclusive whose (supplier nation, customer nation) pair is either (FRANCE, GERMANY) or (GERMANY, FRANCE). For each combination of supplier nation, customer nation, and ship-date year, report revenue (sum of extended price * (1 - discount)). Sort by supplier nation, customer nation, year."
+  },
+  {
+    "id": 8,
+    "grade": "hard",
+    "prompt": "For AMERICA-region customers buying ECONOMY ANODIZED STEEL parts on orders placed between 1995-01-01 and 1996-12-31 inclusive, report BRAZIL's market share for each order year. Market share is the sum of (extended price * (1 - discount)) for BRAZIL suppliers divided by the same sum across all suppliers in that order year. Sort by year."
+  },
+  {
+    "id": 9,
+    "grade": "hard",
+    "prompt": "Restricted to parts whose name contains green, report profit by supplier nation and order-date year. Profit is the sum of (extended price * (1 - discount) - partsupp supplycost * quantity) where each lineitem's supplycost comes from the partsupp entry matching that lineitem's (part, supplier). Sort by nation ascending then year descending."
+  },
+  {
+    "id": 10,
+    "grade": "medium",
+    "prompt": "For returned lineitems (return flag R) on orders placed between 1993-10-01 and 1993-12-31 inclusive, report revenue (sum of extended price * (1 - discount)) per customer, broken out by customer key, name, account balance, phone, nation name, address, and comment. Sort by revenue descending; show the top 20 rows."
+  },
+  {
+    "id": 11,
+    "grade": "medium",
+    "prompt": "Looking only at partsupp rows whose supplier is in GERMANY, report total value (sum of supplycost * availqty) by part key. Include only parts whose total value exceeds 0.0001% of the grand total across all GERMANY partsupp rows. Sort by total value descending."
+  },
+  {
+    "id": 12,
+    "grade": "medium",
+    "prompt": "For lineitems shipped by MAIL or SHIP, with commit date before receipt date, ship date before commit date, and receipt date between 1994-01-01 (inclusive) and 1995-01-01 (exclusive), report two counts per ship mode: high-line count (orders with priority 1-URGENT or 2-HIGH) and low-line count (orders with any other priority). Sort by ship mode."
+  },
+  {
+    "id": 13,
+    "grade": "medium",
+    "prompt": "Bucket customers by how many of their orders have a comment that does NOT match LIKE %special%requests% (case-sensitive), including customers with zero such orders. Output two columns; the bucket and the number of customers in that bucket. Sort by customer count descending, then order count (bucket) descending."
+  },
+  {
+    "id": 14,
+    "grade": "easy",
+    "prompt": "For lineitems shipped between 1995-09-01 (inclusive) and 1995-10-01 (exclusive), report promo revenue as 100.0 times the sum of (extended price * (1 - discount)) for lineitems on parts whose type starts with PROMO, divided by the sum of (extended price * (1 - discount)) across all qualifying lineitems."
+  },
+  {
+    "id": 15,
+    "grade": "medium",
+    "prompt": "Score each supplier by their revenue (sum of extended price * (1 - discount)) on lineitems shipped between 1996-01-01 (inclusive) and 1996-04-01 (exclusive). Report supplier key, name, address, phone, and revenue for the supplier(s) tied for the maximum score. Sort by supplier key."
+  },
+  {
+    "id": 16,
+    "grade": "medium",
+    "prompt": "Looking only at parts whose brand is not Brand#45, whose type does not start with MEDIUM POLISHED, and whose size is one of (49, 14, 23, 45, 19, 3, 36, 9), and excluding any supplier whose comment matches LIKE %Customer%Complaints%, report — for each combination of part brand, type, and size — the count of distinct suppliers offering those parts in partsupp. Sort by supplier count descending, then brand, type, size."
+  },
+  {
+    "id": 17,
+    "grade": "hard",
+    "prompt": "For lineitems on parts whose brand is Brand#23 and container is MED BOX, keep only those whose quantity is below 0.2 times the average lineitem quantity for that same part (averaged across all of that part's lineitems). Report avg_yearly as the sum of those lineitems' extended price divided by 7.0."
+  },
+  {
+    "id": 18,
+    "grade": "medium",
+    "prompt": "For orders whose total lineitem quantity exceeds 300, report customer name, customer key, order key, order date, total order price, and the sum of lineitem quantity for that order. Sort by total price descending then order date; show the top 100 rows."
+  },
+  {
+    "id": 19,
+    "grade": "hard",
+    "prompt": "Report revenue as the sum of lineitem extended price * (1 - discount) across lineitems that match any of three part-specific buckets. Bucket (a): part brand Brand#12, container in (SM CASE, SM BOX, SM PACK, SM PKG), quantity in [1, 11], size in [1, 5], ship mode in (AIR, AIR REG), and ship instruct DELIVER IN PERSON. Bucket (b): brand Brand#23, container in (MED BAG, MED BOX, MED PKG, MED PACK), quantity in [10, 20], size in [1, 10], same ship mode and ship instruct. Bucket (c): brand Brand#34, container in (LG CASE, LG BOX, LG PACK, LG PKG), quantity in [20, 30], size in [1, 15], same ship mode and ship instruct."
+  },
+  {
+    "id": 20,
+    "grade": "hard",
+    "prompt": "Find CANADA suppliers who oversupply parts whose name starts with forest. A (part, supplier) is oversupplied when the partsupp availqty exceeds 0.5 times the total lineitem quantity for that (part, supplier) shipped between 1994-01-01 (inclusive) and 1995-01-01 (exclusive). Report supplier name and address sorted by supplier name."
+  },
+  {
+    "id": 21,
+    "grade": "hard",
+    "prompt": "Find SAUDI ARABIA suppliers who, on orders of status F, had a late lineitem (receipt date after commit date) where at least one other supplier was on the same order but no other supplier on that order had a late lineitem. Report supplier name and the count of such orders (numwait); sort by numwait descending then supplier name; show the top 100 rows."
+  },
+  {
+    "id": 22,
+    "grade": "hard",
+    "prompt": "Among customers with positive account balance whose phone area code (first two characters) is one of (13, 31, 23, 29, 30, 18, 17), keep only those whose account balance exceeds the average positive-balance account balance across that same area-code set, and who have no orders at all. For each area code (cntrycode = first two characters of phone), report customer count and total account balance. Sort by area code."
+  }
+]
