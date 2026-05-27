@@ -236,9 +236,18 @@ def render_group_digraph(graph: nx.DiGraph, output_path: Path) -> None:
     for n in graph.nodes:
         lineage_only.add_node(n)
 
-    for layer, nodes in enumerate(nx.topological_generations(lineage_only)):
-        for node in nodes:
-            graph.nodes[node]["layer"] = layer
+    # Lay groups out in lineage-topological generations when possible. If
+    # the lineage graph has a cycle (a v4 planner bug we still want to be
+    # able to visualize), fall back to placing every node on layer 0 — the
+    # render won't be pretty but it'll be drawn, and the cycle will be
+    # visible as the loop in the arrows.
+    try:
+        for layer, nodes in enumerate(nx.topological_generations(lineage_only)):
+            for node in nodes:
+                graph.nodes[node]["layer"] = layer
+    except nx.NetworkXUnfeasible:
+        for n in graph.nodes:
+            graph.nodes[n]["layer"] = 0
     # force the final node to be the last layer
     max_layer = max((graph.nodes[n].get("layer", 0) for n in graph.nodes), default=0)
     if FINAL_NODE_ID in graph.nodes:

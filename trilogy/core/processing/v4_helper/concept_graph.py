@@ -21,10 +21,12 @@ from typing import Callable, List
 import networkx as nx
 
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildFilterItem,
+    BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -147,16 +149,32 @@ _UPSTREAM: dict[Derivation, UpstreamFetcher] = {
 }
 
 
+def node_id(label: str, address: str) -> str:
+    """Compose a concept-graph node key from (label, address).
+
+    For the default outer-query label (``""``), the key is just the bare
+    address so existing code that reads addresses as keys keeps working.
+    For a labeled sub-graph (a rowset's inner walk, label = rowset name),
+    the key is prefixed: ``"[q5_results]local.channel_label"``. The
+    bracketed prefix is what keeps the inner and outer copies of the
+    same concept distinct when both appear in the graph."""
+    return f"[{label}]{address}" if label else address
+
+
 def _add_concept(
     concept: BuildConcept,
     environment: BuildEnvironment,
     graph: nx.DiGraph,
     condition_addresses: set[str],
+    label: str = "",
 ) -> None:
-    if concept.address in graph:
+    nid = node_id(label, concept.address)
+    if nid in graph:
         return
     graph.add_node(
-        concept.address,
+        nid,
+        address=concept.address,
+        label=label,
         derivation=concept.derivation.value,
         purpose=concept.purpose.value,
         granularity=concept.granularity.value,
@@ -165,6 +183,16 @@ def _add_concept(
             frozenset(concept.grain.components) if concept.grain else frozenset()
         ),
     )
+
+    # Rowset boundary: a ROWSET concept is the outer's "handle" on a
+    # sub-query. From the outer graph's perspective it's a leaf — the
+    # actual lineage lives inside the rowset's inner select, which we
+    # walk separately under `label=rowset.name`. Stopping here is what
+    # prevents the outer BASIC group (e.g. q05's `local.sales`) from
+    # absorbing the rowset's internal BASIC computations (q05's
+    # `q5_results.sales_metric`) and forming a group-level cycle.
+    if concept.derivation == Derivation.ROWSET:
+        return
 
     # Per-derivation upstream fetcher (see `_UPSTREAM`): everything the
     # fetcher returns is a real lineage dependency — the concept's input
@@ -175,8 +203,45 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     for upstream in fetcher(concept, environment):
-        _add_concept(upstream, environment, graph, condition_addresses)
-        graph.add_edge(upstream.address, concept.address, kind="lineage")
+        _add_concept(upstream, environment, graph, condition_addresses, label=label)
+        graph.add_edge(node_id(label, upstream.address), nid, kind="lineage")
+
+
+def _rowset_inner_outputs(
+    rowset_concept: BuildConcept,
+    environment: BuildEnvironment,
+) -> tuple[list[BuildConcept], list[BuildWhereClause]]:
+    """For a ROWSET concept (lineage = BuildRowsetItem), return the
+    inner select's output components (resolved against `environment`) and
+    its inner WHERE clauses. The outputs become the mandatory list for
+    the rowset's labeled sub-graph; the wheres become its conditions —
+    same shape as the outer planner's inputs."""
+    lineage = rowset_concept.lineage
+    if not isinstance(lineage, BuildRowsetItem):
+        return [], []
+    select = lineage.rowset.select
+    if not isinstance(select, (SelectLineage, MultiSelectLineage)):
+        return [], []
+    # `select` is the AUTHOR-level lineage; its `output_components` /
+    # `selection` carry author-level ConceptRefs by address. Resolve each
+    # against the build environment to recover the BuildConcept used by
+    # _add_concept.
+    raw = select.output_components
+    outputs = [
+        environment.concepts[c.address]
+        for c in raw
+        if c.address in environment.concepts
+    ]
+    # `where_clause` on a SelectLineage / MultiSelectLineage is the
+    # author-level WhereClause; the build env materializes a build
+    # version somewhere, but for the inner walk we only need its
+    # row_arguments to classify d1. Skip the build dance for now and
+    # return any pre-built where the rowset attached.
+    conditions: list[BuildWhereClause] = []
+    where = getattr(select, "where_clause", None)
+    if where is not None and isinstance(where, BuildWhereClause):
+        conditions.append(where)
+    return outputs, conditions
 
 
 def build_concept_graph(
@@ -186,7 +251,18 @@ def build_concept_graph(
 ) -> nx.DiGraph:
     """Build the concept-level DAG. Constraint edges (d1→d0) record the
     invariant that filter inputs must be available above any row-shape barrier
-    that consumes their filtered output."""
+    that consumes their filtered output.
+
+    Rowset handling: a ROWSET concept in the outer mandatory list is
+    walked as a leaf (no lineage edges) by `_add_concept`, and after the
+    outer walk completes we discover every ROWSET node and build its
+    inner sub-graph under `label=rowset.name`. The labeled sub-graph's
+    nodes use keys like ``"[q5_results]local.channel_label"`` so they
+    can't collide with an outer-namespace copy of the same address. This
+    is what keeps the outer query's BASIC groups independent of any
+    rowset's internal BASICs (which would otherwise get bucketed
+    together by `partition_basics_by_subset_grain` and form a group-
+    level cycle through the rowset)."""
     graph: nx.DiGraph = nx.DiGraph()
     condition_addresses = {
         c.address for clause in conditions for c in clause.concept_arguments
@@ -198,20 +274,83 @@ def build_concept_graph(
             resolved = environment.concepts.get(concept.address, concept)
             _add_concept(resolved, environment, graph, condition_addresses)
 
+    # Walk each ROWSET leaf in the outer graph. Multiple outer concepts
+    # may all point at the same rowset (q05: channel, id, sales_metric,
+    # returns_metric, profit_metric all live in q5_results) — dedup by
+    # rowset name so we only walk the inner select once.
+    seen_rowsets: set[str] = set()
+    pending_rowsets: list[BuildConcept] = []
+    for nid, data in list(graph.nodes(data=True)):
+        if data.get("derivation") != Derivation.ROWSET.value:
+            continue
+        if data.get("label", ""):
+            # Skip rowsets discovered inside an already-labeled sub-graph;
+            # nested rowsets are handled by the outer recursion below.
+            continue
+        address = data.get("address", nid)
+        concept = environment.concepts.get(address)
+        if concept is None or not isinstance(concept.lineage, BuildRowsetItem):
+            continue
+        rowset_name = concept.lineage.rowset.name
+        if rowset_name in seen_rowsets:
+            continue
+        seen_rowsets.add(rowset_name)
+        pending_rowsets.append(concept)
+
+    for rowset_concept in pending_rowsets:
+        rowset_name = rowset_concept.lineage.rowset.name
+        inner_outputs, inner_conditions = _rowset_inner_outputs(
+            rowset_concept, environment
+        )
+        inner_condition_addresses = {
+            c.address
+            for clause in inner_conditions
+            for c in clause.concept_arguments
+        }
+        for inner_concept in inner_outputs:
+            _add_concept(
+                inner_concept,
+                environment,
+                graph,
+                inner_condition_addresses,
+                label=rowset_name,
+            )
+        for clause in inner_conditions:
+            for c in clause.concept_arguments:
+                resolved = environment.concepts.get(c.address, c)
+                _add_concept(
+                    resolved,
+                    environment,
+                    graph,
+                    inner_condition_addresses,
+                    label=rowset_name,
+                )
+
     # Add a constraint edge from every d1 to every d0 — except when a
     # lineage edge already connects them. NetworkX merges duplicate edges
     # (last write wins), so overwriting would silently demote the lineage
     # relationship to "constraint only" and break downstream group-graph
     # construction (the agg group would lose its by-clause inputs because
     # those happen to be d1 conditions).
-    d1_nodes = [n for n, d in graph.nodes(data=True) if d.get(LABEL_DEPTH) == "d1"]
-    d0_nodes = [n for n, d in graph.nodes(data=True) if d.get(LABEL_DEPTH) == "d0"]
-    for src in d1_nodes:
-        for dst in d0_nodes:
-            if graph.has_edge(src, dst):
-                graph.edges[src, dst]["is_constraint"] = True
-            else:
-                graph.add_edge(src, dst, kind="constraint", is_constraint=True)
+    #
+    # Constraint edges are within-label only. Cross-label d1/d0 pairs are
+    # unrelated planning decisions: a rowset's inner d0 barrier doesn't
+    # need to sit above the outer query's d1 condition (they live in
+    # different sub-graphs).
+    nodes_by_label_and_depth: dict[tuple[str, str], list[str]] = {}
+    for n, d in graph.nodes(data=True):
+        key = (d.get("label", ""), d.get(LABEL_DEPTH, "d*"))
+        nodes_by_label_and_depth.setdefault(key, []).append(n)
+    labels_present = {lbl for lbl, _ in nodes_by_label_and_depth}
+    for label_value in labels_present:
+        d1_nodes = nodes_by_label_and_depth.get((label_value, "d1"), [])
+        d0_nodes = nodes_by_label_and_depth.get((label_value, "d0"), [])
+        for src in d1_nodes:
+            for dst in d0_nodes:
+                if graph.has_edge(src, dst):
+                    graph.edges[src, dst]["is_constraint"] = True
+                else:
+                    graph.add_edge(src, dst, kind="constraint", is_constraint=True)
 
     # If a d1 calc still has no outgoing edge (no d0 barrier sinks it),
     # connect it to the mandatory output concepts so the condition has a
@@ -231,17 +370,23 @@ def build_concept_graph(
     #     this way shares a group with the root scan that consumes it,
     #     so adding a back-edge here closes the cycle (q37 regression).
     #   - Don't add to a dst that is already a lineage ancestor of src.
+    # Same d1-calc backfill, but scoped to the outer label (the only
+    # one with an external `mandatory_list`). Inner sub-graphs have their
+    # own select outputs as inner mandatory, but we don't backfill them
+    # here — the inner walk's conditions are local to it.
     row_arg_addresses: set[str] = set()
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
             for c in atom.row_arguments:
                 row_arg_addresses.add(c.address)
     mandatory_addresses = {c.address for c in mandatory_list}
+    outer_d1_nodes = nodes_by_label_and_depth.get(("", "d1"), [])
     ancestors_of: dict[str, set[str]] = {}
-    for src in d1_nodes:
+    for src in outer_d1_nodes:
         if graph.nodes[src].get("derivation") == Derivation.ROOT.value:
             continue
-        if src not in row_arg_addresses:
+        src_address = graph.nodes[src].get("address", src)
+        if src_address not in row_arg_addresses:
             continue
         if any(True for _ in graph.successors(src)):
             continue
@@ -249,7 +394,7 @@ def build_concept_graph(
             ancestors_of[src] = nx.ancestors(graph, src)
         src_ancestors = ancestors_of[src]
         for dst in mandatory_addresses:
-            if dst == src or dst not in graph.nodes:
+            if dst == src_address or dst not in graph.nodes:
                 continue
             if dst in src_ancestors or graph.has_edge(src, dst):
                 continue

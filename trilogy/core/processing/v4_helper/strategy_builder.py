@@ -212,6 +212,10 @@ def _satisfiable_outputs(
 
 
 def _topological_order(group_graph: nx.DiGraph) -> list[str]:
+    """Topological order of groups by lineage edges. Returns an empty
+    list when the lineage graph has a cycle so callers can bail
+    gracefully — the cycle is the real bug to chase, not the planner's
+    job to recover from."""
     lineage_edges = [
         (u, v)
         for u, v, d in group_graph.edges(data=True)
@@ -220,7 +224,17 @@ def _topological_order(group_graph: nx.DiGraph) -> list[str]:
     lineage_only = group_graph.edge_subgraph(lineage_edges).copy()
     for n in group_graph.nodes:
         lineage_only.add_node(n)
-    return list(nx.topological_sort(lineage_only))
+    try:
+        return list(nx.topological_sort(lineage_only))
+    except nx.NetworkXUnfeasible:
+        try:
+            cycle = nx.find_cycle(lineage_only)
+        except nx.NetworkXNoCycle:
+            cycle = None
+        logger.warning(
+            "[v4] group-graph cycle, abandoning strategy build: %s", cycle
+        )
+        return []
 
 
 def _cover_groups_for_mandatory(

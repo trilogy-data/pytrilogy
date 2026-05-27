@@ -20,6 +20,7 @@ from collections import defaultdict
 
 import networkx as nx
 
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition
@@ -55,7 +56,8 @@ def _lineage_parents(concept_graph: nx.DiGraph, node: str) -> frozenset[str]:
 
 def _group_id_for(bucket: GroupBucket) -> str:
     grain_key = "|".join(sorted(bucket.grain_components)) or "∅"
-    return f"grp:{bucket.derivation}:{bucket.depth_label}:{grain_key}"
+    label_prefix = f"[{bucket.label}]" if bucket.label else ""
+    return f"grp:{label_prefix}{bucket.derivation}:{bucket.depth_label}:{grain_key}"
 
 
 def _lineage_only_subgraph(concept_graph: nx.DiGraph) -> nx.DiGraph:
@@ -203,6 +205,7 @@ def _materialize_group_graph(
             depth_label=bucket.depth_label,
             derivation=bucket.derivation,
             grain_components=bucket.grain_components,
+            label=bucket.label,
             members=members,
             primary_members=tuple(bucket.primary_members),
             secondary_members=tuple(bucket.secondary_members),
@@ -460,7 +463,23 @@ def _compute_concept_sets(
     for n in group_graph.nodes:
         if n not in lineage_only:
             lineage_only.add_node(n)
-    topo = list(nx.topological_sort(lineage_only))
+    try:
+        topo = list(nx.topological_sort(lineage_only))
+    except nx.NetworkXUnfeasible:
+        # The group-level lineage graph has a cycle — a genuine bug
+        # upstream (q05's rowset shape currently triggers this). Skip the
+        # capability/demand pass so callers that just want to render the
+        # graph (discovery_v4 visualizations) can still proceed; SQL
+        # generation will fail downstream where the cycle bites for real.
+        try:
+            cycle = nx.find_cycle(lineage_only)
+        except nx.NetworkXNoCycle:
+            cycle = None
+        logger.warning(
+            "[v4] group-graph lineage cycle, skipping concept-set pass: %s",
+            cycle,
+        )
+        return
 
     # Pass 1: forward capability propagation. Per-derivation `can_preserve`
     # decides which upstream columns ride through each group.

@@ -242,3 +242,123 @@ def test_behavior_for_unknown_returns_default():
     assert beh is not None
     assert beh.native_grain is native_grain_declared
     assert beh.can_preserve is can_preserve_grain_subset
+
+
+# ----- graph label / sub-graph partitioning ---------------------------
+
+
+def test_node_id_default_label_is_bare_address():
+    """Default-label keys stay as bare addresses so existing single-label
+    consumers (everything pre-rowset) keep working without changes."""
+    from trilogy.core.processing.v4_helper.concept_graph import node_id
+
+    assert node_id("", "local.sales") == "local.sales"
+
+
+def test_node_id_labeled_prefix():
+    """Labeled keys carry the sub-graph name as a bracketed prefix so an
+    inner copy of a concept can't collide with the outer copy."""
+    from trilogy.core.processing.v4_helper.concept_graph import node_id
+
+    assert node_id("q5_results", "local.channel_label") == (
+        "[q5_results]local.channel_label"
+    )
+
+
+def test_partition_basics_does_not_merge_across_labels():
+    """Two BASICs with identical grain but different labels must NOT
+    end up in the same bucket — that's the regression that produced the
+    q05 cycle (outer renames and rowset-internal derives at compatible
+    grain collapsing through the rowset boundary)."""
+    from trilogy.core.processing.v4_helper.group_rules import (
+        partition_basics_by_subset_grain,
+    )
+
+    items = [
+        (
+            "local.sales",
+            {
+                "derivation": Derivation.BASIC.value,
+                "depth_label": "d*",
+                "grain_components": frozenset(),
+                "label": "",
+            },
+        ),
+        (
+            "[q5_results]local.sales_metric",
+            {
+                "derivation": Derivation.BASIC.value,
+                "depth_label": "d*",
+                "grain_components": frozenset(),
+                "label": "q5_results",
+            },
+        ),
+    ]
+    buckets = partition_basics_by_subset_grain(items)
+    assert len(buckets) == 2
+    labels = sorted(b.label for b in buckets)
+    assert labels == ["", "q5_results"]
+
+
+def test_partition_basics_does_merge_within_label():
+    """The label split shouldn't break the within-label subset-merge
+    behavior: two compatible-grain BASICs at the same label still collapse
+    to a single bucket (the q04 case)."""
+    from trilogy.core.processing.v4_helper.group_rules import (
+        partition_basics_by_subset_grain,
+    )
+
+    items = [
+        (
+            "local.customer_id",
+            {
+                "derivation": Derivation.BASIC.value,
+                "depth_label": "d*",
+                "grain_components": frozenset({"customer.id"}),
+                "label": "",
+            },
+        ),
+        (
+            "local.customer_first_name",
+            {
+                "derivation": Derivation.BASIC.value,
+                "depth_label": "d*",
+                "grain_components": frozenset({"customer.id"}),
+                "label": "",
+            },
+        ),
+    ]
+    buckets = partition_basics_by_subset_grain(items)
+    assert len(buckets) == 1
+    assert {m for m in buckets[0].primary_members} == {
+        "local.customer_id",
+        "local.customer_first_name",
+    }
+
+
+def test_partition_roots_buckets_per_label():
+    """Each sub-graph (outer + each rowset) gets its own ROOT bucket
+    because their scans are independent."""
+    from trilogy.core.processing.v4_helper.group_rules import partition_roots
+
+    items = [
+        (
+            "sales.item.id",
+            {
+                "derivation": Derivation.ROOT.value,
+                "depth_label": "root",
+                "label": "",
+            },
+        ),
+        (
+            "[q5_results]sales.item.id",
+            {
+                "derivation": Derivation.ROOT.value,
+                "depth_label": "root",
+                "label": "q5_results",
+            },
+        ),
+    ]
+    buckets = partition_roots(items)
+    assert len(buckets) == 2
+    assert {b.label for b in buckets} == {"", "q5_results"}
