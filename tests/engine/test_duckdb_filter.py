@@ -289,6 +289,53 @@ union all select 3, 30
         assert len(rows) == expected, (tail, rows)
 
 
+def test_in_subselect_with_inlined_datasource(tmp_path: Path):
+    """Regression: when InlineDatasource folds the IN-subquery's source CTE
+    into the consumer, the rendered subquery must reference the physical
+    column on the raw table, not the trilogy concept name (which only
+    existed as an alias inside the eliminated CTE)."""
+    env = Environment(working_path=tmp_path)
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    engine.execute_raw_sql(
+        "create table phys_items(sk int, p int);"
+        " insert into phys_items values (1,10),(2,20),(3,30);"
+        " create table phys_sales(item int);"
+        " insert into phys_sales values (1),(2);"
+    )
+    (tmp_path / "sales.preql").write_text("""
+key item_id int;
+datasource catalog_sales (
+    item: item_id,
+)
+grain (item_id)
+address phys_sales;
+""")
+    (tmp_path / "items.preql").write_text("""
+key item_id int;
+property item_id.price int;
+datasource items (
+    sk: item_id,
+    p: price,
+)
+grain (item_id)
+address phys_items;
+""")
+    test = """
+import sales as cs;
+import items as it;
+
+where it.price > 5 and it.item_id in cs.item_id
+select it.item_id
+order by it.item_id asc;
+"""
+    sql = engine.generate_sql(engine.parse_text(test)[-1])[0]
+    # IN-subquery must use the physical column (`item`), not the trilogy
+    # concept name (`cs_item_id`) which was only an alias on the inlined CTE.
+    assert "cs_item_id" not in sql, sql
+    rows = engine.execute_text(test)[0].fetchall()
+    assert [r[0] for r in rows] == [1, 2]
+
+
 def test_filter_promotion(duckdb_engine: Executor):
     test = """
 SELECT

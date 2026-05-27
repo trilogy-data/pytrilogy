@@ -1267,7 +1267,22 @@ class BaseDialect:
                     target = cte.source_key_for(target)
                     self.used_map[target].add(right.address)
                     new_base = inlined_parent.datasource.safe_location
-                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+                    # The inlined parent exposes raw table columns, so look up
+                    # the physical column for `right` rather than emitting the
+                    # logical concept name.
+                    phys = inlined_parent.consumer_column(right)
+                    if isinstance(phys, str):
+                        col_ref = f"{target}.{self.QUOTE_CHARACTER}{phys}{self.QUOTE_CHARACTER}"
+                    elif isinstance(phys, RawColumnExpr):
+                        col_ref = phys.text
+                    else:
+                        col_ref = self.render_expr(
+                            phys,
+                            cte=cte,
+                            cte_map=cte_map,
+                            raise_invalid=raise_invalid,
+                        )
+                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {col_ref} from {new_base} as {target} where {col_ref} is not null)"
                 self.used_map[target].add(right.address)
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
             elif isinstance(right, BuildParamaterizedConceptReference):
