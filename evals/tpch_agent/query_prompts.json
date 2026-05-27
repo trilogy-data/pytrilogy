@@ -62,7 +62,7 @@
   {
     "id": 13,
     "grade": "medium",
-    "prompt": "Bucket customers by how many of their orders have a comment that does NOT match LIKE %special%requests% (case-sensitive), including customers with zero such orders. For each bucket report the order count and the number of customers in that bucket. Sort by customer count descending, then order count descending."
+    "prompt": "Bucket customers by how many of their orders have a comment that does NOT match LIKE %special%requests% (case-sensitive), including customers with zero such orders. Output two columns; the bucket and the number of customers in that bucket. Sort by customer count descending, then order count (bucket) descending."
   },
   {
     "id": 14,
