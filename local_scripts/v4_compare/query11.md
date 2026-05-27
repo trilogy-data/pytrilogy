@@ -17,7 +17,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 2700 | 51 | — |
-| reference | 5077 | 97 | 126.52 ms |
+| reference | 5077 | 97 | 136.14 ms |
 | v4 / ref | 0.53x | 0.53x | — |
 
 ## Preql
@@ -239,20 +239,19 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
+                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
     value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in <lambda>
+    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
+                                                           ~~~~~^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 263, in _exec
+    return execute(con, bound_sql, params or None)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 183, in execute
+    cursor = con.execute(sql, params) if params else con.execute(sql)
+                                                     ~~~~~~~~~~~^^^^^
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 
 LINE 47:     INVALID_REFERENCE_BUG_<Missing source reference to sales.customer.text_id> asc nulls first...

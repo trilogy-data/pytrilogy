@@ -1,22 +1,26 @@
 # Query 32
 
-**Status:** `gen_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
-| reference execution | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (1 rows) |
+| reference execution | OK (1 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1 (1 distinct)
+ref rows: 1 (1 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 1242 | 33 | — |
+| v4 | 2117 | 53 | 30.37 ms |
+| reference | 1242 | 33 | 11.21 ms |
+| v4 / ref | 1.70x | 1.61x | 2.71x |
 
 ## Preql
 
@@ -41,7 +45,61 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+thoughtful as (
+SELECT
+    "catalog_sales"."CS_EXT_DISCOUNT_AMT" as "discount_amount",
+    "catalog_sales"."CS_ITEM_SK" as "item_id",
+    "catalog_sales"."CS_ORDER_NUMBER" as "order_number",
+    cast("sold_date_date"."D_DATE" as date) as "sold_date_date"
+FROM
+    "memory"."catalog_sales" as "catalog_sales"
+    LEFT OUTER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"),
+cheerful as (
+SELECT
+    "catalog_sales"."CS_EXT_DISCOUNT_AMT" as "discount_amount",
+    "catalog_sales"."CS_ITEM_SK" as "item_id",
+    "catalog_sales"."CS_ORDER_NUMBER" as "order_number"
+FROM
+    "memory"."catalog_sales" as "catalog_sales"
+    INNER JOIN "memory"."item" as "item_items" on "catalog_sales"."CS_ITEM_SK" = "item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
+WHERE
+    "item_items"."I_MANUFACT_ID" = 977 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
+),
+cooperative as (
+SELECT
+    "thoughtful"."item_id" as "item_id",
+    "thoughtful"."order_number" as "order_number",
+    CASE WHEN "thoughtful"."sold_date_date" BETWEEN :start_date AND :end_date THEN "thoughtful"."discount_amount" ELSE NULL END as "_virt_filter_discount_amount_1898885850032059"
+FROM
+    "thoughtful"),
+questionable as (
+SELECT
+    "cooperative"."item_id" as "item_id",
+    avg("cooperative"."_virt_filter_discount_amount_1898885850032059") as "_virt_agg_avg_5510773609506287"
+FROM
+    "cooperative"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    "questionable"."item_id" as "item_id",
+    1.3 * "questionable"."_virt_agg_avg_5510773609506287" as "avg_item_disc"
+FROM
+    "questionable")
+SELECT
+    sum("cheerful"."discount_amount") as "total_discount"
+FROM
+    "cheerful"
+    INNER JOIN "cooperative" on "cheerful"."item_id" = "cooperative"."item_id" AND "cheerful"."order_number" = "cooperative"."order_number"
+    INNER JOIN "abundant" on "cheerful"."item_id" = "abundant"."item_id"
+WHERE
+    "cheerful"."discount_amount" > "abundant"."avg_item_disc"
+
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -79,64 +137,4 @@ WHERE
     "cheerful"."discount_amount" > 1.3 * "thoughtful"."_virt_agg_avg_5510773609506287"
 
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
-```
-
-## reference execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 187, in run_one
-    result.ref_exec_seconds, result.ref_rows = _time(
-                                               ~~~~~^
-        lambda: execute(con, ref_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 188, in <lambda>
-    lambda: execute(con, ref_sql)
-            ~~~~~~~^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.ParserException: Parser Error: syntax error at or near ":"
-
-LINE 11: ..." = 977 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
-                                                                        ^
 ```

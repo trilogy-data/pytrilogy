@@ -1,22 +1,38 @@
 # Query 14
 
-**Status:** `gen_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 100):
+  1x  ('catalog', 1001001, 1, 1, 76, Decimal('268875.21'))
+  1x  ('catalog', 1001001, 1, 1, 7, Decimal('18386.99'))
+  1x  ('catalog', 1001001, 1, 1, 7, Decimal('44042.66'))
+  1x  ('catalog', 1001001, 1, 1, 54, Decimal('221828.85'))
+  1x  ('catalog', 1001001, 1, 1, 15, Decimal('75176.33'))
+only in ref (showing up to 5 of 100):
+  1x  (None, None, None, None, 155567, Decimal('673409655.64'))
+  1x  ('catalog', None, None, None, 46359, Decimal('234830325.53'))
+  1x  ('catalog', 1001001, None, None, 341, Decimal('1549222.39'))
+  1x  ('catalog', 1001001, None, 1, 162, Decimal('742922.27'))
+  1x  ('catalog', 1001001, 1, 1, 20, Decimal('87409.20'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 6613 | 165 | 299.98 ms |
+| v4 | 7028 | 179 | 419.45 ms |
+| reference | 6613 | 165 | 323.27 ms |
+| v4 / ref | 1.06x | 1.08x | 1.30x |
 
 ## Preql
 
@@ -105,7 +121,187 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+cheerful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_LIST_PRICE" as "sales_list_price",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
+    "sales_store_sales_unified"."SS_LIST_PRICE" as "sales_list_price",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
+     'STORE'  as "sales_sales_channel"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+    "sales_web_sales_unified"."WS_LIST_PRICE" as "sales_list_price",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
+     'WEB'  as "sales_sales_channel"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"),
+young as (
+SELECT
+    avg("cheerful"."sales_quantity" * "cheerful"."sales_list_price") as "avg_sales_average_sales"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" BETWEEN 1999 AND 2001
+),
+questionable as (
+SELECT
+    "cheerful"."sales_sales_channel" as "sales_sales_channel",
+    (cast("sales_item_items"."I_BRAND_ID" as string) || '|' || cast("sales_item_items"."I_CLASS_ID" as string) || '|' || cast("sales_item_items"."I_CATEGORY_ID" as string)) as "tuple_key"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "cheerful"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_date_date"."D_YEAR" BETWEEN 1999 AND 2001
+
+GROUP BY
+    1,
+    2),
+abundant as (
+SELECT
+    "questionable"."tuple_key" as "_cross_tuples_ci_tuple_key",
+    count(distinct "questionable"."sales_sales_channel") as "cross_channel_count"
+FROM
+    "questionable"
+GROUP BY
+    1),
+uneven as (
+SELECT
+    "abundant"."_cross_tuples_ci_tuple_key" as "cross_tuples_ci_tuple_key"
+FROM
+    "abundant"
+WHERE
+    "abundant"."cross_channel_count" = 3
+),
+yummy as (
+SELECT
+    "cheerful"."sales_item_id" as "sales_item_id",
+    "cheerful"."sales_list_price" as "sales_list_price",
+    "cheerful"."sales_order_id" as "sales_order_id",
+    "cheerful"."sales_quantity" as "sales_quantity",
+    "cheerful"."sales_sales_channel" as "sales_sales_channel",
+    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
+    "sales_item_items"."I_CATEGORY_ID" as "sales_item_category_id",
+    "sales_item_items"."I_CLASS_ID" as "sales_item_class_id"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "cheerful"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 2001 and "sales_date_date"."D_MOY" = 11 and (cast("sales_item_items"."I_BRAND_ID" as string) || '|' || cast("sales_item_items"."I_CLASS_ID" as string) || '|' || cast("sales_item_items"."I_CATEGORY_ID" as string)) in (select uneven."cross_tuples_ci_tuple_key" from uneven where uneven."cross_tuples_ci_tuple_key" is not null)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8),
+juicy as (
+SELECT
+    "yummy"."sales_item_id" as "sales_item_id",
+    "yummy"."sales_order_id" as "sales_order_id",
+    "yummy"."sales_sales_channel" as "sales_sales_channel",
+    CASE WHEN "yummy"."sales_order_id" IS NOT NULL THEN 1 ELSE 0 END as "fact_row_one"
+FROM
+    "yummy"),
+vacuous as (
+SELECT
+    "yummy"."sales_item_brand_id" as "_l0_filtered_brand_l0",
+    "yummy"."sales_item_category_id" as "_l0_filtered_category_l0",
+    "yummy"."sales_item_class_id" as "_l0_filtered_class_l0",
+    CASE
+	WHEN "yummy"."sales_sales_channel" = 'STORE' THEN 'store'
+	WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
+	WHEN "yummy"."sales_sales_channel" = 'WEB' THEN 'web'
+	ELSE null
+	END as "_l0_filtered_channel_l0",
+    sum("juicy"."fact_row_one") as "_l0_filtered_bucket_count_l0",
+    sum("yummy"."sales_quantity" * "yummy"."sales_list_price") as "_l0_filtered_bucket_sum_l0"
+FROM
+    "juicy"
+    INNER JOIN "yummy" on "juicy"."sales_item_id" = "yummy"."sales_item_id" AND "juicy"."sales_order_id" = "yummy"."sales_order_id" AND "juicy"."sales_sales_channel" = "yummy"."sales_sales_channel"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+abhorrent as (
+SELECT
+    "vacuous"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
+    "vacuous"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
+    "vacuous"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
+    "vacuous"."_l0_filtered_category_l0" as "_l0_filtered_category_l0",
+    "vacuous"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
+    "vacuous"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
+FROM
+    "young"
+    INNER JOIN "vacuous" on 1=1
+WHERE
+    "vacuous"."_l0_filtered_bucket_sum_l0" > "young"."avg_sales_average_sales"
+),
+sweltering as (
+SELECT
+    "abhorrent"."_l0_filtered_brand_l0" as "l0_filtered_brand_l0",
+    "abhorrent"."_l0_filtered_bucket_count_l0" as "l0_filtered_bucket_count_l0",
+    "abhorrent"."_l0_filtered_bucket_sum_l0" as "l0_filtered_bucket_sum_l0",
+    "abhorrent"."_l0_filtered_category_l0" as "l0_filtered_category_l0",
+    "abhorrent"."_l0_filtered_channel_l0" as "l0_filtered_channel_l0",
+    "abhorrent"."_l0_filtered_class_l0" as "l0_filtered_class_l0"
+FROM
+    "abhorrent"),
+macho as (
+SELECT
+    "sweltering"."l0_filtered_brand_l0" as "i_brand_id",
+    "sweltering"."l0_filtered_category_l0" as "i_category_id",
+    "sweltering"."l0_filtered_channel_l0" as "channel",
+    "sweltering"."l0_filtered_class_l0" as "i_class_id"
+FROM
+    "sweltering"),
+late as (
+SELECT
+    "sweltering"."l0_filtered_bucket_count_l0" as "sum_number_sales",
+    "sweltering"."l0_filtered_bucket_sum_l0" as "sum_sales"
+FROM
+    "sweltering")
+SELECT
+    "macho"."channel" as "channel",
+    "macho"."i_brand_id" as "i_brand_id",
+    "macho"."i_class_id" as "i_class_id",
+    "macho"."i_category_id" as "i_category_id",
+    "late"."sum_sales" as "sum_sales",
+    "late"."sum_number_sales" as "sum_number_sales"
+FROM
+    "late"
+    FULL JOIN "macho" on 1=1
+ORDER BY 
+    "macho"."channel" asc nulls first,
+    "macho"."i_brand_id" asc nulls first,
+    "macho"."i_class_id" asc nulls first,
+    "macho"."i_category_id" asc nulls first
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -275,40 +471,4 @@ ORDER BY
     "i_class_id" asc nulls first,
     "i_category_id" asc nulls first
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```

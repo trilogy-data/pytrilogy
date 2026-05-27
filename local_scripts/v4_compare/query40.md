@@ -1,24 +1,26 @@
 # Query 40
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
-| reference execution | FAILED |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2293 | 43 | — |
-| reference | 1809 | 27 | — |
-| v4 / ref | 1.27x | 1.59x | — |
+| v4 | 2293 | 43 | 45.94 ms |
+| reference | 1809 | 27 | 20.93 ms |
+| v4 / ref | 1.27x | 1.59x | 2.19x |
 
 ## Preql
 
@@ -136,52 +138,4 @@ ORDER BY
     "catalog_sales_warehouse_warehouse"."w_state" asc,
     "catalog_sales_item_items"."I_ITEM_ID" asc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.ParserException: Parser Error: syntax error at or near ":"
-
-LINE 16: ... cast("catalog_sales_sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
-                                                                           ^
-```
-
-## reference execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 187, in run_one
-    result.ref_exec_seconds, result.ref_rows = _time(
-                                               ~~~~~^
-        lambda: execute(con, ref_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 188, in <lambda>
-    lambda: execute(con, ref_sql)
-            ~~~~~~~^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.ParserException: Parser Error: syntax error at or near ":"
-
-LINE 5: ...	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) < :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE...
-                                                                        ^
 ```

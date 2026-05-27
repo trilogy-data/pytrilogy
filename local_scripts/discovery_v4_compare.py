@@ -19,16 +19,23 @@ A summary index goes to `local_scripts/v4_compare/SUMMARY.md`.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import time
 import traceback
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 
 import duckdb
 import tomllib
+
+from trilogy import Environment
+from trilogy.core.enums import FunctionType
+from trilogy.core.models.author import Function
+from trilogy.core.models.build import BuildFunction
+from trilogy.core.models.core import ListWrapper, MapWrapper, MagicConstants
 
 # Match the tpc_ds test harness's timing convention: sub-cutoff runs get
 # re-timed REPEAT_COUNT extra times (v4 and ref interleaved so cache
@@ -112,18 +119,83 @@ def load_reference_sql(query_id: str) -> Optional[str]:
     return sql.strip()
 
 
-def execute(con: duckdb.DuckDBPyConnection, sql: str) -> list[tuple]:
+_PARAM_RE = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)")
+
+
+def _atom(val: Any) -> Any:
+    return None if val == MagicConstants.NULL else val
+
+
+def _const_value(concept: Any) -> Any:
+    """Mirror Executor._concept_to_value for the CONSTANT branch only — that's
+    all the v3 placeholder-emitting paths produce."""
+    lineage = concept.lineage
+    if (
+        isinstance(lineage, (BuildFunction, Function))
+        and lineage.operator == FunctionType.CONSTANT
+    ):
+        rval = lineage.arguments[0]
+        if isinstance(rval, ListWrapper):
+            return [_atom(x) for x in rval]
+        if isinstance(rval, MapWrapper):
+            return {
+                "key": [_atom(x) for x in rval],
+                "value": [_atom(rval[x]) for x in rval],
+            }
+        return _atom(rval)
+    raise SyntaxError(
+        f"Cannot bind concept {concept.address} (lineage {lineage!r}) to a parameter."
+    )
+
+
+def hydrate_params(
+    sql: str, env: Environment
+) -> tuple[str, dict[str, Any]]:
+    """The reference SQL (and v4's, when rendering.parameters is on) embeds
+    :name placeholders for constants like `unnest([...])`. DuckDB's parser
+    doesn't accept `:name`, but it does accept `$name` with a dict binding —
+    convert and resolve each name by safe_address lookup in the parsed env."""
+    keys = set(_PARAM_RE.findall(sql))
+    if not keys:
+        return sql, {}
+    by_safe: dict[str, Any] = {c.safe_address: c for c in env.concepts.values()}
+    params: dict[str, Any] = {}
+    for key in keys:
+        concept = by_safe.get(key)
+        if concept is None:
+            continue
+        params[key] = _const_value(concept)
+    rewritten = _PARAM_RE.sub(
+        lambda m: f"${m.group(1)}" if m.group(1) in params else m.group(0), sql
+    )
+    return rewritten, params
+
+
+def execute(
+    con: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: Optional[dict[str, Any]] = None,
+) -> list[tuple]:
     """Return rows normalized to (sorted_by_column_name) tuples so two SQLs
     that produce the same data with different SELECT column ordering compare
     equal. Column order is a SQL surface concern; we care about row-level
     semantic equality here."""
-    cursor = con.execute(sql)
+    cursor = con.execute(sql, params) if params else con.execute(sql)
     columns = [d[0] for d in cursor.description] if cursor.description else []
     rows = cursor.fetchall()
     if not columns:
         return [tuple(r) for r in rows]
     order = sorted(range(len(columns)), key=lambda i: columns[i])
     return [tuple(row[i] for i in order) for row in rows]
+
+
+def parse_env(query_id: str) -> Optional[Environment]:
+    preql_path = TPCDS_DIR / f"query{query_id}.preql"
+    if not preql_path.exists():
+        return None
+    env = Environment(working_path=TPCDS_DIR)
+    env.parse(preql_path.read_text())
+    return env
 
 
 def generate_v4_sql(query_id: str) -> tuple[Optional[str], Optional[str]]:
@@ -174,19 +246,31 @@ def run_one(
     ref_sql = load_reference_sql(query_id)
     result.ref_sql = ref_sql
 
+    # Parse the preql once so we can hydrate :name placeholders for either side.
+    # Bypasses the trilogy executor — we run raw duckdb here — so we mirror its
+    # _hydrate_param logic locally. Failing to parse just means no params bound,
+    # which is fine for queries that don't use them.
+    env: Optional[Environment] = None
+    try:
+        env = parse_env(query_id)
+    except Exception:
+        env = None
+
+    def _exec(sql: str) -> list[tuple]:
+        if env is None:
+            return execute(con, sql)
+        bound_sql, params = hydrate_params(sql, env)
+        return execute(con, bound_sql, params or None)
+
     if v4_sql:
         try:
-            result.v4_exec_seconds, result.v4_rows = _time(
-                lambda: execute(con, v4_sql)
-            )
+            result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
         except Exception:
             result.v4_exec_error = traceback.format_exc()
 
     if ref_sql:
         try:
-            result.ref_exec_seconds, result.ref_rows = _time(
-                lambda: execute(con, ref_sql)
-            )
+            result.ref_exec_seconds, result.ref_rows = _time(lambda: _exec(ref_sql))
         except Exception:
             result.ref_exec_error = traceback.format_exc()
 
@@ -200,13 +284,13 @@ def run_one(
         for _ in range(REPEAT_COUNT):
             if v4_sql and result.v4_rows is not None:
                 try:
-                    t, _ = _time(lambda: execute(con, v4_sql))
+                    t, _ = _time(lambda: _exec(v4_sql))
                     result.v4_exec_seconds = min(result.v4_exec_seconds, t)
                 except Exception:
                     pass
             if ref_sql and result.ref_rows is not None:
                 try:
-                    t, _ = _time(lambda: execute(con, ref_sql))
+                    t, _ = _time(lambda: _exec(ref_sql))
                     result.ref_exec_seconds = min(result.ref_exec_seconds, t)
                 except Exception:
                     pass

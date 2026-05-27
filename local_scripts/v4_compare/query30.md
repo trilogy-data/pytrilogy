@@ -16,7 +16,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 0 | 0 | — |
-| reference | 6399 | 99 | 56.73 ms |
+| reference | 6399 | 99 | 62.84 ms |
 
 ## Preql
 
@@ -183,10 +183,10 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 204, in generate_v4_sql
     info, build_env, _, build_stmt = run_tpcds_query(query_id)
                                      ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 478, in run_tpcds_query
     info = search_concepts(
         mandatory_list=list(build_stmt.output_components),
     ...<4 lines>...
@@ -200,17 +200,11 @@ Traceback (most recent call last):
     )
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
     group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 585, in build_group_graph
+    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 331, in _inject_conditions
+    raise ValueError(
+    ...<2 lines>...
     )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
+ValueError: Could not place condition atom web_returns.customer.address.state = GA: row inputs ['web_returns.customer.address.state'] not reachable from any group.
 ```

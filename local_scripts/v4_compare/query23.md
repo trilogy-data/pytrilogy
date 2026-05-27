@@ -16,7 +16,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 0 | 0 | — |
-| reference | 7652 | 178 | 542.92 ms |
+| reference | 7652 | 178 | 565.50 ms |
 
 ## Preql
 
@@ -274,9 +274,9 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 138, in generate_v4_sql
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 210, in generate_v4_sql
     sql = compile_sql(info, build_env, build_stmt)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 532, in compile_sql
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 541, in compile_sql
     node.rebuild_cache()
     ~~~~~~~~~~~~~~~~~~^^
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 440, in rebuild_cache
@@ -292,16 +292,6 @@ Traceback (most recent call last):
     ~~~~~~~~~^^
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
     qds = self._resolve()
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 262, in _resolve
-    p.resolve() for p in self.parents
-    ~~~~~~~~~^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
-    qds = self._resolve()
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\group_node.py", line 87, in _resolve
-    p.resolve() for p in self.parents
-    ~~~~~~~~~^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\base_node.py", line 447, in resolve
-    qds = self._resolve()
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 359, in _resolve
     joins: List[BaseJoin | UnnestJoin] = self.generate_joins(
                                          ~~~~~~~~~~~~~~~~~~~^
@@ -311,16 +301,16 @@ Traceback (most recent call last):
     ^
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\nodes\merge_node.py", line 243, in generate_joins
     joins = get_node_joins(dataset_list, environment=environment)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\join_resolution.py", line 693, in get_node_joins
-    left=resolve_instantiated_concept(
-         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        concept_map[concept], ds_node_map[k]
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\join_resolution.py", line 696, in get_node_joins
+    right=resolve_instantiated_concept(
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        concept_map[concept], ds_node_map[j.right]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     ),
     ^
   File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\join_resolution.py", line 508, in resolve_instantiated_concept
     raise SyntaxError(
     ...<3 lines>...
     )
-SyntaxError: Could not find sales.customer.first_name in sales.catalog_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_union_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_union_sales.web_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_unioned_join_sales.customer.customers_at_sales_customer_id_join_sales.date.date_at_sales_date_id_join_sales.date.date_at_sales_date_id_filtered_by_1381268244931442_join_sales.item.items_at_sales_item_id_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_grouped_by_sales.date.date_sales.item.desc_truncated_sales.item.id_sales.order_id_at_sales_date_date_sales_item_id_sales_order_id_filtered_by_9080651742928098_grouped_by_local._frequent_items_frequent_item_id_sales.date.date_sales.item.desc_truncated_sales.item.id_at_sales_date_date_sales_item_id_at_frequent_items_frequent_item_id_filtered_by_578530982766841_grouped_by_frequent_items.frequent_item_id_at_frequent_items_frequent_item_id_join_sales.date.date_at_sales_date_id_filtered_by_1381268244931442_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_3403810150931339_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_794436733259538_grouped_by_sales.customer.id_at_sales_customer_id_grouped_by__at_abstract_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_3403810150931339_grouped_by_local._best_customers_best_customer_id_sales.customer.id_at_sales_customer_id_at_sales_customer_id_at_best_customers_best_customer_id_filtered_by_2484749007924451_grouped_by_sales.customer.first_name_sales.customer.id_sales.customer.last_name_sales.item.id_sales.list_price_sales.order_id_sales.quantity_sales.sales_channel_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_1902506739459039_at_local_c_first_name_local_c_last_name_sales_item_id_sales_order_id_sales_sales_channel_at_local_c_first_name_local_c_last_name_sales_item_id_sales_order_id_sales_sales_channel output ['local._virt_filter_7664750597049030', 'sales.item.id', 'sales.order_id', 'sales.sales_channel', 'local._virt_func_multiply_8507033399516423', 'local.c_first_name', 'local.c_last_name'], acceptable synonyms set()
+SyntaxError: Could not find sales.customer.last_name in sales.catalog_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_union_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_union_sales.web_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_unioned_join_sales.customer.customers_at_sales_customer_id_join_sales.date.date_at_sales_date_id_join_sales.date.date_at_sales_date_id_filtered_by_1381268244931442_join_sales.item.items_at_sales_item_id_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_grouped_by_sales.date.date_sales.item.desc_truncated_sales.item.id_sales.order_id_at_sales_date_date_sales_item_id_sales_order_id_filtered_by_9080651742928098_grouped_by_local._frequent_items_frequent_item_id_sales.date.date_sales.item.desc_truncated_sales.item.id_at_sales_date_date_sales_item_id_at_frequent_items_frequent_item_id_filtered_by_578530982766841_grouped_by_frequent_items.frequent_item_id_at_frequent_items_frequent_item_id_join_sales.date.date_at_sales_date_id_filtered_by_1381268244931442_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_3403810150931339_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_794436733259538_grouped_by_sales.customer.id_at_sales_customer_id_grouped_by__at_abstract_join_sales.store_sales_unified_at_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_3403810150931339_grouped_by_local._best_customers_best_customer_id_sales.customer.id_at_sales_customer_id_at_sales_customer_id_at_best_customers_best_customer_id_filtered_by_2484749007924451_grouped_by_sales.customer.first_name_sales.customer.last_name_sales.item.id_sales.list_price_sales.order_id_sales.quantity_sales.sales_channel_at_sales_customer_first_name_sales_customer_last_name_sales_item_id_sales_order_id_sales_sales_channel_filtered_by_1902506739459039_at_local_c_first_name_local_c_last_name output ['local.c_first_name', 'local.c_last_name'], acceptable synonyms set()
 ```

@@ -16,7 +16,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 0 | 0 | — |
-| reference | 7234 | 143 | 124.98 ms |
+| reference | 7234 | 143 | 166.61 ms |
 
 ## Preql
 
@@ -246,35 +246,5 @@ LIMIT (100)
 ## v4 generation error
 
 ```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
+v4 produced no strategy node
 ```

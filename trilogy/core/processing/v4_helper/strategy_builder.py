@@ -129,6 +129,12 @@ def _parent_nodes_for(
     for pgid in group_graph.predecessors(gid):
         if pgid == FINAL_NODE_ID:
             continue
+        # Existence-kind edges feed a subselect, not the row stream —
+        # `_existence_for_group` wires them as side-channel parents post-
+        # build. Including them here would put them in JOIN dedup and
+        # mistakenly merge their row stream into this group's FROM.
+        if group_graph.edges[pgid, gid].get("kind") == "existence":
+            continue
         node = built.get(pgid)
         if node is not None:
             candidates.append((pgid, node))
@@ -212,23 +218,26 @@ def _satisfiable_outputs(
 
 
 def _topological_order(group_graph: nx.DiGraph) -> list[str]:
-    """Topological order of groups by lineage edges. Returns an empty
-    list when the lineage graph has a cycle so callers can bail
-    gracefully — the cycle is the real bug to chase, not the planner's
-    job to recover from."""
-    lineage_edges = [
+    """Topological order across all dependency edge kinds (lineage /
+    constraint / existence). Each kind expresses a different dataflow
+    relationship downstream, but all of them require the source group to
+    be built before the consumer — a constraint sibling has to be
+    JOIN-ready, an existence source has to be subselect-ready. Returns
+    an empty list on cycle so callers bail rather than build a partial
+    plan."""
+    dep_edges = [
         (u, v)
         for u, v, d in group_graph.edges(data=True)
-        if d.get("kind") == "lineage"
+        if d.get("kind") in ("lineage", "constraint", "existence")
     ]
-    lineage_only = group_graph.edge_subgraph(lineage_edges).copy()
+    dep_graph = group_graph.edge_subgraph(dep_edges).copy()
     for n in group_graph.nodes:
-        lineage_only.add_node(n)
+        dep_graph.add_node(n)
     try:
-        return list(nx.topological_sort(lineage_only))
+        return list(nx.topological_sort(dep_graph))
     except nx.NetworkXUnfeasible:
         try:
-            cycle = nx.find_cycle(lineage_only)
+            cycle = nx.find_cycle(dep_graph)
         except nx.NetworkXNoCycle:
             cycle = None
         logger.warning(

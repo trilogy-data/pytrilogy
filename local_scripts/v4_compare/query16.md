@@ -1,10 +1,11 @@
 # Query 16
 
-**Status:** `gen_fail`
+**Status:** `exec_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | FAILED |
 | reference execution | OK (1 rows) |
 
 ## Result comparison
@@ -15,8 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 3713 | 83 | 68.10 ms |
+| v4 | 2401 | 44 | — |
+| reference | 3713 | 83 | 80.31 ms |
+| v4 / ref | 0.65x | 0.53x | — |
 
 ## Preql
 
@@ -44,7 +46,52 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+cooperative as (
+SELECT
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+WHERE
+    "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number> where INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select INVALID_REFERENCE_BUG_<Missing source reference to local.multi_warehouse_sales>."multi_warehouse_sales" from INVALID_REFERENCE_BUG_<Missing source reference to local.multi_warehouse_sales> where INVALID_REFERENCE_BUG_<Missing source reference to local.multi_warehouse_sales>."multi_warehouse_sales" is not null)
+
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
+    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County'
+),
+questionable as (
+SELECT
+    "cooperative"."cs_order_number" as "cs_order_number"
+FROM
+    "cooperative"),
+abundant as (
+SELECT
+    "questionable"."cs_order_number" as "cs_order_number"
+FROM
+    "questionable")
+SELECT
+    count(distinct "thoughtful"."cs_order_number") as "order_count",
+    sum("thoughtful"."cs_net_profit") as "total_net_profit",
+    sum("thoughtful"."cs_ext_ship_cost") as "total_shipping_cost"
+FROM
+    "thoughtful"
+    INNER JOIN "abundant" on "thoughtful"."cs_order_number" = "abundant"."cs_order_number"
+ORDER BY 
+    "order_count" desc
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -134,38 +181,25 @@ ORDER BY
 LIMIT (100)
 ```
 
-## v4 generation error
+## v4 execution error
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
+                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
+    value = fn()
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in <lambda>
+    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
+                                                           ~~~~~^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 263, in _exec
+    return execute(con, bound_sql, params or None)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 183, in execute
+    cursor = con.execute(sql, params) if params else con.execute(sql)
+                                                     ~~~~~~~~~~~^^^^^
+_duckdb.ParserException: Parser Error: syntax error at or near "source"
+
+LINE 8: ...RDER_NUMBER" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from...
+                                                                      ^
 ```

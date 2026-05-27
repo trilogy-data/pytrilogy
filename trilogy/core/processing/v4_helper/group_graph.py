@@ -57,7 +57,11 @@ def _lineage_parents(concept_graph: nx.DiGraph, node: str) -> frozenset[str]:
 def _group_id_for(bucket: GroupBucket) -> str:
     grain_key = "|".join(sorted(bucket.grain_components)) or "∅"
     label_prefix = f"[{bucket.label}]" if bucket.label else ""
-    return f"grp:{label_prefix}{bucket.derivation}:{bucket.depth_label}:{grain_key}"
+    suffix = f":{bucket.discriminator}" if bucket.discriminator else ""
+    return (
+        f"grp:{label_prefix}{bucket.derivation}:{bucket.depth_label}:"
+        f"{grain_key}{suffix}"
+    )
 
 
 def _lineage_only_subgraph(concept_graph: nx.DiGraph) -> nx.DiGraph:
@@ -76,35 +80,36 @@ def _lineage_only_subgraph(concept_graph: nx.DiGraph) -> nx.DiGraph:
 def _d1_calc_subgraph(concept_graph: nx.DiGraph) -> tuple[set[str], set[str]]:
     """Identify (d1_calc_roots, d1_subgraph_nodes).
 
-    A 'd1 calc node' is a derived concept (non-root) classified as d1 — an
-    aggregate (or window/etc.) referenced inside a WHERE clause. Its lineage
-    inputs must be sourced from a scan that does NOT have sibling WHERE atoms
-    pushed onto it (an avg-in-where has to run over the unfiltered population,
-    not the rows that survive other filters).
+    Any concept reached via the WHERE recursion lives at a condition-phase
+    label (suffix ``@condition``) and is classified d1. Such concepts —
+    aggregates, filters, basics, unnests, etc. — feed pre-WHERE compute
+    that must not be polluted by sibling WHERE atoms applied to the
+    SELECT-side scan. We route root → condition-phase lineage edges
+    through a dedicated root_d1 bucket so the condition scan stays
+    independent of the blank-phase scan's WHERE atoms.
 
-    - d1_calc_roots: root concepts that are lineage-ancestors of any d1 calc.
-      These become primary members of an extra ROOT bucket (R_d1).
-    - d1_subgraph_nodes: the d1 calc nodes plus all their lineage ancestors.
-      Used by edge routing to decide whether a root→X edge should source from
-      R_d1 (X in d1_subgraph) or R_other (the default root bucket)."""
-    d1_calc_nodes = [
+    - d1_calc_roots: blank-phase roots that feed any condition-phase node.
+    - d1_subgraph_nodes: every condition-phase node. Edge routing uses
+      this as the destination side of the predicate."""
+    d1_subgraph: set[str] = {
         n
         for n, d in concept_graph.nodes(data=True)
         if d.get("depth_label") == "d1"
-        and d.get("derivation") in _POPULATION_SENSITIVE_DERIVATIONS
-    ]
-    if not d1_calc_nodes:
-        return set(), set()
-    lineage_only = _lineage_only_subgraph(concept_graph)
-    subgraph_nodes: set[str] = set(d1_calc_nodes)
-    for n in d1_calc_nodes:
-        subgraph_nodes.update(nx.ancestors(lineage_only, n))
-    d1_calc_roots = {
-        n
-        for n in subgraph_nodes
-        if concept_graph.nodes[n].get("derivation") == Derivation.ROOT.value
     }
-    return d1_calc_roots, subgraph_nodes
+    if not d1_subgraph:
+        return set(), set()
+    d1_calc_roots: set[str] = set()
+    for n in d1_subgraph:
+        for pred, _, ed in concept_graph.in_edges(n, data=True):
+            if ed.get("kind") != "lineage":
+                continue
+            pdata = concept_graph.nodes[pred]
+            if (
+                pdata.get("derivation") == Derivation.ROOT.value
+                and pdata.get("depth_label") != "d1"
+            ):
+                d1_calc_roots.add(pred)
+    return d1_calc_roots, d1_subgraph
 
 
 def _add_d1_root_bucket(
@@ -121,9 +126,11 @@ def _add_d1_root_bucket(
         derivation=Derivation.ROOT.value,
         grain_components=frozenset(),
     )
-    for addr in sorted(d1_calc_roots):
-        bucket.primary_members.append(addr)
-        bucket.member_depths[addr] = concept_graph.nodes[addr].get(
+    for node in sorted(d1_calc_roots):
+        address = concept_graph.nodes[node].get("address", node)
+        bucket.primary_members.append(address)
+        bucket.primary_node_ids.append(node)
+        bucket.member_depths[address] = concept_graph.nodes[node].get(
             "depth_label", "d*"
         )
     gid = _group_id_for(bucket)
@@ -134,23 +141,37 @@ def _add_d1_root_bucket(
 def _assign_groups(
     concept_graph: nx.DiGraph,
 ) -> tuple[dict[str, str], dict[str, GroupBucket]]:
-    """Group every concept by dispatching to its derivation's rule. Each rule
-    is responsible for both the grouping key and the merge semantics for its
-    derivation, so the orchestrator just collects per-rule buckets without
-    any special-case branches."""
+    """Group every concept by dispatching to its derivation's rule.
+
+    Rules are invoked once per derivation, lazily, via an `ensure_assigned`
+    callback. A rule that needs another derivation already bucketed (BASIC
+    walks its lineage parents to compute a stop-signature, and asks for
+    each parent's group id) calls `ensure_assigned(parent_derivation)` and
+    we run the rule for that derivation on-demand. This avoids any
+    privileging in the call order — every derivation looks the same from
+    the orchestrator's view; BASIC just happens to use the callback."""
     by_derivation: dict[str, list[tuple[str, dict]]] = defaultdict(list)
     for node, data in concept_graph.nodes(data=True):
         by_derivation[data.get("derivation", "")].append((node, data))
 
     primary_group: dict[str, str] = {}
     buckets: dict[str, GroupBucket] = {}
-    for derivation, items in by_derivation.items():
+    assigned: set[str] = set()
+
+    def ensure_assigned(derivation: str) -> None:
+        if derivation in assigned:
+            return
+        assigned.add(derivation)
         rule = GROUPING_RULES.get(derivation, DEFAULT_RULE)
-        for bucket in rule(items):
+        items = by_derivation.get(derivation, [])
+        for bucket in rule(items, concept_graph, primary_group, ensure_assigned):
             group_id = _group_id_for(bucket)
             buckets[group_id] = bucket
-            for member in bucket.primary_members:
-                primary_group[member] = group_id
+            for node_id_member in bucket.primary_node_ids:
+                primary_group[node_id_member] = group_id
+
+    for derivation in by_derivation:
+        ensure_assigned(derivation)
     return primary_group, buckets
 
 
@@ -240,7 +261,8 @@ def _materialize_group_graph(
     d1_calc_roots = d1_calc_roots or set()
     d1_subgraph = d1_subgraph or set()
     for u, v, edata in concept_graph.edges(data=True):
-        if edata.get("kind") not in ("lineage", "constraint"):
+        edge_kind = edata.get("kind")
+        if edge_kind not in ("lineage", "constraint", "existence"):
             continue
         if (
             d1_root_gid is not None
@@ -253,7 +275,23 @@ def _materialize_group_graph(
         gv = primary_group[v]
         if gu == gv:
             continue
-        group_graph.add_edge(gu, gv, kind="lineage")
+        # The group-edge `kind` records the strongest concept-level edge
+        # that maps to it: lineage > constraint > existence. Lineage means
+        # the row stream flows along this edge — JOIN partners, demand
+        # propagation, sibling-grain projection. Constraint means topo
+        # ordering for filter pushdown with implied JOIN. Existence means
+        # side-channel only (subselect) — the source must be built and
+        # ordered before the consumer, but never JOINed in or projected
+        # for sibling JOIN keys. When edges collapse, the stronger
+        # guarantee wins.
+        _PRIORITY = {"existence": 0, "constraint": 1, "lineage": 2}
+        existing = group_graph.get_edge_data(gu, gv)
+        if existing is not None:
+            current = existing.get("kind", edge_kind)
+            if _PRIORITY[edge_kind] > _PRIORITY.get(current, 0):
+                group_graph[gu][gv]["kind"] = edge_kind
+        else:
+            group_graph.add_edge(gu, gv, kind=edge_kind)
 
     return group_graph
 
@@ -433,11 +471,18 @@ def _compute_concept_sets(
     applied to the FINAL contributor in `_assemble_final_node`."""
     mandatory_addresses = {c.address for c in mandatory_list}
 
-    # Concept-level lineage parents indexed by child, for input derivation.
+    # Concept-level lineage parents indexed by child ADDRESS — addresses are
+    # what the rest of this pass works with (output_concepts / primary_of
+    # / capability are all address-keyed sets), so the lookup has to match.
+    # Pre-phase-split this happened to work because outer-blank node_id ==
+    # address; with the @condition phase, [@condition]X != X.
     lineage_parents: dict[str, set[str]] = {}
     for u, v, ed in concept_graph.edges(data=True):
-        if ed.get("kind") == "lineage":
-            lineage_parents.setdefault(v, set()).add(u)
+        if ed.get("kind") != "lineage":
+            continue
+        u_addr = concept_graph.nodes[u].get("address", u)
+        v_addr = concept_graph.nodes[v].get("address", v)
+        lineage_parents.setdefault(v_addr, set()).add(u_addr)
 
     primary_of: dict[str, set[str]] = {}
     grain_of: dict[str, frozenset[str]] = {}
@@ -454,17 +499,20 @@ def _compute_concept_sets(
         behavior_of[gid] = beh
         native_grain_of[gid] = beh.native_grain(bucket, concept_graph)
 
-    lineage_edges = [
+    # Topo includes all dependency edges (lineage / constraint / existence)
+    # so a side-channel source builds before its consumer. The JOIN-key
+    # and demand passes below treat each edge kind differently.
+    dep_edges = [
         (u, v)
         for u, v, ed in group_graph.edges(data=True)
-        if ed.get("kind") == "lineage"
+        if ed.get("kind") in ("lineage", "constraint", "existence")
     ]
-    lineage_only = group_graph.edge_subgraph(lineage_edges).copy()
+    dep_graph = group_graph.edge_subgraph(dep_edges).copy()
     for n in group_graph.nodes:
-        if n not in lineage_only:
-            lineage_only.add_node(n)
+        if n not in dep_graph:
+            dep_graph.add_node(n)
     try:
-        topo = list(nx.topological_sort(lineage_only))
+        topo = list(nx.topological_sort(dep_graph))
     except nx.NetworkXUnfeasible:
         # The group-level lineage graph has a cycle — a genuine bug
         # upstream (q05's rowset shape currently triggers this). Skip the
@@ -509,21 +557,59 @@ def _compute_concept_sets(
     output_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
     input_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
 
+    # Pre-seed existence demand on each source bucket before the walk. An
+    # atom like `x IN <subselect>` puts demand on the existence-arg's
+    # source bucket, but the demand is side-channel — it doesn't flow
+    # through the host's input_concepts (which drives JOIN dedup). Seeding
+    # the source bucket directly means its lineage predecessors get
+    # demanded via the normal backward walk and the whole compute chain
+    # builds correctly without polluting JOIN logic.
+    primary_to_gid: dict[str, str] = {}
+    for gid in group_graph.nodes:
+        for addr in group_graph.nodes[gid].get("primary_members", ()):
+            primary_to_gid.setdefault(addr, gid)
+    existence_demand: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
+    for gid in group_graph.nodes:
+        for atom in group_graph.nodes[gid].get("condition_atoms", []) or []:
+            for arg_group in getattr(atom, "existence_arguments", ()) or ():
+                for arg in arg_group:
+                    source_gid = primary_to_gid.get(arg.address)
+                    if source_gid is None or source_gid == gid:
+                        continue
+                    existence_demand[source_gid].add(arg.address)
+
     for gid in reversed(topo):
         if gid == FINAL_NODE_ID:
             continue
         cap_gid = capability[gid]
-        outs: set[str] = set()
+        outs: set[str] = existence_demand.get(gid, set()) & cap_gid
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
                 outs |= cap_gid & mandatory_addresses
+                continue
+            edge_kind = group_graph.edges[gid, succ].get("kind", "lineage")
+            # Existence siblings flow via subselect, not the row stream.
+            # The source still needs to be built and ordered (topo above
+            # handles that), but we don't pull row-stream demand from the
+            # consumer or expose JOIN keys for sibling predecessors.
+            if edge_kind == "existence":
                 continue
             outs |= input_concepts.get(succ, set()) & cap_gid
             # Sibling-grain JOIN keys: when this successor has another
             # predecessor whose grain we also expose, project that key
             # so the downstream merge can JOIN us to the sibling on it.
+            # Existence-kind siblings are side-channel only — skip them
+            # to avoid pulling their grain columns into JOIN-irrelevant
+            # places (q08's blank_root being asked to provide
+            # customer.address.* because final_zips's bucket was a
+            # constraint sibling of the d0 aggregate).
             for sibling in group_graph.predecessors(succ):
                 if sibling == gid or sibling == FINAL_NODE_ID:
+                    continue
+                sibling_kind = group_graph.edges[sibling, succ].get(
+                    "kind", "lineage"
+                )
+                if sibling_kind == "existence":
                     continue
                 outs |= grain_of.get(sibling, frozenset()) & cap_gid
         # Grouping derivations: own grain components must be in the SELECT

@@ -37,7 +37,17 @@ class GroupBucket:
     depth_label: str
     derivation: str
     grain_components: frozenset[str]
+    # primary/secondary members are concept ADDRESSES — what downstream
+    # strategy assembly cares about. primary_node_ids holds the matching
+    # concept-graph node ids (which differ from addresses for any non-blank
+    # phase/label), keyed parallel to primary_members.
     primary_members: list[str] = field(default_factory=list)
+    primary_node_ids: list[str] = field(default_factory=list)
     secondary_members: list[str] = field(default_factory=list)
     member_depths: dict[str, str] = field(default_factory=dict)
     label: str = ""
+    # Optional disambiguator for rules that produce multiple buckets sharing
+    # the (label, derivation, depth, grain) tuple — e.g. BASIC's signature
+    # split, which can land two co-grain buckets with disjoint upstream
+    # sources. Empty string for rules that don't need it.
+    discriminator: str = ""

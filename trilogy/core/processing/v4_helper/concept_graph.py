@@ -40,9 +40,45 @@ from .constants import LABEL_DEPTH, ROW_SHAPE_BARRIER_DERIVATIONS
 UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], List[BuildConcept]]
 
 
-def classify_depth(concept: BuildConcept, condition_addresses: set[str]) -> str:
-    """Tag a concept by its placement role in the plan."""
-    if concept.address in condition_addresses:
+# Phase suffix appended to a label when a concept is reached via the WHERE
+# recursion. The same concept can appear once in the SELECT (blank) sub-graph
+# and once in the WHERE (condition) sub-graph; the suffix is what keeps them
+# distinct so we don't try to promote/demote a single shared node.
+PHASE_CONDITION_SUFFIX = "@condition"
+
+
+def _scope_and_phase(label: str) -> tuple[str, str]:
+    """Split a label into its (scope, phase) parts. scope is "" for the outer
+    query and the rowset name for rowset internals; phase is "blank" or
+    "condition"."""
+    if label.endswith(PHASE_CONDITION_SUFFIX):
+        return label[: -len(PHASE_CONDITION_SUFFIX)], "condition"
+    return label, "blank"
+
+
+def _condition_label(scope_label: str) -> str:
+    """Build the condition-phase label from a blank-phase label."""
+    return f"{scope_label}{PHASE_CONDITION_SUFFIX}"
+
+
+def _effective_label(concept: BuildConcept, label: str) -> str:
+    """ROOT concepts represent input columns; their scan is shared between
+    the SELECT and WHERE phases, so they always live in the blank-phase
+    (scope-only) label. Everything else uses the recursion's label as-is."""
+    if concept.derivation == Derivation.ROOT:
+        return _scope_and_phase(label)[0]
+    return label
+
+
+def classify_depth(concept: BuildConcept, label: str) -> str:
+    """Tag a concept by its placement role.
+
+    `d1` is no longer "address appears in a WHERE clause" — it's "this node
+    was reached via the condition-phase recursion." The phase is encoded in
+    the label, so the SELECT and WHERE walks build disjoint sub-graphs and
+    a concept that participates in both gets two distinct nodes."""
+    _, phase = _scope_and_phase(label)
+    if phase == "condition":
         return "d1"
     if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
         return "d0"
@@ -165,20 +201,28 @@ def _add_concept(
     concept: BuildConcept,
     environment: BuildEnvironment,
     graph: nx.DiGraph,
-    condition_addresses: set[str],
     label: str = "",
 ) -> None:
-    nid = node_id(label, concept.address)
+    """Walk lineage from a concept toward its roots, under a fixed label.
+
+    The label encodes (scope, phase) — scope is "" for the outer query / the
+    rowset name for rowset internals; phase is "blank" by default, or
+    "condition" via the ``@condition`` suffix. The same concept reached from
+    the SELECT walk and from the WHERE walk thus lands in two separate nodes
+    (the WHERE one is d1, the SELECT one keeps its derivation-driven label).
+    No second-pass promotion is needed — the depth falls out of the label."""
+    eff_label = _effective_label(concept, label)
+    nid = node_id(eff_label, concept.address)
     if nid in graph:
         return
     graph.add_node(
         nid,
         address=concept.address,
-        label=label,
+        label=eff_label,
         derivation=concept.derivation.value,
         purpose=concept.purpose.value,
         granularity=concept.granularity.value,
-        depth_label=classify_depth(concept, condition_addresses),
+        depth_label=classify_depth(concept, eff_label),
         grain_components=(
             frozenset(concept.grain.components) if concept.grain else frozenset()
         ),
@@ -203,8 +247,11 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     for upstream in fetcher(concept, environment):
-        _add_concept(upstream, environment, graph, condition_addresses, label=label)
-        graph.add_edge(node_id(label, upstream.address), nid, kind="lineage")
+        _add_concept(upstream, environment, graph, label=label)
+        upstream_label = _effective_label(upstream, label)
+        graph.add_edge(
+            node_id(upstream_label, upstream.address), nid, kind="lineage"
+        )
 
 
 def _rowset_inner_outputs(
@@ -264,15 +311,16 @@ def build_concept_graph(
     together by `partition_basics_by_subset_grain` and form a group-
     level cycle through the rowset)."""
     graph: nx.DiGraph = nx.DiGraph()
-    condition_addresses = {
-        c.address for clause in conditions for c in clause.concept_arguments
-    }
+    # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
-        _add_concept(concept, environment, graph, condition_addresses)
+        _add_concept(concept, environment, graph)
+    # Outer WHERE: condition-phase label "@condition". The same concept that
+    # also appears in the SELECT gets a separate node here, so we never
+    # have to retro-promote depth labels.
     for clause in conditions:
         for concept in clause.concept_arguments:
             resolved = environment.concepts.get(concept.address, concept)
-            _add_concept(resolved, environment, graph, condition_addresses)
+            _add_concept(resolved, environment, graph, label=_condition_label(""))
 
     # Walk each ROWSET leaf in the outer graph. Multiple outer concepts
     # may all point at the same rowset (q05: channel, id, sales_metric,
@@ -283,9 +331,10 @@ def build_concept_graph(
     for nid, data in list(graph.nodes(data=True)):
         if data.get("derivation") != Derivation.ROWSET.value:
             continue
+        # Skip rowsets discovered inside an already-labeled sub-graph;
+        # nested rowsets are handled by the outer recursion below. Only
+        # the outer blank-phase nodes have label="" so this test still works.
         if data.get("label", ""):
-            # Skip rowsets discovered inside an already-labeled sub-graph;
-            # nested rowsets are handled by the outer recursion below.
             continue
         address = data.get("address", nid)
         concept = environment.concepts.get(address)
@@ -302,19 +351,8 @@ def build_concept_graph(
         inner_outputs, inner_conditions = _rowset_inner_outputs(
             rowset_concept, environment
         )
-        inner_condition_addresses = {
-            c.address
-            for clause in inner_conditions
-            for c in clause.concept_arguments
-        }
         for inner_concept in inner_outputs:
-            _add_concept(
-                inner_concept,
-                environment,
-                graph,
-                inner_condition_addresses,
-                label=rowset_name,
-            )
+            _add_concept(inner_concept, environment, graph, label=rowset_name)
         for clause in inner_conditions:
             for c in clause.concept_arguments:
                 resolved = environment.concepts.get(c.address, c)
@@ -322,67 +360,92 @@ def build_concept_graph(
                     resolved,
                     environment,
                     graph,
-                    inner_condition_addresses,
-                    label=rowset_name,
+                    label=_condition_label(rowset_name),
                 )
 
-    # Add a constraint edge from every d1 to every d0 — except when a
-    # lineage edge already connects them. NetworkX merges duplicate edges
-    # (last write wins), so overwriting would silently demote the lineage
-    # relationship to "constraint only" and break downstream group-graph
-    # construction (the agg group would lose its by-clause inputs because
-    # those happen to be d1 conditions).
-    #
-    # Constraint edges are within-label only. Cross-label d1/d0 pairs are
-    # unrelated planning decisions: a rowset's inner d0 barrier doesn't
-    # need to sit above the outer query's d1 condition (they live in
-    # different sub-graphs).
-    nodes_by_label_and_depth: dict[tuple[str, str], list[str]] = {}
+    # Classify how each atom uses its concept arguments. A row-argument
+    # gets joined into the consumer's row stream; an existence-argument
+    # is consumed via a side-channel subselect (IN/EXISTS) and must never
+    # be modeled as JOIN partner. We collect both sets so the constraint
+    # and existence edge passes below can flow strictly along the right
+    # channel for each address.
+    row_arg_addresses: set[str] = set()
+    existence_arg_pairs: list[tuple[str, str]] = []  # (existence_addr, row_addr)
+    for clause in conditions:
+        for atom in decompose_condition(clause.conditional):
+            atom_row_addrs = [c.address for c in atom.row_arguments]
+            for c in atom.row_arguments:
+                row_arg_addresses.add(c.address)
+            for arg_group in getattr(atom, "existence_arguments", ()) or ():
+                for ec in arg_group:
+                    for row_addr in atom_row_addrs:
+                        existence_arg_pairs.append((ec.address, row_addr))
+
+    # Group nodes by scope-and-phase. Condition-phase nodes are d1 by
+    # construction; the only d0 candidates live in the matching blank-phase
+    # scope. Constraint edges flow strictly from condition-phase ROW-ARG
+    # nodes to blank-phase row-shape barriers in the same scope — these
+    # are the only d1s that will JOIN into the d0's row stream. A condition
+    # concept that only ever appears as an existence-arg gets an explicit
+    # `existence` edge instead (below), so the dataflow distinction is
+    # carried in the graph rather than recovered later via heuristics.
+    nodes_by_scope_phase: dict[tuple[str, str], list[str]] = {}
     for n, d in graph.nodes(data=True):
-        key = (d.get("label", ""), d.get(LABEL_DEPTH, "d*"))
-        nodes_by_label_and_depth.setdefault(key, []).append(n)
-    labels_present = {lbl for lbl, _ in nodes_by_label_and_depth}
-    for label_value in labels_present:
-        d1_nodes = nodes_by_label_and_depth.get((label_value, "d1"), [])
-        d0_nodes = nodes_by_label_and_depth.get((label_value, "d0"), [])
-        for src in d1_nodes:
-            for dst in d0_nodes:
+        scope, phase = _scope_and_phase(d.get("label", ""))
+        nodes_by_scope_phase.setdefault((scope, phase), []).append(n)
+    scopes_present = {scope for scope, _ in nodes_by_scope_phase}
+    for scope in scopes_present:
+        condition_nodes = nodes_by_scope_phase.get((scope, "condition"), [])
+        d0_blank_nodes = [
+            n
+            for n in nodes_by_scope_phase.get((scope, "blank"), [])
+            if graph.nodes[n].get(LABEL_DEPTH) == "d0"
+        ]
+        for src in condition_nodes:
+            src_address = graph.nodes[src].get("address", src)
+            if src_address not in row_arg_addresses:
+                continue
+            for dst in d0_blank_nodes:
                 if graph.has_edge(src, dst):
                     graph.edges[src, dst]["is_constraint"] = True
                 else:
                     graph.add_edge(src, dst, kind="constraint", is_constraint=True)
 
-    # If a d1 calc still has no outgoing edge (no d0 barrier sinks it),
-    # connect it to the mandatory output concepts so the condition has a
-    # consumer group to land on. Without this, a query whose SELECT is
-    # purely scalar (no aggregate output) but whose WHERE references an
-    # aggregate-by-grain — e.g. q04's `store_first_year > 0` over
-    # customer-grain rows — leaves the aggregate node as a sink, and
-    # `_inject_conditions` can't find any group whose reachable input
-    # contains the aggregate.
+    # Existence edges: for each `... IN <subselect>` atom, the existence
+    # source must be built and topologically ordered before the host
+    # consumer, but its rows never JOIN into the host's row stream — the
+    # renderer reads them via a subselect against the source CTE. Mark
+    # this with a distinct edge kind so downstream passes (group-edge
+    # propagation, JOIN-key projection, strategy parent selection) can
+    # treat existence siblings as side-channel, not JOIN partners.
+    for existence_addr, row_addr in existence_arg_pairs:
+        existence_nid = node_id(_condition_label(""), existence_addr)
+        # The row arg may be in either the blank or @condition phase
+        # depending on whether it's also a SELECT output. Connect to
+        # whichever exists; the atom's host bucket consumes from there.
+        for candidate_label in ("", _condition_label("")):
+            row_nid = node_id(candidate_label, row_addr)
+            if existence_nid in graph and row_nid in graph and existence_nid != row_nid:
+                if not graph.has_edge(existence_nid, row_nid):
+                    graph.add_edge(existence_nid, row_nid, kind="existence")
+
+    # Backfill: if a condition-phase node has no successor (no d0 barrier
+    # consumed it), wire a constraint from it to the matching blank-phase
+    # mandatory outputs so the condition has somewhere to land. q04's
+    # `store_first_year > 0` over customer-grain rows is the motivating
+    # case — purely scalar SELECT, no d0 to absorb the WHERE.
     #
-    # Constraints, to avoid demoting lineage or closing a cycle:
-    #   - Skip d1 roots (condition inputs that already live in the scan);
-    #     mandatory basics typically descend from them.
-    #   - Skip d1 calcs that only appear as existence args (e.g. a rowset
-    #     on the right of `x IN rowset`) — they don't need a row-stream
-    #     consumer, only a side-channel subselect. A filter group used
-    #     this way shares a group with the root scan that consumes it,
-    #     so adding a back-edge here closes the cycle (q37 regression).
-    #   - Don't add to a dst that is already a lineage ancestor of src.
-    # Same d1-calc backfill, but scoped to the outer label (the only
-    # one with an external `mandatory_list`). Inner sub-graphs have their
-    # own select outputs as inner mandatory, but we don't backfill them
-    # here — the inner walk's conditions are local to it.
-    row_arg_addresses: set[str] = set()
-    for clause in conditions:
-        for atom in decompose_condition(clause.conditional):
-            for c in atom.row_arguments:
-                row_arg_addresses.add(c.address)
-    mandatory_addresses = {c.address for c in mandatory_list}
-    outer_d1_nodes = nodes_by_label_and_depth.get(("", "d1"), [])
-    ancestors_of: dict[str, set[str]] = {}
-    for src in outer_d1_nodes:
+    # Limits, mirroring the original logic:
+    #   - skip ROOT-derivation condition nodes (those represent in-scan
+    #     attributes that the mandatory walk already produces);
+    #   - require the node's address to actually appear as a row argument
+    #     (existence args don't need row-stream consumers);
+    #   - skip nodes that already have any outgoing edge.
+    mandatory_blank_ids = {
+        node_id("", c.address) for c in mandatory_list
+    }
+    outer_condition_nodes = nodes_by_scope_phase.get(("", "condition"), [])
+    for src in outer_condition_nodes:
         if graph.nodes[src].get("derivation") == Derivation.ROOT.value:
             continue
         src_address = graph.nodes[src].get("address", src)
@@ -390,13 +453,8 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
-        if src not in ancestors_of:
-            ancestors_of[src] = nx.ancestors(graph, src)
-        src_ancestors = ancestors_of[src]
-        for dst in mandatory_addresses:
-            if dst == src_address or dst not in graph.nodes:
-                continue
-            if dst in src_ancestors or graph.has_edge(src, dst):
+        for dst in mandatory_blank_ids:
+            if dst not in graph.nodes or graph.has_edge(src, dst):
                 continue
             graph.add_edge(src, dst, kind="constraint", is_constraint=True)
     return graph

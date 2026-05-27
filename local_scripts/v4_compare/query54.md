@@ -1,22 +1,30 @@
 # Query 54
 
-**Status:** `gen_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1 (1 distinct)
+ref rows: 1 (1 distinct)
+only in v4 (showing up to 5 of 1):
+  1x  (1, 10715)
+only in ref (showing up to 5 of 1):
+  1x  (1, 10715, 535750)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 4183 | 91 | 31.48 ms |
+| v4 | 3828 | 87 | 36.51 ms |
+| reference | 4183 | 91 | 40.34 ms |
+| v4 / ref | 0.92x | 0.96x | 0.90x |
 
 ## Preql
 
@@ -86,7 +94,95 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+cheerful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 12 and "sales_item_items"."I_CATEGORY" = 'Women' and "sales_item_items"."I_CLASS" = 'maternity'
+
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 12 and "sales_item_items"."I_CATEGORY" = 'Women' and "sales_item_items"."I_CLASS" = 'maternity'
+),
+sparkling as (
+SELECT
+    "store_store"."S_COUNTY" as "stores_cs_scs_county",
+    "store_store"."S_STATE" as "stores_cs_scs_state",
+    count("store_store"."S_STORE_SK") as "stores_cs_scs_count"
+FROM
+    "memory"."store" as "store_store"
+GROUP BY
+    1,
+    2),
+thoughtful as (
+SELECT
+    "cheerful"."sales_customer_id" as "my_customers_my_cust_id"
+FROM
+    "cheerful"
+GROUP BY
+    1),
+concerned as (
+SELECT
+    "ss_customer_address_customer_address"."CA_COUNTY" as "cust_ss_ss_cust_county",
+    "ss_customer_address_customer_address"."CA_STATE" as "cust_ss_ss_cust_state",
+    "ss_store_sales"."SS_CUSTOMER_SK" as "cust_ss_ss_cust_id",
+    sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "cust_ss_ss_revenue"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "ss_store_sales"."SS_CUSTOMER_SK" in (select thoughtful."my_customers_my_cust_id" from thoughtful where thoughtful."my_customers_my_cust_id" is not null) and "ss_date_date"."D_MONTH_SEQ" >= 1188 and "ss_date_date"."D_MONTH_SEQ" <= 1190 and "ss_store_sales"."SS_CUSTOMER_SK" is not null
+
+GROUP BY
+    1,
+    2,
+    3),
+sweltering as (
+SELECT
+    "concerned"."cust_ss_ss_cust_id" as "my_revenue_rev_cust_id",
+    "concerned"."cust_ss_ss_revenue" * "sparkling"."stores_cs_scs_count" as "my_revenue_revenue"
+FROM
+    "concerned"
+    INNER JOIN "sparkling" on "concerned"."cust_ss_ss_cust_county" = "sparkling"."stores_cs_scs_county" AND "concerned"."cust_ss_ss_cust_state" = "sparkling"."stores_cs_scs_state"
+GROUP BY
+    1,
+    2),
+macho as (
+SELECT
+    count("sweltering"."my_revenue_rev_cust_id") as "num_customers"
+FROM
+    "sweltering"),
+late as (
+SELECT
+    cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) as "segment"
+FROM
+    "sweltering")
+SELECT
+    "late"."segment" as "segment",
+    coalesce("macho"."num_customers",0) as "num_customers"
+FROM
+    "macho"
+    FULL JOIN "late" on 1=1
+ORDER BY 
+    "late"."segment" asc nulls first,
+    coalesce("macho"."num_customers",0) asc nulls first,
+    "late"."segment" * 50 asc nulls first
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -182,40 +278,4 @@ ORDER BY
     coalesce("macho"."num_customers",0) asc nulls first,
     "sweltering"."segment_base" asc nulls first
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```

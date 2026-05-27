@@ -1,22 +1,38 @@
 # Query 44
 
-**Status:** `gen_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (10 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (88 distinct)
+ref rows: 10 (10 distinct)
+only in v4 (showing up to 5 of 88):
+  13x  (None, 'callyn stantiation', 1)
+  1x  ('pripripripriought', 'callyn stantiation', 1)
+  1x  ('pripripripri', 'callyn stantiation', 1)
+  1x  ('pripripriought', 'callyn stantiation', 1)
+  1x  ('pripripriese', 'callyn stantiation', 1)
+only in ref (showing up to 5 of 10):
+  1x  ('eingpricallyoughtought', 'callyn stantiation', 1)
+  1x  ('ableableableable', 'callyableesepriought', 2)
+  1x  ('eingableableation', 'eingesepriantiought', 3)
+  1x  ('oughtableeseable', 'bareingpriought', 4)
+  1x  ('eingpriationcallyought', 'baroughtoughtation', 5)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 2861 | 101 | 64.78 ms |
+| v4 | 2924 | 105 | 83.65 ms |
+| reference | 2861 | 101 | 81.42 ms |
+| v4 / ref | 1.02x | 1.04x | 1.03x |
 
 ## Preql
 
@@ -70,7 +86,113 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+thoughtful as (
+SELECT
+    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
+    avg("ss_store_sales"."SS_NET_PROFIT") as "item_avg_profit"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+WHERE
+    "ss_store_sales"."SS_STORE_SK" = 4
+
+GROUP BY
+    1),
+cooperative as (
+SELECT
+    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+WHERE
+    "ss_store_sales"."SS_STORE_SK" = 4
+
+GROUP BY
+    1,
+    "ss_store_sales"."SS_STORE_SK"),
+highfalutin as (
+SELECT
+    avg("ss_store_sales"."SS_NET_PROFIT") as "addr_null_threshold_threshold"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+WHERE
+    "ss_store_sales"."SS_STORE_SK" = 4 and "ss_store_sales"."SS_ADDR_SK" is null
+),
+questionable as (
+SELECT
+    "thoughtful"."item_avg_profit" as "item_avg_profit",
+    "thoughtful"."ss_item_id" as "ss_item_id"
+FROM
+    "cooperative"
+    INNER JOIN "thoughtful" on "cooperative"."ss_item_id" = "thoughtful"."ss_item_id"),
+abundant as (
+SELECT
+    "questionable"."item_avg_profit" as "item_avg_profit",
+    "questionable"."ss_item_id" as "ss_item_id"
+FROM
+    "highfalutin"
+    INNER JOIN "questionable" on 1=1
+WHERE
+    "questionable"."item_avg_profit" > 0.9 * "highfalutin"."addr_null_threshold_threshold"
+
+GROUP BY
+    1,
+    2),
+uneven as (
+SELECT
+    "abundant"."ss_item_id" as "ss_item_id",
+    rank() over (order by "abundant"."item_avg_profit" asc ) as "_ascending_rnk_a",
+    rank() over (order by "abundant"."item_avg_profit" desc ) as "_descending_rnk_d"
+FROM
+    "abundant"),
+juicy as (
+SELECT
+    "ss_item_items"."I_PRODUCT_NAME" as "descending_worst_performing",
+    "uneven"."_descending_rnk_d" as "descending_rnk_d"
+FROM
+    "uneven"
+    INNER JOIN "memory"."item" as "ss_item_items" on "uneven"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
+GROUP BY
+    1,
+    2),
+yummy as (
+SELECT
+    "ss_item_items"."I_PRODUCT_NAME" as "ascending_best_performing"
+FROM
+    "uneven"
+    INNER JOIN "memory"."item" as "ss_item_items" on "uneven"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
+GROUP BY
+    1,
+    "uneven"."_ascending_rnk_a"),
+vacuous as (
+SELECT
+    "juicy"."descending_rnk_d" as "rnk",
+    "juicy"."descending_worst_performing" as "descending_worst_performing"
+FROM
+    "juicy"),
+concerned as (
+SELECT
+    "vacuous"."descending_worst_performing" as "descending_worst_performing",
+    "vacuous"."rnk" as "rnk",
+    "yummy"."ascending_best_performing" as "ascending_best_performing"
+FROM
+    "yummy"
+    RIGHT OUTER JOIN "vacuous" on 1=1
+WHERE
+    "vacuous"."rnk" < 11
+)
+SELECT
+    "concerned"."rnk" as "rnk",
+    "concerned"."ascending_best_performing" as "ascending_best_performing",
+    "concerned"."descending_worst_performing" as "descending_worst_performing"
+FROM
+    "concerned"
+ORDER BY 
+    "concerned"."rnk" asc nulls first,
+    "concerned"."ascending_best_performing" desc nulls first,
+    "concerned"."descending_worst_performing" desc nulls first
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -176,40 +298,4 @@ ORDER BY
     "vacuous"."ascending_best_performing" desc nulls first,
     "vacuous"."descending_worst_performing" desc nulls first
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```

@@ -1,11 +1,12 @@
 # Query 08
 
-**Status:** `gen_fail`
+**Status:** `exec_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
-| reference execution | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | FAILED |
+| reference execution | OK (5 rows) |
 
 ## Result comparison
 
@@ -15,8 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 2419 | 61 | — |
+| v4 | 1378 | 28 | — |
+| reference | 2419 | 61 | 327.39 ms |
+| v4 / ref | 0.57x | 0.46x | — |
 
 ## Preql
 
@@ -448,7 +450,36 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+abhorrent as (
+SELECT
+    "store_sales_store_sales"."SS_NET_PROFIT" as "store_sales_net_profit",
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+WHERE
+    "store_sales_date_date"."D_QOY" = 2 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select INVALID_REFERENCE_BUG_<Missing source reference to local.final_zips>."final_zips" from INVALID_REFERENCE_BUG_<Missing source reference to local.final_zips> where INVALID_REFERENCE_BUG_<Missing source reference to local.final_zips>."final_zips" is not null)
+),
+sweltering as (
+SELECT
+    "abhorrent"."store_sales_net_profit" as "store_sales_net_profit",
+    "abhorrent"."store_sales_store_name" as "store_sales_store_name"
+FROM
+    "abhorrent")
+SELECT
+    sum("sweltering"."store_sales_net_profit") as "store_net_profit",
+    "sweltering"."store_sales_store_name" as "store_sales_store_name"
+FROM
+    "sweltering"
+GROUP BY
+    2
+ORDER BY 
+    "sweltering"."store_sales_store_name" asc
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -516,62 +547,25 @@ ORDER BY
 LIMIT (100)
 ```
 
-## v4 generation error
+## v4 execution error
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
-```
-
-## reference execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 187, in run_one
-    result.ref_exec_seconds, result.ref_rows = _time(
-                                               ~~~~~^
-        lambda: execute(con, ref_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
+                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
     value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 188, in <lambda>
-    lambda: execute(con, ref_sql)
-            ~~~~~~~^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.ParserException: Parser Error: syntax error at or near ":"
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in <lambda>
+    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
+                                                           ~~~~~^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 263, in _exec
+    return execute(con, bound_sql, params or None)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 183, in execute
+    cursor = con.execute(sql, params) if params else con.execute(sql)
+                                                     ~~~~~~~~~~~^^^^^
+_duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 16:     unnest(:_virt_7180871482901048) as "zips_pre"
-                    ^
+LINE 11: ..."."S_ZIP",1,2) in (select INVALID_REFERENCE_BUG_<Missing source reference to local.final_zips>."final_zips" from...
+                                                                     ^
 ```

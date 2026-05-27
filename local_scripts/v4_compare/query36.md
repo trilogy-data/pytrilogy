@@ -1,22 +1,38 @@
 # Query 36
 
-**Status:** `gen_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (94 distinct)
+ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 94):
+  1x  ('Home', 'accent', -0.4331652033071642, 2, 1)
+  1x  ('Women', 'maternity', -0.4331652033071642, 2, 1)
+  1x  ('Sports', 'archery', -0.4331652033071642, 2, 1)
+  1x  (None, 'dresses', -0.4331652033071642, 2, 1)
+  2x  ('Shoes', None, -0.4331652033071642, 2, 1)
+only in ref (showing up to 5 of 99):
+  1x  ('Jewelry', None, -0.4422821387283753, 1, 1)
+  1x  ('Men', None, -0.4407722793549773, 1, 2)
+  1x  ('Books', None, -0.4378703075728192, 1, 3)
+  1x  ('Music', None, -0.435732438424966, 1, 4)
+  1x  ('Shoes', None, -0.4326919536021629, 1, 5)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 2553 | 60 | 90.43 ms |
+| v4 | 2508 | 59 | 92.15 ms |
+| reference | 2553 | 60 | 106.38 ms |
+| v4 / ref | 0.98x | 0.98x | 0.87x |
 
 ## Preql
 
@@ -70,7 +86,67 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+thoughtful as (
+SELECT
+    "ss_item_items"."I_CATEGORY" as "ss_item_category",
+    "ss_item_items"."I_CLASS" as "ss_item_class",
+    "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
+    "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+WHERE
+    "ss_date_date"."D_YEAR" = 2001 and "ss_store_store"."S_STATE" = 'TN'
+),
+cooperative as (
+SELECT
+    "thoughtful"."ss_item_category" as "q36_rolled_r_category",
+    "thoughtful"."ss_item_class" as "q36_rolled_r_class",
+    CASE
+	WHEN grouping("thoughtful"."ss_item_class") = 0 THEN "thoughtful"."ss_item_category"
+	ELSE null
+	END as "q36_rolled_partition_cat",
+    cast(sum("thoughtful"."ss_net_profit") as numeric(15,4)) / cast(sum("thoughtful"."ss_ext_sales_price") as numeric(15,4)) as "q36_rolled_gross_margin",
+    grouping("thoughtful"."ss_item_category") + grouping("thoughtful"."ss_item_class") as "q36_rolled_lochierarchy"
+FROM
+    "thoughtful"
+GROUP BY
+    ROLLUP (1, 2)),
+abundant as (
+SELECT
+    "cooperative"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
+    "cooperative"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy",
+    rank() over (partition by "cooperative"."q36_rolled_lochierarchy","cooperative"."q36_rolled_partition_cat" order by "cooperative"."q36_rolled_gross_margin" asc ) as "rank_within_parent"
+FROM
+    "cooperative"),
+questionable as (
+SELECT
+    "cooperative"."q36_rolled_r_category" as "i_category",
+    "cooperative"."q36_rolled_r_class" as "i_class"
+FROM
+    "cooperative")
+SELECT
+    "abundant"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
+    "questionable"."i_category" as "i_category",
+    "questionable"."i_class" as "i_class",
+    "abundant"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy",
+    "abundant"."rank_within_parent" as "rank_within_parent"
+FROM
+    "questionable"
+    FULL JOIN "abundant" on 1=1
+ORDER BY 
+    "abundant"."q36_rolled_lochierarchy" desc nulls first,
+    CASE
+	WHEN "abundant"."q36_rolled_lochierarchy" = 0 THEN "questionable"."i_category"
+	ELSE null
+	END asc nulls first,
+    "abundant"."rank_within_parent" asc nulls first
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -135,40 +211,4 @@ ORDER BY
 	END asc nulls first,
     "questionable"."rank_within_parent" asc nulls first
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 631, in build_group_graph
-    _compute_concept_sets(group_graph, concept_graph, mandatory_list)
-    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 526, in _compute_concept_sets
-    topo = list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```
