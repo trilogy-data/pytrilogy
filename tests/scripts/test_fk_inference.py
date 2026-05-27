@@ -6,11 +6,13 @@ from click.testing import CliRunner
 from tests.scripts._fault_dialect import FailingExecutor
 from trilogy.dialect.enums import Dialects
 from trilogy.scripts.ingest_helpers.fk_inference import (
+    FKBinding,
     FKCandidate,
     InferredFK,
     TableFKInfo,
     _rollback,
     _stem_related,
+    enrich_explicit_fks_partial,
     generate_candidates,
     infer_foreign_keys,
     measure_overlap,
@@ -413,6 +415,109 @@ class TestFKCandidateTargetRef:
         )
 
 
+class TestPartialInference:
+    """Reverse-coverage decides whether an inferred FK is marked partial."""
+
+    def test_full_mode_marks_complete_when_parent_fully_covered(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        # Every customer has at least one order — reverse coverage is 1.0.
+        exec.execute_raw_sql("CREATE TABLE customers(id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO customers VALUES (1),(2)")
+        exec.execute_raw_sql("CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)")
+        exec.execute_raw_sql(
+            "INSERT INTO orders VALUES (10,1),(11,2),(12,1)"
+        )
+
+        customers = _info("customers", ["id"], ["id"])
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        inferred = infer_foreign_keys([orders, customers], exec, "full")
+        assert len(inferred) == 1
+        assert inferred[0].partial is False
+
+    def test_full_mode_marks_partial_when_parent_keys_missing(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        # Customer 3 has no orders — reverse coverage is 2/3, partial.
+        exec.execute_raw_sql("CREATE TABLE customers(id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO customers VALUES (1),(2),(3)")
+        exec.execute_raw_sql("CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO orders VALUES (10,1),(11,2)")
+
+        customers = _info("customers", ["id"], ["id"])
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        inferred = infer_foreign_keys([orders, customers], exec, "full")
+        assert len(inferred) == 1
+        assert inferred[0].partial is True
+
+    def test_fast_mode_defaults_partial_true(self):
+        # Fast mode has no value evidence; default conservatively to partial.
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info("customers", ["id"], ["id"])
+        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        assert len(inferred) == 1
+        assert inferred[0].partial is True
+
+
+class TestEnrichExplicitFKsPartial:
+    """Explicit ``--fks`` start partial; reverse-coverage can upgrade them."""
+
+    def test_complete_explicit_fk_is_flipped_to_non_partial(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        exec.execute_raw_sql("CREATE TABLE customers(id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO customers VALUES (1),(2)")
+        exec.execute_raw_sql(
+            "CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)"
+        )
+        exec.execute_raw_sql("INSERT INTO orders VALUES (10,1),(11,2)")
+
+        explicit = {
+            "orders": {"customer_id": FKBinding("customers.id", partial=True)}
+        }
+        by_name = {
+            "orders": _info(
+                "orders", ["order_id", "customer_id"], ["order_id"], relation="orders"
+            ),
+            "customers": _info("customers", ["id"], ["id"], relation="customers"),
+        }
+        enrich_explicit_fks_partial(explicit, by_name, exec)
+        assert explicit["orders"]["customer_id"].partial is False
+
+    def test_partial_explicit_fk_stays_partial(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        # Customer 3 has no orders.
+        exec.execute_raw_sql("CREATE TABLE customers(id INTEGER)")
+        exec.execute_raw_sql("INSERT INTO customers VALUES (1),(2),(3)")
+        exec.execute_raw_sql(
+            "CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)"
+        )
+        exec.execute_raw_sql("INSERT INTO orders VALUES (10,1),(11,2)")
+
+        explicit = {
+            "orders": {"customer_id": FKBinding("customers.id", partial=True)}
+        }
+        by_name = {
+            "orders": _info(
+                "orders", ["order_id", "customer_id"], ["order_id"], relation="orders"
+            ),
+            "customers": _info("customers", ["id"], ["id"], relation="customers"),
+        }
+        enrich_explicit_fks_partial(explicit, by_name, exec)
+        assert explicit["orders"]["customer_id"].partial is True
+
+    def test_unknown_target_table_left_alone(self):
+        # An --fks target outside the ingested set is skipped, not crashed.
+        explicit = {
+            "orders": {"customer_id": FKBinding("people.id", partial=True)}
+        }
+        by_name = {
+            "orders": _info(
+                "orders", ["order_id", "customer_id"], ["order_id"], relation="orders"
+            ),
+        }
+        # executor=None would crash if we tried to sniff; the skip avoids it.
+        enrich_explicit_fks_partial(explicit, by_name, executor=None)
+        assert explicit["orders"]["customer_id"].partial is True
+
+
 class TestInferredFKTargetRefRoleAlias:
     def test_target_ref_with_role_alias(self):
         fk = InferredFK(
@@ -432,16 +537,21 @@ class TestMergeFKMaps:
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
         inferred = infer_foreign_keys([orders, customers], None, "fast")
-        explicit = {"orders": {"customer_id": "people.id"}}
+        explicit = {
+            "orders": {"customer_id": FKBinding("people.id", partial=True)}
+        }
         merged = merge_fk_maps(inferred, explicit)
-        assert merged["orders"]["customer_id"] == "people.id"
+        assert merged["orders"]["customer_id"] == FKBinding("people.id", partial=True)
 
     def test_inferred_used_when_no_explicit(self):
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
         inferred = infer_foreign_keys([orders, customers], None, "fast")
         merged = merge_fk_maps(inferred, {})
-        assert merged["orders"]["customer_id"] == "customers.id"
+        # Fast mode has no data evidence, so partial defaults to True.
+        assert merged["orders"]["customer_id"] == FKBinding(
+            "customers.id", partial=True
+        )
 
 
 def _fk_config(tmppath: Path) -> Path:
@@ -503,6 +613,85 @@ def test_ingest_infers_fk_and_cross_table_query_resolves():
         if result.exception:
             raise result.exception
         assert result.exit_code == 0
+
+
+def _partial_fk_config(tmppath: Path) -> Path:
+    """Customer 3 has no orders — orders is partial w.r.t. customer."""
+    setup_sql = tmppath / "setup.sql"
+    setup_sql.write_text(
+        "CREATE TABLE customers (id INTEGER PRIMARY KEY, name VARCHAR);\n"
+        "CREATE TABLE orders (\n"
+        "  order_id INTEGER PRIMARY KEY,\n"
+        "  customer_id INTEGER,\n"
+        "  total DOUBLE\n"
+        ");\n"
+        "INSERT INTO customers VALUES (1,'alice'),(2,'bob'),(3,'carol');\n"
+        "INSERT INTO orders VALUES (10,1,99.5),(11,2,42.0);"
+    )
+    config_file = tmppath / "trilogy.toml"
+    config_file.write_text(
+        '[engine]\ndialect = "duckdb"\n\n'
+        f'[setup]\nsql = ["{setup_sql.as_posix()}"]\n'
+    )
+    return config_file
+
+
+def test_ingest_marks_inferred_fk_partial_when_parent_keys_missing():
+    """Full-mode ingest emits ~customer_id when reverse coverage is < 100%."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = _partial_fk_config(tmppath)
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "customers,orders",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        orders_preql = (out_dir / "orders.preql").read_text()
+        assert "customer_id: ~customers.id" in orders_preql
+
+
+def test_ingest_marks_inferred_fk_complete_when_parent_fully_covered():
+    """Full-mode ingest omits ~ when every parent key appears in the child."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = _fk_config(tmppath)
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "customers,orders",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        orders_preql = (out_dir / "orders.preql").read_text()
+        # Both customer ids (1,2) appear in orders, so the FK is complete.
+        assert "customer_id: customers.id" in orders_preql
+        assert "~customers.id" not in orders_preql
 
 
 def test_ingest_no_infer_fks_leaves_tables_disconnected():

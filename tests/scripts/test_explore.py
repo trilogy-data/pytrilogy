@@ -39,7 +39,7 @@ def test_explore_lists_concepts(runner, sample_preql: Path):
     # concept by leaf — just collapsed under a header.
     result = runner.invoke(cli, ["explore", str(sample_preql)])
     assert result.exit_code == 0, result.output
-    assert "Concept groups" in result.output
+    assert "Available Concepts" in result.output
     assert "carrier" in result.output
     assert "distance" in result.output
 
@@ -47,7 +47,7 @@ def test_explore_lists_concepts(runner, sample_preql: Path):
 def test_explore_show_all_includes_datasources_and_imports(runner, sample_preql: Path):
     result = runner.invoke(cli, ["explore", str(sample_preql), "--show", "all"])
     assert result.exit_code == 0
-    assert "Concept groups" in result.output
+    assert "Available Concepts" in result.output
     assert "Concepts" in result.output
     assert "Datasources" in result.output
     assert "flights" in result.output

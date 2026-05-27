@@ -136,7 +136,7 @@ class CLIRuntimeParams:
     refresh_params: RefreshParams | None = None
     # Cap on rows displayed per statement result. ``None`` falls back to the
     # global ``FETCH_LIMIT``. Lowered for agents (sample, not firehose); humans
-    # can raise it explicitly with ``--rows`` or use ``--all-rows``.
+    # can raise it explicitly with ``--displayed-rows`` or use ``--all-rows``.
     row_limit: int | None = None
 
 

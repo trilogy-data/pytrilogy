@@ -1,13 +1,9 @@
-import customer;
 import order as orders;
-
-merge orders.customer.id into ~id;
-
-auto orders_per_customer <- count(orders.id ? not orders.comment like '%special%requests%') by id;
-
-select
-    coalesce(orders_per_customer, 0) -> c_count,
-    count(id) -> custdist
-order by
+metric orders_per_customer <- count(filter orders.id where coalesce(like(orders.comment,'%special%requests%'), False) = False) by orders.customer.id;
+SELECT
+    coalesce(orders_per_customer,0) -> c_count,
+    count(orders.customer.id) -> custdist,
+ORDER BY
     custdist desc,
-    c_count desc;
+    c_count desc
+;

@@ -30,7 +30,6 @@ from trilogy.scripts.agent import (
     handle_show_message,
     handle_todo,
     handle_trilogy,
-    handle_write_file,
     truncate_middle,
 )
 
@@ -197,65 +196,11 @@ def test_maybe_flag_loop_resets_on_different_call():
     assert "[guidance]" not in _maybe_flag_loop(state, b, "ok")
 
 
-def test_write_file_creates_and_overwrites(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    result = handle_write_file(
-        AgentState(), {"path": "query01.preql", "content": "select 1 -> x;"}
-    )
-    assert "wrote 14 chars" in result
-    assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
-
-
-def test_write_file_refuses_empty_overwrite_of_nonempty_file(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "query01.preql").write_text("select 1 -> x;", encoding="utf-8")
-    result = handle_write_file(AgentState(), {"path": "query01.preql", "content": ""})
-    assert "refused" in result
-    assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
-
-
-def test_write_file_syntax_error_surfaces_parse_message(tmp_path, monkeypatch):
-    """A .preql write that fails to parse must refuse AND surface the parser's
-    own error inline — the agent needs the specific syntax message to fix the
-    content. Previous wording ('did not parse as Trilogy') was vague enough
-    that the agent often retried with the same broken content."""
-    monkeypatch.chdir(tmp_path)
-    # Truncated mid-statement (no `select`, no `;`) — mirrors the q01 failure
-    # pattern from the tpch eval where the model output got cut off.
-    result = handle_write_file(
-        AgentState(),
-        {"path": "query01.preql", "content": "where lineitem.shipdate::date"},
-    )
-    assert "refused" in result
-    assert "syntactically valid" in result
-    assert "Parse error:" in result
-    # The file must not have been written.
-    assert not (tmp_path / "query01.preql").exists()
-
-
-def test_write_file_flags_writes_into_raw(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    result = handle_write_file(
-        AgentState(), {"path": "raw/store.preql", "content": "key x int;"}
-    )
-    assert "[guidance]" in result and "raw/" in result
-
-
 def test_read_file_returns_content_and_reports_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "q.preql").write_text("select 1 -> x;", encoding="utf-8")
     assert handle_read_file(AgentState(), {"path": "q.preql"}) == "select 1 -> x;"
     assert "no such file" in handle_read_file(AgentState(), {"path": "missing.preql"})
-
-
-def test_write_file_validates_arguments():
-    assert "non-empty string" in handle_write_file(AgentState(), {"content": "x"})
-    assert "non-empty string" in handle_write_file(
-        AgentState(), {"path": "", "content": "x"}
-    )
-    assert "'content' must be a string" in handle_write_file(
-        AgentState(), {"path": "f.preql", "content": 5}
-    )
 
 
 def test_list_files_recursive_shows_nested_paths(tmp_path, monkeypatch):
@@ -487,54 +432,6 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
 # --- Additional coverage for handlers and helpers ---
 
 
-def test_validate_preql_syntax_wraps_unexpected_exception(monkeypatch):
-    """The validator's safety net converts non-InvalidSyntaxException errors
-    into a typed string so a buggy parser never crashes the write."""
-
-    def boom(_):
-        raise RuntimeError("parser exploded")
-
-    import trilogy.parsing.v2.lark_backend as lark_backend
-
-    monkeypatch.setattr(lark_backend, "parse_lark", boom)
-    msg = agent_mod._validate_preql_syntax("select 1 -> x;")
-    assert msg is not None
-    assert "RuntimeError" in msg
-    assert "parser exploded" in msg
-
-
-def test_write_file_flags_html_escapes(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    result = handle_write_file(
-        AgentState(),
-        {"path": "q.preql", "content": "where x &lt;= 1 select x;"},
-    )
-    assert "HTML-escaped" in result
-    assert "&lt;" in result
-    # The file must not have been written.
-    assert not (tmp_path / "q.preql").exists()
-
-
-def test_write_file_reports_oserror(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    from pathlib import Path
-
-    real_write_text = Path.write_text
-
-    def boom(self, *a, **kw):
-        if self.name.endswith("boom.preql"):
-            raise OSError("disk full")
-        return real_write_text(self, *a, **kw)
-
-    monkeypatch.setattr(Path, "write_text", boom)
-    result = handle_write_file(
-        AgentState(),
-        {"path": "boom.preql", "content": "select 1 -> x;"},
-    )
-    assert "write_file error" in result
-    assert "disk full" in result
-
-
 def test_list_files_truncates_at_max_entries(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(agent_mod, "_LIST_FILES_MAX_ENTRIES", 3)
@@ -554,27 +451,6 @@ def test_list_files_non_recursive_marks_directories(tmp_path, monkeypatch):
     assert "raw/" in out
     assert "q.preql" in out
     assert "__pycache__" not in out
-
-
-def test_write_file_handles_oserror_on_stat(monkeypatch, tmp_path):
-    """When stat() raises (e.g. permission denied), the clobber check falls
-    back to False and the write still attempts (then succeeds)."""
-    monkeypatch.chdir(tmp_path)
-    from pathlib import Path
-
-    real_stat = Path.stat
-
-    def boom_stat(self, *a, **kw):
-        if self.name == "perms.preql":
-            raise OSError("stat denied")
-        return real_stat(self, *a, **kw)
-
-    (tmp_path / "perms.preql").write_text("old", encoding="utf-8")
-    monkeypatch.setattr(Path, "stat", boom_stat)
-    result = handle_write_file(
-        AgentState(), {"path": "perms.preql", "content": "select 1 -> x;"}
-    )
-    assert "wrote" in result
 
 
 def test_list_files_reports_empty_directory(tmp_path):
@@ -1128,7 +1004,6 @@ def test_all_tools_registered():
     assert names == {
         "show_message",
         "trilogy",
-        "write_file",
         "read_file",
         "list_files",
         "todo",

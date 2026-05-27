@@ -41,6 +41,7 @@ from trilogy.scripts.display_ingest import (
 from trilogy.scripts.ingest_helpers.fk_inference import (
     InferredFK,
     build_table_fk_info,
+    enrich_explicit_fks_partial,
     infer_foreign_keys,
     merge_fk_maps,
 )
@@ -787,6 +788,7 @@ def ingest(
     # Second pass: infer foreign keys across the just-introspected tables, then
     # merge with any explicit --fks (explicit wins per column).
     inferred_fks: list[InferredFK] = []
+    fk_infos = []
     if fk_infer_level != "off":
         table_records = [
             rec for rec in ingested.values() if not _looks_like_file_source(rec.source)
@@ -808,6 +810,19 @@ def ingest(
                     exec.connection.rollback()
                 except Exception:
                     pass
+    # Explicit --fks arrive marked partial=True. In full mode we have the
+    # executor; sniff reverse coverage to upgrade complete edges.
+    if fk_infer_level == "full" and explicit_fk_map and fk_infos:
+        try:
+            enrich_explicit_fks_partial(
+                explicit_fk_map, {t.name: t for t in fk_infos}, exec
+            )
+        except Exception as e:
+            print_warning(f"Explicit FK partial sniffing failed: {e}")
+            try:
+                exec.connection.rollback()
+            except Exception:
+                pass
     fk_map = merge_fk_maps(inferred_fks, explicit_fk_map)
 
     if fk_map:

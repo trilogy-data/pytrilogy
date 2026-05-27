@@ -76,10 +76,14 @@ Available tools:
       handles the join. There is no manual JOIN clause in this language.
     * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
       etc. `trilogy agent-info` lists everything that exists.
-- write_file(path, content): create or overwrite a text file; `content` is the
-  exact, full file text. This is how you create every .preql query file.
 - read_file(path): return the text content of a file; use this for
   code understanding; prefer explore for usage.
+
+To create or overwrite a file (every .preql query file you write), use
+`trilogy file write <path> --content <full body>`. Pass the complete file
+body as a single string in `--content`; embed literal newlines. Trilogy
+parses the body before it lands on disk — partial or broken .preql writes
+are rejected with the parse error. Re-issue the call with the COMPLETE body.
 - list_files(path=".", recursive=True): list files in the workspace.
   Call this when you are unsure what files exist (e.g. before guessing a
   path like `./store_sales.preql` — the model files live under `raw/`).
@@ -187,28 +191,6 @@ TRILOGY_TOOL = LLMToolDefinition(
     },
 )
 
-WRITE_FILE_TOOL = LLMToolDefinition(
-    name="write_file",
-    description=(
-        "Create or overwrite a text file. Writes the exact text in `content` "
-        "to `path`. This is how you create every .preql query file."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": "Path to write, e.g. 'query01.preql'.",
-            },
-            "content": {
-                "type": "string",
-                "description": "The complete, exact text content of the file.",
-            },
-        },
-        "required": ["path", "content"],
-    },
-)
-
 READ_FILE_TOOL = LLMToolDefinition(
     name="read_file",
     description="Return the text content of the file at `path`.",
@@ -296,7 +278,6 @@ RETURN_CONTROL_TOOL = LLMToolDefinition(
 ALL_TOOLS: list[LLMToolDefinition] = [
     SHOW_MESSAGE_TOOL,
     TRILOGY_TOOL,
-    WRITE_FILE_TOOL,
     READ_FILE_TOOL,
     LIST_FILES_TOOL,
     TODO_TOOL,
@@ -321,95 +302,6 @@ def handle_show_message(state: AgentState, args: dict) -> str:
     return "show_message: ok"
 
 
-def _raw_path_note(path: str) -> str:
-    """Guidance (not a block) when writing into raw/, which holds the generated
-    data model — query files belong in the working directory."""
-    if path.replace("\\", "/").startswith("raw/"):
-        return (
-            "\n\n[guidance] You wrote into raw/, which holds the generated data "
-            "model. Query files belong in the working directory, not raw/. Only "
-            "edit raw/ to deliberately fix a model definition."
-        )
-    return ""
-
-
-# HTML entities seen written into .preql files by some models that escape their
-# own tool output. We catch the comparison-operator ones explicitly because
-# they're the failure mode we've observed; other entities are flagged generically.
-_HTML_ENTITY_HINTS: dict[str, str] = {
-    "&lt;": "<",
-    "&gt;": ">",
-    "&amp;": "&",
-    "&quot;": '"',
-    "&#39;": "'",
-    "&apos;": "'",
-}
-
-
-def _detect_html_escapes(content: str) -> list[str]:
-    return [ent for ent in _HTML_ENTITY_HINTS if ent in content]
-
-
-def _validate_preql_syntax(content: str) -> str | None:
-    """Return a parse-error message for invalid Trilogy syntax, else None."""
-    from trilogy.core.exceptions import InvalidSyntaxException
-    from trilogy.parsing.v2.lark_backend import parse_lark
-
-    try:
-        parse_lark(content)
-    except InvalidSyntaxException as exc:
-        return str(exc)
-    except Exception as exc:  # safety net — never let validation crash the write
-        return f"{type(exc).__name__}: {exc}"
-    return None
-
-
-def handle_write_file(state: AgentState, args: dict) -> str:
-    path = args.get("path")
-    content = args.get("content")
-    if not isinstance(path, str) or not path:
-        return "write_file error: 'path' must be a non-empty string."
-    if not isinstance(content, str):
-        return "write_file error: 'content' must be a string."
-    target = Path(path)
-    try:
-        clobbers = target.is_file() and target.stat().st_size > 0
-    except OSError:
-        clobbers = False
-    if not content and clobbers:
-        return (
-            f"write_file refused: 'content' is empty and '{path}' already has "
-            "content — that would erase it. Pass the file's full text in "
-            "'content'."
-        )
-    # Pre-write validation for .preql files: HTML-escape detection + syntax
-    # parse. Catching these here saves the agent a round-trip through
-    # `trilogy run` and gives a more pointed error than the lark parser would.
-    if path.endswith(".preql"):
-        entities = _detect_html_escapes(content)
-        if entities:
-            decoded = ", ".join(
-                f"`{e}` (use `{_HTML_ENTITY_HINTS[e]}`)" for e in entities
-            )
-            return (
-                f"write_file refused: '{path}' contains HTML-escaped characters: "
-                f"{decoded}. Trilogy parses raw operators — emit them literally "
-                "(e.g. `<=` not `&lt;=`)."
-            )
-        syntax_error = _validate_preql_syntax(content)
-        if syntax_error:
-            return (
-                f"write_file refused: '{path}' was not syntactically valid Trilogy.\n"
-                f"\nParse error:\n{syntax_error}\n"
-                "\nCorrect the syntax error above and call write_file again with "
-                "the COMPLETE file body."
-            )
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
-    except OSError as exc:
-        return f"write_file error: {exc}"
-    return f"write_file: wrote {len(content)} chars to {path}" + _raw_path_note(path)
 
 
 # Workspace noise the agent never needs to see in a file listing.
@@ -538,9 +430,7 @@ def _trilogy_file_write_hint(raw_args: list[str]) -> str | None:
         "embedded literally — e.g.\n"
         '  {"args": ["file", "write", "query70.preql", "--content", '
         '"import raw.store_sales as store_sales;\\n\\nselect ..."]}\n'
-        "Alternatively use `--escapes` with a single-line `\\n`-escaped string, "
-        "or use the `write_file(path, content)` tool which takes the same "
-        "content directly."
+        "Alternatively use `--escapes` with a single-line `\\n`-escaped string."
     )
 
 
@@ -661,7 +551,6 @@ def handle_return_control(state: AgentState, args: dict) -> str:
 TOOL_HANDLERS: dict[str, Callable[[AgentState, dict], str]] = {
     SHOW_MESSAGE_TOOL.name: handle_show_message,
     TRILOGY_TOOL.name: handle_trilogy,
-    WRITE_FILE_TOOL.name: handle_write_file,
     READ_FILE_TOOL.name: handle_read_file,
     LIST_FILES_TOOL.name: handle_list_files,
     TODO_TOOL.name: handle_todo,

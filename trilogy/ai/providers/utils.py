@@ -1,9 +1,28 @@
+import html
 import time
 from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
-from typing import Callable, List, Optional, TypeVar
+from typing import Any, Callable, List, Optional, TypeVar
 
 T = TypeVar("T")
+
+
+def sanitize_html_escapes(value: Any) -> Any:
+    """Recursively replace HTML entities in string values with their literals.
+
+    Models that escape their own tool output sometimes ship Trilogy operators
+    as ``&lt;-`` etc. — the parser rejects those as syntax errors. Decoding
+    upstream of the agent loop converts them back to raw characters so the
+    write proceeds. ``html.unescape`` handles entity ordering correctly
+    (``&amp;lt;`` stays as ``&lt;`` rather than collapsing to ``<``).
+    """
+    if isinstance(value, str):
+        return html.unescape(value)
+    if isinstance(value, dict):
+        return {k: sanitize_html_escapes(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [sanitize_html_escapes(v) for v in value]
+    return value
 
 
 @dataclass

@@ -119,6 +119,9 @@ up in explore, you write `select store_sales.date_dim.year, ...;` and the
 engine does the join planning. When using an existing model, you can 
 typically query all fields safely.
 
+AVOID merging in a model that is already accessible as a subpath of a 
+an existing model.
+
 Prefer this over `read_file` on a model file: the same content arrives as a
 structured listing, smaller and easier to scan. Default `--show groups`
 collapses concepts by namespace so a 300+ concept fact collapses to ~25 group

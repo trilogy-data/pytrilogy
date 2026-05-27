@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from os import environ
 from typing import List, Optional
@@ -13,7 +14,15 @@ from .base import (
     build_tool_call,
     to_openai_messages,
 )
-from .utils import RetryOptions, fetch_with_retry
+from .utils import RetryOptions, fetch_with_retry, sanitize_html_escapes
+
+
+def _env_flag(name: str) -> bool:
+    """Truthy parser for an env-var feature flag (1/true/yes/on, any case)."""
+    raw = environ.get(name)
+    if raw is None:
+        return False
+    return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _load_provider_routing() -> Optional[dict]:
@@ -44,6 +53,7 @@ class OpenRouterProvider(LLMProvider):
         api_key: str | None = None,
         retry_options: Optional[RetryOptions] = None,
         provider_routing: Optional[dict] = None,
+        sanitize_html_escapes: Optional[bool] = None,
     ):
         api_key = api_key or environ.get("OPENROUTER_API_KEY")
         if not api_key:
@@ -58,13 +68,30 @@ class OpenRouterProvider(LLMProvider):
             if provider_routing is not None
             else _load_provider_routing()
         )
+        # When True, HTML entities in tool-call arguments are decoded before
+        # the agent loop sees them (``&lt;-`` → ``<-``). Some upstreams escape
+        # operators inside tool args; sanitizing here avoids teaching the
+        # agent to undo the escapes itself. Off by default to preserve raw
+        # payloads in production runs; eval harnesses opt in.
+        self.sanitize_html_escapes = (
+            sanitize_html_escapes
+            if sanitize_html_escapes is not None
+            else _env_flag("OPENROUTER_SANITIZE_HTML_ESCAPES")
+        )
 
+        # 5 retries at 2s initial w/ exp backoff = ~62s of total wait time
+        # (2+4+8+16+32). DeepSeek upstreams on OpenRouter (DeepInfra, etc.)
+        # rate-limit aggressively under burst; shorter budgets surfaced the
+        # 429 mid-eval instead of riding it out.
         self.retry_options = retry_options or RetryOptions(
-            max_retries=3,
-            initial_delay_ms=1000,
+            max_retries=5,
+            initial_delay_ms=2000,
             retry_status_codes=RETRYABLE_CODES,
-            on_retry=lambda attempt, delay_ms, error: logger.info(
-                f"Retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
+            on_retry=lambda attempt, delay_ms, error: logger.warning(
+                "OpenRouter retry %d/5 after %dms backoff (error: %s)",
+                attempt,
+                delay_ms,
+                str(error),
             ),
         )
 
@@ -133,15 +160,27 @@ class OpenRouterProvider(LLMProvider):
                     data["usage"]["completion_tokens"],
                     self.model,
                 )
+            tool_calls = [
+                build_tool_call(
+                    tc["function"]["name"], tc["function"].get("arguments")
+                )
+                for tc in message.get("tool_calls", [])
+                if tc.get("function", {}).get("name")
+            ]
+            if self.sanitize_html_escapes:
+                tool_calls = [
+                    (
+                        tc
+                        if tc.parse_error
+                        else dataclasses.replace(
+                            tc, arguments=sanitize_html_escapes(tc.arguments)
+                        )
+                    )
+                    for tc in tool_calls
+                ]
             return LLMResponse(
                 text=message.get("content") or "",
-                tool_calls=[
-                    build_tool_call(
-                        tc["function"]["name"], tc["function"].get("arguments")
-                    )
-                    for tc in message.get("tool_calls", [])
-                    if tc.get("function", {}).get("name")
-                ],
+                tool_calls=tool_calls,
                 usage=UsageDict(
                     prompt_tokens=data["usage"]["prompt_tokens"],
                     completion_tokens=data["usage"]["completion_tokens"],

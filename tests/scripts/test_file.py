@@ -84,7 +84,7 @@ def test_read_missing_file(runner, tmp_path: Path):
 
 
 def test_write_inline_content(runner, tmp_path: Path):
-    target = tmp_path / "out.preql"
+    target = tmp_path / "out.txt"
     result = runner.invoke(
         cli, ["file", "write", str(target), "--content", "select 1;"]
     )
@@ -94,16 +94,16 @@ def test_write_inline_content(runner, tmp_path: Path):
 
 
 def test_write_from_stdin(runner, tmp_path: Path):
-    target = tmp_path / "out.preql"
+    target = tmp_path / "out.txt"
     result = runner.invoke(cli, ["file", "write", str(target)], input="import foo;\n")
     assert result.exit_code == 0, result.output
     assert target.read_text() == "import foo;\n"
 
 
 def test_write_from_file(runner, tmp_path: Path):
-    src = tmp_path / "src.preql"
+    src = tmp_path / "src.txt"
     src.write_text("payload")
-    dst = tmp_path / "dst.preql"
+    dst = tmp_path / "dst.txt"
 
     result = runner.invoke(cli, ["file", "write", str(dst), "--from-file", str(src)])
     assert result.exit_code == 0, result.output
@@ -111,14 +111,14 @@ def test_write_from_file(runner, tmp_path: Path):
 
 
 def test_write_creates_parent_directories(runner, tmp_path: Path):
-    target = tmp_path / "nested" / "deep" / "out.preql"
+    target = tmp_path / "nested" / "deep" / "out.txt"
     result = runner.invoke(cli, ["file", "write", str(target), "-c", "ok"])
     assert result.exit_code == 0, result.output
     assert target.read_text() == "ok"
 
 
 def test_write_overwrites(runner, tmp_path: Path):
-    target = tmp_path / "out.preql"
+    target = tmp_path / "out.txt"
     target.write_text("old")
     result = runner.invoke(cli, ["file", "write", str(target), "-c", "new"])
     assert result.exit_code == 0
@@ -159,7 +159,7 @@ def test_write_escapes_requires_content(runner, tmp_path: Path):
 
 
 def test_write_escapes_off_keeps_literal(runner, tmp_path: Path):
-    target = tmp_path / "out.preql"
+    target = tmp_path / "out.txt"
     result = runner.invoke(
         cli, ["file", "write", str(target), "--content", "line1\\nline2"]
     )
@@ -304,7 +304,11 @@ def test_exists_false(runner, tmp_path: Path):
 
 
 def test_round_trip_quickstart_example(runner, tmp_path: Path):
-    """Mirrors the README quickstart: write a derived datasource script."""
+    """Mirrors the README quickstart: write a derived datasource script.
+
+    Uses ``--force`` because the body is a README snippet (no resolvable
+    ``flight`` import here) — the test is about CRUD round-trip, not parse.
+    """
     target = tmp_path / "reporting.preql"
     body = (
         "import flight;\n\n"
@@ -319,13 +323,84 @@ def test_round_trip_quickstart_example(runner, tmp_path: Path):
         "file './daily_airplane_usage.parquet'\n"
         ";\n"
     )
-    result = runner.invoke(cli, ["file", "write", str(target)], input=body)
+    result = runner.invoke(
+        cli, ["file", "write", str(target), "--force"], input=body
+    )
     assert result.exit_code == 0, result.output
 
     result = runner.invoke(cli, ["file", "read", str(target)])
     assert result.exit_code == 0
     assert "daily_airplane_usage" in result.output
     assert "import flight" in result.output
+
+
+def test_write_preql_rejects_truncated_content(runner, tmp_path: Path):
+    """A .preql write with broken syntax fails before bytes hit disk."""
+    target = tmp_path / "query.preql"
+    result = runner.invoke(
+        cli,
+        ["file", "write", str(target), "--content", "auto orders_per_customer"],
+    )
+    assert result.exit_code == 1, result.output
+    assert "not syntactically valid Trilogy" in result.output
+    assert not target.exists()
+
+
+def test_write_preql_rejects_html_escapes(runner, tmp_path: Path):
+    """HTML-escaped operators are flagged with a pointed message."""
+    target = tmp_path / "query.preql"
+    result = runner.invoke(
+        cli,
+        ["file", "write", str(target), "--content", "select 1 ? x &lt; 2;"],
+    )
+    assert result.exit_code == 1
+    assert "HTML-escaped characters" in result.output
+    assert not target.exists()
+
+
+def test_write_preql_force_bypasses_validation(runner, tmp_path: Path):
+    """--force lets a bad .preql body land — the agent bypass loophole, made
+    explicit and opt-in rather than implicit through `trilogy file write`."""
+    target = tmp_path / "query.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "auto orders_per_customer",
+            "--force",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert target.read_text() == "auto orders_per_customer"
+
+
+def test_validate_preql_syntax_wraps_unexpected_exception(monkeypatch):
+    """A non-InvalidSyntaxException from the parser is wrapped as a typed
+    string so a buggy parser never crashes the write surface."""
+    import trilogy.parsing.v2.lark_backend as lark_backend
+    from trilogy.scripts.file_helpers import preql_validation
+
+    def boom(_):
+        raise RuntimeError("parser exploded")
+
+    monkeypatch.setattr(lark_backend, "parse_lark", boom)
+    msg = preql_validation.validate_preql_syntax("select 1 -> x;")
+    assert msg is not None
+    assert "RuntimeError" in msg
+    assert "parser exploded" in msg
+
+
+def test_write_non_preql_skips_validation(runner, tmp_path: Path):
+    """Non-.preql files don't get the Trilogy parser run against them."""
+    target = tmp_path / "notes.md"
+    result = runner.invoke(
+        cli, ["file", "write", str(target), "--content", "auto x not closed"]
+    )
+    assert result.exit_code == 0, result.output
+    assert target.read_text() == "auto x not closed"
 
 
 def test_get_backend_rejects_unknown_scheme():

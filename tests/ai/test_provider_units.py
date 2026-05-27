@@ -297,6 +297,99 @@ def test_openrouter_provider_forwards_provider_routing(monkeypatch):
     assert sink["json"]["provider"] == {"ignore": ["AtlasCloud"]}
 
 
+def _openrouter_response_with_tool_args(args_json: str) -> dict:
+    """Build an OpenRouter response payload that ships one tool call with
+    the given (JSON-string) arguments."""
+    return {
+        "choices": [
+            {
+                "message": {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "write_file",
+                                "arguments": args_json,
+                            }
+                        }
+                    ],
+                }
+            }
+        ],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+
+
+def test_openrouter_sanitize_html_escapes_decodes_tool_args(monkeypatch):
+    """Flag on → HTML entities in tool arguments decode to literals."""
+    import httpx
+
+    sink: dict = {}
+    payload = _openrouter_response_with_tool_args(
+        '{"path": "q.preql", "content": "auto x &lt;- count(id);"}'
+    )
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=payload, sink=sink),
+    )
+    provider = OpenRouterProvider(
+        name="openrouter", model="r1", api_key="x", sanitize_html_escapes=True
+    )
+    response = provider.generate_completion(
+        LLMRequestOptions(),
+        [LLMMessage(role="user", content="hi")],
+    )
+    assert response.tool_calls[0].arguments["content"] == "auto x <- count(id);"
+
+
+def test_openrouter_sanitize_html_escapes_off_keeps_raw_entities(monkeypatch):
+    """Flag off (default) → arguments ship verbatim, entities and all."""
+    import httpx
+
+    sink: dict = {}
+    payload = _openrouter_response_with_tool_args(
+        '{"path": "q.preql", "content": "auto x &lt;- count(id);"}'
+    )
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=payload, sink=sink),
+    )
+    provider = OpenRouterProvider(
+        name="openrouter", model="r1", api_key="x", sanitize_html_escapes=False
+    )
+    response = provider.generate_completion(
+        LLMRequestOptions(),
+        [LLMMessage(role="user", content="hi")],
+    )
+    assert response.tool_calls[0].arguments["content"] == "auto x &lt;- count(id);"
+
+
+def test_openrouter_sanitize_html_escapes_env_var_opt_in(monkeypatch):
+    """Setting OPENROUTER_SANITIZE_HTML_ESCAPES=true flips the default on."""
+    import httpx
+
+    monkeypatch.setenv("OPENROUTER_SANITIZE_HTML_ESCAPES", "true")
+    sink: dict = {}
+    payload = _openrouter_response_with_tool_args(
+        '{"content": "x &amp;&lt;-"}'
+    )
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=payload, sink=sink),
+    )
+    provider = OpenRouterProvider(name="openrouter", model="r1", api_key="x")
+    response = provider.generate_completion(
+        LLMRequestOptions(),
+        [LLMMessage(role="user", content="hi")],
+    )
+    # `&amp;&lt;-` → `&<-`, not `<-`: html.unescape preserves the ampersand
+    # the model intended to escape (vs. naïve replace order).
+    assert response.tool_calls[0].arguments["content"] == "x &<-"
+
+
 def test_openrouter_provider_prefers_named_tool_choice(monkeypatch):
     import httpx
 

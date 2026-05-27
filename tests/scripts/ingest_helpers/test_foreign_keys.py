@@ -9,9 +9,10 @@ from trilogy.authoring import (
     DictImportResolver,
     Renderer,
 )
-from trilogy.core.enums import Purpose
+from trilogy.core.enums import Modifier, Purpose
 from trilogy.core.models.author import Concept, Grain
 from trilogy.core.models.datasource import Address, ColumnAssignment
+from trilogy.scripts.ingest_helpers.fk_inference import FKBinding
 from trilogy.scripts.ingest_helpers.foreign_keys import (
     apply_foreign_key_references,
     parse_foreign_keys,
@@ -22,7 +23,11 @@ def test_parse_foreign_keys_single():
     """Test parsing a single FK specification."""
     fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk"
     result = parse_foreign_keys(fk_str)
-    assert result == {"store_sales": {"ss_customer_sk": "customer.c_customer_sk"}}
+    assert result == {
+        "store_sales": {
+            "ss_customer_sk": FKBinding("customer.c_customer_sk", partial=True)
+        }
+    }
 
 
 def test_parse_foreign_keys_multiple():
@@ -31,8 +36,10 @@ def test_parse_foreign_keys_multiple():
     result = parse_foreign_keys(fk_str)
     assert result == {
         "store_sales": {
-            "ss_customer_sk": "customer.c_customer_sk",
-            "ss_item_sk": "item.i_item_sk",
+            "ss_customer_sk": FKBinding(
+                "customer.c_customer_sk", partial=True
+            ),
+            "ss_item_sk": FKBinding("item.i_item_sk", partial=True),
         }
     }
 
@@ -131,7 +138,9 @@ def test_apply_foreign_key_references():
     ]
 
     # Apply FK references - use the actual column alias from customer datasource
-    column_mappings = {"ss_customer_sk": "customer.c_customer_sk"}
+    column_mappings = {
+        "ss_customer_sk": FKBinding("customer.c_customer_sk", partial=True)
+    }
 
     result = apply_foreign_key_references(
         "store_sales", datasource, datasources, script_content, column_mappings
@@ -271,8 +280,8 @@ def test_apply_foreign_key_references_multiple_fks():
 
     # Apply FK references
     column_mappings = {
-        "ss_customer_sk": "customer.c_customer_sk",
-        "ss_store_sk": "store.s_store_sk",
+        "ss_customer_sk": FKBinding("customer.c_customer_sk", partial=True),
+        "ss_store_sk": FKBinding("store.s_store_sk", partial=True),
     }
 
     result = apply_foreign_key_references(
@@ -312,3 +321,88 @@ def test_apply_foreign_key_references_multiple_fks():
     output_addresses = {x.concept.address for x in rewritten.columns}
     assert "customer.customer_sk" in output_addresses
     assert "store.store_sk" in output_addresses
+    # FK columns are subsets of their parent's key — both must be partial.
+    partial_aliases = {
+        c.alias for c in rewritten.columns if Modifier.PARTIAL in c.modifiers
+    }
+    assert partial_aliases == {"ss_customer_sk", "ss_store_sk"}
+    # And it renders with the ~ marker so re-parse round-trips.
+    rendered = Renderer().render_statement_string([rewritten])
+    assert "ss_customer_sk: ~customer.customer_sk" in rendered
+    assert "ss_store_sk: ~store.store_sk" in rendered
+
+
+def _store_sales_fixture():
+    """Minimal store_sales/customer setup used by the partial-flag tests."""
+    customer_sk_concept = Concept(
+        name="customer_sk", datatype="int", purpose=Purpose.PROPERTY, keys={"item_sk"}
+    )
+    item_sk_concept = Concept(name="item_sk", datatype="int", purpose=Purpose.KEY)
+    datasource = Datasource(
+        name="store_sales",
+        columns=[
+            ColumnAssignment(
+                alias="ss_customer_sk",
+                concept=customer_sk_concept.reference,
+                modifiers=[],
+            ),
+            ColumnAssignment(
+                alias="ss_item_sk", concept=item_sk_concept.reference, modifiers=[]
+            ),
+        ],
+        address=Address(location="store_sales", quoted=True),
+        grain=Grain(components={"item_sk"}),
+    )
+    customer_pk = Concept(name="customer_sk", datatype="int", purpose=Purpose.KEY)
+    customer_datasource = Datasource(
+        name="customer",
+        columns=[
+            ColumnAssignment(
+                alias="c_customer_sk", concept=customer_pk.reference, modifiers=[]
+            )
+        ],
+        address=Address(location="customer", quoted=True),
+        grain=Grain(components={"customer_sk"}),
+    )
+    datasources = {
+        "store_sales": datasource,
+        "customer": customer_datasource,
+    }
+    script_content = [
+        Comment(text="# Test datasource"),
+        ConceptDeclarationStatement(concept=customer_sk_concept),
+        ConceptDeclarationStatement(concept=item_sk_concept),
+        datasource,
+    ]
+    return datasource, datasources, script_content
+
+
+def test_apply_foreign_key_complete_binding_omits_partial_modifier():
+    """A binding marked complete (partial=False) must NOT add ``~``."""
+    datasource, datasources, script_content = _store_sales_fixture()
+    column_mappings = {
+        "ss_customer_sk": FKBinding("customer.c_customer_sk", partial=False)
+    }
+    result = apply_foreign_key_references(
+        "store_sales", datasource, datasources, script_content, column_mappings
+    )
+    # No partial modifier on the column.
+    fk_col = next(c for c in datasource.columns if c.alias == "ss_customer_sk")
+    assert Modifier.PARTIAL not in fk_col.modifiers
+    # And the rendered text shows a bare reference, not ~customer.customer_sk.
+    assert "ss_customer_sk: customer.customer_sk" in result
+    assert "~customer.customer_sk" not in result
+
+
+def test_apply_foreign_key_partial_binding_adds_modifier():
+    """A binding marked partial=True must add ``~`` on the column."""
+    datasource, datasources, script_content = _store_sales_fixture()
+    column_mappings = {
+        "ss_customer_sk": FKBinding("customer.c_customer_sk", partial=True)
+    }
+    result = apply_foreign_key_references(
+        "store_sales", datasource, datasources, script_content, column_mappings
+    )
+    fk_col = next(c for c in datasource.columns if c.alias == "ss_customer_sk")
+    assert Modifier.PARTIAL in fk_col.modifiers
+    assert "ss_customer_sk: ~customer.customer_sk" in result
