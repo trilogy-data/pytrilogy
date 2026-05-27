@@ -489,22 +489,28 @@ def build_strategy_node(
         # SelectNode does the WHERE first; the GroupNode then aggregates
         # the filtered rows with a clean GROUP BY at the intended grain.
         condition_for_generator = injected
+        # Track whichever node ultimately owns the injected conditions. The
+        # SubselectComparison (IN <subselect>) renderer reads existence
+        # sources off the CTE that emits the WHERE — if we attach the
+        # existence parent to a different node, the IN's right-hand side
+        # has no source CTE and we emit INVALID_REFERENCE_BUG.
+        condition_host_node: StrategyNode | None = None
         if (
             injected is not None
             and derivation in _AGGREGATING_DERIVATIONS
             and parents
         ):
             parent_outputs = list(parents[0].output_concepts)
-            parents = [
-                SelectNode(
-                    input_concepts=parent_outputs,
-                    output_concepts=parent_outputs,
-                    environment=environment,
-                    parents=parents,
-                    conditions=injected.conditional,
-                )
-            ]
+            wrapper = SelectNode(
+                input_concepts=parent_outputs,
+                output_concepts=parent_outputs,
+                environment=environment,
+                parents=parents,
+                conditions=injected.conditional,
+            )
+            parents = [wrapper]
             condition_for_generator = None
+            condition_host_node = wrapper
         node = build_node(
             derivation=derivation,
             outputs=outputs,
@@ -527,13 +533,22 @@ def build_strategy_node(
             # ignorant of existence handling — the host node just learns it
             # has extra side-channel parents whose concepts render as
             # subselects rather than joins.
+            #
+            # The existence wiring must land on the node that actually emits
+            # the WHERE referencing the IN-RHS concept. For aggregating
+            # derivations we peeled the conditions off onto a SelectNode
+            # wrapper (above); that wrapper is the condition host, not the
+            # outer GroupNode whose `conditions=None`.
             ex_concepts, ex_parents = _existence_for_group(group_graph, built, gid)
             if ex_concepts:
-                node.parents = list(node.parents) + ex_parents
-                node.existence_concepts = (
-                    list(node.existence_concepts) + ex_concepts
+                host = condition_host_node if condition_host_node is not None else node
+                host.parents = list(host.parents) + ex_parents
+                host.existence_concepts = (
+                    list(host.existence_concepts) + ex_concepts
                 )
-                node.rebuild_cache()
+                host.rebuild_cache()
+                if host is not node:
+                    node.rebuild_cache()
             built[gid] = node
 
     if not built:

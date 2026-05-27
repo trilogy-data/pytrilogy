@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2117 | 53 | 30.37 ms |
-| reference | 1242 | 33 | 11.21 ms |
-| v4 / ref | 1.70x | 1.61x | 2.71x |
+| v4 | 1397 | 36 | 21.26 ms |
+| reference | 1242 | 33 | 7.96 ms |
+| v4 / ref | 1.12x | 1.09x | 2.67x |
 
 ## Preql
 
@@ -49,18 +49,17 @@ limit 100
 WITH 
 thoughtful as (
 SELECT
-    "catalog_sales"."CS_EXT_DISCOUNT_AMT" as "discount_amount",
     "catalog_sales"."CS_ITEM_SK" as "item_id",
-    "catalog_sales"."CS_ORDER_NUMBER" as "order_number",
-    cast("sold_date_date"."D_DATE" as date) as "sold_date_date"
+    avg(CASE WHEN cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date THEN "catalog_sales"."CS_EXT_DISCOUNT_AMT" ELSE NULL END) as "_virt_agg_avg_5510773609506287"
 FROM
     "memory"."catalog_sales" as "catalog_sales"
-    LEFT OUTER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"),
+    LEFT OUTER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
+GROUP BY
+    1),
 cheerful as (
 SELECT
     "catalog_sales"."CS_EXT_DISCOUNT_AMT" as "discount_amount",
-    "catalog_sales"."CS_ITEM_SK" as "item_id",
-    "catalog_sales"."CS_ORDER_NUMBER" as "order_number"
+    "catalog_sales"."CS_ITEM_SK" as "item_id"
 FROM
     "memory"."catalog_sales" as "catalog_sales"
     INNER JOIN "memory"."item" as "item_items" on "catalog_sales"."CS_ITEM_SK" = "item_items"."I_ITEM_SK"
@@ -68,33 +67,17 @@ FROM
 WHERE
     "item_items"."I_MANUFACT_ID" = 977 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 ),
-cooperative as (
-SELECT
-    "thoughtful"."item_id" as "item_id",
-    "thoughtful"."order_number" as "order_number",
-    CASE WHEN "thoughtful"."sold_date_date" BETWEEN :start_date AND :end_date THEN "thoughtful"."discount_amount" ELSE NULL END as "_virt_filter_discount_amount_1898885850032059"
-FROM
-    "thoughtful"),
-questionable as (
-SELECT
-    "cooperative"."item_id" as "item_id",
-    avg("cooperative"."_virt_filter_discount_amount_1898885850032059") as "_virt_agg_avg_5510773609506287"
-FROM
-    "cooperative"
-GROUP BY
-    1),
 abundant as (
 SELECT
-    "questionable"."item_id" as "item_id",
-    1.3 * "questionable"."_virt_agg_avg_5510773609506287" as "avg_item_disc"
+    "thoughtful"."item_id" as "item_id",
+    1.3 * "thoughtful"."_virt_agg_avg_5510773609506287" as "avg_item_disc"
 FROM
-    "questionable")
+    "thoughtful")
 SELECT
     sum("cheerful"."discount_amount") as "total_discount"
 FROM
-    "cheerful"
-    INNER JOIN "cooperative" on "cheerful"."item_id" = "cooperative"."item_id" AND "cheerful"."order_number" = "cooperative"."order_number"
-    INNER JOIN "abundant" on "cheerful"."item_id" = "abundant"."item_id"
+    "abundant"
+    INNER JOIN "cheerful" on "abundant"."item_id" = "cheerful"."item_id"
 WHERE
     "cheerful"."discount_amount" > "abundant"."avg_item_disc"
 

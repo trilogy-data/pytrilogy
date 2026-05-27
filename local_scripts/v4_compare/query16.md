@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2401 | 44 | — |
-| reference | 3713 | 83 | 80.31 ms |
-| v4 / ref | 0.65x | 0.53x | — |
+| v4 | 690 | 11 | — |
+| reference | 3713 | 83 | 61.42 ms |
+| v4 / ref | 0.19x | 0.13x | — |
 
 ## Preql
 
@@ -47,47 +47,14 @@ limit 100
 ## v4 generated SQL
 
 ```sql
-WITH 
-cooperative as (
 SELECT
-    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
-FROM
-    "memory"."catalog_sales" as "cs_catalog_sales"
-WHERE
-    "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number> where INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select INVALID_REFERENCE_BUG_<Missing source reference to local.multi_warehouse_sales>."multi_warehouse_sales" from INVALID_REFERENCE_BUG_<Missing source reference to local.multi_warehouse_sales> where INVALID_REFERENCE_BUG_<Missing source reference to local.multi_warehouse_sales>."multi_warehouse_sales" is not null)
+    CASE WHENINVALID_REFERENCE_BUG_<Missing source reference to cs.order_number> IS NOT NULL THEN 1 ELSE 0 END as "order_count",
+    INVALID_REFERENCE_BUG_<Missing source reference to cs.net_profit> as "total_net_profit",
+    INVALID_REFERENCE_BUG_<Missing source reference to cs.ext_ship_cost> as "total_shipping_cost"
 
-GROUP BY
-    1),
-thoughtful as (
-SELECT
-    "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
-    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
-    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
-FROM
-    "memory"."catalog_sales" as "cs_catalog_sales"
-    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
-    INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County'
-),
-questionable as (
-SELECT
-    "cooperative"."cs_order_number" as "cs_order_number"
-FROM
-    "cooperative"),
-abundant as (
-SELECT
-    "questionable"."cs_order_number" as "cs_order_number"
-FROM
-    "questionable")
-SELECT
-    count(distinct "thoughtful"."cs_order_number") as "order_count",
-    sum("thoughtful"."cs_net_profit") as "total_net_profit",
-    sum("thoughtful"."cs_ext_ship_cost") as "total_shipping_cost"
-FROM
-    "thoughtful"
-    INNER JOIN "abundant" on "thoughtful"."cs_order_number" = "abundant"."cs_order_number"
+    INVALID_REFERENCE_BUG_<Missing source reference to cs.ship_date.date> BETWEEN date '2002-02-01' AND date '2002-04-02' and INVALID_REFERENCE_BUG_<Missing source reference to cs.customer_address.state> = 'GA' and INVALID_REFERENCE_BUG_<Missing source reference to cs.call_center.county> = 'Williamson County'
+
 ORDER BY 
     "order_count" desc
 LIMIT (100)
@@ -200,6 +167,6 @@ Traceback (most recent call last):
                                                      ~~~~~~~~~~~^^^^^
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 8: ...RDER_NUMBER" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from...
-                                                                      ^
+LINE 2:     CASE WHENINVALID_REFERENCE_BUG_<Missing source reference to cs.order_number> IS NOT NULL THEN 1...
+                                                    ^
 ```
