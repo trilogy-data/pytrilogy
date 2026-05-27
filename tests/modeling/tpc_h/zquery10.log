@@ -14,7 +14,7 @@ FROM
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
     INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
 WHERE
-    \"order_orders\".\"o_orderdate\" >= date '1993-10-01' and \"order_orders\".\"o_orderdate\" < date '1994-01-01' and \"lineitem\".\"l_returnflag\" = 'R' and \"order_customer_customers\".\"c_custkey\" is not null
+    \"order_orders\".\"o_orderdate\" >= date '1993-10-01' and \"order_orders\".\"o_orderdate\" < date '1994-01-01' and \"lineitem\".\"l_returnflag\" = 'R'
 
 GROUP BY
     1),
