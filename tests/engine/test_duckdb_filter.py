@@ -264,6 +264,31 @@ select
     assert results[0] == (2,)
 
 
+def test_constant_bool_where_and_having():
+    engine = Dialects.DUCK_DB.default_executor()
+    setup = """
+key id int;
+property id.val int;
+
+datasource numbers (id, val)
+grain (id)
+query '''
+select 1 as id, 10 as val
+union all select 2, 20
+union all select 3, 30
+''';
+"""
+    cases = [
+        ("where true\nselect id;", 3),
+        ("where false\nselect id;", 0),
+        ("select id, sum(val) -> total\nhaving true;", 3),
+        ("select id, sum(val) -> total\nhaving false;", 0),
+    ]
+    for tail, expected in cases:
+        rows = engine.execute_text(setup + tail)[0].fetchall()
+        assert len(rows) == expected, (tail, rows)
+
+
 def test_filter_promotion(duckdb_engine: Executor):
     test = """
 SELECT

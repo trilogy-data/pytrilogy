@@ -138,7 +138,7 @@ def test_modifiers():
     generator = BigqueryDialect()
 
     text = generator.compile_statement(query)
-    assert "True is True" in text
+    assert "1 = 1" in text
     assert "as `b`" not in text
 
 

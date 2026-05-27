@@ -1,5 +1,5 @@
 query_id = "37"
-gen_length = 1705
+gen_length = 1698
 preql_size = 552
 comp_size = 592
 generated_sql = """
@@ -25,7 +25,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"cs_item_items\"
 WHERE
-    True is True
+    1 = 1
 ),
 questionable as (
 SELECT
