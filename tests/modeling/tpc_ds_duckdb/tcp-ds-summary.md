@@ -8,7 +8,7 @@ Signed deltas are `PreQL - Reference SQL` for size and `Trilogy execution - Refe
 
 Queries: 99
 
-PreQL is shorter than the reference SQL for 77/99 queries. Total PreQL length is 128,464 chars vs 184,304 reference SQL chars.
+PreQL is shorter than the reference SQL for 77/99 queries. Total PreQL length is 128,367 chars vs 184,304 reference SQL chars.
 
 | Length metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
@@ -25,23 +25,23 @@ Top 5 queries where PreQL is longest vs reference SQL
 | 64 | 4,256 | 3,783 | +473 |
 | 29 | 1,537 | 1,089 | +448 |
 
-Trilogy execution is faster than the reference SQL for 45/99 queries. Total Trilogy execution time is 13.886s vs 54.420s reference SQL time.
+Trilogy execution is faster than the reference SQL for 46/99 queries. Total Trilogy execution time is 13.140s vs 54.409s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | -0.092s | +0.002s | +0.057s |
-| Trilogy vs Reference SQL | -45.6% | +3.8% | +126.5% |
-| Trilogy / Reference SQL | 0.54x | 1.04x | 2.26x |
+| Trilogy - Reference SQL seconds | -0.092s | +0.001s | +0.056s |
+| Trilogy vs Reference SQL | -45.6% | +3.5% | +124.2% |
+| Trilogy / Reference SQL | 0.54x | 1.03x | 2.24x |
 
 Top 5 queries where reference SQL is fastest vs Trilogy
 
 | Query | Trilogy s | Reference SQL s | Trilogy - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 14 | 1.088s | 0.401s | +0.687s |
 | 84 | 0.320s | 0.054s | +0.266s |
 | 78 | 0.412s | 0.211s | +0.201s |
 | 76 | 0.226s | 0.040s | +0.185s |
 | 28 | 0.189s | 0.045s | +0.145s |
+| 16 | 0.134s | 0.017s | +0.117s |
 
 ## Alternative Queries
 
