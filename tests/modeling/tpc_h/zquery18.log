@@ -1,21 +1,19 @@
 query_id = "18"
-gen_length = 1889
-preql_size = 300
+gen_length = 2423
+preql_size = 334
 comp_size = 543
 generated_sql = """
 
 WITH 
 highfalutin as (
 SELECT
-    \"lineitem\".\"l_orderkey\" as \"order_id\"
+    \"lineitem\".\"l_orderkey\" as \"order_id\",
+    sum(\"lineitem\".\"l_quantity\") as \"qty_per_order\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 GROUP BY
-    1
-HAVING
-    sum(\"lineitem\".\"l_quantity\") > 300
-),
-thoughtful as (
+    1),
+abundant as (
 SELECT
     \"order_customer_customers\".\"c_custkey\" as \"order_customer_id\",
     \"order_customer_customers\".\"c_name\" as \"order_customer_name\",
@@ -24,37 +22,57 @@ SELECT
     \"order_orders\".\"o_totalprice\" as \"order_total_price\"
 FROM
     \"memory\".\"customer\" as \"order_customer_customers\"
-    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"order_customer_customers\".\"c_custkey\" = \"order_orders\".\"o_custkey\"),
-questionable as (
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"order_customer_customers\".\"c_custkey\" = \"order_orders\".\"o_custkey\"
+WHERE
+    \"order_customer_customers\".\"c_custkey\" is not null
+),
+thoughtful as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
-    sum(\"lineitem\".\"l_quantity\") as \"sum_quantity\"
+    \"lineitem\".\"l_quantity\" as \"quantity\"
 FROM
-    \"highfalutin\"
-    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"highfalutin\".\"order_id\" = \"lineitem\".\"l_orderkey\"
-GROUP BY
-    1),
+    \"memory\".\"lineitem\" as \"lineitem\"
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
+    INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
+WHERE
+    \"order_customer_customers\".\"c_custkey\" is not null
+),
+uneven as (
+SELECT
+    \"abundant\".\"order_customer_id\" as \"order_customer_id\",
+    \"abundant\".\"order_customer_name\" as \"order_customer_name\",
+    \"abundant\".\"order_date\" as \"order_date\",
+    \"abundant\".\"order_id\" as \"order_id\",
+    \"abundant\".\"order_total_price\" as \"order_total_price\"
+FROM
+    \"abundant\"
+    INNER JOIN \"highfalutin\" on \"abundant\".\"order_id\" = \"highfalutin\".\"order_id\"
+WHERE
+    \"highfalutin\".\"qty_per_order\" > 300
+),
 cooperative as (
 SELECT
     \"highfalutin\".\"order_id\" as \"order_id\",
-    \"thoughtful\".\"order_customer_id\" as \"order_customer_id\",
-    \"thoughtful\".\"order_customer_name\" as \"order_customer_name\",
-    \"thoughtful\".\"order_date\" as \"order_date\",
-    \"thoughtful\".\"order_total_price\" as \"order_total_price\"
+    sum(\"thoughtful\".\"quantity\") as \"sum_quantity\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"highfalutin\" on \"thoughtful\".\"order_id\" = \"highfalutin\".\"order_id\")
+    INNER JOIN \"highfalutin\" on \"thoughtful\".\"order_id\" = \"highfalutin\".\"order_id\"
+WHERE
+    \"highfalutin\".\"qty_per_order\" > 300
+
+GROUP BY
+    1)
 SELECT
-    \"cooperative\".\"order_customer_name\" as \"order_customer_name\",
-    \"cooperative\".\"order_customer_id\" as \"order_customer_id\",
-    \"cooperative\".\"order_id\" as \"order_id\",
-    \"cooperative\".\"order_date\" as \"order_date\",
-    \"cooperative\".\"order_total_price\" as \"order_total_price\",
-    \"questionable\".\"sum_quantity\" as \"sum_quantity\"
+    \"uneven\".\"order_customer_name\" as \"order_customer_name\",
+    \"uneven\".\"order_customer_id\" as \"order_customer_id\",
+    \"uneven\".\"order_id\" as \"order_id\",
+    \"uneven\".\"order_date\" as \"order_date\",
+    \"uneven\".\"order_total_price\" as \"order_total_price\",
+    \"cooperative\".\"sum_quantity\" as \"sum_quantity\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"questionable\" on \"cooperative\".\"order_id\" = \"questionable\".\"order_id\"
+    \"uneven\"
+    LEFT OUTER JOIN \"cooperative\" on \"uneven\".\"order_id\" = \"cooperative\".\"order_id\"
 ORDER BY 
-    \"cooperative\".\"order_total_price\" desc,
-    \"cooperative\".\"order_date\" asc
+    \"uneven\".\"order_total_price\" desc,
+    \"uneven\".\"order_date\" asc
 LIMIT (100)"""

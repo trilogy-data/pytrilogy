@@ -78,9 +78,20 @@ def _concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
     return False
 
 
-def _concept_coverage_addresses(concept: BuildConcept) -> set[str]:
+def _concept_coverage_addresses(
+    concept: BuildConcept, include_aggregate_by_keys: bool = True
+) -> set[str]:
     addresses = set(concept.equivalent_addresses)
-    if concept.is_aggregate and concept.grain and not concept.grain.abstract:
+    # Aggregate by-keys are one-way: rows at the by-grain can be ROLLED UP to
+    # produce the aggregate, but the aggregate's grain is coarser. Include them
+    # when checking materialization paths; exclude when asking "is upstream
+    # already at this grain" (a regroup is still required).
+    if (
+        include_aggregate_by_keys
+        and concept.is_aggregate
+        and concept.grain
+        and not concept.grain.abstract
+    ):
         addresses.update(concept.grain.components)
     if concept.derivation == Derivation.MULTISELECT and concept.keys:
         addresses.update(concept.keys)
@@ -115,12 +126,17 @@ def rowset_source_grain(
 def _grain_coverage_addresses(
     grain: BuildGrain,
     environment: BuildEnvironment,
+    include_aggregate_by_keys: bool = True,
 ) -> set[str]:
     addresses: set[str] = set()
     for candidate in (grain, rowset_source_grain(grain, environment)):
         for address in candidate.components:
             concept = environment.concepts[address]
-            addresses.update(_concept_coverage_addresses(concept))
+            addresses.update(
+                _concept_coverage_addresses(
+                    concept, include_aggregate_by_keys=include_aggregate_by_keys
+                )
+            )
     return addresses
 
 

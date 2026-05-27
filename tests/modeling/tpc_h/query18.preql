@@ -3,6 +3,7 @@ import lineitem;
 auto qty_per_order <- sum(quantity) by order.id;
 
 where qty_per_order > 300
+and order.customer.id is not null
 select
     order.customer.name,
     order.customer.id,
