@@ -10,6 +10,7 @@ import shutil
 import sys
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -112,7 +113,92 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         help="skip `trilogy ingest --all`; seed raw/ from this directory of "
         "hand-curated *.preql files instead",
     )
+    parser.add_argument(
+        "--query-ids",
+        type=str,
+        default=None,
+        help="comma-separated query ids to run (e.g. 13 or 5,13,18). "
+        "Overrides --num-queries; useful for re-running specific prompts.",
+    )
+    parser.add_argument(
+        "--splice-from",
+        type=str,
+        default="auto",
+        help="when --query-ids is set, splice unrun queries from a prior run "
+        "so the report headline reflects the full benchmark. Pass a run dir, "
+        "'auto' (default) to pick the latest other run, or 'none' to disable.",
+    )
     return parser
+
+
+def _find_latest_prior_run(spec: BenchmarkSpec, exclude: Path) -> Path | None:
+    """Most recent results/<ts> dir other than ``exclude`` that has report.json."""
+    if not spec.results_dir.exists():
+        return None
+    candidates = sorted(
+        (
+            p
+            for p in spec.results_dir.iterdir()
+            if p.is_dir() and p.resolve() != exclude.resolve()
+        ),
+        key=lambda p: p.name,
+        reverse=True,
+    )
+    for c in candidates:
+        if (c / "report.json").exists():
+            return c
+    return None
+
+
+def _splice_prior_results(
+    report: dict, prior_report: dict, fresh_ids: set[int], prior_dir: Path
+) -> dict:
+    """Merge missing-id entries from ``prior_report`` into ``report`` so the
+    headline reflects the full benchmark. Fresh entries are tagged source=this;
+    spliced entries are tagged source=<prior_dir.name>. summary is recomputed."""
+    src_tag = prior_dir.name
+
+    fresh_queries = list(report.get("queries", []))
+    for q in fresh_queries:
+        q.setdefault("source", "this_run")
+    spliced_queries = [
+        {**q, "source": src_tag}
+        for q in prior_report.get("queries", [])
+        if q["id"] not in fresh_ids
+    ]
+    merged_queries = sorted(fresh_queries + spliced_queries, key=lambda q: q["id"])
+
+    fresh_per_query = list(report.get("per_query", []))
+    for r in fresh_per_query:
+        r.setdefault("source", "this_run")
+    spliced_per_query = [
+        {**r, "source": src_tag}
+        for r in prior_report.get("per_query", [])
+        if r["id"] not in fresh_ids
+    ]
+    merged_per_query = sorted(
+        fresh_per_query + spliced_per_query, key=lambda r: r["id"]
+    )
+
+    statuses: Counter[str] = Counter(q["status"] for q in merged_queries)
+    pass_count = statuses.get("pass", 0)
+    total = len(merged_queries)
+
+    report = dict(report)
+    report["queries"] = merged_queries
+    report["per_query"] = merged_per_query
+    report["summary"] = {
+        "pass_count": pass_count,
+        "pass_rate": round(pass_count / total, 3) if total else 0.0,
+        "status_breakdown": dict(statuses),
+    }
+    report["meta"] = {**report["meta"], "num_queries": total}
+    report["spliced_from"] = {
+        "run_dir": str(prior_dir),
+        "fresh_ids": sorted(fresh_ids),
+        "spliced_ids": sorted(q["id"] for q in spliced_queries),
+    }
+    return report
 
 
 def run(spec: BenchmarkSpec) -> int:
@@ -141,7 +227,18 @@ def run(spec: BenchmarkSpec) -> int:
     agent_runner.write_trilogy_toml(
         workspace, spec, args.provider, args.model, args.max_iterations
     )
-    active = prompts.active_prompts(spec)[: args.num_queries]
+    if args.query_ids:
+        wanted = {int(x.strip()) for x in args.query_ids.split(",") if x.strip()}
+        active = [p for p in prompts.active_prompts(spec) if p["id"] in wanted]
+        missing = wanted - {p["id"] for p in active}
+        if missing:
+            print(
+                f"ERROR: --query-ids referenced unknown id(s): {sorted(missing)}",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        active = prompts.active_prompts(spec)[: args.num_queries]
     query_ids = [p["id"] for p in active]
 
     if args.enriched_model_dir:
@@ -403,6 +500,33 @@ def run(spec: BenchmarkSpec) -> int:
         "exit_code": ingest["exit_code"],
         "duration_seconds": round(ingest["duration"], 1),
     }
+
+    if args.query_ids and args.splice_from != "none":
+        if args.splice_from == "auto":
+            prior_dir = _find_latest_prior_run(spec, run_dir)
+        else:
+            candidate = Path(args.splice_from)
+            prior_dir = candidate if (candidate / "report.json").exists() else None
+            if prior_dir is None:
+                print(
+                    f"  splice: --splice-from {args.splice_from!r} has no report.json",
+                    file=sys.stderr,
+                )
+        if prior_dir is not None:
+            try:
+                prior_report = json.loads(
+                    (prior_dir / "report.json").read_text(encoding="utf-8")
+                )
+                fresh_ids = {p["id"] for p in active}
+                report = _splice_prior_results(
+                    report, prior_report, fresh_ids, prior_dir
+                )
+                print(
+                    f"  spliced {len(report['spliced_from']['spliced_ids'])} "
+                    f"prior results from {prior_dir.name}"
+                )
+            except Exception as exc:
+                print(f"  splice skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
     (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     markdown = render_markdown(spec, report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
