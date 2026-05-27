@@ -557,6 +557,21 @@ def build_optimization_rule_plan(
                 reason="uses guards moved onto joining CTEs by predicate pushdown",
             )
         )
+    if opts.predicate_pushdown and opts.upgrade_condition_joins:
+        plan.append(
+            OptimizationRulePlan(
+                name="predicate_pushdown.after_final_upgrade",
+                rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
+                depends_on=("upgrade_join_on_guards.final",),
+                refires_after=("upgrade_join_on_guards.final",),
+                reason=(
+                    "HAVING-into-group push is blocked while a consumer "
+                    "outer-joins the group (nullable parent); rerun once the "
+                    "final pass has upgraded CTE-to-CTE outer joins to INNER "
+                    "so the relocation can fire"
+                ),
+            )
+        )
     if opts.upgrade_outer_key_set_equivalence:
         plan.append(
             OptimizationRulePlan(

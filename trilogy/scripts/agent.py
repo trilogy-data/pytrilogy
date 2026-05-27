@@ -17,7 +17,12 @@ from click import argument, option, pass_context
 
 from trilogy.ai.conversation import Conversation
 from trilogy.ai.enums import Provider
-from trilogy.ai.models import LLMRequestOptions, LLMToolCall, LLMToolDefinition
+from trilogy.ai.models import (
+    LLMMessage,
+    LLMRequestOptions,
+    LLMToolCall,
+    LLMToolDefinition,
+)
 from trilogy.ai.prompts import get_trilogy_prompt
 from trilogy.ai.providers.anthropic import AnthropicProvider
 from trilogy.ai.providers.base import LLMProvider
@@ -137,6 +142,26 @@ class AgentState:
     done: bool = False
     farewell: str = ""
     recent_signatures: list[str] = field(default_factory=list)
+    # Number of times the reviewer pass kicked a submit back. Capped to avoid
+    # infinite loops with an agent that won't accept it isn't done.
+    submit_kickbacks: int = 0
+
+
+MAX_SUBMIT_KICKBACKS = 2
+
+REVIEWER_SYSTEM_PROMPT = (
+    "You are reviewing whether an AI agent actually finished its task. "
+    "You will receive the original task and the agent's tool-use transcript. "
+    "Reply with exactly 'DONE' or 'NOT_DONE' on the first line, then one or "
+    "two sentences explaining why. Be strict — if the agent's transcript "
+    "shows it (a) self-noted uncertainty, (b) didn't implement a clause the "
+    "task explicitly required, (c) only wrote a query that runs cleanly but "
+    "doesn't match the requested logic, or (d) cut off mid-thought, reply "
+    "NOT_DONE. Otherwise reply DONE."
+)
+
+REVIEWER_TRANSCRIPT_MSG_LIMIT = 1200
+REVIEWER_TRANSCRIPT_ARG_LIMIT = 600
 
 
 MARKER_TEMPLATE = "\n...[truncated {n} bytes]...\n"
@@ -265,8 +290,9 @@ RETURN_CONTROL_TOOL = LLMToolDefinition(
     name="return_control_to_user",
     description=(
         "Hand control back to the user when a task is finished, with an"
-        " optional message. Any open TODOs are auto-discarded — no need"
-        " to clean them up just to exit."
+        " optional message. Any open TODOs are auto-discarded. Note: a"
+        " reviewer pass runs on submit; if you weren't actually done, you"
+        " will be kicked back to keep working."
     ),
     input_schema={
         "type": "object",
@@ -300,8 +326,6 @@ def handle_show_message(state: AgentState, args: dict) -> str:
         return "show_message error: 'message' must be a non-empty string."
     print_info(message)
     return "show_message: ok"
-
-
 
 
 # Workspace noise the agent never needs to see in a file listing.
@@ -687,12 +711,64 @@ def _status_message(call: LLMToolCall) -> str:
     return call.name
 
 
+def _render_reviewer_transcript(messages: list[LLMMessage]) -> str:
+    blocks: list[str] = []
+    for msg in messages:
+        if msg.role == "system":
+            continue
+        info = getattr(msg, "model_info", None) or {}
+        tcs = info.get("tool_calls") if isinstance(info, dict) else None
+        if msg.role == "assistant" and tcs:
+            for tc in tcs:
+                name = tc.get("name", "?")
+                args = tc.get("arguments")
+                rendered = (
+                    args if isinstance(args, str) else json.dumps(args, default=str)
+                )
+                if len(rendered) > REVIEWER_TRANSCRIPT_ARG_LIMIT:
+                    rendered = rendered[:REVIEWER_TRANSCRIPT_ARG_LIMIT] + "…(truncated)"
+                blocks.append(f"AGENT CALL {name}: {rendered}")
+            continue
+        content = msg.content or ""
+        if len(content) > REVIEWER_TRANSCRIPT_MSG_LIMIT:
+            content = content[:REVIEWER_TRANSCRIPT_MSG_LIMIT] + "…(truncated)"
+        prefix = "USER/TOOL_RESULT" if msg.role == "user" else msg.role.upper()
+        blocks.append(f"{prefix}: {content}")
+    return "\n\n".join(blocks)
+
+
+def _validate_completion(
+    provider: LLMProvider,
+    original_task: str,
+    messages: list[LLMMessage],
+) -> tuple[bool, str]:
+    """One-shot reviewer call. Clean context, no tools. Returns (is_done, note)."""
+    reviewer = Conversation.create(provider, model_prompt=REVIEWER_SYSTEM_PROMPT)
+    transcript = _render_reviewer_transcript(messages)
+    reviewer.add_message(
+        f"ORIGINAL TASK:\n{original_task}\n\nAGENT TRANSCRIPT:\n{transcript}",
+        role="user",
+    )
+    try:
+        response = reviewer.get_response(LLMRequestOptions(require_tool=False))
+    except Exception as exc:
+        # On reviewer failure, fall open — don't block the agent indefinitely.
+        return True, f"reviewer unavailable: {exc}"
+    text = (response.text or "").strip()
+    first = text.splitlines()[0].strip().upper() if text else ""
+    is_done = first.startswith("DONE") and not first.startswith("NOT_DONE")
+    return is_done, text
+
+
 def _run_turn(
     conv: Conversation,
     state: AgentState,
     max_iterations: int,
     log_path: Path | None = None,
     tools: list[LLMToolDefinition] | None = None,
+    provider: LLMProvider | None = None,
+    original_task: str = "",
+    validate_completion: bool = True,
 ) -> None:
     options = LLMRequestOptions(tools=tools or ALL_TOOLS, require_tool=True)
     for _ in range(max_iterations):
@@ -743,6 +819,39 @@ def _run_turn(
             payload = json.dumps({"tool": call.name, "result": result})
             conv.add_message(payload, role="user")
             if state.done:
+                if (
+                    validate_completion
+                    and provider is not None
+                    and state.submit_kickbacks < MAX_SUBMIT_KICKBACKS
+                ):
+                    with with_status("Reviewer checking submit"):
+                        is_done, note = _validate_completion(
+                            provider, original_task, conv.messages
+                        )
+                    _log_event(
+                        log_path,
+                        {
+                            "type": "reviewer_verdict",
+                            "is_done": is_done,
+                            "note": note,
+                            "kickback_count": state.submit_kickbacks,
+                        },
+                    )
+                    if not is_done:
+                        state.submit_kickbacks += 1
+                        state.done = False
+                        state.farewell = ""
+                        print_info(
+                            f"[reviewer] NOT_DONE (kickback {state.submit_kickbacks}/"
+                            f"{MAX_SUBMIT_KICKBACKS})"
+                        )
+                        conv.add_message(
+                            "A reviewer determined you might not actually be "
+                            "done; keep working and submit again when you are "
+                            f"truly finished. Reviewer note: {note}",
+                            role="user",
+                        )
+                        continue
                 return
     raise click.ClickException(
         f"Agent exhausted {max_iterations} iterations without returning control."
@@ -852,7 +961,15 @@ def agent(
     conv.add_message(initial, role="user")
 
     try:
-        _run_turn(conv, state, cfg.max_iterations, log_path, tools=tools)
+        _run_turn(
+            conv,
+            state,
+            cfg.max_iterations,
+            log_path,
+            tools=tools,
+            provider=llm_provider,
+            original_task=command,
+        )
     finally:
         if log_path:
             _dump_conversation(conv, log_path)
@@ -874,9 +991,18 @@ def agent(
         state.done = False
         state.farewell = ""
         state.todos = []
+        state.submit_kickbacks = 0
         conv.add_message(next_command, role="user")
         try:
-            _run_turn(conv, state, cfg.max_iterations, log_path, tools=tools)
+            _run_turn(
+                conv,
+                state,
+                cfg.max_iterations,
+                log_path,
+                tools=tools,
+                provider=llm_provider,
+                original_task=next_command,
+            )
         finally:
             if log_path:
                 _dump_conversation(conv, log_path)

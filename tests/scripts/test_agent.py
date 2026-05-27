@@ -16,12 +16,14 @@ from trilogy.scripts import agent as agent_mod
 from trilogy.scripts import display_core
 from trilogy.scripts.agent import (
     ALL_TOOLS,
+    MAX_SUBMIT_KICKBACKS,
     AgentState,
     TodoItem,
     _build_provider,
     _dispatch,
     _format_call,
     _maybe_flag_loop,
+    _render_reviewer_transcript,
     _run_turn,
     _status_message,
     handle_list_files,
@@ -613,6 +615,115 @@ def test_run_turn_surfaces_malformed_tool_call_to_model():
     )
 
 
+# --- reviewer validation on submit ---
+
+
+def test_run_turn_reviewer_kicks_back_then_accepts():
+    """Two `return_control_to_user` calls: reviewer says NOT_DONE on the
+    first, DONE on the second. The agent should loop once then exit."""
+    agent_provider = ScriptedProvider(
+        responses=[
+            make_response(call("return_control_to_user", message="first")),
+            make_response(call("return_control_to_user", message="second")),
+        ]
+    )
+    reviewer_responses = iter(
+        [
+            LLMResponse(
+                text="NOT_DONE - you skipped the min cost filter",
+                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            ),
+            LLMResponse(
+                text="DONE - looks right",
+                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            ),
+        ]
+    )
+
+    class ReviewerProvider(LLMProvider):
+        def __init__(self):
+            super().__init__("rev", "k", "m", Provider.OPENAI)
+
+        def generate_completion(self, options, history):
+            return next(reviewer_responses)
+
+    conv = make_conv(agent_provider)
+    state = AgentState()
+    _run_turn(
+        conv,
+        state,
+        max_iterations=5,
+        provider=ReviewerProvider(),
+        original_task="do the thing",
+    )
+    assert state.done is True
+    assert state.submit_kickbacks == 1
+    assert state.farewell == "second"
+    assert any(
+        "reviewer determined" in m.content for m in conv.messages if m.role == "user"
+    )
+
+
+def test_run_turn_reviewer_kickback_capped(monkeypatch):
+    """If the reviewer keeps saying NOT_DONE, the agent exits anyway after
+    MAX_SUBMIT_KICKBACKS kickbacks rather than looping forever."""
+    submit_responses = [
+        make_response(call("return_control_to_user", message=f"try {i}"))
+        for i in range(MAX_SUBMIT_KICKBACKS + 2)
+    ]
+    agent_provider = ScriptedProvider(responses=submit_responses)
+
+    class AlwaysNotDoneReviewer(LLMProvider):
+        def __init__(self):
+            super().__init__("rev", "k", "m", Provider.OPENAI)
+
+        def generate_completion(self, options, history):
+            return LLMResponse(
+                text="NOT_DONE - never satisfied",
+                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            )
+
+    conv = make_conv(agent_provider)
+    state = AgentState()
+    _run_turn(
+        conv,
+        state,
+        max_iterations=10,
+        provider=AlwaysNotDoneReviewer(),
+        original_task="do the thing",
+    )
+    assert state.done is True
+    assert state.submit_kickbacks == MAX_SUBMIT_KICKBACKS
+
+
+def test_run_turn_reviewer_skipped_when_no_provider():
+    """Backwards compat: no provider passed → no reviewer call, immediate exit."""
+    provider = ScriptedProvider(
+        responses=[make_response(call("return_control_to_user", message="ok"))]
+    )
+    conv = make_conv(provider)
+    state = AgentState()
+    _run_turn(conv, state, max_iterations=5)
+    assert state.done is True
+    assert state.submit_kickbacks == 0
+
+
+def test_reviewer_transcript_includes_tool_calls_and_results():
+    msgs = [
+        LLMMessage(role="system", content="ignored"),
+        LLMMessage(role="user", content="do the thing"),
+        LLMMessage(role="assistant", content=""),
+        LLMMessage(role="user", content='{"tool":"trilogy","result":"ok"}'),
+    ]
+    msgs[2].model_info = {
+        "tool_calls": [{"name": "trilogy", "arguments": {"args": ["run"]}}]
+    }
+    rendered = _render_reviewer_transcript(msgs)
+    assert "do the thing" in rendered
+    assert "AGENT CALL trilogy" in rendered
+    assert "ignored" not in rendered  # system messages dropped
+
+
 # --- _build_provider ---
 
 
@@ -837,7 +948,7 @@ def test_log_file_cli_flag_creates_and_truncates(tmp_path, monkeypatch):
     log_path = tmp_path / "trace.jsonl"
     log_path.write_text("stale content\n", encoding="utf-8")
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         import trilogy.scripts.agent as mod
 
         mod._log_event(log_path, {"type": "llm_response", "tool_calls": []})
@@ -871,7 +982,7 @@ def test_env_flag_applies_kv_pair_via_cli(monkeypatch):
 
     seen: dict = {}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         import os
 
         seen["AGENT_TEST_VAR"] = os.environ.get("AGENT_TEST_VAR")
@@ -900,7 +1011,7 @@ def test_env_flag_loads_file_via_cli(tmp_path, monkeypatch):
 
     seen: dict = {}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         import os
 
         seen["anthropic"] = os.environ.get("ANTHROPIC_API_KEY")
@@ -926,7 +1037,7 @@ def test_quiet_flag_drops_show_message_tool(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     captured: dict = {}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         captured["tool_names"] = {t.name for t in (tools or [])}
         captured["system_prompt"] = conv.messages[0].content
         state.done = True
@@ -949,7 +1060,7 @@ def test_interactive_followup_runs_then_exits(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     turn_count = {"n": 0}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         turn_count["n"] += 1
         state.done = True
         state.farewell = f"turn {turn_count['n']} done"
@@ -972,7 +1083,7 @@ def test_interactive_aborts_cleanly_on_eof(monkeypatch):
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         state.done = True
         state.farewell = "done"
 

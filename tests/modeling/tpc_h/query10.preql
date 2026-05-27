@@ -4,11 +4,10 @@ where
     order.date >= '1993-10-01'::date
     and order.date < '1994-01-01'::date
     and return_flag = 'R'
-    and order.customer.id is not null
 select
     order.customer.id,
     order.customer.name,
-    sum(revenue) -> q_revenue,
+    sum(revenue) by order.customer.id -> q_revenue,
     order.customer.account_balance,
     order.customer.nation.name,
     order.customer.address,
