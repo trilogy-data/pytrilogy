@@ -823,6 +823,7 @@ def _run_turn(
                     "completion_tokens": response.usage.completion_tokens,
                     "total_tokens": response.usage.total_tokens,
                 },
+                "finish_reason": response.finish_reason,
             },
         )
         if not response.tool_calls:

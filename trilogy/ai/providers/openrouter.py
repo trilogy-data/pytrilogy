@@ -121,7 +121,18 @@ class OpenRouterProvider(LLMProvider):
                     return response.json()
 
             data = fetch_with_retry(make_request, self.retry_options)
-            message = data["choices"][0]["message"]
+            choice = data["choices"][0]
+            message = choice["message"]
+            finish_reason = choice.get("finish_reason") or choice.get(
+                "native_finish_reason"
+            )
+            if finish_reason == "length":
+                logger.warning(
+                    "OpenRouter response truncated by max_tokens (finish_reason=length). "
+                    "completion_tokens=%s, model=%s. tool_call arguments may be partial.",
+                    data["usage"]["completion_tokens"],
+                    self.model,
+                )
             return LLMResponse(
                 text=message.get("content") or "",
                 tool_calls=[
@@ -136,6 +147,7 @@ class OpenRouterProvider(LLMProvider):
                     completion_tokens=data["usage"]["completion_tokens"],
                     total_tokens=data["usage"]["total_tokens"],
                 ),
+                finish_reason=finish_reason,
             )
         except httpx.HTTPStatusError as error:
             error_detail = error.response.text
