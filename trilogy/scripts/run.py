@@ -28,7 +28,13 @@ def execute_script_for_run(
 
 
 def _looks_like_missing_path(value: str) -> bool:
-    """True if ``value`` looks like a file path (extension or separator)."""
+    """True if ``value`` looks like a file path (extension or separator).
+
+    Inline SQL legitimately contains ``/`` (division) and ``\\`` (rare escape),
+    so any whitespace or statement terminator means we treat it as inline.
+    """
+    if any(c.isspace() for c in value) or ";" in value:
+        return False
     return (
         value.endswith(".preql")
         or value.endswith(".sql")

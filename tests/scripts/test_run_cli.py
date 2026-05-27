@@ -44,3 +44,27 @@ def test_run_empty_stdin_with_imports_parses_imports_only(tmp_path: Path):
             cli, ["run", "--import", "raw/tiny:tiny", "-", "duck_db"], input=""
         )
     assert result.exit_code == 0, (result.output, result.exception)
+
+
+def test_run_inline_query_with_division_not_treated_as_path(tmp_path: Path):
+    """Inline SQL with a `/` (division) used to be misclassified as a missing
+    file path. Real agent failure mode: `having total > 0.0001 / 100.0 * sum(...)`
+    via `--import raw/X:X` + inline body."""
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path) as cwd:
+        (Path(cwd) / "raw").mkdir()
+        (Path(cwd) / "raw" / "tiny.preql").write_text(
+            "key id int; property id.name string;", encoding="utf-8"
+        )
+        result = runner.invoke(
+            cli,
+            [
+                "run",
+                "--import",
+                "raw/tiny:tiny",
+                "select 1.0 / 2.0 as half;",
+                "duck_db",
+            ],
+        )
+    assert "does not exist" not in (result.output or ""), result.output
+    assert result.exit_code == 0, (result.output, result.exception)

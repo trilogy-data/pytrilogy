@@ -230,7 +230,13 @@ def get_runtime_config(
 
 
 def _looks_like_path(input: str) -> bool:
-    """Check if input looks like a file/directory path rather than inline query."""
+    """Check if input looks like a file/directory path rather than inline query.
+
+    Inline SQL legitimately contains ``/`` (division), so whitespace or a
+    statement terminator means we treat it as inline regardless of separators.
+    """
+    if any(c.isspace() for c in input) or ";" in input:
+        return False
     # Contains path separators
     if "/" in input or "\\" in input:
         return True
