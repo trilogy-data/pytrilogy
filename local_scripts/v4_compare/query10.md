@@ -1,38 +1,26 @@
 # Query 10
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (6 rows) |
 | reference execution | OK (6 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 6 (6 distinct)
 ref rows: 6 (6 distinct)
-only in v4 (showing up to 5 of 6):
-  1x  (3, 3, 3, 3, 3, 3, 5, 'High Risk', 2, 'Advanced Degree', 4, 'F', 'D', 3000)
-  1x  (3, 3, 3, 3, 3, 3, 4, 'Good', 6, 'Unknown', 5, 'F', 'D', 1500)
-  1x  (6, 6, 6, 6, 6, 6, 5, 'Good', 4, '2 yr Degree', 0, 'F', 'W', 8500)
-  1x  (3, 3, 3, 3, 3, 3, 1, 'Low Risk', 3, 'College', 0, 'M', 'D', 8500)
-  1x  (32, 32, 32, 32, 32, 32, 1, 'Unknown', 2, 'Primary', 1, 'M', 'D', 7000)
-only in ref (showing up to 5 of 6):
-  1x  (1, 1, 1, 1, 1, 1, 5, 'High Risk', 2, 'Advanced Degree', 4, 'F', 'D', 3000)
-  1x  (1, 1, 1, 1, 1, 1, 4, 'Good', 6, 'Unknown', 5, 'F', 'D', 1500)
-  1x  (1, 1, 1, 1, 1, 1, 5, 'Good', 4, '2 yr Degree', 0, 'F', 'W', 8500)
-  1x  (1, 1, 1, 1, 1, 1, 1, 'Low Risk', 3, 'College', 0, 'M', 'D', 8500)
-  1x  (1, 1, 1, 1, 1, 1, 1, 'Unknown', 2, 'Primary', 1, 'M', 'D', 7000)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6496 | 111 | 428.46 ms |
-| reference | 4839 | 84 | 227.11 ms |
-| v4 / ref | 1.34x | 1.32x | 1.89x |
+| v4 | 6403 | 116 | 136.74 ms |
+| reference | 4839 | 84 | 87.95 ms |
+| v4 / ref | 1.32x | 1.38x | 1.55x |
 
 ## Preql
 
@@ -118,25 +106,15 @@ FROM
 GROUP BY
     1,
     2),
-young as (
-SELECT
-    coalesce("customer_customers"."C_CUSTOMER_SK","questionable"."customer_id","quizzical"."customer_id","yummy"."customer_id") as "relevant_customers"
-FROM
-    "yummy"
-    LEFT OUTER JOIN "memory"."date_dim" as "web_sales_date_date" on "yummy"."web_sales_date_id" = "web_sales_date_date"."D_DATE_SK"
-    FULL JOIN "quizzical" on "yummy"."customer_id" is not distinct from "quizzical"."customer_id"
-    RIGHT OUTER JOIN "questionable" on coalesce("quizzical"."customer_id", "yummy"."customer_id") = "questionable"."customer_id"
-    INNER JOIN "memory"."customer" as "customer_customers" on coalesce("quizzical"."customer_id", "questionable"."customer_id", "yummy"."customer_id") = "customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "questionable"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "quizzical"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"
-WHERE
-    "store_sales_date_date"."D_YEAR" = 2002 and "store_sales_date_date"."D_MOY" in (1,2,3,4) and "customer_address_customer_address"."CA_COUNTY" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( "web_sales_date_date"."D_YEAR" = 2002 and "web_sales_date_date"."D_MOY" in (1,2,3,4) ) or ( "catalog_sales_date_date"."D_YEAR" = 2002 and "catalog_sales_date_date"."D_MOY" in (1,2,3,4) ) )
-
-GROUP BY
-    1),
 vacuous as (
 SELECT
+    "catalog_sales_date_date"."D_MOY" as "catalog_sales_date_month_of_year",
+    "catalog_sales_date_date"."D_YEAR" as "catalog_sales_date_year",
+    "customer_address_customer_address"."CA_COUNTY" as "customer_address_county",
+    "store_sales_date_date"."D_MOY" as "store_sales_date_month_of_year",
+    "store_sales_date_date"."D_YEAR" as "store_sales_date_year",
+    "web_sales_date_date"."D_MOY" as "web_sales_date_month_of_year",
+    "web_sales_date_date"."D_YEAR" as "web_sales_date_year",
     coalesce("customer_customers"."C_CUSTOMER_SK","questionable"."customer_id","quizzical"."customer_id","yummy"."customer_id") as "customer_id"
 FROM
     "yummy"
@@ -149,39 +127,54 @@ FROM
     FULL JOIN "memory"."date_dim" as "catalog_sales_date_date" on "quizzical"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"
 GROUP BY
     1,
-    "catalog_sales_date_date"."D_MOY",
-    "catalog_sales_date_date"."D_YEAR",
-    "customer_address_customer_address"."CA_COUNTY",
-    "store_sales_date_date"."D_MOY",
-    "store_sales_date_date"."D_YEAR",
-    "web_sales_date_date"."D_MOY",
-    "web_sales_date_date"."D_YEAR"),
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8),
 concerned as (
 SELECT
-    "vacuous"."customer_id" as "customer_id"
+    CASE WHEN "vacuous"."store_sales_date_year" = 2002 and "vacuous"."store_sales_date_month_of_year" in (1,2,3,4) and "vacuous"."customer_address_county" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( "vacuous"."web_sales_date_year" = 2002 and "vacuous"."web_sales_date_month_of_year" in (1,2,3,4) ) or ( "vacuous"."catalog_sales_date_year" = 2002 and "vacuous"."catalog_sales_date_month_of_year" in (1,2,3,4) ) ) THEN "vacuous"."customer_id" ELSE NULL END as "relevant_customers"
 FROM
-    "vacuous")
+    "vacuous"),
+sparkling as (
 SELECT
-    "customer_demographics_customer_demographics"."CD_DEP_COLLEGE_COUNT" as "customer_demographics_college_dependent_count",
+    "customer_customers"."C_CUSTOMER_SK" as "customer_id",
     "customer_demographics_customer_demographics"."CD_CREDIT_RATING" as "customer_demographics_credit_rating",
+    "customer_demographics_customer_demographics"."CD_DEP_COLLEGE_COUNT" as "customer_demographics_college_dependent_count",
     "customer_demographics_customer_demographics"."CD_DEP_COUNT" as "customer_demographics_dependent_count",
-    "customer_demographics_customer_demographics"."CD_EDUCATION_STATUS" as "customer_demographics_education_status",
     "customer_demographics_customer_demographics"."CD_DEP_EMPLOYED_COUNT" as "customer_demographics_employed_dependent_count",
+    "customer_demographics_customer_demographics"."CD_EDUCATION_STATUS" as "customer_demographics_education_status",
     "customer_demographics_customer_demographics"."CD_GENDER" as "customer_demographics_gender",
     "customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_demographics_marital_status",
-    "customer_demographics_customer_demographics"."CD_PURCHASE_ESTIMATE" as "customer_demographics_purchase_estimate",
-    count("customer_customers"."C_CUSTOMER_SK") as "cnt1",
-    count("customer_customers"."C_CUSTOMER_SK") as "cnt2",
-    count("customer_customers"."C_CUSTOMER_SK") as "cnt3",
-    count("customer_customers"."C_CUSTOMER_SK") as "cnt4",
-    count("customer_customers"."C_CUSTOMER_SK") as "cnt5",
-    count("customer_customers"."C_CUSTOMER_SK") as "cnt6"
+    "customer_demographics_customer_demographics"."CD_PURCHASE_ESTIMATE" as "customer_demographics_purchase_estimate"
 FROM
     "memory"."customer" as "customer_customers"
-    INNER JOIN "concerned" on "customer_customers"."C_CUSTOMER_SK" = "concerned"."customer_id"
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "customer_customers"."C_CUSTOMER_SK" in (select young."relevant_customers" from young where young."relevant_customers" is not null) and "customer_demographics_customer_demographics"."CD_GENDER" is not null
+    "customer_demographics_customer_demographics"."CD_GENDER" is not null and "customer_customers"."C_CUSTOMER_SK" in (select concerned."relevant_customers" from concerned where concerned."relevant_customers" is not null)
+)
+SELECT
+    "sparkling"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    "sparkling"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
+    "sparkling"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    "sparkling"."customer_demographics_education_status" as "customer_demographics_education_status",
+    "sparkling"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
+    "sparkling"."customer_demographics_gender" as "customer_demographics_gender",
+    "sparkling"."customer_demographics_marital_status" as "customer_demographics_marital_status",
+    "sparkling"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
+    count("sparkling"."customer_id") as "cnt1",
+    count("sparkling"."customer_id") as "cnt2",
+    count("sparkling"."customer_id") as "cnt3",
+    count("sparkling"."customer_id") as "cnt4",
+    count("sparkling"."customer_id") as "cnt5",
+    count("sparkling"."customer_id") as "cnt6"
+FROM
+    "sparkling"
+WHERE
+    "sparkling"."customer_id" in (select concerned."relevant_customers" from concerned where concerned."relevant_customers" is not null)
 
 GROUP BY
     1,
@@ -193,14 +186,14 @@ GROUP BY
     7,
     8
 ORDER BY 
-    "customer_demographics_customer_demographics"."CD_GENDER" asc,
-    "customer_demographics_customer_demographics"."CD_MARITAL_STATUS" asc,
-    "customer_demographics_customer_demographics"."CD_EDUCATION_STATUS" asc,
-    "customer_demographics_customer_demographics"."CD_PURCHASE_ESTIMATE" asc,
-    "customer_demographics_customer_demographics"."CD_CREDIT_RATING" asc,
-    "customer_demographics_customer_demographics"."CD_DEP_COUNT" asc,
-    "customer_demographics_customer_demographics"."CD_DEP_EMPLOYED_COUNT" asc,
-    "customer_demographics_customer_demographics"."CD_DEP_COLLEGE_COUNT" asc
+    "sparkling"."customer_demographics_gender" asc,
+    "sparkling"."customer_demographics_marital_status" asc,
+    "sparkling"."customer_demographics_education_status" asc,
+    "sparkling"."customer_demographics_purchase_estimate" asc,
+    "sparkling"."customer_demographics_credit_rating" asc,
+    "sparkling"."customer_demographics_dependent_count" asc,
+    "sparkling"."customer_demographics_employed_dependent_count" asc,
+    "sparkling"."customer_demographics_college_dependent_count" asc
 ```
 
 ## Reference SQL (zquery log)

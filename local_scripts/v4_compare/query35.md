@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5181 | 96 | 60.46 ms |
-| reference | 10103 | 157 | 93.87 ms |
-| v4 / ref | 0.51x | 0.61x | 0.64x |
+| v4 | 5106 | 86 | 59.84 ms |
+| reference | 10103 | 157 | 117.44 ms |
+| v4 / ref | 0.51x | 0.55x | 0.51x |
 
 ## Preql
 
@@ -97,18 +97,7 @@ limit 100
 
 ```sql
 WITH 
-cheerful as (
-SELECT
-    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "catalog_buyers_cat_cust_id"
-FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_date_date"."D_YEAR" = 2002 and "sales_date_date"."D_QOY" < 4 and  'CATALOG'  = 'CATALOG' and "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" is not null
-
-GROUP BY
-    1),
-abundant as (
+uneven as (
 SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "store_buyers_store_cust_id"
 FROM
@@ -119,7 +108,7 @@ WHERE
 
 GROUP BY
     1),
-juicy as (
+vacuous as (
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "web_buyers_web_cust_id"
 FROM
@@ -130,7 +119,18 @@ WHERE
 
 GROUP BY
     1),
-young as (
+thoughtful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "catalog_buyers_cat_cust_id"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 2002 and "sales_date_date"."D_QOY" < 4 and  'CATALOG'  = 'CATALOG' and "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
+cheerful as (
 SELECT
     "customer_address_customer_address"."CA_STATE" as "customer_address_state",
     "customer_customers"."C_CUSTOMER_SK" as "customer_id",
@@ -144,39 +144,29 @@ FROM
     INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "customer_customers"."C_CUSTOMER_SK" in (select abundant."store_buyers_store_cust_id" from abundant where abundant."store_buyers_store_cust_id" is not null) and ( "customer_customers"."C_CUSTOMER_SK" in (select juicy."web_buyers_web_cust_id" from juicy where juicy."web_buyers_web_cust_id" is not null) or "customer_customers"."C_CUSTOMER_SK" in (select cheerful."catalog_buyers_cat_cust_id" from cheerful where cheerful."catalog_buyers_cat_cust_id" is not null) ) and "customer_customers"."C_CURRENT_CDEMO_SK" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    "customer_address_customer_address"."CA_ADDRESS_SK",
-    "customer_customers"."C_CURRENT_CDEMO_SK")
+    "customer_customers"."C_CURRENT_CDEMO_SK" is not null and "customer_customers"."C_CUSTOMER_SK" in (select uneven."store_buyers_store_cust_id" from uneven where uneven."store_buyers_store_cust_id" is not null) and ( "customer_customers"."C_CUSTOMER_SK" in (select vacuous."web_buyers_web_cust_id" from vacuous where vacuous."web_buyers_web_cust_id" is not null) or "customer_customers"."C_CUSTOMER_SK" in (select thoughtful."catalog_buyers_cat_cust_id" from thoughtful where thoughtful."catalog_buyers_cat_cust_id" is not null) )
+)
 SELECT
-    "young"."customer_address_state" as "customer_address_state",
-    "young"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
-    "young"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
-    "young"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
-    "young"."customer_demographics_gender" as "customer_demographics_gender",
-    "young"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    avg("young"."customer_demographics_dependent_count") as "avg1",
-    avg("young"."customer_demographics_employed_dependent_count") as "avg2",
-    avg("young"."customer_demographics_college_dependent_count") as "avg3",
-    count("young"."customer_id") as "cnt1",
-    count("young"."customer_id") as "cnt2",
-    count("young"."customer_id") as "cnt3",
-    max("young"."customer_demographics_dependent_count") as "max1",
-    max("young"."customer_demographics_employed_dependent_count") as "max2",
-    max("young"."customer_demographics_college_dependent_count") as "max3",
-    min("young"."customer_demographics_dependent_count") as "min1",
-    min("young"."customer_demographics_employed_dependent_count") as "min2",
-    min("young"."customer_demographics_college_dependent_count") as "min3"
+    "cheerful"."customer_address_state" as "customer_address_state",
+    "cheerful"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    "cheerful"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    "cheerful"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
+    "cheerful"."customer_demographics_gender" as "customer_demographics_gender",
+    "cheerful"."customer_demographics_marital_status" as "customer_demographics_marital_status",
+    avg("cheerful"."customer_demographics_dependent_count") as "avg1",
+    avg("cheerful"."customer_demographics_employed_dependent_count") as "avg2",
+    avg("cheerful"."customer_demographics_college_dependent_count") as "avg3",
+    count("cheerful"."customer_id") as "cnt1",
+    count("cheerful"."customer_id") as "cnt2",
+    count("cheerful"."customer_id") as "cnt3",
+    max("cheerful"."customer_demographics_dependent_count") as "max1",
+    max("cheerful"."customer_demographics_employed_dependent_count") as "max2",
+    max("cheerful"."customer_demographics_college_dependent_count") as "max3",
+    min("cheerful"."customer_demographics_dependent_count") as "min1",
+    min("cheerful"."customer_demographics_employed_dependent_count") as "min2",
+    min("cheerful"."customer_demographics_college_dependent_count") as "min3"
 FROM
-    "young"
+    "cheerful"
 GROUP BY
     1,
     2,
@@ -185,12 +175,12 @@ GROUP BY
     5,
     6
 ORDER BY 
-    "young"."customer_address_state" asc nulls first,
-    "young"."customer_demographics_gender" asc nulls first,
-    "young"."customer_demographics_marital_status" asc nulls first,
-    "young"."customer_demographics_dependent_count" asc nulls first,
-    "young"."customer_demographics_employed_dependent_count" asc nulls first,
-    "young"."customer_demographics_college_dependent_count" asc nulls first
+    "cheerful"."customer_address_state" asc nulls first,
+    "cheerful"."customer_demographics_gender" asc nulls first,
+    "cheerful"."customer_demographics_marital_status" asc nulls first,
+    "cheerful"."customer_demographics_dependent_count" asc nulls first,
+    "cheerful"."customer_demographics_employed_dependent_count" asc nulls first,
+    "cheerful"."customer_demographics_college_dependent_count" asc nulls first
 LIMIT (100)
 ```
 

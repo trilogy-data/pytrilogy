@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4518 | 85 | 949.77 ms |
-| reference | 4287 | 76 | 24.27 ms |
-| v4 / ref | 1.05x | 1.12x | 39.14x |
+| v4 | 3995 | 65 | 25.02 ms |
+| reference | 4287 | 76 | 29.74 ms |
+| v4 / ref | 0.93x | 0.86x | 0.84x |
 
 ## Preql
 
@@ -54,22 +54,9 @@ SELECT
     CASE WHEN "items_items"."I_CATEGORY" = 'Electronics' THEN "items_items"."I_MANUFACT_ID" ELSE NULL END as "electronics_manuf_ids"
 FROM
     "memory"."item" as "items_items"),
-wakeful as (
-SELECT
-    "items_items"."I_MANUFACT_ID" as "electronics_manuf_ids"
-FROM
-    "memory"."item" as "items_items"
-WHERE
-    "items_items"."I_CATEGORY" = 'Electronics'
-
-GROUP BY
-    1),
-uneven as (
+questionable as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
-    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
-     'CATALOG'  as "sales_sales_channel",
     "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
@@ -82,9 +69,6 @@ WHERE
 UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
-     'STORE'  as "sales_sales_channel",
     "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
@@ -97,9 +81,6 @@ WHERE
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
-     'WEB'  as "sales_sales_channel",
     "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
@@ -109,29 +90,28 @@ FROM
 WHERE
     "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
 ),
-vacuous as (
+yummy as (
 SELECT
-    "uneven"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "uneven"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
+    "questionable"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "questionable"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
 FROM
-    "uneven"
-    INNER JOIN "highfalutin" on 1=1
-GROUP BY
-    1,
-    2,
-    "uneven"."sales_item_id",
-    "uneven"."sales_order_id",
-    "uneven"."sales_sales_channel")
+    "questionable"
+WHERE
+    "questionable"."sales_item_manufacturer_id" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
+)
 SELECT
-    sum("vacuous"."sales_ext_sales_price") as "total_sales",
-    "vacuous"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
+    sum("yummy"."sales_ext_sales_price") as "total_sales",
+    "yummy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
 FROM
-    "vacuous"
+    "yummy"
+WHERE
+    "yummy"."sales_item_manufacturer_id" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
+
 GROUP BY
     2
 ORDER BY 
     "total_sales" asc nulls first,
-    "vacuous"."sales_item_manufacturer_id" asc nulls first
+    "yummy"."sales_item_manufacturer_id" asc nulls first
 LIMIT (100)
 ```
 
