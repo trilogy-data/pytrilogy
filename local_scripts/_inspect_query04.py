@@ -24,13 +24,13 @@ for c in mandatory:
             ac = build_env.concepts.get(arg.address, arg)
             print(f"    arg {ac.address} derivation={ac.derivation} grain={list(ac.grain.components) if ac.grain else None}")
 cg = build_concept_graph(mandatory, build_env, [conditions] if conditions else [])
-gg = build_group_graph(cg, [conditions] if conditions else [], mandatory)
+gg, attrs = build_group_graph(cg, [conditions] if conditions else [], mandatory)
 print()
 print("=== GROUPS ===")
 for n in gg.nodes:
-    d = gg.nodes[n]
+    a = attrs[n]
     print(f"  {n}")
-    print(f"    derivation={d.get('derivation')} depth={d.get('depth_label')} grain={sorted(d.get('grain_components', []))}")
-    print(f"    primary  ={d.get('primary_members', ())}")
-    print(f"    secondary={d.get('secondary_members', ())}")
-    print(f"    output   ={d.get('output_concepts', ())}")
+    print(f"    derivation={a.derivation} depth={a.depth_label} grain={sorted(a.grain_components)}")
+    print(f"    primary  ={a.primary_members}")
+    print(f"    secondary={a.secondary_members}")
+    print(f"    output   ={a.output_concepts}")

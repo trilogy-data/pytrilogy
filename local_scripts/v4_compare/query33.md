@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4518 | 85 | 928.60 ms |
-| reference | 4287 | 76 | 25.50 ms |
-| v4 / ref | 1.05x | 1.12x | 36.42x |
+| v4 | 4524 | 85 | 1.455 s |
+| reference | 4287 | 76 | 22.82 ms |
+| v4 / ref | 1.06x | 1.12x | 63.73x |
 
 ## Preql
 
@@ -115,7 +115,7 @@ SELECT
     "uneven"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
 FROM
     "uneven"
-    INNER JOIN "highfalutin" on 1=1
+    RIGHT OUTER JOIN "highfalutin" on 1=1
 GROUP BY
     1,
     2,

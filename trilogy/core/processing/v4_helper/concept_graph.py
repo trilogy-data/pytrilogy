@@ -249,9 +249,7 @@ def _add_concept(
     for upstream in fetcher(concept, environment):
         _add_concept(upstream, environment, graph, label=label)
         upstream_label = _effective_label(upstream, label)
-        graph.add_edge(
-            node_id(upstream_label, upstream.address), nid, kind="lineage"
-        )
+        graph.add_edge(node_id(upstream_label, upstream.address), nid, kind="lineage")
 
 
 def _rowset_inner_outputs(
@@ -441,9 +439,7 @@ def build_concept_graph(
     #   - require the node's address to actually appear as a row argument
     #     (existence args don't need row-stream consumers);
     #   - skip nodes that already have any outgoing edge.
-    mandatory_blank_ids = {
-        node_id("", c.address) for c in mandatory_list
-    }
+    mandatory_blank_ids = {node_id("", c.address) for c in mandatory_list}
     outer_condition_nodes = nodes_by_scope_phase.get(("", "condition"), [])
     for src in outer_condition_nodes:
         if graph.nodes[src].get("derivation") == Derivation.ROOT.value:

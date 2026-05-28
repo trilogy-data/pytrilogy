@@ -29,6 +29,7 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.v4_node_generators import build_node
 
 from .constants import FINAL_NODE_ID
+from .models import GroupAttrs
 
 _AGGREGATING_DERIVATIONS = {
     Derivation.AGGREGATE.value,
@@ -46,18 +47,18 @@ def _wrap_atoms(atoms: list[BoolExpr]) -> BuildWhereClause | None:
     return BuildWhereClause(conditional=combined)
 
 
-def _members_of(group_graph: nx.DiGraph, gid: str) -> set[str]:
-    gd = group_graph.nodes[gid]
-    return set(gd.get("primary_members", ())) | set(gd.get("secondary_members", ()))
+def _members_of(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
+    a = attrs[gid]
+    return set(a.primary_members) | set(a.secondary_members)
 
 
-def _atoms_at(group_graph: nx.DiGraph, gid: str) -> list[BoolExpr]:
+def _atoms_at(attrs: dict[str, GroupAttrs], gid: str) -> list[BoolExpr]:
     """Atoms injected AT `gid` only. These become the WHERE for this node."""
-    return list(group_graph.nodes[gid].get("condition_atoms", []) or [])
+    return list(attrs[gid].condition_atoms)
 
 
 def _existence_for_group(
-    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     gid: str,
 ) -> tuple[list[BuildConcept], list[StrategyNode]]:
@@ -70,7 +71,7 @@ def _existence_for_group(
     existence_parents: list[StrategyNode] = []
     seen_concepts: set[str] = set()
     seen_parents: set[int] = set()
-    for atom in _atoms_at(group_graph, gid):
+    for atom in _atoms_at(attrs, gid):
         for arg_group in atom.existence_arguments:
             for concept in arg_group:
                 if concept.address in seen_concepts:
@@ -81,7 +82,10 @@ def _existence_for_group(
                 for source_gid, source_node in built.items():
                     if source_gid == gid:
                         continue
-                    if any(o.address == concept.address for o in source_node.output_concepts):
+                    if any(
+                        o.address == concept.address
+                        for o in source_node.output_concepts
+                    ):
                         if id(source_node) not in seen_parents:
                             seen_parents.add(id(source_node))
                             existence_parents.append(source_node.copy())
@@ -90,7 +94,9 @@ def _existence_for_group(
 
 
 def _accumulated_atoms_above(
-    group_graph: nx.DiGraph, gid: str
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
 ) -> list[BoolExpr]:
     """Atoms applied at any STRICT ancestor of `gid`. Threaded into the node
     as `preexisting_conditions` so nullable inference (and any later
@@ -100,7 +106,7 @@ def _accumulated_atoms_above(
     for anc in nx.ancestors(group_graph, gid):
         if anc == FINAL_NODE_ID:
             continue
-        for atom in group_graph.nodes[anc].get("condition_atoms", []) or []:
+        for atom in attrs[anc].condition_atoms:
             if atom not in accumulated:
                 accumulated.append(atom)
     return accumulated
@@ -240,9 +246,7 @@ def _topological_order(group_graph: nx.DiGraph) -> list[str]:
             cycle = nx.find_cycle(dep_graph)
         except nx.NetworkXNoCycle:
             cycle = None
-        logger.warning(
-            "[v4] group-graph cycle, abandoning strategy build: %s", cycle
-        )
+        logger.warning("[v4] group-graph cycle, abandoning strategy build: %s", cycle)
         return []
 
 
@@ -318,9 +322,7 @@ def _wrap_for_grain(
             wraps.append(parent_node)
             continue
         grain_concepts = [
-            environment.concepts[a]
-            for a in grain_comps
-            if a in environment.concepts
+            environment.concepts[a] for a in grain_comps if a in environment.concepts
         ]
         # Dedup by address, keep concept order stable.
         outputs_by_addr: dict[str, BuildConcept] = {}
@@ -340,6 +342,7 @@ def _wrap_for_grain(
 
 def _assemble_final_node(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
@@ -374,9 +377,7 @@ def _assemble_final_node(
         # using them as JOIN keys (MergeNode validates non-hidden parent
         # outputs only).
         output_addrs = {o.address for o in sole_node.output_concepts}
-        grain_addrs = set(
-            group_graph.nodes[gid].get("grain_components") or ()
-        )
+        grain_addrs = set(attrs[gid].grain_components)
         hide = (grain_addrs & output_addrs) - mandatory_addresses
         if hide:
             existing = set(sole_node.hidden_concepts or set())
@@ -395,7 +396,7 @@ def _assemble_final_node(
     parents: list[StrategyNode] = []
     for gid in contributing:
         node = built[gid]
-        is_root = group_graph.nodes[gid].get("derivation") == "root"
+        is_root = attrs[gid].derivation == "root"
         if is_root:
             parents.extend(_wrap_for_grain(node, per_group[gid], environment))
         else:
@@ -416,6 +417,7 @@ def _assemble_final_node(
 
 def build_strategy_node(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     g: ReferenceGraph,
@@ -429,30 +431,29 @@ def build_strategy_node(
     for gid in _topological_order(group_graph):
         if gid == FINAL_NODE_ID:
             continue
-        data = group_graph.nodes[gid]
-        derivation = data.get("derivation")
+        a = attrs[gid]
+        derivation = a.derivation
         # Prefer the per-group output/hidden sets computed by the backward
         # pass in `_compute_concept_sets`. The SELECT needs to project the
         # union (output ∪ hidden) so GROUP-BY keys stay in the row stream;
         # `hidden_concepts` then masks them from any downstream consumer
         # that doesn't ask for them. When the backward pass didn't run
-        # (no mandatory_list supplied), fall back to "every member".
-        output_addrs = data.get("output_concepts")
-        hidden_addrs: tuple[str, ...] = data.get("hidden_concepts") or ()
-        if output_addrs is None:
-            primary_addrs = data.get("primary_members", ())
-            secondary_addrs = data.get("secondary_members", ())
-            output_addrs = (*primary_addrs, *secondary_addrs)
+        # (no mandatory_list supplied), `output_concepts` defaults to ()
+        # — fall back to "every member" in that case.
+        output_addrs: tuple[str, ...] = a.output_concepts
+        hidden_addrs: tuple[str, ...] = a.hidden_concepts
+        if not output_addrs and not hidden_addrs:
+            output_addrs = (*a.primary_members, *a.secondary_members)
         select_addrs = (*output_addrs, *hidden_addrs)
         outputs = [
-            environment.concepts[a]
-            for a in select_addrs
-            if a in environment.concepts
+            environment.concepts[addr]
+            for addr in select_addrs
+            if addr in environment.concepts
         ]
         if not outputs:
             continue
-        injected = _wrap_atoms(_atoms_at(group_graph, gid))
-        preexisting = _wrap_atoms(_accumulated_atoms_above(group_graph, gid))
+        injected = _wrap_atoms(_atoms_at(attrs, gid))
+        preexisting = _wrap_atoms(_accumulated_atoms_above(group_graph, attrs, gid))
         # The "needed" set drives ancestor-dedup: a parent is kept only if
         # it contributes something to it that no descendant parent also
         # provides. Includes the output addresses themselves, the lineage
@@ -464,7 +465,7 @@ def build_strategy_node(
         # `sales_price` to `needed`, which ROOT provides but the aggregate
         # doesn't, and ROOT would escape dedup. The aggregate already
         # owns that lineage upstream.
-        primary_addrs = set(data.get("primary_members", ()))
+        primary_addrs = set(a.primary_members)
         needed: set[str] = set()
         for c in outputs:
             needed.add(c.address)
@@ -495,11 +496,7 @@ def build_strategy_node(
         # existence parent to a different node, the IN's right-hand side
         # has no source CTE and we emit INVALID_REFERENCE_BUG.
         condition_host_node: StrategyNode | None = None
-        if (
-            injected is not None
-            and derivation in _AGGREGATING_DERIVATIONS
-            and parents
-        ):
+        if injected is not None and derivation in _AGGREGATING_DERIVATIONS and parents:
             parent_outputs = list(parents[0].output_concepts)
             wrapper = SelectNode(
                 input_concepts=parent_outputs,
@@ -539,13 +536,11 @@ def build_strategy_node(
             # derivations we peeled the conditions off onto a SelectNode
             # wrapper (above); that wrapper is the condition host, not the
             # outer GroupNode whose `conditions=None`.
-            ex_concepts, ex_parents = _existence_for_group(group_graph, built, gid)
+            ex_concepts, ex_parents = _existence_for_group(attrs, built, gid)
             if ex_concepts:
                 host = condition_host_node if condition_host_node is not None else node
                 host.parents = list(host.parents) + ex_parents
-                host.existence_concepts = (
-                    list(host.existence_concepts) + ex_concepts
-                )
+                host.existence_concepts = list(host.existence_concepts) + ex_concepts
                 host.rebuild_cache()
                 if host is not node:
                     node.rebuild_cache()
@@ -553,4 +548,4 @@ def build_strategy_node(
 
     if not built:
         return None
-    return _assemble_final_node(group_graph, built, mandatory_list, environment)
+    return _assemble_final_node(group_graph, attrs, built, mandatory_list, environment)

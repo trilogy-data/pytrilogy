@@ -18,13 +18,14 @@ from .constants import (
 )
 from .factory_dispatch import build_node_for_group
 from .group_graph import build_group_graph
-from .models import BuildInfo, GroupBucket
+from .models import BuildInfo, GroupAttrs, GroupBucket
 from .strategy_builder import build_strategy_node
 
 __all__ = [
     "BuildInfo",
     "FINAL_NODE_ID",
     "GROUPING_DERIVATIONS",
+    "GroupAttrs",
     "GroupBucket",
     "ROW_SHAPE_BARRIER_DERIVATIONS",
     "build_concept_graph",

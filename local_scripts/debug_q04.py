@@ -67,25 +67,23 @@ def main() -> None:
             print(f"    row_args: {row_args}")
             print(f"    existence_args: {existence}")
 
-    gg = build_group_graph(
+    gg, attrs = build_group_graph(
         cg,
         [conditions] if conditions else [],
         mandatory_list=list(build_stmt.output_components),
     )
     print(f"\n=== group_graph ({gg.number_of_nodes()} nodes) ===\n")
-    for n, d in gg.nodes(data=True):
+    for n in gg.nodes:
         if n == "__final__":
             continue
-        atoms_here = d.get("condition_atoms") or []
-        outputs = d.get("output_concepts") or ()
-        members = d.get("primary_members", ())
-        marker = " <-- ATOMS HERE" if atoms_here else ""
+        a = attrs[n]
+        marker = " <-- ATOMS HERE" if a.condition_atoms else ""
         print(f"  {n}{marker}")
-        print(f"    primary_members: {members}")
-        if outputs:
-            print(f"    output_concepts: {outputs}")
-        if atoms_here:
-            print(f"    condition_atoms: {[str(a) for a in atoms_here]}")
+        print(f"    primary_members: {a.primary_members}")
+        if a.output_concepts:
+            print(f"    output_concepts: {a.output_concepts}")
+        if a.condition_atoms:
+            print(f"    condition_atoms: {[str(x) for x in a.condition_atoms]}")
 
 
 if __name__ == "__main__":

@@ -54,13 +54,16 @@ def _search_concepts(
     accept_partial: bool = False,
 ) -> BuildInfo:
     concept_graph = build_concept_graph(mandatory_list, environment, conditions)
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
+    group_graph, group_attrs = build_group_graph(
+        concept_graph, conditions, mandatory_list
+    )
     strategy_node = build_strategy_node(
-        group_graph, mandatory_list, environment, g, history
+        group_graph, group_attrs, mandatory_list, environment, g, history
     )
     return BuildInfo(
         concept_graph=concept_graph,
         group_graph=group_graph,
+        group_attrs=group_attrs,
         strategy_node=strategy_node,
     )
 

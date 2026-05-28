@@ -217,9 +217,7 @@ def _partition_by_signature_and_grain(
             merged_grain: frozenset[str] = frozenset().union(
                 *(grains[i] for i in member_indices)
             )
-            depths = {
-                sub_items[i][1].get("depth_label", "d*") for i in member_indices
-            }
+            depths = {sub_items[i][1].get("depth_label", "d*") for i in member_indices}
             group_depth = "d1" if "d1" in depths else next(iter(depths))
             shared_sig = sigs[member_indices[0]]
             # Stable signature representation: hash the sorted stop-set so

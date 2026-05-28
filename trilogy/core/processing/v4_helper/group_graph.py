@@ -28,7 +28,7 @@ from trilogy.core.processing.condition_utility import decompose_condition
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .group_behaviors import behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
-from .models import GroupBucket
+from .models import GroupAttrs, GroupBucket
 
 # depth_label used for the secondary root bucket dedicated to feeding d1
 # (in-WHERE) aggregate calculations. Distinct from "root" so the bucket
@@ -92,9 +92,7 @@ def _d1_calc_subgraph(concept_graph: nx.DiGraph) -> tuple[set[str], set[str]]:
     - d1_subgraph_nodes: every condition-phase node. Edge routing uses
       this as the destination side of the predicate."""
     d1_subgraph: set[str] = {
-        n
-        for n, d in concept_graph.nodes(data=True)
-        if d.get("depth_label") == "d1"
+        n for n, d in concept_graph.nodes(data=True) if d.get("depth_label") == "d1"
     }
     if not d1_subgraph:
         return set(), set()
@@ -215,14 +213,16 @@ def _materialize_group_graph(
     d1_root_gid: str | None = None,
     d1_calc_roots: set[str] | None = None,
     d1_subgraph: set[str] | None = None,
-) -> nx.DiGraph:
-    """Realize the in-flight `GroupBucket` map as an nx.DiGraph with node
-    attributes the downstream consumers (strategy walker, visualizer) read."""
+) -> tuple[nx.DiGraph, dict[str, GroupAttrs]]:
+    """Realize the in-flight `GroupBucket` map as an nx.DiGraph plus a
+    side-table of typed `GroupAttrs` keyed by group id. The graph holds
+    topology + edge metadata only; downstream consumers read per-group state
+    via `attrs[gid]` and get attribute access + type checking."""
     group_graph: nx.DiGraph = nx.DiGraph()
+    attrs: dict[str, GroupAttrs] = {}
     for gid, bucket in buckets.items():
         members = tuple(bucket.primary_members) + tuple(bucket.secondary_members)
-        group_graph.add_node(
-            gid,
+        attrs[gid] = GroupAttrs(
             depth_label=bucket.depth_label,
             derivation=bucket.derivation,
             grain_components=bucket.grain_components,
@@ -231,15 +231,8 @@ def _materialize_group_graph(
             primary_members=tuple(bucket.primary_members),
             secondary_members=tuple(bucket.secondary_members),
             member_depths=dict(bucket.member_depths),
-            # Atoms (BoolExpr) applied AT this group. A clause like
-            # `state='TN' AND year=2000` is decomposed and each atom finds its
-            # own highest-allowed group independently — so a single clause
-            # may live at multiple groups, or one group may collect atoms
-            # from several clauses.
-            condition_atoms=[],
-            # String renderings of the atoms above, just for graph visualization.
-            conditions=[],
         )
+        group_graph.add_node(gid)
 
     # Propagate concept-level edges to the group level. Both `lineage` and
     # `constraint` edges become group predecessor relationships: lineage is
@@ -264,11 +257,7 @@ def _materialize_group_graph(
         edge_kind = edata.get("kind")
         if edge_kind not in ("lineage", "constraint", "existence"):
             continue
-        if (
-            d1_root_gid is not None
-            and u in d1_calc_roots
-            and v in d1_subgraph
-        ):
+        if d1_root_gid is not None and u in d1_calc_roots and v in d1_subgraph:
             gu = d1_root_gid
         else:
             gu = primary_group[u]
@@ -293,7 +282,7 @@ def _materialize_group_graph(
         else:
             group_graph.add_edge(gu, gv, kind=edge_kind)
 
-    return group_graph
+    return group_graph, attrs
 
 
 def _main_lineage_groups(
@@ -309,9 +298,7 @@ def _main_lineage_groups(
     the main row stream unfiltered)."""
     mandatory_addrs = {c.address for c in mandatory_list}
     seeds = {
-        gid
-        for gid, b in buckets.items()
-        if mandatory_addrs & set(b.primary_members)
+        gid for gid, b in buckets.items() if mandatory_addrs & set(b.primary_members)
     }
     if not seeds:
         return set(buckets.keys())
@@ -332,6 +319,7 @@ def _main_lineage_groups(
 
 def _inject_conditions(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
@@ -351,9 +339,7 @@ def _inject_conditions(
     # row inputs only fit in R_d1 still have to land somewhere, so we exclude
     # R_d1 from the candidate set and let the d1's downstream paths host the
     # filter (R_other, or a basic/aggregate below it).
-    d1_root_ids = {
-        gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH
-    }
+    d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
     main_lineage = (
         _main_lineage_groups(group_graph, buckets, mandatory_list)
         if mandatory_list
@@ -414,8 +400,7 @@ def _inject_conditions(
             candidates = [
                 gid
                 for gid in group_members
-                if gid not in d1_root_ids
-                and row_inputs <= _reachable_input(gid)
+                if gid not in d1_root_ids and row_inputs <= _reachable_input(gid)
             ]
             if not candidates:
                 # Fail fast — silently dropping an atom changes query
@@ -455,8 +440,8 @@ def _inject_conditions(
                     f"downstream of d0 barrier(s) {sorted(offending)}; "
                     f"conditions cannot be pushed past row-shape changes."
                 )
-            group_graph.nodes[chosen]["condition_atoms"].append(atom)
-            group_graph.nodes[chosen]["conditions"].append(str(atom))
+            attrs[chosen].condition_atoms.append(atom)
+            attrs[chosen].conditions.append(str(atom))
             condition_group_ids.add(chosen)
 
     return condition_group_ids
@@ -482,6 +467,7 @@ def _color_phases(
 
 def _add_final_node(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     concept_graph: nx.DiGraph,
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
@@ -492,11 +478,10 @@ def _add_final_node(
     non_condition_members = tuple(
         n for n, d in concept_graph.nodes(data=True) if d.get("depth_label") != "d1"
     )
-    group_graph.add_node(
-        FINAL_NODE_ID,
+    group_graph.add_node(FINAL_NODE_ID)
+    attrs[FINAL_NODE_ID] = GroupAttrs(
         depth_label="final",
         derivation="final",
-        grain_components=frozenset(),
         members=non_condition_members,
         conditions=[str(c) for c in conditions],
     )
@@ -507,6 +492,7 @@ def _add_final_node(
 
 def _compute_concept_sets(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     concept_graph: nx.DiGraph,
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
@@ -560,10 +546,10 @@ def _compute_concept_sets(
     native_grain_of: dict[str, frozenset[str]] = {}
     behavior_of = {}
     for gid in group_graph.nodes:
-        data = group_graph.nodes[gid]
-        primary_of[gid] = set(data.get("primary_members", ()))
-        grain_of[gid] = frozenset(data.get("grain_components", frozenset()))
-        derivation_of[gid] = data.get("derivation", "")
+        a = attrs[gid]
+        primary_of[gid] = set(a.primary_members)
+        grain_of[gid] = frozenset(a.grain_components)
+        derivation_of[gid] = a.derivation
     for gid, bucket in buckets.items():
         beh = behavior_for(derivation_of[gid])
         behavior_of[gid] = beh
@@ -590,7 +576,7 @@ def _compute_concept_sets(
         # graph (discovery_v4 visualizations) can still proceed; SQL
         # generation will fail downstream where the cycle bites for real.
         try:
-            cycle = nx.find_cycle(lineage_only)
+            cycle = nx.find_cycle(dep_graph)
         except nx.NetworkXNoCycle:
             cycle = None
         logger.warning(
@@ -636,11 +622,15 @@ def _compute_concept_sets(
     # builds correctly without polluting JOIN logic.
     primary_to_gid: dict[str, str] = {}
     for gid in group_graph.nodes:
-        for addr in group_graph.nodes[gid].get("primary_members", ()):
+        if gid == FINAL_NODE_ID:
+            continue
+        for addr in attrs[gid].primary_members:
             primary_to_gid.setdefault(addr, gid)
     existence_demand: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
     for gid in group_graph.nodes:
-        for atom in group_graph.nodes[gid].get("condition_atoms", []) or []:
+        if gid == FINAL_NODE_ID:
+            continue
+        for atom in attrs[gid].condition_atoms:
             for arg_group in getattr(atom, "existence_arguments", ()) or ():
                 for arg in arg_group:
                     source_gid = primary_to_gid.get(arg.address)
@@ -676,9 +666,7 @@ def _compute_concept_sets(
             for sibling in group_graph.predecessors(succ):
                 if sibling == gid or sibling == FINAL_NODE_ID:
                     continue
-                sibling_kind = group_graph.edges[sibling, succ].get(
-                    "kind", "lineage"
-                )
+                sibling_kind = group_graph.edges[sibling, succ].get("kind", "lineage")
                 if sibling_kind == "existence":
                     continue
                 outs |= grain_of.get(sibling, frozenset()) & cap_gid
@@ -701,26 +689,29 @@ def _compute_concept_sets(
                         ins.add(p)
             else:
                 ins.add(c)
-        for atom in group_graph.nodes[gid].get("condition_atoms", []) or []:
+        for atom in attrs[gid].condition_atoms:
             for arg in atom.row_arguments:
                 if arg.address not in primaries:
                     ins.add(arg.address)
         input_concepts[gid] = ins
 
     for gid in group_graph.nodes:
-        group_graph.nodes[gid]["output_concepts"] = tuple(sorted(output_concepts[gid]))
-        group_graph.nodes[gid]["hidden_concepts"] = tuple(sorted(hidden_concepts[gid]))
-        group_graph.nodes[gid]["input_concepts"] = tuple(sorted(input_concepts[gid]))
-
-
+        if gid == FINAL_NODE_ID:
+            continue
+        attrs[gid].output_concepts = tuple(sorted(output_concepts[gid]))
+        attrs[gid].hidden_concepts = tuple(sorted(hidden_concepts[gid]))
+        attrs[gid].input_concepts = tuple(sorted(input_concepts[gid]))
 
 
 def build_group_graph(
     concept_graph: nx.DiGraph,
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
-) -> nx.DiGraph:
+) -> tuple[nx.DiGraph, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
+
+    Returns the graph (topology + edge metadata) and a side-table of typed
+    per-group attributes keyed by group id.
 
     Grouping is delegated to per-derivation rules in `group_rules.py`:
     most derivations group by equality on `(depth_label, grain)`; ROOT
@@ -730,7 +721,7 @@ def build_group_graph(
     d1_calc_roots, d1_subgraph = _d1_calc_subgraph(concept_graph)
     d1_root_gid = _add_d1_root_bucket(concept_graph, buckets, d1_calc_roots)
     _attach_secondary_members(concept_graph, buckets)
-    group_graph = _materialize_group_graph(
+    group_graph, attrs = _materialize_group_graph(
         concept_graph,
         primary_group,
         buckets,
@@ -739,10 +730,12 @@ def build_group_graph(
         d1_subgraph=d1_subgraph,
     )
     condition_group_ids = _inject_conditions(
-        group_graph, buckets, conditions, mandatory_list
+        group_graph, attrs, buckets, conditions, mandatory_list
     )
     downstream = _color_phases(group_graph, condition_group_ids)
-    _add_final_node(group_graph, concept_graph, buckets, conditions, downstream)
+    _add_final_node(group_graph, attrs, concept_graph, buckets, conditions, downstream)
     if mandatory_list is not None:
-        _compute_concept_sets(group_graph, concept_graph, buckets, mandatory_list)
-    return group_graph
+        _compute_concept_sets(
+            group_graph, attrs, concept_graph, buckets, mandatory_list
+        )
+    return group_graph, attrs

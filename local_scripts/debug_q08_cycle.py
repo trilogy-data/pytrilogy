@@ -75,20 +75,19 @@ def strip_spurious_constraints(cg: nx.DiGraph) -> int:
 
 
 def report_group_graph(label: str, cg, build_stmt, conditions) -> None:
-    gg = build_group_graph(
+    gg, attrs = build_group_graph(
         cg,
         [conditions] if conditions else [],
         mandatory_list=list(build_stmt.output_components),
     )
     print(f"\n--- {label}: group_graph ({gg.number_of_nodes()} nodes, {gg.number_of_edges()} edges) ---")
-    for n, d in gg.nodes(data=True):
+    for n in gg.nodes:
         if n == "__final__":
             continue
-        members = d.get("members", ())
-        outputs = d.get("output_concepts")
-        print(f"  {n}  members={members}")
-        if outputs is not None:
-            print(f"    outputs={outputs}")
+        a = attrs[n]
+        print(f"  {n}  members={a.members}")
+        if a.output_concepts:
+            print(f"    outputs={a.output_concepts}")
     print("  -- group edges --")
     for u, v, ed in gg.edges(data=True):
         if ed.get("kind") == "lineage":
