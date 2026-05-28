@@ -1,3 +1,9 @@
+# Store channel sales (TPC-DS store_sales): fact at (item, ticket_number)
+# grain. Carries sales_price / list_price / ext_sales_price / coupon_amt /
+# net_paid / net_profit measures plus an is_returned boolean rolled up from
+# store_returns. Imports return_date/return_time/return_customer/
+# return_store/return_reason so returns can be sliced by their own context.
+
 import item as item;
 import date as date;
 import date as return_date;

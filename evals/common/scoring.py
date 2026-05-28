@@ -237,10 +237,18 @@ def make_scoring_engine(db_path: Path, workspace: Path, extension: str):
     return engine
 
 
-def score_query(engine, workspace: Path, idx: int, extension: str) -> QueryResult:
+def score_query(
+    engine,
+    workspace: Path,
+    idx: int,
+    extension: str,
+    params: dict | None = None,
+) -> QueryResult:
     """Score a single query — for live dashboard updates that don't want to
-    wait for the whole run to finish before grading."""
-    return _score_one(engine, workspace, idx, extension)
+    wait for the whole run to finish before grading. ``params`` is the same
+    shape as the prompt JSON's ``params`` field (``{name: {type, value}}``)
+    and is injected into the executor's environment before generation."""
+    return _score_one(engine, workspace, idx, extension, params=params)
 
 
 def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
@@ -267,7 +275,13 @@ def score_queries(
     return [_score_one(engine, workspace, idx, extension) for idx in ids]
 
 
-def _score_one(engine, workspace: Path, idx: int, extension: str) -> QueryResult:
+def _score_one(
+    engine,
+    workspace: Path,
+    idx: int,
+    extension: str,
+    params: dict | None = None,
+) -> QueryResult:
     from trilogy.core.models.environment import Environment
 
     query_file = _find_query_file(workspace, idx)
@@ -277,6 +291,10 @@ def _score_one(engine, workspace: Path, idx: int, extension: str) -> QueryResult
     text = query_file.read_text(encoding="utf-8")
     try:
         engine.environment = Environment(working_path=workspace)
+        if params:
+            engine.environment.set_parameters(
+                **{name: spec.get("value") for name, spec in params.items()}
+            )
         statements = engine.generate_sql(text)
     except Exception as exc:
         return QueryResult(

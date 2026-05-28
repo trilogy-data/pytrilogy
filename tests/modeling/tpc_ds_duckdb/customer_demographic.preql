@@ -1,3 +1,8 @@
+# Customer demographic dimension (TPC-DS customer_demographics): gender,
+# marital and education status, credit rating, purchase-estimate bucket,
+# and dependent counts (total / employed / college). Referenced from
+# customer.demographics and from the *_CDEMO_SK columns on sales facts.
+
 key id int;
 
 properties id (

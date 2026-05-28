@@ -107,7 +107,9 @@ LIST_FILES_TOOL = LLMToolDefinition(
     description=(
         "List files in the workspace (default: current directory, recursive). "
         "Use this when unsure what files exist — for example, before assuming "
-        "a path like './store_sales.preql' (the model files live under raw/)."
+        "a path like './store_sales.preql' (the model files live under raw/). "
+        "For .preql files, a leading `#` comment block at the top of the file "
+        "is shown beneath the path as a one-line description (truncated)."
     ),
     input_schema={
         "type": "object",
@@ -207,6 +209,9 @@ _LIST_FILES_SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules"}
 _LIST_FILES_SKIP_PREFIXES = ("_worker_",)
 _LIST_FILES_SKIP_SUFFIXES = (".duckdb", ".pyc")
 _LIST_FILES_MAX_ENTRIES = 500
+_LIST_FILES_DESC_LIMIT = 140
+_LIST_FILES_DESC_PREFIX = "    ↳ "
+_PREQL_HEAD_SCAN_BYTES = 4096
 
 
 def _should_skip_entry(name: str) -> bool:
@@ -217,6 +222,44 @@ def _should_skip_entry(name: str) -> bool:
     if any(name.endswith(s) for s in _LIST_FILES_SKIP_SUFFIXES):
         return True
     return False
+
+
+def _read_preql_description(path: Path) -> str | None:
+    """First-block `#` comment at the top of a .preql file, flattened to a
+    single line; ``None`` if the file does not start with a comment block."""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            head = f.read(_PREQL_HEAD_SCAN_BYTES)
+    except OSError:
+        return None
+    lines = head.splitlines()
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    parts: list[str] = []
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped or not stripped.startswith("#"):
+            break
+        parts.append(stripped.lstrip("#").strip())
+        i += 1
+    text = " ".join(p for p in parts if p)
+    return text or None
+
+
+def _truncate_description(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: max(limit - 1, 0)] + "…"
+
+
+def _append_preql_description(entries: list[str], path: Path) -> None:
+    if path.suffix != ".preql":
+        return
+    desc = _read_preql_description(path)
+    if desc:
+        entries.append(
+            _LIST_FILES_DESC_PREFIX
+            + _truncate_description(desc, _LIST_FILES_DESC_LIMIT)
+        )
 
 
 def handle_list_files(state: AgentState, args: dict) -> str:
@@ -232,6 +275,7 @@ def handle_list_files(state: AgentState, args: dict) -> str:
     if not root.is_dir():
         return f"list_files error: not a directory: {path}"
     entries: list[str] = []
+    file_count = 0
     truncated = False
     if recursive:
         for current, dirs, files in os.walk(root):
@@ -242,7 +286,9 @@ def handle_list_files(state: AgentState, args: dict) -> str:
                     continue
                 rel_path = (rel / name).as_posix() if str(rel) != "." else name
                 entries.append(rel_path)
-                if len(entries) >= _LIST_FILES_MAX_ENTRIES:
+                _append_preql_description(entries, Path(current) / name)
+                file_count += 1
+                if file_count >= _LIST_FILES_MAX_ENTRIES:
                     truncated = True
                     break
             if truncated:
@@ -253,9 +299,12 @@ def handle_list_files(state: AgentState, args: dict) -> str:
                 continue
             suffix = "/" if child.is_dir() else ""
             entries.append(child.name + suffix)
-    if not entries:
+            if child.is_file():
+                _append_preql_description(entries, child)
+            file_count += 1
+    if file_count == 0:
         return f"(no files under {path})"
-    header = f"files under {path} ({len(entries)}{'+' if truncated else ''}):\n"
+    header = f"files under {path} ({file_count}{'+' if truncated else ''}):\n"
     return header + "\n".join(entries)
 
 

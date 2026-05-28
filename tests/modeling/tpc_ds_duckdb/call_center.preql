@@ -1,3 +1,6 @@
+# Call center dimension (TPC-DS call_center): physical centers handling
+# catalog and web orders. Referenced by catalog_sales.CS_CALL_CENTER_SK.
+
 key id int;
 
 properties id (

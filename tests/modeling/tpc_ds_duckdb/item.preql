@@ -1,3 +1,7 @@
+# Item / product dimension (TPC-DS item): brand, category, class, current
+# price, wholesale cost, color, size, manufacturer and class hierarchies.
+# Referenced by every sales/returns fact via *_ITEM_SK and by inventory.
+
 key id int;
 
 properties id (

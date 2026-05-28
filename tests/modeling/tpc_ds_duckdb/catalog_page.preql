@@ -1,3 +1,7 @@
+# Catalog page dimension (TPC-DS catalog_page): paper-catalog page slot
+# (department, catalog number, page number) where a catalog product appeared.
+# Referenced by catalog_sales.CS_CATALOG_PAGE_SK.
+
 key id int;
 
 properties id (

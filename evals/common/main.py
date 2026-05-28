@@ -389,7 +389,11 @@ def run(spec: BenchmarkSpec) -> int:
                 try:
                     with scoring_lock:
                         per_query_scores[index] = scoring.score_query(
-                            scoring_engine, workspace, qid, spec.duckdb_extension
+                            scoring_engine,
+                            workspace,
+                            qid,
+                            spec.duckdb_extension,
+                            params=entry.get("params"),
                         )
                 except Exception as exc:
                     per_query_scores[index] = scoring.QueryResult(
@@ -443,6 +447,7 @@ def run(spec: BenchmarkSpec) -> int:
                             workspace,
                             entry["id"],
                             spec.duckdb_extension,
+                            params=entry.get("params"),
                         )
                 except Exception as exc:
                     per_query_scores[i] = scoring.QueryResult(

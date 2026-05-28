@@ -1,3 +1,8 @@
+# Store channel returns (TPC-DS store_returns): item-level returns joined
+# back to the originating store_sales row by ticket_number + item.id. Exposes
+# return_amount; pair with store_sales.net_paid for return-rate analysis
+# (q17, q25, q29).
+
 import store as store;
 import store_sales as store_sales;
 import item as item;

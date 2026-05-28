@@ -1,3 +1,9 @@
+# Date dimension (TPC-DS date_dim): calendar attributes (year, quarter,
+# month_of_year, day_of_week/month, named columns) plus week and month
+# sequence numbers. Imported many times under different aliases — sold_date,
+# ship_date, return_date, first_sales_date, etc. — by the sales/returns/
+# inventory facts.
+
 key id int;
 
 properties id (

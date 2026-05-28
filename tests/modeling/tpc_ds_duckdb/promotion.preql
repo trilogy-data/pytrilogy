@@ -1,3 +1,8 @@
+# Promotion dimension (TPC-DS promotion): channel flags (email, catalog,
+# event, dmail, tv, radio, press) plus cost per promo. Referenced by
+# *_PROMO_SK on sales facts; q07/q26/q61 use the channel flags to isolate
+# promoted vs un-promoted purchases.
+
 key id int;
 
 properties id (

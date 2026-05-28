@@ -1,3 +1,7 @@
+# Address dimension (TPC-DS customer_address): mailing addresses shared
+# across customers, stores, warehouses, and web sites. Joined as
+# `customer_address`, `bill_address`, `ship_address`, etc. by the sales facts.
+
 key id int;
 
 properties id (

@@ -627,10 +627,7 @@ limit 10;`
   Input 'query17.preql' does not exist.
   ```
 
-  ```text
-  Input 'raw/store_sales.preql:s' does not exist.
-  ```
-- `trilogy run query15.preql`
+### `syntax-missing-alias`
 
 - `trilogy run --import raw/web_sales:web_sales --import raw/catalog_sales:catalog_sales select web_sales.ext_sales_price ? web_sales.ext_sales_price is not null limit 5;`
 

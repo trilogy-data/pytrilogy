@@ -1,3 +1,7 @@
+# Customer dimension (TPC-DS customer): names, contact info, birth/age
+# attributes, plus links to demographics, household_demographic, address,
+# and first-sales/first-shipto date dimensions.
+
 import customer_demographic as demographics;
 import household_demographic as household_demographic;
 import address as address;

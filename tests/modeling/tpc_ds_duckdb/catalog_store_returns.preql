@@ -1,3 +1,14 @@
+# Cross-channel correlation source for q17/q25: "items the same customer
+# bought at a store, returned at a store, and also bought via catalog". A
+# single `customer` concept is shared across all three physical tables —
+# trilogy's cross-source join on (customer, item) then constrains the
+# customer match without any per-query `merge` declarations.
+#
+# NB: this conflates SS_CUSTOMER_SK / SR_CUSTOMER_SK / CS_BILL_CUSTOMER_SK,
+# which is fine for q17/q25 but not for q29 (q29's original SQL explicitly
+# requires SS_CUSTOMER_SK = SR_CUSTOMER_SK, which a single-concept model
+# can't express). q29 stays on the merge form for now.
+
 import item as item;
 import customer as customer;
 import store as store;
@@ -6,16 +17,6 @@ import date as store_return_date;
 import date as catalog_date;
 import time as time;
 
-# Cross-channel correlation source for q17/q25:
-# "items the same customer bought at a store, returned at a store, and also
-#  bought via catalog". A single `customer` concept is shared across all three
-# physical tables — trilogy's cross-source join on (customer, item) then
-# constrains the customer match without any per-query `merge` declarations.
-#
-# NB: this conflates SS_CUSTOMER_SK / SR_CUSTOMER_SK / CS_BILL_CUSTOMER_SK,
-# which is fine for q17/q25 but not for q29 (q29's original SQL explicitly
-# requires SS_CUSTOMER_SK = SR_CUSTOMER_SK, which a single-concept model
-# can't express). q29 stays on the merge form for now.
 key ticket_number int;
 key catalog_order_number int;
 

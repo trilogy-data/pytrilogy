@@ -19,12 +19,18 @@ and do NOT edit files in `raw/`.
 
 Answer the ONE business question below by writing a Trilogy query file to
 `query{{nn}}.preql` in the working directory (alongside `trilogy.toml`, NOT
-inside `raw/`). Validate with `trilogy run query{{nn}}.preql`. Return control
-once it runs cleanly.
+inside `raw/`). Validate with `trilogy run query{{nn}}.preql{{validate_params}}`.
+Return control once it runs cleanly.
 
 Question {{id}}:
-{{prompt}}
+{{prompt}}{{params_block}}
 """
+
+_PARAMS_HEADER = """
+
+Parameters (the harness injects these via `--param NAME=VALUE` at evaluation
+time; declare each in your .preql with `parameter NAME TYPE;` and reference
+them as regular fields):"""
 
 _TASK_TEMPLATE = """\
 Trilogy project in this directory. `trilogy.toml` configures a DuckDB database
@@ -62,12 +68,46 @@ def selected_ids(spec: BenchmarkSpec, num_queries: int) -> list[int]:
     return [p["id"] for p in active_prompts(spec)[:num_queries]]
 
 
+def _shell_quote(value: str) -> str:
+    """Quote a value for the `--param key=value` example we hand to the agent.
+    Stay readable — only wrap in double quotes when there's whitespace or a
+    shell-special char; embedded double quotes get backslash-escaped."""
+    if not value:
+        return '""'
+    if any(c in value for c in ' \t"\\$`'):
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return value
+
+
+def _render_params_block(params: dict) -> tuple[str, str]:
+    """Returns (params_block, validate_params_suffix). The block is appended
+    to the prompt to describe each parameter; the suffix is appended to the
+    sample `trilogy run` invocation so the agent can copy-paste it."""
+    if not params:
+        return "", ""
+    lines: list[str] = [_PARAMS_HEADER]
+    cli_suffix_parts: list[str] = []
+    for name, spec in params.items():
+        ptype = spec.get("type", "string")
+        value = spec.get("value", "")
+        desc = spec.get("description", "")
+        desc_tail = f" — {desc}" if desc else ""
+        lines.append(f"  - {name} ({ptype}){desc_tail}")
+        lines.append(f"      value: {value}")
+        cli_suffix_parts.append(f"--param {name}={_shell_quote(str(value))}")
+    suffix = " " + " ".join(cli_suffix_parts) if cli_suffix_parts else ""
+    return "\n".join(lines), suffix
+
+
 def build_single_query_task(spec: BenchmarkSpec, entry: dict) -> str:
     template = _SINGLE_QUERY_TEMPLATE.format(db=spec.db_filename, bench=spec.name)
+    params_block, validate_params = _render_params_block(entry.get("params") or {})
     return template.format(
         id=entry["id"],
         nn=f"{entry['id']:02d}",
         prompt=entry["prompt"],
+        params_block=params_block,
+        validate_params=validate_params,
     )
 
 

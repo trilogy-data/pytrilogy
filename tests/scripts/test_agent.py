@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from trilogy.ai.enums import Provider
@@ -463,10 +465,127 @@ def test_list_files_reports_empty_directory(tmp_path):
     assert "no files under" in out
 
 
+def test_list_files_shows_preql_header_description(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "store_sales.preql").write_text(
+        "# Store channel sales — fact table at ticket/item grain.\n"
+        "# Joins back to store_returns via ticket_number+item.id.\n"
+        "\n"
+        "key ticket_number int;\n",
+        encoding="utf-8",
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    lines = out.splitlines()
+    idx = lines.index("store_sales.preql")
+    desc = lines[idx + 1]
+    assert agent_tools_mod._LIST_FILES_DESC_PREFIX in desc
+    assert "Store channel sales" in desc
+    assert "store_returns" in desc
+    # File count in the header counts files only, not the trailing desc line.
+    assert "(1)" in lines[0]
+
+
+def test_list_files_skips_description_when_no_header_comment(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "bare.preql").write_text("key id int;\n", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "bare.preql" in out
+    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+
+
+def test_list_files_ignores_comments_not_at_top(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "midcomment.preql").write_text(
+        "key id int;\n# this comment is not the leading block\n",
+        encoding="utf-8",
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+
+
+def test_list_files_truncates_long_descriptions(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    long_desc = "x" * 500
+    (tmp_path / "wordy.preql").write_text(
+        f"# {long_desc}\nkey id int;\n", encoding="utf-8"
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    desc_lines = [
+        ln for ln in out.splitlines() if agent_tools_mod._LIST_FILES_DESC_PREFIX in ln
+    ]
+    assert len(desc_lines) == 1
+    assert "…" in desc_lines[0]
+    assert len(desc_lines[0]) < 200
+
+
+def test_list_files_skips_description_for_non_preql(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "notes.md").write_text(
+        "# Markdown header that is not a preql description\n", encoding="utf-8"
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "notes.md" in out
+    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+
+
+def test_list_files_shows_description_in_non_recursive_mode(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "item.preql").write_text(
+        "# Item dimension — brand, category, price.\nkey id int;\n",
+        encoding="utf-8",
+    )
+    out = handle_list_files(AgentState(), {"path": ".", "recursive": False})
+    assert "Item dimension" in out
+
+
+def test_list_files_shows_description_for_nested_preql(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "customer.preql").write_text(
+        "# Customer dimension — names and demographics.\nkey id int;\n",
+        encoding="utf-8",
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "raw/customer.preql" in out
+    assert "Customer dimension" in out
+
+
+def test_read_preql_description_handles_blank_lines_before_comment(tmp_path):
+    p = tmp_path / "x.preql"
+    p.write_text(
+        "\n\n# First real line is the header.\n# Second header line.\nkey id int;\n",
+        encoding="utf-8",
+    )
+    desc = agent_tools_mod._read_preql_description(p)
+    assert desc == "First real line is the header. Second header line."
+
+
+def test_read_preql_description_returns_none_for_no_comment(tmp_path):
+    p = tmp_path / "x.preql"
+    p.write_text("key id int;\n", encoding="utf-8")
+    assert agent_tools_mod._read_preql_description(p) is None
+
+
+def test_read_preql_description_strips_double_hash(tmp_path):
+    p = tmp_path / "x.preql"
+    p.write_text("## Heading style still works\nkey id int;\n", encoding="utf-8")
+    assert agent_tools_mod._read_preql_description(p) == "Heading style still works"
+
+
+def test_read_preql_description_handles_oserror(monkeypatch, tmp_path):
+    p = tmp_path / "x.preql"
+    p.write_text("# header\n", encoding="utf-8")
+
+    def boom(self, *a, **kw):
+        raise OSError("denied")
+
+    monkeypatch.setattr(Path, "open", boom)
+    assert agent_tools_mod._read_preql_description(p) is None
+
+
 def test_read_file_reports_oserror(monkeypatch, tmp_path):
     target = tmp_path / "q.preql"
     target.write_text("x", encoding="utf-8")
-    from pathlib import Path
 
     def boom(self, *a, **kw):
         raise OSError("permission denied")

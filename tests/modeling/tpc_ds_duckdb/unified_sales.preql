@@ -1,3 +1,9 @@
+# Unified sales fact across all three TPC-DS channels (web / catalog /
+# store) at (item, order_id, sales_channel) grain. Combines sales and
+# returns into one concept set with `is_returned` and `return_amount` so
+# cross-channel queries don't need per-channel branches. `channel_dim_id`
+# resolves to store / catalog_page / web_site depending on sales_channel.
+
 import item as item;
 import date as date;
 import date as return_date;

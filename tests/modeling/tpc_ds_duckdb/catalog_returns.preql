@@ -1,3 +1,7 @@
+# Catalog channel returns (TPC-DS catalog_returns): item/order grain returns
+# tied to the originating catalog_sales row. Exposes net_loss, refunded_cash,
+# store_credit and return_amount* plus a had_return boolean for filtered metrics.
+
 import catalog_sales as sales;
 import item as item;
 import date as date;
