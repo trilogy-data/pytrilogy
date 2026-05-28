@@ -1,5 +1,5 @@
 query_id = "64"
-gen_length = 16002
+gen_length = 15813
 preql_size = 4256
 comp_size = 3783
 generated_sql = """
@@ -80,7 +80,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"ss_customer_first_shipto_date_date\" on \"ss_customer_customers\".\"C_FIRST_SHIPTO_DATE_SK\" = \"ss_customer_first_shipto_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"ss_item_items\".\"I_ITEM_SK\" in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\" is not null and \"ss_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" != \"ss_customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\"
+    \"ss_item_items\".\"I_ITEM_SK\" in (select cooperative.\"cs_ui_cs_ui_item_id\" from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not null) and \"ss_date_date\".\"D_YEAR\" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium') and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\" is not null
 
 GROUP BY
     1,
@@ -204,13 +204,13 @@ SELECT
     \"scrawny\".\"ss_rows_99_ss_customer_address_street_number\" as \"_q64_results_c_sn_99\",
     \"scrawny\".\"ss_rows_99_ss_customer_address_zip\" as \"_q64_results_c_zip_99\",
     \"scrawny\".\"ss_rows_99_ss_date_year\" as \"_q64_results_syear_99\",
+    \"scrawny\".\"ss_rows_99_ss_item_id\" as \"item_sk\",
     \"scrawny\".\"ss_rows_99_ss_sale_address_city\" as \"_q64_results_b_city_99\",
     \"scrawny\".\"ss_rows_99_ss_sale_address_street_name\" as \"_q64_results_b_str_99\",
     \"scrawny\".\"ss_rows_99_ss_sale_address_street_number\" as \"_q64_results_b_sn_99\",
     \"scrawny\".\"ss_rows_99_ss_sale_address_zip\" as \"_q64_results_b_zip_99\",
     \"scrawny\".\"ss_rows_99_ss_store_name\" as \"s_name\",
-    \"scrawny\".\"ss_rows_99_ss_store_zip\" as \"s_zip\",
-    coalesce(\"friendly\".\"ss_rows_99_ss_item_id\",\"scrawny\".\"ss_rows_99_ss_item_id\") as \"item_sk\"
+    \"scrawny\".\"ss_rows_99_ss_store_zip\" as \"s_zip\"
 FROM
     \"scrawny\"
     INNER JOIN \"friendly\" on \"scrawny\".\"ss_rows_99_ss_item_id\" is not distinct from \"friendly\".\"ss_rows_99_ss_item_id\")

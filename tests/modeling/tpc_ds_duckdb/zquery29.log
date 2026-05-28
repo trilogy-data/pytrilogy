@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 3690
+gen_length = 3739
 preql_size = 1537
 comp_size = 1089
 generated_sql = """
@@ -44,7 +44,10 @@ SELECT
     \"uneven\".\"store_returns_quantity\" as \"store_returns_quantity\",
     \"uneven\".\"store_sales_quantity\" as \"store_sales_quantity\"
 FROM
-    \"uneven\")
+    \"uneven\"
+WHERE
+    \"uneven\".\"catalog_sales_quantity\" > 0
+)
 SELECT
     \"juicy\".\"store_sales_item_name\" as \"store_sales_item_name\",
     \"juicy\".\"store_sales_item_desc\" as \"store_sales_item_desc\",

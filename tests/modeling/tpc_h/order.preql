@@ -13,7 +13,7 @@ property id.comment string;
 
 datasource orders(
     o_orderkey:id,
-    o_custkey:customer.id,
+    o_custkey:~customer.id,
     o_orderstatus: status,
     o_totalprice: total_price,
     o_orderdate: date,

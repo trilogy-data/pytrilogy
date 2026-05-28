@@ -70,6 +70,14 @@ except ImportError:
 
 FETCH_LIMIT = 51
 
+# Hard ceiling on rows pulled from the cursor for display. We fetch this
+# many regardless of the displayed-rows cap so the renderer can report the
+# real total (and middle-truncate against it). Large enough to know the
+# total for any plausible analytical result; cheap because the rows never
+# render — only the head/tail slice does. Hitting it triggers a loud warning
+# so the caller knows their query is bigger than introspection can reach.
+DISPLAY_FETCH_CEILING = 1_000_000
+
 # Rich markup styles
 STYLE_SUCCESS = "bold green"
 STYLE_INFO = "bold blue"

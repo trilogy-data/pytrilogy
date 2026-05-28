@@ -4,7 +4,11 @@ import re
 from bisect import bisect_right
 
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.parsing.v2.errors import create_generic_syntax_error, create_syntax_error
+from trilogy.parsing.v2.errors import (
+    create_generic_syntax_error,
+    create_syntax_error,
+    detect_subselect,
+)
 from trilogy.parsing.v2.syntax import (
     LARK_NODE_KIND,
     LARK_TOKEN_KIND,
@@ -258,6 +262,11 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     if by_pos is not None:
         return create_syntax_error(211, by_pos, text)
 
+    # 102: SQL-style subquery `(select ...)` / `(with ...)` open at pos.
+    sub_pos = detect_subselect(text, pos)
+    if sub_pos is not None:
+        return create_syntax_error(102, sub_pos, text)
+
     # 202: trailing-terminator missing. Check only when the error position
     # is at or past the last non-whitespace character — otherwise we'd mask
     # real mid-stream failures by prematurely terminating the statement.
@@ -272,7 +281,33 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     if _pest_parses(text[:pos] + "as trilogy_alias_probe;"):
         return create_syntax_error(201, pos, text)
 
+    # 203: derivation keyword + name but no `<- expression`. Pest reports
+    # the EOF/next-token position; probe with `<- 1;` inserted to confirm.
+    if _derivation_missing_arrow(text, pos):
+        return create_syntax_error(203, pos, text)
+
     return create_generic_syntax_error(raw_error, pos, text)
+
+
+_DERIVATION_HEAD_RE = re.compile(
+    r"\b(auto|metric|property|rowset)\s+[A-Za-z_][\w.]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def _derivation_missing_arrow(text: str, pos: int) -> bool:
+    """Pest reports the error column slightly before the missing arrow's
+    position (often at the identifier or its trailing space), so scan the
+    line up to and PAST pos to find a `<keyword> <name>` head, then probe."""
+    line_end = text.find("\n", pos)
+    if line_end == -1:
+        line_end = len(text)
+    match = _DERIVATION_HEAD_RE.search(text[:line_end])
+    if not match:
+        return False
+    # rowset/with take a select; the others take an expression.
+    rhs = " <- select 1 as one;\n" if match.group(1).lower() == "rowset" else " <- 1;\n"
+    return _pest_parses(text[:line_end] + rhs + text[line_end:])
 
 
 def parse_pest(text: str) -> SyntaxDocument:

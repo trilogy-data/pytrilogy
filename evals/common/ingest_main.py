@@ -86,6 +86,7 @@ def run(spec: BenchmarkSpec) -> int:
     load_env(args.env_file)
     if args.provider == "openrouter":
         os.environ.setdefault("OPENROUTER_PROVIDER", json.dumps(OPENROUTER_ROUTING))
+        os.environ.setdefault("OPENROUTER_SANITIZE_HTML_ESCAPES", "true")
     api_env = PROVIDER_ENV.get(args.provider, "OPENROUTER_API_KEY")
     if not os.environ.get(api_env):
         print(

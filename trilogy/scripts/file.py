@@ -15,6 +15,7 @@ from trilogy.scripts.file_helpers import (
     FileOperationError,
     get_backend,
 )
+from trilogy.scripts.file_helpers.preql_validation import validate_preql_content
 
 _FETCH_SCHEMES = {"http", "https", "file"}
 
@@ -160,6 +161,13 @@ def read_cmd(path: str) -> None:
     help="Fail if the target file does not already exist (update only).",
 )
 @click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    default=False,
+    help="Skip Trilogy syntax validation for .preql files (writes raw bytes).",
+)
+@click.option(
     "--quiet", "-q", is_flag=True, default=False, help="Suppress success output."
 )
 def write_cmd(
@@ -169,6 +177,7 @@ def write_cmd(
     from_url: str | None,
     escapes: bool,
     no_create: bool,
+    force: bool,
     quiet: bool,
 ) -> None:
     """Write/overwrite the file at PATH.
@@ -178,6 +187,10 @@ def write_cmd(
     single-line string — useful on shells without heredoc support (cmd.exe,
     some CI). --from-url accepts http(s):// and file:// URLs, e.g. a raw
     GitHub gist — the README's "copy this snippet" flow.
+
+    For .preql targets the content is parsed and rejected if invalid so a
+    truncated or HTML-escaped body can't land silently. Pass --force to skip
+    that check (e.g. partial drafts you intend to edit in place).
     """
     sources = [s for s in (content, from_file, from_url) if s is not None]
     if len(sources) > 1:
@@ -208,6 +221,20 @@ def write_cmd(
         data = _fetch_url(from_url)
     else:
         data = sys.stdin.buffer.read()
+
+    if not force and path.endswith(".preql"):
+        try:
+            preql_text = data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            print_error(
+                f"Refusing to write '{path}': content is not valid UTF-8 "
+                f"({exc}). Pass --force to skip validation."
+            )
+            raise click.exceptions.Exit(1) from exc
+        refusal = validate_preql_content(path, preql_text)
+        if refusal:
+            print_error(refusal)
+            raise click.exceptions.Exit(1)
 
     try:
         backend.write(path, data)

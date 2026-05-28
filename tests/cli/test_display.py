@@ -560,7 +560,10 @@ class TestResultsTable:
                 assert "---" in captured  # Separator
 
     def test_print_results_table_large_dataset(self, rich_mode):
-        """Test print_results_table with large dataset to test truncation."""
+        """Truncation now middle-truncates: head + ellipsis + tail, with a
+        footer reporting displayed-vs-total. Lets the agent confirm result
+        size without bumping --displayed-rows looking for a tail that may
+        not exist."""
 
         large_results = [(f"row{i}", f"data{i}") for i in range(100)]
 
@@ -568,26 +571,67 @@ class TestResultsTable:
         if rich_mode and RICH_AVAILABLE:
             with capture_rich_console_output() as output:
                 display.print_results_table(results)
-                captured = output.getvalue()
-                # Should show truncation message
-                assert "Showing first 50" in strip_ansi(captured)
-                assert "Result set was larger" in strip_ansi(captured)
-                # Should contain some data
+                captured = strip_ansi(output.getvalue())
+                # Footer reports the real total.
+                assert "50 of 100 rows shown" in captured
+                # Middle truncation keeps both head (row0) and tail (row99).
                 assert "row0" in captured
+                assert "row99" in captured
+                # And drops a middle row.
+                assert "row50" not in captured
                 # Box drawing characters for table
                 assert any(char in captured for char in ["┌", "│", "┐", "└", "┘", "─"])
         else:
             with capture_all_output() as (stdout, stderr):
                 display.print_results_table(results)
                 captured = stdout.getvalue() + stderr.getvalue()
-                # Fallback now caps at the same 50-row default the rich table
-                # uses — both render paths emit a "more rows" sentinel rather
-                # than firehosing the full result set.
+                # Fallback path also middle-truncates and reports the total.
                 assert "row0" in captured
-                assert "row49" in captured
+                assert "row99" in captured
                 assert "row50" not in captured
-                assert "first 50 rows" in captured.lower()
-                assert "Result set was larger" in captured
+                assert "50 of 100 rows shown" in captured
+
+
+class TestResultsFooter:
+    """Footer line under every result table — displayed vs. total rows."""
+
+    def test_footer_shows_exact_count_when_no_truncation(self, rich_mode):
+        small_results = [(f"r{i}",) for i in range(5)]
+        results = display.ResultSet(rows=small_results, columns=["x"])
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.print_results_table(results, row_limit=10)
+                captured = strip_ansi(output.getvalue())
+                assert "5 row(s)" in captured
+                # No middle-truncation footer wording.
+                assert "rows shown" not in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.print_results_table(results, row_limit=10)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "5 row(s)" in captured
+
+    def test_footer_warns_when_fetch_ceiling_hit(self, rich_mode, monkeypatch):
+        """When the result set hits the fetch ceiling, a loud warning fires
+        so the caller knows the total is approximate (>= ceiling)."""
+        import trilogy.scripts.display_core as core_mod
+
+        monkeypatch.setattr(core_mod, "DISPLAY_FETCH_CEILING", 20)
+        # 20 rows = ceiling; we report ">= 20" not "= 20".
+        results = display.ResultSet(rows=[(f"r{i}",) for i in range(20)], columns=["x"])
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.print_results_table(results, row_limit=4)
+                captured = strip_ansi(output.getvalue())
+                assert "WARNING" in captured
+                assert "fetch ceiling" in captured
+                assert "20+" in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.print_results_table(results, row_limit=4)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "WARNING" in captured
+                assert "fetch ceiling" in captured
 
 
 class TestContextManagers:

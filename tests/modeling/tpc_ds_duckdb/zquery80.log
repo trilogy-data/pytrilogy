@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 7251
+gen_length = 7444
 preql_size = 1251
 comp_size = 3674
 generated_sql = """
@@ -12,6 +12,9 @@ SELECT
      'CATALOG'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"catalog_page\" as \"sales_catalog_dim_unified\"
+WHERE
+    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_ID\" is not null
+
 UNION ALL
 SELECT
     \"sales_store_dim_unified\".\"S_STORE_SK\" as \"sales_channel_dim_id\",
@@ -19,13 +22,19 @@ SELECT
      'STORE'  as \"sales_sales_channel\"
 FROM
     \"memory\".\"store\" as \"sales_store_dim_unified\"
+WHERE
+    \"sales_store_dim_unified\".\"S_STORE_ID\" is not null
+
 UNION ALL
 SELECT
     \"sales_web_dim_unified\".\"web_site_sk\" as \"sales_channel_dim_id\",
     \"sales_web_dim_unified\".\"web_site_id\" as \"sales_channel_dim_text_id\",
      'WEB'  as \"sales_sales_channel\"
 FROM
-    \"memory\".\"web_site\" as \"sales_web_dim_unified\"),
+    \"memory\".\"web_site\" as \"sales_web_dim_unified\"
+WHERE
+    \"sales_web_dim_unified\".\"web_site_id\" is not null
+),
 abundant as (
 SELECT
     \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_id\",

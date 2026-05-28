@@ -9,8 +9,6 @@ auto tuple_key <- concat(
     '|',
     sales.item.category_id::string
 );
-auto fact_row_one <- count(sales.order_id) by sales.sales_channel, sales.order_id, sales.item.id;
-
 # cross_tuples: tuples sold in all 3 channels during 1999-2001. Equivalent to
 # the reference's 3-way INTERSECT on (i_brand_id, i_class_id, i_category_id)
 # across store/catalog/web sales.
@@ -54,7 +52,7 @@ select
     sales.item.class_id as class_l0,
     sales.item.category_id as category_l0,
     sum(sales.quantity * sales.list_price) as bucket_sum_l0,
-    sum(fact_row_one) as bucket_count_l0,
+    sum(sales.row_one) as bucket_count_l0,
     --avg_sales.average_sales,
 having
     bucket_sum_l0 > avg_sales.average_sales

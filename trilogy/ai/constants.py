@@ -9,7 +9,10 @@ Semantic model statements:
 - datasource statements define a datasource, which is a mapping of fields to a SQL database table. The left side is the SQL column name, the right side is the field name.
 
 SELECT RULES:
-- No FROM, JOIN, GROUP BY, SUB SELECTS, DISTINCT, UNION, or SELECT *.
+- No FROM, JOIN, GROUP BY, SUB SELECTS, DISTINCT, UNION, or SELECT *. The most common SUB SELECTS misuse is `IN (select ...)` to filter on a related dimension — that does not work. Instead, reference the dimension by its dotted path; Trilogy auto-resolves the join:
+  * Wrong (SQL-style subselect): `where store_sales.store_id in (select store_id where store.state = 'TN')`
+  * Right (dot-path on the related dim): `where store_sales.store.state = 'TN'`
+  This pattern generalises: any "filter the fact by some attribute of a related entity" → reach across the import chain (`fact.dim.attr`) and put it in WHERE.
 - Never write the `distinct` keyword. `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count the distinct values of a non-key property.
 - All fields exist in a global namespace; field paths look like `order.product.id`. Always use the full path. NEVER include a from clause.
 - If a field has a grain defined, and that grain is not in the query output, aggregate it to get desired result. 

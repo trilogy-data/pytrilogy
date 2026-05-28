@@ -93,6 +93,7 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
         "predicate_pushdown.after_union_dim",
         "predicate_pushdown.remove",
         "upgrade_join_on_guards.final",
+        "predicate_pushdown.after_final_upgrade",
     ]
     assert by_name["union_dim_pushdown"].depends_on == (
         "predicate_pushdown.initial",
@@ -103,6 +104,12 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
     )
     assert by_name["predicate_pushdown.remove"].depends_on == (
         "predicate_pushdown.after_union_dim",
+    )
+    assert by_name["predicate_pushdown.after_final_upgrade"].depends_on == (
+        "upgrade_join_on_guards.final",
+    )
+    assert by_name["predicate_pushdown.after_final_upgrade"].refires_after == (
+        "upgrade_join_on_guards.final",
     )
 
 

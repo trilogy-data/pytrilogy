@@ -60,11 +60,12 @@ can always `tail -f` it.
 
 OpenRouter multiplexes a model across several upstream providers, and some of
 them reject otherwise-valid tool requests (a hard `400`, which is not retried).
-The runner therefore pins routing for OpenRouter runs by exporting
-`OPENROUTER_PROVIDER` (consumed by trilogy's OpenRouter provider) — by default
-`{"order": ["DeepInfra"], "ignore": ["AtlasCloud"], "allow_fallbacks": true}`.
-Set `OPENROUTER_PROVIDER` yourself (env or `.env.secrets`) to override it; see
-the [provider-routing docs](https://openrouter.ai/docs/features/provider-routing).
+The runner therefore exports `OPENROUTER_PROVIDER` (consumed by trilogy's
+OpenRouter provider) — by default
+`{"ignore": ["AtlasCloud"], "allow_fallbacks": true}` — to block the known-bad
+route and let OpenRouter pick from the rest. Set `OPENROUTER_PROVIDER` yourself
+(env or `.env.secrets`) to override it; see the
+[provider-routing docs](https://openrouter.ai/docs/features/provider-routing).
 
 ### Output
 

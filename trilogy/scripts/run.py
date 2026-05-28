@@ -107,20 +107,24 @@ def _format_import(value: str) -> str:
     ),
 )
 @option(
-    "--rows",
+    "--displayed-rows",
+    "displayed_rows",
     type=int,
     default=10,
     show_default=True,
     help=(
         "Cap on result rows displayed per statement. The query still runs in "
-        "full — this caps the dump only. Use `--all-rows` to disable the cap."
+        "full — this caps the dump only. When the result exceeds the cap, the "
+        "table is middle-truncated (first half + ellipsis + last half) so you "
+        "see both the head and the tail. The footer reports displayed-vs-total "
+        "rows. Use `--all-rows` to disable the cap."
     ),
 )
 @option(
     "--all-rows",
     is_flag=True,
     default=False,
-    help="Show every result row, overriding --rows. Useful for piping.",
+    help="Show every result row, overriding --displayed-rows. Useful for piping.",
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
@@ -133,7 +137,7 @@ def run(
     config,
     env,
     imports: tuple[str, ...],
-    rows: int,
+    displayed_rows: int,
     all_rows: bool,
     conn_args,
 ):
@@ -197,7 +201,7 @@ def run(
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
         env=env,
-        row_limit=None if all_rows else rows,
+        row_limit=None if all_rows else displayed_rows,
     )
 
     try:

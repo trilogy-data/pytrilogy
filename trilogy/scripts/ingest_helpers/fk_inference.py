@@ -21,6 +21,7 @@ from trilogy.scripts.ingest_helpers.formatting import (
     canonicalize_names,
     canonicolize_name,
 )
+from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
 
 if TYPE_CHECKING:
     from trilogy.core.models.datasource import Datasource
@@ -36,6 +37,11 @@ _CONFIDENCE: dict[str, float] = {"exact": 1.0, "suffix": 0.85, "stem": 0.7}
 # Stage 2: accept a non-complete match when at least this fraction of sampled
 # from-values are found in the referenced key (tolerates dirty/sampled data).
 SUBSET_OVERLAP_THRESHOLD = 0.95
+# An FK column is considered NON-partial (complete) only when reverse coverage
+# — fraction of the parent's keys observed in the child — is at or above this
+# threshold. A small slack swallows sampling noise; anything visibly short of
+# full coverage stays partial so source-selection plays it safe.
+COMPLETE_REVERSE_THRESHOLD = 0.999
 # Bound on distinct from-values pulled per containment check.
 DEFAULT_SNIFF_SAMPLE = 50_000
 # Shortest name stem considered meaningful for a fuzzy entity match.
@@ -92,6 +98,12 @@ class InferredFK:
     to_column: str  # raw
     match_kind: str
     overlap: float | None  # None when sniffing was skipped (fast level)
+    # True when the parent's key has values that don't appear in the child
+    # column — i.e. the child is a strict subset and the source datasource
+    # cannot stand in for the parent as a complete source of that concept.
+    # Defaults conservatively to True; full-mode sniffing flips it to False
+    # when reverse coverage is ≥ ``COMPLETE_REVERSE_THRESHOLD``.
+    partial: bool = True
     # Set on role-playing-dimension conflicts so multiple FKs from one table
     # can import the dim under distinct names (e.g. ``first_shipto_date``).
     role_alias: str | None = None
@@ -100,6 +112,24 @@ class InferredFK:
     def target_ref(self) -> str:
         base = f"{self.to_table}.{self.to_column}"
         return f"{base}@{self.role_alias}" if self.role_alias else base
+
+    def binding(self) -> "FKBinding":
+        return FKBinding(target_ref=self.target_ref, partial=self.partial)
+
+
+@dataclass
+class FKBinding:
+    """Per-column FK wiring instructions handed to ``apply_foreign_key_references``.
+
+    ``target_ref`` is ``table.column`` or ``table.column@role_alias`` (the same
+    string produced by ``InferredFK.target_ref`` and parsed by the apply layer).
+    ``partial`` controls whether the rewritten datasource column receives a
+    ``~`` modifier — set when the child is a strict subset of the parent's
+    key, cleared when reverse-coverage proves the FK is complete.
+    """
+
+    target_ref: str
+    partial: bool = True
 
 
 def _fk_stem(canonical: str) -> str | None:
@@ -361,6 +391,8 @@ def _verify_column(
         candidate, overlap = top[0]
     else:
         candidate, overlap = _break_overlap_tie(executor, by_name, top, sample)
+    reverse = _reverse_coverage(executor, by_name, candidate, sample)
+    partial = reverse < COMPLETE_REVERSE_THRESHOLD
     return InferredFK(
         candidate.from_table,
         candidate.from_column,
@@ -368,8 +400,8 @@ def _verify_column(
         candidate.to_column,
         candidate.match_kind,
         overlap,
+        partial=partial,
     )
-    return None
 
 
 def _resolve_target_conflicts(
@@ -409,21 +441,17 @@ def _resolve_target_conflicts(
 def infer_foreign_keys(
     tables: list[TableFKInfo],
     executor: Any,
-    level: str,
+    level: IntrospectionLevel,
     sample_size: int = DEFAULT_SNIFF_SAMPLE,
 ) -> list[InferredFK]:
-    """Run Stage 1 (and Stage 2 for ``full``) and return accepted FK edges.
-
-    ``level`` is ``off`` (nothing), ``fast`` (name match only) or ``full``
-    (name match plus value sniffing).
-    """
-    if level == "off" or len(tables) < 2:
+    """Run Stage 1 (and Stage 2 for ``FULL``) and return accepted FK edges."""
+    if level is IntrospectionLevel.OFF or len(tables) < 2:
         return []
     candidates = generate_candidates(tables)
     by_name = {t.name: t for t in tables}
     accepted: list[InferredFK] = []
     for edges in candidates.values():
-        if level == "fast":
+        if level is IntrospectionLevel.FAST:
             best = edges[0]  # highest confidence
             accepted.append(
                 InferredFK(
@@ -466,12 +494,46 @@ def build_table_fk_info(
 
 
 def merge_fk_maps(
-    inferred: list[InferredFK], explicit: dict[str, dict[str, str]]
-) -> dict[str, dict[str, str]]:
+    inferred: list[InferredFK], explicit: dict[str, dict[str, FKBinding]]
+) -> dict[str, dict[str, FKBinding]]:
     """Combine inferred edges with explicit ``--fks``; explicit wins per column."""
-    merged: dict[str, dict[str, str]] = {}
+    merged: dict[str, dict[str, FKBinding]] = {}
     for fk in inferred:
-        merged.setdefault(fk.from_table, {})[fk.from_column] = fk.target_ref
+        merged.setdefault(fk.from_table, {})[fk.from_column] = fk.binding()
     for table, columns in explicit.items():
         merged.setdefault(table, {}).update(columns)
     return merged
+
+
+def enrich_explicit_fks_partial(
+    explicit_fk_map: dict[str, dict[str, FKBinding]],
+    by_name: dict[str, TableFKInfo],
+    executor: Any,
+    sample: int = DEFAULT_SNIFF_SAMPLE,
+) -> None:
+    """Resolve the partial flag on explicit FKs via reverse-coverage sniffing.
+
+    Explicit ``--fks`` arrive with the conservative ``partial=True`` default.
+    When we have an executor (full mode), check whether the parent's key is
+    fully covered by the child column; flip to ``partial=False`` when it is.
+    Tables not present in ``by_name`` (e.g. the user named a non-ingested
+    table) are left as-is. Mutates ``explicit_fk_map`` in place.
+    """
+    for from_table, columns in explicit_fk_map.items():
+        src = by_name.get(from_table)
+        if src is None:
+            continue
+        for from_column, binding in columns.items():
+            target_ref = binding.target_ref
+            if "@" in target_ref:
+                target_ref = target_ref.rsplit("@", 1)[0]
+            to_table, to_column = target_ref.rsplit(".", 1)
+            target = by_name.get(to_table)
+            if target is None:
+                continue
+            candidate = FKCandidate(
+                from_table, from_column, to_table, to_column, "exact"
+            )
+            reverse = _reverse_coverage(executor, by_name, candidate, sample)
+            if reverse >= COMPLETE_REVERSE_THRESHOLD:
+                binding.partial = False

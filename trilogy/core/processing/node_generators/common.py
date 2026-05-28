@@ -3,7 +3,7 @@ from typing import Callable, Dict, Iterable, List, Set, Tuple, cast
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, JoinType, Purpose
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BoolExpr,
@@ -338,16 +338,21 @@ def gen_property_enrichment_node(
 
     final_nodes: list[StrategyNode] = []
     input_concepts = list(base_node.output_concepts)
+    any_atoms_dropped = False
     for root_key, (properties, path) in lookup_groups.items():
         required = [environment.concepts[address] for address in sorted(path)]
         log_lambda(
             f"Generating property enrichment node for {root_key} with {sorted(properties)}"
         )
-        local_conditions, _ = _local_property_conditions(
-            conditions,
-            required,
-            _condition_key_addresses(required),
+        local_conditions, atoms_dropped = _split_conditions_for_enrichment(
+            conditions, required
         )
+        if atoms_dropped:
+            any_atoms_dropped = True
+            log_lambda(
+                f"Property enrichment for {root_key} dropped out-of-scope filter "
+                f"atoms; base node carries them. Will force INNER on the merge."
+            )
         enrich_node: StrategyNode | None = source_concepts(
             mandatory_list=required,
             environment=environment,
@@ -370,6 +375,7 @@ def gen_property_enrichment_node(
         ]
         + final_nodes,
         preexisting_conditions=conditions.conditional if conditions else None,
+        force_join_type=JoinType.INNER if any_atoms_dropped else None,
     )
 
 
@@ -384,6 +390,54 @@ def concepts_to_grain_concepts(
             concepts=concepts, environment=environment
         ).components
     ]
+
+
+def _split_conditions_for_enrichment(
+    conditions: BuildWhereClause | None,
+    enrichment_concepts: list[BuildConcept],
+) -> tuple[BuildWhereClause | None, bool]:
+    """Split ``conditions`` into atoms in-scope for the enrichment vs not.
+
+    "In scope" = every row-arg of the atom is the enrichment's join key, an
+    extra-required output, or one of their key parents. Atoms that reach
+    outside that scope (e.g. ``order.date IN range`` when the enrichment is
+    a customer-properties lookup) are assumed to be applied by the base node
+    and dropped from the enrichment's filter. The caller must force the
+    resulting merge to INNER when anything is dropped — otherwise outer-join
+    NULL-padding would bypass the now-missing predicate.
+    """
+    if conditions is None:
+        return None, False
+    in_scope: set[str] = set()
+    for c in enrichment_concepts:
+        in_scope.add(c.address)
+        # Only follow `.keys` for property-purpose concepts (where keys means
+        # "what this is a property of"). For KEY concepts, `.keys` is the row
+        # grain in the *source* namespace — e.g. ``store_sales.customer.id``
+        # is a foreign key whose ``.keys`` = ``{ticket_number, item.id}`` from
+        # store_sales, *not* customer. Walking those would drag store_sales
+        # identifiers into the enrichment's scope and keep atoms that filter
+        # the wrong side.
+        if c.purpose in PROPERTY_PURPOSES:
+            in_scope.update(c.keys or set())
+    kept: list[BoolExpr] = []
+    dropped = False
+    for atom in decompose_condition(conditions.conditional):
+        atom_addresses = {
+            arg.address
+            for arg in atom.row_arguments
+            if arg.derivation != Derivation.CONSTANT
+        }
+        if atom_addresses.issubset(in_scope):
+            kept.append(atom)
+        else:
+            dropped = True
+    if not kept:
+        return None, dropped
+    combined = combine_condition_atoms(kept)
+    if combined is None:
+        return None, dropped
+    return BuildWhereClause(conditional=combined), dropped
 
 
 def gen_enrichment_node(

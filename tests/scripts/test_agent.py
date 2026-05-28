@@ -13,24 +13,28 @@ from trilogy.ai.providers.base import LLMProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.execution.config import AgentConfig
 from trilogy.scripts import agent as agent_mod
+from trilogy.scripts import agent_tools as agent_tools_mod
 from trilogy.scripts import display_core
 from trilogy.scripts.agent import (
-    ALL_TOOLS,
-    AgentState,
-    TodoItem,
+    MAX_SUBMIT_KICKBACKS,
     _build_provider,
     _dispatch,
     _format_call,
     _maybe_flag_loop,
+    _render_reviewer_transcript,
     _run_turn,
     _status_message,
+)
+from trilogy.scripts.agent_tools import (
+    ALL_TOOLS,
+    AgentState,
+    TodoItem,
     handle_list_files,
     handle_read_file,
     handle_return_control,
     handle_show_message,
     handle_todo,
     handle_trilogy,
-    handle_write_file,
     truncate_middle,
 )
 
@@ -197,65 +201,11 @@ def test_maybe_flag_loop_resets_on_different_call():
     assert "[guidance]" not in _maybe_flag_loop(state, b, "ok")
 
 
-def test_write_file_creates_and_overwrites(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    result = handle_write_file(
-        AgentState(), {"path": "query01.preql", "content": "select 1 -> x;"}
-    )
-    assert "wrote 14 chars" in result
-    assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
-
-
-def test_write_file_refuses_empty_overwrite_of_nonempty_file(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "query01.preql").write_text("select 1 -> x;", encoding="utf-8")
-    result = handle_write_file(AgentState(), {"path": "query01.preql", "content": ""})
-    assert "refused" in result
-    assert (tmp_path / "query01.preql").read_text(encoding="utf-8") == "select 1 -> x;"
-
-
-def test_write_file_syntax_error_surfaces_parse_message(tmp_path, monkeypatch):
-    """A .preql write that fails to parse must refuse AND surface the parser's
-    own error inline — the agent needs the specific syntax message to fix the
-    content. Previous wording ('did not parse as Trilogy') was vague enough
-    that the agent often retried with the same broken content."""
-    monkeypatch.chdir(tmp_path)
-    # Truncated mid-statement (no `select`, no `;`) — mirrors the q01 failure
-    # pattern from the tpch eval where the model output got cut off.
-    result = handle_write_file(
-        AgentState(),
-        {"path": "query01.preql", "content": "where lineitem.shipdate::date"},
-    )
-    assert "refused" in result
-    assert "syntactically valid" in result
-    assert "Parse error:" in result
-    # The file must not have been written.
-    assert not (tmp_path / "query01.preql").exists()
-
-
-def test_write_file_flags_writes_into_raw(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    result = handle_write_file(
-        AgentState(), {"path": "raw/store.preql", "content": "key x int;"}
-    )
-    assert "[guidance]" in result and "raw/" in result
-
-
 def test_read_file_returns_content_and_reports_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "q.preql").write_text("select 1 -> x;", encoding="utf-8")
     assert handle_read_file(AgentState(), {"path": "q.preql"}) == "select 1 -> x;"
     assert "no such file" in handle_read_file(AgentState(), {"path": "missing.preql"})
-
-
-def test_write_file_validates_arguments():
-    assert "non-empty string" in handle_write_file(AgentState(), {"content": "x"})
-    assert "non-empty string" in handle_write_file(
-        AgentState(), {"path": "", "content": "x"}
-    )
-    assert "'content' must be a string" in handle_write_file(
-        AgentState(), {"path": "f.preql", "content": 5}
-    )
 
 
 def test_list_files_recursive_shows_nested_paths(tmp_path, monkeypatch):
@@ -479,7 +429,7 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
     def boom(state, args):
         raise RuntimeError("kaboom")
 
-    monkeypatch.setitem(agent_mod.TOOL_HANDLERS, "show_message", boom)
+    monkeypatch.setitem(agent_tools_mod.TOOL_HANDLERS, "show_message", boom)
     result = _dispatch(AgentState(), LLMToolCall(name="show_message"))
     assert "RuntimeError" in result
 
@@ -487,57 +437,9 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
 # --- Additional coverage for handlers and helpers ---
 
 
-def test_validate_preql_syntax_wraps_unexpected_exception(monkeypatch):
-    """The validator's safety net converts non-InvalidSyntaxException errors
-    into a typed string so a buggy parser never crashes the write."""
-
-    def boom(_):
-        raise RuntimeError("parser exploded")
-
-    import trilogy.parsing.v2.lark_backend as lark_backend
-
-    monkeypatch.setattr(lark_backend, "parse_lark", boom)
-    msg = agent_mod._validate_preql_syntax("select 1 -> x;")
-    assert msg is not None
-    assert "RuntimeError" in msg
-    assert "parser exploded" in msg
-
-
-def test_write_file_flags_html_escapes(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    result = handle_write_file(
-        AgentState(),
-        {"path": "q.preql", "content": "where x &lt;= 1 select x;"},
-    )
-    assert "HTML-escaped" in result
-    assert "&lt;" in result
-    # The file must not have been written.
-    assert not (tmp_path / "q.preql").exists()
-
-
-def test_write_file_reports_oserror(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    from pathlib import Path
-
-    real_write_text = Path.write_text
-
-    def boom(self, *a, **kw):
-        if self.name.endswith("boom.preql"):
-            raise OSError("disk full")
-        return real_write_text(self, *a, **kw)
-
-    monkeypatch.setattr(Path, "write_text", boom)
-    result = handle_write_file(
-        AgentState(),
-        {"path": "boom.preql", "content": "select 1 -> x;"},
-    )
-    assert "write_file error" in result
-    assert "disk full" in result
-
-
 def test_list_files_truncates_at_max_entries(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_mod, "_LIST_FILES_MAX_ENTRIES", 3)
+    monkeypatch.setattr(agent_tools_mod, "_LIST_FILES_MAX_ENTRIES", 3)
     for i in range(10):
         (tmp_path / f"f{i:02d}.preql").write_text("x", encoding="utf-8")
     out = handle_list_files(AgentState(), {"path": "."})
@@ -554,27 +456,6 @@ def test_list_files_non_recursive_marks_directories(tmp_path, monkeypatch):
     assert "raw/" in out
     assert "q.preql" in out
     assert "__pycache__" not in out
-
-
-def test_write_file_handles_oserror_on_stat(monkeypatch, tmp_path):
-    """When stat() raises (e.g. permission denied), the clobber check falls
-    back to False and the write still attempts (then succeeds)."""
-    monkeypatch.chdir(tmp_path)
-    from pathlib import Path
-
-    real_stat = Path.stat
-
-    def boom_stat(self, *a, **kw):
-        if self.name == "perms.preql":
-            raise OSError("stat denied")
-        return real_stat(self, *a, **kw)
-
-    (tmp_path / "perms.preql").write_text("old", encoding="utf-8")
-    monkeypatch.setattr(Path, "stat", boom_stat)
-    result = handle_write_file(
-        AgentState(), {"path": "perms.preql", "content": "select 1 -> x;"}
-    )
-    assert "wrote" in result
 
 
 def test_list_files_reports_empty_directory(tmp_path):
@@ -597,7 +478,7 @@ def test_read_file_reports_oserror(monkeypatch, tmp_path):
 
 
 def test_first_non_flag_arg_skips_value_flag_and_options():
-    fn = agent_mod._first_non_flag_arg
+    fn = agent_tools_mod._first_non_flag_arg
     assert fn(["--debug-file", "log.txt", "agent-info"]) == "agent-info"
     assert fn(["--debug", "agent-info"]) == "agent-info"
     assert fn(["--debug-file"]) is None
@@ -605,7 +486,9 @@ def test_first_non_flag_arg_skips_value_flag_and_options():
 
 
 def test_trilogy_file_write_hint_returns_none_without_content_flag():
-    assert agent_mod._trilogy_file_write_hint(["file", "write", "x.preql"]) is None
+    assert (
+        agent_tools_mod._trilogy_file_write_hint(["file", "write", "x.preql"]) is None
+    )
 
 
 def test_handle_trilogy_reports_subprocess_timeout(monkeypatch):
@@ -674,7 +557,7 @@ def test_run_turn_return_control_drops_open_todos(monkeypatch):
     class _FixedUUID:
         hex = "abcd1234ffff"
 
-    monkeypatch.setattr(agent_mod.uuid, "uuid4", lambda: _FixedUUID())
+    monkeypatch.setattr(agent_tools_mod.uuid, "uuid4", lambda: _FixedUUID())
     # Open TODOs no longer gate exit. The agent adds one, then returns
     # control immediately; the open item is discarded and the run ends.
     provider = ScriptedProvider(
@@ -735,6 +618,144 @@ def test_run_turn_surfaces_malformed_tool_call_to_model():
         for m in conv.messages
         if m.role == "user"
     )
+
+
+# --- reviewer validation on submit ---
+
+
+def test_run_turn_reviewer_kicks_back_then_accepts():
+    """Two `return_control_to_user` calls: reviewer says NOT_DONE on the
+    first, DONE on the second. The agent should loop once then exit."""
+    agent_provider = ScriptedProvider(
+        responses=[
+            make_response(call("return_control_to_user", message="first")),
+            make_response(call("return_control_to_user", message="second")),
+        ]
+    )
+    reviewer_responses = iter(
+        [
+            LLMResponse(
+                text="NOT_DONE - you skipped the min cost filter",
+                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            ),
+            LLMResponse(
+                text="DONE - looks right",
+                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            ),
+        ]
+    )
+
+    class ReviewerProvider(LLMProvider):
+        def __init__(self):
+            super().__init__("rev", "k", "m", Provider.OPENAI)
+
+        def generate_completion(self, options, history):
+            return next(reviewer_responses)
+
+    conv = make_conv(agent_provider)
+    state = AgentState()
+    _run_turn(
+        conv,
+        state,
+        max_iterations=5,
+        provider=ReviewerProvider(),
+        original_task="do the thing",
+    )
+    assert state.done is True
+    assert state.submit_kickbacks == 1
+    assert state.farewell == "second"
+    assert any(
+        "reviewer determined" in m.content for m in conv.messages if m.role == "user"
+    )
+
+
+def test_run_turn_reviewer_kickback_capped(monkeypatch):
+    """If the reviewer keeps saying NOT_DONE, the agent exits anyway after
+    MAX_SUBMIT_KICKBACKS kickbacks rather than looping forever."""
+    submit_responses = [
+        make_response(call("return_control_to_user", message=f"try {i}"))
+        for i in range(MAX_SUBMIT_KICKBACKS + 2)
+    ]
+    agent_provider = ScriptedProvider(responses=submit_responses)
+
+    class AlwaysNotDoneReviewer(LLMProvider):
+        def __init__(self):
+            super().__init__("rev", "k", "m", Provider.OPENAI)
+
+        def generate_completion(self, options, history):
+            return LLMResponse(
+                text="NOT_DONE - never satisfied",
+                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            )
+
+    conv = make_conv(agent_provider)
+    state = AgentState()
+    _run_turn(
+        conv,
+        state,
+        max_iterations=10,
+        provider=AlwaysNotDoneReviewer(),
+        original_task="do the thing",
+    )
+    assert state.done is True
+    assert state.submit_kickbacks == MAX_SUBMIT_KICKBACKS
+
+
+def test_run_turn_reviewer_skipped_when_no_provider():
+    """Backwards compat: no provider passed → no reviewer call, immediate exit."""
+    provider = ScriptedProvider(
+        responses=[make_response(call("return_control_to_user", message="ok"))]
+    )
+    conv = make_conv(provider)
+    state = AgentState()
+    _run_turn(conv, state, max_iterations=5)
+    assert state.done is True
+    assert state.submit_kickbacks == 0
+
+
+def test_reviewer_transcript_includes_tool_calls_and_results():
+    msgs = [
+        LLMMessage(role="system", content="ignored"),
+        LLMMessage(role="user", content="do the thing"),
+        LLMMessage(role="assistant", content=""),
+        LLMMessage(role="user", content='{"tool":"trilogy","result":"ok"}'),
+    ]
+    msgs[2].model_info = {
+        "tool_calls": [{"name": "trilogy", "arguments": {"args": ["run"]}}]
+    }
+    rendered = _render_reviewer_transcript(msgs)
+    assert "do the thing" in rendered
+    assert "AGENT CALL trilogy" in rendered
+    assert "ignored" not in rendered  # system messages dropped
+
+
+def test_reviewer_transcript_truncates_long_message_from_middle():
+    """Long tool-result content keeps head + tail; the middle is collapsed."""
+    head = "HEAD_MARKER_"
+    tail = "_TAIL_MARKER"
+    body = head + "x" * (agent_mod.REVIEWER_TRANSCRIPT_MSG_LIMIT * 3) + tail
+    msgs = [LLMMessage(role="user", content=body)]
+    rendered = _render_reviewer_transcript(msgs)
+    assert head in rendered
+    assert tail in rendered
+    assert "truncated" in rendered
+    assert len(rendered) < len(body)
+
+
+def test_reviewer_transcript_truncates_long_tool_args_from_middle():
+    """Long tool-call argument blobs keep head + tail."""
+    head = "ARG_HEAD_"
+    tail = "_ARG_TAIL"
+    blob = head + "y" * (agent_mod.REVIEWER_TRANSCRIPT_ARG_LIMIT * 3) + tail
+    msg = LLMMessage(role="assistant", content="")
+    msg.model_info = {
+        "tool_calls": [{"name": "trilogy", "arguments": {"content": blob}}]
+    }
+    rendered = _render_reviewer_transcript([msg])
+    assert head in rendered
+    assert tail in rendered
+    assert "truncated" in rendered
+    assert len(rendered) < len(blob)
 
 
 # --- _build_provider ---
@@ -961,7 +982,7 @@ def test_log_file_cli_flag_creates_and_truncates(tmp_path, monkeypatch):
     log_path = tmp_path / "trace.jsonl"
     log_path.write_text("stale content\n", encoding="utf-8")
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         import trilogy.scripts.agent as mod
 
         mod._log_event(log_path, {"type": "llm_response", "tool_calls": []})
@@ -995,7 +1016,7 @@ def test_env_flag_applies_kv_pair_via_cli(monkeypatch):
 
     seen: dict = {}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         import os
 
         seen["AGENT_TEST_VAR"] = os.environ.get("AGENT_TEST_VAR")
@@ -1024,7 +1045,7 @@ def test_env_flag_loads_file_via_cli(tmp_path, monkeypatch):
 
     seen: dict = {}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         import os
 
         seen["anthropic"] = os.environ.get("ANTHROPIC_API_KEY")
@@ -1050,7 +1071,7 @@ def test_quiet_flag_drops_show_message_tool(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     captured: dict = {}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         captured["tool_names"] = {t.name for t in (tools or [])}
         captured["system_prompt"] = conv.messages[0].content
         state.done = True
@@ -1073,7 +1094,7 @@ def test_interactive_followup_runs_then_exits(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     turn_count = {"n": 0}
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         turn_count["n"] += 1
         state.done = True
         state.farewell = f"turn {turn_count['n']} done"
@@ -1096,7 +1117,7 @@ def test_interactive_aborts_cleanly_on_eof(monkeypatch):
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
-    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None):
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **_):
         state.done = True
         state.farewell = "done"
 
@@ -1128,13 +1149,12 @@ def test_all_tools_registered():
     assert names == {
         "show_message",
         "trilogy",
-        "write_file",
         "read_file",
         "list_files",
         "todo",
         "return_control_to_user",
     }
-    assert set(agent_mod.TOOL_HANDLERS) == names
+    assert set(agent_tools_mod.TOOL_HANDLERS) == names
 
 
 def test_tool_schemas_are_valid_json_schema_objects():

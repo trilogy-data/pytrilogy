@@ -1,243 +1,593 @@
-# Trilogy failure analysis — 20260526-130241
+# Trilogy failure analysis — 20260527-220231
 
-- Run `20260526-130241` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.01
-- `trilogy` calls: 241 | failed: 25 (10%)
+- Run `20260527-220231` | `openrouter/deepseek/deepseek-v4-flash` | sf=0.01
+- `trilogy` calls: 335 | failed: 56 (17%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 7 | 28% |
-| `file-not-found` | 7 | 28% |
-| `syntax-parse` | 4 | 16% |
-| `undefined-concept` | 2 | 8% |
-| `join-resolution` | 2 | 8% |
-| `cli-misuse` | 2 | 8% |
-| `syntax-missing-alias` | 1 | 4% |
+| `other` | 32 | 57% |
+| `syntax-missing-alias` | 7 | 12% |
+| `join-resolution` | 6 | 11% |
+| `syntax-parse` | 5 | 9% |
+| `undefined-concept` | 4 | 7% |
+| `cli-misuse` | 1 | 2% |
+| `file-not-found` | 1 | 2% |
 
 ## Detail
 
 ### `other`
 
+- `trilogy run query01.preql`
+
+  ```text
+  Unable to import '.\lineitem.preql': [Errno 2] No such file
+  or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
+  ```
 - `trilogy run query02.preql`
 
   ```text
   Unable to import '.\partsupp.preql': [Errno 2] No such file
   or directory: '.\\partsupp.preql'. Did you mean: raw.partsupp?
   ```
-- `trilogy run query02.preql`
+- `trilogy run query04.preql`
 
   ```text
-  HAVING references 'partsupp.supplycost', which is not in the
-  SELECT projection (line 4). Fix one of: (a) add it to SELECT — prefix with `--`
-  to keep it out of the output rows, e.g. `select ..., --partsupp.supplycost`;
-  (b) move the filter to WHERE — for an aggregate condition on a non-output
-  grain, write the aggregate inline as `agg(x) by grain` directly in WHERE.
+  HAVING references 'lineitem.linenumber', which is not in the
+  SELECT projection (line 10). Fix one of: (a) add it to SELECT — prefix with
+  `--` to keep it out of the output rows, e.g. `select ...,
+  --lineitem.linenumber`; (b) move the filter to WHERE — for an aggregate
+  condition on a non-output grain, write the aggregate inline as `agg(x) by
+  grain` directly in WHERE.
   ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 55 (char 54). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run query18.preql`
-
-  ```text
-  Unable to import '.\orders.preql': [Errno 2] No such file or
-  directory: '.\\orders.preql'. Did you mean: raw.orders?
-  ```
-- `trilogy run query20.preql`
-
-  ```text
-  Unable to import '.\part.preql': [Errno 2] No such file or
-  directory: '.\\part.preql'. Did you mean: raw.part?
-  ```
-- `trilogy run query21.preql`
+- `trilogy run query05.preql`
 
   ```text
   Unable to import '.\lineitem.preql': [Errno 2] No such file
   or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
   ```
-- `trilogy run query21.preql`
+- `trilogy run query07.preql`
 
   ```text
-  'bool' object has no attribute 'row_arguments'
+  Unable to import '.\lineitem.preql': [Errno 2] No such file
+  or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
   ```
-
-### `file-not-found`
-
-- `trilogy run --debug where lineitem.orders.customer.nation.region.name = 'ASIA' and lineitem.orders.orderdate >= '1994-01-01'::date and lineitem.orders.orderd….name as nation_name, sum(lineitem.extendedprice * (1 - lineitem.discount)) as revenue order by revenue desc limit 10; --import raw/lineitem:lineitem`
+- `trilogy `
 
   ```text
-  Input 'where lineitem.orders.customer.nation.region.name = 'ASIA' and
-  lineitem.orders.orderdate >= '1994-01-01'::date and lineitem.orders.orderdate <
-  '1995-01-01'::date and lineitem.orders.customer.nation.nationkey =
-  lineitem.supplier.nation.nationkey select lineitem.orders.customer.nation.name
-  as nation_name, sum(lineitem.extendedprice * (1 - lineitem.discount)) as
-  revenue order by revenue desc limit 10; --import raw/lineitem:lineitem' does
-  not exist.
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 1 column 44 (char 43). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run --debug debug_check8.preql`
+- `trilogy `
 
   ```text
-  Input 'debug_check8.preql' does not exist.
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 1 column 42 (char 41). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run --import raw/partsupp:partsupp where partsupp.supplier.nation.name = 'GERMANY' select partsupp.part.partkey, sum(partsupp.supplycost * partsupp.availqty) as total_value having total_value > 0.0001 / 100.0 * sum(partsupp.supplycost * partsupp.availqty) by () order by total_value desc limit 1000;`
+- `trilogy `
 
   ```text
-  Input 'where partsupp.supplier.nation.name = 'GERMANY' select
-  partsupp.part.partkey, sum(partsupp.supplycost * partsupp.availqty) as
-  total_value having total_value > 0.0001 / 100.0 * sum(partsupp.supplycost *
-  partsupp.availqty) by () order by total_value desc limit 1000;' does not exist.
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 1 column 40 (char 39). Re-issue the call with valid JSON arguments.
+
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
   ```
-- `trilogy run - --import raw/partsupp:partsupp`
+- `trilogy `
 
   ```text
-  Input 'where partsupp.supplier.nation.name = 'GERMANY' select
-  partsupp.part.partkey, sum(partsupp.supplycost * partsupp.availqty) as
-  total_value having total_value > 0.0001 / 100.0 * sum(partsupp.supplycost *
-  partsupp.availqty) by () order by total_value desc limit 1000;' does not exist.
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 1 column 44 (char 43). Re-issue the call with valid JSON arguments.
+
+  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
   ```
-- `trilogy run --import raw/partsupp:partsupp -`
+- `trilogy `
 
   ```text
-  Input 'where partsupp.supplier.nation.name = 'GERMANY' select
-  partsupp.part.partkey, sum(partsupp.supplycost * partsupp.availqty) as
-  total_value having total_value > 0.0001 / 100.0 * sum(partsupp.supplycost *
-  partsupp.availqty) by () order by total_value desc limit 1000;' does not exist.
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 1 column 44 (char 43). Re-issue the call with valid JSON arguments.
+
+  [guidance] You have issued this identical call 5 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
   ```
-- `trilogy run --import raw/partsupp:partsupp -`
+- `trilogy `
 
   ```text
-  Input 'where partsupp.supplier.nation.name = 'GERMANY' select
-  partsupp.part.partkey, sum(partsupp.supplycost * partsupp.availqty) as
-  total_value having total_value > 0.0001 / 100.0 * sum(partsupp.supplycost *
-  partsupp.availqty) by () order by total_value desc limit 1000;' does not exist.
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 1 column 42 (char 41). Re-issue the call with valid JSON arguments.
+
+  [guidance] You have issued this identical call 6 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
   ```
-- `trilogy run - --import raw/partsupp:partsupp`
+- `trilogy `
 
   ```text
-  Input 'where partsupp.supplier.nation.name = 'GERMANY' select
-  partsupp.part.partkey, sum(partsupp.supplycost * partsupp.availqty) as
-  total_value having total_value > 0.0001 / 100.0 * sum(partsupp.supplycost *
-  partsupp.availqty) by () order by total_value desc limit 1000;' does not exist.
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 1 column 42 (char 41). Re-issue the call with valid JSON arguments.
+
+  [guidance] You have issued this identical call 7 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
   ```
-
-### `syntax-parse`
-
-- `trilogy run --import raw/partsupp:partsupp -`
+- `trilogy `
 
   ```text
-  --> 2:1
-    |
-  2 | > echo;
-    | ^---
-    |
-    = expected EOI, block, or show_statement
-  Location:
-  ...ort raw.partsupp as partsupp; ??? > echo;
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 3 column 6 (char 301). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run --import raw/partsupp:partsupp -`
-
-  ```text
-  --> 2:1
-    |
-  2 | > echo;
-    | ^---
-    |
-    = expected EOI, block, or show_statement
-  Location:
-  ...ort raw.partsupp as partsupp; ??? > echo;
-  ```
-- `trilogy run --import raw/partsupp:partsupp -`
-
-  ```text
-  --> 2:1
-    |
-  2 | > echo;
-    | ^---
-    |
-    = expected EOI, block, or show_statement
-  Location:
-  ...ort raw.partsupp as partsupp; ??? > echo;
-  ```
-- `trilogy run --import raw/partsupp:partsupp -`
-
-  ```text
-  --> 2:220
-    |
-  2 | where partsupp.supplier.nation.name = 'GERMANY' select
-  partsupp.part.partkey, sum(partsupp.supplycost * partsupp.availqty) as
-  total_value having total_value > 0.000001 * sum(partsupp.supplycost *
-  partsupp.availqty) by () order by total_value desc limit 1000;
-    |
-  ^---
-    |
-    = expected expr_over_list
-  Location:
-  ...cost * partsupp.availqty) by ( ??? ) order by total_value desc li...
-  ```
-
-### `undefined-concept`
-
-- `trilogy run query02.preql`
-
-  ```text
-  (UndefinedConceptException(...), "line: 5: Undefined concept:
-  supplier.acctbal. Suggestions: ['partsupp.supplier.acctbal']")
-  ```
-- `trilogy run query03.preql`
-
-  ```text
-  (UndefinedConceptException(...), "Undefined concept:
-  lineitem.orderkey. Suggestions: ['lineitem.orders.orderkey',
-  'lineitem.orders.clerk', 'lineitem.orders.comment']")
-  ```
-
-### `join-resolution`
-
 - `trilogy run query09.preql`
 
   ```text
-  Could not resolve connections for query with output
-  ['local.nation<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.o_year<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.profit<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  Unable to import '.\lineitem.preql': [Errno 2] No such file
+  or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
   ```
-- `trilogy run --import raw/part:part --import raw/lineitem:lineitem select part.brand, part.container, part.size, lineitem.quantity, lineitem.shipmode, lineitem.shipinstruct, lineitem.extendedprice, lineitem.discount, lineitem.linenumber limit 1;`
+- `trilogy run query10.preql`
 
   ```text
-  Could not resolve connections for query with output
-  ['part.brand<Purpose.PROPERTY>Derivation.ROOT>',
-  'part.container<Purpose.PROPERTY>Derivation.ROOT>',
-  'part.size<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.quantity<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.shipmode<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.shipinstruct<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.extendedprice<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.discount<Purpose.PROPERTY>Derivation.ROOT>',
-  'lineitem.linenumber<Purpose.KEY>Derivation.ROOT>'] from current model.
+  Unable to import '.\lineitem.preql': [Errno 2] No such file
+  or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
   ```
-
-### `cli-misuse`
-
-- `trilogy datexplore raw/partsupp.preql`
+- `trilogy run query11.preql`
 
   ```text
-  No such command 'datexplore'.
+  Unable to import '.\partsupp.preql': [Errno 2] No such file
+  or directory: '.\\partsupp.preql'. Did you mean: raw.partsupp?
   ```
-- `trilogy run --import raw/lineitem:lineitem where lineitem.part.brand = 'Brand#12' and lineitem.part.container in ('SM CASE','SM BOX','SM PACK','SM PKG') and …hipmode in ('AIR','AIR REG') and lineitem.shipinstruct = 'DELIVER IN PERSON' select sum(lineitem.extendedprice * (1 - lineitem.discount)) as revenue;`
+- `trilogy run query13.preql`
 
   ```text
-  'select sum(lineitem.extendedprice * (1 - lineitem.discount)) as revenue;' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
+  Unable to import '.\customer.preql': [Errno 2] No such file
+  or directory: '.\\customer.preql'. Did you mean: raw.customer?
+  ```
+- `trilogy run query14.preql`
+
+  ```text
+  Unable to import '.\lineitem.preql': [Errno 2] No such file
+  or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
+  ```
+- `trilogy run query15.preql`
+
+  ```text
+  Unable to import '.\lineitem.preql': [Errno 2] No such file
+  or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
+  ```
+- `trilogy run query16.preql`
+
+  ```text
+  Filter item with non ref content MagicConstants.NULL (<enum
+  'MagicConstants'>) not yet supported
+  ```
+- `trilogy run query17.preql`
+
+  ```text
+  Unable to import '.\lineitem.preql': [Errno 2] No such file
+  or directory: '.\\lineitem.preql'. Did you mean: raw.lineitem?
+  ```
+- `trilogy run query20.preql`
+
+  ```text
+  Unable to import '.\partsupp.preql': [Errno 2] No such file
+  or directory: '.\\partsupp.preql'. Did you mean: raw.partsupp?
+  ```
+- `trilogy run query20.preql --import raw/partsupp:partsupp --import raw/lineitem:lineitem`
+
+  ```text
+  --import only applies to inline queries, not file/directory inputs.
+  ```
+- `trilogy run query22.preql`
+
+  ```text
+  Have
+  {'MergeNode<customer.acctbal,customer.phone,local._virt_8542720658922315...2
+  more>': None} and need
+  BuildSubselectComparison(left=substring(customer.phone@Grain<customer.custkey>,
+  1,2), right=('13', '31', '23', '29', '30', '18', '17'),
+  operator=<ComparisonOperator.IN: 'in'>) and customer.acctbal >
+  local.avg_acctbal_target and customer.acctbal > 0 and
+  coalesce(local._virt_agg_count_2275786582956115@Grain<customer.custkey>,0) = 0
+  ```
+- `trilogy run query22.preql`
+
+  ```text
+  Have
+  {'MergeNode<customer.acctbal,customer.phone,local._virt_8542720658922315...2
+  more>': None} and need
+  BuildSubselectComparison(left=substring(customer.phone@Grain<customer.custkey>,
+  1,2), right=('13', '31', '23', '29', '30', '18', '17'),
+  operator=<ComparisonOperator.IN: 'in'>) and customer.acctbal >
+  local.avg_acctbal_target and customer.acctbal > 0 and
+  coalesce(local._virt_agg_count_2275786582956115@Grain<customer.custkey>,0) = 0
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer select
+    substring(customer.phone, 1, 2) as cntrycode,
+    count(customer.custkey) as…omer.acctbal > 0
+  and customer.acctbal > 5017.600775193799
+  and coalesce(count(orders.orderkey) by customer.custkey, 0) = 0
+order by cntrycode asc;`
+
+  ```text
+  Have
+  {'SelectNode<customer.acctbal,customer.custkey,customer.phone>': None} and need
+  BuildSubselectComparison(left=substring(customer.phone@Grain<customer.custkey>,
+  1,2), right=('13', '31', '23', '29', '30', '18', '17'),
+  operator=<ComparisonOperator.IN: 'in'>) and customer.acctbal > 0 and
+  customer.acctbal > 5017.600775193799 and
+  coalesce(local._virt_agg_count_2275786582956115@Grain<customer.custkey>,0) = 0
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer select
+    substring(customer.phone, 1, 2) as cntrycode,
+    count(customer.custkey) as…','31','23','29','30','18','17')
+  and customer.acctbal > 0
+  and coalesce(count(orders.orderkey) by customer.custkey, 0) = 0
+order by cntrycode asc;`
+
+  ```text
+  Have
+  {'SelectNode<customer.acctbal,customer.custkey,customer.phone>': None} and need
+  BuildSubselectComparison(left=substring(customer.phone@Grain<customer.custkey>,
+  1,2), right=('13', '31', '23', '29', '30', '18', '17'),
+  operator=<ComparisonOperator.IN: 'in'>) and customer.acctbal > 0 and
+  coalesce(local._virt_agg_count_2275786582956115@Grain<customer.custkey>,0) = 0
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Extra data: line 4 column 4 (char 256). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer auto cust_has_orders <- count(orders.orderkey) by customer.custkey;
+select
+    substrin…stomer.phone, 1, 2) in ('13','31','23','29','30','18','17')
+  and customer.acctbal > 0
+  and coalesce(cust_has_orders, 0) = 0
+order by cntrycode asc;`
+
+  ```text
+  Have
+  {'SelectNode<customer.acctbal,customer.custkey,customer.phone>': None} and need
+  BuildSubselectComparison(left=substring(customer.phone@Grain<customer.custkey>,
+  1,2), right=('13', '31', '23', '29', '30', '18', '17'),
+  operator=<ComparisonOperator.IN: 'in'>) and customer.acctbal > 0 and
+  coalesce(local.cust_has_orders@Grain<customer.custkey>,0) = 0
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer auto cust_has_orders <- count(orders.orderkey) by customer.custkey;
+
+select
+    substri…tomer.phone, 1, 2) in ('13','31','23','29','30','18','17')
+  and customer.acctbal > 0
+  and coalesce(cust_has_orders, 0) = 0
+order by cntrycode asc;
+`
+
+  ```text
+  Have
+  {'SelectNode<customer.acctbal,customer.custkey,customer.phone>': None} and need
+  BuildSubselectComparison(left=substring(customer.phone@Grain<customer.custkey>,
+  1,2), right=('13', '31', '23', '29', '30', '18', '17'),
+  operator=<ComparisonOperator.IN: 'in'>) and customer.acctbal > 0 and
+  coalesce(local.cust_has_orders@Grain<customer.custkey>,0) = 0
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer auto avg_bal <- avg(customer.acctbal ? customer.acctbal > 0 and substring(customer.phon…','18','17')
+  and customer.acctbal > 0
+  and customer.acctbal > avg_bal
+  and count(orders.orderkey) by customer.custkey = 0
+order by cntrycode asc;`
+
+  ```text
+  Have
+  {'MergeNode<customer.acctbal,customer.phone,local._virt_8542720658922315...2
+  more>': None} and need
+  BuildSubselectComparison(left=substring(customer.phone@Grain<customer.custkey>,
+  1,2), right=('13', '31', '23', '29', '30', '18', '17'),
+  operator=<ComparisonOperator.IN: 'in'>) and customer.acctbal > 0 and
+  customer.acctbal > local.avg_bal and local._virt_agg_count_2275786582956115 = 0
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer select
+    substring(customer.phone, 1, 2) as cntrycode,
+    count(customer.custkey) as…ng(customer.phone, 1, 2) in ('13','31','23','29','30','18','17')) by (1)
+  and count(orders.orderkey) by customer.custkey = 0
+order by cntrycode asc;`
+
+  ```text
+  WHERE clause aggregates at multiple grains are not allowed:
+  `SubselectComparison(left=substring(ref:customer.phone,1,2), right=('13', '31',
+  '23', '29', '30', '18', '17'), operator=<ComparisonOperator.IN: 'in'>) and
+  ref:customer.acctbal > 0 and ref:customer.acctbal > avg(<Filter:
+  ref:customer.acctbal where ref:customer.acctbal > 0 and
+  SubselectComparison(left=substring(ref:customer.phone,1,2), right=('13', '31',
+  '23', '29', '30', '18', '17'), operator=<ComparisonOperator.IN:
+  'in'>)>)<['ref:local._virt_8542720658922315']> and
+  count(ref:orders.orderkey)<['ref:customer.custkey']> = 0`. Aggregates filter
+  rows AFTER grouping - use HAVING (post-aggregate filter), or align all
+  aggregates to the same `by` grain so the filter is a pure row-level
+  pre-aggregate predicate; Line: 3
   ```
 
 ### `syntax-missing-alias`
 
-- `trilogy run --import raw/lineitem:lineitem select lineitem.part.brand, lineitem.part.container, count(lineitem.linenumber) limit 10;`
+- `trilogy run --import raw/part:part select part.type, count(part.partkey) order by count(part.partkey) desc limit 20;`
 
   ```text
   Syntax [201]: Missing alias? Alias must be specified with
   "AS" - e.g. `SELECT x+1 AS y`
   Location:
-  ...r, count(lineitem.linenumber) ??? limit 10;
+  ...art.type, count(part.partkey) ??? order by count(part.partkey) d...
+  ```
+- `trilogy run --import raw/lineitem:lineitem select year(lineitem.orders.orderdate), count(lineitem.linenumber) as cnt where year(lineitem.orders.orderdate) in…neitem.part.type='ECONOMY ANODIZED STEEL' and lineitem.orders.customer.nation.region.name='AMERICA' order by year(lineitem.orders.orderdate) limit 5;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...ear(lineitem.orders.orderdate) ??? , count(lineitem.linenumber) a...
+  ```
+- `trilogy run --import raw/lineitem:lineitem select distinct lineitem.supplier.nation.name as s_nation limit 50;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   as lineitem; select distinct ??? lineitem.supplier.nation.name
+  ```
+- `trilogy run --import raw/part.preql:part select part.container, count(part.partkey) where part.brand = 'Brand#23' group by part.container;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...ontainer, count(part.partkey) ??? where part.brand = 'Brand#23'
+  ```
+- `trilogy run --import raw/part.preql:part select distinct part.container where part.brand = 'Brand#23' and part.container like '%MED%' ;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...part as part; select distinct ??? part.container where part.bran...
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer select distinct customer.custkey from customer;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   as customer; select distinct ??? customer.custkey from customer...
+  ```
+- `trilogy run --import raw/orders:orders select count(orderkey);`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...orders; select count(orderkey) ??? ;
+  ```
+
+### `join-resolution`
+
+- `trilogy run query13.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.order_count<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current
+  model.
+  ```
+- `trilogy run query21.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.sname<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.numwait<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer select
+    substring(customer.phone, 1, 2) as cntrycode,
+    count(customer.custkey) as…string(customer.phone, 1, 2) in ('13','31','23','29','30','18','17')
+  and customer.acctbal > 0
+  and orders.orderkey is null
+order by cntrycode asc;`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.cntrycode<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current
+  model.
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer auto no_order_cust <- customer.custkey ? count(orders.orderkey) by customer.custkey = 0…mer.phone, 1, 2) in ('13','31','23','29','30','18','17')
+  and customer.acctbal > 0
+  and customer.custkey in (no_order_cust)
+order by cntrycode asc;`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.no_order_cust<Purpose.PROPERTY>Derivation.FILTER>'] from current model.
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer auto no_order_cust <- customer.custkey ? count(orders.orderkey) by customer.custkey = 0;
+select
+    no_order_cust,
+    substring(customer.phone, 1, 2) as cntrycode
+limit 10;`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.no_order_cust<Purpose.PROPERTY>Derivation.FILTER>',
+  'local.cntrycode<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer select
+    customer.custkey,
+    count(orders.orderkey) by customer.custkey as order_count
+limit 10;`
+
+  ```text
+  Could not resolve connections for query with output
+  ['customer.custkey<Purpose.KEY>Derivation.ROOT>',
+  'local.order_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  ```
+
+### `syntax-parse`
+
+- `trilogy run --import raw/lineitem:lineitem select lineitem.supplier.nation.name as s_nation, lineitem.supplier.nation.region.name as s_region, count(lineitem.linenumber) as cnt group by (lineitem.supplier.nation.name, lineitem.supplier.nation.region.name) order by cnt desc limit 30;`
+
+  ```text
+  --> 2:135
+    |
+  2 | select lineitem.supplier.nation.name as s_nation,
+  lineitem.supplier.nation.region.name as s_region, count(lineitem.linenumber) as
+  cnt group by (lineitem.supplier.nation.name,
+  lineitem.supplier.nation.region.name) order by cnt desc limit 30;
+    |
+  ^---
+    |
+    = expected metadata, limit, order_by, where, or having
+  Location:
+  ...t(lineitem.linenumber) as cnt ??? group by (lineitem.supplier.na...
+  ```
+- `trilogy file write query17.preql --content import lineitem as lineitem;
+
+# First compute per-part average quantity (only for parts with Brand#23 and MED BOX)…'MED BOX'
+  and lineitem.quantity < 0.2 * avg(lineitem.quantity) by lineitem.part.partkey
+
+select
+    sum(lineitem.extendedprice) / 7.0 as avg_yearly`
+
+  ```text
+  refused to write 'query17.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [202]: Missing closing semicolon? Statements must be terminated with a
+  semicolon `;`.
+  Location:
+  ...ndedprice) / 7.0 as avg_yearly ???
+
+  Write stats: received 716 chars / 716 bytes; tail: …'\\n\\nselect\\n
+  sum(lineitem.extendedprice) / 7.0 as avg_yearly'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer select
+    substring(customer.phone, 1, 2) as cntrycode,
+    count(customer.custkey) as…nd customer.acctbal > 0
+  and not exists(
+    select orders.orderkey
+    where orders.customer.custkey = customer.custkey
+  )
+order by cntrycode asc;`
+
+  ```text
+  --> 9:17
+    |
+  9 |   and not exists(
+    |                 ^---
+    |
+    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
+  bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or
+  MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...r.acctbal > 0   and not exists ??? (     select orders.orderkey
+  ```
+- `trilogy file write query22.preql --content import raw.customer as customer;
+
+# First compute the scalar: average positive balance among target area codes
+aut….acctbal > 0
+  and customer.acctbal > avg_target_bal
+  and customer.custkey not in (
+      select orders.customer.custkey
+  )
+order by cntrycode asc;`
+
+  ```text
+  refused to write 'query22.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('ORDER', 'order') at line 14, column 14.
+  Expected one of:
+          * COMMA
+          * RPAR
+
+  Location:
+  ...custkey not in (       select ??? orders.customer.custkey   ) or...
+
+  Write stats: received 652 chars / 652 bytes; tail: …'  select
+  orders.customer.custkey\\n  )\\norder by cntrycode asc;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy run --import raw/orders:orders --import raw/customer:customer select
+    substring(customer.phone, 1, 2) as cntrycode,
+    count(customer.custkey) as…tbal > 0
+  and customer.custkey in (
+    select customer.custkey
+    where count(orders.orderkey) by customer.custkey = 0
+  )
+order by cntrycode asc;`
+
+  ```text
+  --> 10:5
+     |
+  10 |     select customer.custkey
+     |     ^---
+     |
+     = expected access_chain or literal
+  Location:
+  ...and customer.custkey in (     ??? select customer.custkey     wh...
+  ```
+
+### `undefined-concept`
+
+- `trilogy run query09.preql`
+
+  ```text
+  (UndefinedConceptException(...), "Undefined concept:
+  partsupp.partkey. Suggestions: ['partsupp.part.partkey', 'partsupp.part.type',
+  'partsupp.part.size']")
+  ```
+- `trilogy run query16.preql`
+
+  ```text
+  (UndefinedConceptException(...), "line: 5: Undefined concept:
+  part.brand. Suggestions: ['partsupp.part.brand']")
+  ```
+- `trilogy run query16.preql`
+
+  ```text
+  (UndefinedConceptException(...), "line: 5: Undefined concept:
+  part.brand. Suggestions: ['partsupp.part.brand']")
+  ```
+- `trilogy run --import raw/orders:orders select count(orderkey) as cnt limit 5;`
+
+  ```text
+  (UndefinedConceptException(...), "line: 2: Undefined concept:
+  local.orderkey. Suggestions: ['orders.orderkey', 'orders.clerk']")
+  ```
+
+### `cli-misuse`
+
+- `trilogy `
+
+  ```text
+  Usage: python -m trilogy.scripts.trilogy [OPTIONS] COMMAND [ARGS]...
+
+    Trilogy CLI - A beautiful data productivity tool.
+
+  Options:
+    --version          Show version and exit.
+    --debug            Enable debug mode (show tracebacks on errors)
+    --debug-file TEXT  Write SQL debug output to the specified file path
+    --help             Show this message and exit.
+
+  Commands:
+    agent        Pass off a multi-step orchestration task to an AI agent.
+    agent-info   Output comprehensive CLI documentation for AI agents.
+    database     Inspect the database configured in trilogy.toml.
+    explore      Parse
+  …
+  ipts.
+    public       Work with trilogy-public-models hosted at...
+    refresh      Refresh stale assets in Trilogy scripts.
+    render       Render a Trilogy markdown report to an image or HTML file.
+    run          Execute a Trilogy script or query.
+    serve        Start a FastAPI server to expose Trilogy models from a...
+    unit         Run unit tests on Trilogy scripts with mocked datasources.
+
+    NOTE FOR AI AGENTS (Claude, Gemini, GPT, etc.): For comprehensive usage
+    documentation, run 'trilogy agent-info' to get a detailed AGENTS.md-style
+    guide with all commands, options, and usage examples.
+  ```
+
+### `file-not-found`
+
+- `trilogy run query13.preql`
+
+  ```text
+  Input 'query13.preql' does not exist.
   ```

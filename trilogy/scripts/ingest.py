@@ -1,9 +1,11 @@
 """Ingest command for Trilogy CLI - bootstraps datasources from warehouse tables or files."""
 
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path as PathlibPath
+from typing import Iterator
 
 from click import UNPROCESSED, Choice, Path, argument, option, pass_context
 from click.exceptions import Exit
@@ -41,6 +43,7 @@ from trilogy.scripts.display_ingest import (
 from trilogy.scripts.ingest_helpers.fk_inference import (
     InferredFK,
     build_table_fk_info,
+    enrich_explicit_fks_partial,
     infer_foreign_keys,
     merge_fk_maps,
 )
@@ -52,6 +55,7 @@ from trilogy.scripts.ingest_helpers.formatting import (
     canonicalize_names,
     canonicolize_name,
 )
+from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
 from trilogy.scripts.ingest_helpers.typing import (
     detect_enum_types,
     detect_rich_type,
@@ -99,6 +103,24 @@ class IngestSummaryRow:
     @property
     def ok(self) -> bool:
         return self.status == "ok"
+
+
+@contextmanager
+def _rollback_on_error(exec: Executor) -> Iterator[None]:
+    """Run a block; on failure roll the connection back (best-effort) and re-raise.
+
+    DuckDB leaves the SQLAlchemy connection in an aborted transaction after a
+    failed query, so callers that fail mid-introspection must rollback to keep
+    the executor usable. If rollback itself fails there is nothing more to do.
+    """
+    try:
+        yield
+    except Exception:
+        try:
+            exec.connection.rollback()
+        except Exception:
+            pass
+        raise
 
 
 def _looks_like_file_source(arg: str) -> bool:
@@ -566,9 +588,9 @@ def _grain_label(datasource: Datasource) -> str:
     help="Foreign key relationships in format: table.column:ref_table.column (comma-separated)",
 )
 @option(
-    "--fk-infer-level",
-    type=Choice(["off", "fast", "full"]),
-    default="full",
+    "--infer-level",
+    type=Choice([lvl.value for lvl in IntrospectionLevel]),
+    default=IntrospectionLevel.FULL.value,
     show_default=True,
     help=(
         "Infer foreign keys to link the generated datasources: 'off' disables "
@@ -598,7 +620,7 @@ def ingest(
     all_tables: bool,
     config,
     fks: str | None,
-    fk_infer_level: str,
+    infer_level: str,
     env,
     name: str | None,
     conn_args,
@@ -633,6 +655,7 @@ def ingest(
         raise Exit(1)
 
     explicit_fk_map = parse_foreign_keys(fks) if fks else {}
+    introspection_level = IntrospectionLevel(infer_level)
 
     # Determine output directory.
     if output:
@@ -785,29 +808,30 @@ def ingest(
             progress.advance()
 
     # Second pass: infer foreign keys across the just-introspected tables, then
-    # merge with any explicit --fks (explicit wins per column).
+    # merge with any explicit --fks (explicit wins per column). FK linking is
+    # an opt-in part of the user's ingest request — failures propagate rather
+    # than warn-and-continue, since silently producing un-linked .preql files
+    # would be worse than a hard failure.
     inferred_fks: list[InferredFK] = []
-    if fk_infer_level != "off":
+    fk_infos = []
+    if introspection_level is not IntrospectionLevel.OFF:
         table_records = [
             rec for rec in ingested.values() if not _looks_like_file_source(rec.source)
         ]
         if len(table_records) >= 2:
-            try:
+            with _rollback_on_error(exec):
                 fk_infos = [
                     build_table_fk_info(rec.source, rec.datasource, exec.generator)
                     for rec in table_records
                 ]
-                inferred_fks = infer_foreign_keys(fk_infos, exec, fk_infer_level)
-            except Exception as e:
-                print_warning(f"Foreign-key inference failed: {e}")
-                if ctx.obj["DEBUG"]:
-                    import traceback
-
-                    print_warning(traceback.format_exc())
-                try:
-                    exec.connection.rollback()
-                except Exception:
-                    pass
+                inferred_fks = infer_foreign_keys(fk_infos, exec, introspection_level)
+    # Explicit --fks arrive marked partial=True. In full mode we have the
+    # executor; sniff reverse coverage to upgrade complete edges.
+    if introspection_level is IntrospectionLevel.FULL and explicit_fk_map and fk_infos:
+        with _rollback_on_error(exec):
+            enrich_explicit_fks_partial(
+                explicit_fk_map, {t.name: t for t in fk_infos}, exec
+            )
     fk_map = merge_fk_maps(inferred_fks, explicit_fk_map)
 
     if fk_map:

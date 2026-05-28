@@ -248,10 +248,49 @@ def print_chart_terminal(
     return True
 
 
+def _slice_for_middle_truncation(result: list, cap: int) -> tuple[list, list, int]:
+    """Split rows into (head, tail, omitted_count) for middle-truncated display.
+
+    Cap is the total displayed row count (head + tail). Splitting around the
+    middle preserves both the leading rows the agent uses for "shape" checks
+    and the trailing rows it uses for "order" checks (sort tail, last bucket,
+    etc.) — losing either was the failure mode in q13 where the agent kept
+    bumping `--displayed-rows` looking for the last bucket.
+    """
+    if cap <= 0 or len(result) <= cap:
+        return result, [], 0
+    head_size = cap // 2 + cap % 2
+    tail_size = cap - head_size
+    head = result[:head_size]
+    tail = result[-tail_size:] if tail_size else []
+    omitted = len(result) - cap
+    return head, tail, omitted
+
+
+def _row_count_footer(displayed: int, total: int, hit_fetch_ceiling: bool) -> str:
+    """Trailing line under every result table — gives the agent the displayed
+    vs. actual total so it doesn't bump `--displayed-rows` blindly looking
+    for rows that may not exist."""
+    if hit_fetch_ceiling:
+        return (
+            f"WARNING: {displayed} of {total:,}+ rows shown — fetch ceiling "
+            f"({_core.DISPLAY_FETCH_CEILING:,}) hit, the result set is even "
+            "larger and full introspection isn't possible. Add a WHERE clause "
+            "or aggregation to bound the query before relying on the output."
+        )
+    if displayed >= total:
+        return f"{total} row(s)."
+    omitted = total - displayed
+    return (
+        f"{displayed} of {total} rows shown — middle {omitted} omitted; "
+        "raise --displayed-rows or pass --all-rows for the full set."
+    )
+
+
 def _print_rich_table(
     result: list, headers: list[str] | None = None, row_limit: int | None = None
 ) -> None:
-    """Print query results using Rich tables."""
+    """Print query results using Rich tables with middle truncation."""
     if _core.console is None:
         return
 
@@ -260,6 +299,7 @@ def _print_rich_table(
         return
 
     cap = _core.FETCH_LIMIT - 1 if row_limit is None else row_limit
+    hit_fetch_ceiling = len(result) >= _core.DISPLAY_FETCH_CEILING
 
     table = Table(
         box=box.MINIMAL_DOUBLE_HEAD,
@@ -271,17 +311,22 @@ def _print_rich_table(
     for col in column_names:
         table.add_column(str(col), style=_core.COL_WHITE, no_wrap=False)
 
-    for i, row in enumerate(result):
-        if i >= cap:
-            table.add_row(*["..." for _ in column_names], style="dim")
-            _core.console.print(
-                f"[dim]Showing first {cap} rows. Result set was larger.[/dim]"
-            )
-            break
+    head, tail, _ = _slice_for_middle_truncation(result, cap)
+    for row in head:
         row_data = [str(val) if val is not None else "[dim]NULL[/dim]" for val in row]
         table.add_row(*row_data)
+    if tail:
+        table.add_row(*["…" for _ in column_names], style="dim")
+        for row in tail:
+            row_data = [
+                str(val) if val is not None else "[dim]NULL[/dim]" for val in row
+            ]
+            table.add_row(*row_data)
 
     _core.console.print(table)
+    footer = _row_count_footer(len(head) + len(tail), len(result), hit_fetch_ceiling)
+    style = "bold yellow" if hit_fetch_ceiling else "dim"
+    _core.console.print(f"[{style}]{footer}[/{style}]")
 
 
 def _print_fallback_table(
@@ -291,9 +336,13 @@ def _print_fallback_table(
     print_warning("Install rich for prettier table output")
     print(", ".join(headers))
     cap = _core.FETCH_LIMIT - 1 if row_limit is None else row_limit
-    for i, row in enumerate(rows):
-        if i >= cap:
-            print(f"... showing first {cap} rows. Result set was larger.")
-            break
+    hit_fetch_ceiling = len(rows) >= _core.DISPLAY_FETCH_CEILING
+    head, tail, _ = _slice_for_middle_truncation(rows, cap)
+    for row in head:
         print(row)
+    if tail:
+        print("...")
+        for row in tail:
+            print(row)
+    print(_row_count_footer(len(head) + len(tail), len(rows), hit_fetch_ceiling))
     print("---")

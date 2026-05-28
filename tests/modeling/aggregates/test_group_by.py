@@ -27,3 +27,56 @@ ORDER BY
     results = test_executor.execute_text(test_select2)[0].fetchall()
 
     assert results[0] == (4, "store1")
+
+
+def test_count_by_distribution_auto(
+    test_environment: Environment, test_executor: Executor
+):
+    """Q13 shape via auto/metric: should group by the per-Y count value."""
+    test_select = """
+auto orders_per_store_auto <- count(order_id) by stores.id;
+SELECT
+    orders_per_store_auto,
+    count(stores.id) -> store_count_auto
+ORDER BY
+    store_count_auto desc,
+    orders_per_store_auto desc
+;"""
+
+    results = test_executor.execute_text(test_select)[0].fetchall()
+    assert results == [(2, 2), (1, 1)]
+
+
+def test_count_by_distribution_coalesce(
+    test_environment: Environment, test_executor: Executor
+):
+    """The exact shape used in tests/modeling/tpc_h/query13.preql."""
+    test_select = """
+auto orders_per_store_co <- count(order_id) by stores.id;
+SELECT
+    coalesce(orders_per_store_co, 0) -> c_count,
+    count(stores.id) -> custdist
+ORDER BY
+    custdist desc,
+    c_count desc
+;"""
+
+    results = test_executor.execute_text(test_select)[0].fetchall()
+    assert results == [(2, 2), (1, 1)]
+
+
+def test_count_by_distribution_inline(
+    test_environment: Environment, test_executor: Executor
+):
+    """Same as above but inline `count(X) by Y -> name`. Should behave identically."""
+    test_select = """
+SELECT
+    count(order_id) by stores.id -> orders_per_store,
+    count(stores.id) -> store_count
+ORDER BY
+    store_count desc,
+    orders_per_store desc
+;"""
+
+    results = test_executor.execute_text(test_select)[0].fetchall()
+    assert results == [(2, 2), (1, 1)]

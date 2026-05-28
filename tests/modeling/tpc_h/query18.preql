@@ -2,14 +2,16 @@ import lineitem;
 
 auto qty_per_order <- sum(quantity) by order.id;
 
-where qty_per_order > 300
+where  order.id is not null
 select
     order.customer.name,
     order.customer.id,
     order.id,
     order.date,
     order.total_price,
-    sum(quantity) -> sum_quantity
+    qty_per_order
+having
+    qty_per_order > 300
 order by
     order.total_price desc,
     order.date asc

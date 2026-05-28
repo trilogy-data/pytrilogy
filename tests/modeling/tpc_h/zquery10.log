@@ -1,59 +1,47 @@
 query_id = "10"
-gen_length = 2447
-preql_size = 398
+gen_length = 2115
+preql_size = 419
 comp_size = 579
 generated_sql = """
 
 WITH 
-questionable as (
-SELECT
-    \"order_orders\".\"o_custkey\" as \"order_customer_id\"
-FROM
-    \"memory\".\"orders\" as \"order_orders\"
-WHERE
-    \"order_orders\".\"o_orderdate\" >= date '1993-10-01' and \"order_orders\".\"o_orderdate\" < date '1994-01-01'
-
-GROUP BY
-    1),
-thoughtful as (
+cheerful as (
 SELECT
     \"order_customer_customers\".\"c_custkey\" as \"order_customer_id\",
-    UPPER(\"order_customer_nation_nation\".\"n_name\")  as \"order_customer_nation_name\",
     sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
     INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
-    INNER JOIN \"memory\".\"nation\" as \"order_customer_nation_nation\" on \"order_customer_customers\".\"c_nationkey\" = \"order_customer_nation_nation\".\"n_nationkey\"
 WHERE
     \"order_orders\".\"o_orderdate\" >= date '1993-10-01' and \"order_orders\".\"o_orderdate\" < date '1994-01-01' and \"lineitem\".\"l_returnflag\" = 'R'
 
 GROUP BY
-    1,
-    2),
-uneven as (
+    1),
+questionable as (
 SELECT
     \"order_customer_customers\".\"c_acctbal\" as \"order_customer_account_balance\",
     \"order_customer_customers\".\"c_address\" as \"order_customer_address\",
     \"order_customer_customers\".\"c_comment\" as \"order_customer_comment\",
     \"order_customer_customers\".\"c_custkey\" as \"order_customer_id\",
     \"order_customer_customers\".\"c_name\" as \"order_customer_name\",
-    \"order_customer_customers\".\"c_phone\" as \"order_customer_phone\"
+    \"order_customer_customers\".\"c_phone\" as \"order_customer_phone\",
+    UPPER(\"order_customer_nation_nation\".\"n_name\")  as \"order_customer_nation_name\"
+FROM
+    \"memory\".\"nation\" as \"order_customer_nation_nation\"
+    INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_customer_nation_nation\".\"n_nationkey\" = \"order_customer_customers\".\"c_nationkey\")
+SELECT
+    \"cheerful\".\"order_customer_id\" as \"order_customer_id\",
+    \"questionable\".\"order_customer_name\" as \"order_customer_name\",
+    \"cheerful\".\"q_revenue\" as \"q_revenue\",
+    \"questionable\".\"order_customer_account_balance\" as \"order_customer_account_balance\",
+    \"questionable\".\"order_customer_nation_name\" as \"order_customer_nation_name\",
+    \"questionable\".\"order_customer_address\" as \"order_customer_address\",
+    \"questionable\".\"order_customer_phone\" as \"order_customer_phone\",
+    \"questionable\".\"order_customer_comment\" as \"order_customer_comment\"
 FROM
     \"questionable\"
-    INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"questionable\".\"order_customer_id\" = \"order_customer_customers\".\"c_custkey\")
-SELECT
-    \"thoughtful\".\"order_customer_id\" as \"order_customer_id\",
-    \"uneven\".\"order_customer_name\" as \"order_customer_name\",
-    \"thoughtful\".\"q_revenue\" as \"q_revenue\",
-    \"uneven\".\"order_customer_account_balance\" as \"order_customer_account_balance\",
-    \"thoughtful\".\"order_customer_nation_name\" as \"order_customer_nation_name\",
-    \"uneven\".\"order_customer_address\" as \"order_customer_address\",
-    \"uneven\".\"order_customer_phone\" as \"order_customer_phone\",
-    \"uneven\".\"order_customer_comment\" as \"order_customer_comment\"
-FROM
-    \"thoughtful\"
-    INNER JOIN \"uneven\" on \"thoughtful\".\"order_customer_id\" = \"uneven\".\"order_customer_id\"
+    INNER JOIN \"cheerful\" on \"questionable\".\"order_customer_id\" = \"cheerful\".\"order_customer_id\"
 ORDER BY 
-    \"thoughtful\".\"q_revenue\" desc
+    \"cheerful\".\"q_revenue\" desc
 LIMIT (20)"""

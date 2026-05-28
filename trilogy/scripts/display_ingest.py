@@ -11,7 +11,7 @@ from trilogy.scripts.display_core import print_info, print_success
 
 if TYPE_CHECKING:
     from trilogy.scripts.ingest import IngestSummaryRow
-    from trilogy.scripts.ingest_helpers.fk_inference import InferredFK
+    from trilogy.scripts.ingest_helpers.fk_inference import FKBinding, InferredFK
 
 try:
     from rich import box
@@ -169,14 +169,14 @@ def show_ingest_summary(rows: list["IngestSummaryRow"]) -> None:
 
 def show_fk_summary(
     inferred: list["InferredFK"],
-    explicit: dict[str, dict[str, str]],
+    explicit: "dict[str, dict[str, FKBinding]]",
 ) -> None:
     """Print the foreign keys wired into the model, inferred distinct from explicit."""
     overridden = {
         (table, column) for table, columns in explicit.items() for column in columns
     }
-    # (column, references, origin, overlap)
-    rows: list[tuple[str, str, str, str]] = []
+    # (column, references, origin, overlap, coverage)
+    rows: list[tuple[str, str, str, str, str]] = []
     for fk in inferred:
         if (fk.from_table, fk.from_column) in overridden:
             continue  # an explicit --fks entry takes precedence; shown below
@@ -187,11 +187,20 @@ def show_fk_summary(
                 fk.target_ref,
                 f"inferred ({fk.match_kind})",
                 overlap,
+                "partial" if fk.partial else "complete",
             )
         )
     for table, columns in explicit.items():
-        for column, ref in columns.items():
-            rows.append((f"{table}.{column}", ref, "explicit", "-"))
+        for column, binding in columns.items():
+            rows.append(
+                (
+                    f"{table}.{column}",
+                    binding.target_ref,
+                    "explicit",
+                    "-",
+                    "partial" if binding.partial else "complete",
+                )
+            )
     if not rows:
         return
     if _core.RICH_AVAILABLE and _core.console is not None:
@@ -200,10 +209,20 @@ def show_fk_summary(
         table_view.add_column("References", style="green")
         table_view.add_column("Origin")
         table_view.add_column("Overlap", justify="right")
-        for column, ref, origin, overlap in rows:
+        table_view.add_column("Coverage")
+        for column, ref, origin, overlap, coverage in rows:
             style = "yellow" if origin.startswith("inferred") else "blue"
-            table_view.add_row(column, ref, f"[{style}]{origin}[/{style}]", overlap)
+            cov_style = "magenta" if coverage == "partial" else "green"
+            table_view.add_row(
+                column,
+                ref,
+                f"[{style}]{origin}[/{style}]",
+                overlap,
+                f"[{cov_style}]{coverage}[/{cov_style}]",
+            )
         _core.console.print(table_view)
     else:
-        for column, ref, origin, overlap in rows:
-            print_info(f"FK {column} -> {ref} [{origin}, overlap={overlap}]")
+        for column, ref, origin, overlap, coverage in rows:
+            print_info(
+                f"FK {column} -> {ref} [{origin}, overlap={overlap}, {coverage}]"
+            )

@@ -1,5 +1,5 @@
 query_id = "04"
-gen_length = 11716
+gen_length = 12142
 preql_size = 1800
 comp_size = 4661
 generated_sql = """
@@ -112,6 +112,9 @@ SELECT
     sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'CATALOG' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"catalog_second_year\"
 FROM
     \"uneven\"
+WHERE
+    \"uneven\".\"sales_date_year\" in (2001,2002)
+
 GROUP BY
     1),
 macho as (
@@ -120,14 +123,23 @@ SELECT
     sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'STORE' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"store_first_year\"
 FROM
     \"uneven\"
+WHERE
+    \"uneven\".\"sales_date_year\" in (2001,2002)
+
 GROUP BY
-    1),
+    1
+HAVING
+    \"store_first_year\" > 0
+),
 abhorrent as (
 SELECT
     \"uneven\".\"sales_customer_id\" as \"sales_customer_id\",
     sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'STORE' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"store_second_year\"
 FROM
     \"uneven\"
+WHERE
+    \"uneven\".\"sales_date_year\" in (2001,2002)
+
 GROUP BY
     1),
 concerned as (
@@ -136,6 +148,9 @@ SELECT
     sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'WEB' and \"uneven\".\"sales_date_year\" = 2001 THEN 2 ELSE NULL END) as \"web_first_year\"
 FROM
     \"uneven\"
+WHERE
+    \"uneven\".\"sales_date_year\" in (2001,2002)
+
 GROUP BY
     1),
 yummy as (
@@ -144,6 +159,9 @@ SELECT
     sum((( ( \"uneven\".\"sales_ext_list_price\" - \"uneven\".\"sales_ext_wholesale_cost\" ) - \"uneven\".\"sales_ext_discount_amount\" ) + \"uneven\".\"sales_ext_sales_price\") / CASE WHEN \"uneven\".\"sales_sales_channel\" = 'WEB' and \"uneven\".\"sales_date_year\" = 2002 THEN 2 ELSE NULL END) as \"web_second_year\"
 FROM
     \"uneven\"
+WHERE
+    \"uneven\".\"sales_date_year\" in (2001,2002)
+
 GROUP BY
     1),
 vacuous as (
@@ -157,7 +175,10 @@ SELECT
     coalesce(\"abundant\".\"sales_customer_id\",\"yummy\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"abundant\"
-    FULL JOIN \"yummy\" on \"abundant\".\"sales_customer_id\" is not distinct from \"yummy\".\"sales_customer_id\"),
+    INNER JOIN \"yummy\" on \"abundant\".\"sales_customer_id\" is not distinct from \"yummy\".\"sales_customer_id\"
+WHERE
+    \"abundant\".\"sales_date_year\" in (2001,2002)
+),
 sparkling as (
 SELECT
     \"concerned\".\"web_first_year\" as \"web_first_year\",
@@ -170,7 +191,10 @@ SELECT
     coalesce(\"concerned\".\"sales_customer_id\",\"vacuous\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"vacuous\"
-    FULL JOIN \"concerned\" on \"vacuous\".\"sales_customer_id\" is not distinct from \"concerned\".\"sales_customer_id\"),
+    FULL JOIN \"concerned\" on \"vacuous\".\"sales_customer_id\" is not distinct from \"concerned\".\"sales_customer_id\"
+WHERE
+    \"vacuous\".\"sales_date_year\" in (2001,2002)
+),
 late as (
 SELECT
     \"abhorrent\".\"store_second_year\" as \"store_second_year\",
@@ -184,7 +208,10 @@ SELECT
     coalesce(\"abhorrent\".\"sales_customer_id\",\"sparkling\".\"sales_customer_id\") as \"sales_customer_id\"
 FROM
     \"sparkling\"
-    FULL JOIN \"abhorrent\" on \"sparkling\".\"sales_customer_id\" is not distinct from \"abhorrent\".\"sales_customer_id\"),
+    FULL JOIN \"abhorrent\" on \"sparkling\".\"sales_customer_id\" is not distinct from \"abhorrent\".\"sales_customer_id\"
+WHERE
+    \"sparkling\".\"sales_date_year\" in (2001,2002)
+),
 friendly as (
 SELECT
     \"late\".\"sales_customer_first_name\" as \"sales_customer_first_name\",
@@ -201,7 +228,7 @@ FROM
     \"late\"
     INNER JOIN \"macho\" on \"late\".\"sales_customer_id\" is not distinct from \"macho\".\"sales_customer_id\"
 WHERE
-    \"late\".\"sales_date_year\" in (2001,2002) and \"macho\".\"store_first_year\" > 0
+    \"late\".\"sales_date_year\" in (2001,2002)
 ),
 busy as (
 SELECT

@@ -16,6 +16,7 @@ from trilogy.scripts.ingest import (
     detect_rich_type,
     detect_unique_key_combinations,
 )
+from trilogy.scripts.ingest_helpers.fk_inference import FKBinding
 from trilogy.scripts.ingest_helpers.foreign_keys import parse_foreign_keys
 from trilogy.scripts.ingest_helpers.formatting import (
     canonicolize_name,
@@ -2163,15 +2164,19 @@ def test_parse_foreign_keys():
     # Single FK
     fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk"
     result = parse_foreign_keys(fk_str)
-    assert result == {"store_sales": {"ss_customer_sk": "customer.c_customer_sk"}}
+    assert result == {
+        "store_sales": {
+            "ss_customer_sk": FKBinding("customer.c_customer_sk", partial=True)
+        }
+    }
 
     # Multiple FKs
     fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk,store_sales.ss_item_sk:item.i_item_sk"
     result = parse_foreign_keys(fk_str)
     assert result == {
         "store_sales": {
-            "ss_customer_sk": "customer.c_customer_sk",
-            "ss_item_sk": "item.i_item_sk",
+            "ss_customer_sk": FKBinding("customer.c_customer_sk", partial=True),
+            "ss_item_sk": FKBinding("item.i_item_sk", partial=True),
         }
     }
 

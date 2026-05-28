@@ -30,6 +30,10 @@ class LLMResponse:
     text: str
     usage: UsageDict
     tool_calls: list[LLMToolCall] = field(default_factory=list)
+    # Raw finish_reason / stop_reason from the provider. "length" means the
+    # output was truncated by max_tokens — tool_call arguments may be partial
+    # (or auto-closed JSON), which silently corrupts write_file payloads.
+    finish_reason: Optional[str] = None
 
 
 @dataclass

@@ -38,6 +38,7 @@ properties <order_id, sales_channel, item.id> (
     return_quantity int?,
     return_net_loss float?,
     is_returned bool?,
+    row_one int?,
 );
 
 partial datasource web_sales_unified (
@@ -66,6 +67,7 @@ partial datasource web_sales_unified (
     WS_NET_PROFIT: net_profit,
     WS_NET_PAID: net_paid,
     WS_NET_PAID_INC_TAX: net_paid_inc_tax,
+    raw(''' 1 '''): row_one,
 )
 grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'WEB'
@@ -96,6 +98,7 @@ partial datasource catalog_sales_unified (
     CS_NET_PROFIT: net_profit,
     CS_NET_PAID: net_paid,
     CS_NET_PAID_INC_TAX: net_paid_inc_tax,
+    raw(''' 1 '''): row_one,
 )
 grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'CATALOG'
@@ -126,6 +129,7 @@ partial datasource store_sales_unified (
     SS_NET_PROFIT: net_profit,
     SS_NET_PAID: net_paid,
     SS_NET_PAID_INC_TAX: net_paid_inc_tax,
+    raw(''' 1 '''): row_one,
 )
 grain (item.id, order_id, sales_channel)
 complete where sales_channel = 'STORE'

@@ -139,8 +139,21 @@ def check_if_group_required(
     # Expand target via concept-coverage so a MULTISELECT align identity
     # covers its source keys (e.g. local.customer_id covers customer.id and
     # store_sales.customer.id), and a comp_grain that arrives carrying the
-    # source keys does not look like extra grain.
-    target_coverage = _grain_coverage_addresses(target_grain, environment)
+    # source keys does not look like extra grain. When *every* target
+    # component is itself an aggregate (e.g. TPC-H Q13 distribution shape:
+    # ``select count(x) by Y -> per_y, count(Y) -> dist``), exclude aggregate
+    # by-keys from coverage: there is no non-aggregate concept anchoring the
+    # output to the by-grain, so an upstream at the by-grain is strictly
+    # finer and a regroup is required to roll up to the aggregate's grain.
+    target_has_only_aggregates = bool(target_grain.components) and all(
+        environment.concepts[address].is_aggregate
+        for address in target_grain.components
+    )
+    target_coverage = _grain_coverage_addresses(
+        target_grain,
+        environment,
+        include_aggregate_by_keys=not target_has_only_aggregates,
+    )
     if comp_grain.components.issubset(target_coverage):
         logger.info(
             f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain} covered by target coverage {target_coverage}, no group node required"

@@ -63,10 +63,15 @@ def execute_single_statement(
         show_statement_type(idx, total_queries, statement_type)
 
     start_time = datetime.now()
-    # ``cap`` is the displayed-rows ceiling. We fetch one extra to detect
-    # "more rows exist" without a second query. Default tracks the legacy
-    # behaviour (50 rows shown, one extra fetched ⇒ FETCH_LIMIT == 51).
+    # ``cap`` is the displayed-rows ceiling — the user-visible truncation
+    # point. We *fetch* up to ``DISPLAY_FETCH_CEILING`` rows regardless, so
+    # the renderer can both (a) report the actual total and (b) middle-truncate
+    # by drawing the tail. Larger result sets are still bounded so a runaway
+    # SELECT doesn't stream millions of rows into the agent's context.
+    from trilogy.scripts.display_core import DISPLAY_FETCH_CEILING
+
     cap = FETCH_LIMIT - 1 if row_limit is None else row_limit
+    fetch_size = max(cap + 1, DISPLAY_FETCH_CEILING)
 
     try:
         raw_results = exec.execute_statement(query)
@@ -79,7 +84,9 @@ def execute_single_statement(
             return True, raw_results, duration, None
 
         results = (
-            ResultSet(rows=raw_results.fetchmany(cap + 1), columns=raw_results.keys())
+            ResultSet(
+                rows=raw_results.fetchmany(fetch_size), columns=raw_results.keys()
+            )
             if raw_results
             else None
         )

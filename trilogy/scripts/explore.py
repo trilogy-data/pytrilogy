@@ -99,22 +99,24 @@ def _emit_groups(concept_items: list[tuple[str, Concept]]) -> None:
     each namespace prefix, e.g. ``customer.customer_address  →  city, state,
     zip, county, …``. Cuts the size of a typical fact's schema dump by ~5×
     versus the flat table. Concepts in the implicit ``local`` namespace are
-    grouped under ``(this file)`` — they're referenced bare from the file's
-    own queries, or under the importing query's alias."""
+    grouped under ``(root)`` — they're declared directly in this file (not
+    behind an import alias). Other groups are concepts pulled in via imports
+    and live under their namespace prefix. The agent must understand that
+    everything listed below is reachable from this file."""
     by_ns: dict[str, list[tuple[str, Concept]]] = defaultdict(list)
     for addr, c in concept_items:
         display = _display_address(addr)
         ns, sep, leaf = display.rpartition(".")
         if not sep:
-            # No remaining dot ⇒ this was a `local.X` concept; group under a
-            # clear label so the agent can see at a glance which concepts
-            # belong to the file itself (vs. its imports).
-            by_ns["(this file)"].append((display, c))
+            # No remaining dot ⇒ this was a `local.X` concept; group under
+            # ``(root)`` so the agent sees at a glance which concepts are
+            # declared at the top level of the file (vs. imported).
+            by_ns["(root)"].append((display, c))
         else:
             by_ns[ns].append((leaf, c))
     click.echo()
     print_info(
-        f"Concept groups ({len(by_ns)} namespaces, {len(concept_items)} concepts)"
+        f"Available Concepts ({len(by_ns)} namespaces, {len(concept_items)} concepts)"
     )
     for ns in sorted(by_ns):
         items = by_ns[ns]

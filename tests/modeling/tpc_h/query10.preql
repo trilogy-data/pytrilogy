@@ -7,7 +7,7 @@ where
 select
     order.customer.id,
     order.customer.name,
-    sum(revenue) -> q_revenue,
+    sum(revenue) by order.customer.id -> q_revenue,
     order.customer.account_balance,
     order.customer.nation.name,
     order.customer.address,

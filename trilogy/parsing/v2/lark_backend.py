@@ -5,7 +5,11 @@ from os.path import dirname, join
 from re import IGNORECASE
 from typing import TYPE_CHECKING, Any
 
-from trilogy.parsing.v2.errors import create_generic_syntax_error, create_syntax_error
+from trilogy.parsing.v2.errors import (
+    create_generic_syntax_error,
+    create_syntax_error,
+    detect_subselect,
+)
 from trilogy.parsing.v2.syntax import SyntaxDocument, syntax_document_from_parser
 from trilogy.utility import safe_open
 
@@ -117,9 +121,20 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     if parsed_tokens == ["FROM"]:
         raise create_syntax_error(101, pos, text)
 
+    # `__ANON_0` is Lark's auto-name for the inline "<-" literal — only used by
+    # derivation/binding rules. If it appears in `expected`, the user is in a
+    # derivation context (auto/property/metric/rowset NAME) but stopped before
+    # the arrow + expression.
+    if "__ANON_0" in e.expected:
+        raise create_syntax_error(203, pos, text)
+
     by_pos = _detect_unparenthesized_by_expr_lark(text, pos)
     if by_pos is not None:
         raise create_syntax_error(211, by_pos, text)
+
+    sub_pos = detect_subselect(text, pos)
+    if sub_pos is not None:
+        raise create_syntax_error(102, sub_pos, text)
 
     if last_token and e.token.type == "$END":
         try:

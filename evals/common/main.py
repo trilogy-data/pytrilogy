@@ -28,10 +28,11 @@ PROVIDER_ENV = {
     "google": "GOOGLE_API_KEY",
 }
 
-# OpenRouter multiplexes a model across providers and one (AtlasCloud) hard-400s
-# our tool requests. Pin routing so runs are reliable and reproducible.
+# OpenRouter multiplexes a model across providers; we only block AtlasCloud
+# because it hard-400s our tool requests. Providers are otherwise fungible —
+# letting OpenRouter pick gives the broadest pool and best resilience to a
+# single upstream rate-limiting.
 OPENROUTER_ROUTING = {
-    "order": ["DeepInfra"],
     "ignore": ["AtlasCloud"],
     "allow_fallbacks": True,
 }
@@ -208,6 +209,10 @@ def run(spec: BenchmarkSpec) -> int:
     load_env(args.env_file)
     if args.provider == "openrouter":
         os.environ.setdefault("OPENROUTER_PROVIDER", json.dumps(OPENROUTER_ROUTING))
+        # DeepSeek (and some other OpenRouter upstreams) escape `<`/`>` in
+        # tool-call arguments, producing `&lt;-` instead of `<-`. Decode at the
+        # provider level so the agent doesn't have to learn the workaround.
+        os.environ.setdefault("OPENROUTER_SANITIZE_HTML_ESCAPES", "true")
     api_env = PROVIDER_ENV.get(args.provider, "OPENROUTER_API_KEY")
     if not os.environ.get(api_env):
         print(
