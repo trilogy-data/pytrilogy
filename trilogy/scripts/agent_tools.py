@@ -205,6 +205,9 @@ _LIST_FILES_SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules"}
 _LIST_FILES_SKIP_PREFIXES = ("_worker_",)
 _LIST_FILES_SKIP_SUFFIXES = (".duckdb", ".pyc")
 _LIST_FILES_MAX_ENTRIES = 500
+_LIST_FILES_DESC_LIMIT = 140
+_LIST_FILES_DESC_PREFIX = "    ↳ "
+_PREQL_HEAD_SCAN_BYTES = 4096
 
 # Description-rendering constants live in the shared helper so ``trilogy
 # file list`` and the agent's ``list_files`` use identical truncation. The
