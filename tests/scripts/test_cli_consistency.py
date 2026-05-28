@@ -74,7 +74,7 @@ def ingested_dir(tmp_path_factory) -> Path:
             "duckdb",
             "--output",
             str(out_dir),
-            "--fk-infer-level",
+            "--infer-level",
             "full",
         ],
     )
@@ -120,7 +120,7 @@ def test_ingest_is_deterministic(ingested_dir: Path, tmp_path: Path) -> None:
             "duckdb",
             "--output",
             str(out_dir),
-            "--fk-infer-level",
+            "--infer-level",
             "full",
         ],
     )

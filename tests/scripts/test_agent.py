@@ -13,12 +13,10 @@ from trilogy.ai.providers.base import LLMProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.execution.config import AgentConfig
 from trilogy.scripts import agent as agent_mod
+from trilogy.scripts import agent_tools as agent_tools_mod
 from trilogy.scripts import display_core
 from trilogy.scripts.agent import (
-    ALL_TOOLS,
     MAX_SUBMIT_KICKBACKS,
-    AgentState,
-    TodoItem,
     _build_provider,
     _dispatch,
     _format_call,
@@ -26,6 +24,11 @@ from trilogy.scripts.agent import (
     _render_reviewer_transcript,
     _run_turn,
     _status_message,
+)
+from trilogy.scripts.agent_tools import (
+    ALL_TOOLS,
+    AgentState,
+    TodoItem,
     handle_list_files,
     handle_read_file,
     handle_return_control,
@@ -426,7 +429,7 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
     def boom(state, args):
         raise RuntimeError("kaboom")
 
-    monkeypatch.setitem(agent_mod.TOOL_HANDLERS, "show_message", boom)
+    monkeypatch.setitem(agent_tools_mod.TOOL_HANDLERS, "show_message", boom)
     result = _dispatch(AgentState(), LLMToolCall(name="show_message"))
     assert "RuntimeError" in result
 
@@ -436,7 +439,7 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
 
 def test_list_files_truncates_at_max_entries(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(agent_mod, "_LIST_FILES_MAX_ENTRIES", 3)
+    monkeypatch.setattr(agent_tools_mod, "_LIST_FILES_MAX_ENTRIES", 3)
     for i in range(10):
         (tmp_path / f"f{i:02d}.preql").write_text("x", encoding="utf-8")
     out = handle_list_files(AgentState(), {"path": "."})
@@ -475,7 +478,7 @@ def test_read_file_reports_oserror(monkeypatch, tmp_path):
 
 
 def test_first_non_flag_arg_skips_value_flag_and_options():
-    fn = agent_mod._first_non_flag_arg
+    fn = agent_tools_mod._first_non_flag_arg
     assert fn(["--debug-file", "log.txt", "agent-info"]) == "agent-info"
     assert fn(["--debug", "agent-info"]) == "agent-info"
     assert fn(["--debug-file"]) is None
@@ -483,7 +486,9 @@ def test_first_non_flag_arg_skips_value_flag_and_options():
 
 
 def test_trilogy_file_write_hint_returns_none_without_content_flag():
-    assert agent_mod._trilogy_file_write_hint(["file", "write", "x.preql"]) is None
+    assert (
+        agent_tools_mod._trilogy_file_write_hint(["file", "write", "x.preql"]) is None
+    )
 
 
 def test_handle_trilogy_reports_subprocess_timeout(monkeypatch):
@@ -552,7 +557,7 @@ def test_run_turn_return_control_drops_open_todos(monkeypatch):
     class _FixedUUID:
         hex = "abcd1234ffff"
 
-    monkeypatch.setattr(agent_mod.uuid, "uuid4", lambda: _FixedUUID())
+    monkeypatch.setattr(agent_tools_mod.uuid, "uuid4", lambda: _FixedUUID())
     # Open TODOs no longer gate exit. The agent adds one, then returns
     # control immediately; the open item is discarded and the run ends.
     provider = ScriptedProvider(
@@ -722,6 +727,35 @@ def test_reviewer_transcript_includes_tool_calls_and_results():
     assert "do the thing" in rendered
     assert "AGENT CALL trilogy" in rendered
     assert "ignored" not in rendered  # system messages dropped
+
+
+def test_reviewer_transcript_truncates_long_message_from_middle():
+    """Long tool-result content keeps head + tail; the middle is collapsed."""
+    head = "HEAD_MARKER_"
+    tail = "_TAIL_MARKER"
+    body = head + "x" * (agent_mod.REVIEWER_TRANSCRIPT_MSG_LIMIT * 3) + tail
+    msgs = [LLMMessage(role="user", content=body)]
+    rendered = _render_reviewer_transcript(msgs)
+    assert head in rendered
+    assert tail in rendered
+    assert "truncated" in rendered
+    assert len(rendered) < len(body)
+
+
+def test_reviewer_transcript_truncates_long_tool_args_from_middle():
+    """Long tool-call argument blobs keep head + tail."""
+    head = "ARG_HEAD_"
+    tail = "_ARG_TAIL"
+    blob = head + "y" * (agent_mod.REVIEWER_TRANSCRIPT_ARG_LIMIT * 3) + tail
+    msg = LLMMessage(role="assistant", content="")
+    msg.model_info = {
+        "tool_calls": [{"name": "trilogy", "arguments": {"content": blob}}]
+    }
+    rendered = _render_reviewer_transcript([msg])
+    assert head in rendered
+    assert tail in rendered
+    assert "truncated" in rendered
+    assert len(rendered) < len(blob)
 
 
 # --- _build_provider ---
@@ -1120,7 +1154,7 @@ def test_all_tools_registered():
         "todo",
         "return_control_to_user",
     }
-    assert set(agent_mod.TOOL_HANDLERS) == names
+    assert set(agent_tools_mod.TOOL_HANDLERS) == names
 
 
 def test_tool_schemas_are_valid_json_schema_objects():

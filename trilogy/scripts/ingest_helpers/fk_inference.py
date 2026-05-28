@@ -21,6 +21,7 @@ from trilogy.scripts.ingest_helpers.formatting import (
     canonicalize_names,
     canonicolize_name,
 )
+from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
 
 if TYPE_CHECKING:
     from trilogy.core.models.datasource import Datasource
@@ -440,21 +441,17 @@ def _resolve_target_conflicts(
 def infer_foreign_keys(
     tables: list[TableFKInfo],
     executor: Any,
-    level: str,
+    level: IntrospectionLevel,
     sample_size: int = DEFAULT_SNIFF_SAMPLE,
 ) -> list[InferredFK]:
-    """Run Stage 1 (and Stage 2 for ``full``) and return accepted FK edges.
-
-    ``level`` is ``off`` (nothing), ``fast`` (name match only) or ``full``
-    (name match plus value sniffing).
-    """
-    if level == "off" or len(tables) < 2:
+    """Run Stage 1 (and Stage 2 for ``FULL``) and return accepted FK edges."""
+    if level is IntrospectionLevel.OFF or len(tables) < 2:
         return []
     candidates = generate_candidates(tables)
     by_name = {t.name: t for t in tables}
     accepted: list[InferredFK] = []
     for edges in candidates.values():
-        if level == "fast":
+        if level is IntrospectionLevel.FAST:
             best = edges[0]  # highest confidence
             accepted.append(
                 InferredFK(

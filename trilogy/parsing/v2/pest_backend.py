@@ -4,7 +4,11 @@ import re
 from bisect import bisect_right
 
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.parsing.v2.errors import create_generic_syntax_error, create_syntax_error
+from trilogy.parsing.v2.errors import (
+    create_generic_syntax_error,
+    create_syntax_error,
+    detect_subselect,
+)
 from trilogy.parsing.v2.syntax import (
     LARK_NODE_KIND,
     LARK_TOKEN_KIND,
@@ -257,6 +261,11 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     by_pos = _detect_unparenthesized_by_expr(text, pos)
     if by_pos is not None:
         return create_syntax_error(211, by_pos, text)
+
+    # 102: SQL-style subquery `(select ...)` / `(with ...)` open at pos.
+    sub_pos = detect_subselect(text, pos)
+    if sub_pos is not None:
+        return create_syntax_error(102, sub_pos, text)
 
     # 202: trailing-terminator missing. Check only when the error position
     # is at or past the last non-whitespace character — otherwise we'd mask

@@ -618,9 +618,7 @@ class TestResultsFooter:
 
         monkeypatch.setattr(core_mod, "DISPLAY_FETCH_CEILING", 20)
         # 20 rows = ceiling; we report ">= 20" not "= 20".
-        results = display.ResultSet(
-            rows=[(f"r{i}",) for i in range(20)], columns=["x"]
-        )
+        results = display.ResultSet(rows=[(f"r{i}",) for i in range(20)], columns=["x"])
         if rich_mode and RICH_AVAILABLE:
             with capture_rich_console_output() as output:
                 display.print_results_table(results, row_limit=4)

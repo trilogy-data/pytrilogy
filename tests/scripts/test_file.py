@@ -323,9 +323,7 @@ def test_round_trip_quickstart_example(runner, tmp_path: Path):
         "file './daily_airplane_usage.parquet'\n"
         ";\n"
     )
-    result = runner.invoke(
-        cli, ["file", "write", str(target), "--force"], input=body
-    )
+    result = runner.invoke(cli, ["file", "write", str(target), "--force"], input=body)
     assert result.exit_code == 0, result.output
 
     result = runner.invoke(cli, ["file", "read", str(target)])

@@ -372,9 +372,7 @@ def test_openrouter_sanitize_html_escapes_env_var_opt_in(monkeypatch):
 
     monkeypatch.setenv("OPENROUTER_SANITIZE_HTML_ESCAPES", "true")
     sink: dict = {}
-    payload = _openrouter_response_with_tool_args(
-        '{"content": "x &amp;&lt;-"}'
-    )
+    payload = _openrouter_response_with_tool_args('{"content": "x &amp;&lt;-"}')
     monkeypatch.setattr(
         httpx,
         "Client",

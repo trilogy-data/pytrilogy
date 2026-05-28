@@ -1,13 +1,14 @@
-"""Agent command for Trilogy CLI - AI-powered orchestration tasks."""
+"""Agent command for Trilogy CLI - AI-powered orchestration tasks.
+
+This module owns the conversation loop, the reviewer (submit-validation)
+pass, and the Click CLI entrypoint. The tool definitions, their handlers,
+and ``AgentState`` live in ``agent_tools.py``.
+"""
 
 from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
-import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -30,6 +31,14 @@ from trilogy.ai.providers.google import GoogleProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.ai.providers.openrouter import OpenRouterProvider
 from trilogy.execution.config import AgentConfig, apply_env_vars
+from trilogy.scripts.agent_tools import (
+    ALL_TOOLS,
+    SHOW_MESSAGE_TOOL,
+    TOOL_HANDLERS,
+    TRILOGY_TOOL,
+    AgentState,
+    truncate_middle,
+)
 from trilogy.scripts.common import get_runtime_config
 from trilogy.scripts.display_core import print_info, print_success, with_status
 from trilogy.scripts.environment import parse_env_vars
@@ -128,25 +137,6 @@ SYSTEM_PROMPT = get_agent_instructions(True) + "\n\n" + _TRILOGY_PROMPT_SECTION
 QUIET_SYSTEM_PROMPT = get_agent_instructions(False) + "\n\n" + _TRILOGY_PROMPT_SECTION
 
 
-@dataclass
-class TodoItem:
-    id: str
-    description: str
-    completed: bool = False
-
-
-@dataclass
-class AgentState:
-    todos: list[TodoItem] = field(default_factory=list)
-    tool_output_limit: int = 8192
-    done: bool = False
-    farewell: str = ""
-    recent_signatures: list[str] = field(default_factory=list)
-    # Number of times the reviewer pass kicked a submit back. Capped to avoid
-    # infinite loops with an agent that won't accept it isn't done.
-    submit_kickbacks: int = 0
-
-
 MAX_SUBMIT_KICKBACKS = 2
 
 REVIEWER_SYSTEM_PROMPT = (
@@ -162,424 +152,6 @@ REVIEWER_SYSTEM_PROMPT = (
 
 REVIEWER_TRANSCRIPT_MSG_LIMIT = 1200
 REVIEWER_TRANSCRIPT_ARG_LIMIT = 600
-
-
-MARKER_TEMPLATE = "\n...[truncated {n} bytes]...\n"
-
-
-def truncate_middle(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    dropped = len(text) - limit
-    marker = MARKER_TEMPLATE.format(n=dropped)
-    budget = max(limit - len(marker), 0)
-    head = budget // 2
-    tail = budget - head
-    return f"{text[:head]}{marker}{text[-tail:]}" if tail else f"{text[:head]}{marker}"
-
-
-SHOW_MESSAGE_TOOL = LLMToolDefinition(
-    name="show_message",
-    description="Print a message to the user. Use sparingly for progress updates.",
-    input_schema={
-        "type": "object",
-        "properties": {"message": {"type": "string"}},
-        "required": ["message"],
-    },
-)
-
-TRILOGY_TOOL = LLMToolDefinition(
-    name="trilogy",
-    description=(
-        "Invoke the trilogy CLI as a subprocess. Returns captured stdout, stderr, "
-        "and exit code. Large outputs are truncated from the middle."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "args": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "CLI arguments, e.g. ['run', 'query.preql'].",
-            },
-            "stdin": {
-                "type": ["string", "null"],
-                "description": (
-                    "Text piped to the subprocess stdin. REQUIRED when "
-                    "writing a file — put the file's full contents here, "
-                    "e.g. args ['file','write','query01.preql'] with the "
-                    "query text as stdin."
-                ),
-            },
-        },
-        "required": ["args"],
-    },
-)
-
-READ_FILE_TOOL = LLMToolDefinition(
-    name="read_file",
-    description="Return the text content of the file at `path`.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "path": {"type": "string", "description": "Path of the file to read."},
-        },
-        "required": ["path"],
-    },
-)
-
-LIST_FILES_TOOL = LLMToolDefinition(
-    name="list_files",
-    description=(
-        "List files in the workspace (default: current directory, recursive). "
-        "Use this when unsure what files exist — for example, before assuming "
-        "a path like './store_sales.preql' (the model files live under raw/)."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": "Directory to list (default: '.').",
-            },
-            "recursive": {
-                "type": "boolean",
-                "description": "Recurse into subdirectories (default: true).",
-            },
-        },
-    },
-)
-
-TODO_TOOL = LLMToolDefinition(
-    name="todo",
-    description=(
-        "Manage a scratch TODO list. action 'add' takes `description` — a "
-        "single task string or a list of strings to add several at once — and "
-        "returns the new id(s); 'complete' and 'remove' take `id` — a single "
-        "id or a list of ids — of existing item(s); 'list' returns all items."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "action": {
-                "type": "string",
-                "enum": ["add", "complete", "remove", "list"],
-            },
-            "id": {
-                "type": ["string", "array", "null"],
-                "items": {"type": "string"},
-                "description": (
-                    "An item id, or a list of ids, from prior 'add' calls. "
-                    "Required for 'complete' and 'remove'."
-                ),
-            },
-            "description": {
-                "type": ["string", "array", "null"],
-                "items": {"type": "string"},
-                "description": (
-                    "Task text — a single string, or a list of strings to "
-                    "add several at once. Required for 'add'."
-                ),
-            },
-        },
-        "required": ["action"],
-    },
-)
-
-RETURN_CONTROL_TOOL = LLMToolDefinition(
-    name="return_control_to_user",
-    description=(
-        "Hand control back to the user when a task is finished, with an"
-        " optional message. Any open TODOs are auto-discarded. Note: a"
-        " reviewer pass runs on submit; if you weren't actually done, you"
-        " will be kicked back to keep working."
-    ),
-    input_schema={
-        "type": "object",
-        "properties": {"message": {"type": "string"}},
-        "required": ["message"],
-    },
-)
-
-ALL_TOOLS: list[LLMToolDefinition] = [
-    SHOW_MESSAGE_TOOL,
-    TRILOGY_TOOL,
-    READ_FILE_TOOL,
-    LIST_FILES_TOOL,
-    TODO_TOOL,
-    RETURN_CONTROL_TOOL,
-]
-
-
-def _render_todos(todos: list[TodoItem]) -> str:
-    if not todos:
-        return "TODO list is empty."
-    lines = [
-        f"- [{('x' if t.completed else ' ')}] {t.id}: {t.description}" for t in todos
-    ]
-    return "Current TODOs:\n" + "\n".join(lines)
-
-
-def handle_show_message(state: AgentState, args: dict) -> str:
-    message = args.get("message")
-    if not isinstance(message, str) or not message:
-        return "show_message error: 'message' must be a non-empty string."
-    print_info(message)
-    return "show_message: ok"
-
-
-# Workspace noise the agent never needs to see in a file listing.
-_LIST_FILES_SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules"}
-_LIST_FILES_SKIP_PREFIXES = ("_worker_",)
-_LIST_FILES_SKIP_SUFFIXES = (".duckdb", ".pyc")
-_LIST_FILES_MAX_ENTRIES = 500
-
-
-def _should_skip_entry(name: str) -> bool:
-    if name in _LIST_FILES_SKIP_DIRS:
-        return True
-    if any(name.startswith(p) for p in _LIST_FILES_SKIP_PREFIXES):
-        return True
-    if any(name.endswith(s) for s in _LIST_FILES_SKIP_SUFFIXES):
-        return True
-    return False
-
-
-def handle_list_files(state: AgentState, args: dict) -> str:
-    path = args.get("path", ".")
-    recursive = args.get("recursive", True)
-    if not isinstance(path, str) or not path:
-        return "list_files error: 'path' must be a non-empty string."
-    if not isinstance(recursive, bool):
-        return "list_files error: 'recursive' must be a boolean."
-    root = Path(path)
-    if not root.exists():
-        return f"list_files error: no such path: {path}"
-    if not root.is_dir():
-        return f"list_files error: not a directory: {path}"
-    entries: list[str] = []
-    truncated = False
-    if recursive:
-        for current, dirs, files in os.walk(root):
-            dirs[:] = sorted(d for d in dirs if not _should_skip_entry(d))
-            rel = Path(current).relative_to(root)
-            for name in sorted(files):
-                if _should_skip_entry(name):
-                    continue
-                rel_path = (rel / name).as_posix() if str(rel) != "." else name
-                entries.append(rel_path)
-                if len(entries) >= _LIST_FILES_MAX_ENTRIES:
-                    truncated = True
-                    break
-            if truncated:
-                break
-    else:
-        for child in sorted(root.iterdir()):
-            if _should_skip_entry(child.name):
-                continue
-            suffix = "/" if child.is_dir() else ""
-            entries.append(child.name + suffix)
-    if not entries:
-        return f"(no files under {path})"
-    header = f"files under {path} ({len(entries)}{'+' if truncated else ''}):\n"
-    return header + "\n".join(entries)
-
-
-def handle_read_file(state: AgentState, args: dict) -> str:
-    path = args.get("path")
-    if not isinstance(path, str) or not path:
-        return "read_file error: 'path' must be a non-empty string."
-    target = Path(path)
-    if not target.is_file():
-        return f"read_file error: no such file: {path}"
-    try:
-        text = target.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        return f"read_file error: {exc}"
-    return truncate_middle(text, state.tool_output_limit)
-
-
-def _first_non_flag_arg(raw_args: list[str]) -> str | None:
-    """Return the first positional (non-flag) argument from a CLI arg list, or
-    ``None``. Used to detect the subcommand past any group-level flags."""
-    skip_next = False
-    for arg in raw_args:
-        if skip_next:
-            skip_next = False
-            continue
-        if arg in ("--debug-file",):  # group-level flags that take a value
-            skip_next = True
-            continue
-        if arg.startswith("-"):
-            continue
-        return arg
-    return None
-
-
-def _trilogy_file_write_hint(raw_args: list[str]) -> str | None:
-    """Detect the common ``trilogy file write`` misuse pattern where the agent
-    split a single ``--content`` value across many positional args.
-
-    Returns a guidance string when the misuse is detected, ``None`` otherwise.
-    The command itself is real and works — we just intercept the most common
-    mistake (treating ``--content`` as a shell-tokenised string) before
-    subprocess swallows the args."""
-    if len(raw_args) < 2 or raw_args[0] != "file" or raw_args[1] != "write":
-        return None
-    # Find a `--content`/`-c` flag and count what comes after it that is not
-    # another known option flag for `file write`.
-    flag_indices = [i for i, a in enumerate(raw_args) if a in ("--content", "-c")]
-    if not flag_indices:
-        return None
-    known_flags = {
-        "--content",
-        "-c",
-        "--from-file",
-        "--from-url",
-        "--escapes",
-        "-e",
-        "--no-create",
-        "--quiet",
-        "-q",
-    }
-    idx = flag_indices[-1]
-    trailing = [a for a in raw_args[idx + 1 :] if a not in known_flags]
-    if len(trailing) <= 1:
-        return None
-    return (
-        "trilogy file write: `--content` takes a SINGLE string argument. Your "
-        f"args list put {len(trailing)} separate tokens after --content "
-        "(treating it like a shell command). In a tool call, pass the entire "
-        "file body as one string element after --content, with newlines "
-        "embedded literally — e.g.\n"
-        '  {"args": ["file", "write", "query70.preql", "--content", '
-        '"import raw.store_sales as store_sales;\\n\\nselect ..."]}\n'
-        "Alternatively use `--escapes` with a single-line `\\n`-escaped string."
-    )
-
-
-def handle_trilogy(state: AgentState, args: dict) -> str:
-    raw_args = args.get("args")
-    if not isinstance(raw_args, list) or not all(isinstance(a, str) for a in raw_args):
-        return "trilogy error: 'args' must be a list of strings."
-    stdin_value = args.get("stdin")
-    if stdin_value is not None and not isinstance(stdin_value, str):
-        return "trilogy error: 'stdin' must be a string or null."
-    hint = _trilogy_file_write_hint(raw_args)
-    if hint is not None:
-        return hint
-    cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
-    child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-    try:
-        completed = subprocess.run(
-            cmd,
-            input=stdin_value,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=child_env,
-            timeout=600,
-        )
-    except subprocess.TimeoutExpired:
-        return "trilogy error: subprocess timed out after 600s."
-    # `agent-info` is the language reference + CLI docs and must arrive whole —
-    # middle-truncating it eats the syntax rules the agent needs to write queries.
-    if _first_non_flag_arg(raw_args) == "agent-info":
-        stdout = completed.stdout or ""
-        stderr = completed.stderr or ""
-    else:
-        stdout = truncate_middle(completed.stdout or "", state.tool_output_limit)
-        stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
-    return (
-        f"exit_code: {completed.returncode}\n"
-        f"--- stdout ---\n{stdout}\n"
-        f"--- stderr ---\n{stderr}"
-    )
-
-
-def handle_todo(state: AgentState, args: dict) -> str:
-    action = args.get("action")
-    if action == "list":
-        return _render_todos(state.todos)
-    if action == "add":
-        raw_desc = args.get("description")
-        if isinstance(raw_desc, str):
-            descriptions = [raw_desc.strip()] if raw_desc.strip() else []
-        elif isinstance(raw_desc, list):
-            descriptions = [
-                d.strip() for d in raw_desc if isinstance(d, str) and d.strip()
-            ]
-        else:
-            descriptions = []
-        if not descriptions:
-            return (
-                "todo error: 'description' is required for add — a non-empty "
-                "string, or a list of strings to add several at once."
-            )
-        added = []
-        for desc in descriptions:
-            item = TodoItem(id=uuid.uuid4().hex[:8], description=desc)
-            state.todos.append(item)
-            added.append(item.id)
-        return f"todo added: {', '.join(added)}\n{_render_todos(state.todos)}"
-    if action in ("complete", "remove"):
-        raw_id = args.get("id")
-        if isinstance(raw_id, str):
-            ids = [raw_id] if raw_id else []
-        elif isinstance(raw_id, list):
-            ids = [i for i in raw_id if isinstance(i, str) and i]
-        else:
-            ids = []
-        if not ids:
-            open_ids = ", ".join(t.id for t in state.todos) or "(list is empty)"
-            return (
-                f"todo error: 'id' is required for {action} — pass one id or "
-                f"a list of ids. Existing ids: {open_ids}."
-            )
-        by_id = {t.id: t for t in state.todos}
-        done: list[str] = []
-        missing: list[str] = []
-        for tid in ids:
-            todo = by_id.get(tid)
-            if todo is None:
-                missing.append(tid)
-            elif action == "complete":
-                todo.completed = True
-                done.append(tid)
-            else:
-                state.todos.remove(todo)
-                done.append(tid)
-        if not done:
-            return f"todo error: no item with id: {', '.join(missing)}."
-        summary = f"todo {action}d: {', '.join(done)}"
-        if missing:
-            summary += f" (no item with id: {', '.join(missing)})"
-        return f"{summary}\n{_render_todos(state.todos)}"
-    return f"todo error: unknown action '{action}'."
-
-
-def handle_return_control(state: AgentState, args: dict) -> str:
-    message = args.get("message")
-    if not isinstance(message, str):
-        return "return_control_to_user error: 'message' must be a string."
-    # Open TODOs are auto-discarded on exit — they were a scratch aid, not a
-    # contract. Earlier runs showed agents burning iterations on
-    # complete/remove just to satisfy a gate; not worth the tokens.
-    state.todos = []
-    state.done = True
-    state.farewell = message
-    return "return_control_to_user: ok"
-
-
-TOOL_HANDLERS: dict[str, Callable[[AgentState, dict], str]] = {
-    SHOW_MESSAGE_TOOL.name: handle_show_message,
-    TRILOGY_TOOL.name: handle_trilogy,
-    READ_FILE_TOOL.name: handle_read_file,
-    LIST_FILES_TOOL.name: handle_list_files,
-    TODO_TOOL.name: handle_todo,
-    RETURN_CONTROL_TOOL.name: handle_return_control,
-}
 
 
 def _build_provider(
@@ -686,9 +258,8 @@ def _dump_conversation(conv: Conversation, log_path: Path) -> None:
     for i, msg in enumerate(conv.messages):
         block = [f"===== message {i} [{msg.role}] ====="]
         block.append(msg.content if msg.content else "(empty content)")
-        info = getattr(msg, "model_info", None)
-        if info:
-            block.append(f"[model_info] {json.dumps(info, default=str)}")
+        if msg.model_info:
+            block.append(f"[model_info] {json.dumps(msg.model_info, default=str)}")
         blocks.append("\n".join(block))
     dump_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
 
@@ -704,10 +275,10 @@ def _format_call(call: LLMToolCall) -> str:
 
 
 def _status_message(call: LLMToolCall) -> str:
-    if call.name == "trilogy":
+    if call.name == TRILOGY_TOOL.name:
         args = call.arguments.get("args") or []
         if isinstance(args, list) and args:
-            return f"trilogy {' '.join(str(a) for a in args[:3])}"
+            return f"{TRILOGY_TOOL.name} {' '.join(str(a) for a in args[:3])}"
     return call.name
 
 
@@ -716,8 +287,8 @@ def _render_reviewer_transcript(messages: list[LLMMessage]) -> str:
     for msg in messages:
         if msg.role == "system":
             continue
-        info = getattr(msg, "model_info", None) or {}
-        tcs = info.get("tool_calls") if isinstance(info, dict) else None
+        info = msg.model_info or {}
+        tcs = info.get("tool_calls", [])
         if msg.role == "assistant" and tcs:
             for tc in tcs:
                 name = tc.get("name", "?")
@@ -725,13 +296,10 @@ def _render_reviewer_transcript(messages: list[LLMMessage]) -> str:
                 rendered = (
                     args if isinstance(args, str) else json.dumps(args, default=str)
                 )
-                if len(rendered) > REVIEWER_TRANSCRIPT_ARG_LIMIT:
-                    rendered = rendered[:REVIEWER_TRANSCRIPT_ARG_LIMIT] + "…(truncated)"
+                rendered = truncate_middle(rendered, REVIEWER_TRANSCRIPT_ARG_LIMIT)
                 blocks.append(f"AGENT CALL {name}: {rendered}")
             continue
-        content = msg.content or ""
-        if len(content) > REVIEWER_TRANSCRIPT_MSG_LIMIT:
-            content = content[:REVIEWER_TRANSCRIPT_MSG_LIMIT] + "…(truncated)"
+        content = truncate_middle(msg.content or "", REVIEWER_TRANSCRIPT_MSG_LIMIT)
         prefix = "USER/TOOL_RESULT" if msg.role == "user" else msg.role.upper()
         blocks.append(f"{prefix}: {content}")
     return "\n\n".join(blocks)

@@ -2175,9 +2175,7 @@ def test_parse_foreign_keys():
     result = parse_foreign_keys(fk_str)
     assert result == {
         "store_sales": {
-            "ss_customer_sk": FKBinding(
-                "customer.c_customer_sk", partial=True
-            ),
+            "ss_customer_sk": FKBinding("customer.c_customer_sk", partial=True),
             "ss_item_sk": FKBinding("item.i_item_sk", partial=True),
         }
     }

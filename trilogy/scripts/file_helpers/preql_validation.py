@@ -62,9 +62,7 @@ def validate_preql_content(path: str, content: str) -> str | None:
         return None
     entities = detect_html_escapes(content)
     if entities:
-        decoded = ", ".join(
-            f"`{e}` (use `{HTML_ENTITY_HINTS[e]}`)" for e in entities
-        )
+        decoded = ", ".join(f"`{e}` (use `{HTML_ENTITY_HINTS[e]}`)" for e in entities)
         return (
             f"refused to write '{path}': contains HTML-escaped characters: "
             f"{decoded}. Trilogy parses raw operators — emit them literally "

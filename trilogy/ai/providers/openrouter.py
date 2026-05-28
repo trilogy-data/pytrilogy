@@ -161,9 +161,7 @@ class OpenRouterProvider(LLMProvider):
                     self.model,
                 )
             tool_calls = [
-                build_tool_call(
-                    tc["function"]["name"], tc["function"].get("arguments")
-                )
+                build_tool_call(tc["function"]["name"], tc["function"].get("arguments"))
                 for tc in message.get("tool_calls", [])
                 if tc.get("function", {}).get("name")
             ]

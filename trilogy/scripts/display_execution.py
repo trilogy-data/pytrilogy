@@ -248,9 +248,7 @@ def print_chart_terminal(
     return True
 
 
-def _slice_for_middle_truncation(
-    result: list, cap: int
-) -> tuple[list, list, int]:
+def _slice_for_middle_truncation(result: list, cap: int) -> tuple[list, list, int]:
     """Split rows into (head, tail, omitted_count) for middle-truncated display.
 
     Cap is the total displayed row count (head + tail). Splitting around the
@@ -320,7 +318,9 @@ def _print_rich_table(
     if tail:
         table.add_row(*["…" for _ in column_names], style="dim")
         for row in tail:
-            row_data = [str(val) if val is not None else "[dim]NULL[/dim]" for val in row]
+            row_data = [
+                str(val) if val is not None else "[dim]NULL[/dim]" for val in row
+            ]
             table.add_row(*row_data)
 
     _core.console.print(table)

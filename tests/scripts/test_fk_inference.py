@@ -19,6 +19,7 @@ from trilogy.scripts.ingest_helpers.fk_inference import (
     merge_fk_maps,
 )
 from trilogy.scripts.ingest_helpers.formatting import canonicalize_names
+from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
 from trilogy.scripts.trilogy import cli
 
 
@@ -241,7 +242,9 @@ class TestInferForeignKeys:
         exec = self._two_table_db()
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
-        inferred = infer_foreign_keys([orders, customers], exec, "full")
+        inferred = infer_foreign_keys(
+            [orders, customers], exec, IntrospectionLevel.FULL
+        )
         assert len(inferred) == 1
         edge = inferred[0]
         assert edge.from_table == "orders"
@@ -260,20 +263,26 @@ class TestInferForeignKeys:
         exec.execute_raw_sql("INSERT INTO orders VALUES (10,77),(11,88)")
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
-        inferred = infer_foreign_keys([orders, customers], exec, "full")
+        inferred = infer_foreign_keys(
+            [orders, customers], exec, IntrospectionLevel.FULL
+        )
         assert inferred == []
 
     def test_fast_level_skips_sniffing(self):
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
-        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        inferred = infer_foreign_keys(
+            [orders, customers], None, IntrospectionLevel.FAST
+        )
         assert len(inferred) == 1
         assert inferred[0].overlap is None
 
     def test_off_level_returns_nothing(self):
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
-        assert infer_foreign_keys([orders, customers], None, "off") == []
+        assert (
+            infer_foreign_keys([orders, customers], None, IntrospectionLevel.OFF) == []
+        )
 
 
 class TestRolePlayingDimensions:
@@ -287,7 +296,9 @@ class TestRolePlayingDimensions:
             ["c_customer_sk"],
         )
         date_dim = _info("date_dim", ["d_date_sk", "d_year"], ["d_date_sk"])
-        inferred = infer_foreign_keys([customer, date_dim], None, "fast")
+        inferred = infer_foreign_keys(
+            [customer, date_dim], None, IntrospectionLevel.FAST
+        )
         assert len(inferred) == 2
         aliases = sorted(fk.role_alias for fk in inferred)
         assert aliases == ["first_sales_date", "first_shipto_date"]
@@ -299,7 +310,9 @@ class TestRolePlayingDimensions:
             ["c_customer_sk"],
         )
         date_dim = _info("date_dim", ["d_date_sk", "d_year"], ["d_date_sk"])
-        inferred = infer_foreign_keys([customer, date_dim], None, "fast")
+        inferred = infer_foreign_keys(
+            [customer, date_dim], None, IntrospectionLevel.FAST
+        )
         refs = sorted(fk.target_ref for fk in inferred)
         assert refs == [
             "date_dim.d_date_sk@first_sales_date",
@@ -310,7 +323,9 @@ class TestRolePlayingDimensions:
         # No conflict — backward compatible: no role alias, no `@` in target_ref.
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
-        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        inferred = infer_foreign_keys(
+            [orders, customers], None, IntrospectionLevel.FAST
+        )
         assert len(inferred) == 1
         assert inferred[0].role_alias is None
         assert inferred[0].target_ref == "customers.id"
@@ -383,7 +398,9 @@ class TestTieBreakByReverseCoverage:
         dim_dense = _info("dim_dense", ["id"], ["id"])
         dim_sparse = _info("dim_sparse", ["id"], ["id"])
 
-        inferred = infer_foreign_keys([fact, dim_dense, dim_sparse], exec, "full")
+        inferred = infer_foreign_keys(
+            [fact, dim_dense, dim_sparse], exec, IntrospectionLevel.FULL
+        )
         assert len(inferred) == 1
         # Dense parent wins.
         assert inferred[0].to_table == "dim_dense"
@@ -404,7 +421,7 @@ class TestVerifyColumnContinuesOnNoneOverlap:
         fact = _info("fact", ["dim_id"], [])
         dim = _info("dim", ["id"], ["id"])
         # No accepted edge — but the continue branch was exercised.
-        assert infer_foreign_keys([fact, dim], exec, "full") == []
+        assert infer_foreign_keys([fact, dim], exec, IntrospectionLevel.FULL) == []
 
 
 class TestFKCandidateTargetRef:
@@ -423,14 +440,16 @@ class TestPartialInference:
         # Every customer has at least one order — reverse coverage is 1.0.
         exec.execute_raw_sql("CREATE TABLE customers(id INTEGER)")
         exec.execute_raw_sql("INSERT INTO customers VALUES (1),(2)")
-        exec.execute_raw_sql("CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)")
         exec.execute_raw_sql(
-            "INSERT INTO orders VALUES (10,1),(11,2),(12,1)"
+            "CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)"
         )
+        exec.execute_raw_sql("INSERT INTO orders VALUES (10,1),(11,2),(12,1)")
 
         customers = _info("customers", ["id"], ["id"])
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
-        inferred = infer_foreign_keys([orders, customers], exec, "full")
+        inferred = infer_foreign_keys(
+            [orders, customers], exec, IntrospectionLevel.FULL
+        )
         assert len(inferred) == 1
         assert inferred[0].partial is False
 
@@ -439,12 +458,16 @@ class TestPartialInference:
         # Customer 3 has no orders — reverse coverage is 2/3, partial.
         exec.execute_raw_sql("CREATE TABLE customers(id INTEGER)")
         exec.execute_raw_sql("INSERT INTO customers VALUES (1),(2),(3)")
-        exec.execute_raw_sql("CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)")
+        exec.execute_raw_sql(
+            "CREATE TABLE orders(order_id INTEGER, customer_id INTEGER)"
+        )
         exec.execute_raw_sql("INSERT INTO orders VALUES (10,1),(11,2)")
 
         customers = _info("customers", ["id"], ["id"])
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
-        inferred = infer_foreign_keys([orders, customers], exec, "full")
+        inferred = infer_foreign_keys(
+            [orders, customers], exec, IntrospectionLevel.FULL
+        )
         assert len(inferred) == 1
         assert inferred[0].partial is True
 
@@ -452,7 +475,9 @@ class TestPartialInference:
         # Fast mode has no value evidence; default conservatively to partial.
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id"], ["id"])
-        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        inferred = infer_foreign_keys(
+            [orders, customers], None, IntrospectionLevel.FAST
+        )
         assert len(inferred) == 1
         assert inferred[0].partial is True
 
@@ -469,9 +494,7 @@ class TestEnrichExplicitFKsPartial:
         )
         exec.execute_raw_sql("INSERT INTO orders VALUES (10,1),(11,2)")
 
-        explicit = {
-            "orders": {"customer_id": FKBinding("customers.id", partial=True)}
-        }
+        explicit = {"orders": {"customer_id": FKBinding("customers.id", partial=True)}}
         by_name = {
             "orders": _info(
                 "orders", ["order_id", "customer_id"], ["order_id"], relation="orders"
@@ -491,9 +514,7 @@ class TestEnrichExplicitFKsPartial:
         )
         exec.execute_raw_sql("INSERT INTO orders VALUES (10,1),(11,2)")
 
-        explicit = {
-            "orders": {"customer_id": FKBinding("customers.id", partial=True)}
-        }
+        explicit = {"orders": {"customer_id": FKBinding("customers.id", partial=True)}}
         by_name = {
             "orders": _info(
                 "orders", ["order_id", "customer_id"], ["order_id"], relation="orders"
@@ -505,9 +526,7 @@ class TestEnrichExplicitFKsPartial:
 
     def test_unknown_target_table_left_alone(self):
         # An --fks target outside the ingested set is skipped, not crashed.
-        explicit = {
-            "orders": {"customer_id": FKBinding("people.id", partial=True)}
-        }
+        explicit = {"orders": {"customer_id": FKBinding("people.id", partial=True)}}
         by_name = {
             "orders": _info(
                 "orders", ["order_id", "customer_id"], ["order_id"], relation="orders"
@@ -536,17 +555,19 @@ class TestMergeFKMaps:
     def test_explicit_overrides_inferred(self):
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
-        inferred = infer_foreign_keys([orders, customers], None, "fast")
-        explicit = {
-            "orders": {"customer_id": FKBinding("people.id", partial=True)}
-        }
+        inferred = infer_foreign_keys(
+            [orders, customers], None, IntrospectionLevel.FAST
+        )
+        explicit = {"orders": {"customer_id": FKBinding("people.id", partial=True)}}
         merged = merge_fk_maps(inferred, explicit)
         assert merged["orders"]["customer_id"] == FKBinding("people.id", partial=True)
 
     def test_inferred_used_when_no_explicit(self):
         orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
         customers = _info("customers", ["id", "name"], ["id"])
-        inferred = infer_foreign_keys([orders, customers], None, "fast")
+        inferred = infer_foreign_keys(
+            [orders, customers], None, IntrospectionLevel.FAST
+        )
         merged = merge_fk_maps(inferred, {})
         # Fast mode has no data evidence, so partial defaults to True.
         assert merged["orders"]["customer_id"] == FKBinding(
@@ -695,7 +716,7 @@ def test_ingest_marks_inferred_fk_complete_when_parent_fully_covered():
 
 
 def test_ingest_no_infer_fks_leaves_tables_disconnected():
-    """--fk-infer-level off keeps the historical independent-datasource output."""
+    """--infer-level off keeps the historical independent-datasource output."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         config_file = _fk_config(tmppath)
@@ -712,7 +733,7 @@ def test_ingest_no_infer_fks_leaves_tables_disconnected():
                 str(config_file),
                 "--output",
                 str(out_dir),
-                "--fk-infer-level",
+                "--infer-level",
                 "off",
             ],
         )
