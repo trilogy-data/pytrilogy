@@ -1,38 +1,26 @@
 # Query 02
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (53 rows) |
 | reference execution | OK (53 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 53 (53 distinct)
 ref rows: 53 (53 distinct)
-only in v4 (showing up to 5 of 53):
-  1x  (3.62, 2.73, 5270, 3.67, 3.44, 3.02, 1.13, 1.08)
-  1x  (1.12, 1.2, 5271, 1.09, 1.2, 1.23, 0.85, 1.18)
-  1x  (0.92, 0.98, 5272, 1.16, 1.05, 1.11, 0.9, 0.93)
-  1x  (1.01, 1.02, 5273, 0.91, 1.2, 0.85, 1.01, 0.9)
-  1x  (1.04, 1.03, 5274, 1.02, 1.03, 0.96, 1.05, 0.94)
-only in ref (showing up to 5 of 53):
-  1x  (3.89, 2.2, 5270, 3.47, 3.52, 3.01, 1.74, 1.6)
-  1x  (1.07, 0.89, 5271, 1.22, 1.07, 1.34, 0.93, 1.14)
-  1x  (1.05, 0.98, 5272, 1.2, 1.0, 1.04, 0.98, 1.12)
-  1x  (0.95, 0.91, 5273, 0.82, 1.27, 0.89, 1.13, 1.03)
-  1x  (0.93, 0.79, 5274, 0.99, 1.03, 1.0, 1.07, 0.93)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6111 | 99 | 80.73 ms |
-| reference | 4649 | 80 | 32.88 ms |
-| v4 / ref | 1.31x | 1.24x | 2.46x |
+| v4 | 5743 | 94 | 36.50 ms |
+| reference | 4649 | 80 | 26.89 ms |
+| v4 / ref | 1.24x | 1.18x | 1.36x |
 
 ## Preql
 
@@ -87,7 +75,8 @@ GROUP BY
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price"
+    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+     'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "abundant" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "abundant"."sales_date_id"
@@ -96,18 +85,9 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-    INNER JOIN "abundant" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "abundant"."sales_date_id"
-WHERE
-    "abundant"."sales_date_week_seq" in (select cooperative."relevent_week_seq" from cooperative where cooperative."relevent_week_seq" is not null)
-
-UNION ALL
-SELECT
     "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price"
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+     'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "abundant" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "abundant"."sales_date_id"
@@ -127,7 +107,10 @@ SELECT
 FROM
     "abundant"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "abundant"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "cheerful" on "abundant"."sales_date_id" is not distinct from "cheerful"."sales_date_id"
+    INNER JOIN "cheerful" on "abundant"."sales_date_id" = "cheerful"."sales_date_id"
+WHERE
+    "cheerful"."sales_sales_channel" in ('WEB','CATALOG')
+
 GROUP BY
     1),
 vacuous as (

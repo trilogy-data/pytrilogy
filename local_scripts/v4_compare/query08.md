@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2211 | 51 | 31.61 ms |
-| reference | 2419 | 61 | 54.51 ms |
-| v4 / ref | 0.91x | 0.84x | 0.58x |
+| v4 | 3546 | 86 | 40.59 ms |
+| reference | 2419 | 61 | 45.96 ms |
+| v4 / ref | 1.47x | 1.41x | 0.88x |
 
 ## Preql
 
@@ -458,6 +458,18 @@ quizzical as (
 SELECT
     unnest(:_virt_7180871482901048) as "zips_pre"
 ),
+concerned as (
+SELECT
+    "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
+    count("customer_customers"."C_CUSTOMER_SK") as "zip_p_count"
+FROM
+    "memory"."customer_address" as "customer_address_customer_address"
+    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
+WHERE
+    "customer_customers"."C_PREFERRED_CUST_FLAG" = 'Y'
+
+GROUP BY
+    1),
 thoughtful as (
 SELECT
     "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
@@ -472,18 +484,36 @@ SELECT
     SUBSTRING(cast("quizzical"."zips_pre" as string),1,5) as "zips"
 FROM
     "quizzical"),
+sparkling as (
+SELECT
+    SUBSTRING(CASE WHEN "concerned"."zip_p_count" > 10 THEN "customer_address_customer_address"."CA_ZIP" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
+FROM
+    "concerned"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "concerned"."customer_address_zip" = "customer_address_customer_address"."CA_ZIP"
+GROUP BY
+    1),
 abundant as (
 SELECT
     SUBSTRING(CASE WHEN "thoughtful"."zip_p_count" > 10 THEN "thoughtful"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
 FROM
     "thoughtful"),
+macho as (
+SELECT
+    SUBSTRING(SUBSTRING(cast("quizzical"."zips_pre" as string),1,5),1,2) as "final_zips"
+FROM
+    "quizzical"
+WHERE
+    SUBSTRING(cast("quizzical"."zips_pre" as string),1,5) in (select sparkling."_virt_func_substring_4293448550966409" from sparkling where sparkling."_virt_func_substring_4293448550966409" is not null)
+
+GROUP BY
+    1),
 yummy as (
 SELECT
     SUBSTRING(CASE WHEN "highfalutin"."zips" in (select abundant."_virt_func_substring_4293448550966409" from abundant where abundant."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END,1,2) as "final_zips"
 FROM
     "abundant"
     FULL JOIN "highfalutin" on 1=1),
-abhorrent as (
+charming as (
 SELECT
     "store_sales_store_sales"."SS_NET_PROFIT" as "store_sales_net_profit",
     "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
@@ -493,16 +523,21 @@ FROM
     INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
 WHERE
     "store_sales_date_date"."D_QOY" = 2 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select yummy."final_zips" from yummy where yummy."final_zips" is not null)
-)
+
+GROUP BY
+    1,
+    2,
+    "store_sales_store_sales"."SS_ITEM_SK",
+    "store_sales_store_sales"."SS_TICKET_NUMBER")
 SELECT
-    sum("abhorrent"."store_sales_net_profit") as "store_net_profit",
-    "abhorrent"."store_sales_store_name" as "store_sales_store_name"
+    sum("charming"."store_sales_net_profit") as "store_net_profit",
+    "charming"."store_sales_store_name" as "store_sales_store_name"
 FROM
-    "abhorrent"
+    "charming"
 GROUP BY
     2
 ORDER BY 
-    "abhorrent"."store_sales_store_name" asc
+    "charming"."store_sales_store_name" asc
 LIMIT (100)
 ```
 

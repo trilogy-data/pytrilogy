@@ -380,7 +380,7 @@ def _inject_conditions(
 
     # A group can host an atom iff every row-arg is in its INPUT row
     # stream — i.e. what its FROM clause provides. That's:
-    #   - for a source group (no ancestors): its own members (the
+    #   - for a source group (no lineage ancestors): its own members (the
     #     datasource scan IS its input)
     #   - for any other group: the union of its ancestors' members (its
     #     parents' CTEs feed its FROM)
@@ -388,9 +388,12 @@ def _inject_conditions(
     # group's derivation. You can't WHERE on `avg(price)` inside the same
     # SELECT that computes it; that filter must live downstream where
     # `avg(price)` is an input column. The "ancestors-only" rule below
-    # forces those atoms to land on a consumer.
+    # forces those atoms to land on a consumer. Existence edges are excluded
+    # — they're side-channel (the d1 filter back-edges into its main-graph
+    # consumer); counting them as ancestry falsely demotes a true source
+    # group like root and excludes its own scan columns from candidacy.
     def _reachable_input(gid: str) -> set[str]:
-        ancestors = nx.ancestors(group_graph, gid)
+        ancestors = nx.ancestors(lineage_ancestors_graph, gid)
         if not ancestors:
             return set(group_members.get(gid, set()))
         reachable: set[str] = set()

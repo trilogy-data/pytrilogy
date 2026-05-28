@@ -1,9 +1,10 @@
 from enum import Enum
 
-from trilogy.core.enums import AggregateGroupingMode, Derivation, SourceType
+from trilogy.core.enums import AggregateGroupingMode, BooleanOperator, Derivation, SourceType
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConditional,
     BuildRowsetItem,
     BuildWindowItem,
 )
@@ -106,6 +107,22 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
     for column in cte.output_columns:
         if column not in parent.output_columns:
             parent.output_columns.append(column)
+
+    # AND-combine the child's WHERE into the parent — for AGGREGATE merges the
+    # child sits BELOW the aggregate (its condition is the pre-aggregation
+    # WHERE), and the parent becomes the aggregate after the merge, so its
+    # WHERE has to carry the predicate forward. (WINDOW/BASIC modes are blocked
+    # upstream by `child_has_merge_blockers` when the child has a condition.)
+    if cte.condition is not None:
+        parent.condition = (
+            BuildConditional(
+                left=parent.condition,
+                operator=BooleanOperator.AND,
+                right=cte.condition,
+            )
+            if parent.condition is not None
+            else cte.condition
+        )
 
     if merge_mode == MergeMode.AGGREGATE:
         # Aggregate merge: keep only columns the child exposes (grouping keys +

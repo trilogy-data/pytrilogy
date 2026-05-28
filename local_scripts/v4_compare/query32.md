@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1397 | 36 | 24.59 ms |
-| reference | 1242 | 33 | 9.83 ms |
-| v4 / ref | 1.12x | 1.09x | 2.50x |
+| v4 | 1459 | 36 | 23.81 ms |
+| reference | 1242 | 33 | 8.53 ms |
+| v4 / ref | 1.17x | 1.09x | 2.79x |
 
 ## Preql
 
@@ -79,7 +79,7 @@ FROM
     "abundant"
     INNER JOIN "cheerful" on "abundant"."item_id" = "cheerful"."item_id"
 WHERE
-    "cheerful"."discount_amount" > "abundant"."avg_item_disc"
+    "cheerful"."discount_amount" > "abundant"."avg_item_disc" and "cheerful"."discount_amount" > "abundant"."avg_item_disc"
 
 LIMIT (100)
 ```

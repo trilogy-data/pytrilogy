@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7940 | 122 | 83.53 ms |
-| reference | 6399 | 99 | 64.23 ms |
-| v4 / ref | 1.24x | 1.23x | 1.30x |
+| v4 | 8025 | 122 | 69.25 ms |
+| reference | 6399 | 99 | 54.90 ms |
+| v4 / ref | 1.25x | 1.23x | 1.26x |
 
 ## Preql
 
@@ -167,7 +167,7 @@ FROM
     RIGHT OUTER JOIN "abundant" on "questionable"."web_returns_customer_id" = "abundant"."web_returns_customer_id" AND "questionable"."web_returns_return_address_state" is not distinct from "abundant"."web_returns_return_address_state"
     INNER JOIN "vacuous" on "questionable"."web_returns_return_address_state" is not distinct from "vacuous"."web_returns_return_address_state"
 WHERE
-    "abundant"."customer_state_returns_2002" > "vacuous"."scaled_state_returns_2002"
+    "abundant"."customer_state_returns_2002" > "vacuous"."scaled_state_returns_2002" and "abundant"."customer_state_returns_2002" > "vacuous"."scaled_state_returns_2002"
 
 GROUP BY
     1,
