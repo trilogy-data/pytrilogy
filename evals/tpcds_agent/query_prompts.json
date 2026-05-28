@@ -2,7 +2,7 @@
   {
     "id": 1,
     "grade": "medium",
-    "prompt": "List the customer ids of customers whose total store-return amount at a given store in the year 2000 exceeded 1.2 times the average total store-return amount at that same store (the average taken across all customers who returned anything at that store in 2000). Only consider stores located in TN. Compute each customer's total per (customer, store) pair by summing the return amount over all of that customer's returns at that store in 2000, and compare to the per-store average of those totals. Order by customer id; limit 100 rows."
+    "prompt": "For returns to stores in Tennessee in 2000, find the customers whose total returns were more than 1.2 times what the average customer returns for that store were in that period. Order by customer id; limit 100 rows."
   },
   {
     "id": 2,
