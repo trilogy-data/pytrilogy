@@ -11,14 +11,14 @@
 
 ## Result comparison
 
-v4 rows: 100 (94 distinct)
+v4 rows: 100 (91 distinct)
 ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 94):
-  1x  ('Home', 'accent', -0.4331652033071642, 2, 1)
-  1x  ('Women', 'maternity', -0.4331652033071642, 2, 1)
-  1x  ('Sports', 'archery', -0.4331652033071642, 2, 1)
-  1x  (None, 'dresses', -0.4331652033071642, 2, 1)
-  2x  ('Shoes', None, -0.4331652033071642, 2, 1)
+only in v4 (showing up to 5 of 91):
+  2x  (None, None, -0.4331652033071642, 2, 1)
+  2x  ('Men', None, -0.4331652033071642, 2, 1)
+  2x  ('Music', None, -0.4331652033071642, 2, 1)
+  1x  ('Books', 'cooking', -0.4331652033071642, 2, 1)
+  1x  ('Men', 'sports-apparel', -0.4331652033071642, 2, 1)
 only in ref (showing up to 5 of 99):
   1x  ('Jewelry', None, -0.4422821387283753, 1, 1)
   1x  ('Men', None, -0.4407722793549773, 1, 2)
@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 99):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2508 | 59 | 92.15 ms |
-| reference | 2553 | 60 | 106.38 ms |
-| v4 / ref | 0.98x | 0.98x | 0.87x |
+| v4 | 2508 | 59 | 178.72 ms |
+| reference | 2553 | 60 | 190.32 ms |
+| v4 / ref | 0.98x | 0.98x | 0.94x |
 
 ## Preql
 

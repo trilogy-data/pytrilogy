@@ -1,24 +1,26 @@
 # Query 33
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 344 | 10 | — |
-| reference | 4287 | 76 | 34.02 ms |
-| v4 / ref | 0.08x | 0.13x | — |
+| v4 | 3654 | 59 | 21.67 ms |
+| reference | 4287 | 76 | 28.14 ms |
+| v4 / ref | 0.85x | 0.78x | 0.77x |
 
 ## Preql
 
@@ -46,15 +48,64 @@ limit 100
 ## v4 generated SQL
 
 ```sql
+WITH 
+highfalutin as (
 SELECT
-    sum(INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price>) as "total_sales",
-    INVALID_REFERENCE_BUG_<Missing source reference to sales.item.manufacturer_id> as "sales_item_manufacturer_id"
+    CASE WHEN "items_items"."I_CATEGORY" = 'Electronics' THEN "items_items"."I_MANUFACT_ID" ELSE NULL END as "electronics_manuf_ids"
+FROM
+    "memory"."item" as "items_items"),
+questionable as (
+SELECT
+    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "sales_catalog_sales_unified"."CS_BILL_ADDR_SK" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
 
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "sales_store_sales_unified"."SS_ADDR_SK" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
+
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "sales_web_sales_unified"."WS_BILL_ADDR_SK" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 5 and "sales_item_items"."I_MANUFACT_ID" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
+),
+yummy as (
+SELECT
+    "questionable"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "questionable"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
+FROM
+    "questionable")
+SELECT
+    sum("yummy"."sales_ext_sales_price") as "total_sales",
+    "yummy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
+FROM
+    "yummy"
 GROUP BY
     2
 ORDER BY 
     "total_sales" asc nulls first,
-    "sales_item_manufacturer_id" asc nulls first
+    "yummy"."sales_item_manufacturer_id" asc nulls first
 LIMIT (100)
 ```
 
@@ -137,27 +188,4 @@ ORDER BY
     "total_sales" asc nulls first,
     "juicy"."sales_item_manufacturer_id" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 263, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 183, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
-
-LINE 2:     sum(INVALID_REFERENCE_BUG_<Missing source reference to sales.ext_sales_price>) as "total_sales...
-                                               ^
 ```

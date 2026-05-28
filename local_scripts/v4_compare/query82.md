@@ -18,9 +18,9 @@ ref rows: 2 (2 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1583 | 34 | 289.68 ms |
-| reference | 1583 | 34 | 882.17 ms |
-| v4 / ref | 1.00x | 1.00x | 0.33x |
+| v4 | 1583 | 34 | 194.03 ms |
+| reference | 1583 | 34 | 187.37 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -65,9 +65,9 @@ GROUP BY
     2,
     3)
 SELECT
-    "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
+    "inventory_item_items"."I_CURRENT_PRICE" as "inventory_item_current_price",
     "inventory_item_items"."I_ITEM_DESC" as "inventory_item_desc",
-    "inventory_item_items"."I_CURRENT_PRICE" as "inventory_item_current_price"
+    "inventory_item_items"."I_ITEM_ID" as "inventory_item_name"
 FROM
     "wakeful"
     INNER JOIN "memory"."date_dim" as "inventory_date_date" on "wakeful"."inventory_date_id" = "inventory_date_date"."D_DATE_SK"

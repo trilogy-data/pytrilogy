@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6831 | 135 | — |
-| reference | 6271 | 109 | 770.45 ms |
-| v4 / ref | 1.09x | 1.24x | — |
+| v4 | 7760 | 163 | — |
+| reference | 6271 | 109 | 297.47 ms |
+| v4 / ref | 1.24x | 1.50x | — |
 
 ## Preql
 
@@ -163,59 +163,87 @@ SELECT
     "abundant"."sales_customer_id" as "sales_customer_id",
     "abundant"."sales_date_year" as "sales_date_year",
     "abundant"."sales_item_id" as "sales_item_id",
-    sum(CASE WHEN "abundant"."sales_sales_channel" = 'CATALOG' THEN "abundant"."sales_quantity" ELSE NULL END) as "cs_qty",
-    sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_quantity" ELSE NULL END) as "ss_qty",
-    sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_sales_price" ELSE NULL END) as "ss_sp",
-    sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_wholesale_cost" ELSE NULL END) as "ss_wc",
-    sum(CASE WHEN "abundant"."sales_sales_channel" = 'WEB' THEN "abundant"."sales_quantity" ELSE NULL END) as "ws_qty"
+    "abundant"."sales_quantity" as "sales_quantity",
+    "abundant"."sales_sales_channel" as "sales_sales_channel",
+    "abundant"."sales_sales_price" as "sales_sales_price",
+    "abundant"."sales_wholesale_cost" as "sales_wholesale_cost"
 FROM
     "abundant"
     LEFT OUTER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_is_returned" is null
-
+),
+vacuous as (
+SELECT
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_quantity" ELSE NULL END) as "cs_qty",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_quantity" ELSE NULL END) as "ss_qty",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_sales_price" ELSE NULL END) as "ss_sp",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_wholesale_cost" ELSE NULL END) as "ss_wc",
+    sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_quantity" ELSE NULL END) as "ws_qty"
+FROM
+    "yummy"
 GROUP BY
-    1,
-    2,
-    3),
-concerned as (
+    "yummy"."sales_customer_id",
+    "yummy"."sales_date_year",
+    "yummy"."sales_item_id"),
+juicy as (
 SELECT
     "yummy"."sales_customer_id" as "ss_customer_sk",
     "yummy"."sales_date_year" as "ss_sold_year",
-    "yummy"."sales_item_id" as "ss_item_sk",
-    "yummy"."ss_qty" as "store_qty",
-    "yummy"."ss_sp" as "store_sales_price",
-    "yummy"."ss_wc" as "store_wholesale_cost",
-    coalesce("yummy"."ws_qty",0) + coalesce("yummy"."cs_qty",0) as "other_chan_qty"
+    "yummy"."sales_item_id" as "ss_item_sk"
 FROM
-    "yummy"
+    "yummy"),
+young as (
+SELECT
+    "vacuous"."cs_qty" as "cs_qty",
+    "vacuous"."ss_qty" as "store_qty",
+    "vacuous"."ss_sp" as "store_sales_price",
+    "vacuous"."ss_wc" as "store_wholesale_cost",
+    "vacuous"."ws_qty" as "ws_qty",
+    coalesce("vacuous"."ws_qty",0) + coalesce("vacuous"."cs_qty",0) as "other_chan_qty"
+FROM
+    "vacuous"),
+sparkling as (
+SELECT
+    "juicy"."ss_customer_sk" as "ss_customer_sk",
+    "juicy"."ss_item_sk" as "ss_item_sk",
+    "juicy"."ss_sold_year" as "ss_sold_year",
+    "young"."cs_qty" as "cs_qty",
+    "young"."other_chan_qty" as "other_chan_qty",
+    "young"."store_qty" as "store_qty",
+    "young"."store_sales_price" as "store_sales_price",
+    "young"."store_wholesale_cost" as "store_wholesale_cost",
+    "young"."ws_qty" as "ws_qty"
+FROM
+    "young"
+    LEFT OUTER JOIN "juicy" on 1=1
 WHERE
-    ( coalesce("yummy"."ws_qty",0) > 0 or coalesce("yummy"."cs_qty",0) > 0 )
+    "young"."store_qty" > 0
 )
 SELECT
-    "concerned"."ss_sold_year" as "ss_sold_year",
-    "concerned"."ss_item_sk" as "ss_item_sk",
-    "concerned"."ss_customer_sk" as "ss_customer_sk",
-    round(cast(CASE WHEN  'CATALOG'  = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.quantity> ELSE NULL END as numeric(7,2)) / cast("concerned"."other_chan_qty" as numeric(7,2)),2) as "ratio",
-    "concerned"."store_qty" as "store_qty",
-    "concerned"."store_wholesale_cost" as "store_wholesale_cost",
-    "concerned"."store_sales_price" as "store_sales_price",
-    "concerned"."other_chan_qty" as "other_chan_qty",
+    "sparkling"."ss_sold_year" as "ss_sold_year",
+    "sparkling"."ss_item_sk" as "ss_item_sk",
+    "sparkling"."ss_customer_sk" as "ss_customer_sk",
+    round(cast(CASE WHEN  'CATALOG'  = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.quantity> ELSE NULL END as numeric(7,2)) / cast("sparkling"."other_chan_qty" as numeric(7,2)),2) as "ratio",
+    "sparkling"."store_qty" as "store_qty",
+    "sparkling"."store_wholesale_cost" as "store_wholesale_cost",
+    "sparkling"."store_sales_price" as "store_sales_price",
+    "sparkling"."other_chan_qty" as "other_chan_qty",
     coalesce(CASE WHEN  'CATALOG'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.wholesale_cost> ELSE NULL END,0) + coalesce(CASE WHEN  'CATALOG'  = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.wholesale_cost> ELSE NULL END,0) as "other_chan_wholesale_cost",
     coalesce(CASE WHEN  'CATALOG'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END,0) + coalesce(CASE WHEN  'CATALOG'  = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END,0) as "other_chan_sales_price"
 FROM
-    "concerned"
+    "sparkling"
 WHERE
-    "concerned"."store_qty" > 0
+    ( coalesce("sparkling"."ws_qty",0) > 0 or coalesce("sparkling"."cs_qty",0) > 0 )
 
 ORDER BY 
-    "concerned"."ss_sold_year" asc nulls first,
-    "concerned"."ss_item_sk" asc nulls first,
-    "concerned"."ss_customer_sk" asc nulls first,
-    "concerned"."store_qty" desc nulls last,
-    "concerned"."store_wholesale_cost" desc nulls last,
-    "concerned"."store_sales_price" desc nulls last,
-    "concerned"."other_chan_qty" asc nulls first,
+    "sparkling"."ss_sold_year" asc nulls first,
+    "sparkling"."ss_item_sk" asc nulls first,
+    "sparkling"."ss_customer_sk" asc nulls first,
+    "sparkling"."store_qty" desc nulls last,
+    "sparkling"."store_wholesale_cost" desc nulls last,
+    "sparkling"."store_sales_price" desc nulls last,
+    "sparkling"."other_chan_qty" asc nulls first,
     "other_chan_wholesale_cost" asc nulls first,
     "other_chan_sales_price" asc nulls first,
     "ratio" asc nulls first
@@ -340,22 +368,21 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in run_one
+    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
+                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
     value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in <lambda>
+    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
+                                                           ~~~~~^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 263, in _exec
+    return execute(con, bound_sql, params or None)
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 183, in execute
+    cursor = con.execute(sql, params) if params else con.execute(sql)
+                                                     ~~~~~~~~~~~^^^^^
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 112: ...  'CATALOG'  = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.quantity> ELSE NULL END as numeric...
+LINE 140: ...  'CATALOG'  = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.quantity> ELSE NULL END as numeric...
                                                                         ^
 ```

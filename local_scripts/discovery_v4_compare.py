@@ -63,6 +63,21 @@ from discovery_v4 import (  # noqa: E402
 
 OUT_DIR = Path(__file__).parent / "v4_compare"
 DATASET_DIR = TPCDS_DIR / "memory"
+TEST_SET_FILE = OUT_DIR / "test_set.txt"
+
+
+def load_test_set() -> list[str]:
+    """Curated query ids from `test_set.txt` — passing queries plus active
+    targets. Excludes plans that spin under the current planner so the
+    --test-set run stays usable on a laptop. Order is preserved."""
+    if not TEST_SET_FILE.exists():
+        raise FileNotFoundError(f"Test set file missing: {TEST_SET_FILE}")
+    ids: list[str] = []
+    for line in TEST_SET_FILE.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            ids.extend(parse_query_arg(line))
+    return ids
 
 
 @dataclass
@@ -487,9 +502,17 @@ def main() -> int:
         "--queries",
         help="Comma-separated query ids; overrides --query.",
     )
+    parser.add_argument(
+        "--test-set",
+        action="store_true",
+        help=f"Run the curated set in {TEST_SET_FILE.name} (passing + targeted "
+        "queries; excludes plans that spin under the current planner).",
+    )
     args = parser.parse_args()
 
-    if args.queries:
+    if args.test_set:
+        ids = load_test_set()
+    elif args.queries:
         ids = parse_query_arg(args.queries)
     elif args.query:
         ids = parse_query_arg(args.query)

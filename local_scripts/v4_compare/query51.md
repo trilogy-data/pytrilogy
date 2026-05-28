@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3599 | 81 | — |
-| reference | 4019 | 107 | 335.76 ms |
-| v4 / ref | 0.90x | 0.76x | — |
+| v4 | 4095 | 100 | — |
+| reference | 4019 | 107 | 723.44 ms |
+| v4 / ref | 1.02x | 0.93x | — |
 
 ## Preql
 
@@ -120,34 +120,56 @@ WHERE
 cooperative as (
 SELECT
     "cheerful"."sales_item_id" as "sales_item_id",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
-    sum(CASE WHEN "cheerful"."sales_sales_channel" = 'STORE' THEN "cheerful"."sales_sales_price" ELSE NULL END) as "store_daily",
-    sum(CASE WHEN "cheerful"."sales_sales_channel" = 'WEB' THEN "cheerful"."sales_sales_price" ELSE NULL END) as "web_daily"
+    "cheerful"."sales_sales_channel" as "sales_sales_channel",
+    "cheerful"."sales_sales_price" as "sales_sales_price",
+    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
 FROM
     "cheerful"
-    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-GROUP BY
-    1,
-    2),
-uneven as (
+    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"),
+abundant as (
 SELECT
     "cooperative"."sales_date_date" as "sales_date_date",
     "cooperative"."sales_item_id" as "sales_item_id",
-    sum("cooperative"."store_daily") over (partition by "cooperative"."sales_item_id" order by "cooperative"."sales_date_date" asc ) as "store_cume",
-    sum("cooperative"."web_daily") over (partition by "cooperative"."sales_item_id" order by "cooperative"."sales_date_date" asc ) as "web_cume"
+    sum(CASE WHEN "cooperative"."sales_sales_channel" = 'STORE' THEN "cooperative"."sales_sales_price" ELSE NULL END) as "store_daily",
+    sum(CASE WHEN "cooperative"."sales_sales_channel" = 'WEB' THEN "cooperative"."sales_sales_price" ELSE NULL END) as "web_daily"
+FROM
+    "cooperative"
+GROUP BY
+    1,
+    2),
+questionable as (
+SELECT
+    "cooperative"."sales_date_date" as "d_date",
+    "cooperative"."sales_item_id" as "item_sk"
 FROM
     "cooperative"),
 yummy as (
 SELECT
-    "uneven"."sales_date_date" as "d_date",
-    "uneven"."sales_item_id" as "item_sk",
-    "uneven"."store_cume" as "store_cumulative",
-    "uneven"."web_cume" as "web_cumulative"
+    sum("abundant"."store_daily") over (partition by "abundant"."sales_item_id" order by "abundant"."sales_date_date" asc ) as "store_cume",
+    sum("abundant"."web_daily") over (partition by "abundant"."sales_item_id" order by "abundant"."sales_date_date" asc ) as "web_cume"
 FROM
-    "uneven")
+    "abundant"),
+juicy as (
 SELECT
-    "yummy"."item_sk" as "item_sk",
-    "yummy"."d_date" as "d_date",
+    "yummy"."store_cume" as "store_cumulative",
+    "yummy"."web_cume" as "web_cumulative"
+FROM
+    "yummy"),
+vacuous as (
+SELECT
+    "juicy"."store_cumulative" as "store_cumulative",
+    "juicy"."web_cumulative" as "web_cumulative",
+    "questionable"."d_date" as "d_date",
+    "questionable"."item_sk" as "item_sk"
+FROM
+    "questionable"
+    RIGHT OUTER JOIN "juicy" on 1=1
+WHERE
+    "juicy"."web_cumulative" > "juicy"."store_cumulative"
+)
+SELECT
+    "vacuous"."item_sk" as "item_sk",
+    "vacuous"."d_date" as "d_date",
     CASE
 	WHEN CASE
 	WHEN  'STORE'  = 'WEB' THEN 1
@@ -162,16 +184,13 @@ SELECT
 	END = 1 THEN sum(CASE WHEN  'STORE'  = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END) over (partition by INVALID_REFERENCE_BUG_<Missing source reference to sales.item.id> order by cast(INVALID_REFERENCE_BUG_<Missing source reference to sales.date._date_string> as date) asc )
 	ELSE null
 	END as "store_sales",
-    "yummy"."web_cumulative" as "web_cumulative",
-    "yummy"."store_cumulative" as "store_cumulative"
+    "vacuous"."web_cumulative" as "web_cumulative",
+    "vacuous"."store_cumulative" as "store_cumulative"
 FROM
-    "yummy"
-WHERE
-    "yummy"."web_cumulative" > "yummy"."store_cumulative"
-
+    "vacuous"
 ORDER BY 
-    "yummy"."item_sk" asc nulls first,
-    "yummy"."d_date" asc nulls first
+    "vacuous"."item_sk" asc nulls first,
+    "vacuous"."d_date" asc nulls first
 LIMIT (100)
 ```
 
@@ -306,6 +325,6 @@ Traceback (most recent call last):
                                                      ~~~~~~~~~~~^^^^^
 _duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 61: ... WHEN  'STORE'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END) over...
+LINE 83: ... WHEN  'STORE'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END) over...
                                                                         ^
 ```

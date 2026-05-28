@@ -22,9 +22,9 @@ only in ref (showing up to 5 of 1):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3828 | 87 | 36.51 ms |
-| reference | 4183 | 91 | 40.34 ms |
-| v4 / ref | 0.92x | 0.96x | 0.90x |
+| v4 | 3828 | 87 | 68.87 ms |
+| reference | 4183 | 91 | 63.95 ms |
+| v4 / ref | 0.92x | 0.96x | 1.08x |
 
 ## Preql
 

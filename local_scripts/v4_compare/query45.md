@@ -1,24 +1,26 @@
 # Query 45
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (19 rows) |
 | reference execution | OK (19 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 19 (19 distinct)
+ref rows: 19 (19 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 485 | 12 | — |
-| reference | 2114 | 41 | 27.41 ms |
-| v4 / ref | 0.23x | 0.29x | — |
+| v4 | 2007 | 33 | 20.87 ms |
+| reference | 2114 | 41 | 26.73 ms |
+| v4 / ref | 0.95x | 0.80x | 0.78x |
 
 ## Preql
 
@@ -49,17 +51,38 @@ limit 100
 ## v4 generated SQL
 
 ```sql
+WITH 
+highfalutin as (
 SELECT
-    sum(INVALID_REFERENCE_BUG_<Missing source reference to web_sales.sales_price>) as "total_sales",
-    INVALID_REFERENCE_BUG_<Missing source reference to web_sales.customer.address.city> as "web_sales_customer_address_city",
-    INVALID_REFERENCE_BUG_<Missing source reference to web_sales.customer.address.zip> as "web_sales_customer_address_zip"
-
+    CASE WHEN "item2_items"."I_ITEM_SK" in (2,3,5,7,11,13,17,19,23,29) THEN "item2_items"."I_ITEM_ID" ELSE NULL END as "special_item_ids"
+FROM
+    "memory"."item" as "item2_items"),
+abundant as (
+SELECT
+    "web_sales_customer_address_customer_address"."CA_CITY" as "web_sales_customer_address_city",
+    "web_sales_customer_address_customer_address"."CA_ZIP" as "web_sales_customer_address_zip",
+    "web_sales_web_sales"."WS_SALES_PRICE" as "web_sales_sales_price"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+    INNER JOIN "memory"."date_dim" as "web_sales_date_date" on "web_sales_web_sales"."WS_SOLD_DATE_SK" = "web_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "web_sales_item_items" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."customer" as "web_sales_customer_customers" on "web_sales_web_sales"."WS_BILL_CUSTOMER_SK" = "web_sales_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "web_sales_customer_address_customer_address" on "web_sales_customer_customers"."C_CURRENT_ADDR_SK" = "web_sales_customer_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "web_sales_date_date"."D_QOY" = 2 and "web_sales_date_date"."D_YEAR" = 2001 and ( SUBSTRING("web_sales_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "web_sales_item_items"."I_ITEM_ID" in (select highfalutin."special_item_ids" from highfalutin where highfalutin."special_item_ids" is not null) )
+)
+SELECT
+    sum("abundant"."web_sales_sales_price") as "total_sales",
+    "abundant"."web_sales_customer_address_city" as "web_sales_customer_address_city",
+    "abundant"."web_sales_customer_address_zip" as "web_sales_customer_address_zip"
+FROM
+    "abundant"
 GROUP BY
     2,
     3
 ORDER BY 
-    "web_sales_customer_address_zip" asc,
-    "web_sales_customer_address_city" asc
+    "abundant"."web_sales_customer_address_zip" asc,
+    "abundant"."web_sales_customer_address_city" asc
 LIMIT (100)
 ```
 
@@ -107,27 +130,4 @@ ORDER BY
     "uneven"."web_sales_customer_address_zip" asc,
     "uneven"."web_sales_customer_address_city" asc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 263, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 183, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
-
-LINE 2:     sum(INVALID_REFERENCE_BUG_<Missing source reference to web_sales.sales_price>) as "total_sales...
-                                               ^
 ```

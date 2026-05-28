@@ -1,26 +1,38 @@
 # Query 10
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (6 rows) |
 | reference execution | OK (6 rows) |
-| results identical | YES |
+| results identical | NO |
 
 ## Result comparison
 
 v4 rows: 6 (6 distinct)
 ref rows: 6 (6 distinct)
+only in v4 (showing up to 5 of 6):
+  1x  (3, 3, 3, 3, 3, 3, 5, 'High Risk', 2, 'Advanced Degree', 4, 'F', 'D', 3000)
+  1x  (3, 3, 3, 3, 3, 3, 4, 'Good', 6, 'Unknown', 5, 'F', 'D', 1500)
+  1x  (6, 6, 6, 6, 6, 6, 5, 'Good', 4, '2 yr Degree', 0, 'F', 'W', 8500)
+  1x  (3, 3, 3, 3, 3, 3, 1, 'Low Risk', 3, 'College', 0, 'M', 'D', 8500)
+  1x  (32, 32, 32, 32, 32, 32, 1, 'Unknown', 2, 'Primary', 1, 'M', 'D', 7000)
+only in ref (showing up to 5 of 6):
+  1x  (1, 1, 1, 1, 1, 1, 5, 'High Risk', 2, 'Advanced Degree', 4, 'F', 'D', 3000)
+  1x  (1, 1, 1, 1, 1, 1, 4, 'Good', 6, 'Unknown', 5, 'F', 'D', 1500)
+  1x  (1, 1, 1, 1, 1, 1, 5, 'Good', 4, '2 yr Degree', 0, 'F', 'W', 8500)
+  1x  (1, 1, 1, 1, 1, 1, 1, 'Low Risk', 3, 'College', 0, 'M', 'D', 8500)
+  1x  (1, 1, 1, 1, 1, 1, 1, 'Unknown', 2, 'Primary', 1, 'M', 'D', 7000)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4837 | 84 | 101.54 ms |
-| reference | 4839 | 84 | 98.71 ms |
-| v4 / ref | 1.00x | 1.00x | 1.03x |
+| v4 | 6496 | 111 | 428.46 ms |
+| reference | 4839 | 84 | 227.11 ms |
+| v4 / ref | 1.34x | 1.32x | 1.89x |
 
 ## Preql
 
@@ -106,7 +118,7 @@ FROM
 GROUP BY
     1,
     2),
-vacuous as (
+young as (
 SELECT
     coalesce("customer_customers"."C_CUSTOMER_SK","questionable"."customer_id","quizzical"."customer_id","yummy"."customer_id") as "relevant_customers"
 FROM
@@ -122,7 +134,33 @@ WHERE
     "store_sales_date_date"."D_YEAR" = 2002 and "store_sales_date_date"."D_MOY" in (1,2,3,4) and "customer_address_customer_address"."CA_COUNTY" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( "web_sales_date_date"."D_YEAR" = 2002 and "web_sales_date_date"."D_MOY" in (1,2,3,4) ) or ( "catalog_sales_date_date"."D_YEAR" = 2002 and "catalog_sales_date_date"."D_MOY" in (1,2,3,4) ) )
 
 GROUP BY
-    1)
+    1),
+vacuous as (
+SELECT
+    coalesce("customer_customers"."C_CUSTOMER_SK","questionable"."customer_id","quizzical"."customer_id","yummy"."customer_id") as "customer_id"
+FROM
+    "yummy"
+    LEFT OUTER JOIN "memory"."date_dim" as "web_sales_date_date" on "yummy"."web_sales_date_id" = "web_sales_date_date"."D_DATE_SK"
+    FULL JOIN "quizzical" on "yummy"."customer_id" is not distinct from "quizzical"."customer_id"
+    FULL JOIN "questionable" on coalesce("quizzical"."customer_id", "yummy"."customer_id") = "questionable"."customer_id"
+    FULL JOIN "memory"."customer" as "customer_customers" on coalesce("quizzical"."customer_id", "questionable"."customer_id", "yummy"."customer_id") = "customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
+    FULL JOIN "memory"."date_dim" as "store_sales_date_date" on "questionable"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
+    FULL JOIN "memory"."date_dim" as "catalog_sales_date_date" on "quizzical"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"
+GROUP BY
+    1,
+    "catalog_sales_date_date"."D_MOY",
+    "catalog_sales_date_date"."D_YEAR",
+    "customer_address_customer_address"."CA_COUNTY",
+    "store_sales_date_date"."D_MOY",
+    "store_sales_date_date"."D_YEAR",
+    "web_sales_date_date"."D_MOY",
+    "web_sales_date_date"."D_YEAR"),
+concerned as (
+SELECT
+    "vacuous"."customer_id" as "customer_id"
+FROM
+    "vacuous")
 SELECT
     "customer_demographics_customer_demographics"."CD_DEP_COLLEGE_COUNT" as "customer_demographics_college_dependent_count",
     "customer_demographics_customer_demographics"."CD_CREDIT_RATING" as "customer_demographics_credit_rating",
@@ -140,9 +178,10 @@ SELECT
     count("customer_customers"."C_CUSTOMER_SK") as "cnt6"
 FROM
     "memory"."customer" as "customer_customers"
+    INNER JOIN "concerned" on "customer_customers"."C_CUSTOMER_SK" = "concerned"."customer_id"
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "customer_customers"."C_CUSTOMER_SK" in (select vacuous."relevant_customers" from vacuous where vacuous."relevant_customers" is not null) and "customer_demographics_customer_demographics"."CD_GENDER" is not null
+    "customer_customers"."C_CUSTOMER_SK" in (select young."relevant_customers" from young where young."relevant_customers" is not null) and "customer_demographics_customer_demographics"."CD_GENDER" is not null
 
 GROUP BY
     1,

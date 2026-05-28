@@ -13,26 +13,26 @@
 
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 100):
-  1x  ('catalog', 1001001, 1, 1, 76, Decimal('268875.21'))
-  1x  ('catalog', 1001001, 1, 1, 7, Decimal('18386.99'))
-  1x  ('catalog', 1001001, 1, 1, 7, Decimal('44042.66'))
-  1x  ('catalog', 1001001, 1, 1, 54, Decimal('221828.85'))
-  1x  ('catalog', 1001001, 1, 1, 15, Decimal('75176.33'))
-only in ref (showing up to 5 of 100):
+only in v4 (showing up to 5 of 99):
+  1x  ('catalog', 1001001, 1, 1, 21, Decimal('91155.74'))
+  1x  ('catalog', 1001001, 1, 1, 36, Decimal('149237.33'))
+  1x  ('catalog', 1001001, 1, 1, 59, Decimal('176593.82'))
+  1x  ('catalog', 1001001, 1, 1, 48, Decimal('286044.70'))
+  1x  ('catalog', 1001001, 1, 1, 8, Decimal('30778.14'))
+only in ref (showing up to 5 of 99):
   1x  (None, None, None, None, 155567, Decimal('673409655.64'))
   1x  ('catalog', None, None, None, 46359, Decimal('234830325.53'))
   1x  ('catalog', 1001001, None, None, 341, Decimal('1549222.39'))
   1x  ('catalog', 1001001, None, 1, 162, Decimal('742922.27'))
-  1x  ('catalog', 1001001, 1, 1, 20, Decimal('87409.20'))
+  1x  ('catalog', 1001001, 2, 1, 27, Decimal('113268.88'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7028 | 179 | 419.45 ms |
-| reference | 6613 | 165 | 323.27 ms |
-| v4 / ref | 1.06x | 1.08x | 1.30x |
+| v4 | 7028 | 179 | 916.33 ms |
+| reference | 6613 | 165 | 438.51 ms |
+| v4 / ref | 1.06x | 1.08x | 2.09x |
 
 ## Preql
 

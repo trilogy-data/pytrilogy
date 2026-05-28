@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3887 | 32 | 41.04 ms |
-| reference | 3887 | 32 | 38.50 ms |
-| v4 / ref | 1.00x | 1.00x | 1.07x |
+| v4 | 3887 | 32 | 27.85 ms |
+| reference | 3887 | 32 | 27.60 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -91,14 +91,14 @@ WHERE
 GROUP BY
     "store_sales_store_sales"."SS_TICKET_NUMBER")
 SELECT
-    sum("thoughtful"."_virt_agg_count_6255323248253146") as "h8_30_to_9",
-    sum("thoughtful"."_virt_agg_count_2910789853377884") as "h9_to_9_30",
-    sum("thoughtful"."_virt_agg_count_2219364601882723") as "h9_30_to_10",
-    sum("thoughtful"."_virt_agg_count_7911186439813521") as "h10_to_10_30",
     sum("thoughtful"."_virt_agg_count_4915320083864949") as "h10_30_to_11",
-    sum("thoughtful"."_virt_agg_count_9208026921280603") as "h11_to_11_30",
+    sum("thoughtful"."_virt_agg_count_7911186439813521") as "h10_to_10_30",
     sum("thoughtful"."_virt_agg_count_7914196801151291") as "h11_30_to_12",
-    sum("thoughtful"."_virt_agg_count_6874762517186813") as "h12_to_12_30"
+    sum("thoughtful"."_virt_agg_count_9208026921280603") as "h11_to_11_30",
+    sum("thoughtful"."_virt_agg_count_6874762517186813") as "h12_to_12_30",
+    sum("thoughtful"."_virt_agg_count_6255323248253146") as "h8_30_to_9",
+    sum("thoughtful"."_virt_agg_count_2219364601882723") as "h9_30_to_10",
+    sum("thoughtful"."_virt_agg_count_2910789853377884") as "h9_to_9_30"
 FROM
     "thoughtful"
 ```

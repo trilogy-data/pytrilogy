@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 690 | 11 | — |
-| reference | 3713 | 83 | 61.42 ms |
-| v4 / ref | 0.19x | 0.13x | — |
+| v4 | 3148 | 78 | — |
+| reference | 3713 | 83 | 161.31 ms |
+| v4 / ref | 0.85x | 0.94x | — |
 
 ## Preql
 
@@ -47,14 +47,81 @@ limit 100
 ## v4 generated SQL
 
 ```sql
+WITH 
+thoughtful as (
 SELECT
-    CASE WHENINVALID_REFERENCE_BUG_<Missing source reference to cs.order_number> IS NOT NULL THEN 1 ELSE 0 END as "order_count",
-    INVALID_REFERENCE_BUG_<Missing source reference to cs.net_profit> as "total_net_profit",
-    INVALID_REFERENCE_BUG_<Missing source reference to cs.ext_ship_cost> as "total_shipping_cost"
-
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
+    "cs_catalog_sales"."CS_WAREHOUSE_SK" as "cs_warehouse_id"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+GROUP BY
+    1,
+    2),
+quizzical as (
+SELECT
+    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_order_number"
+FROM
+    "memory"."catalog_returns" as "cr_catalog_returns"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    CASE WHEN count("thoughtful"."cs_warehouse_id") > 1 THEN "thoughtful"."cs_order_number" ELSE NULL END as "multi_warehouse_sales",
+    count("thoughtful"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
+cooperative as (
+SELECT
+    "thoughtful"."cs_order_number" as "cs_order_number",
+    count("thoughtful"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
+uneven as (
+SELECT
+    "abundant"."multi_warehouse_sales" as "multi_warehouse_sales"
+FROM
+    "abundant"
 WHERE
-    INVALID_REFERENCE_BUG_<Missing source reference to cs.ship_date.date> BETWEEN date '2002-02-01' AND date '2002-04-02' and INVALID_REFERENCE_BUG_<Missing source reference to cs.customer_address.state> = 'GA' and INVALID_REFERENCE_BUG_<Missing source reference to cs.call_center.county> = 'Williamson County'
+    "abundant"."_virt_agg_count_7777088585630721" > 1
+),
+questionable as (
+SELECT
+    "cooperative"."cs_order_number" as "cs_order_number",
+    CASE WHEN "cooperative"."_virt_agg_count_7777088585630721" > 1 THEN "cooperative"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
+FROM
+    "cooperative"),
+vacuous as (
+SELECT
+    "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
+    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
+FROM
+    "questionable"
+    INNER JOIN "memory"."catalog_sales" as "cs_catalog_sales" on "questionable"."cs_order_number" = "cs_catalog_sales"."CS_ORDER_NUMBER"
+    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select questionable."multi_warehouse_sales" from questionable where questionable."multi_warehouse_sales" is not null) and cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County'
 
+GROUP BY
+    1,
+    2,
+    3,
+    "cs_call_center_call_center"."CC_COUNTY",
+    "cs_catalog_sales"."CS_ITEM_SK",
+    "cs_customer_address_customer_address"."CA_STATE",
+    cast("cs_ship_date_date"."D_DATE" as date))
+SELECT
+    count(distinct "vacuous"."cs_order_number") as "order_count",
+    sum("vacuous"."cs_net_profit") as "total_net_profit",
+    sum("vacuous"."cs_ext_ship_cost") as "total_shipping_cost"
+FROM
+    "vacuous"
 ORDER BY 
     "order_count" desc
 LIMIT (100)
@@ -165,8 +232,8 @@ Traceback (most recent call last):
   File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 183, in execute
     cursor = con.execute(sql, params) if params else con.execute(sql)
                                                      ~~~~~~~~~~~^^^^^
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
+_duckdb.BinderException: Binder Error: GROUP BY clause cannot contain aggregates!
 
-LINE 2:     CASE WHENINVALID_REFERENCE_BUG_<Missing source reference to cs.order_number> IS NOT NULL THEN 1...
-                                                    ^
+LINE 20:     CASE WHEN count("thoughtful"."cs_warehouse_id") > 1 THEN "thoughtful...
+                       ^
 ```

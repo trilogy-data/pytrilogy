@@ -296,10 +296,45 @@ def _materialize_group_graph(
     return group_graph
 
 
+def _main_lineage_groups(
+    group_graph: nx.DiGraph,
+    buckets: dict[str, GroupBucket],
+    mandatory_list: list[BuildConcept],
+) -> set[str]:
+    """Groups in the user-facing pipeline: those whose primary members produce
+    a mandatory concept, plus all their lineage-edge ancestors. Used to bias
+    condition placement away from existence-only side channels (a d1 filter
+    group that produces an `IN`-RHS feeder is reachable via row args but
+    hosting the atom there self-references the existence concept and leaves
+    the main row stream unfiltered)."""
+    mandatory_addrs = {c.address for c in mandatory_list}
+    seeds = {
+        gid
+        for gid, b in buckets.items()
+        if mandatory_addrs & set(b.primary_members)
+    }
+    if not seeds:
+        return set(buckets.keys())
+    lineage_only = group_graph.edge_subgraph(
+        [
+            (u, v)
+            for u, v, d in group_graph.edges(data=True)
+            if d.get("kind") == "lineage"
+        ]
+    ).copy()
+    for gid in buckets:
+        lineage_only.add_node(gid)
+    main: set[str] = set(seeds)
+    for seed in seeds:
+        main |= nx.ancestors(lineage_only, seed)
+    return main
+
+
 def _inject_conditions(
     group_graph: nx.DiGraph,
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
+    mandatory_list: list[BuildConcept] | None = None,
 ) -> set[str]:
     """Decompose each clause into AND-atoms (via `decompose_condition`) and
     place each atom *independently* at the furthest-upstream group that can
@@ -319,6 +354,24 @@ def _inject_conditions(
     d1_root_ids = {
         gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH
     }
+    main_lineage = (
+        _main_lineage_groups(group_graph, buckets, mandatory_list)
+        if mandatory_list
+        else set(buckets.keys())
+    )
+    # Ancestor checks for "upstream-most" must follow lineage only — existence
+    # edges go from a side-channel filter back to its consumer (e.g. d1 filter
+    # → main root), which would falsely make root a *descendant* of the d1
+    # filter and disqualify it from the upstream tiebreak.
+    lineage_ancestors_graph = group_graph.edge_subgraph(
+        [
+            (u, v)
+            for u, v, d in group_graph.edges(data=True)
+            if d.get("kind") in ("lineage", "constraint")
+        ]
+    ).copy()
+    for gid in buckets:
+        lineage_ancestors_graph.add_node(gid)
     group_members: dict[str, set[str]] = {
         gid: set(b.primary_members) | set(b.secondary_members)
         for gid, b in buckets.items()
@@ -374,9 +427,23 @@ def _inject_conditions(
             upstream_most = [
                 gid
                 for gid in candidates
-                if not (cand_set & nx.ancestors(group_graph, gid))
+                if not (cand_set & nx.ancestors(lineage_ancestors_graph, gid))
             ]
-            chosen = upstream_most[0] if upstream_most else candidates[0]
+            # Prefer candidates on the main lineage pipeline. A side-channel
+            # d1 filter group that produces this atom's existence arg can
+            # show up here (`relevent_week_seq` is reachable through its own
+            # row stream) — hosting the WHERE there self-references and
+            # leaves the user-facing row stream unfiltered.
+            main_upstream = [gid for gid in upstream_most if gid in main_lineage]
+            main_cands = [gid for gid in candidates if gid in main_lineage]
+            if main_upstream:
+                chosen = main_upstream[0]
+            elif upstream_most:
+                chosen = upstream_most[0]
+            elif main_cands:
+                chosen = main_cands[0]
+            else:
+                chosen = candidates[0]
             chosen_ancestors = nx.ancestors(group_graph, chosen)
             offending = d0_group_ids & chosen_ancestors
             if offending:
@@ -668,7 +735,9 @@ def build_group_graph(
         d1_calc_roots=d1_calc_roots,
         d1_subgraph=d1_subgraph,
     )
-    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
+    condition_group_ids = _inject_conditions(
+        group_graph, buckets, conditions, mandatory_list
+    )
     downstream = _color_phases(group_graph, condition_group_ids)
     _add_final_node(group_graph, concept_graph, buckets, conditions, downstream)
     if mandatory_list is not None:
