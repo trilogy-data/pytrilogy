@@ -93,6 +93,7 @@ class Conversation:
             UnresolvableQueryException,
             UndefinedConceptException,
             SyntaxError,
+            ImportError,
         ) as error:
             return ("", str(error))
 
