@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5124 | 95 | 61.12 ms |
-| reference | 10103 | 157 | 98.24 ms |
-| v4 / ref | 0.51x | 0.61x | 0.62x |
+| v4 | 5181 | 96 | 60.46 ms |
+| reference | 10103 | 157 | 93.87 ms |
+| v4 / ref | 0.51x | 0.61x | 0.64x |
 
 ## Preql
 
@@ -154,6 +154,7 @@ GROUP BY
     5,
     6,
     7,
+    "customer_address_customer_address"."CA_ADDRESS_SK",
     "customer_customers"."C_CURRENT_CDEMO_SK")
 SELECT
     "young"."customer_address_state" as "customer_address_state",

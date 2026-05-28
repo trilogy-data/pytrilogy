@@ -555,6 +555,19 @@ def _compute_concept_sets(
         behavior_of[gid] = beh
         native_grain_of[gid] = beh.native_grain(bucket, concept_graph)
 
+    # Natural row-grain of each concept (the keys it functionally depends on).
+    # Used when an aggregating group demands lineage args from a row-level
+    # source — without also demanding the source grain, the root scan only
+    # projects the aggregate's input columns and v3 inserts an implicit
+    # GROUP BY to dedupe to that column shape, destroying the row population
+    # AVG/SUM need (q09).
+    source_grain_of: dict[str, frozenset[str]] = {}
+    for _n, _d in concept_graph.nodes(data=True):
+        _addr = _d.get("address", _n)
+        _gc = _d.get("grain_components")
+        if _gc:
+            source_grain_of[_addr] = frozenset(_gc)
+
     # Topo includes all dependency edges (lineage / constraint / existence)
     # so a side-channel source builds before its consumer. The JOIN-key
     # and demand passes below treat each edge kind differently.
@@ -594,6 +607,13 @@ def _compute_concept_sets(
         cap: set[str] = set(primary_of[gid])
         beh = behavior_of.get(gid)
         if beh is None or derivation_of[gid] == Derivation.ROOT.value:
+            # Root scans can also project the grain keys of their primaries —
+            # `store_sales.ticket_number` is reachable from a store_sales scan
+            # even if no consumer asked for it. Exposing it in capability lets
+            # an aggregating successor demand it to keep the scan at row-level
+            # grain (see `source_grain_of` build above).
+            for addr in list(cap):
+                cap.update(source_grain_of.get(addr, frozenset()))
             capability[gid] = cap
             continue
         native = native_grain_of[gid]
@@ -682,11 +702,22 @@ def _compute_concept_sets(
         # plus condition row-args we haven't computed locally.
         primaries = primary_of[gid]
         ins: set[str] = set()
+        is_grouping = derivation_of[gid] in GROUPING_DERIVATIONS
         for c in outs:
             if c in primaries:
                 for p in lineage_parents.get(c, set()):
                     if p not in primaries:
                         ins.add(p)
+                        # Aggregating derivations sit above a row-level
+                        # source: also demand the row-grain of each lineage
+                        # arg so the source scan stays at row grain. Without
+                        # this the source would project only the requested
+                        # value columns and v3 inserts an implicit GROUP BY
+                        # to dedupe (q09: AVG/SUM over deduped tuples).
+                        if is_grouping:
+                            for gc in source_grain_of.get(p, frozenset()):
+                                if gc not in primaries:
+                                    ins.add(gc)
             else:
                 ins.add(c)
         for atom in attrs[gid].condition_atoms:

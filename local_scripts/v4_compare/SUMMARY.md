@@ -1,7 +1,7 @@
 # v4 vs reference — TPC-DS comparison
 
-**Total:** 55 queries
-- match: 55
+**Total:** 56 queries
+- match: 56
 
 | Query | Status | v4 rows | ref rows |
 | --- | --- | --- | --- |
@@ -13,6 +13,7 @@
 | [06](query06.md) | match | 46 | 46 |
 | [07](query07.md) | match | 100 | 100 |
 | [08](query08.md) | match | 5 | 5 |
+| [09](query09.md) | match | 1 | 1 |
 | [12](query12.md) | match | 100 | 100 |
 | [13](query13.md) | match | 1 | 1 |
 | [15](query15.md) | match | 100 | 100 |

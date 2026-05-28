@@ -18,9 +18,9 @@ ref rows: 46 (46 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2142 | 41 | 20.66 ms |
-| reference | 2203 | 44 | 23.06 ms |
-| v4 / ref | 0.97x | 0.93x | 0.90x |
+| v4 | 2967 | 59 | 34.57 ms |
+| reference | 2203 | 44 | 22.61 ms |
+| v4 / ref | 1.35x | 1.34x | 1.53x |
 
 ## Preql
 
@@ -54,9 +54,12 @@ order by
 WITH 
 cooperative as (
 SELECT
+    "store_sales_customer_address_customer_address"."CA_ADDRESS_SK" as "store_sales_customer_address_id",
     "store_sales_customer_address_customer_address"."CA_STATE" as "store_sales_customer_address_state",
     "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
     "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
+    "store_sales_item_items"."I_ITEM_SK" as "store_sales_item_id",
+    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number",
     1 as "store_sales_row_counter"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
@@ -74,10 +77,11 @@ SELECT
 FROM
     "memory"."item" as "store_sales_item_items"
 GROUP BY
-    1)
+    1),
+abundant as (
 SELECT
     "cooperative"."store_sales_customer_address_state" as "store_sales_customer_address_state",
-    sum("cooperative"."store_sales_row_counter") as "customer_count"
+    "cooperative"."store_sales_row_counter" as "store_sales_row_counter"
 FROM
     "cooperative"
     INNER JOIN "questionable" on "cooperative"."store_sales_item_category" is not distinct from "questionable"."store_sales_item_category"
@@ -85,13 +89,27 @@ WHERE
     "cooperative"."store_sales_item_current_price" > 1.2 * "questionable"."_virt_agg_avg_2054483076469165"
 
 GROUP BY
+    1,
+    2,
+    "cooperative"."store_sales_customer_address_id",
+    "cooperative"."store_sales_item_current_price",
+    "cooperative"."store_sales_item_id",
+    "cooperative"."store_sales_ticket_number",
+    "questionable"."_virt_agg_avg_2054483076469165",
+    coalesce("cooperative"."store_sales_item_category","questionable"."store_sales_item_category"))
+SELECT
+    "abundant"."store_sales_customer_address_state" as "store_sales_customer_address_state",
+    sum("abundant"."store_sales_row_counter") as "customer_count"
+FROM
+    "abundant"
+GROUP BY
     1
 HAVING
     "customer_count" >= 10
 
 ORDER BY 
     "customer_count" asc nulls first,
-    "cooperative"."store_sales_customer_address_state" asc nulls first
+    "abundant"."store_sales_customer_address_state" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

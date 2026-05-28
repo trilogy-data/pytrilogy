@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1847 | 46 | 36.48 ms |
-| reference | 1510 | 32 | 15.09 ms |
-| v4 / ref | 1.22x | 1.44x | 2.42x |
+| v4 | 1510 | 32 | 14.89 ms |
+| reference | 1510 | 32 | 15.54 ms |
+| v4 / ref | 1.00x | 1.00x | 0.96x |
 
 ## Preql
 
@@ -61,13 +61,17 @@ limit 100
 ## v4 generated SQL
 
 ```sql
-WITH 
-thoughtful as (
 SELECT
-    "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
-    "inventory_warehouse_inventory"."inv_quantity_on_hand" as "inventory_quantity_on_hand",
     "inventory_warehouse_warehouse"."w_warehouse_name" as "inventory_warehouse_name",
-    cast("inventory_date_date"."D_DATE" as date) as "inventory_date_date"
+    "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
+    sum(CASE
+	WHEN cast("inventory_date_date"."D_DATE" as date) < date '2000-03-11' THEN "inventory_warehouse_inventory"."inv_quantity_on_hand"
+	ELSE 0
+	END) as "inv_before",
+    sum(CASE
+	WHEN cast("inventory_date_date"."D_DATE" as date) >= date '2000-03-11' THEN "inventory_warehouse_inventory"."inv_quantity_on_hand"
+	ELSE 0
+	END) as "inv_after"
 FROM
     "memory"."inventory" as "inventory_warehouse_inventory"
     INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
@@ -78,24 +82,6 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3,
-    4)
-SELECT
-    "thoughtful"."inventory_warehouse_name" as "inventory_warehouse_name",
-    "thoughtful"."inventory_item_name" as "inventory_item_name",
-    sum(CASE
-	WHEN "thoughtful"."inventory_date_date" < date '2000-03-11' THEN "thoughtful"."inventory_quantity_on_hand"
-	ELSE 0
-	END) as "inv_before",
-    sum(CASE
-	WHEN "thoughtful"."inventory_date_date" >= date '2000-03-11' THEN "thoughtful"."inventory_quantity_on_hand"
-	ELSE 0
-	END) as "inv_after"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
     2
 HAVING
     CASE
@@ -104,8 +90,8 @@ HAVING
 	END BETWEEN 2.0 / 3.0 AND 3.0 / 2.0
 
 ORDER BY 
-    "thoughtful"."inventory_warehouse_name" asc nulls first,
-    "thoughtful"."inventory_item_name" asc nulls first
+    "inventory_warehouse_warehouse"."w_warehouse_name" asc nulls first,
+    "inventory_item_items"."I_ITEM_ID" asc nulls first
 LIMIT (100)
 ```
 

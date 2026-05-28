@@ -1,30 +1,26 @@
 # Query 09
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (75.25301674037534, 220.39143376813084, 365.74542659779036, 508.37700039693226, 653.5553966080046)
-only in ref (showing up to 5 of 1):
-  1x  (39.58666235453537, 116.11497611055164, 192.43918583506914, 267.1876616705382, 342.9667589085597)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3518 | 102 | 157.79 ms |
-| reference | 2991 | 108 | 80.85 ms |
-| v4 / ref | 1.18x | 0.94x | 1.95x |
+| v4 | 3357 | 91 | 41.26 ms |
+| reference | 2991 | 108 | 40.15 ms |
+| v4 / ref | 1.12x | 0.84x | 1.03x |
 
 ## Preql
 
@@ -75,105 +71,94 @@ select
 WITH 
 quizzical as (
 SELECT
-    "store_sales_store_sales"."SS_EXT_DISCOUNT_AMT" as "store_sales_ext_discount_amount",
-    "store_sales_store_sales"."SS_NET_PAID" as "store_sales_net_paid",
-    "store_sales_store_sales"."SS_QUANTITY" as "store_sales_quantity"
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 1 AND 20 THEN "store_sales_store_sales"."SS_EXT_DISCOUNT_AMT"
+	ELSE null
+	END) as "_virt_agg_avg_6330081077547932",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 1 AND 20 THEN "store_sales_store_sales"."SS_NET_PAID"
+	ELSE null
+	END) as "_virt_agg_avg_4794444300151277",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 40 THEN "store_sales_store_sales"."SS_EXT_DISCOUNT_AMT"
+	ELSE null
+	END) as "_virt_agg_avg_4659580449698061",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 40 THEN "store_sales_store_sales"."SS_NET_PAID"
+	ELSE null
+	END) as "_virt_agg_avg_1613688246980292",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 41 AND 60 THEN "store_sales_store_sales"."SS_EXT_DISCOUNT_AMT"
+	ELSE null
+	END) as "_virt_agg_avg_7477983213274050",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 41 AND 60 THEN "store_sales_store_sales"."SS_NET_PAID"
+	ELSE null
+	END) as "_virt_agg_avg_684038137247375",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 61 AND 80 THEN "store_sales_store_sales"."SS_EXT_DISCOUNT_AMT"
+	ELSE null
+	END) as "_virt_agg_avg_2142335324413561",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 61 AND 80 THEN "store_sales_store_sales"."SS_NET_PAID"
+	ELSE null
+	END) as "_virt_agg_avg_838076703794071",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 81 AND 100 THEN "store_sales_store_sales"."SS_EXT_DISCOUNT_AMT"
+	ELSE null
+	END) as "_virt_agg_avg_9933913877002720",
+    avg(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 81 AND 100 THEN "store_sales_store_sales"."SS_NET_PAID"
+	ELSE null
+	END) as "_virt_agg_avg_5605106007967002",
+    sum(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 1 AND 20 THEN 1
+	ELSE 0
+	END) as "count1",
+    sum(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 40 THEN 1
+	ELSE 0
+	END) as "count2",
+    sum(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 41 AND 60 THEN 1
+	ELSE 0
+	END) as "count3",
+    sum(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 61 AND 80 THEN 1
+	ELSE 0
+	END) as "count4",
+    sum(CASE
+	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 81 AND 100 THEN 1
+	ELSE 0
+	END) as "count5"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
 WHERE
     "store_sales_store_sales"."SS_QUANTITY" BETWEEN 1 AND 100
-
-GROUP BY
-    1,
-    2,
-    3),
-wakeful as (
-SELECT
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 1 AND 20 THEN "quizzical"."store_sales_ext_discount_amount"
-	ELSE null
-	END) as "_virt_agg_avg_6330081077547932",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 1 AND 20 THEN "quizzical"."store_sales_net_paid"
-	ELSE null
-	END) as "_virt_agg_avg_4794444300151277",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 21 AND 40 THEN "quizzical"."store_sales_ext_discount_amount"
-	ELSE null
-	END) as "_virt_agg_avg_4659580449698061",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 21 AND 40 THEN "quizzical"."store_sales_net_paid"
-	ELSE null
-	END) as "_virt_agg_avg_1613688246980292",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 41 AND 60 THEN "quizzical"."store_sales_ext_discount_amount"
-	ELSE null
-	END) as "_virt_agg_avg_7477983213274050",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 41 AND 60 THEN "quizzical"."store_sales_net_paid"
-	ELSE null
-	END) as "_virt_agg_avg_684038137247375",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 61 AND 80 THEN "quizzical"."store_sales_ext_discount_amount"
-	ELSE null
-	END) as "_virt_agg_avg_2142335324413561",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 61 AND 80 THEN "quizzical"."store_sales_net_paid"
-	ELSE null
-	END) as "_virt_agg_avg_838076703794071",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 81 AND 100 THEN "quizzical"."store_sales_ext_discount_amount"
-	ELSE null
-	END) as "_virt_agg_avg_9933913877002720",
-    avg(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 81 AND 100 THEN "quizzical"."store_sales_net_paid"
-	ELSE null
-	END) as "_virt_agg_avg_5605106007967002",
-    sum(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 1 AND 20 THEN 1
-	ELSE 0
-	END) as "count1",
-    sum(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 21 AND 40 THEN 1
-	ELSE 0
-	END) as "count2",
-    sum(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 41 AND 60 THEN 1
-	ELSE 0
-	END) as "count3",
-    sum(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 61 AND 80 THEN 1
-	ELSE 0
-	END) as "count4",
-    sum(CASE
-	WHEN "quizzical"."store_sales_quantity" BETWEEN 81 AND 100 THEN 1
-	ELSE 0
-	END) as "count5"
-FROM
-    "quizzical")
+)
 SELECT
     CASE
-	WHEN "wakeful"."count1" > 74129 THEN "wakeful"."_virt_agg_avg_6330081077547932"
-	ELSE "wakeful"."_virt_agg_avg_4794444300151277"
+	WHEN "quizzical"."count1" > 74129 THEN "quizzical"."_virt_agg_avg_6330081077547932"
+	ELSE "quizzical"."_virt_agg_avg_4794444300151277"
 	END as "bucket1",
     CASE
-	WHEN "wakeful"."count2" > 122840 THEN "wakeful"."_virt_agg_avg_4659580449698061"
-	ELSE "wakeful"."_virt_agg_avg_1613688246980292"
+	WHEN "quizzical"."count2" > 122840 THEN "quizzical"."_virt_agg_avg_4659580449698061"
+	ELSE "quizzical"."_virt_agg_avg_1613688246980292"
 	END as "bucket2",
     CASE
-	WHEN "wakeful"."count3" > 56580 THEN "wakeful"."_virt_agg_avg_7477983213274050"
-	ELSE "wakeful"."_virt_agg_avg_684038137247375"
+	WHEN "quizzical"."count3" > 56580 THEN "quizzical"."_virt_agg_avg_7477983213274050"
+	ELSE "quizzical"."_virt_agg_avg_684038137247375"
 	END as "bucket3",
     CASE
-	WHEN "wakeful"."count4" > 10097 THEN "wakeful"."_virt_agg_avg_2142335324413561"
-	ELSE "wakeful"."_virt_agg_avg_838076703794071"
+	WHEN "quizzical"."count4" > 10097 THEN "quizzical"."_virt_agg_avg_2142335324413561"
+	ELSE "quizzical"."_virt_agg_avg_838076703794071"
 	END as "bucket4",
     CASE
-	WHEN "wakeful"."count5" > 165306 THEN "wakeful"."_virt_agg_avg_9933913877002720"
-	ELSE "wakeful"."_virt_agg_avg_5605106007967002"
+	WHEN "quizzical"."count5" > 165306 THEN "quizzical"."_virt_agg_avg_9933913877002720"
+	ELSE "quizzical"."_virt_agg_avg_5605106007967002"
 	END as "bucket5"
 FROM
-    "wakeful"
+    "quizzical"
 ```
 
 ## Reference SQL (zquery log)

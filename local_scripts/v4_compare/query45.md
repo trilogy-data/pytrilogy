@@ -18,9 +18,9 @@ ref rows: 19 (19 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2236 | 50 | 3.875 s |
-| reference | 2114 | 41 | 23.13 ms |
-| v4 / ref | 1.06x | 1.22x | 167.53x |
+| v4 | 2303 | 51 | 4.162 s |
+| reference | 2114 | 41 | 23.60 ms |
+| v4 / ref | 1.09x | 1.24x | 176.40x |
 
 ## Preql
 
@@ -86,6 +86,7 @@ GROUP BY
     1,
     2,
     3,
+    "web_sales_customer_address_customer_address"."CA_ADDRESS_SK",
     "web_sales_item_items"."I_ITEM_SK",
     "web_sales_web_sales"."WS_ORDER_NUMBER")
 SELECT

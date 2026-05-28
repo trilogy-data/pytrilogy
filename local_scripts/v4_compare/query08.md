@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3546 | 86 | 47.03 ms |
-| reference | 2419 | 61 | 50.25 ms |
-| v4 / ref | 1.47x | 1.41x | 0.94x |
+| v4 | 3591 | 87 | 39.80 ms |
+| reference | 2419 | 61 | 42.33 ms |
+| v4 / ref | 1.48x | 1.43x | 0.94x |
 
 ## Preql
 
@@ -528,6 +528,7 @@ GROUP BY
     1,
     2,
     "store_sales_store_sales"."SS_ITEM_SK",
+    "store_sales_store_sales"."SS_STORE_SK",
     "store_sales_store_sales"."SS_TICKET_NUMBER")
 SELECT
     sum("charming"."store_sales_net_profit") as "store_net_profit",

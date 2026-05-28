@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4137 | 80 | 82.12 ms |
-| reference | 4137 | 80 | 82.07 ms |
-| v4 / ref | 1.00x | 1.00x | 1.00x |
+| v4 | 4184 | 81 | 82.53 ms |
+| reference | 4137 | 80 | 72.21 ms |
+| v4 / ref | 1.01x | 1.01x | 1.14x |
 
 ## Preql
 
@@ -141,7 +141,8 @@ GROUP BY
     3,
     4,
     5,
-    6)
+    6,
+    "customer_customers"."C_CURRENT_CDEMO_SK")
 SELECT
     "young"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
     "young"."customer_demographics_education_status" as "customer_demographics_education_status",
