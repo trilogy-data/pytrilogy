@@ -477,9 +477,18 @@ def build_strategy_node(
                 needed.add(arg.address)
         parents = _parent_nodes_for(group_graph, built, gid, needed=needed)
         parents = _pre_merge_parents(parents, environment)
-        outputs = _satisfiable_outputs(outputs, parents)
-        if not outputs:
-            continue
+        # ROOT scans source columns from datasources directly, not from their
+        # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
+        # d1 aggregate feeding a HAVING-style filter on this root) is real
+        # row-flow at SQL time (INNER JOIN to apply the filter) but doesn't
+        # supply the root's primary scan columns. Pruning by parent outputs
+        # there strips every requested column and the root never builds —
+        # leaving the consumer with `INVALID_REFERENCE_BUG` against the
+        # missing concepts (q11).
+        if derivation != Derivation.ROOT.value:
+            outputs = _satisfiable_outputs(outputs, parents)
+            if not outputs:
+                continue
         # For aggregating derivations, peel `injected` off into a pre-filter
         # wrapper so the GroupNode itself sees no `conditions`. GroupNode's
         # non-scalar-condition path (group_node.py:199) reacts to a
