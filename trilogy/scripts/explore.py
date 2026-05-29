@@ -8,6 +8,7 @@ so a 378-concept fact like ``store_sales`` collapses to ~25 group lines.
 
 from __future__ import annotations
 
+import re
 import textwrap
 from collections import defaultdict
 from pathlib import Path
@@ -295,14 +296,19 @@ def _emit_namespace(ns: str, items: list[tuple[str, Concept]]) -> None:
     ),
 )
 @click.option(
-    "--grep",
+    "--regex",
+    "regex_patterns",
     type=str,
     multiple=True,
     default=(),
     help=(
-        "Case-insensitive substring filter over concept addresses. Repeatable: "
-        "`--grep customer --grep date` matches concepts whose address contains "
-        "any of the given needles."
+        "Case-insensitive Python-regex filter over concept addresses. "
+        "Repeatable — concepts whose address matches ANY supplied pattern are "
+        "kept (OR semantics). Uses ``re.search`` (Python `re` flavor — like "
+        "`grep -E` but full Python syntax, e.g. `(?:...)`). A bare word "
+        "(`customer`) matches as a substring; metacharacters work too "
+        "(`date\\.(year|week_seq)`). A malformed pattern aborts with a "
+        "non-zero exit and the underlying ``re.error`` message."
     ),
 )
 @click.option(
@@ -321,7 +327,7 @@ def explore(
     path: Path,
     show: str,
     purpose: tuple[str, ...],
-    grep: tuple[str, ...],
+    regex_patterns: tuple[str, ...],
     include_hidden: bool,
     include_builtins: bool,
 ) -> None:
@@ -350,10 +356,16 @@ def explore(
     if purpose:
         allowed = {p.lower() for p in purpose}
         concept_items = [(k, v) for k, v in concept_items if v.purpose.value in allowed]
-    if grep:
-        needles = [g.lower() for g in grep]
+    if regex_patterns:
+        compiled: list[re.Pattern[str]] = []
+        for pat in regex_patterns:
+            try:
+                compiled.append(re.compile(pat, re.IGNORECASE))
+            except re.error as exc:
+                print_error(f"Invalid --regex pattern {pat!r}: {exc}")
+                raise click.exceptions.Exit(2) from exc
         concept_items = [
-            (k, v) for k, v in concept_items if any(n in k.lower() for n in needles)
+            (k, v) for k, v in concept_items if any(p.search(k) for p in compiled)
         ]
 
     if show in ("all", "groups"):

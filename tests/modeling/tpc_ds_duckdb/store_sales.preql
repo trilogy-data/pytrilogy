@@ -1,10 +1,9 @@
 import std.money;
 
-# Store channel sales (TPC-DS store_sales): fact at (item, ticket_number)
-# grain. Carries sales_price / list_price / ext_sales_price / coupon_amt /
-# net_paid / net_profit measures plus an is_returned boolean rolled up from
-# store_returns. Imports return_date/return_time/return_customer/
-# return_store/return_reason so returns can be sliced by their own context.
+# Store channel sales at (item, ticket_number) grain: quantity, sales /
+# list / wholesale / extended prices, discount and coupon amounts, net
+# paid, extended tax, net profit, and an is_returned flag plus per-line
+# refund amount / quantity / net loss for returned items.
 
 import item as item;
 import date as date;
@@ -27,9 +26,9 @@ properties <ticket_number, item.id> (
     quantity int, # Number of units of the item sold on this ticket line.
     sales_price numeric::usd, # Per-unit sales price actually charged (USD).
     list_price numeric::usd, # Per-unit list price before discounts (USD).
-    ext_sales_price numeric(15,2)::usd, # Stored line-extended sales price in USD. Approximates sales_price * quantity but is authoritative on its own — ~97k rows at SF=1 store a non-null value while sales_price or quantity is null, so the product formula is not equivalent and would silently drop those rows from sums.
-    ext_wholesale_cost numeric::usd, # Stored line-extended wholesale cost in USD. Authoritative; not equivalent to wholesale_cost * quantity (same null-input divergence as ext_sales_price).
-    ext_list_price numeric::usd, # Stored line-extended list price in USD. Authoritative; not equivalent to list_price * quantity (same null-input divergence as ext_sales_price).
+    ext_sales_price numeric(15,2)::usd, # Line-extended sales price (USD).
+    ext_wholesale_cost numeric::usd, # Line-extended wholesale cost (USD).
+    ext_list_price numeric::usd, # Line-extended list price (USD).
     ext_discount_amount numeric::usd, # Extended discount applied to the line (USD).
     coupon_amt numeric::usd, # Coupon/credit amount applied to the line (USD).
     net_profit numeric::usd, # Net profit reported for the line (USD).

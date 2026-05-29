@@ -1,7 +1,8 @@
 import dataclasses
 import json
+import time
 from os import environ
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
@@ -15,6 +16,41 @@ from .base import (
     to_openai_messages,
 )
 from .utils import RetryOptions, fetch_with_retry, sanitize_html_escapes
+
+# Number of times to re-issue the underlying HTTP call when the response is
+# 200-OK but the body itself is unusable — error envelope from an upstream
+# provider, missing `choices`, etc. These are not HTTPStatusErrors so
+# ``fetch_with_retry`` (which retries on httpx error codes only) doesn't see
+# them; we retry at the body-interpretation layer.
+_BODY_RETRY_ATTEMPTS = 3
+_BODY_RETRY_INITIAL_DELAY_S = 2.0
+
+
+def _interpret_body(data: Any) -> tuple[Optional[dict], Optional[str]]:
+    """Inspect a 200-OK response body. Returns ``(data, None)`` when usable,
+    ``(None, reason)`` when the response should be retried.
+
+    Two failure shapes the OpenRouter pass-through can produce as 200-OK:
+      - **error envelope**: ``{"error": {...}}`` with no ``choices`` — upstream
+        provider failed but OpenRouter answered. Retry tends to succeed when
+        the failure was transient (upstream node hiccup).
+      - **missing-choices**: ``{}`` or ``{"id": "…"}`` with no ``choices`` at
+        all — the response body is structurally incomplete.
+
+    A genuinely fatal envelope is raised by the caller with the parsed
+    detail; we only mark these as retryable here."""
+    if not isinstance(data, dict):
+        return None, f"non-dict response body: {type(data).__name__}"
+    if "error" in data and not data.get("choices"):
+        err = data["error"]
+        if isinstance(err, dict):
+            code = err.get("code")
+            msg = err.get("message", "(no message)")
+            return None, f"upstream error envelope (code={code}): {msg}"
+        return None, f"upstream error envelope: {err}"
+    if not data.get("choices"):
+        return None, "response missing 'choices'"
+    return data, None
 
 
 def _env_flag(name: str) -> bool:
@@ -147,17 +183,48 @@ class OpenRouterProvider(LLMProvider):
                     response.raise_for_status()
                     return response.json()
 
-            data = fetch_with_retry(make_request, self.retry_options)
+            data: Optional[dict] = None
+            last_problem: Optional[str] = None
+            for attempt in range(_BODY_RETRY_ATTEMPTS):
+                raw = fetch_with_retry(make_request, self.retry_options)
+                data, problem = _interpret_body(raw)
+                if data is not None:
+                    break
+                last_problem = problem
+                if attempt < _BODY_RETRY_ATTEMPTS - 1:
+                    delay = _BODY_RETRY_INITIAL_DELAY_S * (2**attempt)
+                    logger.warning(
+                        "OpenRouter body retry %d/%d in %.1fs: %s",
+                        attempt + 1,
+                        _BODY_RETRY_ATTEMPTS,
+                        delay,
+                        problem,
+                    )
+                    time.sleep(delay)
+            if data is None:
+                # Fatal — log the structured problem and bubble up so the
+                # caller sees the real reason instead of a downstream KeyError.
+                logger.error(
+                    "OpenRouter API error (gave up after %d body retries): %s",
+                    _BODY_RETRY_ATTEMPTS,
+                    last_problem,
+                )
+                raise Exception(f"OpenRouter API error: {last_problem}")
+
             choice = data["choices"][0]
-            message = choice["message"]
+            message = choice.get("message") or {}
             finish_reason = choice.get("finish_reason") or choice.get(
                 "native_finish_reason"
             )
+            # `usage` is optional in upstream responses. Default each field
+            # to 0 so a missing block doesn't blow up the agent loop — better
+            # to under-report token counts than to crash mid-conversation.
+            usage = data.get("usage") or {}
             if finish_reason == "length":
                 logger.warning(
                     "OpenRouter response truncated by max_tokens (finish_reason=length). "
                     "completion_tokens=%s, model=%s. tool_call arguments may be partial.",
-                    data["usage"]["completion_tokens"],
+                    usage.get("completion_tokens", 0),
                     self.model,
                 )
             tool_calls = [
@@ -180,9 +247,9 @@ class OpenRouterProvider(LLMProvider):
                 text=message.get("content") or "",
                 tool_calls=tool_calls,
                 usage=UsageDict(
-                    prompt_tokens=data["usage"]["prompt_tokens"],
-                    completion_tokens=data["usage"]["completion_tokens"],
-                    total_tokens=data["usage"]["total_tokens"],
+                    prompt_tokens=usage.get("prompt_tokens", 0) or 0,
+                    completion_tokens=usage.get("completion_tokens", 0) or 0,
+                    total_tokens=usage.get("total_tokens", 0) or 0,
                 ),
                 finish_reason=finish_reason,
             )

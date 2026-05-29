@@ -1,6 +1,5 @@
-# Inventory snapshots (TPC-DS inventory): quantity_on_hand at the
-# (date, item, warehouse) grain. Used by q21, q22, q37 to assess stock
-# levels and coverage across the warehouse network.
+# Inventory snapshots: quantity_on_hand for each item in each warehouse on
+# each (typically weekly) snapshot date.
 
 import warehouse as warehouse;
 import item as item;

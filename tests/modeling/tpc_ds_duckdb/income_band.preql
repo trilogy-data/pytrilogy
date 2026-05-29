@@ -1,6 +1,5 @@
-# Income band lookup (TPC-DS income_band): lower / upper dollar bounds for
-# each band. Referenced by household_demographic.income_band to bucket
-# customers into income ranges for q08, q13, q48, q85.
+# Income band lookup: lower and upper dollar bounds (USD, inclusive) for
+# each household-income range bucket.
 
 key id int; # Surrogate key uniquely identifying an income band.
 

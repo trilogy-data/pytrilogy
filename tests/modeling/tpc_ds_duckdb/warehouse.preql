@@ -1,7 +1,7 @@
 import std.geography;
 
-# Warehouse dimension (TPC-DS warehouse): physical storage locations
-# referenced by inventory snapshots and by catalog/web sales fulfillment.
+# Warehouse dimension: physical storage locations with name, square
+# footage, and address (city, county, state, ZIP, country).
 
 key id int; # Surrogate key uniquely identifying a warehouse.
 

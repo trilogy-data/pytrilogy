@@ -55,13 +55,20 @@ def _parse_retry_after_ms(value: str) -> Optional[int]:
 
 
 def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
-    from httpx import HTTPError, HTTPStatusError, TimeoutException
+    from httpx import HTTPError, HTTPStatusError, TransportError
 
     """
     Retry a fetch operation with exponential backoff.
 
     Respects Retry-After headers and an optional body-level delay extractor.
     Falls back to exponential backoff when no server hint is available.
+
+    Retries on:
+      - ``HTTPStatusError`` with status code in ``retry_status_codes``
+      - ``TransportError`` — umbrella for timeouts, network errors (connect/
+        read/write/close), remote protocol errors, and proxy errors. These
+        are the transient socket-level failures that plagued the eval agent
+        ("connection forcibly closed by the remote host" mid-stream).
     """
     last_error = None
     delay_ms = options.initial_delay_ms
@@ -69,7 +76,7 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
     for attempt in range(options.max_retries + 1):
         try:
             return fetch_fn()
-        except (HTTPError, TimeoutException, Exception) as error:
+        except (HTTPError, TransportError, Exception) as error:
             last_error = error
             should_retry = False
             suggested_ms: Optional[int] = None
@@ -85,7 +92,7 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
                         suggested_ms = _parse_retry_after_ms(retry_after)
                     if suggested_ms is None and options.extract_retry_delay_fn:
                         suggested_ms = options.extract_retry_delay_fn(error)
-            elif isinstance(error, TimeoutException):
+            elif isinstance(error, TransportError):
                 should_retry = True
 
             if not should_retry or attempt >= options.max_retries:

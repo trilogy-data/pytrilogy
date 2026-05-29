@@ -1,5 +1,5 @@
-# Ship-mode dimension (TPC-DS ship_mode): carrier + delivery-speed lookup
-# referenced by *_SHIP_MODE_SK on catalog/web sales for shipping analysis.
+# Ship-mode dimension: carrier company plus delivery-speed tier
+# (EXPRESS, NEXT DAY, OVERNIGHT, REGULAR, TWO DAY, LIBRARY).
 
 key id int; # Surrogate key uniquely identifying a ship mode.
 

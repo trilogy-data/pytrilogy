@@ -1,6 +1,5 @@
-# Return reason dimension (TPC-DS reason): textual description of why an
-# item was returned. Referenced by *_REASON_SK on store/web/catalog returns;
-# used for return-cause segmentation (q35, q92, q93).
+# Return reason dimension: free-form textual description of why an item
+# was returned (e.g. 'Did not fit', 'wrong color').
 
 key id int; # Surrogate key uniquely identifying a return reason.
 

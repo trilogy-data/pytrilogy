@@ -1,7 +1,10 @@
-# Unified sales and returns info across all three TPC-DS channels (web / catalog /
-# store) at (item, order_id, sales_channel) grain. `channel_dim_id`
-# resolves to store / catalog_page / web_site depending on sales_channel.
-# use as the default for all analysis across channels
+# Unified sales and returns across all three channels (WEB / CATALOG /
+# STORE) at (item, order_id, sales_channel) grain. Carries quantity, sales
+# / list / wholesale / extended prices, discount and coupon amounts, net
+# paid (with and without tax), net profit, and return amount / quantity /
+# net loss with an is_returned flag. `channel_dim_id` is the store /
+# catalog_page / web_site identifier for the row's channel. Use as the
+# default for any analysis that spans channels.
 
 import item as item;
 import date as date;

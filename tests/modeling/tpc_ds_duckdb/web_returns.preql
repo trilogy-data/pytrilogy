@@ -1,8 +1,7 @@
 import std.money;
 
-# Web channel returns (TPC-DS web_returns): item/order grain returns tied
-# back to the originating web_sales row. Exposes refunded_cash, fee, and
-# net_loss; used by q83, q85, q93 for return-rate analysis.
+# Web channel returns at (item, order_number) grain: return amount,
+# return quantity, refunded cash, restocking / handling fee, and net loss.
 
 import store as store;
 import web_sales as web_sales;

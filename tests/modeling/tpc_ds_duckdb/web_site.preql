@@ -1,5 +1,4 @@
-# Web site dimension (TPC-DS web_site): operator/company associated with
-# each storefront. Referenced by web_sales.WS_WEB_SITE_SK.
+# Web site dimension: operator/company associated with each web storefront.
 
 key id int; # Surrogate key uniquely identifying a web site.
 

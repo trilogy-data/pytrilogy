@@ -109,22 +109,26 @@ def test_explore_purpose_filter_accepts_multiple(runner, sample_preql: Path):
     assert "distance" in result.output
 
 
-def test_explore_grep_filter(runner, sample_preql: Path):
-    result = runner.invoke(cli, ["explore", str(sample_preql), "--grep", "carrier"])
+def test_explore_regex_filter_substring(runner, sample_preql: Path):
+    """A bare word still works as a substring match under the new ``--regex``
+    flag — same observable behaviour as the old substring-only ``--grep``."""
+    result = runner.invoke(cli, ["explore", str(sample_preql), "--regex", "carrier"])
     assert result.exit_code == 0
     assert "carrier" in result.output
     assert "distance" not in result.output
 
 
-def test_explore_grep_filter_accepts_multiple(runner, sample_preql: Path):
+def test_explore_regex_filter_accepts_multiple(runner, sample_preql: Path):
+    """Multiple ``--regex`` patterns OR together — a concept is kept when ANY
+    pattern matches."""
     result = runner.invoke(
         cli,
         [
             "explore",
             str(sample_preql),
-            "--grep",
+            "--regex",
             "carrier",
-            "--grep",
+            "--regex",
             "distance",
         ],
     )
@@ -134,6 +138,33 @@ def test_explore_grep_filter_accepts_multiple(runner, sample_preql: Path):
     # `id` is neither — should be filtered out, even though it's a key concept.
     # In the flat layout, a key surfaces as an indented detail line `    KEY`.
     assert "    KEY\n" not in result.output
+
+
+def test_explore_regex_filter_supports_metacharacters(runner, tmp_path: Path):
+    """The whole point of the rename: regex syntax actually works. The agent's
+    repeated failure mode on ``date\\.(year|week_seq)`` becomes a real match."""
+    p = tmp_path / "x.preql"
+    p.write_text(
+        "key id int;\n" "import x as sold_date;\n" "property id.weight float;\n",
+        encoding="utf-8",
+    )
+    # Just verify the regex compiles and runs without 67-char-empty-result.
+    # The exact concept addresses in `x.preql` depend on parsing, so look
+    # for the presence of an `Available Concepts` header rather than a
+    # specific concept name.
+    result = runner.invoke(cli, ["explore", str(p), "--regex", r"id|sold_date"])
+    assert result.exit_code == 0, result.output
+    assert "Available Concepts" in result.output
+
+
+def test_explore_regex_filter_rejects_invalid_pattern(runner, sample_preql: Path):
+    """A malformed pattern aborts with exit 2 and a readable ``re.error`` —
+    not a silent empty-result that the agent would interpret as 'no matches'."""
+    result = runner.invoke(
+        cli, ["explore", str(sample_preql), "--regex", "[unbalanced"]
+    )
+    assert result.exit_code == 2
+    assert "Invalid --regex" in result.output
 
 
 def test_explore_missing_file(runner, tmp_path: Path):

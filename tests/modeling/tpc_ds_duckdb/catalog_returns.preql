@@ -1,8 +1,8 @@
-import std.money;
+# Catalog channel returns info at (item, order_number) grain: net_loss,
+# refunded_cash, reversed_charge, store_credit, return_amount,
+# return_amt_inc_tax, return_quantity, plus a had_return boolean.
 
-# Catalog channel returns (TPC-DS catalog_returns): item/order grain returns
-# tied to the originating catalog_sales row. Exposes net_loss, refunded_cash,
-# store_credit and return_amount* plus a had_return boolean for filtered metrics.
+import std.money;
 
 import catalog_sales as sales;
 import item as item;

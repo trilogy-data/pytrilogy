@@ -564,3 +564,231 @@ def test_google_provider_named_tool_choice(monkeypatch):
 
     cfg = sink["json"]["toolConfig"]["functionCallingConfig"]
     assert cfg["allowedFunctionNames"] == ["submit_query"]
+
+
+# --- OpenRouter defensive body handling ---
+
+
+def test_interpret_body_accepts_usable_response():
+    from trilogy.ai.providers.openrouter import _interpret_body
+
+    data, problem = _interpret_body(
+        {"choices": [{"message": {"content": "hi"}}], "usage": {}}
+    )
+    assert problem is None
+    assert data == {"choices": [{"message": {"content": "hi"}}], "usage": {}}
+
+
+def test_interpret_body_flags_error_envelope():
+    from trilogy.ai.providers.openrouter import _interpret_body
+
+    data, problem = _interpret_body(
+        {"error": {"code": 503, "message": "upstream provider unavailable"}}
+    )
+    assert data is None
+    assert "code=503" in problem
+    assert "upstream provider unavailable" in problem
+
+
+def test_interpret_body_flags_missing_choices():
+    from trilogy.ai.providers.openrouter import _interpret_body
+
+    data, problem = _interpret_body({"id": "x"})
+    assert data is None
+    assert "missing 'choices'" in problem
+
+
+def test_interpret_body_flags_non_dict_body():
+    from trilogy.ai.providers.openrouter import _interpret_body
+
+    data, problem = _interpret_body([])
+    assert data is None
+    assert "non-dict" in problem
+
+
+def test_openrouter_missing_usage_falls_back_to_zero(monkeypatch):
+    """A 200-OK response without ``usage`` is still usable; the agent loop
+    must not die just because token counts are missing."""
+    import httpx
+
+    sink: dict = {}
+    payload = {
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        # No "usage" — the q02 enriched crash repro.
+    }
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=payload, sink=sink),
+    )
+    provider = OpenRouterProvider(
+        name="openrouter", model="r1", api_key="x", sanitize_html_escapes=False
+    )
+    response = provider.generate_completion(
+        LLMRequestOptions(),
+        [LLMMessage(role="user", content="hi")],
+    )
+    assert response.text == "ok"
+    assert response.usage.prompt_tokens == 0
+    assert response.usage.completion_tokens == 0
+    assert response.usage.total_tokens == 0
+
+
+class _SequenceClient:
+    """``_FakeClient`` variant that returns a different payload on each call,
+    so a test can simulate "first response is an error envelope, retry
+    succeeds"."""
+
+    def __init__(self, payloads):
+        self._payloads = list(payloads)
+        self.calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def post(self, url, headers, json):
+        self.calls += 1
+        return _FakeResponse(self._payloads.pop(0))
+
+
+def test_openrouter_retries_through_error_envelope(monkeypatch):
+    """An upstream error envelope is retried, not immediately raised — and
+    once we get a usable body the call returns normally."""
+    import httpx
+
+    monkeypatch.setattr("trilogy.ai.providers.openrouter.time.sleep", lambda _s: None)
+    seq = _SequenceClient(
+        [
+            {"error": {"code": 502, "message": "upstream hiccup"}},
+            {
+                "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 1,
+                    "total_tokens": 6,
+                },
+            },
+        ]
+    )
+    monkeypatch.setattr(httpx, "Client", lambda timeout: seq)
+    provider = OpenRouterProvider(
+        name="openrouter", model="r1", api_key="x", sanitize_html_escapes=False
+    )
+    response = provider.generate_completion(
+        LLMRequestOptions(), [LLMMessage(role="user", content="hi")]
+    )
+    assert response.text == "ok"
+    assert seq.calls == 2
+
+
+class _TransportErrorThenOkClient:
+    """Raise the configured transport error on the first N calls, then return
+    a usable payload — proves the retry layer absorbs socket-level failures
+    rather than letting them escape the provider."""
+
+    def __init__(self, error_factory, fail_times: int, ok_payload: dict):
+        self._error_factory = error_factory
+        self._fail_times = fail_times
+        self._ok_payload = ok_payload
+        self.calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def post(self, url, headers, json):
+        self.calls += 1
+        if self.calls <= self._fail_times:
+            raise self._error_factory()
+        return _FakeResponse(self._ok_payload)
+
+
+@pytest.mark.parametrize(
+    "error_factory_name",
+    ["ReadError", "ConnectError", "RemoteProtocolError"],
+)
+def test_openrouter_retries_transport_errors(monkeypatch, error_factory_name):
+    """Transient socket-level failures (connection closed mid-stream, DNS
+    blip, remote protocol error) must be retried, not bubbled. The eval
+    agent died on a real ``ReadError`` mid-run before this fix."""
+    import httpx
+
+    monkeypatch.setattr("trilogy.ai.providers.openrouter.time.sleep", lambda _s: None)
+    monkeypatch.setattr("trilogy.ai.providers.utils.time.sleep", lambda _s: None)
+    err_cls = getattr(httpx, error_factory_name)
+    ok_payload = {
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+    client = _TransportErrorThenOkClient(
+        error_factory=lambda: err_cls("forcibly closed"),
+        fail_times=2,
+        ok_payload=ok_payload,
+    )
+    monkeypatch.setattr(httpx, "Client", lambda timeout: client)
+    provider = OpenRouterProvider(
+        name="openrouter",
+        model="r1",
+        api_key="x",
+        sanitize_html_escapes=False,
+        retry_options=RetryOptions(max_retries=3, initial_delay_ms=1),
+    )
+    response = provider.generate_completion(
+        LLMRequestOptions(), [LLMMessage(role="user", content="hi")]
+    )
+    assert response.text == "ok"
+    assert client.calls == 3
+
+
+def test_openrouter_gives_up_on_persistent_transport_error(monkeypatch):
+    """If the transport error never clears, the provider still raises — but
+    only after exhausting the retry budget."""
+    import httpx
+
+    monkeypatch.setattr("trilogy.ai.providers.openrouter.time.sleep", lambda _s: None)
+    monkeypatch.setattr("trilogy.ai.providers.utils.time.sleep", lambda _s: None)
+    client = _TransportErrorThenOkClient(
+        error_factory=lambda: httpx.ReadError("forcibly closed"),
+        fail_times=99,
+        ok_payload={},
+    )
+    monkeypatch.setattr(httpx, "Client", lambda timeout: client)
+    provider = OpenRouterProvider(
+        name="openrouter",
+        model="r1",
+        api_key="x",
+        sanitize_html_escapes=False,
+        retry_options=RetryOptions(max_retries=2, initial_delay_ms=1),
+    )
+    with pytest.raises(Exception, match="OpenRouter API error"):
+        provider.generate_completion(
+            LLMRequestOptions(), [LLMMessage(role="user", content="hi")]
+        )
+    assert client.calls == 3  # initial attempt + 2 retries
+
+
+def test_openrouter_gives_up_with_structured_error(monkeypatch):
+    """After exhausting body-retry attempts on a persistent error envelope,
+    the exception message preserves the upstream code + message so the
+    operator sees the real cause in logs (vs. ``'usage'``)."""
+    import httpx
+
+    monkeypatch.setattr("trilogy.ai.providers.openrouter.time.sleep", lambda _s: None)
+    err_payload = {"error": {"code": 503, "message": "rate limit on upstream provider"}}
+    seq = _SequenceClient([err_payload, err_payload, err_payload])
+    monkeypatch.setattr(httpx, "Client", lambda timeout: seq)
+    provider = OpenRouterProvider(
+        name="openrouter", model="r1", api_key="x", sanitize_html_escapes=False
+    )
+    with pytest.raises(Exception) as excinfo:
+        provider.generate_completion(
+            LLMRequestOptions(), [LLMMessage(role="user", content="hi")]
+        )
+    msg = str(excinfo.value)
+    assert "code=503" in msg
+    assert "rate limit on upstream provider" in msg

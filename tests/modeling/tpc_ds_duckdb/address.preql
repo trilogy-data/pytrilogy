@@ -1,13 +1,12 @@
-import std.geography;
+# Address info: mailing addresses for customers, stores, warehouses, and
+# web sites — street, city, state, ZIP, county, country, and GMT offset.
 
-# Address dimension (TPC-DS customer_address): mailing addresses shared
-# across customers, stores, warehouses, and web sites. Joined as
-# `customer_address`, `bill_address`, `ship_address`, etc. by the sales facts.
+import std.geography;
 
 key id int; # Surrogate key uniquely identifying a customer address row.
 
 properties id (
-    text_id string, # Stable business identifier for the address (16-char alphanumeric in TPC-DS).
+    text_id string, # Stable business identifier for the address (16-char alphanumeric).
     street_number string?, # Numeric portion of the street address (e.g. '123').
     street_name string?, # Street name portion of the address (excludes house number).
     street_type string?, # Street type suffix (e.g. 'Ave', 'St', 'Rd').

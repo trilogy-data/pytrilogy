@@ -1012,8 +1012,154 @@ def test_dump_conversation_renders_tool_call_model_info(tmp_path):
     log_path.write_text("", encoding="utf-8")
     _dump_conversation(conv, log_path)
     dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "[tool_call] todo" in dump
+    assert "action: list" in dump
+
+
+def test_dump_conversation_wraps_long_list_args(tmp_path):
+    """Long list-shaped tool args (e.g. trilogy's repeated --regex) render
+    one item per line so the dump stays under 80 cols and is grep-friendly."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("hi", role="user")
+    long_args = [
+        "explore",
+        "raw/web_sales.preql",
+        "--regex",
+        "extended_price",
+        "--regex",
+        "sold_date",
+        "--regex",
+        "week_seq",
+    ]
+    msg = LLMMessage(
+        role="assistant",
+        content="",
+        model_info={
+            "tool_calls": [{"name": "trilogy", "arguments": {"args": long_args}}]
+        },
+    )
+    conv.messages.append(msg)
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "[tool_call] trilogy" in dump
+    assert "  args:" in dump
+    assert "    - explore" in dump
+    assert "    - --regex" in dump
+    # Each rendered line must be wrapped to at most 80 cols.
+    assert all(len(line) <= 80 for line in dump.splitlines())
+
+
+def test_dump_conversation_block_wraps_long_string_args(tmp_path):
+    """A multi-line --content string for `trilogy file write` is rendered as
+    a block-style scalar so long content doesn't blow past 80 cols."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    body = "import std.money;\nselect sum(sales.price) as total_sales order by total_sales desc;"
+    msg = LLMMessage(
+        role="assistant",
+        content="",
+        model_info={
+            "tool_calls": [
+                {
+                    "name": "trilogy",
+                    "arguments": {
+                        "args": ["file", "write", "q.preql"],
+                        "content": body,
+                    },
+                }
+            ]
+        },
+    )
+    conv.messages.append(msg)
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "  content: |" in dump
+    assert "    import std.money;" in dump
+    assert (
+        "    select sum(sales.price) as total_sales order by total_sales desc;" in dump
+    )
+    assert all(len(line) <= 80 for line in dump.splitlines())
+
+
+def test_dump_conversation_pretty_prints_tool_result(tmp_path):
+    """User-role messages whose content is the ``{"tool": ..., "result": ...}``
+    payload that ``_run_turn`` writes get rendered as a ``[tool_result]`` block
+    with the result string un-escaped (real newlines) and wrapped at 80 cols."""
+    import json as _json
+
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    result_body = "exit_code: 0\n--- stdout ---\nfoo bar baz\n--- stderr ---\n"
+    conv.add_message(
+        _json.dumps({"tool": "trilogy", "result": result_body}), role="user"
+    )
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "[tool_result] trilogy" in dump
+    assert "  exit_code: 0" in dump
+    assert "  --- stdout ---" in dump
+    assert "  foo bar baz" in dump
+    # Escaped \n should NOT survive — embedded newlines must be expanded.
+    assert "\\n" not in dump
+    assert all(len(line) <= 80 for line in dump.splitlines())
+
+
+def test_dump_conversation_keeps_non_tool_result_user_content(tmp_path):
+    """User content that isn't the ``{tool, result}`` shape (e.g. the initial
+    task prompt) is rendered verbatim — no JSON parsing attempted."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("write me a query that counts sales", role="user")
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "write me a query that counts sales" in dump
+    assert "[tool_result]" not in dump
+
+
+def test_dump_conversation_preserves_non_tool_call_model_info(tmp_path):
+    """Other keys in model_info (anything that isn't ``tool_calls``) still
+    surface under the original ``[model_info]`` line so we don't silently
+    drop provider metadata."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("hi", role="user")
+    msg = LLMMessage(
+        role="assistant",
+        content="thinking",
+        model_info={"finish_reason": "stop", "provider_latency_ms": 1234},
+    )
+    conv.messages.append(msg)
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
     assert "[model_info]" in dump
-    assert "tool_calls" in dump
+    assert "finish_reason" in dump
+    assert "provider_latency_ms" in dump
 
 
 # --- tool call logging / status formatting ---

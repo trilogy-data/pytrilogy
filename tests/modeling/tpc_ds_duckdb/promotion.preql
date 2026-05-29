@@ -1,9 +1,7 @@
 import std.money;
 
-# Promotion dimension (TPC-DS promotion): channel flags (email, catalog,
-# event, dmail, tv, radio, press) plus cost per promo. Referenced by
-# *_PROMO_SK on sales facts; q07/q26/q61 use the channel flags to isolate
-# promoted vs un-promoted purchases.
+# Promotion dimension: per-channel Y/N flags (email, catalog, event,
+# direct-mail, TV, radio, press) and total cost (USD) per promotion.
 
 key id int; # Surrogate key uniquely identifying a promotion.
 

@@ -1,7 +1,5 @@
-# Household demographic dimension (TPC-DS household_demographics):
-# buy_potential, dependent and vehicle counts, plus a link into the
-# income_band lookup. Referenced from customer.household_demographic and
-# from the *_HDEMO_SK FKs on sales facts.
+# Household demographic dimension: buy_potential bucket, dependent count,
+# vehicle count, and a household income band identifier.
 
 import income_band as income_band;
 

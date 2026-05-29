@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -24,7 +25,6 @@ from trilogy.ai.models import (
     LLMToolCall,
     LLMToolDefinition,
 )
-from trilogy.ai.prompts import get_trilogy_prompt
 from trilogy.ai.providers.anthropic import AnthropicProvider
 from trilogy.ai.providers.base import LLMProvider
 from trilogy.ai.providers.google import GoogleProvider
@@ -83,7 +83,7 @@ Available tools:
       fact file (e.g. `sales.preql`) ALSO lists all dimensions it
       imports (`product.*`, `date.*`, `customer.*`, …) in the same output.
       You do NOT need to explore each dimension separately. Prefer this over
-      `read_file` on a model file. Use `--grep` (repeatable) to filter.
+      `read_file` on a model file. Use `--regex` (repeatable, Python regex) to filter.
       Trilogy auto-resolves joins from the model's declared relationships.
       Join discovery is not needed;
     write `select store_sales.date_dim.year, ...;` and Trilogy
@@ -125,16 +125,11 @@ Discipline:
     return base
 
 
-# The Trilogy language reference has one source of truth, get_trilogy_prompt()
-# (also used by `trilogy agent-info`); never paraphrase it here.
-_TRILOGY_PROMPT_SECTION = get_trilogy_prompt(
-    intro=(
-        "When you write a Trilogy query file (.preql), follow this syntax "
-        "reference exactly — Trilogy is NOT SQL:"
-    )
-)
-SYSTEM_PROMPT = get_agent_instructions(True) + "\n\n" + _TRILOGY_PROMPT_SECTION
-QUIET_SYSTEM_PROMPT = get_agent_instructions(False) + "\n\n" + _TRILOGY_PROMPT_SECTION
+# The Trilogy language reference is NOT inlined here — discipline rule #1
+# directs the agent to call `trilogy agent-info` first, which returns the
+# canonical reference. Inlining duplicated ~26KB of prompt tokens per run.
+SYSTEM_PROMPT = get_agent_instructions(True)
+QUIET_SYSTEM_PROMPT = get_agent_instructions(False)
 
 
 MAX_SUBMIT_KICKBACKS = 2
@@ -249,17 +244,122 @@ def _log_event(log_path: Path | None, event: dict[str, Any]) -> None:
         f.write(json.dumps(event, default=str) + "\n")
 
 
+_CONV_WRAP_WIDTH = 80
+
+
+def _wrap_value_lines(text: str, indent: int, prefix: str = "") -> list[str]:
+    """Wrap ``text`` to ``_CONV_WRAP_WIDTH`` at the given indent, preserving
+    embedded newlines (each input line wraps independently). ``prefix`` is
+    applied to the first physical line only; continuation lines align under
+    the start of the prefix's content."""
+    pad = " " * indent
+    out: list[str] = []
+    for line in text.splitlines() or [""]:
+        first = pad + prefix
+        cont = pad + " " * len(prefix)
+        if len(first + line) <= _CONV_WRAP_WIDTH:
+            out.append(first + line)
+            continue
+        wrapped = textwrap.wrap(
+            line,
+            width=_CONV_WRAP_WIDTH,
+            initial_indent=first,
+            subsequent_indent=cont,
+            break_long_words=False,
+            break_on_hyphens=False,
+            replace_whitespace=False,
+            drop_whitespace=False,
+        )
+        out.extend(wrapped or [first + line])
+    return out
+
+
+def _format_arg(key: str, value: Any, indent: int) -> list[str]:
+    """Render one tool-call argument as wrapped lines. Lists/dicts expand
+    one-item-per-line; scalars inline when short, block-style when long."""
+    pad = " " * indent
+    if isinstance(value, list):
+        if not value:
+            return [f"{pad}{key}: []"]
+        out = [f"{pad}{key}:"]
+        for item in value:
+            item_str = item if isinstance(item, str) else json.dumps(item)
+            out.extend(_wrap_value_lines(item_str, indent + 2, prefix="- "))
+        return out
+    if isinstance(value, dict):
+        if not value:
+            return [f"{pad}{key}: {{}}"]
+        out = [f"{pad}{key}:"]
+        for k, v in value.items():
+            out.extend(_format_arg(k, v, indent + 2))
+        return out
+    sval = value if isinstance(value, str) else json.dumps(value)
+    inline = f"{pad}{key}: {sval}"
+    if "\n" not in sval and len(inline) <= _CONV_WRAP_WIDTH:
+        return [inline]
+    return [f"{pad}{key}: |", *_wrap_value_lines(sval, indent + 2)]
+
+
+def _format_tool_call(tc: dict) -> list[str]:
+    name = tc.get("name", "?")
+    args = tc.get("arguments") or {}
+    lines = [f"[tool_call] {name}"]
+    if isinstance(args, dict):
+        for key, value in args.items():
+            lines.extend(_format_arg(key, value, indent=2))
+    else:
+        lines.extend(_wrap_value_lines(json.dumps(args), indent=2))
+    return lines
+
+
+def _try_parse_tool_result(content: str) -> dict | None:
+    """Detect content of the form ``{"tool": <name>, "result": <string>}``
+    that ``_run_turn`` writes for every tool result. Returns the parsed payload
+    or None — None falls back to printing the raw content verbatim."""
+    s = content.strip()
+    if not (s.startswith("{") and s.endswith("}")):
+        return None
+    try:
+        data = json.loads(s)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict) or "tool" not in data or "result" not in data:
+        return None
+    return data
+
+
+def _format_tool_result(payload: dict) -> list[str]:
+    """Render a parsed tool-result payload as a multi-line block. The result
+    string (which often has embedded newlines and can be tens of KB after
+    truncation) is wrapped at 80 cols so the dump stays scannable."""
+    name = payload.get("tool", "?")
+    result = payload.get("result", "")
+    sresult = result if isinstance(result, str) else json.dumps(result)
+    lines = [f"[tool_result] {name}"]
+    lines.extend(_wrap_value_lines(sresult, indent=2))
+    return lines
+
+
 def _dump_conversation(conv: Conversation, log_path: Path) -> None:
     """Write the full final message list to a `<log>.conversation.txt` sidecar —
-    every message in order, with model_info (tool calls) shown — so the exact
-    history sent to the model can be inspected for append bugs."""
+    every message in order, with tool calls pretty-printed (one per line,
+    wrapped at 80 cols) so the exact history sent to the model can be
+    inspected for append bugs without scrolling sideways."""
     dump_path = log_path.with_suffix(".conversation.txt")
     blocks: list[str] = []
     for i, msg in enumerate(conv.messages):
         block = [f"===== message {i} [{msg.role}] ====="]
-        block.append(msg.content if msg.content else "(empty content)")
-        if msg.model_info:
-            block.append(f"[model_info] {json.dumps(msg.model_info, default=str)}")
+        payload = _try_parse_tool_result(msg.content) if msg.content else None
+        if payload is not None:
+            block.extend(_format_tool_result(payload))
+        else:
+            block.append(msg.content if msg.content else "(empty content)")
+        info = msg.model_info or {}
+        for tc in info.get("tool_calls", []) or []:
+            block.extend(_format_tool_call(tc))
+        extra = {k: v for k, v in info.items() if k != "tool_calls"}
+        if extra:
+            block.append("[model_info] " + json.dumps(extra, default=str))
         blocks.append("\n".join(block))
     dump_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
 

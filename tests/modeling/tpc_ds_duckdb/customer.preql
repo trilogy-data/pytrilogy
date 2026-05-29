@@ -1,9 +1,8 @@
 import std.date;
 import std.geography;
 
-# Customer dimension (TPC-DS customer): names, contact info, birth/age
-# attributes, plus links to demographics, household_demographic, address,
-# and first-sales/first-shipto date dimensions.
+# Customer dimension: names, salutation, login, email, preferred-customer
+# flag, country of birth, and decomposed birth date (year / month / day).
 
 import customer_demographic as demographics;
 import household_demographic as household_demographic;
@@ -12,7 +11,7 @@ import date as first_sales_date;
 import date as first_shipto_date;
 
 key id int; # Surrogate key uniquely identifying a customer.
-unique property id.text_id string; # Stable natural/business customer ID (16-char alphanumeric in TPC-DS).
+unique property id.text_id string; # Stable natural/business customer ID (16-char alphanumeric).
 
 properties id (
     last_name string, # Customer last (family) name. Not guaranteed unique; weak for identity.

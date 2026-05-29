@@ -1,5 +1,5 @@
-# Call center dimension (TPC-DS call_center): physical centers handling
-# catalog and web orders. Referenced by catalog_sales.CS_CALL_CENTER_SK.
+# Call center info: physical centers handling catalog and web orders,
+# with name, manager, and location county.
 
 key id int; # Surrogate key uniquely identifying a call center.
 

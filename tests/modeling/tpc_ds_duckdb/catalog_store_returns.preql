@@ -1,15 +1,10 @@
 import std.money;
 
-# Cross-channel correlation source for q17/q25: "items the same customer
-# bought at a store, returned at a store, and also bought via catalog". A
-# single `customer` concept is shared across all three physical tables —
-# trilogy's cross-source join on (customer, item) then constrains the
-# customer match without any per-query `merge` declarations.
-#
-# NB: this conflates SS_CUSTOMER_SK / SR_CUSTOMER_SK / CS_BILL_CUSTOMER_SK,
-# which is fine for q17/q25 but not for q29 (q29's original SQL explicitly
-# requires SS_CUSTOMER_SK = SR_CUSTOMER_SK, which a single-concept model
-# can't express). q29 stays on the merge form for now.
+# Combined store-sales, store-returns, and catalog-sales line items keyed
+# by a single shared (customer, item) so the same customer's activity
+# across all three tables can be queried as one model. Exposes store
+# quantity / net_profit, store return quantity / amount / net_loss, and
+# catalog quantity / net_profit.
 
 import item as item;
 import customer as customer;

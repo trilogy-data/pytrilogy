@@ -1,6 +1,5 @@
-# Web page dimension (TPC-DS web_page): per-page metadata (size, type,
-# autogen flag) for the retailer's web storefront. Referenced by
-# web_sales.WS_WEB_PAGE_SK and web_returns.WR_WEB_PAGE_SK.
+# Web page dimension: per-page metadata for the retailer's web storefront
+# — page type, autogen flag, and character / link / image counts.
 
 key id int; # Surrogate key uniquely identifying a web page.
 

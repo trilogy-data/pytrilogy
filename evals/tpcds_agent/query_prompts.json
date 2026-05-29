@@ -7,7 +7,7 @@
   {
     "id": 2,
     "grade": "hard",
-    "prompt": "Combine web sales and catalog sales into a single stream of (sold date, extended sales price) records. For each week-of-the-calendar grouping, sum the extended sales price split into seven day-of-the-week columns (Sunday through Saturday). Then, for each calendar week in year 2001, find the same calendar week in year 2002 (matched as the 2001 week's week sequence equals the 2002 week's week sequence minus 53) and report the ratio of the 2001 day-of-week total to the 2002 day-of-week total, rounded to 2 decimals, for each of the seven days. Output the 2001 week sequence and the seven ratios, distinct, ordered by week sequence with nulls first."
+    "prompt": "For web and catalog sales, the daily sales is the sum the extended sales price split into seven day-of-the-week columns (Sunday through Saturday), grouped by the calendar week. We want to see growth from 2001 to 2002 per week of year and day of week; Output the 2001 week sequence and the seven ratios (the week in 2002/53 weeks earler in 2001), ordered by week sequence with nulls first."
   },
   {
     "id": 3,

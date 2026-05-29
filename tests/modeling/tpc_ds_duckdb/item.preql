@@ -1,13 +1,13 @@
 import std.money;
 
-# Item / product dimension (TPC-DS item): brand, category, class, current
-# price, wholesale cost, color, size, manufacturer and class hierarchies.
-# Referenced by every sales/returns fact via *_ITEM_SK and by inventory.
+# Item / product dimension: product name, free-form description, brand,
+# category and class hierarchies, manufacturer, current list price,
+# wholesale cost, color, size, and unit-of-measure.
 
 key id int; # Surrogate key uniquely identifying a sellable item.
 
 properties id (
-    name string, # Stable item business identifier (TPC-DS I_ITEM_ID — 16-char alphanumeric, not a display name).
+    name string, # Stable item business identifier (16-char alphanumeric I_ITEM_ID, not a display name).
     product_name string, # Marketing product name shown to customers.
     brand_id int, # Numeric brand identifier (composite of category + class + brand digits).
     brand_name string, # Brand display name.

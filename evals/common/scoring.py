@@ -68,6 +68,11 @@ class QueryResult:
     # missing — no query file produced (agent never wrote one)
     # timeout — agent subprocess hit its wall-clock limit; overrides
     #           fail/error/missing, but not `pass`
+    # crashed — agent subprocess exited non-zero without timing out
+    #           (provider transport failure, unhandled exception, OOM, ...);
+    #           overrides fail/error/missing, but not `pass` or `timeout`.
+    #           Distinct from `error` so the report tells the operator
+    #           "agent died" vs "scoring engine threw".
     status: str
     ref_rows: int = 0
     cand_rows: int = 0
@@ -261,6 +266,21 @@ def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
     if "timed out" not in detail.lower():
         detail = f"agent timed out (was: {result.status}) — {detail}"
     result.status = "timeout"
+    result.detail = detail
+    return result
+
+
+def apply_crash(result: QueryResult, exit_code: int, timed_out: bool) -> QueryResult:
+    """Promote a non-passing, non-timeout result to ``status='crashed'`` when
+    the agent subprocess exited non-zero. Timeout takes precedence (it's how
+    we kill the subprocess in the first place) and ``pass`` wins — a correct
+    query file written before the crash is still a correct answer."""
+    if timed_out or exit_code == 0 or result.status == "pass":
+        return result
+    detail = result.detail or "agent exited non-zero"
+    if "agent crashed" not in detail.lower():
+        detail = f"agent crashed (exit {exit_code}, was: {result.status}) — {detail}"
+    result.status = "crashed"
     result.detail = detail
     return result
 
