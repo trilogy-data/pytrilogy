@@ -446,7 +446,7 @@ import raw.catalog_sale…r.customer_demographics.dep_count,
 limit 100;`
 
   ```text
-  refused to write 'query10.preql': not syntactically valid Trilogy.
+  refused to write 'query09.preql': not syntactically valid Trilogy.
 
   Parse error:
   Unexpected token Token('WHERE', 'where') at line 11, column 3.
