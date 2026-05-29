@@ -16,9 +16,9 @@ _at least one side did not produce rows._
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3148 | 78 | — |
-| reference | 3713 | 83 | 161.31 ms |
-| v4 / ref | 0.85x | 0.94x | — |
+| v4 | 2812 | 48 | — |
+| reference | 3713 | 83 | 78.28 ms |
+| v4 / ref | 0.76x | 0.58x | — |
 
 ## Preql
 
@@ -48,7 +48,7 @@ limit 100
 
 ```sql
 WITH 
-thoughtful as (
+cooperative as (
 SELECT
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
     "cs_catalog_sales"."CS_WAREHOUSE_SK" as "cs_warehouse_id"
@@ -57,71 +57,41 @@ FROM
 GROUP BY
     1,
     2),
-quizzical as (
+questionable as (
 SELECT
-    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_order_number"
+    "cooperative"."cs_order_number" as "cs_order_number",
+    count("cooperative"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
 FROM
-    "memory"."catalog_returns" as "cr_catalog_returns"
+    "cooperative"
 GROUP BY
     1),
 abundant as (
 SELECT
-    CASE WHEN count("thoughtful"."cs_warehouse_id") > 1 THEN "thoughtful"."cs_order_number" ELSE NULL END as "multi_warehouse_sales",
-    count("thoughtful"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
+    CASE WHEN "questionable"."_virt_agg_count_7777088585630721" > 1 THEN "questionable"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
 FROM
-    "thoughtful"
-GROUP BY
-    1),
-cooperative as (
-SELECT
-    "thoughtful"."cs_order_number" as "cs_order_number",
-    count("thoughtful"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
-FROM
-    "thoughtful"
-GROUP BY
-    1),
-uneven as (
-SELECT
-    "abundant"."multi_warehouse_sales" as "multi_warehouse_sales"
-FROM
-    "abundant"
-WHERE
-    "abundant"."_virt_agg_count_7777088585630721" > 1
-),
-questionable as (
-SELECT
-    "cooperative"."cs_order_number" as "cs_order_number",
-    CASE WHEN "cooperative"."_virt_agg_count_7777088585630721" > 1 THEN "cooperative"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
-FROM
-    "cooperative"),
-vacuous as (
+    "questionable"),
+thoughtful as (
 SELECT
     "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
     "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
 FROM
-    "questionable"
-    INNER JOIN "memory"."catalog_sales" as "cs_catalog_sales" on "questionable"."cs_order_number" = "cs_catalog_sales"."CS_ORDER_NUMBER"
+    "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
     INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
     INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select questionable."multi_warehouse_sales" from questionable where questionable."multi_warehouse_sales" is not null) and cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County'
-
-GROUP BY
-    1,
-    2,
-    3,
-    "cs_call_center_call_center"."CC_COUNTY",
-    "cs_catalog_sales"."CS_ITEM_SK",
-    "cs_customer_address_customer_address"."CA_STATE",
-    cast("cs_ship_date_date"."D_DATE" as date))
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number> where INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select abundant."multi_warehouse_sales" from abundant where abundant."multi_warehouse_sales" is not null)
+)
 SELECT
-    count(distinct "vacuous"."cs_order_number") as "order_count",
-    sum("vacuous"."cs_net_profit") as "total_net_profit",
-    sum("vacuous"."cs_ext_ship_cost") as "total_shipping_cost"
+    count(distinct "thoughtful"."cs_order_number") as "order_count",
+    sum("thoughtful"."cs_net_profit") as "total_net_profit",
+    sum("thoughtful"."cs_ext_ship_cost") as "total_shipping_cost"
 FROM
-    "vacuous"
+    "thoughtful"
+WHERE
+    "thoughtful"."cs_order_number" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number> where INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" is not null) and "thoughtful"."cs_order_number" in (select abundant."multi_warehouse_sales" from abundant where abundant."multi_warehouse_sales" is not null)
+
 ORDER BY 
     "order_count" desc
 LIMIT (100)
@@ -219,21 +189,21 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in run_one
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 282, in run_one
     result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
                                              ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
   File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
     value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 267, in <lambda>
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 282, in <lambda>
     result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
                                                            ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 263, in _exec
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 278, in _exec
     return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 183, in execute
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 198, in execute
     cursor = con.execute(sql, params) if params else con.execute(sql)
                                                      ~~~~~~~~~~~^^^^^
-_duckdb.BinderException: Binder Error: GROUP BY clause cannot contain aggregates!
+_duckdb.ParserException: Parser Error: syntax error at or near "source"
 
-LINE 20:     CASE WHEN count("thoughtful"."cs_warehouse_id") > 1 THEN "thoughtful...
-                       ^
+LINE 35: ...RDER_NUMBER" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from...
+                                                                       ^
 ```

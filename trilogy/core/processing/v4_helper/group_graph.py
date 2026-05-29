@@ -790,58 +790,56 @@ def _route_basics_through_richer_siblings(
     from it. The existing `_parent_nodes_for` ancestor-dedup logic in
     strategy_builder then drops the redundant upstream parent automatically.
 
-    The motivating case: a basic group renames the outputs of a sibling
-    aggregate (e.g. `local.channel = l0_filtered.channel_l0` from q14). With
-    only the shared rowset/source as the basic's lineage parent, the basic
-    builds against pre-aggregate detail rows — and when the sibling
-    aggregate has non-standard grouping (ROLLUP/CUBE), the FINAL merge
-    can't reconcile NULL-bearing subtotal rows on the aggregate side with
-    detail-only rows on the basic side. Routing the basic through the
-    aggregate makes its rows the aggregate's rows (subtotals included), so
-    the rename is correct under rollup.
-
-    Scoped to AGGREGATE siblings only — extending to other derivations
-    would change the row-shape semantics of non-rollup queries that
-    today rely on basic + sibling-aggregate being joined 1:1."""
+    Picks the candidate with the most current ancestors (a tie-break on
+    label-matching siblings) — i.e. the furthest-downstream sibling — so a
+    basic that renames an aggregate's output reads the aggregate's rows,
+    and a basic that renames a window's output reads the window's rows,
+    etc. Without this routing, the basic builds against the bare source
+    and the FINAL merge then has to reconcile a detail-row basic side with
+    a transformed-row sibling — for non-standard-grouping aggregates this
+    silently drops the rollup's NULL subtotal rows (q14)."""
     changed = False
-    basics = [
+    candidates_by_basic: list[str] = [
         gid
         for gid in group_graph.nodes
         if gid != FINAL_NODE_ID
         and attrs[gid].derivation == Derivation.BASIC.value
     ]
-    aggregates = [
+    other_groups: list[str] = [
         gid
         for gid in group_graph.nodes
         if gid != FINAL_NODE_ID
-        and attrs[gid].derivation == Derivation.AGGREGATE.value
+        and attrs[gid].derivation != Derivation.BASIC.value
+        and attrs[gid].derivation != Derivation.ROOT.value
     ]
-    for bgid in basics:
+    for bgid in candidates_by_basic:
         b = attrs[bgid]
         if not b.input_concepts:
             continue
         needed = set(b.input_concepts)
-        # Restrict candidates to those that share at least one current
-        # ancestor with this basic (so they're really siblings on the same
-        # pipeline) and whose outputs cover all the basic's inputs.
         my_ancestors = nx.ancestors(group_graph, bgid)
-        for agid in aggregates:
-            if agid == bgid:
+        # Score each label-matching sibling that fully covers our inputs by
+        # how many ancestors it has — more ancestors means further
+        # downstream in the existing pipeline.
+        best_gid: str | None = None
+        best_depth = -1
+        for ogid in other_groups:
+            if ogid == bgid:
                 continue
-            if attrs[agid].label != b.label:
+            if attrs[ogid].label != b.label:
                 continue
-            their_ancestors = nx.ancestors(group_graph, agid)
+            their_ancestors = nx.ancestors(group_graph, ogid)
             if not (my_ancestors & their_ancestors):
+                continue  # not actually a sibling on the same pipeline
+            if not needed.issubset(set(attrs[ogid].output_concepts)):
                 continue
-            if not needed.issubset(set(attrs[agid].output_concepts)):
-                continue
-            # Skip if connecting them would create a cycle (basic is
-            # somehow an ancestor of the aggregate already — shouldn't
-            # happen but defend against weird graphs).
             if bgid in their_ancestors:
-                continue
-            if not group_graph.has_edge(agid, bgid):
-                group_graph.add_edge(agid, bgid, kind="lineage")
-                changed = True
-            break
+                continue  # would create a cycle
+            depth = len(their_ancestors)
+            if depth > best_depth:
+                best_depth = depth
+                best_gid = ogid
+        if best_gid is not None and not group_graph.has_edge(best_gid, bgid):
+            group_graph.add_edge(best_gid, bgid, kind="lineage")
+            changed = True
     return changed
