@@ -19,8 +19,7 @@
 
 ### `syntax-parse`
 
-- `trilogy file write query02.preql --content import raw.web_sales as ws;
-import raw.catalog_sales as cs;
+- `trilogy file write query01.preql --content import raw.store_returns as store_returns;
 
 # Merge sold_date dimension between web_sales and cat…_sales,
     coalesce(fri_sales, 0) as fri_sales,
@@ -263,6 +262,26 @@ import raw.store_returns as sr;
 import raw.catalog_sales as cs;
 import raw.catalog_r…2000-08-23'::date and '2000-09-06'::date) - sum(sr.net_loss ? sr.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as profit
 limit 10;`
+
+  ```text
+  refused to write 'query05.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('WHERE', 'where') at line 15, column 3.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+   store_sales.store.store_sk   ??? where store_sales.date_dim.dat...
+
+  Write stats: received 3810 chars / 3810 bytes; tail: …'d end_date\\n)\\norder
+  by channel, outlet nulls first\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy run --debug --param zips=39 --import raw.store_sales:store_sales select substring(store_sales.store.zip,1,2) as pref, count(store_sales.customer.customer_sk ? store_sales.customer.preferred_cust_flag = 'Y') by substring(store_sales.customer.customer_address.zip,1,2) as cnt_by_pref_prefix limit 10;`
 
   ```text
   …
@@ -1035,8 +1054,8 @@ limit 100;`
 
   ```text
   (UndefinedConceptException(...), "Undefined concept:
-  item.current_price. Suggestions: ['store_sales.item.current_price',
-  'store_sales.promotion.item.current_price']")
+  item.category. Suggestions: ['store_sales.item.category',
+  'store_sales.item.category_id']")
   ```
 - `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
