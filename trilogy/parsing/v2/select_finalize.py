@@ -117,11 +117,6 @@ def _calculate_grain(
     )
 
 
-def _aggregate_grain_signature(agg: AggregateWrapper) -> tuple[str, ...]:
-    """A sortable signature of an aggregate's grouping. Empty tuple = abstract."""
-    return tuple(sorted({_concept_address(c) for c in agg.by}))
-
-
 def _concept_address(c: Any) -> str:
     return c.address if hasattr(c, "address") else str(c)
 
@@ -179,21 +174,21 @@ def _select_aggregate_outputs(
     return results
 
 
-def _collect_where_aggregates(node: Any) -> list[tuple[Any, tuple[str, ...]]]:
-    """Walk a WHERE conditional tree and return (aggregate_node, grain_signature) pairs.
+def _collect_where_aggregates(node: Any) -> list[Any]:
+    """Walk a WHERE conditional tree and return aggregate nodes.
 
     Recognizes both ``AggregateWrapper`` and bare ``Function`` calls whose operator
     is an aggregate function. Does not descend into the inner argument expression
     of an aggregate (a nested aggregate would be invalid SQL anyway).
     """
-    found: list[tuple[Any, tuple[str, ...]]] = []
+    found: list[Any] = []
     if isinstance(node, AggregateWrapper):
-        found.append((node, _aggregate_grain_signature(node)))
+        found.append(node)
         return found
     if isinstance(node, Function) and (
         node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
     ):
-        found.append((node, ()))
+        found.append(node)
         return found
     if isinstance(node, Comparison):
         found.extend(_collect_where_aggregates(node.left))
@@ -230,7 +225,7 @@ def _validate_where_aggregate_matches_select(
     if not select_aggs:
         return
     sig_to_alias = {sig: addr for sig, addr in select_aggs}
-    for node, _ in _collect_where_aggregates(select.where_clause.conditional):
+    for node in _collect_where_aggregates(select.where_clause.conditional):
         sig = _aggregate_full_signature(node)
         if sig is None or sig not in sig_to_alias:
             continue
@@ -242,36 +237,6 @@ def _validate_where_aggregate_matches_select(
             f"clause - e.g. `having {alias} > ...`"
             + (f"; Line: {line_no}" if line_no else "")
         )
-
-
-def _validate_where_aggregate_grains(
-    select: SelectStatement, line_no: int | None
-) -> None:
-    """Reject WHERE clauses that mix aggregates at incompatible grains.
-
-    Inline aggregates in WHERE are valid in Trilogy when they share a grain
-    (e.g. ``where sum(x) by name > avg(y) by name``). Mixing grains - or
-    comparing a naked aggregate against a ``by``-grouped aggregate - is a
-    HAVING-style filter on already-aggregated rows and cannot be evaluated as
-    a row-level WHERE. We catch it here so the user sees a clean error rather
-    than the internal MergeNode discovery dump.
-    """
-    if not select.where_clause:
-        return
-    aggregates = _collect_where_aggregates(select.where_clause.conditional)
-    if len(aggregates) < 2:
-        return
-    grain_signatures = {sig for _, sig in aggregates}
-    if len(grain_signatures) <= 1:
-        return
-    expr_str = str(select.where_clause.conditional)
-    raise InvalidSyntaxException(
-        f"WHERE clause aggregates at multiple grains are not allowed: "
-        f"`{expr_str}`. Aggregates filter rows AFTER grouping - use HAVING "
-        f"(post-aggregate filter), or align all aggregates to the same `by` "
-        f"grain so the filter is a pure row-level pre-aggregate predicate"
-        + (f"; Line: {line_no}" if line_no else "")
-    )
 
 
 def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
@@ -319,7 +284,6 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                     f"move to the HAVING clause instead; Line: {line_no}"
                 )
         _validate_where_aggregate_matches_select(select, line_no)
-        _validate_where_aggregate_grains(select, line_no)
     if select.having_clause:
         for cref in select.having_clause.concept_arguments:
             if cref.address not in allowed_addresses:

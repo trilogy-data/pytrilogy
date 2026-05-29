@@ -33,13 +33,18 @@ SELECT RULES:
 - Count must specify a field (no `count(*)`) Counts are automatically deduplicated for keys. A count of a property counts the key. Use count_distinct for unique property members; do not use it on keys as it is identical to count.
 - Since there are no underlying tables, sum/count of a constant should always specify a grain field (e.g. `sum(1) by x as count`). 
 - Filtering on aggregates:
+  - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
+  * WHERE conditions are pushed before aggregation calculation for aggregates in the select. Where conditions DO NOT
+    apply to other aggregates in the WHERE CLAUSE. 
   * HAVING filters on an aggregate that IS in the SELECT output. HAVING can ONLY reference fields that appear in the SELECT projection — select the aggregate with an alias, then reference that alias:
-      select customer.state, sum(sales.amount) as total_sales
+      These fields can be hidden for conveience.
+      select customer.state, --sum(sales.amount) as total_sales
       having total_sales > 1000
   * To filter rows by an aggregate condition that is NOT in the output, write the aggregate directly in WHERE using inline grouping `agg(x) by grain`:
-      where item.price > 1.2 * avg(item.price) by item.category
+      Remember that other where conditions are not pushed through an aggregate in the where; use an inline condition if you
+      need to filter inside those. 
+      where store=1 and item.price > 1.2 * avg(item.price ? explicit_other_condition) by item.category
       select item.name, item.price
-- Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
 - Condition scoping: WHERE conditions DO NOT filter each other, and they DO NOT scope aggregates inside other conditions. Each aggregate computes over its own input, independent of sibling WHERE clauses. To scope an aggregate's input, push the filter INSIDE the aggregate with `?`:
   * Wrong (the `region = 'EUROPE'` clause does NOT restrict the `min(price)` in the other clause; min is over ALL rows):
       where region = 'EUROPE'
@@ -47,7 +52,11 @@ SELECT RULES:
   * Right (the `?` filter restricts the min's input to EUROPE rows per part):
       where region = 'EUROPE'
         and price = min(price ? region = 'EUROPE') by part_id
-  This applies to aggregates anywhere — WHERE, HAVING, SELECT projections. If an aggregate should see only a subset, that subset goes inside `?`, never as a sibling WHERE condition.
+    Quick rules:
+    - Global filters show in WHERE
+    - Filtering on aggregates post-global filters can be done through the having clause with a hidden aggregate
+    in select
+    - OR in WHERE with `?` inline filter syntax
 - Operator precedence (highest binds first; use `(...)` to override):
   1. Primaries: literal, identifier, function call, parenthetical `(...)`, member access (`.`, `[]`, `::` cast).
   2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).
@@ -77,11 +86,16 @@ SELECT RULES:
       and state = 'ID'
   order by 
     all_rank asc
-    limit 5;", "where dep_time between '2002-01-01'::datetime and '2010-01-31'::datetime
+    limit 5;", "# for carriers with significant flights between 2000 and 2002, find the 
+# carriers with average daily flights >10 between 2002 and january 31 2010
+where dep_time between '2002-01-01'::datetime and '2010-01-31'::datetime
+and count(id2 ? year(dep_time::datetime) between 2000 and 2002) by carrier.name > 1000
   select
       carrier.name,
       count(id2) AS total_flights,
       total_flights / date_diff(min(dep_time.date), max(dep_time.date), DAY) AS average_daily_flights
+ having
+    average_daily_flights > 10
   order by 
     total_flights desc;"""
 

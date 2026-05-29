@@ -109,8 +109,10 @@ file's environment exposes. No dialect or connection needed.
 in the same output. If store_sales imports customer and dates,
 the output for `store_sales.preql` ALSO contains every concept under
 `store_sales.customer.*`, `store_sales.date_dim.*`, `store_sales.item.*`, etc.
-You do not need to explore those to work with store_sales data; reading
+You do NOT need to explore those to work with store_sales data; reading
 store_sales contains the upserset of all information.
+
+Fetch facts first; avoid fetching dimensions to avoid duplicate outputs.
 
 **Trilogy auto-resolves joins.** Trilogy automatically resolves
 joins from the model's declared key/property relationships — there is no

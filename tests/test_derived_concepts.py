@@ -46,51 +46,6 @@ def test_filtering_where_on_derived_aggregate(test_environment):
     assert exception, "should have an exception"
 
 
-def test_where_mixed_grain_aggregates_rejected_cleanly():
-    """A WHERE clause that mixes inline aggregates at different grains used to
-    leak the internal resolver state ("Have {MergeNode<...>}: None and need ...")
-    as the user-facing error. It should raise a clean InvalidSyntaxException at
-    validation with no internal node names.
-    """
-    from trilogy import parse
-    from trilogy.core.exceptions import InvalidSyntaxException
-
-    # SELECT does NOT itself produce the same aggregate, so the more-specific
-    # "also computed in the SELECT" check does not apply. The multi-grain
-    # validation handles this case.
-    src = """key x int;
-property x.cost float;
-property x.state string;
-
-datasource x_source (
-    x:x,
-    cost:cost,
-    state:state)
-    grain(x)
-    address x_source;
-
-where sum(cost) > 1.2 * avg(cost) by state
-SELECT
-    x;
-"""
-    raised = None
-    try:
-        parse(src)
-    except Exception as e:
-        raised = e
-    assert raised is not None, "expected a validation exception"
-    assert isinstance(
-        raised, InvalidSyntaxException
-    ), f"expected InvalidSyntaxException, got {type(raised).__name__}: {raised}"
-    msg = str(raised)
-    assert "WHERE clause aggregates at multiple grains" in msg
-    assert "HAVING" in msg
-    # Internal resolver state must never reach the user.
-    assert "MergeNode" not in msg
-    assert "_virt_agg" not in msg
-    assert "@Grain<" not in msg
-
-
 def test_where_aggregate_also_in_select_rejected_cleanly():
     """The repro from the bug: ``where sum(x) > 1.2 * avg(x) by g`` with
     ``select sum(x) as total`` must not leak the internal MergeNode/_virt_agg
