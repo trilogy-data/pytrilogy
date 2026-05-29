@@ -736,6 +736,9 @@ the current task:
 - `trilogy agent-info ingest` — `trilogy ingest` full reference (warehouse
   tables, CSV / Parquet, cloud URLs, `--fks`, `--all`, ...). For bootstrapping
   a model from scratch.
+- `trilogy agent-info config` — `trilogy.toml` schema (`[engine]`, `[setup]`,
+  `[agent]`) and the env-var-only API-key convention. Only needed when
+  editing the workspace config.
 - `trilogy agent-info serve` — `trilogy public list/fetch` (browse and pull
   from trilogy-public-models) and `trilogy serve` (FastAPI server exposing
   model directories). For distribution/hosting, not query authoring.
@@ -1038,6 +1041,64 @@ Requires `pytrilogy[serve]` extras.
 ```bash
 trilogy serve ./models/ duckdb --port 8080
 ```
+"""
+
+
+CONFIG_DOC = """# trilogy.toml Configuration - AI Agent Reference
+
+Every Trilogy workspace has a `trilogy.toml` at its root. The eval workspace
+ships with a working one — you should NOT need to edit it. When you do, the
+schema and API-key conventions are below.
+
+## Example
+
+```toml
+[engine]
+# Default dialect for execution
+dialect = "duckdb"
+
+# Max parallelism for multi-script execution
+parallelism = 3
+
+[setup]
+# Startup scripts to run before execution
+trilogy = ["setup.preql"]
+sql = ["init.sql"]
+
+[agent]
+# Default LLM provider for AI features
+# Valid values: openai, anthropic, google, openrouter
+provider = "anthropic"
+
+# Default model for the chosen provider
+model = "claude-sonnet-4-6"
+```
+
+## Sections
+
+- `[engine]` — execution dialect and parallelism defaults. Most workspaces
+  override only `dialect` (`duckdb`, `postgres`, ...). `parallelism` caps the
+  worker count for multi-script execution.
+- `[engine.config]` — dialect-specific connection params. For DuckDB the
+  common key is `db_location = "<path>.duckdb"`; for warehouses, a connection
+  string is supplied at the CLI instead.
+- `[setup]` — scripts to run before any user script. `trilogy = [...]` runs
+  `.preql` declarations to seed the environment; `sql = [...]` runs raw SQL
+  for tables/extensions.
+- `[agent]` — defaults for `trilogy agent` and AI-assisted features. `provider`
+  + `model` are the LLM defaults; `api_key_env` overrides which env var the
+  API key is read from (defaults below).
+
+## API keys
+
+`[agent]` reads keys from environment variables — never from `trilogy.toml`:
+- `OPENAI_API_KEY` for OpenAI
+- `ANTHROPIC_API_KEY` for Anthropic
+- `GOOGLE_API_KEY` for Google
+- `OPENROUTER_API_KEY` for OpenRouter
+
+OpenRouter gives access to models from many providers through a single API
+and key.
 """
 
 
