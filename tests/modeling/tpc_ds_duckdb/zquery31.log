@@ -1,5 +1,5 @@
 query_id = "31"
-gen_length = 5447
+gen_length = 12611
 preql_size = 1454
 comp_size = 1994
 generated_sql = """
@@ -46,6 +46,42 @@ GROUP BY
     2
 HAVING
     sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END ) and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END ) and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END ) and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END ) and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END ) and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 3 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
+	ELSE null
+	END ) and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 and ( CASE
 	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 2 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"thoughtful\".\"sales_date_quarter\" = 1 THEN \"thoughtful\".\"sales_ext_sales_price\" ELSE NULL END)
 	ELSE null
 	END > CASE

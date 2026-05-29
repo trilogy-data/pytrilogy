@@ -769,4 +769,79 @@ def build_group_graph(
         _compute_concept_sets(
             group_graph, attrs, concept_graph, buckets, mandatory_list
         )
+        if _route_basics_through_richer_siblings(group_graph, attrs):
+            # Topology changed — recompute output/input demand so the basic
+            # now picks up its new aggregate parent's outputs as passthrough,
+            # and `_assemble_final_node` sees a single contributor covering
+            # all mandatory concepts (rather than basic + aggregate
+            # siblings, which would force a redundant merge).
+            _compute_concept_sets(
+                group_graph, attrs, concept_graph, buckets, mandatory_list
+            )
     return group_graph, attrs
+
+
+def _route_basics_through_richer_siblings(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+) -> bool:
+    """For each basic group, find the most-enriched built sibling whose
+    outputs already cover the basic's input demand, and add a lineage edge
+    from it. The existing `_parent_nodes_for` ancestor-dedup logic in
+    strategy_builder then drops the redundant upstream parent automatically.
+
+    The motivating case: a basic group renames the outputs of a sibling
+    aggregate (e.g. `local.channel = l0_filtered.channel_l0` from q14). With
+    only the shared rowset/source as the basic's lineage parent, the basic
+    builds against pre-aggregate detail rows — and when the sibling
+    aggregate has non-standard grouping (ROLLUP/CUBE), the FINAL merge
+    can't reconcile NULL-bearing subtotal rows on the aggregate side with
+    detail-only rows on the basic side. Routing the basic through the
+    aggregate makes its rows the aggregate's rows (subtotals included), so
+    the rename is correct under rollup.
+
+    Scoped to AGGREGATE siblings only — extending to other derivations
+    would change the row-shape semantics of non-rollup queries that
+    today rely on basic + sibling-aggregate being joined 1:1."""
+    changed = False
+    basics = [
+        gid
+        for gid in group_graph.nodes
+        if gid != FINAL_NODE_ID
+        and attrs[gid].derivation == Derivation.BASIC.value
+    ]
+    aggregates = [
+        gid
+        for gid in group_graph.nodes
+        if gid != FINAL_NODE_ID
+        and attrs[gid].derivation == Derivation.AGGREGATE.value
+    ]
+    for bgid in basics:
+        b = attrs[bgid]
+        if not b.input_concepts:
+            continue
+        needed = set(b.input_concepts)
+        # Restrict candidates to those that share at least one current
+        # ancestor with this basic (so they're really siblings on the same
+        # pipeline) and whose outputs cover all the basic's inputs.
+        my_ancestors = nx.ancestors(group_graph, bgid)
+        for agid in aggregates:
+            if agid == bgid:
+                continue
+            if attrs[agid].label != b.label:
+                continue
+            their_ancestors = nx.ancestors(group_graph, agid)
+            if not (my_ancestors & their_ancestors):
+                continue
+            if not needed.issubset(set(attrs[agid].output_concepts)):
+                continue
+            # Skip if connecting them would create a cycle (basic is
+            # somehow an ancestor of the aggregate already — shouldn't
+            # happen but defend against weird graphs).
+            if bgid in their_ancestors:
+                continue
+            if not group_graph.has_edge(agid, bgid):
+                group_graph.add_edge(agid, bgid, kind="lineage")
+                changed = True
+            break
+    return changed

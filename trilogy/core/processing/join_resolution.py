@@ -505,6 +505,17 @@ def resolve_instantiated_concept(
             return next(x for x in datasource.output_concepts if x.address == k)
         if any(k in x.pseudonyms for x in datasource.output_concepts):
             return next(x for x in datasource.output_concepts if k in x.pseudonyms)
+    # Reverse direction: an output concept may declare us as its pseudonym
+    # without us declaring it as ours. Pseudonym maps from rename basics
+    # (`local.channel` ← pseudonym → `l0_filtered.channel_l0`) are set on the
+    # rename side only — the rowset concept doesn't carry the back-reference.
+    # Without this check, a downstream merge that wants to join on the rowset
+    # address can't find its renamed equivalent on the sibling side (q14:
+    # rollup aggregate emits `l0_filtered.channel_l0` and tries to find it on
+    # the basic side that only exposes `local.channel`).
+    for x in datasource.output_concepts:
+        if concept.address in x.pseudonyms:
+            return x
     raise SyntaxError(
         f"Could not find {concept.address} in {datasource.identifier} output "
         f"{[c.address for c in datasource.output_concepts]}, "

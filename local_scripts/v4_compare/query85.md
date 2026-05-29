@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4499 | 48 | 58.89 ms |
-| reference | 3830 | 25 | 38.27 ms |
-| v4 / ref | 1.17x | 1.92x | 1.54x |
+| v4 | 4265 | 40 | 32.49 ms |
+| reference | 3830 | 25 | 35.24 ms |
+| v4 / ref | 1.11x | 1.60x | 0.92x |
 
 ## Preql
 
@@ -91,9 +91,9 @@ WITH
 abundant as (
 SELECT
     "wr_reason_reason"."R_REASON_DESC" as "wr_reason_desc",
-    "wr_web_returns"."WR_FEE" as "wr_fee",
-    "wr_web_returns"."WR_REFUNDED_CASH" as "wr_refunded_cash",
-    "wr_web_sales_web_sales"."WS_QUANTITY" as "wr_web_sales_quantity"
+    avg("wr_web_returns"."WR_FEE") as "avg3",
+    avg("wr_web_returns"."WR_REFUNDED_CASH") as "avg2",
+    avg("wr_web_sales_web_sales"."WS_QUANTITY") as "avg1"
 FROM
     "memory"."web_returns" as "wr_web_returns"
     INNER JOIN "memory"."reason" as "wr_reason_reason" on "wr_web_returns"."WR_REASON_SK" = "wr_reason_reason"."R_REASON_SK"
@@ -104,36 +104,28 @@ FROM
     INNER JOIN "memory"."customer_demographics" as "wr_returning_demographic_customer_demographics" on "wr_web_returns"."WR_RETURNING_CDEMO_SK" = "wr_returning_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
     "wr_web_sales_date_date"."D_YEAR" = 2000 and ( ( "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'M' and "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = "wr_returning_demographic_customer_demographics"."CD_MARITAL_STATUS" and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'Advanced Degree' and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = "wr_returning_demographic_customer_demographics"."CD_EDUCATION_STATUS" and "wr_web_sales_web_sales"."WS_SALES_PRICE" BETWEEN 100.0 AND 150.0 ) or ( "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = "wr_returning_demographic_customer_demographics"."CD_MARITAL_STATUS" and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = "wr_returning_demographic_customer_demographics"."CD_EDUCATION_STATUS" and "wr_web_sales_web_sales"."WS_SALES_PRICE" BETWEEN 50.0 AND 100.0 ) or ( "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'W' and "wr_refunded_demographic_customer_demographics"."CD_MARITAL_STATUS" = "wr_returning_demographic_customer_demographics"."CD_MARITAL_STATUS" and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = '2 yr Degree' and "wr_refunded_demographic_customer_demographics"."CD_EDUCATION_STATUS" = "wr_returning_demographic_customer_demographics"."CD_EDUCATION_STATUS" and "wr_web_sales_web_sales"."WS_SALES_PRICE" BETWEEN 150.0 AND 200.0 ) ) and ( ( "wr_refunded_address_customer_address"."CA_COUNTRY" = 'United States' and "wr_refunded_address_customer_address"."CA_STATE" in ('IN','OH','NJ') and "wr_web_sales_web_sales"."WS_NET_PROFIT" BETWEEN 100 AND 200 ) or ( "wr_refunded_address_customer_address"."CA_COUNTRY" = 'United States' and "wr_refunded_address_customer_address"."CA_STATE" in ('WI','CT','KY') and "wr_web_sales_web_sales"."WS_NET_PROFIT" BETWEEN 150 AND 300 ) or ( "wr_refunded_address_customer_address"."CA_COUNTRY" = 'United States' and "wr_refunded_address_customer_address"."CA_STATE" in ('LA','IA','AR') and "wr_web_sales_web_sales"."WS_NET_PROFIT" BETWEEN 50 AND 250 ) )
-),
-yummy as (
-SELECT
-    "abundant"."wr_reason_desc" as "wr_reason_desc",
-    avg("abundant"."wr_fee") as "avg3",
-    avg("abundant"."wr_refunded_cash") as "avg2",
-    avg("abundant"."wr_web_sales_quantity") as "avg1"
-FROM
-    "abundant"
+
 GROUP BY
     1),
-uneven as (
+yummy as (
 SELECT
     "abundant"."wr_reason_desc" as "wr_reason_desc",
     SUBSTRING("abundant"."wr_reason_desc",1,20) as "reason_desc"
 FROM
     "abundant")
 SELECT
-    "uneven"."reason_desc" as "reason_desc",
-    "yummy"."avg1" as "avg1",
-    "yummy"."avg2" as "avg2",
-    "yummy"."avg3" as "avg3"
+    "yummy"."reason_desc" as "reason_desc",
+    "abundant"."avg1" as "avg1",
+    "abundant"."avg2" as "avg2",
+    "abundant"."avg3" as "avg3"
 FROM
     "yummy"
-    FULL JOIN "uneven" on "yummy"."wr_reason_desc" is not distinct from "uneven"."wr_reason_desc"
+    FULL JOIN "abundant" on "yummy"."wr_reason_desc" is not distinct from "abundant"."wr_reason_desc"
 ORDER BY 
-    "uneven"."reason_desc" asc,
-    "yummy"."avg1" asc,
-    "yummy"."avg2" asc,
-    "yummy"."avg3" asc
+    "yummy"."reason_desc" asc,
+    "abundant"."avg1" asc,
+    "abundant"."avg2" asc,
+    "abundant"."avg3" asc
 LIMIT (100)
 ```
 

@@ -18,9 +18,9 @@ ref rows: 44 (44 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3784 | 72 | 92.60 ms |
-| reference | 5451 | 57 | 98.07 ms |
-| v4 / ref | 0.69x | 1.26x | 0.94x |
+| v4 | 3784 | 72 | 96.14 ms |
+| reference | 12615 | 93 | 100.19 ms |
+| v4 / ref | 0.30x | 0.77x | 0.96x |
 
 ## Preql
 
@@ -207,6 +207,42 @@ GROUP BY
     2
 HAVING
     sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 and sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END ) and ( CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 3 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 3 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END ) and sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 and sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END ) and ( CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 3 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 3 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END ) and sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 and sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END ) and ( CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 3 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 3 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END ) and sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 and sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 and ( CASE
 	WHEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 2 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_quarter" = 1 THEN "thoughtful"."sales_ext_sales_price" ELSE NULL END)
 	ELSE null
 	END > CASE

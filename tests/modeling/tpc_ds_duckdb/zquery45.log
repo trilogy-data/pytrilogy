@@ -1,5 +1,5 @@
 query_id = "45"
-gen_length = 2111
+gen_length = 2092
 preql_size = 648
 comp_size = 1159
 generated_sql = """
@@ -7,9 +7,12 @@ generated_sql = """
 WITH 
 quizzical as (
 SELECT
-    CASE WHEN \"item2_items\".\"I_ITEM_SK\" in (2,3,5,7,11,13,17,19,23,29) THEN \"item2_items\".\"I_ITEM_ID\" ELSE NULL END as \"special_item_ids\"
+    \"item2_items\".\"I_ITEM_ID\" as \"special_item_ids\"
 FROM
     \"memory\".\"item\" as \"item2_items\"
+WHERE
+    \"item2_items\".\"I_ITEM_SK\" in (2,3,5,7,11,13,17,19,23,29)
+
 GROUP BY
     1),
 uneven as (

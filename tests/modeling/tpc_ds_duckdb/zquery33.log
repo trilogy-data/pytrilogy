@@ -1,5 +1,5 @@
 query_id = "33"
-gen_length = 4283
+gen_length = 4264
 preql_size = 498
 comp_size = 1670
 generated_sql = """
@@ -7,9 +7,12 @@ generated_sql = """
 WITH 
 quizzical as (
 SELECT
-    CASE WHEN \"items_items\".\"I_CATEGORY\" = 'Electronics' THEN \"items_items\".\"I_MANUFACT_ID\" ELSE NULL END as \"electronics_manuf_ids\"
+    \"items_items\".\"I_MANUFACT_ID\" as \"electronics_manuf_ids\"
 FROM
     \"memory\".\"item\" as \"items_items\"
+WHERE
+    \"items_items\".\"I_CATEGORY\" = 'Electronics'
+
 GROUP BY
     1),
 abundant as (

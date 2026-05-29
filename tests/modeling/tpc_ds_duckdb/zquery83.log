@@ -1,5 +1,5 @@
 query_id = "83"
-gen_length = 5941
+gen_length = 5922
 preql_size = 1680
 comp_size = 2195
 generated_sql = """
@@ -7,9 +7,12 @@ generated_sql = """
 WITH 
 quizzical as (
 SELECT
-    CASE WHEN cast(\"date_date\".\"D_DATE\" as date) in (date '2000-06-30',date '2000-09-27',date '2000-11-17') THEN \"date_date\".\"D_WEEK_SEQ\" ELSE NULL END as \"target_week_seqs\"
+    \"date_date\".\"D_WEEK_SEQ\" as \"target_week_seqs\"
 FROM
     \"memory\".\"date_dim\" as \"date_date\"
+WHERE
+    cast(\"date_date\".\"D_DATE\" as date) in (date '2000-06-30',date '2000-09-27',date '2000-11-17')
+
 GROUP BY
     1),
 questionable as (
