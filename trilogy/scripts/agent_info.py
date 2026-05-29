@@ -91,6 +91,8 @@ my_fact contains the upserset of all information.
 
 Fetch facts first; avoid fetching dimensions to avoid duplicate outputs.
 
+Fetch facts first; avoid fetching dimensions to avoid duplicate outputs.
+
 **Trilogy auto-resolves joins.** Trilogy automatically resolves
 joins from the model's declared key/property relationships — there is no
 manual `JOIN` clause in this language. If `my_fact.date_dim.year` shows
