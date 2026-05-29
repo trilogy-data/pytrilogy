@@ -50,6 +50,10 @@ def _bucket(
     )
 
 
+def _noop_ensure(derivation: str) -> None:
+    pass
+
+
 # ----- can_preserve_grain_subset --------------------------------------
 
 
@@ -274,7 +278,7 @@ def test_partition_basics_does_not_merge_across_labels():
     q05 cycle (outer renames and rowset-internal derives at compatible
     grain collapsing through the rowset boundary)."""
     from trilogy.core.processing.v4_helper.group_rules import (
-        partition_basics_by_subset_grain,
+        partition_basics_by_signature,
     )
 
     items = [
@@ -297,7 +301,8 @@ def test_partition_basics_does_not_merge_across_labels():
             },
         ),
     ]
-    buckets = partition_basics_by_subset_grain(items)
+    cg = _cg({"local.sales": {}, "[q5_results]local.sales_metric": {}})
+    buckets = partition_basics_by_signature(items, cg, {}, _noop_ensure)
     assert len(buckets) == 2
     labels = sorted(b.label for b in buckets)
     assert labels == ["", "q5_results"]
@@ -308,7 +313,7 @@ def test_partition_basics_does_merge_within_label():
     behavior: two compatible-grain BASICs at the same label still collapse
     to a single bucket (the q04 case)."""
     from trilogy.core.processing.v4_helper.group_rules import (
-        partition_basics_by_subset_grain,
+        partition_basics_by_signature,
     )
 
     items = [
@@ -331,7 +336,8 @@ def test_partition_basics_does_merge_within_label():
             },
         ),
     ]
-    buckets = partition_basics_by_subset_grain(items)
+    cg = _cg({"local.customer_id": {}, "local.customer_first_name": {}})
+    buckets = partition_basics_by_signature(items, cg, {}, _noop_ensure)
     assert len(buckets) == 1
     assert {m for m in buckets[0].primary_members} == {
         "local.customer_id",
@@ -362,6 +368,7 @@ def test_partition_roots_buckets_per_label():
             },
         ),
     ]
-    buckets = partition_roots(items)
+    cg = _cg({"sales.item.id": {}, "[q5_results]sales.item.id": {}})
+    buckets = partition_roots(items, cg, {}, _noop_ensure)
     assert len(buckets) == 2
     assert {b.label for b in buckets} == {"", "q5_results"}

@@ -11,7 +11,7 @@ import networkx as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.group_graph import _compute_concept_sets
-from trilogy.core.processing.v4_helper.models import GroupBucket
+from trilogy.core.processing.v4_helper.models import GroupAttrs, GroupBucket
 
 
 # A minimal stand-in for BuildConcept — _compute_concept_sets only reads `.address`.
@@ -22,6 +22,7 @@ class _FakeConcept:
 
 def _gg_node(
     graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     gid: str,
     derivation: str,
     primary: list[str],
@@ -29,15 +30,20 @@ def _gg_node(
     grain: set[str] | None = None,
     condition_atoms: list | None = None,
 ):
-    graph.add_node(
-        gid,
-        derivation=derivation,
+    graph.add_node(gid)
+    attrs[gid] = GroupAttrs(
         depth_label="d*",
+        derivation=derivation,
         grain_components=frozenset(grain or ()),
         primary_members=tuple(primary),
         secondary_members=tuple(secondary or ()),
         condition_atoms=condition_atoms or [],
     )
+
+
+def _final_node(graph: nx.DiGraph, attrs: dict[str, GroupAttrs]):
+    graph.add_node(FINAL_NODE_ID)
+    attrs[FINAL_NODE_ID] = GroupAttrs(depth_label="", derivation="final")
 
 
 def _make_bucket(
@@ -98,9 +104,13 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
     _add_lineage(cg, "win_lead", "round_result")
 
     gg = nx.DiGraph()
-    _gg_node(gg, "root", Derivation.ROOT.value, primary=["week_seq", "ext_price"])
+    attrs: dict[str, GroupAttrs] = {}
+    _gg_node(
+        gg, attrs, "root", Derivation.ROOT.value, primary=["week_seq", "ext_price"]
+    )
     _gg_node(
         gg,
+        attrs,
         "agg",
         Derivation.AGGREGATE.value,
         primary=["agg_sum"],
@@ -109,6 +119,7 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
     )
     _gg_node(
         gg,
+        attrs,
         "win",
         Derivation.WINDOW.value,
         primary=["win_lead"],
@@ -117,12 +128,13 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
     )
     _gg_node(
         gg,
+        attrs,
         "basic",
         Derivation.BASIC.value,
         primary=["round_result"],
         grain={"item.id", "order_id"},  # the misleading source row grain
     )
-    gg.add_node(FINAL_NODE_ID, derivation="final", grain_components=frozenset())
+    _final_node(gg, attrs)
     gg.add_edge("root", "agg", kind="lineage")
     gg.add_edge("root", "win", kind="lineage")
     gg.add_edge("agg", "win", kind="lineage")
@@ -145,9 +157,9 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
     }
     mandatory = [_FakeConcept("round_result"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
 
-    basic_out = set(gg.nodes["basic"]["output_concepts"])
+    basic_out = set(attrs["basic"].output_concepts)
     assert "round_result" in basic_out
     assert (
         "week_seq" in basic_out
@@ -167,16 +179,20 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
     _add_lineage(cg, "week_seq", "agg_sum")
 
     gg = nx.DiGraph()
-    _gg_node(gg, "root", Derivation.ROOT.value, primary=["week_seq", "ext_price"])
+    attrs: dict[str, GroupAttrs] = {}
+    _gg_node(
+        gg, attrs, "root", Derivation.ROOT.value, primary=["week_seq", "ext_price"]
+    )
     _gg_node(
         gg,
+        attrs,
         "agg",
         Derivation.AGGREGATE.value,
         primary=["agg_sum"],
         secondary=["week_seq"],
         grain={"week_seq"},
     )
-    gg.add_node(FINAL_NODE_ID, derivation="final", grain_components=frozenset())
+    _final_node(gg, attrs)
     gg.add_edge("root", "agg", kind="lineage")
     gg.add_edge("root", FINAL_NODE_ID, kind="merge")
     gg.add_edge("agg", FINAL_NODE_ID, kind="merge")
@@ -188,9 +204,9 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
 
-    agg_out = set(gg.nodes["agg"]["output_concepts"])
+    agg_out = set(attrs["agg"].output_concepts)
     assert (
         "ext_price" not in agg_out
     ), "row-grain column must not ride through an aggregate at narrower grain"
@@ -220,20 +236,23 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
     _add_lineage(cg, "first_name", "local_name")
 
     gg = nx.DiGraph()
+    attrs: dict[str, GroupAttrs] = {}
     _gg_node(
         gg,
+        attrs,
         "root",
         Derivation.ROOT.value,
         primary=["customer.id", "text_id", "first_name", "ext_price", "year"],
     )
     _gg_node(
         gg,
+        attrs,
         "basic",
         Derivation.BASIC.value,
         primary=["local_id", "local_name"],
         grain={"customer.id"},
     )
-    gg.add_node(FINAL_NODE_ID, derivation="final", grain_components=frozenset())
+    _final_node(gg, attrs)
     gg.add_edge("root", "basic", kind="lineage")
     gg.add_edge("root", FINAL_NODE_ID, kind="merge")
     gg.add_edge("basic", FINAL_NODE_ID, kind="merge")
@@ -250,9 +269,9 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
     }
     mandatory = [_FakeConcept("local_id"), _FakeConcept("local_name")]
 
-    _compute_concept_sets(gg, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
 
-    basic_out = set(gg.nodes["basic"]["output_concepts"])
+    basic_out = set(attrs["basic"].output_concepts)
     assert "local_id" in basic_out and "local_name" in basic_out
     assert (
         "ext_price" not in basic_out
@@ -276,16 +295,20 @@ def test_aggregate_inputs_include_primary_lineage_args():
     _add_lineage(cg, "week_seq", "agg_sum")
 
     gg = nx.DiGraph()
-    _gg_node(gg, "root", Derivation.ROOT.value, primary=["week_seq", "ext_price"])
+    attrs: dict[str, GroupAttrs] = {}
+    _gg_node(
+        gg, attrs, "root", Derivation.ROOT.value, primary=["week_seq", "ext_price"]
+    )
     _gg_node(
         gg,
+        attrs,
         "agg",
         Derivation.AGGREGATE.value,
         primary=["agg_sum"],
         secondary=["week_seq"],
         grain={"week_seq"},
     )
-    gg.add_node(FINAL_NODE_ID, derivation="final", grain_components=frozenset())
+    _final_node(gg, attrs)
     gg.add_edge("root", "agg", kind="lineage")
     gg.add_edge("agg", FINAL_NODE_ID, kind="merge")
     buckets = {
@@ -296,9 +319,9 @@ def test_aggregate_inputs_include_primary_lineage_args():
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
 
-    agg_in = set(gg.nodes["agg"]["input_concepts"])
+    agg_in = set(attrs["agg"].input_concepts)
     # Inputs for the SUM: ext_price (lineage arg) and week_seq (passthrough output).
     assert {"ext_price", "week_seq"} <= agg_in
 
@@ -312,17 +335,24 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally():
     _add_lineage(cg, "agg_sum", "round_result")
 
     gg = nx.DiGraph()
+    attrs: dict[str, GroupAttrs] = {}
     _gg_node(
-        gg, "agg", Derivation.AGGREGATE.value, primary=["agg_sum"], grain={"week_seq"}
+        gg,
+        attrs,
+        "agg",
+        Derivation.AGGREGATE.value,
+        primary=["agg_sum"],
+        grain={"week_seq"},
     )
     _gg_node(
         gg,
+        attrs,
         "basic",
         Derivation.BASIC.value,
         primary=["round_result"],
         grain={"week_seq"},
     )
-    gg.add_node(FINAL_NODE_ID, derivation="final", grain_components=frozenset())
+    _final_node(gg, attrs)
     gg.add_edge("agg", "basic", kind="lineage")
     gg.add_edge("basic", FINAL_NODE_ID, kind="merge")
     buckets = {
@@ -335,9 +365,9 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally():
     }
     mandatory = [_FakeConcept("round_result")]
 
-    _compute_concept_sets(gg, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
 
-    basic_in = set(gg.nodes["basic"]["input_concepts"])
+    basic_in = set(attrs["basic"].input_concepts)
     # The lineage arg agg_sum must come from upstream.
     assert "agg_sum" in basic_in
     # The primary (round_result) is computed locally; it isn't sourced.
@@ -356,9 +386,10 @@ def test_intermediate_groups_have_empty_hidden_concepts():
     _add_lineage(cg, "x", "y")
 
     gg = nx.DiGraph()
-    _gg_node(gg, "root", Derivation.ROOT.value, primary=["x"])
-    _gg_node(gg, "basic", Derivation.BASIC.value, primary=["y"], grain={"x"})
-    gg.add_node(FINAL_NODE_ID, derivation="final", grain_components=frozenset())
+    attrs: dict[str, GroupAttrs] = {}
+    _gg_node(gg, attrs, "root", Derivation.ROOT.value, primary=["x"])
+    _gg_node(gg, attrs, "basic", Derivation.BASIC.value, primary=["y"], grain={"x"})
+    _final_node(gg, attrs)
     gg.add_edge("root", "basic", kind="lineage")
     gg.add_edge("basic", FINAL_NODE_ID, kind="merge")
     buckets = {
@@ -367,7 +398,7 @@ def test_intermediate_groups_have_empty_hidden_concepts():
     }
     mandatory = [_FakeConcept("y")]
 
-    _compute_concept_sets(gg, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
 
-    assert gg.nodes["root"]["hidden_concepts"] == ()
-    assert gg.nodes["basic"]["hidden_concepts"] == ()
+    assert attrs["root"].hidden_concepts == ()
+    assert attrs["basic"].hidden_concepts == ()
