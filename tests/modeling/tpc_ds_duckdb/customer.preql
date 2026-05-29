@@ -1,8 +1,8 @@
+# Customer info: names, salutation, login, email, preferred-customer
+# flag, country of birth, and decomposed birth date (year / month / day).
+
 import std.date;
 import std.geography;
-
-# Customer dimension: names, salutation, login, email, preferred-customer
-# flag, country of birth, and decomposed birth date (year / month / day).
 
 import customer_demographic as demographics;
 import household_demographic as household_demographic;
@@ -24,7 +24,7 @@ properties id (
     salutation enum<string>['Dr.', 'Miss', 'Mr.', 'Mrs.', 'Ms.', 'Sir'], # Title/salutation prefix.
     email_address string, # Customer email address (quasi-unique but not a key; can change over time).
     login string, # Account username/login (more stable than email).
-    last_review_date string, # FK to date dimension for customer's last review (stored as string; should be cast to date).
+    last_review_date string, # FK to date for customer's last review (stored as string; should be cast to date).
 );
 
 auto full_name <- concat(salutation, ' ', first_name, ' ', last_name); # Derived display name: 'Salutation First Last'.

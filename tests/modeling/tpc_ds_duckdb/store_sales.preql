@@ -1,9 +1,9 @@
-import std.money;
+# Store channel sales info at (item, ticket_number) grain: quantity,
+# sales / list / wholesale / extended prices, discount and coupon amounts,
+# net paid, extended tax, net profit, and an is_returned flag plus
+# per-line refund amount / quantity / net loss for returned items.
 
-# Store channel sales at (item, ticket_number) grain: quantity, sales /
-# list / wholesale / extended prices, discount and coupon amounts, net
-# paid, extended tax, net profit, and an is_returned flag plus per-line
-# refund amount / quantity / net loss for returned items.
+import std.money;
 
 import item as item;
 import date as date;

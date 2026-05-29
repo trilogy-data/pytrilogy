@@ -1,5 +1,5 @@
-# Return reason dimension: free-form textual description of why an item
-# was returned (e.g. 'Did not fit', 'wrong color').
+# Return reason info: free-form textual description of why an item was
+# returned (e.g. 'Did not fit', 'wrong color').
 
 key id int; # Surrogate key uniquely identifying a return reason.
 

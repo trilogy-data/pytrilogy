@@ -1,7 +1,7 @@
-import std.geography;
+# Warehouse info: physical storage locations with name, square footage,
+# and address (city, county, state, ZIP, country).
 
-# Warehouse dimension: physical storage locations with name, square
-# footage, and address (city, county, state, ZIP, country).
+import std.geography;
 
 key id int; # Surrogate key uniquely identifying a warehouse.
 

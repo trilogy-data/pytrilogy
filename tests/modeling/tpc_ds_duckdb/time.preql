@@ -1,5 +1,5 @@
-# Time-of-day dimension: seconds since midnight decomposed into hour,
-# minute, and second, plus a meal_time bucket (breakfast / lunch / dinner).
+# Time-of-day info: seconds since midnight decomposed into hour, minute,
+# and second, plus a meal_time bucket (breakfast / lunch / dinner).
 
 key id int; # Surrogate key uniquely identifying a time-of-day row (seconds since midnight).
 

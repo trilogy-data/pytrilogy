@@ -1,10 +1,10 @@
-import std.money;
+# Combined info for store-sales, store-returns, and catalog-sales line
+# items keyed by a single shared (customer, item) so the same customer's
+# activity across all three tables can be queried as one model. Exposes
+# store quantity / net_profit, store return quantity / amount / net_loss,
+# and catalog quantity / net_profit.
 
-# Combined store-sales, store-returns, and catalog-sales line items keyed
-# by a single shared (customer, item) so the same customer's activity
-# across all three tables can be queried as one model. Exposes store
-# quantity / net_profit, store return quantity / amount / net_loss, and
-# catalog quantity / net_profit.
+import std.money;
 
 import item as item;
 import customer as customer;

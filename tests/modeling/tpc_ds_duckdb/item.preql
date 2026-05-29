@@ -1,8 +1,8 @@
-import std.money;
-
-# Item / product dimension: product name, free-form description, brand,
+# Item / product info: product name, free-form description, brand,
 # category and class hierarchies, manufacturer, current list price,
 # wholesale cost, color, size, and unit-of-measure.
+
+import std.money;
 
 key id int; # Surrogate key uniquely identifying a sellable item.
 

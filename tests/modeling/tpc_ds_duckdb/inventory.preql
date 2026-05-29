@@ -9,7 +9,7 @@ property <date.id, item.id, warehouse.id>.quantity_on_hand int; # Number of unit
 
 datasource warehouse_inventory (
     inv_warehouse_sk: ?warehouse.id, # FK to warehouse the snapshot was taken for.
-    inv_date_sk: date.id, # FK to the date dimension (snapshot date, typically weekly).
+    inv_date_sk: date.id, # FK to the date (snapshot date, typically weekly).
     inv_quantity_on_hand: quantity_on_hand,
     inv_item_sk: item.id, # FK to the item being counted.
 )

@@ -1,4 +1,4 @@
-# Income band lookup: lower and upper dollar bounds (USD, inclusive) for
+# Income band info: lower and upper dollar bounds (USD, inclusive) for
 # each household-income range bucket.
 
 key id int; # Surrogate key uniquely identifying an income band.

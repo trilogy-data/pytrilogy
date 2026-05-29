@@ -1,7 +1,7 @@
-import std.money;
-
-# Promotion dimension: per-channel Y/N flags (email, catalog, event,
+# Promotion info: per-channel Y/N flags (email, catalog, event,
 # direct-mail, TV, radio, press) and total cost (USD) per promotion.
+
+import std.money;
 
 key id int; # Surrogate key uniquely identifying a promotion.
 

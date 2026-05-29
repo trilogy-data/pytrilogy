@@ -1,4 +1,4 @@
-# Web site dimension: operator/company associated with each web storefront.
+# Web site info: operator/company associated with each web storefront.
 
 key id int; # Surrogate key uniquely identifying a web site.
 

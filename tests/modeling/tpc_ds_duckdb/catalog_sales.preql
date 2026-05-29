@@ -1,8 +1,8 @@
-import std.money;
+# Catalog channel sales info at (item, order_number) grain: quantity,
+# sales / list / wholesale / extended prices, discount and coupon amounts,
+# net paid (with and without tax), net profit, and sold vs ship dates.
 
-# Catalog channel sales at (item, order_number) grain: quantity, sales /
-# list / wholesale / extended prices, discount and coupon amounts, net paid
-# (with and without tax), net profit, and sold vs ship dates.
+import std.money;
 
 import item as item;
 import date as date;

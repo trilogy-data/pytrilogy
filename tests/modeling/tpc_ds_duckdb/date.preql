@@ -1,8 +1,8 @@
-import std.date;
-
-# Date dimension: calendar attributes (year, quarter, month_of_year,
+# Date info: calendar attributes (year, quarter, month_of_year,
 # day_of_week, day_of_month, day_name, quarter_name) plus monotonically
 # increasing week and month sequence numbers across the calendar.
+
+import std.date;
 
 key id int; # Surrogate key uniquely identifying a calendar date.
 

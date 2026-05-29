@@ -1,5 +1,5 @@
-# Web page dimension: per-page metadata for the retailer's web storefront
-# — page type, autogen flag, and character / link / image counts.
+# Web page info: per-page metadata for the retailer's web storefront —
+# page type, autogen flag, and character / link / image counts.
 
 key id int; # Surrogate key uniquely identifying a web page.
 

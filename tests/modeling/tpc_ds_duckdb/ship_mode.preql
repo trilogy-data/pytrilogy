@@ -1,4 +1,4 @@
-# Ship-mode dimension: carrier company plus delivery-speed tier
+# Ship-mode info: carrier company plus delivery-speed tier
 # (EXPRESS, NEXT DAY, OVERNIGHT, REGULAR, TWO DAY, LIBRARY).
 
 key id int; # Surrogate key uniquely identifying a ship mode.

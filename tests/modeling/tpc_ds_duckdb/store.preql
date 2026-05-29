@@ -1,10 +1,10 @@
+# Store info: physical stores with name, store/market manager, geography
+# (street, city, county, state, ZIP, market, GMT offset), operating hours,
+# employee count, floor space, tax percentage, operating company, and
+# closed date.
+
 import std.geography;
 import std.date;
-
-# Store dimension: physical stores with name, store/market manager,
-# geography (street, city, county, state, ZIP, market, GMT offset),
-# operating hours, employee count, floor space, tax percentage,
-# operating company, and closed date.
 
 import date as date;
 
