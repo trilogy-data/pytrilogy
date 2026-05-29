@@ -8,6 +8,7 @@ so a 378-concept fact like ``store_sales`` collapses to ~25 group lines.
 
 from __future__ import annotations
 
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 from typing import Sequence
@@ -71,11 +72,23 @@ def _display_address(address: str) -> str:
     return address
 
 
-def _concept_row(address: str, concept: Concept) -> tuple[str, str, str, str]:
+def _concept_description(concept: Concept) -> str:
+    """Pull a one-line description off ``concept.metadata`` if set. Whitespace
+    is collapsed so multi-line authoring comments still display cleanly in
+    the explore output."""
+    meta = getattr(concept, "metadata", None)
+    raw = getattr(meta, "description", None) if meta is not None else None
+    if not raw:
+        return ""
+    return " ".join(raw.split())
+
+
+def _concept_row(address: str, concept: Concept) -> tuple[str, str, str, str, str]:
     purpose = concept.purpose.value
     derivation = concept.derivation.value
     datatype = _compact_datatype(str(concept.datatype))
-    return _display_address(address), purpose, derivation, datatype
+    description = _concept_description(concept)
+    return _display_address(address), purpose, derivation, datatype, description
 
 
 def _emit_table(
@@ -94,23 +107,107 @@ def _emit_table(
         click.echo("  ".join(str(c).ljust(w) for c, w in zip(row, widths)))
 
 
+_DETAIL_INDENT = " " * 4
+_DESC_WIDTH = 100  # Wrap column for descriptions; chosen for comfortable
+#                  # human reading. LLMs read by token so the wrap width
+#                  # itself doesn't matter to them — what matters is that
+#                  # continuation lines preserve the indent so the agent
+#                  # can't mis-attribute a wrapped fragment to the next
+#                  # concept.
+
+
+# Map Trilogy concept Purpose values to the short, all-caps tag we render in
+# the flat listing's leading column. Tags double as a grep target — `^KEY `
+# or `^METRIC ` is enough to slice the output by purpose without needing a
+# flag. Unknown purposes fall back to ``purpose.upper()`` — keep these tags
+# at or under 6 chars so the tag column never overflows.
+_PURPOSE_TAGS = {
+    "key": "KEY",
+    "property": "PROP",
+    "unique_property": "UPROP",
+    "metric": "METRIC",
+    "constant": "CONST",
+    "rowset": "ROWSET",
+    "auto": "AUTO",
+    "parameter": "PARAM",
+    "unknown": "UNK",
+}
+
+
+def _grain_display(addr: str) -> str:
+    """Render a key address inside a property's ``@grain`` suffix. Strip the
+    implicit ``local.`` prefix so a property bound to a local key reads as
+    ``@customer_id`` rather than ``@local.customer_id``; cross-namespace
+    addresses keep their full dotted path so the agent can find the key."""
+    return addr[len(_LOCAL_PREFIX) :] if addr.startswith(_LOCAL_PREFIX) else addr
+
+
+def _grain_suffix(key_addrs: tuple[str, ...]) -> str:
+    """``@key`` for a single-key grain, ``@<a, b>`` for a compound grain,
+    empty string when the concept has no bound grain (e.g. metrics).
+    Rendered tight against the role tag so the relationship stays visible:
+    ``PROP @customer_id`` rather than the trailing form."""
+    if not key_addrs:
+        return ""
+    if len(key_addrs) == 1:
+        return f" @{_grain_display(key_addrs[0])}"
+    inner = ", ".join(_grain_display(a) for a in key_addrs)
+    return f" @<{inner}>"
+
+
+def _emit_flat_line(
+    purpose: str,
+    address: str,
+    concept: Concept,
+    key_addrs: tuple[str, ...] = (),
+) -> None:
+    """Render one concept as three logical pieces:
+
+      1. ``address : type``                  ← the concept itself, flush left.
+      2. ``    TAG[ @grain]``                ← the role + grain, indented.
+      3. ``    description (wrapped)``       ← only when set.
+
+    Putting the role on its own indented line — with the grain tight against
+    it — keeps the concept-as-headline reading clean while still making the
+    PROP-grain relationship visually obvious. The ``@grain`` suffix sits
+    right next to the role tag so the agent never has to scan to the end of
+    a type expression to find the binding key."""
+    tag = _PURPOSE_TAGS.get(purpose, purpose.upper())
+    datatype = _compact_datatype(str(concept.datatype))
+    grain = _grain_suffix(key_addrs)
+    click.echo(f"{address} : {datatype}")
+    click.echo(f"{_DETAIL_INDENT}{tag}{grain}")
+    desc = _concept_description(concept)
+    if desc:
+        click.echo(
+            textwrap.fill(
+                desc,
+                width=_DESC_WIDTH,
+                initial_indent=_DETAIL_INDENT,
+                subsequent_indent=_DETAIL_INDENT,
+            )
+        )
+
+
 def _emit_groups(concept_items: list[tuple[str, Concept]]) -> None:
-    """Compact namespace-grouped listing — one line per leaf attribute under
-    each namespace prefix, e.g. ``customer.customer_address  →  city, state,
-    zip, county, …``. Cuts the size of a typical fact's schema dump by ~5×
-    versus the flat table. Concepts in the implicit ``local`` namespace are
-    grouped under ``(root)`` — they're declared directly in this file (not
-    behind an import alias). Other groups are concepts pulled in via imports
-    and live under their namespace prefix. The agent must understand that
-    everything listed below is reachable from this file."""
+    """Flat per-concept listing — one (or two, when described) lines per
+    concept. Ordering preserves the visual grouping of the prior nested
+    layout *without* indentation: keys come first, each immediately followed
+    by its single-key properties (the common dim-attr case); compound-grain
+    properties group together by grain; metrics and others (constants /
+    rowsets / unbound derivations) follow.
+
+    Each line is ``TAG    address : type  [@grain]`` with the optional
+    description on the next line at the address column. The agent reads the
+    grain relationship off the ``@grain`` suffix without traversing indented
+    blocks — which scales better than nesting on long fact files (web_sales
+    hits 46 namespaces / 456 concepts; deep indent loses the parent-namespace
+    context past one screenful)."""
     by_ns: dict[str, list[tuple[str, Concept]]] = defaultdict(list)
     for addr, c in concept_items:
         display = _display_address(addr)
         ns, sep, leaf = display.rpartition(".")
         if not sep:
-            # No remaining dot ⇒ this was a `local.X` concept; group under
-            # ``(root)`` so the agent sees at a glance which concepts are
-            # declared at the top level of the file (vs. imported).
             by_ns["(root)"].append((display, c))
         else:
             by_ns[ns].append((leaf, c))
@@ -119,28 +216,56 @@ def _emit_groups(concept_items: list[tuple[str, Concept]]) -> None:
         f"Available Concepts ({len(by_ns)} namespaces, {len(concept_items)} concepts)"
     )
     for ns in sorted(by_ns):
-        items = by_ns[ns]
-        # ks/ps/ms split so the agent can see grain-defining keys at a glance
-        keys = [leaf for leaf, c in items if c.purpose.value == "key"]
-        props = [leaf for leaf, c in items if c.purpose.value == "property"]
-        metrics = [leaf for leaf, c in items if c.purpose.value == "metric"]
-        others = [
-            leaf
-            for leaf, c in items
-            if c.purpose.value not in ("key", "property", "metric")
-        ]
-        bits = []
-        if keys:
-            bits.append("keys: " + ", ".join(sorted(keys)))
-        if props:
-            bits.append("props: " + ", ".join(sorted(props)))
-        if metrics:
-            bits.append("metrics: " + ", ".join(sorted(metrics)))
-        if others:
-            bits.append("other: " + ", ".join(sorted(others)))
-        click.echo(f"  {ns}")
-        for bit in bits:
-            click.echo(f"    {bit}")
+        # Blank line + `# namespace` header before each section. The blank
+        # line is what the eye latches onto when scrolling through a long
+        # multi-namespace dump (web_sales has 46 sections); the `#` prefix
+        # makes the header obviously not a concept line.
+        click.echo()
+        click.echo(f"# {ns}")
+        _emit_namespace(ns, by_ns[ns])
+
+
+def _emit_namespace(ns: str, items: list[tuple[str, Concept]]) -> None:
+    """Emit one namespace's concepts in the flat form, preserving the
+    keys-then-clustered-props-then-compound-then-metrics ordering."""
+    keys = [(leaf, c) for leaf, c in items if c.purpose.value == "key"]
+    props = [(leaf, c) for leaf, c in items if c.purpose.value == "property"]
+    metrics = [(leaf, c) for leaf, c in items if c.purpose.value == "metric"]
+    others = [
+        (leaf, c)
+        for leaf, c in items
+        if c.purpose.value not in ("key", "property", "metric")
+    ]
+    local_key_addrs = {c.address for _, c in keys}
+    nested: dict[str, list[tuple[str, Concept]]] = defaultdict(list)
+    compound: dict[tuple[str, ...], list[tuple[str, Concept]]] = defaultdict(list)
+    for leaf, concept in props:
+        key_addrs = tuple(sorted(concept.keys or []))
+        if len(key_addrs) == 1 and key_addrs[0] in local_key_addrs:
+            nested[key_addrs[0]].append((leaf, concept))
+        else:
+            compound[key_addrs].append((leaf, concept))
+
+    # Inside (root), properties are addressed by their bare leaf (`name`); in
+    # an imported namespace, the agent writes the dotted form
+    # (`customer.name`). Pre-format so call sites stay leaf-agnostic.
+    def fmt(leaf: str) -> str:
+        return leaf if ns == "(root)" else f"{ns}.{leaf}"
+
+    # Keys, each immediately followed by props bound exactly to that key.
+    for key_leaf, key_concept in sorted(keys, key=lambda lc: lc[0]):
+        _emit_flat_line("key", fmt(key_leaf), key_concept)
+        for leaf, concept in sorted(
+            nested.get(key_concept.address, []), key=lambda lc: lc[0]
+        ):
+            _emit_flat_line("property", fmt(leaf), concept, (key_concept.address,))
+    for grain_tuple, plist in sorted(compound.items()):
+        for leaf, concept in sorted(plist, key=lambda lc: lc[0]):
+            _emit_flat_line("property", fmt(leaf), concept, grain_tuple)
+    for leaf, concept in sorted(metrics, key=lambda lc: lc[0]):
+        _emit_flat_line("metric", fmt(leaf), concept)
+    for leaf, concept in sorted(others, key=lambda lc: lc[0]):
+        _emit_flat_line(concept.purpose.value, fmt(leaf), concept)
 
 
 @click.command("explore")
@@ -238,7 +363,7 @@ def explore(
         rows = [_concept_row(k, v) for k, v in sorted(concept_items)]
         _emit_table(
             f"Concepts ({len(rows)})",
-            ("address", "purpose", "derivation", "datatype"),
+            ("address", "purpose", "derivation", "datatype", "description"),
             rows,
         )
 

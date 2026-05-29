@@ -1,0 +1,24 @@
+# Fixture exercising every concept shape the `trilogy explore` groups view
+# renders. Used by tests/scripts/test_explore_layout.py to lock in the
+# nested layout. Touch with intent — the test compares against the captured
+# output verbatim.
+
+key customer_id int; # Surrogate key identifying a customer.
+key order_id int; # Surrogate key identifying an order.
+
+property customer_id.name string; # Customer's full legal name.
+property customer_id.tier string; # Loyalty tier ('gold' | 'silver' | 'bronze').
+property customer_id.signup_date date; # Day the customer joined.
+
+property order_id.placed_at datetime; # Time the order was created.
+property order_id.status string; # Lifecycle stage ('open' | 'shipped' | 'cancelled').
+
+# Compound-grain properties: a line on a customer's order.
+properties <customer_id, order_id> (
+    quantity int, # Units ordered on this line.
+    unit_price float, # Per-unit price charged.
+);
+
+# Aggregate metrics + an auto derivation referencing them.
+metric total_revenue <- sum(quantity * unit_price); # Sum of line revenue.
+auto avg_unit_price <- avg(unit_price); # Mean unit price across all lines.

@@ -132,7 +132,8 @@ def test_explore_grep_filter_accepts_multiple(runner, sample_preql: Path):
     assert "carrier" in result.output
     assert "distance" in result.output
     # `id` is neither — should be filtered out, even though it's a key concept.
-    assert "keys:" not in result.output
+    # In the flat layout, a key surfaces as an indented detail line `    KEY`.
+    assert "    KEY\n" not in result.output
 
 
 def test_explore_missing_file(runner, tmp_path: Path):
@@ -238,8 +239,8 @@ def test_compact_datatype_handles_traits_enums_and_lower():
 
 
 def test_explore_metrics_appear_in_group_view(runner, tmp_path: Path):
-    """Hits the ``metrics:`` branch in `_emit_groups` — a metric concept in a
-    group surfaces under ``metrics:`` rather than under keys/props."""
+    """A metric concept shows up as a normal concept line with the role
+    ``METRIC`` on the indented detail line — distinct from KEY/PROP."""
     path = tmp_path / "sales.preql"
     path.write_text(
         "key id int;\n" "property id.amount int;\n" "auto total <- sum(amount);\n",
@@ -247,8 +248,8 @@ def test_explore_metrics_appear_in_group_view(runner, tmp_path: Path):
     )
     result = runner.invoke(cli, ["explore", str(path)])
     assert result.exit_code == 0, result.output
-    assert "metrics:" in result.output
-    assert "total" in result.output
+    assert "total : " in result.output
+    assert "    METRIC" in result.output
 
 
 def test_explore_show_imports_lists_alias_and_path(runner, tmp_path: Path):

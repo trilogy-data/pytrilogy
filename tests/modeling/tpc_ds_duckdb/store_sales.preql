@@ -27,7 +27,6 @@ properties <ticket_number, item.id> (
     quantity int, # Number of units of the item sold on this ticket line.
     sales_price numeric::usd, # Per-unit sales price actually charged (USD).
     list_price numeric::usd, # Per-unit list price before discounts (USD).
-    ext_sales_price numeric(15,2)::usd, # Extended sales price (sales_price * quantity, USD).
     ext_wholesale_cost numeric::usd, # Extended wholesale cost (wholesale_cost * quantity, USD).
     ext_list_price numeric::usd, # Extended list price (list_price * quantity, USD).
     ext_discount_amount numeric::usd, # Extended discount applied to the line (USD).
@@ -42,6 +41,8 @@ properties <ticket_number, item.id> (
     return_net_loss numeric::usd?, # Net financial loss on the return for this line (USD).
     row_counter int, # Constant 1, used for unconditional row counts.
 );
+
+auto ext_sales_price <- sales_price * quantity; # Extended sales price (sales_price * quantity); bound to SS_EXT_SALES_PRICE.
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line profit.
 

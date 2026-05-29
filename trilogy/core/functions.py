@@ -82,11 +82,16 @@ def get_unnest_output_type(args: list[Any]) -> CONCRETE_TYPES:
 def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
     non_null = [x for x in args if not x == MagicConstants.NULL]
     processed = [arg_to_datatype(x) for x in non_null if x]
-    if not len(set(processed)) == 1:
+    if not processed:
+        return DataType.UNKNOWN
+    # Bucket by base family so that traits + parameterized variants of the
+    # same family (e.g. numeric(15,2)::usd, numeric::usd) collapse together.
+    reps = _representative_types(processed)
+    if len(reps) != 1:
         raise InvalidSyntaxException(
             f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)} for {str(args)}"
         )
-    return processed[0]
+    return reps[0]
 
 
 def get_transform_output_type(args: list[Any]) -> CONCRETE_TYPES:

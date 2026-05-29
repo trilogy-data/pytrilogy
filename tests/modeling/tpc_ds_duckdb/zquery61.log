@@ -1,5 +1,5 @@
 query_id = "61"
-gen_length = 3442
+gen_length = 3132
 preql_size = 610
 comp_size = 1279
 generated_sql = """
@@ -7,10 +7,8 @@ generated_sql = """
 WITH 
 abundant as (
 SELECT
-    \"ss_promotion_promotion\".\"P_CHANNEL_DMAIL\" as \"ss_promotion_channel_dmail\",
-    \"ss_promotion_promotion\".\"P_CHANNEL_EMAIL\" as \"ss_promotion_channel_email\",
-    \"ss_promotion_promotion\".\"P_CHANNEL_TV\" as \"ss_promotion_channel_tv\",
-    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
+    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\",
+    CASE WHEN \"ss_promotion_promotion\".\"P_CHANNEL_DMAIL\" = 'Y' or \"ss_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'Y' or \"ss_promotion_promotion\".\"P_CHANNEL_TV\" = 'Y' THEN \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" ELSE NULL END as \"_virt_filter_ext_sales_price_1027446398664923\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -35,22 +33,16 @@ FROM
 WHERE
     \"ss_date_date\".\"D_YEAR\" = 1998 and \"ss_date_date\".\"D_MOY\" = 11 and \"ss_item_items\".\"I_CATEGORY\" = 'Jewelry' and \"ss_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"ss_store_store\".\"S_GMT_OFFSET\" = -5
 ),
-uneven as (
-SELECT
-    \"abundant\".\"ss_ext_sales_price\" as \"ss_ext_sales_price\",
-    CASE WHEN \"abundant\".\"ss_promotion_channel_dmail\" = 'Y' or \"abundant\".\"ss_promotion_channel_email\" = 'Y' or \"abundant\".\"ss_promotion_channel_tv\" = 'Y' THEN \"abundant\".\"ss_ext_sales_price\" ELSE NULL END as \"_virt_filter_ext_sales_price_1027446398664923\"
-FROM
-    \"abundant\"),
 juicy as (
 SELECT
-    ( cast(sum(\"uneven\".\"_virt_filter_ext_sales_price_1027446398664923\") as numeric(15,4)) / cast(sum(\"uneven\".\"ss_ext_sales_price\") as numeric(15,4)) ) * 100 as \"ratio\"
+    ( cast(sum(\"abundant\".\"_virt_filter_ext_sales_price_1027446398664923\") as numeric(15,4)) / cast(sum(\"abundant\".\"ss_ext_sales_price\") as numeric(15,4)) ) * 100 as \"ratio\"
 FROM
-    \"uneven\"),
+    \"abundant\"),
 yummy as (
 SELECT
-    sum(\"uneven\".\"_virt_filter_ext_sales_price_1027446398664923\") as \"promotions\"
+    sum(\"abundant\".\"_virt_filter_ext_sales_price_1027446398664923\") as \"promotions\"
 FROM
-    \"uneven\")
+    \"abundant\")
 SELECT
     \"yummy\".\"promotions\" as \"promotions\",
     \"vacuous\".\"total\" as \"total\",

@@ -158,8 +158,17 @@ def determine_induced_minimal_nodes(
         # can be revisited if we need to connect a derived synonym based on an aggregate
         if lookup.derivation in derivations_to_remove:
             nodes_to_remove.append(node)
-        # purge a node if we're already looking for all it's parents
-        elif filter_downstream and lookup.derivation != Derivation.ROOT:
+        # purge a node if we're already looking for all it's parents — but
+        # keep BASIC concepts that are also directly bound to a datasource
+        # column. Their binding is a valid source path on par with ROOT
+        # (decomposing into the lineage parents may strand them when the
+        # parents can't be co-sourced with other required dimensions).
+        elif (
+            filter_downstream
+            and lookup.derivation != Derivation.ROOT
+            and lookup.canonical_address
+            not in environment.materialized_canonical_concepts
+        ):
             nodes_to_remove.append(node)
     if nodes_to_remove:
         # logger.debug(f"Removing nodes {nodes_to_remove} from graph")

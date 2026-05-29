@@ -25,25 +25,26 @@ import address as bill_address;
 
 key warehouse_id int; # Warehouse identifier used in role-played warehouse joins.
 key order_number int; # Catalog order number identifying a single catalog sales transaction.
-auto days_to_ship <- date_diff(sold_date.date, ship_date.date, day); # Derived: number of calendar days between sold and ship dates.
+auto days_to_ship <- date_diff(sold_date.date, ship_date.date, day); # Number of calendar days between sold and ship dates.
+
 
 # metrics
 properties <order_number, item.id> (
     quantity int, # Number of units of the item ordered on this line.
-    sales_price numeric::usd, # Per-unit sales price actually charged (USD).
-    list_price numeric::usd, # Per-unit catalog list price before discounts (USD).
-    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost (USD).
-    discount_amount numeric::usd, # Extended (line-level) discount amount applied to the order line (USD).
-    ext_sales_price numeric(15,2)::usd, # Extended sales price (sales_price * quantity, USD).
-    ext_list_price numeric::usd, # Extended list price (list_price * quantity, USD).
-    ext_ship_cost numeric::usd, # Extended shipping cost charged on the line (USD).
-    ext_wholesale_cost numeric::usd, # Extended wholesale cost (wholesale_cost * quantity, USD).
-    net_profit numeric::usd, # Net profit reported for the line (USD).
-    net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping (USD).
-    net_paid_inc_tax numeric::usd, # Net amount paid including sales tax (USD).
-    coupon_amt numeric::usd, # Coupon/credit amount applied to the line (USD).
-    return_amount numeric::usd?, # Refund amount if the line was returned (USD, joined from catalog_returns).
-    return_quantity int?, # Units returned for this line (joined from catalog_returns).
+    sales_price numeric::usd, # Per-unit sales price actually charged.
+    list_price numeric::usd, # Per-unit catalog list price before discounts.
+    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost.
+    discount_amount numeric::usd, # Extended (line-level) discount amount applied to the order line.
+    ext_sales_price numeric(15,2)::usd, # Extended sales price (sales_price * quantity). NB: kept bound — q76 fold over the three-channel align still mis-sources the catalog branch when this is auto-derived (separate bug).
+    ext_list_price numeric::usd, # Extended list price (list_price * quantity).
+    ext_ship_cost numeric::usd, # Extended shipping cost charged on the line.
+    ext_wholesale_cost numeric::usd, # Extended wholesale cost (wholesale_cost * quantity).
+    net_profit numeric::usd, # Net profit reported for the line.
+    net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping.
+    net_paid_inc_tax numeric::usd, # Net amount paid including sales tax.
+    coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
+    return_amount numeric::usd?, # Refund amount if the line was returned.
+    return_quantity int?, # Units returned for this line.
     row_counter int, # Constant 1, used for unconditional row counts.
 );
 
