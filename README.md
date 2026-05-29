@@ -1,7 +1,3 @@
-[![Website](https://img.shields.io/badge/INTRO-WEB-orange?)](https://trilogydata.dev/)
-[![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
-[![PyPI version](https://badge.fury.io/py/pytrilogy.svg)](https://badge.fury.io/py/pytrilogy)
-
 <div align="center">
   <br/>
   <a href="https://trilogydata.dev">
@@ -12,15 +8,21 @@
 </div>
 
 <p align="center">
+  <a href="https://trilogydata.dev/"><img src="https://img.shields.io/badge/INTRO-WEB-orange?" alt="Website" /></a>
+  <a href="https://discord.gg/Z4QSSuqGEd"><img src="https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord" alt="Discord" /></a>
+  <a href="https://badge.fury.io/py/pytrilogy"><img src="https://badge.fury.io/py/pytrilogy.svg" alt="PyPI version" /></a>
+</p>
+
+<p align="center">
   <b>Trilogy</b> is a batteries-included data-productivity toolkit that accelerates SQL-based analytics with a typed, expressive language. It's great for humans - and even better for agents.
-  Start with a single file and the rich surrounding ecosystem - CLI, studio, public models, python integration - let you move fast to scale.
+  Start with a single file and scale fast with a rich ecosystem, including UI and CLI tooling, public models to get started, rich python integration, and modern visuals and reporting.
   <br/>
 </p>
 
 
 ## Why Trilogy
 
-SQL is easy to start with and hard to manage and maintain at scale. 
+SQL is the best way to work with data with but shows strain at scale and as it ages. Can we have the pros without the cons? We believe you can.
 
 Trilogy adds a lightweight semantic layer to keep SQL fast through the full lifecycle of analytics - from exploration to production.
 It provides a full stack for interactive, visualization, and orchestration that can be adopted incrementally and without lock-in; 

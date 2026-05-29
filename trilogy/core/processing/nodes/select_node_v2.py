@@ -45,6 +45,7 @@ class SelectNode(StrategyNode):
         preexisting_conditions: BoolExpr | None = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
+        existence_concepts: List[BuildConcept] | None = None,
     ):
         # Derive partial/nullable from datasource columns when not explicitly provided
         if datasource and partial_concepts is None:
@@ -67,6 +68,7 @@ class SelectNode(StrategyNode):
             preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
             ordering=ordering,
+            existence_concepts=existence_concepts,
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
@@ -226,6 +228,7 @@ class SelectNode(StrategyNode):
             preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
+            existence_concepts=list(self.existence_concepts),
         )
 
 

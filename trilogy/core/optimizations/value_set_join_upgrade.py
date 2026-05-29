@@ -39,15 +39,17 @@ rename, hoist, or repartition intermediate CTEs.
 
 from __future__ import annotations
 
-from trilogy.core.enums import BooleanOperator, JoinType
+from trilogy.core.enums import JoinType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
-    BuildConditional,
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.processing.condition_utility import condition_implies
+from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
+    condition_implies,
+)
 
 _OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
 
@@ -138,12 +140,7 @@ def _accumulate_filter(
         sub = _accumulate_filter(parent, next_visited)
         if sub is not None:
             parts.append(sub)
-    if not parts:
-        return None
-    result = parts[0]
-    for atom in parts[1:]:
-        result = BuildConditional(left=result, right=atom, operator=BooleanOperator.AND)
-    return result
+    return combine_condition_atoms(parts)
 
 
 def _filters_equivalent(a: BoolExpr | None, b: BoolExpr | None) -> bool:

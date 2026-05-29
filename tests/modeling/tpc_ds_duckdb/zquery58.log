@@ -1,5 +1,5 @@
 query_id = "58"
-gen_length = 5260
+gen_length = 5241
 preql_size = 1410
 comp_size = 2250
 generated_sql = """
@@ -7,9 +7,12 @@ generated_sql = """
 WITH 
 quizzical as (
 SELECT
-    CASE WHEN \"date_date\".\"D_DATE\" = '2000-01-03' THEN \"date_date\".\"D_WEEK_SEQ\" ELSE NULL END as \"target_week_seq\"
+    \"date_date\".\"D_WEEK_SEQ\" as \"target_week_seq\"
 FROM
     \"memory\".\"date_dim\" as \"date_date\"
+WHERE
+    \"date_date\".\"D_DATE\" = '2000-01-03'
+
 GROUP BY
     1),
 questionable as (

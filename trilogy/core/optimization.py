@@ -2,10 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from trilogy.constants import CONFIG, logger
-from trilogy.core.enums import BooleanOperator, Derivation
-from trilogy.core.models.build import (
-    BuildConditional,
-)
+from trilogy.core.enums import Derivation
 from trilogy.core.models.execute import CTE, Join, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
     CollapseSingleParent,
@@ -22,6 +19,7 @@ from trilogy.core.optimizations import (
     UpgradeOuterFromKeySetEquivalence,
     optimization_log,
 )
+from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.utility import unique
@@ -397,10 +395,11 @@ def pass_up_metadata(downstream: CTE | UnionCTE, upstream: CTE | UnionCTE):
     )
     if downstream.condition:
         if upstream.condition:
-            upstream.condition = BuildConditional(
-                left=upstream.condition,
-                operator=BooleanOperator.AND,
-                right=downstream.condition,
+            # Dedup on AND-atoms: a root remap can re-pass a predicate the
+            # upstream CTE already carries, and stacking it raw compounds into
+            # `H AND H AND H` across optimizer loops (q31's HAVING).
+            upstream.condition = merge_conditions_and_dedup(
+                downstream.condition, upstream.condition
             )
         else:
             upstream.condition = downstream.condition

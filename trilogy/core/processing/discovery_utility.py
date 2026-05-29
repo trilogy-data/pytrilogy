@@ -2,7 +2,6 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import (
-    BooleanOperator,
     Derivation,
     FunctionType,
     Granularity,
@@ -11,7 +10,6 @@ from trilogy.core.enums import (
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
@@ -21,8 +19,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
-    condition_implies,
-    decompose_condition,
+    preserved_non_partial_conditions,
 )
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.grain_utility import (
@@ -524,38 +521,6 @@ def get_inputs_that_require_pushdown(
     ]
 
 
-def _extract_routing_atoms(
-    conditions: BuildWhereClause, environment: BuildEnvironment
-) -> BuildWhereClause | None:
-    """Return the subset of condition atoms implied by a datasource's non_partial_for.
-
-    Preserved as WHERE filters (not flattened into projections) so that
-    partial-datasource exact-match resolution works downstream.
-    """
-    atoms = decompose_condition(conditions.conditional)
-    atom_str_map = {str(a): a for a in atoms}
-    preserved = []
-    seen: set[str] = set()
-    for ds in environment.datasources.values():
-        if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
-            continue
-        if not condition_implies(
-            conditions.conditional, ds.non_partial_for.conditional
-        ):
-            continue
-        for np_atom in decompose_condition(ds.non_partial_for.conditional):
-            key = str(np_atom)
-            if key in atom_str_map and key not in seen:
-                preserved.append(atom_str_map[key])
-                seen.add(key)
-    if not preserved:
-        return None
-    cond = preserved[0]
-    for a in preserved[1:]:
-        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
-    return BuildWhereClause(conditional=cond)
-
-
 def _resolve_condition_disposition(
     conditions: BuildWhereClause | None,
     original_conditions: BuildWhereClause | None,
@@ -587,7 +552,9 @@ def _resolve_condition_disposition(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are materialized roots, injecting condition inputs into candidate list"
         )
         routing = (
-            _extract_routing_atoms(conditions, environment) if environment else None
+            preserved_non_partial_conditions(conditions, environment)
+            if environment
+            else None
         )
         return True, routing
     elif conditions and force_conditions:
@@ -596,12 +563,14 @@ def _resolve_condition_disposition(
         )
         routing = conditions if force_pushdown_to_complex_input else None
         if routing is None and original_conditions and environment:
-            routing = _extract_routing_atoms(original_conditions, environment)
+            routing = preserved_non_partial_conditions(original_conditions, environment)
         return True, routing
     else:
         # No consumption — recover routing atoms if conditions were already consumed
         if conditions is None and original_conditions and environment:
-            return False, _extract_routing_atoms(original_conditions, environment)
+            return False, preserved_non_partial_conditions(
+                original_conditions, environment
+            )
         return False, conditions
 
 

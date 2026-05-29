@@ -66,9 +66,9 @@ select
     l0_filtered.class_l0 as i_class_id,
     l0_filtered.category_l0 as i_category_id,
     sum(l0_filtered.bucket_sum_l0)
-            by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 as sum_sales,
+            by rollup() as sum_sales,
     sum(l0_filtered.bucket_count_l0)
-            by rollup l0_filtered.channel_l0, l0_filtered.brand_l0, l0_filtered.class_l0, l0_filtered.category_l0 as sum_number_sales,
+            by rollup() as sum_number_sales,
 order by
     channel asc nulls first,
     i_brand_id asc nulls first,
