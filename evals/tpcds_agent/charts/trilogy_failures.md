@@ -823,7 +823,7 @@ limit 100;
   non-output grain, write `agg(x) by grain` inline in WHERE.
   ```
 
-### `join-resolution`
+### `syntax-parse`
 
 - `trilogy run query05.preql`
 
@@ -1029,7 +1029,7 @@ limit 100;`
   partial draft.
   ```
 
-### `undefined-concept`
+### `file-not-found`
 
 - `trilogy run query06.preql`
 

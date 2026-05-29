@@ -39,9 +39,10 @@ macho as (
 SELECT
     \"ws_date_date\".\"D_QOY\" as \"ws_date_quarter\",
     \"ws_date_date\".\"D_YEAR\" as \"ws_date_year\",
-    \"ws_web_sales\".\"WS_EXT_SALES_PRICE\" as \"ws_ext_sales_price\",
     \"ws_web_sales\".\"WS_ITEM_SK\" as \"ws_item_id\",
-    \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\"
+    \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\",
+    \"ws_web_sales\".\"WS_QUANTITY\" as \"ws_quantity\",
+    \"ws_web_sales\".\"WS_SALES_PRICE\" as \"ws_sales_price\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
@@ -52,8 +53,9 @@ juicy as (
 SELECT
     \"ss_date_date\".\"D_QOY\" as \"ss_date_quarter\",
     \"ss_date_date\".\"D_YEAR\" as \"ss_date_year\",
-    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\",
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_id\",
+    \"ss_store_sales\".\"SS_QUANTITY\" as \"ss_quantity\",
+    \"ss_store_sales\".\"SS_SALES_PRICE\" as \"ss_sales_price\",
     \"ss_store_sales\".\"SS_TICKET_NUMBER\" as \"ss_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
@@ -112,7 +114,7 @@ SELECT
     :_q76_results_channel_b as \"channel\",
     :_q76_results_col_name_b as \"col_name\",
     sum(\"kaput\".\"ws_row_flag\") as \"_q76_results_cnt_b\",
-    sum(\"macho\".\"ws_ext_sales_price\") as \"_q76_results_amt_b\"
+    sum(\"macho\".\"ws_sales_price\" * \"macho\".\"ws_quantity\") as \"_q76_results_amt_b\"
 FROM
     \"kaput\"
     INNER JOIN \"macho\" on \"kaput\".\"ws_item_id\" = \"macho\".\"ws_item_id\" AND \"kaput\".\"ws_order_number\" = \"macho\".\"ws_order_number\"
@@ -130,7 +132,7 @@ SELECT
     \"ss_item_items\".\"I_CATEGORY\" as \"i_category\",
     :_q76_results_channel_a as \"channel\",
     :_q76_results_col_name_a as \"col_name\",
-    sum(\"juicy\".\"ss_ext_sales_price\") as \"_q76_results_amt_a\",
+    sum(\"juicy\".\"ss_sales_price\" * \"juicy\".\"ss_quantity\") as \"_q76_results_amt_a\",
     sum(\"young\".\"ss_row_flag\") as \"_q76_results_cnt_a\"
 FROM
     \"young\"
