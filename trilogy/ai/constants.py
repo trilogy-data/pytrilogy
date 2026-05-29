@@ -17,11 +17,10 @@ SELECT RULES:
 - Never write the `distinct` keyword. `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count the distinct values of a non-key property.
 - All fields exist in a global namespace; field paths look like `order.product.id`. Always use the full path. NEVER include a from clause.
 - If a field has a grain defined, and that grain is not in the query output, aggregate it to get desired result. 
-- If a field has a 'alias_for' defined, it is shorthand for that calculation. Use the field name instead of the calculation in your query to be concise. 
 - Newly created fields at the output of the select must be aliased with as (e.g. `sum(births) as all_births`). 
 - Aliases cannot happen inside calculations or in the where/having/order clause. Never alias fields with existing names. 'sum(revenue) as total_revenue' is valid, but '(sum(births) as total_revenue) +1 as revenue_plus_one' is not.
-- Implicit grouping: NEVER include a group by clause. Grouping is by non-aggregated fields in the SELECT clause.
-- You can dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
+- Automatic groups. NEVER include the GROUP BY clause for a select. Grouping is automatic by non-aggregated fields in the SELECT clause.
+- You CAN dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens (`by (substring(phone, 1, 2), upper(name))`). Use parens whenever a `by` entry is anything other than a simple identifier — function calls, casts, arithmetic, etc. — e.g. `avg(price) by (substring(phone, 1, 2))`. Without the parens the parser will reject the expression form.
 - Histograms / bucket-of-aggregates (counting entities by a per-entity metric): define the per-key metric with `by`, then SELECT it alongside `count(<other_key>)` — the outer select buckets by the metric and counts how many entities fall into each bucket. Wrap with `coalesce(..., 0)` to include entities whose underlying rows are missing (the left-join equivalent — entities with zero matching child rows stay in the histogram). Example: bucket customers by how many of their orders match a predicate, including customers with zero matches:
       auto orders_per_customer <- count(orders.id ? not orders.comment like '%X%') by customer.id;
@@ -73,21 +72,45 @@ SELECT RULES:
 - Use `::type` casting, e.g., `"2020-01-01"::date`.
 - Date_parts have no quotes; use `date_part(order_date, year)` instead of `date_part(order_date, 'year')`. Prefer idiomatic function casts (year(order_date) instead of date_part(order_date, year)) when possible.
 - Comments use `#` only, per line.
-- Two example queries: "where year between 1940 and 1950
-  select
+- For complex logic, break down your query into concept declarations that can be resued
+- Two example queries: 
+
+Query 1: For names with more than 10 births in vermont ever, find the top 10 names by total births 
+across the US in the 1940s and 1950s for Idaho, along with their Vermont births and ranks within Idaho
+and nationally.
+```
+# break up a query by defining resusable components
+auto all_births <- sum(births);
+
+# can force an aggregate rather than getting the implicit
+# aggregate of the select, so here we get briths by name, no state
+auto births_by_name_usa_wide <- sum(births) by name;
+
+# can push filters into aggregates, especially
+# useful for where filtering.
+auto vermont_births <- sum(births ? state = 'VT');
+
+where year between 1940 and 1950
+and vermont_births>10
+and state = 'ID'
+SELECT
       name,
       state,
-      sum(births) AS all_births,
-      sum(births ? state = 'VT') AS vermont_births,
+      all_births,
+      vermont_births,
       rank name over state by all_births desc AS state_rank,
-      rank name by sum(births) by name desc AS all_rank
+      rank name by births_by_name_usa_wide desc AS all_rank
   having 
       all_rank<11
-      and state = 'ID'
+      
   order by 
     all_rank asc
-    limit 5;", "# for carriers with significant flights between 2000 and 2002, find the 
-# carriers with average daily flights >10 between 2002 and january 31 2010
+    limit 5;
+```
+    
+Query 2: for carriers with significant flights between 2000 and 2002, find the 
+carriers with average daily flights >10 between 2002 and january 31 2010
+``
 where dep_time between '2002-01-01'::datetime and '2010-01-31'::datetime
 and count(id2 ? year(dep_time::datetime) between 2000 and 2002) by carrier.name > 1000
   select
@@ -97,7 +120,8 @@ and count(id2 ? year(dep_time::datetime) between 2000 and 2002) by carrier.name 
  having
     average_daily_flights > 10
   order by 
-    total_flights desc;"""
+    total_flights desc;"
+"""
 
 
 def render_function(function_type: FunctionType, example: str | None = None):

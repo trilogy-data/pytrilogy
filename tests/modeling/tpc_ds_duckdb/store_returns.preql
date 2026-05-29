@@ -4,14 +4,16 @@
 import std.money;
 
 import store as store;
-import store_sales as store_sales;
+
 import item as item;
 import date as return_date;
 import time as time;
 import customer as customer;
 import customer_demographic as customer_demographic;
 
-property <item.id, store_sales.ticket_number>.return_amount numeric::usd; # Dollar amount refunded to the customer for the returned item (USD).
+key ticket_number int; # Surrogate key uniquely identifying a store sales ticket.
+
+property <item.id, ticket_number>.return_amount numeric::usd; # Dollar amount refunded to the customer for the returned item (USD).
 
 datasource store_returns (
     SR_RETURNED_DATE_SK: return_date.id, # FK to the date the item was returned.
@@ -20,8 +22,8 @@ datasource store_returns (
     SR_CUSTOMER_SK: customer.id, # FK to the customer initiating the return.
     SR_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at return time (optional).
     SR_RETURN_AMT: return_amount,
-    SR_TICKET_NUMBER: store_sales.ticket_number, # FK to the original store-sale ticket the return is associated with.
+    SR_TICKET_NUMBER: ticket_number, # FK to the original store-sale ticket the return is associated with.
     SR_STORE_SK: store.id, # FK to the store the return was processed at.
 )
-grain (item.id, store_sales.ticket_number)
+grain (item.id, ticket_number)
 address memory.store_returns;

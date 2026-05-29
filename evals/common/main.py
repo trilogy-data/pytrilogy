@@ -477,6 +477,12 @@ def run(spec: BenchmarkSpec) -> int:
     per_query_scores: list[scoring.QueryResult | None] = [None] * len(active)
     worker_pool: list[Path] = list(worker_dirs)
     pool_lock = threading.Lock()
+    # True wall clock for the agent phase — distinct from the sum-of-per-query
+    # `duration` below. At concurrency=1 they match; at concurrency>1 the wall
+    # clock is shorter because queries run in parallel. We report both: wall
+    # for "how long did this take", sum/N for "how long does an average query
+    # take" (which we want independent of parallelism).
+    agent_phase_t0 = time.perf_counter()
 
     def acquire_worker() -> Path:
         with pool_lock:
@@ -523,6 +529,7 @@ def run(spec: BenchmarkSpec) -> int:
                 "exit_code": 0,
                 "timed_out": any(r.get("timed_out") for r in done_runs),
                 "duration": sum(r["duration"] for r in done_runs),
+                "wall_duration": time.perf_counter() - agent_phase_t0,
                 "output": "",
             }
             metrics_partial = scoring.aggregate_metrics(per_query_metrics)
@@ -619,11 +626,17 @@ def run(spec: BenchmarkSpec) -> int:
             for fut in as_completed(futures):
                 fut.result()
 
+    agent_phase_wall = time.perf_counter() - agent_phase_t0
     metrics = scoring.aggregate_metrics(per_query_metrics)
     agent_run = {
         "exit_code": 0 if all(r["exit_code"] == 0 for r in per_query_runs) else 1,
         "timed_out": any(r.get("timed_out") for r in per_query_runs),
+        # `duration` is the sum across per-query agent subprocesses — useful
+        # for "avg per query" but NOT the user-facing elapsed time when
+        # concurrency>1. `wall_duration` is the true elapsed wall clock of
+        # the agent phase, which collapses parallel work.
         "duration": sum(r["duration"] for r in per_query_runs),
+        "wall_duration": agent_phase_wall,
         "output": "\n".join(
             f"=== q{r['id']:02d} (exit {r['exit_code']}, {r['duration']:.0f}s) ===\n"
             f"{r['output']}"

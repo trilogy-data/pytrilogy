@@ -164,3 +164,111 @@ SELECT
 having
     filtered_cst >1000;
     """)
+
+
+_HAVING_AGG_SCHEMA = """key store_id int;
+key customer_id int;
+property <store_id, customer_id>.amount float;
+
+datasource sales (
+    store_id: store_id,
+    customer_id: customer_id,
+    amount: amount)
+    grain (store_id, customer_id)
+    address sales;
+"""
+
+
+def test_having_rejects_off_grain_aggregate_not_in_select():
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    raised = None
+    try:
+        parse(
+            _HAVING_AGG_SCHEMA
+            + """
+select
+    store_id,
+    customer_id,
+    sum(amount) as total
+having sum(amount) > 1.2 * sum(amount) by store_id;
+"""
+        )
+    except Exception as e:
+        raised = e
+    assert isinstance(
+        raised, InvalidSyntaxException
+    ), f"expected InvalidSyntaxException, got {type(raised).__name__}: {raised}"
+    msg = str(raised)
+    assert "HAVING" in msg and "sum(local.amount) by local.store_id" in msg, msg
+
+
+def test_having_rejects_nested_aggregate_not_in_select():
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    raised = None
+    try:
+        parse(
+            _HAVING_AGG_SCHEMA
+            + """
+select
+    store_id,
+    customer_id,
+    sum(amount) as total
+having sum(amount) > 1.2 * avg(sum(amount) by store_id);
+"""
+        )
+    except Exception as e:
+        raised = e
+    assert isinstance(
+        raised, InvalidSyntaxException
+    ), f"expected InvalidSyntaxException, got {type(raised).__name__}: {raised}"
+    msg = str(raised)
+    assert "HAVING" in msg and "avg(sum(local.amount) by local.store_id)" in msg, msg
+
+
+def test_having_substitutes_matching_off_grain_aggregate_with_alias():
+    from trilogy import Dialects
+
+    text = (
+        _HAVING_AGG_SCHEMA
+        + """
+select
+    store_id,
+    customer_id,
+    sum(amount) as total,
+    sum(amount) by store_id as store_total
+having sum(amount) > 1.2 * sum(amount) by store_id;
+"""
+    )
+    sql = Dialects.DUCK_DB.default_executor().generate_sql(text)
+    joined = "\n".join(sql)
+    assert "INVALID_REFERENCE" not in joined, joined
+    assert '"store_total"' in joined, joined
+    # No nested aggregates in the rendered SQL.
+    import re
+
+    assert not re.search(r"\b(sum|avg|min|max|count)\s*\(\s*(sum|avg|min|max|count)\s*\(", joined), joined
+
+
+def test_having_substitutes_matching_nested_aggregate_with_alias():
+    from trilogy import Dialects
+
+    text = (
+        _HAVING_AGG_SCHEMA
+        + """
+select
+    store_id,
+    customer_id,
+    sum(amount) as total,
+    avg(sum(amount) by store_id) as avg_store_total
+having sum(amount) > 1.2 * avg(sum(amount) by store_id);
+"""
+    )
+    sql = Dialects.DUCK_DB.default_executor().generate_sql(text)
+    joined = "\n".join(sql)
+    assert "INVALID_REFERENCE" not in joined, joined
+    assert '"avg_store_total"' in joined, joined
+    import re
+
+    assert not re.search(r"\b(sum|avg|min|max|count)\s*\(\s*(sum|avg|min|max|count)\s*\(", joined), joined

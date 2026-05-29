@@ -41,24 +41,26 @@ def show_execution_info(
     debug_file: str | None = None,
 ) -> None:
     """Display execution information in a clean format."""
-    if debug and debug_file:
-        debug_str = f"enabled (file: {debug_file})"
-    elif debug:
-        debug_str = "enabled"
-    else:
-        debug_str = "disabled"
+    debug_str = (
+        f"enabled (file: {debug_file})" if debug and debug_file
+        else "enabled" if debug
+        else None
+    )
     if _core.RICH_AVAILABLE and _core.console is not None:
         info_text = (
             f"Input: {input_type} ({input_name})\n"
-            f"Dialect: [cyan]{dialect}[/cyan]\n"
-            f"Debug: {debug_str}"
+            f"Dialect: [cyan]{dialect}[/cyan]"
         )
+        if debug_str:
+            info_text += f"\nDebug: {debug_str}"
         if config_path:
             info_text += f"\nConfig: [dim]{config_path}[/dim]"
         panel = Panel.fit(info_text, style="blue", title="Execution Info")
         _core.console.print(panel)
     else:
-        msg = f"Executing {input_type}: {input_name} | Dialect: {dialect} | Debug: {debug_str}"
+        msg = f"Executing {input_type}: {input_name} | Dialect: {dialect}"
+        if debug_str:
+            msg += f" | Debug: {debug_str}"
         if config_path:
             msg += f" | Config: {config_path}"
         print_info(msg)

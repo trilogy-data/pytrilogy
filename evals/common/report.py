@@ -55,7 +55,25 @@ def build_report(
         "agent": {
             "exit_code": agent_run["exit_code"],
             "timed_out": agent_run["timed_out"],
+            # `duration_seconds`: sum of per-query agent subprocess durations.
+            # Equal to wall time at concurrency=1; larger when parallelised.
+            # Use this for "agent CPU time" or to derive avg-per-query.
             "duration_seconds": round(agent_run["duration"], 1),
+            # `wall_duration_seconds`: true elapsed wall clock of the agent
+            # phase — collapses parallel work so it actually reflects "how
+            # long the run took". Falls back to duration when an older agent
+            # dict (e.g. spliced from a prior run) lacks the field.
+            "wall_duration_seconds": round(
+                agent_run.get("wall_duration", agent_run["duration"]), 1
+            ),
+            # `avg_query_seconds`: per-query agent time averaged across the
+            # queries that actually ran — concurrency-independent so two
+            # runs at different parallelism levels are comparable.
+            "avg_query_seconds": (
+                round(agent_run["duration"] / len(query_results), 1)
+                if query_results
+                else 0.0
+            ),
             "iterations": metrics.iterations,
             "tool_calls_total": metrics.tool_calls_total,
             "tool_calls_by_name": metrics.tool_calls_by_name,
@@ -109,7 +127,13 @@ def render_markdown(spec: BenchmarkSpec, report: dict) -> str:
     )
     out.append(f"- Status breakdown: {summary['status_breakdown']}")
     timed = "  (TIMED OUT)" if agent["timed_out"] else ""
-    out.append(f"- Agent wall time: {agent['duration_seconds']}s{timed}")
+    wall = agent.get("wall_duration_seconds", agent["duration_seconds"])
+    avg = agent.get("avg_query_seconds")
+    out.append(
+        f"- Wall time: {wall}s{timed}  |  "
+        f"Agent time: {agent['duration_seconds']}s"
+        + (f"  |  Avg/query: {avg}s" if avg is not None else "")
+    )
     out.append(f"- Agent exit code: {agent['exit_code']}")
     out.append("")
     out.append("## Agent harness metrics")

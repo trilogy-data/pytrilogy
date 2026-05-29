@@ -118,6 +118,10 @@ def _calculate_grain(
 
 
 def _concept_address(c: Any) -> str:
+    if isinstance(c, (AggregateWrapper, Function)):
+        nested = _render_aggregate(c)
+        if nested:
+            return nested
     return c.address if hasattr(c, "address") else str(c)
 
 
@@ -148,7 +152,7 @@ def _aggregate_full_signature(
 def _render_aggregate(node: Any) -> str:
     sig = _aggregate_full_signature(node)
     if sig is None:
-        return str(node)
+        return ""
     op, args, by = sig
     op_name = (op.value if hasattr(op, "value") else str(op)).lower()
     rendered = f"{op_name}({', '.join(args)})"
@@ -174,12 +178,12 @@ def _select_aggregate_outputs(
     return results
 
 
-def _collect_where_aggregates(node: Any) -> list[Any]:
-    """Walk a WHERE conditional tree and return aggregate nodes.
+def _collect_condition_aggregates(node: Any) -> list[Any]:
+    """Walk a WHERE/HAVING conditional tree and return outer aggregate nodes.
 
     Recognizes both ``AggregateWrapper`` and bare ``Function`` calls whose operator
     is an aggregate function. Does not descend into the inner argument expression
-    of an aggregate (a nested aggregate would be invalid SQL anyway).
+    of an aggregate — nested aggregates are matched by the outer signature.
     """
     found: list[Any] = []
     if isinstance(node, AggregateWrapper):
@@ -191,20 +195,20 @@ def _collect_where_aggregates(node: Any) -> list[Any]:
         found.append(node)
         return found
     if isinstance(node, Comparison):
-        found.extend(_collect_where_aggregates(node.left))
-        found.extend(_collect_where_aggregates(node.right))
+        found.extend(_collect_condition_aggregates(node.left))
+        found.extend(_collect_condition_aggregates(node.right))
     elif isinstance(node, Conditional):
-        found.extend(_collect_where_aggregates(node.left))
-        found.extend(_collect_where_aggregates(node.right))
+        found.extend(_collect_condition_aggregates(node.left))
+        found.extend(_collect_condition_aggregates(node.right))
     elif isinstance(node, Parenthetical):
-        found.extend(_collect_where_aggregates(node.content))
+        found.extend(_collect_condition_aggregates(node.content))
     elif isinstance(node, Between):
-        found.extend(_collect_where_aggregates(node.left))
-        found.extend(_collect_where_aggregates(node.low))
-        found.extend(_collect_where_aggregates(node.high))
+        found.extend(_collect_condition_aggregates(node.left))
+        found.extend(_collect_condition_aggregates(node.low))
+        found.extend(_collect_condition_aggregates(node.high))
     elif isinstance(node, Function):
         for arg in node.arguments:
-            found.extend(_collect_where_aggregates(arg))
+            found.extend(_collect_condition_aggregates(arg))
     return found
 
 
@@ -225,7 +229,7 @@ def _validate_where_aggregate_matches_select(
     if not select_aggs:
         return
     sig_to_alias = {sig: addr for sig, addr in select_aggs}
-    for node in _collect_where_aggregates(select.where_clause.conditional):
+    for node in _collect_condition_aggregates(select.where_clause.conditional):
         sig = _aggregate_full_signature(node)
         if sig is None or sig not in sig_to_alias:
             continue
@@ -237,6 +241,135 @@ def _validate_where_aggregate_matches_select(
             f"clause - e.g. `having {alias} > ...`"
             + (f"; Line: {line_no}" if line_no else "")
         )
+
+
+def _aggregate_node_has_nested_aggregate(node: Any) -> bool:
+    """True if the aggregate node's argument expression contains another aggregate.
+
+    Nested aggregates (``avg(sum(x) by ...)``) cannot be rendered as inline SQL
+    and must be materialized via a SELECT alias.
+    """
+    if isinstance(node, AggregateWrapper):
+        args: list[Any] = list(node.function.arguments)
+    elif isinstance(node, Function) and (
+        node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+    ):
+        args = list(node.arguments)
+    else:
+        return False
+    stack: list[Any] = list(args)
+    while stack:
+        cur = stack.pop()
+        if _aggregate_full_signature(cur) is not None:
+            return True
+        if isinstance(cur, Parenthetical):
+            stack.append(cur.content)
+        elif isinstance(cur, Function):
+            stack.extend(cur.arguments)
+    return False
+
+
+def _substitute_having_aggregates(
+    node: Any,
+    sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef],
+) -> Any:
+    """Rewrite a HAVING conditional tree, replacing matched aggregates with
+    ``ConceptRef`` to the SELECT alias. Aggregates are leaves in our walk (we
+    do not descend into their argument expressions)."""
+    sig = _aggregate_full_signature(node)
+    if sig is not None:
+        ref = sig_to_ref.get(sig)
+        if ref is not None:
+            return ref
+        return node
+    if isinstance(node, Comparison):
+        return Comparison(
+            left=_substitute_having_aggregates(node.left, sig_to_ref),
+            right=_substitute_having_aggregates(node.right, sig_to_ref),
+            operator=node.operator,
+        )
+    if isinstance(node, Conditional):
+        return Conditional(
+            left=_substitute_having_aggregates(node.left, sig_to_ref),
+            right=_substitute_having_aggregates(node.right, sig_to_ref),
+            operator=node.operator,
+        )
+    if isinstance(node, Parenthetical):
+        return Parenthetical(
+            content=_substitute_having_aggregates(node.content, sig_to_ref)
+        )
+    if isinstance(node, Between):
+        return Between(
+            left=_substitute_having_aggregates(node.left, sig_to_ref),
+            low=_substitute_having_aggregates(node.low, sig_to_ref),
+            high=_substitute_having_aggregates(node.high, sig_to_ref),
+        )
+    if isinstance(node, Function):
+        new_args = [_substitute_having_aggregates(a, sig_to_ref) for a in node.arguments]
+        if all(a is b for a, b in zip(new_args, node.arguments)):
+            return node
+        replacement = Function.__new__(Function)
+        replacement.__dict__.update(node.__dict__)
+        replacement.arguments = new_args
+        return replacement
+    return node
+
+
+def _validate_having_aggregates_match_select(
+    select: SelectStatement, context: RuleContext, line_no: int | None
+) -> None:
+    """Reject inline HAVING aggregates whose signature is not in the SELECT.
+
+    HAVING filters rows of the post-aggregation projection, so any aggregate it
+    references must already exist in the projection (matching by operator, args,
+    and ``by`` grain). An off-grain aggregate like ``avg(sum(x) by store.id)``
+    that does not match a SELECT item has no place to be materialized at the
+    SELECT grain — the renderer would otherwise emit nested aggregates.
+
+    For aggregates whose signature *does* match a SELECT alias, rewrite the
+    HAVING tree to reference the alias directly. Without this the renderer
+    re-inlines the AggregateWrapper, which breaks when intermediate CTEs have
+    already aggregated away the row-level inputs.
+    """
+    if not select.having_clause:
+        return
+    select_aggs = _select_aggregate_outputs(select)
+    sig_to_alias_addr = {sig: addr for sig, addr in select_aggs}
+    for node in _collect_condition_aggregates(select.having_clause.conditional):
+        sig = _aggregate_full_signature(node)
+        if sig is None or sig in sig_to_alias_addr:
+            continue
+        _, _, by = sig
+        # Bare aggregates without an explicit ``by`` (and without a nested
+        # aggregate input) compute at the SELECT grain; the renderer can
+        # inline them safely from the same source columns. Reject only the
+        # cases the renderer can't handle inline: off-grain ``by`` clauses
+        # and nested aggregates.
+        if not by and not _aggregate_node_has_nested_aggregate(node):
+            continue
+        rendered = _render_aggregate(node)
+        raise InvalidSyntaxException(
+            f"HAVING clause aggregate `{rendered}` is not in the SELECT "
+            f"projection (line {line_no}). HAVING can only filter on "
+            f"off-grain or nested aggregates that are also computed in the "
+            f"SELECT. Fix one of: (a) add it to SELECT — prefix with `--` to "
+            f"keep it out of the output rows, e.g. `select ..., --{rendered}`; "
+            f"(b) move the filter to WHERE — for an aggregate condition on a "
+            f"non-output grain, write the aggregate inline as `agg(x) by grain` "
+            f"directly in WHERE."
+        )
+    sig_to_ref: dict[tuple[Any, tuple[str, ...], tuple[str, ...]], ConceptRef] = {}
+    for sig, addr in sig_to_alias_addr.items():
+        alias_concept = context.concepts.get(addr)
+        if alias_concept is None:
+            continue
+        sig_to_ref[sig] = alias_concept.reference
+    if sig_to_ref:
+        new_conditional = _substitute_having_aggregates(
+            select.having_clause.conditional, sig_to_ref
+        )
+        if new_conditional is not select.having_clause.conditional:
+            select.having_clause.conditional = new_conditional
 
 
 def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
@@ -296,6 +429,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                     f"on a non-output grain, write the aggregate inline as "
                     f"`agg(x) by grain` directly in WHERE."
                 )
+        _validate_having_aggregates_match_select(select, context, line_no)
     if select.order_by:
         for cref in select.order_by.concept_arguments:
             if cref.address not in allowed_addresses:

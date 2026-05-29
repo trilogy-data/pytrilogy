@@ -16,6 +16,7 @@ from typing import Sequence
 
 import click
 
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Concept
 from trilogy.core.models.environment import Environment
 from trilogy.parser import parse_text
@@ -190,20 +191,45 @@ def _emit_flat_line(
         )
 
 
-def _emit_groups(concept_items: list[tuple[str, Concept]]) -> None:
-    """Flat per-concept listing — one (or two, when described) lines per
-    concept. Ordering preserves the visual grouping of the prior nested
-    layout *without* indentation: keys come first, each immediately followed
-    by its single-key properties (the common dim-attr case); compound-grain
-    properties group together by grain; metrics and others (constants /
-    rowsets / unbound derivations) follow.
+def _emit_groups(
+    concept_items: list[tuple[str, Concept]], expand_imports: bool = False
+) -> None:
+    """Two-tier listing: this file's own concepts (``namespace == 'local'``)
+    in full per-concept detail; imported namespaces collapsed to a name-only
+    listing with drill-down hints. The collapse is the default because a
+    fact file like ``web_sales`` imports 8+ dimensions, each contributing
+    30–100 concepts — pages of inherited noise that drown out the local
+    declarations the agent is actually inspecting.
 
-    Each line is ``TAG    address : type  [@grain]`` with the optional
+    Pass ``expand_imports=True`` (CLI: ``--expand-imports``) to render
+    everything in full; ``--regex`` also bypasses the collapse since the
+    user is already filtering deliberately.
+
+    Each detailed line is ``TAG    address : type  [@grain]`` with optional
     description on the next line at the address column. The agent reads the
     grain relationship off the ``@grain`` suffix without traversing indented
-    blocks — which scales better than nesting on long fact files (web_sales
-    hits 46 namespaces / 456 concepts; deep indent loses the parent-namespace
-    context past one screenful)."""
+    blocks — scales better than nesting on long fact files (web_sales hits
+    46 namespaces / 456 concepts; deep indent loses parent-namespace context
+    past one screenful)."""
+    if expand_imports:
+        local_items = concept_items
+        imported_items: list[tuple[str, Concept]] = []
+    else:
+        local_items = [
+            (addr, c) for addr, c in concept_items if c.namespace == DEFAULT_NAMESPACE
+        ]
+        imported_items = [
+            (addr, c) for addr, c in concept_items if c.namespace != DEFAULT_NAMESPACE
+        ]
+    _emit_local_groups(local_items)
+    if imported_items:
+        _emit_imported_summary(imported_items)
+
+
+def _emit_local_groups(concept_items: list[tuple[str, Concept]]) -> None:
+    """Render the full per-concept layout for one set of concepts (typically
+    the local ones). Pulled out so the import-collapsing path can reuse it
+    on the local slice without duplicating the namespace bucketing."""
     by_ns: dict[str, list[tuple[str, Concept]]] = defaultdict(list)
     for addr, c in concept_items:
         display = _display_address(addr)
@@ -224,6 +250,56 @@ def _emit_groups(concept_items: list[tuple[str, Concept]]) -> None:
         click.echo()
         click.echo(f"# {ns}")
         _emit_namespace(ns, by_ns[ns])
+
+
+_IMPORT_LIST_WIDTH = 100
+
+
+def _emit_imported_summary(imported_items: list[tuple[str, Concept]]) -> None:
+    """Compact rendering of imported namespaces: one block per namespace
+    with the concept count and a comma-separated list of full addresses,
+    wrapped at ``_IMPORT_LIST_WIDTH``. No purpose / datatype / description
+    — the agent drills in with ``--regex`` if it wants those.
+
+    Grouped by ``concept.namespace`` rather than by address prefix so the
+    bucket matches what the agent will type to reach the concepts (which is
+    the namespace, not a regex over the address). For a single-import chain
+    like ``import raw.customer as customer``, that's ``customer``; deeper
+    chains keep their full dotted namespace (``store_sales.customer``)."""
+    by_ns: dict[str, list[str]] = defaultdict(list)
+    for addr, c in imported_items:
+        by_ns[c.namespace].append(_display_address(addr))
+    click.echo()
+    print_info(
+        f"Imported namespaces ({len(by_ns)} namespaces, "
+        f"{len(imported_items)} concepts — collapsed)"
+    )
+    click.echo(
+        "# Pass --expand-imports for full detail, "
+        "or --regex '<namespace>\\.' to drill into one."
+    )
+    for ns in sorted(by_ns):
+        # Strip the shared `<ns>.` prefix from each address — the header
+        # already announces the prefix, so repeating it on every leaf wastes
+        # tokens. Agent reaches a concept by writing `<ns>.<leaf>`; that
+        # reconstruction is mechanical from the header + the bare leaf.
+        prefix = f"{ns}."
+        leaves = sorted(
+            addr[len(prefix) :] if addr.startswith(prefix) else addr
+            for addr in by_ns[ns]
+        )
+        click.echo()
+        click.echo(f"# {ns}.* ({len(leaves)} concepts) — reach as {ns}.<leaf>")
+        click.echo(
+            textwrap.fill(
+                ", ".join(leaves),
+                width=_IMPORT_LIST_WIDTH,
+                initial_indent="  ",
+                subsequent_indent="  ",
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+        )
 
 
 def _emit_namespace(ns: str, items: list[tuple[str, Concept]]) -> None:
@@ -323,6 +399,19 @@ def _emit_namespace(ns: str, items: list[tuple[str, Concept]]) -> None:
     default=False,
     help="Include internal/builtin concepts (hidden by default).",
 )
+@click.option(
+    "--expand-imports",
+    is_flag=True,
+    default=False,
+    help=(
+        "Render imported concepts in full detail instead of collapsing them "
+        "to a name-only listing. The default collapses imports because a fact "
+        "file typically pulls in 5-10 dimensions, each contributing dozens of "
+        "concepts; the collapse keeps the local declarations readable. Passing "
+        "--regex also bypasses the collapse — when you're filtering you want "
+        "matching imports in full."
+    ),
+)
 def explore(
     path: Path,
     show: str,
@@ -330,6 +419,7 @@ def explore(
     regex_patterns: tuple[str, ...],
     include_hidden: bool,
     include_builtins: bool,
+    expand_imports: bool,
 ) -> None:
     """Parse PATH and list concepts, datasources, and imports from its environment.
 
@@ -369,7 +459,10 @@ def explore(
         ]
 
     if show in ("all", "groups"):
-        _emit_groups(concept_items)
+        # `--regex` is a deliberate filter — show matches in full even if
+        # imported, so the agent doesn't have to re-issue with --expand-imports.
+        expand = expand_imports or bool(regex_patterns)
+        _emit_groups(concept_items, expand_imports=expand)
 
     if show in ("all", "concepts"):
         rows = [_concept_row(k, v) for k, v in sorted(concept_items)]

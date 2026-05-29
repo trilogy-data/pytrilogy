@@ -330,13 +330,27 @@ def _plot_outcomes(ax, breakdown: dict[str, int]) -> None:
 def _plot_metrics(ax, report: dict) -> None:
     meta, agent, summary = report["meta"], report["agent"], report["summary"]
     tok = agent["tokens"]
+    # `wall_duration_seconds` is the true elapsed wall clock; falls back to
+    # the sum-of-per-query `duration_seconds` for reports rendered before the
+    # field was added. `avg_query_seconds` is concurrency-independent so it
+    # stays comparable across runs at different parallelism levels.
+    wall = agent.get("wall_duration_seconds", agent["duration_seconds"])
+    avg = agent.get(
+        "avg_query_seconds",
+        (
+            round(agent["duration_seconds"] / meta["num_queries"], 1)
+            if meta.get("num_queries")
+            else 0.0
+        ),
+    )
     rows = [
         (
             "pass rate",
             f"{summary['pass_count']}/{meta['num_queries']}"
             f"  ({summary['pass_rate'] * 100:.0f}%)",
         ),
-        ("wall time", f"{agent['duration_seconds']:.0f}s"),
+        ("wall time", f"{wall:.0f}s"),
+        ("avg/query", f"{avg:.0f}s"),
         ("LLM iterations", str(agent["iterations"])),
         ("tool calls", str(agent["tool_calls_total"])),
         ("tool success", f"{agent['tool_success_rate'] * 100:.0f}%"),

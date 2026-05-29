@@ -13,7 +13,7 @@ where
 select
     customer.text_id,
     concat(coalesce(customer.last_name, ''), ', ', coalesce(customer.first_name, '')) as customername,
-    --returns.store_sales.ticket_number,
+    --returns.ticket_number,
     --returns.item.id,
 order by
     customer.text_id asc nulls first

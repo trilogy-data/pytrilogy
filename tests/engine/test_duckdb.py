@@ -1860,3 +1860,81 @@ ORDER BY lochierarchy desc nulls first;
     assert sql.count("ROLLUP") == 1, sql
     # The outer SELECT must execute without binder error.
     list(executor.execute_raw_sql(sql).fetchall())
+
+
+_HAVING_SUBSTITUTION_SCHEMA = """
+key sale_id int;
+property sale_id.store_id int;
+property sale_id.customer_id int;
+property sale_id.amount int;
+
+datasource sales (
+    sale_id: sale_id,
+    store_id: store_id,
+    customer_id: customer_id,
+    amount: amount
+)
+grain (sale_id)
+query '''
+    select 1 as sale_id, 1 as store_id, 1 as customer_id, 100 as amount
+    union all select 2 as sale_id, 1 as store_id, 2 as customer_id, 800 as amount
+    union all select 3 as sale_id, 2 as store_id, 1 as customer_id, 50 as amount
+    union all select 4 as sale_id, 2 as store_id, 2 as customer_id, 100 as amount
+''';
+"""
+
+
+def test_having_substitutes_off_grain_aggregate_e2e():
+    # Data:
+    #   (store=1, cust=1, 100), (store=1, cust=2, 800),
+    #   (store=2, cust=1, 50),  (store=2, cust=2, 100)
+    # Per-(store, customer) totals: 100, 800, 50, 100.
+    # Per-store totals: store 1 = 900, store 2 = 150.
+    # HAVING per_customer_store_total < 0.6 * store_total:
+    #   (1,1) 100 < 540 ✓; (1,2) 800 < 540 ✗;
+    #   (2,1) 50 < 90 ✓;   (2,2) 100 < 90 ✗  → 2 rows.
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_HAVING_SUBSTITUTION_SCHEMA)
+    text = """
+select
+    store_id,
+    customer_id,
+    sum(amount) as total,
+    sum(amount) by store_id as store_total
+having sum(amount) < 0.6 * sum(amount) by store_id
+order by store_id asc, customer_id asc;
+"""
+    sql = executor.generate_sql(text)[-1]
+    assert "INVALID_REFERENCE" not in sql, sql
+    rows = executor.execute_text(text)[0].fetchall()
+    assert [(r.store_id, r.customer_id, r.total, r.store_total) for r in rows] == [
+        (1, 1, 100, 900),
+        (2, 1, 50, 150),
+    ]
+
+
+def test_having_substitutes_nested_aggregate_e2e():
+    # Same data — per-(customer, store) totals: 100, 800, 50, 100.
+    # avg(sum by customer_id, store_id) by store_id:
+    #   store 1 → avg(100, 800) = 450; store 2 → avg(50, 100) = 75.
+    # HAVING total > per-store avg-of-customer-totals:
+    #   (1,1) 100 > 450 ✗; (1,2) 800 > 450 ✓;
+    #   (2,1) 50 > 75 ✗;   (2,2) 100 > 75 ✓  → 2 rows.
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_HAVING_SUBSTITUTION_SCHEMA)
+    text = """
+select
+    store_id,
+    customer_id,
+    sum(amount) as total,
+    avg(sum(amount) by customer_id, store_id) by store_id as avg_per_store
+having sum(amount) > avg(sum(amount) by customer_id, store_id) by store_id
+order by store_id asc, customer_id asc;
+"""
+    sql = executor.generate_sql(text)[-1]
+    assert "INVALID_REFERENCE" not in sql, sql
+    rows = executor.execute_text(text)[0].fetchall()
+    assert [(r.store_id, r.customer_id, r.total, r.avg_per_store) for r in rows] == [
+        (1, 2, 800, 450),
+        (2, 2, 100, 75),
+    ]
