@@ -564,12 +564,17 @@ def condition_required_addresses(
 def combine_condition_atoms(
     atoms: list[BoolExpr],
 ) -> BoolExpr | None:
-    """AND-combine atoms into a single left-associative condition (None if empty)."""
+    """AND-combine atoms into a single left-associative condition (None if empty).
+
+    Builds ``BuildConditional`` directly rather than via ``+`` so a bare boolean
+    ``BuildConcept`` atom (a valid predicate, but not a ``BoolExpr``) combines
+    cleanly instead of tripping ``BoolExpr.__add__``.
+    """
     if not atoms:
         return None
     result: BoolExpr = atoms[0]
     for atom in atoms[1:]:
-        result = result + atom  # type: ignore[operator]
+        result = BuildConditional(left=result, operator=BooleanOperator.AND, right=atom)
     return result
 
 
@@ -581,11 +586,17 @@ def merge_conditions_and_dedup(
 
     Returns `preexisting` unchanged when every atom of `conditions` is already present,
     preserving object identity so equality checks in validate_stack remain intact.
+
+    Atoms within `conditions` are deduped against each other too, so a
+    pre-doubled input (`H AND H`) collapses to a single copy.
     """
     preexisting_atoms = decompose_condition(preexisting)
-    new_atoms = [
-        a for a in decompose_condition(conditions) if a not in preexisting_atoms
-    ]
+    seen = list(preexisting_atoms)
+    new_atoms: list[BoolExpr] = []
+    for a in decompose_condition(conditions):
+        if a not in seen:
+            seen.append(a)
+            new_atoms.append(a)
     if not new_atoms:
         return preexisting
     return combine_condition_atoms(preexisting_atoms + new_atoms)  # type: ignore[return-value]

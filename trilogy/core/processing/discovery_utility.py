@@ -2,7 +2,6 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import (
-    BooleanOperator,
     Derivation,
     FunctionType,
     Granularity,
@@ -11,7 +10,6 @@ from trilogy.core.enums import (
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
@@ -21,6 +19,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
     condition_implies,
     decompose_condition,
 )
@@ -548,11 +547,9 @@ def _extract_routing_atoms(
             if key in atom_str_map and key not in seen:
                 preserved.append(atom_str_map[key])
                 seen.add(key)
-    if not preserved:
+    cond = combine_condition_atoms(preserved)
+    if cond is None:
         return None
-    cond = preserved[0]
-    for a in preserved[1:]:
-        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
     return BuildWhereClause(conditional=cond)
 
 

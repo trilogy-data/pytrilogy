@@ -20,6 +20,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
     condition_implies,
     decompose_condition,
 )
@@ -541,11 +542,9 @@ def _preserved_conditions(
             if key in atom_str_map and key not in seen:
                 preserved.append(atom_str_map[key])
                 seen.add(key)
-    if not preserved:
+    cond = combine_condition_atoms(preserved)
+    if cond is None:
         return None
-    cond = preserved[0]
-    for a in preserved[1:]:
-        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
     return BuildWhereClause(conditional=cond)
 
 

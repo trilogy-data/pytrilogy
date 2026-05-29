@@ -7,6 +7,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
 )
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
+from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 
 
 def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:
@@ -68,11 +69,10 @@ def append_condition(
 ) -> BoolExpr:
     if condition is None:
         return atom
-    return BuildConditional(
-        left=condition,
-        operator=BooleanOperator.AND,
-        right=atom,
-    )
+    # Dedup on AND-atoms so re-appending a predicate the condition already
+    # carries is a no-op (returns `condition` unchanged) rather than growing
+    # an `X AND X` chain across optimizer re-fires.
+    return merge_conditions_and_dedup(atom, condition)
 
 
 def rebuild_and_condition(

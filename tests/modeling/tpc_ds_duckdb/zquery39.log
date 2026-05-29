@@ -1,5 +1,5 @@
 query_id = "39"
-gen_length = 2128
+gen_length = 2038
 preql_size = 1145
 comp_size = 1546
 generated_sql = """
@@ -30,7 +30,7 @@ GROUP BY
     1,
     2
 HAVING
-    \"cov1\" > 1 and \"cov2\" > 1 and \"cov1\" > 1 and \"cov2\" > 1 and \"cov1\" > 1 and \"cov2\" > 1 and \"cov1\" > 1 and \"cov2\" > 1
+    \"cov1\" > 1 and \"cov2\" > 1
 
 ORDER BY 
     \"wsk1\" asc nulls first,

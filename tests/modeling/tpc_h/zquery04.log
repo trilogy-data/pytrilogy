@@ -1,5 +1,5 @@
 query_id = "04"
-gen_length = 682
+gen_length = 663
 preql_size = 313
 comp_size = 407
 generated_sql = """
@@ -10,10 +10,13 @@ SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
+WHERE
+    \"lineitem\".\"l_commitdate\" < \"lineitem\".\"l_receiptdate\"
+
 GROUP BY
     1
 HAVING
-    count(CASE WHEN \"lineitem\".\"l_commitdate\" < \"lineitem\".\"l_receiptdate\" THEN \"lineitem\".\"l_linenumber\" ELSE NULL END) > 0
+    count(\"lineitem\".\"l_linenumber\") > 0
 )
 SELECT
     \"order_orders\".\"o_orderpriority\" as \"order_priority\",

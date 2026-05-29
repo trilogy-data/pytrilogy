@@ -2,14 +2,12 @@ from enum import Enum
 
 from trilogy.core.enums import (
     AggregateGroupingMode,
-    BooleanOperator,
     Derivation,
     SourceType,
 )
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
-    BuildConditional,
     BuildRowsetItem,
     BuildWindowItem,
 )
@@ -20,6 +18,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import is_sole_consumer, repoint_consumers
+from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 
 UNSAFE_DERIVATIONS = {
     Derivation.WINDOW,
@@ -118,13 +117,11 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
     # WHERE), and the parent becomes the aggregate after the merge, so its
     # WHERE has to carry the predicate forward. (WINDOW/BASIC modes are blocked
     # upstream by `child_has_merge_blockers` when the child has a condition.)
+    # Dedup on AND-atoms so a chain of merges (or a predicate already carried
+    # by the parent) can't re-stamp it into `H AND H AND H` — q31's HAVING.
     if cte.condition is not None:
         parent.condition = (
-            BuildConditional(
-                left=parent.condition,
-                operator=BooleanOperator.AND,
-                right=cte.condition,
-            )
+            merge_conditions_and_dedup(cte.condition, parent.condition)
             if parent.condition is not None
             else cte.condition
         )

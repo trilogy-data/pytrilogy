@@ -1,5 +1,5 @@
 query_id = "58"
-gen_length = 5661
+gen_length = 5241
 preql_size = 1410
 comp_size = 2250
 generated_sql = """
@@ -79,7 +79,7 @@ FROM
 GROUP BY
     1
 HAVING
-    \"ss_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\" and \"ss_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\" and \"ss_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\" and \"ss_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\"
+    \"ss_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\" and \"ss_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\"
 
 ORDER BY 
     \"item_id\" asc nulls first,

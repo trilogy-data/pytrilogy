@@ -45,7 +45,6 @@ from trilogy.core.optimizations.base_optimization import (
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
     append_condition,
-    condition_contains_atom,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
@@ -722,10 +721,9 @@ class UnionDimPushdown(OptimizationRule):
             if dim_source_key not in branch.source_map[c.address]:
                 branch.source_map[c.address].append(dim_source_key)
         for atom in d.where_atoms:
-            if not condition_contains_atom(atom, branch.condition):
-                branch.condition = append_condition(
-                    branch.condition, cast(BoolExpr, atom)
-                )
+            # append_condition dedups on AND-atoms, so re-adding a predicate the
+            # branch already carries is a no-op — no explicit contains-guard.
+            branch.condition = append_condition(branch.condition, cast(BoolExpr, atom))
             # For subselect atoms (``D_WEEK_SEQ IN (SELECT … FROM cooperative)``)
             # the inner reference renders against the branch's
             # source_map/existence_source_map; copy the consumer's entry and
