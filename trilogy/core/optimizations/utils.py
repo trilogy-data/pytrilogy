@@ -75,21 +75,6 @@ def append_condition(
     return merge_conditions_and_dedup(atom, condition)
 
 
-def rebuild_and_condition(
-    atoms: list[BoolExpr],
-) -> BoolExpr | None:
-    if not atoms:
-        return None
-    condition = atoms[0]
-    for atom in atoms[1:]:
-        condition = BuildConditional(
-            left=condition,
-            operator=BooleanOperator.AND,
-            right=atom,
-        )
-    return condition
-
-
 def add_datasource_sorted(
     cte: CTE, datasource: BuildDatasource | QueryDatasource
 ) -> None:

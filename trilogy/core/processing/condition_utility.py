@@ -644,6 +644,38 @@ def merge_conditions(
     return combine_condition_atoms(common)
 
 
+def preserved_non_partial_conditions(
+    conditions: "BuildWhereClause", environment: "BuildEnvironment"
+) -> "BuildWhereClause | None":
+    """Return the subset of `conditions`' atoms owned by a non-partial datasource.
+
+    When the full conditions imply some datasource's `non_partial_for`, those
+    atoms are guaranteed by an exact-match source and must stay as WHERE filters
+    (rather than being flattened into projections) so partial-datasource
+    resolution works downstream.
+    """
+    atoms = decompose_condition(conditions.conditional)
+    atom_str_map = {str(a): a for a in atoms}
+    preserved: list[BoolExpr] = []
+    seen: set[str] = set()
+    for ds in environment.datasources.values():
+        if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
+            continue
+        if not condition_implies(
+            conditions.conditional, ds.non_partial_for.conditional
+        ):
+            continue
+        for np_atom in decompose_condition(ds.non_partial_for.conditional):
+            key = str(np_atom)
+            if key in atom_str_map and key not in seen:
+                preserved.append(atom_str_map[key])
+                seen.add(key)
+    cond = combine_condition_atoms(preserved)
+    if cond is None:
+        return None
+    return BuildWhereClause(conditional=cond)
+
+
 def filter_union_children(
     non_partial_map: dict[str, BuildWhereClause | None],
     query_condition: BoolExpr,

@@ -16,10 +16,10 @@ from trilogy.core.optimizations.base_optimization import MergedCTEMap, Optimizat
 from trilogy.core.optimizations.utils import (
     append_condition,
     condition_contains_atom,
-    rebuild_and_condition,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
     condition_value_implies,
     conditions_mutually_exclusive,
     is_scalar_condition,
@@ -733,7 +733,7 @@ class PredicatePushdownRemove(OptimizationRule):
             removed += 1
         if removed:
             if surviving:
-                cte.condition = rebuild_and_condition(surviving)
+                cte.condition = combine_condition_atoms(surviving)
             else:
                 cte.condition = None
             return True, None
