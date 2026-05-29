@@ -158,6 +158,30 @@ file `{remote_path}`;
     assert ds.address.location == remote_path
 
 
+def test_parse_text_v2_datasource_records_line_no() -> None:
+    env, _ = parse_text(
+        """
+key id int;
+property id.name string;
+
+datasource first (
+    id: id,
+)
+grain (id)
+address foo.first;
+
+datasource second (
+    id: id,
+)
+grain (id)
+address foo.second;
+""",
+        Environment(),
+    )
+    assert env.datasources["local.first"].metadata.line_no == 5
+    assert env.datasources["local.second"].metadata.line_no == 11
+
+
 def test_parse_text_v2_datasource_data_file_in_dict_resolver() -> None:
     env = Environment(
         config=EnvironmentConfig(

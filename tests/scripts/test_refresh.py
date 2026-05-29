@@ -6,6 +6,7 @@ from click.exceptions import Exit
 from click.testing import CliRunner
 
 from trilogy import Dialects
+from trilogy.core import graph as nx
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
 from trilogy.execution.state import (
     DatasourceWatermark,
@@ -14,7 +15,7 @@ from trilogy.execution.state import (
 )
 from trilogy.execution.state.state_store import BaseStateStore
 from trilogy.scripts.common import CLIRuntimeParams, RefreshParams
-from trilogy.scripts.dependency import ScriptNode
+from trilogy.scripts.dependency import ManagedRefreshNode, ScriptNode
 from trilogy.scripts.display import (
     ManagedDataGroup,
     StaleDataSourceEntry,
@@ -25,6 +26,7 @@ from trilogy.scripts.display import (
     show_watermarks,
 )
 from trilogy.scripts.refresh import (
+    _managed_dependency_edges,
     _preview_directory_refresh,
     execute_managed_node_for_refresh,
 )
@@ -1045,3 +1047,69 @@ def test_execute_physical_node_prints_refreshed_count(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "Refreshed 1 asset(s)" in captured.out
     assert "target_items_table" in captured.out
+
+
+def _managed_node(address: str, script_path: str) -> ManagedRefreshNode:
+    return ManagedRefreshNode(
+        address=address,
+        owner_script=ScriptNode(path=Path(script_path)),
+        assets=[],
+    )
+
+
+def test_managed_dependency_edges_same_script_orders_by_line():
+    """Two assets in one script are ordered by definition line, not cyclic.
+
+    nx.has_path(G, n, n) is trivially True, so without the same-owner handling both
+    addresses would get edges to each other, leaving the executor with no
+    in-degree-0 node and deadlocking the refresh. Instead the earlier-defined asset
+    must run first, giving a single acyclic edge.
+    """
+    script = "data/raw/vehicle.preql"
+    physical_nodes = {
+        "lvs_info.parquet": _managed_node("lvs_info.parquet", script),
+        "lv_info.parquet": _managed_node("lv_info.parquet", script),
+    }
+    script_graph = nx.DiGraph()
+    script_graph.add_node(str(Path(script)))
+    addr_line = {"lv_info.parquet": 10, "lvs_info.parquet": 40}
+
+    edges = _managed_dependency_edges(physical_nodes, script_graph, addr_line)
+
+    assert edges == [("lv_info.parquet", "lvs_info.parquet")]
+    g = nx.DiGraph()
+    g.add_nodes_from(physical_nodes)
+    g.add_edges_from(edges)
+    assert list(nx.simple_cycles(g)) == []
+    assert any(g.in_degree(n) == 0 for n in g.nodes())
+
+
+def test_managed_dependency_edges_same_script_missing_lines_no_cycle():
+    """Missing line info still yields a single acyclic edge (address tie-break)."""
+    script = "data/raw/vehicle.preql"
+    physical_nodes = {
+        "b.parquet": _managed_node("b.parquet", script),
+        "a.parquet": _managed_node("a.parquet", script),
+    }
+    script_graph = nx.DiGraph()
+    script_graph.add_node(str(Path(script)))
+
+    edges = _managed_dependency_edges(physical_nodes, script_graph, {})
+
+    assert edges == [("a.parquet", "b.parquet")]
+
+
+def test_managed_dependency_edges_cross_script_dependency():
+    """A real cross-script dependency still yields a directed edge."""
+    upstream = "data/raw/source.preql"
+    downstream = "data/derived/consumer.preql"
+    physical_nodes = {
+        "source.parquet": _managed_node("source.parquet", upstream),
+        "consumer.parquet": _managed_node("consumer.parquet", downstream),
+    }
+    script_graph = nx.DiGraph()
+    script_graph.add_edge(str(Path(upstream)), str(Path(downstream)))
+
+    edges = _managed_dependency_edges(physical_nodes, script_graph, {})
+
+    assert edges == [("source.parquet", "consumer.parquet")]

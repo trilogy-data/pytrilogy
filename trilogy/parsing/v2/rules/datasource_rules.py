@@ -635,6 +635,7 @@ def datasource_node(
         is_partial=is_partial,
         column_level_partial_addresses=column_level_partial_addresses,
     )
+    datasource.metadata.line_no = node.line
     # Propagate keys from datasource grain to foreign key concepts.
     # A KEY concept on a datasource that isn't part of the grain
     # gets the grain components as its keys (matching v1 second-pass behaviour).
