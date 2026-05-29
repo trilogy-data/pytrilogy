@@ -66,20 +66,34 @@ def partition_by_depth_and_grain(
     ensure_assigned: EnsureAssignedFn,
 ) -> list[GroupBucket]:
     """Default rule: two nodes share a group iff they have the same
-    ``label``, ``depth_label`` and ``grain``. Label keeps inner-rowset
-    concepts in their own buckets; depth keeps a d1 aggregate (filter
-    input) and a d0 aggregate (post-filter) in distinct scans at the
-    same grain."""
-    by_key: dict[tuple[str, str, frozenset[str]], GroupBucket] = {}
+    ``label``, ``depth_label``, ``grain`` and ``grouping_mode``. Label
+    keeps inner-rowset concepts in their own buckets; depth keeps a d1
+    aggregate (filter input) and a d0 aggregate (post-filter) in
+    distinct scans at the same grain; ``grouping_mode`` keeps STANDARD
+    aggregates separate from ROLLUP/CUBE/GROUPING_SETS so each gets the
+    GROUP BY clause it needs (one CTE can't carry both a flat GROUP BY
+    and a GROUP BY ROLLUP). ``grouping_mode`` is ``None`` for non-
+    aggregate concepts and harmlessly collapses to a single value
+    there."""
+    by_key: dict[
+        tuple[str, str, frozenset[str], str | None],
+        GroupBucket,
+    ] = {}
     for node, data in items:
         depth_label = data.get("depth_label", "d*")
         derivation = data.get("derivation", "")
         grain = frozenset(data.get("grain_components", ()))
         label = data.get("label", "")
-        key = (label, depth_label, grain)
+        grouping_mode = data.get("grouping_mode")
+        key = (label, depth_label, grain, grouping_mode)
         bucket = by_key.get(key)
         if bucket is None:
             bucket = _bucket_for(depth_label, derivation, grain, label=label)
+            # Encode grouping mode in the bucket discriminator so distinct
+            # modes map to distinct group ids (and survive the topo/edge
+            # walks below as separate nodes).
+            if grouping_mode and grouping_mode != "standard":
+                bucket.discriminator = f"grp:{grouping_mode}"
             by_key[key] = bucket
         _add_member(bucket, node, data)
     return list(by_key.values())

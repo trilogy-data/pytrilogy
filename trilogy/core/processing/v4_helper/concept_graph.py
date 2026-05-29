@@ -215,6 +215,14 @@ def _add_concept(
     nid = node_id(eff_label, concept.address)
     if nid in graph:
         return
+    # Surface the aggregate's grouping mode (STANDARD / ROLLUP / CUBE /
+    # GROUPING_SETS) so downstream group-partitioning can split distinct
+    # modes into their own buckets — two AGGREGATEs sharing grain but
+    # using different grouping modes need separate CTEs (one emits GROUP
+    # BY, the other GROUP BY ROLLUP).
+    grouping_mode = None
+    if isinstance(concept.lineage, BuildAggregateWrapper):
+        grouping_mode = concept.lineage.grouping.value
     graph.add_node(
         nid,
         address=concept.address,
@@ -226,6 +234,7 @@ def _add_concept(
         grain_components=(
             frozenset(concept.grain.components) if concept.grain else frozenset()
         ),
+        grouping_mode=grouping_mode,
     )
 
     # Rowset boundary: a ROWSET concept is the outer's "handle" on a
@@ -360,6 +369,32 @@ def build_concept_graph(
                     graph,
                     label=_condition_label(rowset_name),
                 )
+        # Bridge: connect each outer rowset concept to its inner producer.
+        # `BuildRowsetItem.content` is the inner BuildConcept the outer
+        # alias wraps (e.g. outer `l0_filtered.brand_l0` ← inner
+        # `local._l0_filtered_brand_l0`). Without this edge the inner
+        # pipeline and the outer rowset boundary live as disconnected
+        # subgraphs — the SQL builder reconciles them via concept aliasing
+        # at render time, but the planner (and the visualization) can't
+        # see the dependency. Adding it gives `_compute_concept_sets` a
+        # real path to demand inner outputs from the outer rowset's
+        # consumers.
+        for outer_nid, data in list(graph.nodes(data=True)):
+            if data.get("label", "") != "":
+                continue
+            outer_addr = data.get("address")
+            outer_concept = environment.concepts.get(outer_addr)
+            if outer_concept is None:
+                continue
+            lineage = outer_concept.lineage
+            if not isinstance(lineage, BuildRowsetItem):
+                continue
+            if lineage.rowset.name != rowset_name:
+                continue
+            inner_addr = lineage.content.address
+            inner_nid = node_id(rowset_name, inner_addr)
+            if inner_nid in graph and outer_nid in graph:
+                graph.add_edge(inner_nid, outer_nid, kind="lineage")
 
     # Classify how each atom uses its concept arguments. A row-argument
     # gets joined into the consumer's row stream; an existence-argument

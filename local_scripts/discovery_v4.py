@@ -143,12 +143,19 @@ def _layered_layout(
     layer_gap: float = 2.4,
     x_gap: float = 3.4,
     sweeps: int = 40,
+    cluster_of: dict[str, str] | None = None,
 ) -> dict[str, tuple[float, float]]:
     """Sugiyama-style layered layout. Layer = topological generation over
     `layering_edges` (sources at top, sinks at bottom). Per-layer x-ordering
     runs a barycenter sweep so a node sits near the mean position of its
     neighbors in the adjacent layer, keeping vertical chains vertical.
-    `pin_last` is forced to the bottom layer (e.g. FINAL sink)."""
+    `pin_last` is forced to the bottom layer (e.g. FINAL sink).
+
+    `cluster_of` maps each node to a cluster id; clusters with non-empty
+    ids are stacked ABOVE the empty-id cluster (visually higher = built
+    earlier). This makes rowset-internal pipelines (label='rowset_name')
+    appear above the outer pipeline they feed into, even when there's no
+    explicit cross-cluster edge connecting them."""
     sub = graph.edge_subgraph(layering_edges).copy()
     for n in graph.nodes:
         sub.add_node(n)
@@ -156,7 +163,46 @@ def _layered_layout(
         generations = [list(g) for g in nx.topological_generations(sub)]
     except nx.NetworkXUnfeasible:
         generations = [list(graph.nodes)]
-    if pin_last is not None and pin_last in graph.nodes:
+    # Cluster-aware layering: re-shuffle generations so each cluster occupies
+    # its own contiguous layer range, with non-empty clusters (rowset
+    # internals) stacked above the empty cluster (outer pipeline). Skip if
+    # only one cluster is present.
+    if cluster_of is not None and len({cluster_of.get(n, "") for n in graph.nodes}) > 1:
+        per_cluster: dict[str, list[list[str]]] = {}
+        for layer in generations:
+            for node in layer:
+                if pin_last is not None and node == pin_last:
+                    continue
+                cluster = cluster_of.get(node, "")
+                bucket = per_cluster.setdefault(cluster, [])
+                bucket.append([node])  # placeholder; refined next
+        # Rebuild per-cluster generations by re-topo-sorting each cluster's
+        # subgraph independently (so within-cluster ordering uses real edges).
+        per_cluster_layers: dict[str, list[list[str]]] = {}
+        for cluster, _ in per_cluster.items():
+            cnodes = [
+                n
+                for n in graph.nodes
+                if cluster_of.get(n, "") == cluster and n != pin_last
+            ]
+            csub = sub.subgraph(cnodes).copy()
+            for n in cnodes:
+                csub.add_node(n)
+            try:
+                cgens = [list(g) for g in nx.topological_generations(csub)]
+            except nx.NetworkXUnfeasible:
+                cgens = [cnodes]
+            per_cluster_layers[cluster] = cgens
+        # Stack order: non-empty clusters first (above), then empty cluster.
+        ordered_clusters = sorted(
+            per_cluster_layers.keys(), key=lambda k: (k == "", k)
+        )
+        generations = []
+        for cluster in ordered_clusters:
+            generations.extend(per_cluster_layers[cluster])
+        if pin_last is not None and pin_last in graph.nodes:
+            generations.append([pin_last])
+    elif pin_last is not None and pin_last in graph.nodes:
         for layer in generations:
             if pin_last in layer:
                 layer.remove(pin_last)
