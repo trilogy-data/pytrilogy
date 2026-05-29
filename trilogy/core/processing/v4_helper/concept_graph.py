@@ -403,6 +403,7 @@ def build_concept_graph(
     # and existence edge passes below can flow strictly along the right
     # channel for each address.
     row_arg_addresses: set[str] = set()
+    existence_arg_addresses: set[str] = set()
     existence_arg_pairs: list[tuple[str, str]] = []  # (existence_addr, row_addr)
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
@@ -411,8 +412,17 @@ def build_concept_graph(
                 row_arg_addresses.add(c.address)
             for arg_group in getattr(atom, "existence_arguments", ()) or ():
                 for ec in arg_group:
+                    existence_arg_addresses.add(ec.address)
                     for row_addr in atom_row_addrs:
                         existence_arg_pairs.append((ec.address, row_addr))
+    # Tag nodes that appear only as existence args (not as row args anywhere)
+    # so partition_roots can place them in their own scan buckets — they're
+    # side-channel subselect sources, not part of the main row stream
+    # (q16: `cr.order_number` from `cs.order_number not in cr.order_number`).
+    existence_only_addresses = existence_arg_addresses - row_arg_addresses
+    for n, d in graph.nodes(data=True):
+        if d.get("address") in existence_only_addresses:
+            d["existence_only"] = True
 
     # Group nodes by scope-and-phase. Condition-phase nodes are d1 by
     # construction; the only d0 candidates live in the matching blank-phase

@@ -108,22 +108,50 @@ def partition_roots(
     """Roots can always be co-sourced (joinable across datasources in a single
     base scan), but only within a label. Each sub-graph (outer query plus
     each rowset's inner walk) gets its own root bucket — their scans are
-    independent."""
+    independent.
+
+    Exception: an isolated root (no concept-graph edges in or out) is a
+    pure existence-arg reference — `cr.order_number` from q16's
+    ``cs.order_number not in cr.order_number`` is reachable only via the
+    NOT IN subselect, never via the main row stream. Lumping it into the
+    main root bucket co-sources the catalog_returns scan with the
+    catalog_sales scan and leaves `_existence_for_group` unable to find a
+    separate source CTE for the subselect (the host atom's group == the
+    "source" group, so the existence-wiring short-circuit fires). Each
+    isolated root gets its own bucket so it surfaces as a standalone
+    group that the strategy walker can wire as an existence parent."""
     if not items:
         return []
     buckets: list[GroupBucket] = []
     for label_value, sub_items in _split_by_label(items).items():
         if not sub_items:
             continue
-        bucket = _bucket_for(
+        main_bucket = _bucket_for(
             depth_label="root",
             derivation=Derivation.ROOT.value,
             grain=frozenset(),
             label=label_value,
         )
         for node, data in sub_items:
-            _add_member(bucket, node, data)
-        buckets.append(bucket)
+            if data.get("existence_only"):
+                # Existence-arg only (set on the node by build_concept_graph):
+                # split into its own bucket so it can serve as an independent
+                # subselect source — the existence wiring in strategy_builder
+                # finds it via `built[other_gid]` and attaches it as a
+                # side-channel parent.
+                solo = _bucket_for(
+                    depth_label="root",
+                    derivation=Derivation.ROOT.value,
+                    grain=frozenset(),
+                    label=label_value,
+                )
+                solo.discriminator = f"existence:{data.get('address', node)}"
+                _add_member(solo, node, data)
+                buckets.append(solo)
+            else:
+                _add_member(main_bucket, node, data)
+        if main_bucket.primary_members:
+            buckets.append(main_bucket)
     return buckets
 
 

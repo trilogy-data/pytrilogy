@@ -1,24 +1,26 @@
 # Query 16
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1 (1 distinct)
+ref rows: 1 (1 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2812 | 48 | — |
-| reference | 3713 | 83 | 78.28 ms |
-| v4 / ref | 0.76x | 0.58x | — |
+| v4 | 2584 | 55 | 60.16 ms |
+| reference | 3713 | 83 | 76.52 ms |
+| v4 / ref | 0.70x | 0.66x | 0.79x |
 
 ## Preql
 
@@ -48,7 +50,7 @@ limit 100
 
 ```sql
 WITH 
-cooperative as (
+abundant as (
 SELECT
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
     "cs_catalog_sales"."CS_WAREHOUSE_SK" as "cs_warehouse_id"
@@ -57,20 +59,27 @@ FROM
 GROUP BY
     1,
     2),
-questionable as (
+quizzical as (
 SELECT
-    "cooperative"."cs_order_number" as "cs_order_number",
-    count("cooperative"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
+    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_order_number"
 FROM
-    "cooperative"
+    "memory"."catalog_returns" as "cr_catalog_returns"
 GROUP BY
     1),
-abundant as (
+uneven as (
 SELECT
-    CASE WHEN "questionable"."_virt_agg_count_7777088585630721" > 1 THEN "questionable"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
+    "abundant"."cs_order_number" as "cs_order_number",
+    count("abundant"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
 FROM
-    "questionable"),
-thoughtful as (
+    "abundant"
+GROUP BY
+    1),
+yummy as (
+SELECT
+    CASE WHEN "uneven"."_virt_agg_count_7777088585630721" > 1 THEN "uneven"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
+FROM
+    "uneven"),
+questionable as (
 SELECT
     "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
     "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
@@ -81,16 +90,16 @@ FROM
     INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
     INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number> where INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select abundant."multi_warehouse_sales" from abundant where abundant."multi_warehouse_sales" is not null)
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select yummy."multi_warehouse_sales" from yummy where yummy."multi_warehouse_sales" is not null)
 )
 SELECT
-    count(distinct "thoughtful"."cs_order_number") as "order_count",
-    sum("thoughtful"."cs_net_profit") as "total_net_profit",
-    sum("thoughtful"."cs_ext_ship_cost") as "total_shipping_cost"
+    count(distinct "questionable"."cs_order_number") as "order_count",
+    sum("questionable"."cs_net_profit") as "total_net_profit",
+    sum("questionable"."cs_ext_ship_cost") as "total_shipping_cost"
 FROM
-    "thoughtful"
+    "questionable"
 WHERE
-    "thoughtful"."cs_order_number" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number> where INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" is not null) and "thoughtful"."cs_order_number" in (select abundant."multi_warehouse_sales" from abundant where abundant."multi_warehouse_sales" is not null)
+    "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select yummy."multi_warehouse_sales" from yummy where yummy."multi_warehouse_sales" is not null)
 
 ORDER BY 
     "order_count" desc
@@ -183,27 +192,4 @@ FROM
 ORDER BY 
     "vacuous"."order_count" desc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 282, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 282, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 278, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 198, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
-
-LINE 35: ...RDER_NUMBER" not in (select INVALID_REFERENCE_BUG_<Missing source reference to cr.order_number>."cr_order_number" from...
-                                                                       ^
 ```
