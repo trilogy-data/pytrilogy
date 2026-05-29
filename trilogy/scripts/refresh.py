@@ -200,6 +200,45 @@ def _validate_probe_coverage(
         raise Exit(1)
 
 
+def _managed_dependency_edges(
+    physical_nodes: dict[str, ManagedRefreshNode],
+    script_graph: nx.DiGraph,
+    addr_line: dict[str, int],
+) -> list[tuple[str, str]]:
+    """Edges between managed addresses, derived from owner-script dependencies.
+
+    Cross-script: addr1 -> addr2 when addr1's owner script must run before addr2's
+    (a path exists in the script graph).
+
+    Same-script: order by definition line so a later asset may depend on an earlier
+    one — addr1 -> addr2 when addr1 is defined above addr2. This is a total order
+    (tie-broken by address), so it stays acyclic. Without it, two assets in one
+    script would get bidirectional edges (nx.has_path(G, n, n) is trivially True
+    both ways), forming a cycle that leaves the executor with no in-degree-0 node
+    to schedule — deadlocking the refresh.
+    """
+    edges: list[tuple[str, str]] = []
+    for addr1, node1 in physical_nodes.items():
+        owner1_key = str(node1.owner_script.path)
+        for addr2, node2 in physical_nodes.items():
+            if addr1 == addr2:
+                continue
+            owner2_key = str(node2.owner_script.path)
+            if owner1_key == owner2_key:
+                # line is the primary key; address breaks ties (and covers
+                # missing line info) so exactly one direction is ever added.
+                if (addr_line.get(addr1, 0), addr1) < (addr_line.get(addr2, 0), addr2):
+                    edges.append((addr1, addr2))
+                continue
+            if (
+                owner1_key in script_graph
+                and owner2_key in script_graph
+                and nx.has_path(script_graph, owner1_key, owner2_key)
+            ):
+                edges.append((addr1, addr2))
+    return edges
+
+
 def _preview_directory_refresh(
     cli_params: CLIRuntimeParams, input_path: Path, interactive: bool = False
 ) -> tuple[bool, nx.DiGraph | None]:
@@ -245,6 +284,8 @@ def _preview_directory_refresh(
 
     address_map: dict[str, str] = {}
     available_datasources: set[str] = set()
+    # (physical address, owner script path) -> earliest definition line in that script
+    addr_line_by_script: dict[tuple[str, str], int] = {}
     ds_to_scripts: dict[str, list[ScriptNode]] = defaultdict(list)
     ds_is_root: dict[str, bool] = {}
     ds_is_refreshable_root: dict[str, bool] = {}
@@ -284,6 +325,12 @@ def _preview_directory_refresh(
         needed_in_script: set[str] = set()
         for ds_id, ds in env.datasources.items():
             address_map.setdefault(ds_id, ds.safe_address)
+            line_no = ds.metadata.line_no
+            if line_no is not None:
+                line_key = (ds.safe_address, str(node.path))
+                prev = addr_line_by_script.get(line_key)
+                if prev is None or line_no < prev:
+                    addr_line_by_script[line_key] = line_no
             ds_to_scripts[ds_id].append(node)
             ds_is_root.setdefault(ds_id, ds.is_root)
             ds_is_refreshable_root.setdefault(
@@ -518,18 +565,15 @@ def _preview_directory_refresh(
     for pnode in physical_nodes.values():
         phys_graph.add_node(pnode.address)
 
-    for addr1, node1 in physical_nodes.items():
-        owner1_key = str(node1.owner_script.path)
-        for addr2, node2 in physical_nodes.items():
-            if addr1 == addr2:
-                continue
-            owner2_key = str(node2.owner_script.path)
-            if (
-                owner1_key in script_graph
-                and owner2_key in script_graph
-                and nx.has_path(script_graph, owner1_key, owner2_key)
-            ):
-                phys_graph.add_edge(addr1, addr2)
+    addr_line = {
+        addr: line
+        for addr, n in physical_nodes.items()
+        if (line := addr_line_by_script.get((addr, str(n.owner_script.path))))
+        is not None
+    }
+    phys_graph.add_edges_from(
+        _managed_dependency_edges(physical_nodes, script_graph, addr_line)
+    )
 
     # "Unknown" nodes: descendants of any refreshable-root-stale node, since the
     # script's effect on downstream watermarks can't be predicted at preview.
