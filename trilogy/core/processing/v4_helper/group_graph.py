@@ -802,8 +802,7 @@ def _route_basics_through_richer_siblings(
     candidates_by_basic: list[str] = [
         gid
         for gid in group_graph.nodes
-        if gid != FINAL_NODE_ID
-        and attrs[gid].derivation == Derivation.BASIC.value
+        if gid != FINAL_NODE_ID and attrs[gid].derivation == Derivation.BASIC.value
     ]
     other_groups: list[str] = [
         gid

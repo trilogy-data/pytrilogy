@@ -2,17 +2,16 @@
 the channel filter disappears."""
 
 import sys
-from pathlib import Path
 
 sys.path.insert(0, "local_scripts")
 
 from discovery_v4 import run_tpcds_query
+
+import trilogy.core.optimization as opt_mod
 from trilogy.core.enums import BooleanOperator
 from trilogy.core.models.build import BuildConditional
-from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.nodes import SelectNode
 from trilogy.core.query_processor import datasource_to_cte, flatten_ctes
-import trilogy.core.optimization as opt_mod
 
 
 def dump_ctes(label: str, ctes, root_cte):
@@ -57,14 +56,22 @@ def dump_ctes(label: str, ctes, root_cte):
 # Monkey-patch optimize_ctes to dump per-phase
 orig_optimize = opt_mod.optimize_ctes
 
+
 def patched_optimize(input, root_cte, select, having_alias=False):
     # Copy of orig with phase-by-phase snapshot
     from trilogy.core.optimization import (
-        CONFIG, MAX_OPTIMIZATION_LOOPS, build_optimization_rule_plan,
-        filter_irrelevant_ctes, gen_inverse_map, is_direct_return_eligible,
-        log_optimization_rule_plan, optimization_log, pass_up_metadata,
-        reorder_ctes, sort_select_output, unique, logger,
+        CONFIG,
+        MAX_OPTIMIZATION_LOOPS,
+        build_optimization_rule_plan,
+        filter_irrelevant_ctes,
+        gen_inverse_map,
+        is_direct_return_eligible,
+        pass_up_metadata,
+        reorder_ctes,
+        sort_select_output,
+        unique,
     )
+
     direct_parent = root_cte
     while CONFIG.optimizations.direct_return and (
         direct_parent := is_direct_return_eligible(root_cte)
@@ -121,8 +128,21 @@ info, build_env, _, build_stmt = run_tpcds_query("02")
 node = info.strategy_node.copy()
 if build_stmt is not None and getattr(build_stmt, "having_clause", None):
     having = build_stmt.having_clause.conditional
-    combined = BuildConditional(left=node.conditions, right=having, operator=BooleanOperator.AND) if node.conditions else having
-    node = SelectNode(output_concepts=list(build_stmt.output_components), input_concepts=list(node.usable_outputs), parents=[node], environment=node.environment, partial_concepts=list(node.partial_concepts), conditions=combined)
+    combined = (
+        BuildConditional(
+            left=node.conditions, right=having, operator=BooleanOperator.AND
+        )
+        if node.conditions
+        else having
+    )
+    node = SelectNode(
+        output_concepts=list(build_stmt.output_components),
+        input_concepts=list(node.usable_outputs),
+        parents=[node],
+        environment=node.environment,
+        partial_concepts=list(node.partial_concepts),
+        conditions=combined,
+    )
 node.hidden_concepts = set(build_stmt.hidden_components) if build_stmt else set()
 node.ordering = build_stmt.order_by if build_stmt else None
 node.rebuild_cache()

@@ -1,9 +1,12 @@
 import sys
+
 sys.path.insert(0, "local_scripts")
-from pathlib import Path
 from collections import Counter
+from pathlib import Path
+
+from discovery_v4 import _find_select, _materialize_for_query
+
 from trilogy import Environment
-from discovery_v4 import _materialize_for_query, _find_select
 from trilogy.core.processing.concept_strategies_v4 import History
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
 
@@ -26,4 +29,6 @@ for label in sorted(labels.keys()):
     for nid, data in sorted(cg.nodes(data=True)):
         if data.get("label", "") != label:
             continue
-        print(f"  {nid}  addr={data.get('address')}  deriv={data.get('derivation')}  depth={data.get('depth_label')}  grain={sorted(data.get('grain_components', []))}")
+        print(
+            f"  {nid}  addr={data.get('address')}  deriv={data.get('derivation')}  depth={data.get('depth_label')}  grain={sorted(data.get('grain_components', []))}"
+        )

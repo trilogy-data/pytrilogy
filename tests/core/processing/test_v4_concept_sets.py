@@ -80,9 +80,16 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
     cg = nx.DiGraph()
     _add_concept(cg, "week_seq", grain={"date.id"})
     _add_concept(cg, "ext_price", grain={"item.id", "order_id"})
-    _add_concept(cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value)
+    _add_concept(
+        cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
+    )
     _add_concept(cg, "win_lead", grain={"week_seq"}, derivation=Derivation.WINDOW.value)
-    _add_concept(cg, "round_result", grain={"item.id", "order_id"}, derivation=Derivation.BASIC.value)
+    _add_concept(
+        cg,
+        "round_result",
+        grain={"item.id", "order_id"},
+        derivation=Derivation.BASIC.value,
+    )
     _add_lineage(cg, "ext_price", "agg_sum")
     _add_lineage(cg, "week_seq", "agg_sum")
     _add_lineage(cg, "agg_sum", "win_lead")
@@ -126,7 +133,9 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
 
     buckets = {
         "root": _make_bucket(Derivation.ROOT.value, ["week_seq", "ext_price"]),
-        "agg": _make_bucket(Derivation.AGGREGATE.value, ["agg_sum"], grain={"week_seq"}),
+        "agg": _make_bucket(
+            Derivation.AGGREGATE.value, ["agg_sum"], grain={"week_seq"}
+        ),
         "win": _make_bucket(Derivation.WINDOW.value, ["win_lead"], grain={"week_seq"}),
         "basic": _make_bucket(
             Derivation.BASIC.value,
@@ -140,9 +149,9 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
 
     basic_out = set(gg.nodes["basic"]["output_concepts"])
     assert "round_result" in basic_out
-    assert "week_seq" in basic_out, (
-        "BASIC must expose its inherited-grain key for FINAL to read"
-    )
+    assert (
+        "week_seq" in basic_out
+    ), "BASIC must expose its inherited-grain key for FINAL to read"
 
 
 def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
@@ -151,7 +160,9 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
     cg = nx.DiGraph()
     _add_concept(cg, "week_seq", grain={"date.id"})
     _add_concept(cg, "ext_price", grain={"item.id"})
-    _add_concept(cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value)
+    _add_concept(
+        cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
+    )
     _add_lineage(cg, "ext_price", "agg_sum")
     _add_lineage(cg, "week_seq", "agg_sum")
 
@@ -171,16 +182,18 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
     gg.add_edge("agg", FINAL_NODE_ID, kind="merge")
     buckets = {
         "root": _make_bucket(Derivation.ROOT.value, ["week_seq", "ext_price"]),
-        "agg": _make_bucket(Derivation.AGGREGATE.value, ["agg_sum"], grain={"week_seq"}),
+        "agg": _make_bucket(
+            Derivation.AGGREGATE.value, ["agg_sum"], grain={"week_seq"}
+        ),
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
     _compute_concept_sets(gg, cg, buckets, mandatory)
 
     agg_out = set(gg.nodes["agg"]["output_concepts"])
-    assert "ext_price" not in agg_out, (
-        "row-grain column must not ride through an aggregate at narrower grain"
-    )
+    assert (
+        "ext_price" not in agg_out
+    ), "row-grain column must not ride through an aggregate at narrower grain"
     assert {"agg_sum", "week_seq"} <= agg_out
 
 
@@ -197,8 +210,12 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
     _add_concept(cg, "first_name", grain={"customer.id"})
     _add_concept(cg, "ext_price", grain={"item.id"})  # row grain, irrelevant
     _add_concept(cg, "year", grain={"date.id"})
-    _add_concept(cg, "local_id", grain={"customer.id"}, derivation=Derivation.BASIC.value)
-    _add_concept(cg, "local_name", grain={"customer.id"}, derivation=Derivation.BASIC.value)
+    _add_concept(
+        cg, "local_id", grain={"customer.id"}, derivation=Derivation.BASIC.value
+    )
+    _add_concept(
+        cg, "local_name", grain={"customer.id"}, derivation=Derivation.BASIC.value
+    )
     _add_lineage(cg, "text_id", "local_id")
     _add_lineage(cg, "first_name", "local_name")
 
@@ -237,7 +254,9 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
 
     basic_out = set(gg.nodes["basic"]["output_concepts"])
     assert "local_id" in basic_out and "local_name" in basic_out
-    assert "ext_price" not in basic_out, "row-grain leak would inflate the BASIC GROUP BY"
+    assert (
+        "ext_price" not in basic_out
+    ), "row-grain leak would inflate the BASIC GROUP BY"
     assert "year" not in basic_out
 
 
@@ -250,7 +269,9 @@ def test_aggregate_inputs_include_primary_lineage_args():
     cg = nx.DiGraph()
     _add_concept(cg, "week_seq", grain={"date.id"})
     _add_concept(cg, "ext_price", grain={"item.id", "order_id"})
-    _add_concept(cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value)
+    _add_concept(
+        cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
+    )
     _add_lineage(cg, "ext_price", "agg_sum")
     _add_lineage(cg, "week_seq", "agg_sum")
 
@@ -269,7 +290,9 @@ def test_aggregate_inputs_include_primary_lineage_args():
     gg.add_edge("agg", FINAL_NODE_ID, kind="merge")
     buckets = {
         "root": _make_bucket(Derivation.ROOT.value, ["week_seq", "ext_price"]),
-        "agg": _make_bucket(Derivation.AGGREGATE.value, ["agg_sum"], grain={"week_seq"}),
+        "agg": _make_bucket(
+            Derivation.AGGREGATE.value, ["agg_sum"], grain={"week_seq"}
+        ),
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
@@ -283,11 +306,15 @@ def test_aggregate_inputs_include_primary_lineage_args():
 def test_basic_inputs_drop_primaries_that_are_computed_locally():
     cg = nx.DiGraph()
     _add_concept(cg, "agg_sum", grain={"week_seq"})
-    _add_concept(cg, "round_result", grain={"week_seq"}, derivation=Derivation.BASIC.value)
+    _add_concept(
+        cg, "round_result", grain={"week_seq"}, derivation=Derivation.BASIC.value
+    )
     _add_lineage(cg, "agg_sum", "round_result")
 
     gg = nx.DiGraph()
-    _gg_node(gg, "agg", Derivation.AGGREGATE.value, primary=["agg_sum"], grain={"week_seq"})
+    _gg_node(
+        gg, "agg", Derivation.AGGREGATE.value, primary=["agg_sum"], grain={"week_seq"}
+    )
     _gg_node(
         gg,
         "basic",
@@ -299,7 +326,9 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally():
     gg.add_edge("agg", "basic", kind="lineage")
     gg.add_edge("basic", FINAL_NODE_ID, kind="merge")
     buckets = {
-        "agg": _make_bucket(Derivation.AGGREGATE.value, ["agg_sum"], grain={"week_seq"}),
+        "agg": _make_bucket(
+            Derivation.AGGREGATE.value, ["agg_sum"], grain={"week_seq"}
+        ),
         "basic": _make_bucket(
             Derivation.BASIC.value, ["round_result"], grain={"week_seq"}
         ),

@@ -22,6 +22,7 @@ zips's grain — `zips` is unnest output, not customer-grain. Keying basics by
 This script applies both fixes in isolation and prints the resulting group
 edges so we can see which paths each fix opens up.
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,14 +31,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import networkx as nx  # noqa: E402
+from discovery_v4 import TPCDS_DIR, _find_select, _materialize_for_query  # noqa: E402
 
-from discovery_v4 import _find_select, _materialize_for_query, TPCDS_DIR  # noqa: E402
 from trilogy import Environment  # noqa: E402
 from trilogy.core.processing.concept_strategies_v4 import History  # noqa: E402
 from trilogy.core.processing.v4_helper.concept_graph import (  # noqa: E402
     build_concept_graph,
 )
-from trilogy.core.processing.v4_helper.group_graph import build_group_graph  # noqa: E402
+from trilogy.core.processing.v4_helper.group_graph import (
+    build_group_graph,
+)  # noqa: E402
 
 
 def build_for_q08():
@@ -80,7 +83,9 @@ def report_group_graph(label: str, cg, build_stmt, conditions) -> None:
         [conditions] if conditions else [],
         mandatory_list=list(build_stmt.output_components),
     )
-    print(f"\n--- {label}: group_graph ({gg.number_of_nodes()} nodes, {gg.number_of_edges()} edges) ---")
+    print(
+        f"\n--- {label}: group_graph ({gg.number_of_nodes()} nodes, {gg.number_of_edges()} edges) ---"
+    )
     for n in gg.nodes:
         if n == "__final__":
             continue

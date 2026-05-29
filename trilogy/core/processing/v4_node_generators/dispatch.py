@@ -73,9 +73,7 @@ def build_node(
         )
     try:
         if derivation == Derivation.ROOT.value:
-            return fn(
-                outputs, parents, environment, conditions, history=history, g=g
-            )
+            return fn(outputs, parents, environment, conditions, history=history, g=g)
         return fn(
             outputs,
             parents,

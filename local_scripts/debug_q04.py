@@ -3,6 +3,7 @@
 We want to know: where do the WHERE atoms land, and do their row_args
 exist in the relevant buckets / lineage chains?
 """
+
 from __future__ import annotations
 
 import sys
@@ -10,16 +11,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import networkx as nx  # noqa: E402
 
-from discovery_v4 import _find_select, _materialize_for_query, TPCDS_DIR  # noqa: E402
+from discovery_v4 import TPCDS_DIR, _find_select, _materialize_for_query  # noqa: E402
+
 from trilogy import Environment  # noqa: E402
 from trilogy.core.processing.concept_strategies_v4 import History  # noqa: E402
 from trilogy.core.processing.condition_utility import decompose_condition  # noqa: E402
 from trilogy.core.processing.v4_helper.concept_graph import (  # noqa: E402
     build_concept_graph,
 )
-from trilogy.core.processing.v4_helper.group_graph import build_group_graph  # noqa: E402
+from trilogy.core.processing.v4_helper.group_graph import (
+    build_group_graph,
+)  # noqa: E402
 
 
 def main() -> None:
@@ -60,9 +63,7 @@ def main() -> None:
         print("\n=== WHERE atoms ===")
         for atom in decompose_condition(conditions.conditional):
             row_args = [c.address for c in atom.row_arguments]
-            existence = [
-                c.address for grp in atom.existence_arguments for c in grp
-            ]
+            existence = [c.address for grp in atom.existence_arguments for c in grp]
             print(f"  atom: {atom}")
             print(f"    row_args: {row_args}")
             print(f"    existence_args: {existence}")

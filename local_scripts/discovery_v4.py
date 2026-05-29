@@ -194,9 +194,7 @@ def _layered_layout(
                 cgens = [cnodes]
             per_cluster_layers[cluster] = cgens
         # Stack order: non-empty clusters first (above), then empty cluster.
-        ordered_clusters = sorted(
-            per_cluster_layers.keys(), key=lambda k: (k == "", k)
-        )
+        ordered_clusters = sorted(per_cluster_layers.keys(), key=lambda k: (k == "", k))
         generations = []
         for cluster in ordered_clusters:
             generations.extend(per_cluster_layers[cluster])
@@ -259,19 +257,23 @@ def _layered_layout(
             # into the next layer's barycenter (otherwise the down sweep is
             # one parallel pass that ignores its own progress).
             slots = _slot_map()
+
             def key(n: str, slots=slots) -> tuple[float, str]:
                 ups = _neighbors(n, "up")
                 if ups:
                     return (sum(slots[u] for u in ups) / len(ups), n)
                 return (slots[n], n)
+
             layers[li] = sorted(layers[li], key=key)
         for li in range(len(layers) - 2, -1, -1):
             slots = _slot_map()
+
             def key(n: str, slots=slots) -> tuple[float, str]:
                 downs = _neighbors(n, "down")
                 if downs:
                     return (sum(slots[d] for d in downs) / len(downs), n)
                 return (slots[n], n)
+
             layers[li] = sorted(layers[li], key=key)
         cost = _edge_cost(layers)
         if cost < best_cost:
@@ -320,7 +322,10 @@ def render_digraph(graph: nx.DiGraph, output_path: Path) -> None:
     # leaves d0 targets floating at the same row as their d1 sources, which
     # contradicts the constraint arrows the chart actually draws.
     pos = _layered_layout(
-        graph, lineage_edges + constraint_edges, layer_gap=2.2, x_gap=5.4,
+        graph,
+        lineage_edges + constraint_edges,
+        layer_gap=2.2,
+        x_gap=5.4,
     )
     concept_data = {n: _concept_data(graph, n) for n in graph.nodes}
     labels = {
@@ -328,8 +333,7 @@ def render_digraph(graph: nx.DiGraph, output_path: Path) -> None:
         for n, d in concept_data.items()
     }
     node_colors = {
-        n: DEPTH_COLORS.get(concept_data[n].depth_label, "#eeeeee")
-        for n in graph.nodes
+        n: DEPTH_COLORS.get(concept_data[n].depth_label, "#eeeeee") for n in graph.nodes
     }
 
     # Vertical room scales with layer count and label rows; horizontal room
@@ -344,8 +348,13 @@ def render_digraph(graph: nx.DiGraph, output_path: Path) -> None:
     for n in graph.nodes:
         x, y = pos[n]
         ax.text(
-            x, y, labels[n],
-            ha="center", va="center", fontsize=8.5, zorder=3,
+            x,
+            y,
+            labels[n],
+            ha="center",
+            va="center",
+            fontsize=8.5,
+            zorder=3,
             bbox=dict(
                 boxstyle="round,pad=0.4",
                 facecolor=node_colors[n],
@@ -355,27 +364,65 @@ def render_digraph(graph: nx.DiGraph, output_path: Path) -> None:
         )
 
     nx.draw_networkx_edges(
-        graph, pos, ax=ax, edgelist=lineage_edges,
-        edge_color="#555555", alpha=0.55, arrows=True, arrowsize=12,
-        node_size=2800, width=0.8,
+        graph,
+        pos,
+        ax=ax,
+        edgelist=lineage_edges,
+        edge_color="#555555",
+        alpha=0.55,
+        arrows=True,
+        arrowsize=12,
+        node_size=2800,
+        width=0.8,
     )
     nx.draw_networkx_edges(
-        graph, pos, ax=ax, edgelist=constraint_edges,
-        edge_color="#c2185b", style="dashed", arrows=True, arrowsize=14,
-        connectionstyle="arc3,rad=0.2", node_size=2800, width=1.0,
+        graph,
+        pos,
+        ax=ax,
+        edgelist=constraint_edges,
+        edge_color="#c2185b",
+        style="dashed",
+        arrows=True,
+        arrowsize=14,
+        connectionstyle="arc3,rad=0.2",
+        node_size=2800,
+        width=1.0,
     )
     legend_handles = [
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor=DEPTH_COLORS["d0"], markersize=12,
-                   label="d0 (row-shape barrier)"),
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor=DEPTH_COLORS["d1"], markersize=12,
-                   label="d1 (condition input)"),
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor=DEPTH_COLORS["d*"], markersize=12,
-                   label="d* (movable)"),
-        plt.Line2D([0], [0], color="#c2185b", linestyle="dashed",
-                   label="d1 → d0 (must apply above)"),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor=DEPTH_COLORS["d0"],
+            markersize=12,
+            label="d0 (row-shape barrier)",
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor=DEPTH_COLORS["d1"],
+            markersize=12,
+            label="d1 (condition input)",
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor=DEPTH_COLORS["d*"],
+            markersize=12,
+            label="d* (movable)",
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            color="#c2185b",
+            linestyle="dashed",
+            label="d1 → d0 (must apply above)",
+        ),
     ]
     ax.legend(handles=legend_handles, loc="lower right", fontsize=9, framealpha=0.95)
     ax.set_axis_off()
@@ -389,16 +436,15 @@ def _short(addr: str) -> str:
     return addr.split(".")[-1]
 
 
-def _wrap_members(members: tuple[str, ...], per_line: int = 2, max_len: int = 20) -> str:
+def _wrap_members(
+    members: tuple[str, ...], per_line: int = 2, max_len: int = 20
+) -> str:
     """Pack short member names into lines so the label box doesn't grow wider
     than its neighbors. `per_line` items per row, each center-truncated."""
     if not members:
         return ""
     items = [_center_truncate(_short(m), max_len) for m in members]
-    rows = [
-        ", ".join(items[i : i + per_line])
-        for i in range(0, len(items), per_line)
-    ]
+    rows = [", ".join(items[i : i + per_line]) for i in range(0, len(items), per_line)]
     return "\n".join(rows)
 
 
@@ -420,9 +466,13 @@ def _condition_summary(cond: str) -> str:
     + right shape so the chart's WHERE line stays scannable."""
     # crude but cheap: strip the BuildSubselectComparison(...) wrapper
     inner = cond
-    for prefix in ("BuildSubselectComparison(", "BuildComparison(", "BuildConditional("):
+    for prefix in (
+        "BuildSubselectComparison(",
+        "BuildComparison(",
+        "BuildConditional(",
+    ):
         if inner.startswith(prefix) and inner.endswith(")"):
-            inner = inner[len(prefix):-1]
+            inner = inner[len(prefix) : -1]
             break
     # collapse `left=<x>@Grain<...>` to just `<x>`
     inner = _RE_GRAIN.sub("", inner)
@@ -460,6 +510,7 @@ def render_group_digraph(
     """Group graph: top-down by lineage generation, FINAL pinned to the
     bottom. Conditions show inline so the place where each WHERE atom lands
     is obvious at a glance."""
+
     def _edge_color(data: dict) -> str:
         phase = data.get("phase")
         if phase == "pre_condition":
@@ -489,7 +540,8 @@ def render_group_digraph(
     layering = lineage_edges + constraint_edges + existence_edges
 
     pos = _layered_layout(
-        graph, layering,
+        graph,
+        layering,
         pin_last=FINAL_NODE_ID if FINAL_NODE_ID in graph.nodes else None,
         layer_gap=4.5,
         x_gap=7.0,
@@ -498,8 +550,7 @@ def render_group_digraph(
     group_data = {n: _group_data(attrs, n) for n in graph.nodes}
     labels = {n: _group_label(n, d) for n, d in group_data.items()}
     node_colors = {
-        n: DEPTH_COLORS.get(group_data[n].depth_label, "#eeeeee")
-        for n in graph.nodes
+        n: DEPTH_COLORS.get(group_data[n].depth_label, "#eeeeee") for n in graph.nodes
     }
 
     ys = sorted({y for _, y in pos.values()}, reverse=True)
@@ -514,8 +565,13 @@ def render_group_digraph(
         x, y = pos[n]
         is_cond = bool(group_data[n].conditions) and n != FINAL_NODE_ID
         ax.text(
-            x, y, labels[n],
-            ha="center", va="center", fontsize=8.5, zorder=3,
+            x,
+            y,
+            labels[n],
+            ha="center",
+            va="center",
+            fontsize=8.5,
+            zorder=3,
             bbox=dict(
                 boxstyle="round,pad=0.45",
                 facecolor=node_colors[n],
@@ -526,59 +582,130 @@ def render_group_digraph(
 
     if lineage_edges:
         nx.draw_networkx_edges(
-            graph, pos, ax=ax, edgelist=lineage_edges,
+            graph,
+            pos,
+            ax=ax,
+            edgelist=lineage_edges,
             edge_color=[_edge_color(graph.edges[u, v]) for u, v in lineage_edges],
-            arrows=True, arrowsize=16, node_size=3200, width=1.2,
+            arrows=True,
+            arrowsize=16,
+            node_size=3200,
+            width=1.2,
         )
     if merge_edges:
         nx.draw_networkx_edges(
-            graph, pos, ax=ax, edgelist=merge_edges,
+            graph,
+            pos,
+            ax=ax,
+            edgelist=merge_edges,
             edge_color=[_edge_color(graph.edges[u, v]) for u, v in merge_edges],
-            style="dotted", arrows=True, arrowsize=14,
-            connectionstyle="arc3,rad=0.12", node_size=3200, width=0.9,
+            style="dotted",
+            arrows=True,
+            arrowsize=14,
+            connectionstyle="arc3,rad=0.12",
+            node_size=3200,
+            width=0.9,
         )
     if existence_edges:
         nx.draw_networkx_edges(
-            graph, pos, ax=ax, edgelist=existence_edges,
-            edge_color="#6a1b9a", style="dashed", arrows=True, arrowsize=14,
-            connectionstyle="arc3,rad=0.25", node_size=3200, width=1.0,
+            graph,
+            pos,
+            ax=ax,
+            edgelist=existence_edges,
+            edge_color="#6a1b9a",
+            style="dashed",
+            arrows=True,
+            arrowsize=14,
+            connectionstyle="arc3,rad=0.25",
+            node_size=3200,
+            width=1.0,
         )
     if constraint_edges:
         nx.draw_networkx_edges(
-            graph, pos, ax=ax, edgelist=constraint_edges,
-            edge_color="#ef6c00", style="dashdot", arrows=True, arrowsize=14,
-            connectionstyle="arc3,rad=0.18", node_size=3200, width=1.0,
+            graph,
+            pos,
+            ax=ax,
+            edgelist=constraint_edges,
+            edge_color="#ef6c00",
+            style="dashdot",
+            arrows=True,
+            arrowsize=14,
+            connectionstyle="arc3,rad=0.18",
+            node_size=3200,
+            width=1.0,
         )
 
     legend_handles = [
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor=DEPTH_COLORS["root"], markersize=12,
-                   label="root (source scan)"),
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor=DEPTH_COLORS["d0"], markersize=12,
-                   label="d0 (row-shape barrier)"),
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor=DEPTH_COLORS["d1"], markersize=12,
-                   label="d1 (condition feeder)"),
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor=DEPTH_COLORS["d*"], markersize=12,
-                   label="d* (movable)"),
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor=DEPTH_COLORS["final"], markersize=12,
-                   label="FINAL (sink)"),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor=DEPTH_COLORS["root"],
+            markersize=12,
+            label="root (source scan)",
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor=DEPTH_COLORS["d0"],
+            markersize=12,
+            label="d0 (row-shape barrier)",
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor=DEPTH_COLORS["d1"],
+            markersize=12,
+            label="d1 (condition feeder)",
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor=DEPTH_COLORS["d*"],
+            markersize=12,
+            label="d* (movable)",
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor=DEPTH_COLORS["final"],
+            markersize=12,
+            label="FINAL (sink)",
+        ),
         plt.Line2D([0], [0], color="#555555", label="lineage edge"),
         plt.Line2D([0], [0], color="#c62828", label="pre-condition phase"),
         plt.Line2D([0], [0], color="#2e7d32", label="post-condition phase"),
-        plt.Line2D([0], [0], color="#6a1b9a", linestyle="dashed",
-                   label="existence (side-channel)"),
-        plt.Line2D([0], [0], color="#ef6c00", linestyle="dashdot",
-                   label="constraint"),
-        plt.Line2D([0], [0], color="#555555", linestyle="dotted",
-                   label="merge → FINAL"),
-        plt.Line2D([0], [0], marker="s", color="w",
-                   markerfacecolor="#ffffff", markeredgecolor="#c2185b",
-                   markeredgewidth=2.5, markersize=12,
-                   label="condition injected here"),
+        plt.Line2D(
+            [0],
+            [0],
+            color="#6a1b9a",
+            linestyle="dashed",
+            label="existence (side-channel)",
+        ),
+        plt.Line2D([0], [0], color="#ef6c00", linestyle="dashdot", label="constraint"),
+        plt.Line2D(
+            [0], [0], color="#555555", linestyle="dotted", label="merge → FINAL"
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            markerfacecolor="#ffffff",
+            markeredgecolor="#c2185b",
+            markeredgewidth=2.5,
+            markersize=12,
+            label="condition injected here",
+        ),
     ]
     ax.legend(handles=legend_handles, loc="lower right", fontsize=8.5, framealpha=0.95)
     ax.set_axis_off()
@@ -615,7 +742,9 @@ def _materialize_for_query(
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
     )
-    build_statement: BuildSelectLineage | BuildMultiSelectLineage = factory.build(lineage)
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage = factory.build(
+        lineage
+    )
     build_env = environment.materialize_for_select(
         build_statement.local_concepts,
         build_cache=caches.build_cache,
@@ -653,8 +782,7 @@ def _find_select(queries: list) -> SelectStatement:
 
 def run_inline_demo() -> tuple[BuildInfo, BuildEnvironment, str, None]:
     base = Environment()
-    env, _ = base.parse(
-        """
+    env, _ = base.parse("""
 key order_id int;
 
 properties order_id (
@@ -687,8 +815,7 @@ select
     avg(value) by name as avg_revenue,
     upper(name)-> upper_name,
 ;
-        """
-    )
+        """)
     benv = env.materialize_for_select()
     conditions = BuildWhereClause(
         conditional=BuildComparison(
@@ -714,7 +841,12 @@ select
 
 def run_tpcds_query(
     name: str,
-) -> tuple[BuildInfo, BuildEnvironment, str, Optional[BuildSelectLineage | BuildMultiSelectLineage]]:
+) -> tuple[
+    BuildInfo,
+    BuildEnvironment,
+    str,
+    Optional[BuildSelectLineage | BuildMultiSelectLineage],
+]:
     """Resolve `name` to a preql file under TPCDS_DIR, build the v4 plan.
     Returns the BuildSelectLineage too so compile_sql can apply HAVING,
     ORDER BY, hidden_concepts, and LIMIT from the original statement."""
@@ -824,9 +956,7 @@ def compile_sql(
     if build_stmt is not None:
         deduped = optimize_ctes(deduped, root_cte, build_stmt)
 
-    outputs = [
-        c for c in node.output_concepts if c.address not in node.hidden_concepts
-    ]
+    outputs = [c for c in node.output_concepts if c.address not in node.hidden_concepts]
     pq = ProcessedQuery(output_columns=outputs, ctes=deduped, base=root_cte)
     return DuckDBDialect().compile_statement(pq)
 
@@ -837,7 +967,7 @@ def main() -> None:
         "--query",
         "-q",
         help="TPC-DS query identifier: '1', '01', 'query01', or a *.preql filename. "
-             "Omit to run the inline demo.",
+        "Omit to run the inline demo.",
     )
     parser.add_argument(
         "--no-sql",

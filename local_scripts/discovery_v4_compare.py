@@ -35,7 +35,7 @@ from trilogy import Environment
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.author import Function
 from trilogy.core.models.build import BuildFunction
-from trilogy.core.models.core import ListWrapper, MapWrapper, MagicConstants
+from trilogy.core.models.core import ListWrapper, MagicConstants, MapWrapper
 
 # Match the tpc_ds test harness's timing convention: sub-cutoff runs get
 # re-timed REPEAT_COUNT extra times (v4 and ref interleaved so cache
@@ -51,6 +51,7 @@ def _time(fn: Callable[[], _T]) -> tuple[float, _T]:
     start = time.perf_counter()
     value = fn()
     return time.perf_counter() - start, value
+
 
 # Make `discovery_v4` importable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -163,9 +164,7 @@ def _const_value(concept: Any) -> Any:
     )
 
 
-def hydrate_params(
-    sql: str, env: Environment
-) -> tuple[str, dict[str, Any]]:
+def hydrate_params(sql: str, env: Environment) -> tuple[str, dict[str, Any]]:
     """The reference SQL (and v4's, when rendering.parameters is on) embeds
     :name placeholders for constants like `unnest([...])`. DuckDB's parser
     doesn't accept `:name`, but it does accept `$name` with a dict binding —
@@ -292,9 +291,15 @@ def run_one(
     # Sub-cutoff runs are dominated by scheduler/timer jitter, so a single
     # sample isn't reproducible. Re-run interleaved REPEAT_COUNT times and
     # keep the minimum — noise only adds time.
-    fastest = min(
-        s for s in (result.v4_exec_seconds, result.ref_exec_seconds) if s is not None
-    ) if (result.v4_exec_seconds or result.ref_exec_seconds) else None
+    fastest = (
+        min(
+            s
+            for s in (result.v4_exec_seconds, result.ref_exec_seconds)
+            if s is not None
+        )
+        if (result.v4_exec_seconds or result.ref_exec_seconds)
+        else None
+    )
     if fastest is not None and fastest < REPEAT_TIME_CUTOFF:
         for _ in range(REPEAT_COUNT):
             if v4_sql and result.v4_rows is not None:
@@ -466,7 +471,9 @@ def write_summary(results: list[QueryResult]) -> Path:
     for r in sorted(results, key=lambda x: x.query_id):
         v4r = len(r.v4_rows) if r.v4_rows is not None else "-"
         rfr = len(r.ref_rows) if r.ref_rows is not None else "-"
-        lines.append(f"| [{r.query_id}](query{r.query_id}.md) | {r.status} | {v4r} | {rfr} |")
+        lines.append(
+            f"| [{r.query_id}](query{r.query_id}.md) | {r.status} | {v4r} | {rfr} |"
+        )
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
@@ -476,7 +483,7 @@ def discover_query_ids() -> list[str]:
     ids: list[str] = []
     for path in sorted(TPCDS_DIR.glob("query*.preql")):
         stem = path.stem  # queryNN
-        suffix = stem[len("query"):]
+        suffix = stem[len("query") :]
         if suffix.isdigit():
             ids.append(suffix.zfill(2))
     return ids

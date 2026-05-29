@@ -1,6 +1,8 @@
 import sys
+
 sys.path.insert(0, "local_scripts")
 from discovery_v4 import run_tpcds_query
+
 from trilogy.core.processing.nodes import SelectNode
 from trilogy.core.query_processor import datasource_to_cte, flatten_ctes
 from trilogy.core.statements.execute import ProcessedQuery
@@ -11,9 +13,23 @@ node = info.strategy_node.copy()
 if stmt is not None and getattr(stmt, "having_clause", None):
     from trilogy.core.enums import BooleanOperator
     from trilogy.core.models.build import BuildConditional
+
     having = stmt.having_clause.conditional
-    combined = BuildConditional(left=node.conditions, right=having, operator=BooleanOperator.AND) if node.conditions else having
-    node = SelectNode(output_concepts=list(stmt.output_components), input_concepts=list(node.usable_outputs), parents=[node], environment=node.environment, partial_concepts=list(node.partial_concepts), conditions=combined)
+    combined = (
+        BuildConditional(
+            left=node.conditions, right=having, operator=BooleanOperator.AND
+        )
+        if node.conditions
+        else having
+    )
+    node = SelectNode(
+        output_concepts=list(stmt.output_components),
+        input_concepts=list(node.usable_outputs),
+        parents=[node],
+        environment=node.environment,
+        partial_concepts=list(node.partial_concepts),
+        conditions=combined,
+    )
 node.hidden_concepts = set(stmt.hidden_components) if stmt else set()
 node.ordering = stmt.order_by if stmt else None
 node.rebuild_cache()

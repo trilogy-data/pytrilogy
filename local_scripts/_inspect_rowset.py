@@ -2,13 +2,14 @@
 know how to traverse it under a label."""
 
 import sys
+
 sys.path.insert(0, "local_scripts")
 from pathlib import Path
 
+from discovery_v4 import _find_select, _materialize_for_query
+
 from trilogy import Environment
-from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildRowsetItem, BuildRowsetLineage
-from discovery_v4 import _materialize_for_query, _find_select
 from trilogy.core.processing.concept_strategies_v4 import History
 
 TPCDS = Path(__file__).resolve().parent.parent / "tests" / "modeling" / "tpc_ds_duckdb"
@@ -24,14 +25,20 @@ print("=== MANDATORY (outer SELECT) ===")
 for c in mandatory:
     print(f"  {c.address}  derivation={c.derivation.value}")
     if isinstance(c.lineage, BuildRowsetItem):
-        print(f"    -> ROWSET wrap, content={c.lineage.content.address}, rowset={c.lineage.rowset.name}")
+        print(
+            f"    -> ROWSET wrap, content={c.lineage.content.address}, rowset={c.lineage.rowset.name}"
+        )
     elif c.lineage is not None:
         args = getattr(c.lineage, "concept_arguments", [])
-        print(f"    -> lineage {type(c.lineage).__name__} args=[{', '.join(a.address for a in args)}]")
+        print(
+            f"    -> lineage {type(c.lineage).__name__} args=[{', '.join(a.address for a in args)}]"
+        )
 
 # walk all rowset concepts reachable
 seen: set[str] = set()
 rowsets: dict[str, BuildRowsetLineage] = {}
+
+
 def walk(c):
     if c.address in seen:
         return
@@ -45,6 +52,8 @@ def walk(c):
     for arg in c.lineage.concept_arguments:
         ac = build_env.concepts.get(arg.address, arg)
         walk(ac)
+
+
 for c in mandatory:
     walk(c)
 
@@ -53,8 +62,12 @@ for name, rs in rowsets.items():
     print(f"  derived_concepts: {rs.derived_concepts}")
     print(f"  select type: {type(rs.select).__name__}")
     if hasattr(rs.select, "output_components"):
-        print(f"  select.output_components addresses: {[c.address for c in rs.select.output_components]}")
+        print(
+            f"  select.output_components addresses: {[c.address for c in rs.select.output_components]}"
+        )
     if hasattr(rs.select, "selection"):
-        print(f"  select.selection addresses: {[c.address for c in rs.select.selection]}")
+        print(
+            f"  select.selection addresses: {[c.address for c in rs.select.selection]}"
+        )
     if hasattr(rs.select, "where_clause") and rs.select.where_clause:
         print(f"  where_clause: {rs.select.where_clause}")

@@ -1,6 +1,11 @@
 from enum import Enum
 
-from trilogy.core.enums import AggregateGroupingMode, BooleanOperator, Derivation, SourceType
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    BooleanOperator,
+    Derivation,
+    SourceType,
+)
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,

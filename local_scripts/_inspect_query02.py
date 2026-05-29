@@ -1,8 +1,11 @@
 import sys
+
 sys.path.insert(0, "local_scripts")
 from pathlib import Path
+
+from discovery_v4 import _find_select, _materialize_for_query
+
 from trilogy import Environment
-from discovery_v4 import _materialize_for_query, _find_select
 from trilogy.core.processing.concept_strategies_v4 import History
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
 from trilogy.core.processing.v4_helper.group_graph import build_group_graph
@@ -24,12 +27,18 @@ for c in mandatory:
 si = build_env.concepts["local.sunday_increase"]
 print(f"\nsunday_increase lineage type: {type(si.lineage).__name__}")
 print(f"sunday_increase grain: {list(si.grain.components) if si.grain else None}")
-print(f"sunday_increase lineage concept_arguments: {[c.address for c in si.lineage.concept_arguments] if si.lineage else None}")
+print(
+    f"sunday_increase lineage concept_arguments: {[c.address for c in si.lineage.concept_arguments] if si.lineage else None}"
+)
 for a in si.lineage.concept_arguments:
     ac = build_env.concepts.get(a.address, a)
-    print(f"  arg {ac.address} derivation={ac.derivation} grain={list(ac.grain.components) if ac.grain else None}")
+    print(
+        f"  arg {ac.address} derivation={ac.derivation} grain={list(ac.grain.components) if ac.grain else None}"
+    )
     if ac.lineage:
-        print(f"    -> lineage args: {[x.address for x in ac.lineage.concept_arguments]}")
+        print(
+            f"    -> lineage args: {[x.address for x in ac.lineage.concept_arguments]}"
+        )
 print()
 cg = build_concept_graph(mandatory, build_env, [conditions] if conditions else [])
 gg, attrs = build_group_graph(cg, [conditions] if conditions else [], mandatory)
@@ -37,7 +46,9 @@ print("=== GROUPS ===")
 for n in gg.nodes:
     a = attrs[n]
     print(f"  {n}")
-    print(f"    derivation={a.derivation} depth={a.depth_label} grain={sorted(a.grain_components)}")
+    print(
+        f"    derivation={a.derivation} depth={a.depth_label} grain={sorted(a.grain_components)}"
+    )
     print(f"    primary  ={a.primary_members}")
     print(f"    secondary={a.secondary_members}")
     print(f"    output   ={a.output_concepts}")

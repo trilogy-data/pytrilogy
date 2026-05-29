@@ -162,7 +162,10 @@ class TestNativeGrainBasicInherited:
         cg = _cg(
             {
                 "agg_sum": {"grain": {"week_seq"}},
-                "round_result": {"grain": {"item.id", "order_id"}, "parents": ["agg_sum"]},
+                "round_result": {
+                    "grain": {"item.id", "order_id"},
+                    "parents": ["agg_sum"],
+                },
             }
         )
         bucket = _bucket(

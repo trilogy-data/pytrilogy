@@ -1,8 +1,11 @@
 import sys
+
 sys.path.insert(0, "local_scripts")
 from pathlib import Path
+
+from discovery_v4 import _find_select, _materialize_for_query
+
 from trilogy import Environment
-from discovery_v4 import _materialize_for_query, _find_select
 from trilogy.core.processing.concept_strategies_v4 import History
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
 from trilogy.core.processing.v4_helper.group_graph import build_group_graph
@@ -22,7 +25,9 @@ print("=== GROUPS ===")
 for n in gg.nodes:
     a = attrs[n]
     print(f"  {n}")
-    print(f"    derivation={a.derivation} depth={a.depth_label} grain={sorted(a.grain_components)}")
+    print(
+        f"    derivation={a.derivation} depth={a.depth_label} grain={sorted(a.grain_components)}"
+    )
     print(f"    primary  ={a.primary_members}")
     print(f"    secondary={a.secondary_members}")
     if a.conditions:

@@ -37,7 +37,11 @@ def _split_existence_atoms(
     row_combined = combine_condition_atoms(row_atoms) if row_atoms else None
     ex_combined = combine_condition_atoms(existence_atoms) if existence_atoms else None
     return (
-        BuildWhereClause(conditional=row_combined) if row_combined is not None else None,
+        (
+            BuildWhereClause(conditional=row_combined)
+            if row_combined is not None
+            else None
+        ),
         BuildWhereClause(conditional=ex_combined) if ex_combined is not None else None,
     )
 
