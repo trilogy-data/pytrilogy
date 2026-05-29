@@ -45,7 +45,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import (
     FINAL_NODE_ID,
     BuildInfo,
-    History,
+    V4History,
     search_concepts,
 )
 from trilogy.core.processing.condition_utility import strip_tautological_not_null
@@ -247,9 +247,9 @@ def _layered_layout(
                 cost += abs(x_of[u] - x_of[v])
         return cost
 
-    best_layers = [list(l) for l in layers]
+    best_layers = [list(lyr) for lyr in layers]
     best_cost = _edge_cost(best_layers)
-    last_signature: tuple[tuple[str, ...], ...] = tuple(tuple(l) for l in layers)
+    last_signature: tuple[tuple[str, ...], ...] = tuple(tuple(lyr) for lyr in layers)
     stable = 0
     for _ in range(sweeps):
         for li in range(1, len(layers)):
@@ -278,8 +278,8 @@ def _layered_layout(
         cost = _edge_cost(layers)
         if cost < best_cost:
             best_cost = cost
-            best_layers = [list(l) for l in layers]
-        signature = tuple(tuple(l) for l in layers)
+            best_layers = [list(lyr) for lyr in layers]
+        signature = tuple(tuple(lyr) for lyr in layers)
         if signature == last_signature:
             stable += 1
             if stable >= 2:
@@ -723,7 +723,7 @@ def render_group_digraph(
 def _materialize_for_query(
     environment: Environment,
     statement: SelectStatement,
-    history: History,
+    history: V4History,
 ) -> tuple[
     BuildSelectLineage | BuildMultiSelectLineage,
     BuildEnvironment,
@@ -830,7 +830,7 @@ select
             benv.concepts["local.avg_revenue"],
             benv.concepts["local.upper_name"],
         ],
-        history=History(base_environment=env),
+        history=V4History(base_environment=env),
         environment=benv,
         depth=0,
         g=generate_graph(benv),
@@ -864,7 +864,7 @@ def run_tpcds_query(
     _, queries = env.parse(text)
     select = _find_select(queries)
 
-    history = History(base_environment=env)
+    history = V4History(base_environment=env)
     build_stmt, build_env, conditions = _materialize_for_query(env, select, history)
 
     info = search_concepts(

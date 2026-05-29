@@ -15,6 +15,7 @@ The stage implementations live in `v4_helper/`; this file is just the public
 API and the History cache wiring.
 """
 
+from dataclasses import dataclass, field
 from typing import List
 
 from trilogy.constants import logger
@@ -40,8 +41,48 @@ __all__ = [
     "FINAL_NODE_ID",
     "History",
     "ROW_SHAPE_BARRIER_DERIVATIONS",
+    "V4History",
     "search_concepts",
 ]
+
+
+@dataclass
+class V4History(History):
+    """History fork for the v4 discovery prototype. The inherited StrategyNode
+    cache still serves the v3 sub-searches v4 dispatches into; this fork adds a
+    parallel, correctly-typed cache for the BuildInfo bundles v4 returns."""
+
+    build_history: dict[str, BuildInfo | None] = field(default_factory=dict)
+
+    def _v4_key(
+        self,
+        search: list[BuildConcept],
+        accept_partial: bool,
+        conditions: list[BuildWhereClause],
+    ) -> str:
+        base = "-".join(sorted(c.address for c in search)) + str(accept_partial)
+        return base + str(conditions) if conditions else base
+
+    def get_build_history(
+        self,
+        search: list[BuildConcept],
+        accept_partial: bool,
+        conditions: list[BuildWhereClause],
+    ) -> BuildInfo | None | bool:
+        key = self._v4_key(search, accept_partial, conditions)
+        if key in self.build_history:
+            node = self.build_history[key]
+            return node.copy() if node else node
+        return False
+
+    def build_to_history(
+        self,
+        search: list[BuildConcept],
+        accept_partial: bool,
+        output: BuildInfo | None,
+        conditions: list[BuildWhereClause],
+    ) -> None:
+        self.build_history[self._v4_key(search, accept_partial, conditions)] = output
 
 
 def _search_concepts(
@@ -70,7 +111,7 @@ def _search_concepts(
 
 def search_concepts(
     mandatory_list: List[BuildConcept],
-    history: History,
+    history: V4History,
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
@@ -80,7 +121,7 @@ def search_concepts(
     """Run the v4 planner against `mandatory_list` under `conditions`. Cached
     per `(mandatory_list, accept_partial, conditions)` via `history`."""
     conditions = conditions or []
-    hist = history.get_history(
+    hist = history.get_build_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions
     )
     if hist is not False:
@@ -89,7 +130,7 @@ def search_concepts(
             f"history ({'exists' if hist is not None else 'does not exist'}) for "
             f"{[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
         )
-        assert not isinstance(hist, bool)
+        assert isinstance(hist, BuildInfo)
         return hist
 
     result = _search_concepts(
@@ -102,10 +143,10 @@ def search_concepts(
         conditions=conditions,
     )
     # a node may be mutated after being cached; always store a copy
-    history.search_to_history(
+    history.build_to_history(
         mandatory_list,
         accept_partial,
-        result.copy() if result else None,
+        result.copy(),
         conditions=conditions,
     )
     return result

@@ -605,8 +605,8 @@ def _compute_concept_sets(
         if gid == FINAL_NODE_ID:
             continue
         cap: set[str] = set(primary_of[gid])
-        beh = behavior_of.get(gid)
-        if beh is None or derivation_of[gid] == Derivation.ROOT.value:
+        behavior = behavior_of.get(gid)
+        if behavior is None or derivation_of[gid] == Derivation.ROOT.value:
             # Root scans can also project the grain keys of their primaries —
             # `store_sales.ticket_number` is reachable from a store_sales scan
             # even if no consumer asked for it. Exposing it in capability lets
@@ -621,7 +621,7 @@ def _compute_concept_sets(
             if pgid == FINAL_NODE_ID:
                 continue
             for addr in capability.get(pgid, set()):
-                if beh.can_preserve(concept_graph, native, addr):
+                if behavior.can_preserve(concept_graph, native, addr):
                     cap.add(addr)
         capability[gid] = cap
 

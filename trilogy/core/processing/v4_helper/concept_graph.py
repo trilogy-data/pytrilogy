@@ -92,7 +92,7 @@ def _lineage_args(
     if concept.lineage is None:
         return []
     return [
-        environment.concepts.get(p.address, p)
+        environment.concepts.get(p.address, p) or p
         for p in concept.lineage.concept_arguments
     ]
 
@@ -326,7 +326,7 @@ def build_concept_graph(
     # have to retro-promote depth labels.
     for clause in conditions:
         for concept in clause.concept_arguments:
-            resolved = environment.concepts.get(concept.address, concept)
+            resolved = environment.concepts.get(concept.address, concept) or concept
             _add_concept(resolved, environment, graph, label=_condition_label(""))
 
     # Walk each ROWSET leaf in the outer graph. Multiple outer concepts
@@ -344,16 +344,17 @@ def build_concept_graph(
         if data.get("label", ""):
             continue
         address = data.get("address", nid)
-        concept = environment.concepts.get(address)
-        if concept is None or not isinstance(concept.lineage, BuildRowsetItem):
+        found = environment.concepts.get(address)
+        if found is None or not isinstance(found.lineage, BuildRowsetItem):
             continue
-        rowset_name = concept.lineage.rowset.name
+        rowset_name = found.lineage.rowset.name
         if rowset_name in seen_rowsets:
             continue
         seen_rowsets.add(rowset_name)
-        pending_rowsets.append(concept)
+        pending_rowsets.append(found)
 
     for rowset_concept in pending_rowsets:
+        assert isinstance(rowset_concept.lineage, BuildRowsetItem)
         rowset_name = rowset_concept.lineage.rowset.name
         inner_outputs, inner_conditions = _rowset_inner_outputs(
             rowset_concept, environment
@@ -362,7 +363,7 @@ def build_concept_graph(
             _add_concept(inner_concept, environment, graph, label=rowset_name)
         for clause in inner_conditions:
             for c in clause.concept_arguments:
-                resolved = environment.concepts.get(c.address, c)
+                resolved = environment.concepts.get(c.address, c) or c
                 _add_concept(
                     resolved,
                     environment,
