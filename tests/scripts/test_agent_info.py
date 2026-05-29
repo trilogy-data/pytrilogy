@@ -36,6 +36,7 @@ def test_agent_info():
     assert "trilogy agent-info report" in result.output
     assert "trilogy agent-info datasources" in result.output
     assert "trilogy agent-info ingest" in result.output
+    assert "trilogy agent-info config" in result.output
     assert "trilogy agent-info serve" in result.output
 
     # Check configuration section
@@ -106,6 +107,24 @@ def test_agent_info_ingest_subcommand():
     assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
 
 
+def test_agent_info_config_subcommand():
+    """`agent-info config` carries the `trilogy.toml` schema and the env-var
+    API-key convention — the workspace config rarely needs editing during a
+    query task, so the full reference moved out of the main dump."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "config"])
+
+    assert result.exit_code == 0
+    assert "trilogy.toml" in result.output
+    assert "[engine]" in result.output
+    assert "[setup]" in result.output
+    assert "[agent]" in result.output
+    # API-key conventions live here too.
+    assert "OPENROUTER_API_KEY" in result.output
+    assert "ANTHROPIC_API_KEY" in result.output
+    assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
+
+
 def test_agent_info_serve_subcommand():
     """`agent-info serve` carries the `trilogy public` + `trilogy serve`
     references — distribution/hosting topics moved out of the main dump."""
@@ -140,6 +159,11 @@ def test_main_agent_info_does_not_inline_extracted_sections():
     # Root/File-Based datasource example bodies
     assert "root datasource raw_rides" not in result.output
     assert "state unpublished" not in result.output
+    # Config body indicators — the example `[engine]/[setup]/[agent]` block
+    # and the API-key list no longer live in the main dump.
+    assert "ANTHROPIC_API_KEY" not in result.output
+    assert "OPENROUTER_API_KEY" not in result.output
+    assert 'trilogy = ["setup.preql"]' not in result.output
 
 
 def test_cli_help_contains_agent_notice():

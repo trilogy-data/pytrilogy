@@ -41,7 +41,6 @@ from trilogy.core.models.author import (
     Parenthetical,
     SubselectComparison,
     SubselectItem,
-    TraitDataType,
     TupleWrapper,
     UndefinedConcept,
     WhereClause,

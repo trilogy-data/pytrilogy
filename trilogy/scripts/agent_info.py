@@ -8,8 +8,8 @@ AGENT_INFO_OUTPUT = """# Trilogy CLI - AI Agent Usage Guide
 
 ## Overview
 
-Trilogy is a semantic ETL and reporting tool providing a SQL-like language with
-optimizations. This CLI enables workspace management, script execution, testing,
+Trilogy is a semantic ETL and reporting tool with a streamlined
+SQL-like syntax. This CLI enables workspace management, script execution, testing,
 and data ingestion.
 
 Defaults are managed by a trilogy.toml config file; convention
@@ -106,11 +106,11 @@ concept (with purpose + datatype), every datasource, and every import that the
 file's environment exposes. No dialect or connection needed.
 
 **Imports chain in** — exploring a fact file lists the dimensions it imports
-in the same output. After `import raw.store_sales as store_sales;` the
-explore output for `raw/store_sales.preql` ALSO contains every concept under
+in the same output. If store_sales imports customer and dates,
+the output for `store_sales.preql` ALSO contains every concept under
 `store_sales.customer.*`, `store_sales.date_dim.*`, `store_sales.item.*`, etc.
-You do NOT need to call `explore` separately on each dimension file — one call
-on the fact file shows the full queryable surface.
+You do not need to explore those to work with store_sales data; reading
+store_sales contains the upserset of all information.
 
 **Trilogy auto-resolves joins.** Trilogy automatically resolves
 joins from the model's declared key/property relationships — there is no
@@ -120,21 +120,19 @@ engine does the join planning. When using an existing model, you can
 typically query all fields safely.
 
 AVOID merging in a model that is already accessible as a subpath of a 
-an existing model.
+an existing model; merges are best reserved for adhoc combinations of
+otherwise disjoint datasets.
 
-Prefer this over `read_file` on a model file: the same content arrives as a
-structured listing, smaller and easier to scan. Default `--show groups`
-collapses concepts by namespace so a 300+ concept fact collapses to ~25 group
-lines. Datatype is rendered using the `value::trait` authoring syntax
-(`string::us_state`, `enum<'TN'>::us_state`) so what you see is what you
-write.
+Prefer this tool  over `read_file` on a model file; richer and more
+compact output. Datatype is rendered using the `value::trait` authoring syntax
+(`string::us_state`, `enum<'TN'>::us_state`).
 
 **Arguments:**
 - `path` (required): Path to a `.preql` file.
 
 **Options:**
 - `--show {groups|concepts|datasources|imports|all}`: Section to print
-  (default: `groups` — concepts collapsed by namespace prefix). `concepts`
+  (default: `groups` — concepts grouped by namespace). `concepts`
   gives the flat table; `all` adds datasources + imports.
 - `--purpose NAME`: Filter concepts by purpose (`key`, `property`, `metric`,
   `constant`, `rowset`). Repeatable: `--purpose key --purpose property`.
@@ -223,7 +221,8 @@ trilogy fmt messy_script.preql
 
 Render a markdown report (prose + embedded ```trilogy blocks) to PNG/HTML.
 Run `trilogy agent-info report` for the command flags and the report format
-reference. Only relevant when producing a `.md` deliverable.
+reference. Use this when a user asks you to produce a report or readout
+as a file.
 
 ---
 
@@ -295,9 +294,10 @@ trilogy database describe store_sales
 ### trilogy ingest
 
 Bootstrap Trilogy datasource files from warehouse tables or data files (CSV /
-Parquet, local or cloud URL). Most agent tasks query an EXISTING model in
-`raw/` — you do not need this. Run `trilogy agent-info ingest` for the full
-reference when you actually need to generate new model files.
+Parquet, local or cloud URL). Creates datasource files, sniffs values
+for enums/FKs. Always use this when creating a new model from scratch
+off existing data to get a baseline. Run `trilogy agent-info ingest` for the full
+reference when needed.
 
 ---
 
@@ -317,45 +317,19 @@ Pass off a multi-step orchestration task to an AI agent. (Not yet implemented)
 
 ## Authoring Datasources
 
-Most agent tasks query an EXISTING model — `raw/*.preql` already declares the
-datasources. You don't need to author one. When you do, run
-`trilogy agent-info datasources` for the full reference covering root,
-file-based (Parquet / CSV / Python+Arrow), and partial/complete forms.
+When you need to author or edit a model, isntead of just
+using it, call `trilogy agent-info datasources` for 
+the full reference covering root, file-based (Parquet / CSV / Python+Arrow), 
+and partial/complete forms.
 
 ---
 
 ## Configuration File (trilogy.toml)
 
-```toml
-[engine]
-# Default dialect for execution
-dialect = "duckdb"
-
-# Max parallelism for multi-script execution
-parallelism = 3
-
-[setup]
-# Startup scripts to run before execution
-trilogy = ["setup.preql"]
-sql = ["init.sql"]
-
-[agent]
-# Default LLM provider for AI features
-# Valid values: openai, anthropic, google, openrouter
-provider = "anthropic"
-
-# Default model for the chosen provider
-model = "claude-sonnet-4-6"
-```
-
-The `[agent]` section configures the default LLM provider and model used by `trilogy agent`
-and any AI-assisted features. API keys are read from environment variables:
-- `OPENAI_API_KEY` for OpenAI
-- `ANTHROPIC_API_KEY` for Anthropic
-- `GOOGLE_API_KEY` for Google
-- `OPENROUTER_API_KEY` for OpenRouter
-
-OpenRouter gives access to models from many providers through a single API and key.
+The eval workspace already has a working `trilogy.toml` — you should not need
+to edit it. When you do (changing dialect, adding `[setup]` scripts, configuring
+the `[agent]` LLM section, ...) run `trilogy agent-info config` for the full
+schema and API-key conventions.
 
 ## Supported Dialects
 
@@ -423,6 +397,9 @@ the current task:
 - `trilogy agent-info ingest` — `trilogy ingest` full reference (warehouse
   tables, CSV / Parquet, cloud URLs, `--fks`, `--all`, ...). For bootstrapping
   a model from scratch.
+- `trilogy agent-info config` — `trilogy.toml` schema (`[engine]`, `[setup]`,
+  `[agent]`) and the env-var-only API-key convention. Only needed when
+  editing the workspace config.
 - `trilogy agent-info serve` — `trilogy public list/fetch` (browse and pull
   from trilogy-public-models) and `trilogy serve` (FastAPI server exposing
   model directories). For distribution/hosting, not query authoring.
@@ -728,6 +705,64 @@ trilogy serve ./models/ duckdb --port 8080
 """
 
 
+CONFIG_DOC = """# trilogy.toml Configuration - AI Agent Reference
+
+Every Trilogy workspace has a `trilogy.toml` at its root. The eval workspace
+ships with a working one — you should NOT need to edit it. When you do, the
+schema and API-key conventions are below.
+
+## Example
+
+```toml
+[engine]
+# Default dialect for execution
+dialect = "duckdb"
+
+# Max parallelism for multi-script execution
+parallelism = 3
+
+[setup]
+# Startup scripts to run before execution
+trilogy = ["setup.preql"]
+sql = ["init.sql"]
+
+[agent]
+# Default LLM provider for AI features
+# Valid values: openai, anthropic, google, openrouter
+provider = "anthropic"
+
+# Default model for the chosen provider
+model = "claude-sonnet-4-6"
+```
+
+## Sections
+
+- `[engine]` — execution dialect and parallelism defaults. Most workspaces
+  override only `dialect` (`duckdb`, `postgres`, ...). `parallelism` caps the
+  worker count for multi-script execution.
+- `[engine.config]` — dialect-specific connection params. For DuckDB the
+  common key is `db_location = "<path>.duckdb"`; for warehouses, a connection
+  string is supplied at the CLI instead.
+- `[setup]` — scripts to run before any user script. `trilogy = [...]` runs
+  `.preql` declarations to seed the environment; `sql = [...]` runs raw SQL
+  for tables/extensions.
+- `[agent]` — defaults for `trilogy agent` and AI-assisted features. `provider`
+  + `model` are the LLM defaults; `api_key_env` overrides which env var the
+  API key is read from (defaults below).
+
+## API keys
+
+`[agent]` reads keys from environment variables — never from `trilogy.toml`:
+- `OPENAI_API_KEY` for OpenAI
+- `ANTHROPIC_API_KEY` for Anthropic
+- `GOOGLE_API_KEY` for Google
+- `OPENROUTER_API_KEY` for OpenRouter
+
+OpenRouter gives access to models from many providers through a single API
+and key.
+"""
+
+
 INGEST_DOC = """# trilogy ingest - AI Agent Reference
 
 Bootstrap datasources from existing warehouse tables OR from data files
@@ -965,6 +1000,12 @@ def agent_info_datasources() -> None:
 def agent_info_ingest() -> None:
     """Print the `trilogy ingest` command reference."""
     print(INGEST_DOC)
+
+
+@agent_info.command("config")
+def agent_info_config() -> None:
+    """Print the trilogy.toml configuration schema + API-key conventions."""
+    print(CONFIG_DOC)
 
 
 @agent_info.command("serve")
