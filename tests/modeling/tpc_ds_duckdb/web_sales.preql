@@ -33,6 +33,7 @@ properties <order_number, item.id> (
     list_price numeric::usd, # Per-unit list price before discounts (USD).
     net_profit numeric::usd, # Net profit reported for the line (USD).
     net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping (USD).
+    ext_sales_price numeric(15,2)::usd, # Stored line-extended sales price in USD. Approximates sales_price * quantity but is authoritative on its own — ~130 rows at SF=1 store a non-null value while sales_price or quantity is null, so the product formula is not equivalent and would silently drop those rows from sums.
     ext_ship_cost numeric::usd, # Extended shipping cost charged on the line (USD).
     ext_discount_amount numeric::usd?, # Extended discount amount applied to the line (USD).
     return_amount numeric::usd, # Refund amount if the line was returned (USD, joined from web_returns).
@@ -40,8 +41,6 @@ properties <order_number, item.id> (
     is_returned bool, # Flag indicating whether a return row exists for this line.
     row_counter int, # Constant 1, used for unconditional row counts.
 );
-
-auto ext_sales_price <- sales_price * quantity; # Extended sales price (sales_price * quantity); bound to WS_EXT_SALES_PRICE.
 
 datasource web_sales (
     raw('''1'''): row_counter,

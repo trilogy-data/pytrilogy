@@ -26,7 +26,11 @@ def test_list_empty_directory(runner, tmp_path: Path):
     assert "No entries" in result.output
 
 
-def test_list_with_entries(runner, tmp_path: Path):
+def test_list_with_entries_filters_to_preql_by_default(runner, tmp_path: Path):
+    """The Trilogy-focused default keeps the listing to ``.preql`` files plus
+    directories — the noise of ``__pycache__``, ``.sql`` exports, build
+    artefacts is filtered out so the model surface is the first thing the
+    reader sees."""
     (tmp_path / "a.preql").write_text("import x;\n")
     (tmp_path / "b.sql").write_text("select 1;\n")
     sub = tmp_path / "sub"
@@ -36,8 +40,42 @@ def test_list_with_entries(runner, tmp_path: Path):
     result = runner.invoke(cli, ["file", "list", str(tmp_path)])
     assert result.exit_code == 0, result.output
     assert "a.preql" in result.output
-    assert "b.sql" in result.output
+    assert "b.sql" not in result.output
     assert "sub/" in result.output or "sub\\" in result.output
+
+
+def test_list_all_flag_includes_non_preql(runner, tmp_path: Path):
+    (tmp_path / "a.preql").write_text("import x;\n")
+    (tmp_path / "b.sql").write_text("select 1;\n")
+    result = runner.invoke(cli, ["file", "list", str(tmp_path), "--all"])
+    assert result.exit_code == 0, result.output
+    assert "a.preql" in result.output
+    assert "b.sql" in result.output
+
+
+def test_list_renders_preql_description(runner, tmp_path: Path):
+    """Leading ``#`` block on a .preql file surfaces beneath the path as a
+    description line — same format the agent's ``list_files`` tool uses."""
+    (tmp_path / "fact.preql").write_text(
+        "# Unified sales fact across all channels.\n"
+        "# Use this for cross-channel rollups instead of importing per-channel facts.\n"
+        "key id int;\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(cli, ["file", "list", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "fact.preql" in result.output
+    assert "↳" in result.output
+    assert "Unified sales fact across all channels." in result.output
+    assert "cross-channel rollups" in result.output
+
+
+def test_list_no_description_block_emits_path_only(runner, tmp_path: Path):
+    (tmp_path / "bare.preql").write_text("key id int;\n", encoding="utf-8")
+    result = runner.invoke(cli, ["file", "list", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "bare.preql" in result.output
+    assert "↳" not in result.output
 
 
 def test_list_recursive(runner, tmp_path: Path):

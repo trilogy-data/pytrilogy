@@ -18,6 +18,7 @@ from typing import Callable
 
 from trilogy.ai.models import LLMToolDefinition
 from trilogy.scripts.display_core import print_info
+from trilogy.scripts.file_helpers import preql_description
 
 MARKER_TEMPLATE = "\n...[truncated {n} bytes]...\n"
 
@@ -209,9 +210,13 @@ _LIST_FILES_SKIP_DIRS = {"__pycache__", ".git", ".venv", "node_modules"}
 _LIST_FILES_SKIP_PREFIXES = ("_worker_",)
 _LIST_FILES_SKIP_SUFFIXES = (".duckdb", ".pyc")
 _LIST_FILES_MAX_ENTRIES = 500
-_LIST_FILES_DESC_LIMIT = 140
-_LIST_FILES_DESC_PREFIX = "    ↳ "
-_PREQL_HEAD_SCAN_BYTES = 4096
+
+# Description-rendering constants live in the shared helper so ``trilogy
+# file list`` and the agent's ``list_files`` use identical truncation. The
+# `_`-prefixed re-exports below preserve the names existing agent tests
+# already reference.
+_LIST_FILES_DESC_LIMIT = preql_description.LIST_FILES_DESC_LIMIT
+_LIST_FILES_DESC_PREFIX = preql_description.LIST_FILES_DESC_PREFIX
 
 
 def _should_skip_entry(name: str) -> bool:
@@ -224,42 +229,10 @@ def _should_skip_entry(name: str) -> bool:
     return False
 
 
-def _read_preql_description(path: Path) -> str | None:
-    """First-block `#` comment at the top of a .preql file, flattened to a
-    single line; ``None`` if the file does not start with a comment block."""
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            head = f.read(_PREQL_HEAD_SCAN_BYTES)
-    except OSError:
-        return None
-    lines = head.splitlines()
-    i = 0
-    while i < len(lines) and not lines[i].strip():
-        i += 1
-    parts: list[str] = []
-    while i < len(lines):
-        stripped = lines[i].strip()
-        if not stripped or not stripped.startswith("#"):
-            break
-        parts.append(stripped.lstrip("#").strip())
-        i += 1
-    text = " ".join(p for p in parts if p)
-    return text or None
-
-
-def _truncate_description(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[: max(limit - 1, 0)] + "…"
-
-
 def _append_preql_description(entries: list[str], path: Path) -> None:
-    if path.suffix != ".preql":
-        return
-    desc = _read_preql_description(path)
-    if desc:
-        entries.append(
-            _LIST_FILES_DESC_PREFIX
-            + _truncate_description(desc, _LIST_FILES_DESC_LIMIT)
-        )
+    line = preql_description.format_preql_description(path)
+    if line:
+        entries.append(line)
 
 
 def handle_list_files(state: AgentState, args: dict) -> str:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -14,6 +15,7 @@ from trilogy.scripts.file_helpers import (
     FileNotFoundError,
     FileOperationError,
     get_backend,
+    preql_description,
 )
 from trilogy.scripts.file_helpers.preql_validation import validate_preql_content
 
@@ -83,8 +85,21 @@ def file() -> None:
     default=False,
     help="Show size and entry kind alongside the path.",
 )
-def list_cmd(path: str, recursive: bool, long_format: bool) -> None:
-    """List files at PATH (default: current directory)."""
+@click.option(
+    "--all",
+    "-a",
+    "show_all",
+    is_flag=True,
+    default=False,
+    help="Show every entry (default lists only .preql files + directories).",
+)
+def list_cmd(path: str, recursive: bool, long_format: bool, show_all: bool) -> None:
+    """List files at PATH (default: current directory).
+
+    The Trilogy-focused default surfaces just the ``.preql`` model files and
+    their leading description comments — the same one-line purpose strings
+    the agent's ``list_files`` tool shows. Pass ``--all`` for every entry.
+    """
     backend = _resolve(path)
     try:
         entries = backend.list(path, recursive=recursive)
@@ -92,6 +107,9 @@ def list_cmd(path: str, recursive: bool, long_format: bool) -> None:
         _fail(exc, code=1)
     except FileOperationError as exc:
         _fail(exc, code=2)
+
+    if not show_all:
+        entries = [e for e in entries if e.is_dir or e.path.endswith(".preql")]
 
     if not entries:
         print_info(f"No entries at {path}")
@@ -104,6 +122,10 @@ def list_cmd(path: str, recursive: bool, long_format: bool) -> None:
         else:
             suffix = "/" if entry.is_dir else ""
             click.echo(f"{entry.path}{suffix}")
+        if not entry.is_dir:
+            desc_line = preql_description.format_preql_description(Path(entry.path))
+            if desc_line:
+                click.echo(desc_line)
 
 
 @file.command("read")

@@ -39,6 +39,7 @@ from trilogy.scripts.agent_tools import (
     handle_trilogy,
     truncate_middle,
 )
+from trilogy.scripts.file_helpers import preql_description
 
 try:
     import rich  # noqa: F401
@@ -505,7 +506,7 @@ def test_list_files_ignores_comments_not_at_top(tmp_path, monkeypatch):
 
 def test_list_files_truncates_long_descriptions(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    long_desc = "x" * 500
+    long_desc = "x" * (agent_tools_mod._LIST_FILES_DESC_LIMIT + 200)
     (tmp_path / "wordy.preql").write_text(
         f"# {long_desc}\nkey id int;\n", encoding="utf-8"
     )
@@ -515,7 +516,12 @@ def test_list_files_truncates_long_descriptions(tmp_path, monkeypatch):
     ]
     assert len(desc_lines) == 1
     assert "…" in desc_lines[0]
-    assert len(desc_lines[0]) < 200
+    # Truncated body is bounded by the configured limit + a tiny prefix/marker.
+    assert (
+        len(desc_lines[0])
+        <= len(agent_tools_mod._LIST_FILES_DESC_PREFIX)
+        + agent_tools_mod._LIST_FILES_DESC_LIMIT
+    )
 
 
 def test_list_files_skips_description_for_non_preql(tmp_path, monkeypatch):
@@ -556,20 +562,20 @@ def test_read_preql_description_handles_blank_lines_before_comment(tmp_path):
         "\n\n# First real line is the header.\n# Second header line.\nkey id int;\n",
         encoding="utf-8",
     )
-    desc = agent_tools_mod._read_preql_description(p)
+    desc = preql_description.read_preql_description(p)
     assert desc == "First real line is the header. Second header line."
 
 
 def test_read_preql_description_returns_none_for_no_comment(tmp_path):
     p = tmp_path / "x.preql"
     p.write_text("key id int;\n", encoding="utf-8")
-    assert agent_tools_mod._read_preql_description(p) is None
+    assert preql_description.read_preql_description(p) is None
 
 
 def test_read_preql_description_strips_double_hash(tmp_path):
     p = tmp_path / "x.preql"
     p.write_text("## Heading style still works\nkey id int;\n", encoding="utf-8")
-    assert agent_tools_mod._read_preql_description(p) == "Heading style still works"
+    assert preql_description.read_preql_description(p) == "Heading style still works"
 
 
 def test_read_preql_description_handles_oserror(monkeypatch, tmp_path):
@@ -580,7 +586,7 @@ def test_read_preql_description_handles_oserror(monkeypatch, tmp_path):
         raise OSError("denied")
 
     monkeypatch.setattr(Path, "open", boom)
-    assert agent_tools_mod._read_preql_description(p) is None
+    assert preql_description.read_preql_description(p) is None
 
 
 def test_read_file_reports_oserror(monkeypatch, tmp_path):

@@ -240,6 +240,53 @@ sum(
     assert env.environment.concepts["monday_sales"].datatype.traits == ["usd"]
 
 
+def test_auto_concept_with_binding_prefers_binding_over_formula():
+    """Regression: an ``auto x <- a * b`` concept that is *also* directly
+    bound to a datasource column must source from the binding, not from
+    decomposing into a*b. The bound value can diverge from the formula
+    (e.g. TPC-DS stores CS_EXT_SALES_PRICE even on rows where CS_SALES_PRICE
+    or CS_QUANTITY is NULL); summing the formula drops those rows."""
+    env = Dialects.DUCK_DB.default_executor()
+    env.environment.parse("""
+key id int;
+property id.qty int;
+property id.price float;
+property id.bucket int;
+
+auto ext_price <- qty * price;
+
+datasource sales (
+    id: id,
+    qty: qty,
+    price: price,
+    bucket: bucket,
+    ext: ext_price,
+)
+grain (id)
+query '''
+select 1 as id, 5 as qty, 2.0 as price, 1 as bucket, 999.00 as ext
+union all
+select 2 as id, 3 as qty, 4.0 as price, 1 as bucket, 12.0 as ext
+union all
+select 3 as id, cast(null as int) as qty, 4.0 as price, 2 as bucket, 555.55 as ext
+''';
+""")
+
+    rows = env.execute_query("SELECT bucket, sum(ext_price) -> total;").fetchall()
+    by_bucket = {r.bucket: r.total for r in rows}
+    # Both buckets must reflect the stored ext column. The formula
+    # (qty * price) for row 3 is NULL because qty is NULL, so a
+    # decomposition-based sum would yield NULL for bucket=2; the binding
+    # has 555.55. Row 1 stores 999.00 even though qty*price=10.0, so a
+    # decomposition would yield 22.00 for bucket=1.
+    assert by_bucket[1] == Decimal("1011.00"), by_bucket
+    assert by_bucket[2] == Decimal("555.55"), by_bucket
+
+    sql = env.generate_sql("SELECT bucket, sum(ext_price) -> total;")[0]
+    assert '"ext"' in sql, f"expected SQL to source the ext column, got: {sql}"
+    assert '"qty"' not in sql, f"expected SQL to skip the formula, got: {sql}"
+
+
 def test_custom_trait_unnest_typing():
     env = Dialects.DUCK_DB.default_executor()
     env.environment.parse("""

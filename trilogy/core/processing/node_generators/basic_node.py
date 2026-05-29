@@ -45,7 +45,21 @@ def gen_basic_node(
     conditions: BuildWhereClause | None = None,
 ):
     depth_prefix = "\t" * depth
-    parent_concepts = resolve_function_parent_concepts(concept, environment=environment)
+    # A BASIC concept that is *also* directly bound to a datasource column
+    # has two valid source paths: decompose the lineage, or source the
+    # column directly. Prefer the column when the binding exists — the bound
+    # value can diverge from the formula (e.g. TPC-DS CS_EXT_SALES_PRICE is
+    # stored even on rows where CS_SALES_PRICE or CS_QUANTITY is NULL, so
+    # sum(formula) drops those rows while sum(binding) doesn't). Replacing
+    # the formula parents with a ROOT clone of the concept reroutes the
+    # recursive source_concepts call through the ROOT handler, which picks
+    # up the binding.
+    if concept.canonical_address in environment.materialized_canonical_concepts:
+        parent_concepts = [concept.with_materialized_source()]
+    else:
+        parent_concepts = resolve_function_parent_concepts(
+            concept, environment=environment
+        )
 
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} with lineage {concept.lineage} has parents {[x for x in parent_concepts]}"
