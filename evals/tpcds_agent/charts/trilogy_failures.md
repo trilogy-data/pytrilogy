@@ -708,7 +708,7 @@ limit 100;
   regexp_contains(:local_zips,concat(concat((^|,),local.store_zip_prefix@Grain<st
   ore_sales.store.store_sk>),[0-9]{3}(,|$)))
   ```
-- `trilogy `
+- `trilogy run query09.preql`
 
   ```text
   Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 45 column 12 (char 2540). Re-issue the call with valid JSON arguments.

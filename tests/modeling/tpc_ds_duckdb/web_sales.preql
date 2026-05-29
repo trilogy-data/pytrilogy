@@ -44,8 +44,6 @@ properties <order_number, item.id> (
     row_counter int, # Constant 1, used for unconditional row counts.
 );
 
-auto ext_sales_price <- sales_price * quantity; # Extended sales price (sales_price * quantity); bound to WS_EXT_SALES_PRICE.
-
 datasource web_sales (
     raw('''1'''): row_counter,
     WS_SOLD_DATE_SK: ?date.id, # FK to the date the order was sold.

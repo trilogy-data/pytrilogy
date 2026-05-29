@@ -44,8 +44,6 @@ properties <ticket_number, item.id> (
     row_counter int, # Constant 1, used for unconditional row counts.
 );
 
-auto ext_sales_price <- sales_price * quantity; # Extended sales price (sales_price * quantity); bound to SS_EXT_SALES_PRICE.
-
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line profit.
 
 auto line_item_count<- sum(row_counter); # Measure for unique ticket/item.id combos sold
