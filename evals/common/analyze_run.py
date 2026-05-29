@@ -261,12 +261,27 @@ def write_failures_report(
     return out_path
 
 
+_TOOL_LABEL_MAX = 24
+
+
+def _short_tool_label(name: str) -> str:
+    """Truncate hugely-long tool names so a malformed tool_call (e.g. a model
+    crammed an entire CLI invocation into the `name` field instead of using
+    arguments) doesn't blow up the bar-chart layout. The Unknown-tool branch
+    in the agent loop rejects these on the wire; the dashboard just needs to
+    render them without wrapping a 500-char label across the whole figure."""
+    if len(name) <= _TOOL_LABEL_MAX:
+        return name
+    return name[: _TOOL_LABEL_MAX - 1] + "…"
+
+
 def _plot_tool_calls(ax, outcomes: dict[str, list[int]]) -> None:
     tools = sorted(outcomes, key=lambda t: -sum(outcomes[t]))
+    labels = [_short_tool_label(t) for t in tools]
     ok = [outcomes[t][0] for t in tools]
     err = [outcomes[t][1] for t in tools]
-    ax.bar(tools, ok, color=OK_COLOR, label="ok")
-    ax.bar(tools, err, bottom=ok, color=ERR_COLOR, label="error")
+    ax.bar(labels, ok, color=OK_COLOR, label="ok")
+    ax.bar(labels, err, bottom=ok, color=ERR_COLOR, label="error")
     for i in range(len(tools)):
         total = ok[i] + err[i]
         rate = ok[i] / total * 100 if total else 0

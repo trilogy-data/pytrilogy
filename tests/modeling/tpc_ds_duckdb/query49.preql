@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 # Per-(channel, item) ratios. Filter requires a returns row with return_amount > 10000
 # (acts as INNER on LEFT JOIN to returns), and Dec 2001.

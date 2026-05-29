@@ -1,8 +1,8 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 # frequent_ss_items: items with at least one (truncated_desc, item.id, sold_date) combo having > 4 store_sales rows in 2000-2003
 auto sales.item.desc_truncated <- substring(sales.item.desc, 1, 30);
-auto customer_total_in_window <- sum(sales.quantity * sales.sales_price) by sales.customer.id;
+auto customer_total_in_window <- sum(sales.quantity * sales.sales_price) by sales.billing_customer.id;
 
 rowset frequent_items <- where
     sales.sales_channel = 'STORE' and sales.date.year in (2000, 2001, 2002, 2003)
@@ -15,10 +15,10 @@ having
 ;
 
 # max_store_sales: scalar max over customers of total ss_qty*ss_price for years 2000-2003
-auto customer_total_overall <- sum(sales.quantity * sales.sales_price) by sales.customer.id;
+auto customer_total_overall <- sum(sales.quantity * sales.sales_price) by sales.billing_customer.id;
 
 rowset max_total <- where
-    sales.customer.id is not null
+    sales.billing_customer.id is not null
     and sales.sales_channel = 'STORE'
     and sales.date.year in (2000, 2001, 2002, 2003)
 select
@@ -29,9 +29,9 @@ select
 auto ss_combo_count <- count(sales.order_id) by sales.item.desc_truncated, sales.item.id, sales.date.date;
 
 rowset best_customers <- where
-    sales.customer.id is not null and sales.sales_channel = 'STORE'
+    sales.billing_customer.id is not null and sales.sales_channel = 'STORE'
 select
-    sales.customer.id as best_customer_id,
+    sales.billing_customer.id as best_customer_id,
     --customer_total_overall,
     --max_total.cmax,
 having
@@ -44,10 +44,10 @@ where
     sales.date.year = 2000
     and sales.date.month_of_year = 2
     and sales.item.id in frequent_items.frequent_item_id
-    and sales.customer.id in best_customers.best_customer_id
+    and sales.billing_customer.id in best_customers.best_customer_id
 select
-    sales.customer.last_name as c_last_name,
-    sales.customer.first_name as c_first_name,
+    sales.billing_customer.last_name as c_last_name,
+    sales.billing_customer.first_name as c_first_name,
     sum((sales.quantity * sales.list_price) ? sales.sales_channel in ('WEB', 'CATALOG')) as sales_total,
 having
     sales_total > 0

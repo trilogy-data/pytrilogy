@@ -1,67 +1,23 @@
+-- Distinct product names of items whose manufacturer-text is shared by at
+-- least one item from one of 8 attribute profiles, restricted to manufacturer
+-- ids in [1, 500]. The TPC-DS spec's narrow profiles + [738, 778] range
+-- yield zero matches at SF=0.1 — these profiles + range were chosen from
+-- the actual SF=0.1 item distribution to produce meaningful signal (~75 rows).
 SELECT distinct(i_product_name)
 FROM item i1
-WHERE i_manufact_id BETWEEN 738 AND 738+40
+WHERE i_manufact_id BETWEEN 1 AND 500
   AND
     (SELECT count(*) AS item_cnt
      FROM item
      WHERE (i_manufact = i1.i_manufact
-            AND ((i_category = 'Women'
-                  AND (i_color = 'powder'
-                       OR i_color = 'khaki')
-                  AND (i_units = 'Ounce'
-                       OR i_units = 'Oz')
-                  AND (i_size = 'medium'
-                       OR i_size = 'extra large'))
-                 OR (i_category = 'Women'
-                     AND (i_color = 'brown'
-                          OR i_color = 'honeydew')
-                     AND (i_units = 'Bunch'
-                          OR i_units = 'Ton')
-                     AND (i_size = 'N/A'
-                          OR i_size = 'small'))
-                 OR (i_category = 'Men'
-                     AND (i_color = 'floral'
-                          OR i_color = 'deep')
-                     AND (i_units = 'N/A'
-                          OR i_units = 'Dozen')
-                     AND (i_size = 'petite'
-                          OR i_size = 'large'))
-                 OR (i_category = 'Men'
-                     AND (i_color = 'light'
-                          OR i_color = 'cornflower')
-                     AND (i_units = 'Box'
-                          OR i_units = 'Pound')
-                     AND (i_size = 'medium'
-                          OR i_size = 'extra large'))))
+            AND ((i_category = 'Books'       AND i_color = 'tan'      AND i_units = 'Oz'     AND i_size = 'N/A')
+                 OR (i_category = 'Electronics' AND i_color = 'purple' AND i_units = 'Ton'    AND i_size = 'N/A')
+                 OR (i_category = 'Men'         AND i_color = 'misty'  AND i_units = 'Box'    AND i_size = 'medium')
+                 OR (i_category = 'Books'       AND i_color = 'medium' AND i_units = 'Tsp'    AND i_size = 'N/A')))
        OR (i_manufact = i1.i_manufact
-           AND ((i_category = 'Women'
-                 AND (i_color = 'midnight'
-                      OR i_color = 'snow')
-                 AND (i_units = 'Pallet'
-                      OR i_units = 'Gross')
-                 AND (i_size = 'medium'
-                      OR i_size = 'extra large'))
-                OR (i_category = 'Women'
-                    AND (i_color = 'cyan'
-                         OR i_color = 'papaya')
-                    AND (i_units = 'Cup'
-                         OR i_units = 'Dram')
-                    AND (i_size = 'N/A'
-                         OR i_size = 'small'))
-                OR (i_category = 'Men'
-                    AND (i_color = 'orange'
-                         OR i_color = 'frosted')
-                    AND (i_units = 'Each'
-                         OR i_units = 'Tbl')
-                    AND (i_size = 'petite'
-                         OR i_size = 'large'))
-                OR (i_category = 'Men'
-                    AND (i_color = 'forest'
-                         OR i_color = 'ghost')
-                    AND (i_units = 'Lb'
-                         OR i_units = 'Bundle')
-                    AND (i_size = 'medium'
-                         OR i_size = 'extra large'))))) > 0
+           AND ((i_category = 'Books'       AND i_color = 'midnight' AND i_units = 'Gram'   AND i_size = 'N/A')
+                OR (i_category = 'Books'       AND i_color = 'pale'   AND i_units = 'Pound'  AND i_size = 'N/A')
+                OR (i_category = 'Electronics' AND i_color = 'khaki'  AND i_units = 'Pallet' AND i_size = 'N/A')
+                OR (i_category = 'Electronics' AND i_color = 'mint'   AND i_units = 'Gross'  AND i_size = 'N/A')))) > 0
 ORDER BY i_product_name
 LIMIT 100;
-

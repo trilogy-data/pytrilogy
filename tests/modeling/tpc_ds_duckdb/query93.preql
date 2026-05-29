@@ -1,4 +1,4 @@
-import store_sales as ss;
+import physical_sales as ss;
 
 auto act_sales <- case
     when ss.return_quantity is not null then (ss.quantity - ss.return_quantity) * ss.sales_price
@@ -8,8 +8,8 @@ end;
 where
     ss.return_reason.desc = 'reason 28'
 select
-    ss.customer.id as customer_sk,
-    sum(act_sales) by ss.customer.id as sumsales,
+    ss.billing_customer.id as customer_sk,
+    sum(act_sales) by ss.billing_customer.id as sumsales,
 order by
     sumsales asc nulls first,
     customer_sk asc nulls first

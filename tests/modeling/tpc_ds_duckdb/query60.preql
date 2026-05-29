@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 auto music_item_ids <- sales.item.text_id ? sales.item.category = 'Music';
 

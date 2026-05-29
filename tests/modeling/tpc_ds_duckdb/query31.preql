@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 def channel_qtr(channel, qtr) -> sum(sales.ext_sales_price ? sales.sales_channel = channel and sales.date.quarter = qtr)
     by sales.bill_address.county, sales.date.year;

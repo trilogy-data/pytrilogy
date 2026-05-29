@@ -1,3 +1,4 @@
+# For cross-channel returns analysis, prefer `all_sales` (carries returns alongside sales for all channels).
 # Catalog channel returns info at (item, order_number) grain: net_loss,
 # refunded_cash, reversed_charge, store_credit, return_amount,
 # return_amt_inc_tax, return_quantity, plus a had_return boolean.
@@ -8,7 +9,7 @@ import catalog_sales as sales;
 import item as item;
 import date as date;
 import time as time;
-import customer as customer;
+import customer as billing_customer;
 import customer as refunded_customer;
 import address as return_address;
 import address as refunded_address;
@@ -34,7 +35,7 @@ datasource catalog_returns (
     CR_ITEM_SK: item.id, # FK to the returned item.
     CR_ORDER_NUMBER: sales.order_number, # FK to the originating catalog sales order.
     CR_ORDER_NUMBER: order_number,
-    CR_RETURNING_CUSTOMER_SK: customer.id, # FK to the customer returning the item.
+    CR_RETURNING_CUSTOMER_SK: billing_customer.id, # FK to the customer returning the item.
     CR_REFUNDED_CUSTOMER_SK: refunded_customer.id, # FK to the customer receiving the refund (may differ from returning customer).
     CR_RETURNING_ADDR_SK: return_address.id, # FK to the address the return originated from.
     CR_REFUNDED_ADDR_SK: refunded_address.id, # FK to the address the refund was issued to.

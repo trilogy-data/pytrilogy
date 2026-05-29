@@ -1,5 +1,5 @@
-import unified_sales as sales;
-import store_sales as ss;
+import all_sales as sales;
+import physical_sales as ss;
 import store as store;
 
 # my_customers: customers who bought i_category='Women' & i_class='maternity'
@@ -10,9 +10,9 @@ rowset my_customers <- where
     and sales.item.class = 'maternity'
     and sales.date.year = 1998
     and sales.date.month_of_year = 12
-    and sales.customer.id is not null
+    and sales.billing_customer.id is not null
 select
-    sales.customer.id as my_cust_id,
+    sales.billing_customer.id as my_cust_id,
 ;
 
 # Reference q54 cross-joins each ss row with every store matching the
@@ -20,14 +20,14 @@ select
 # (count of stores in customer's county/state), via 2 rowsets keyed on
 # (county, state) and merged.
 rowset cust_ss <- where
-    ss.customer.id in my_customers.my_cust_id
+    ss.billing_customer.id in my_customers.my_cust_id
     and ss.date.month_seq >= 1188
     and ss.date.month_seq <= 1190
-    and ss.customer.id is not null
+    and ss.billing_customer.id is not null
 select
-    ss.customer.id as ss_cust_id,
-    ss.customer.address.county as ss_cust_county,
-    ss.customer.address.state as ss_cust_state,
+    ss.billing_customer.id as ss_cust_id,
+    ss.billing_customer.address.county as ss_cust_county,
+    ss.billing_customer.address.state as ss_cust_state,
     sum(ss.ext_sales_price) as ss_revenue,
 ;
 

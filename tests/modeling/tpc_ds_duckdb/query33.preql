@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 import item as items;
 
 auto electronics_manuf_ids <- items.manufacturer_id ? items.category = 'Electronics';

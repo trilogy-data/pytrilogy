@@ -27,6 +27,7 @@ from trilogy.ai.models import (
 )
 from trilogy.ai.providers.anthropic import AnthropicProvider
 from trilogy.ai.providers.base import LLMProvider
+from trilogy.ai.providers.deepseek import DeepSeekProvider
 from trilogy.ai.providers.google import GoogleProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.ai.providers.openrouter import OpenRouterProvider
@@ -51,6 +52,7 @@ PROVIDER_DEFAULT_ENV: dict[Provider, str] = {
     Provider.OPENAI: "OPENAI_API_KEY",
     Provider.GOOGLE: "GOOGLE_API_KEY",
     Provider.OPENROUTER: "OPENROUTER_API_KEY",
+    Provider.DEEPSEEK: "DEEPSEEK_API_KEY",
 }
 
 PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
@@ -58,6 +60,7 @@ PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
     Provider.OPENAI: OpenAIProvider,
     Provider.GOOGLE: GoogleProvider,
     Provider.OPENROUTER: OpenRouterProvider,
+    Provider.DEEPSEEK: DeepSeekProvider,
 }
 
 

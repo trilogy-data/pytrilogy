@@ -5,47 +5,47 @@ import catalog_returns as cr;
 # filter is bound *inside* the conditional sum because a plain sum + a row-grain
 # WHERE year=2000 loses the filter from the customer-grain aggregate.
 auto customer_state <- sum(cr.return_amt_inc_tax ? cr.date.year = 2000 and cr.return_address.state is not null)
-    by cr.return_address.state, cr.customer.id;
+    by cr.return_address.state, cr.billing_customer.id;
 auto scaled_state <- 1.2 * avg(customer_state) by cr.return_address.state;
 
 where
     customer_state > scaled_state
-    and cr.customer.address.state = 'GA'
+    and cr.billing_customer.address.state = 'GA'
     and cr.return_address.state is not null
 select
-    --cr.customer.id,
-    cr.customer.text_id,
-    cr.customer.salutation,
-    cr.customer.first_name,
-    cr.customer.last_name,
-    cr.customer.address.street_number,
-    cr.customer.address.street_name,
-    cr.customer.address.street_type,
-    cr.customer.address.suite_number,
-    cr.customer.address.city,
-    cr.customer.address.county,
-    cr.customer.address.state,
-    cr.customer.address.zip,
-    cr.customer.address.country,
-    cr.customer.address.gmt_offset,
-    cr.customer.address.location_type,
+    --cr.billing_customer.id,
+    cr.billing_customer.text_id,
+    cr.billing_customer.salutation,
+    cr.billing_customer.first_name,
+    cr.billing_customer.last_name,
+    cr.billing_customer.address.street_number,
+    cr.billing_customer.address.street_name,
+    cr.billing_customer.address.street_type,
+    cr.billing_customer.address.suite_number,
+    cr.billing_customer.address.city,
+    cr.billing_customer.address.county,
+    cr.billing_customer.address.state,
+    cr.billing_customer.address.zip,
+    cr.billing_customer.address.country,
+    cr.billing_customer.address.gmt_offset,
+    cr.billing_customer.address.location_type,
     customer_state,
 order by
-    cr.customer.text_id asc nulls first,
-    cr.customer.salutation asc nulls first,
-    cr.customer.first_name asc nulls first,
-    cr.customer.last_name asc nulls first,
-    cr.customer.address.street_number asc nulls first,
-    cr.customer.address.street_name asc nulls first,
-    cr.customer.address.street_type asc nulls first,
-    cr.customer.address.suite_number asc nulls first,
-    cr.customer.address.city asc nulls first,
-    cr.customer.address.county asc nulls first,
-    cr.customer.address.state asc nulls first,
-    cr.customer.address.zip asc nulls first,
-    cr.customer.address.country asc nulls first,
-    cr.customer.address.gmt_offset asc nulls first,
-    cr.customer.address.location_type asc nulls first,
+    cr.billing_customer.text_id asc nulls first,
+    cr.billing_customer.salutation asc nulls first,
+    cr.billing_customer.first_name asc nulls first,
+    cr.billing_customer.last_name asc nulls first,
+    cr.billing_customer.address.street_number asc nulls first,
+    cr.billing_customer.address.street_name asc nulls first,
+    cr.billing_customer.address.street_type asc nulls first,
+    cr.billing_customer.address.suite_number asc nulls first,
+    cr.billing_customer.address.city asc nulls first,
+    cr.billing_customer.address.county asc nulls first,
+    cr.billing_customer.address.state asc nulls first,
+    cr.billing_customer.address.zip asc nulls first,
+    cr.billing_customer.address.country asc nulls first,
+    cr.billing_customer.address.gmt_offset asc nulls first,
+    cr.billing_customer.address.location_type asc nulls first,
     customer_state asc nulls first
 limit 100
 ;

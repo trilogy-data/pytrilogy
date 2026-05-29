@@ -212,12 +212,23 @@ def write_trilogy_toml(
     """Configure the agent subprocess: DuckDB pointing at the benchmark file,
     provider/model, and the per-query iteration budget. ``quiet = true`` drops
     the show_message tool — long unattended runs blow up otherwise."""
-    api_key_env = {
+    # No silent fallback — an unknown provider here would inherit a wrong env
+    # var and 401 against the actual API. Fail loud so the misconfiguration
+    # surfaces at workspace-setup time, not 50 turns into a hung eval.
+    api_key_env_map = {
         "openrouter": "OPENROUTER_API_KEY",
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
         "google": "GOOGLE_API_KEY",
-    }.get(provider, "OPENROUTER_API_KEY")
+        "deepseek": "DEEPSEEK_API_KEY",
+    }
+    if provider not in api_key_env_map:
+        raise ValueError(
+            f"Unknown provider {provider!r} in eval harness — known: "
+            f"{sorted(api_key_env_map)}. Add the api_key_env mapping in "
+            "evals/common/agent_runner.py:write_trilogy_toml."
+        )
+    api_key_env = api_key_env_map[provider]
     workspace.joinpath("trilogy.toml").write_text(
         f"""\
 [engine]

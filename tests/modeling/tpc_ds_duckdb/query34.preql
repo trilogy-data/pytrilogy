@@ -1,38 +1,38 @@
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 where
     (
-        store_sales.date.day_of_month between 1 and 3
-        or store_sales.date.day_of_month between 25 and 28
+        physical_sales.date.day_of_month between 1 and 3
+        or physical_sales.date.day_of_month between 25 and 28
     )
     and (
-        store_sales.household_demographic.buy_potential = '>10000'
-        or store_sales.household_demographic.buy_potential = 'Unknown'
+        physical_sales.household_demographic.buy_potential = '>10000'
+        or physical_sales.household_demographic.buy_potential = 'Unknown'
     )
-    and store_sales.household_demographic.vehicle_count > 0
+    and physical_sales.household_demographic.vehicle_count > 0
     and (case
-            when store_sales.household_demographic.vehicle_count > 0 then (store_sales.household_demographic.dependent_count * 1.0) / store_sales.household_demographic.vehicle_count
+            when physical_sales.household_demographic.vehicle_count > 0 then (physical_sales.household_demographic.dependent_count * 1.0) / physical_sales.household_demographic.vehicle_count
             else null
         end) > 1.2
-    and store_sales.date.year in (1999, 2000, 2001)
-    and store_sales.store.county = 'Williamson County'
-    and store_sales.customer.id is not null
-    and store_sales.ticket_number is not null
+    and physical_sales.date.year in (1999, 2000, 2001)
+    and physical_sales.store.county = 'Williamson County'
+    and physical_sales.billing_customer.id is not null
+    and physical_sales.ticket_number is not null
 select
-    --store_sales.customer.id,
-    store_sales.customer.last_name,
-    store_sales.customer.first_name,
-    store_sales.customer.salutation,
-    store_sales.customer.preferred_cust_flag,
-    store_sales.ticket_number,
-    sum(store_sales.row_counter) by store_sales.customer.id, store_sales.ticket_number as cnt,
+    --physical_sales.billing_customer.id,
+    physical_sales.billing_customer.last_name,
+    physical_sales.billing_customer.first_name,
+    physical_sales.billing_customer.salutation,
+    physical_sales.billing_customer.preferred_cust_flag,
+    physical_sales.ticket_number,
+    sum(physical_sales.row_counter) by physical_sales.billing_customer.id, physical_sales.ticket_number as cnt,
 having
     cnt between 15 and 20
 
 order by
-    store_sales.customer.last_name asc nulls first,
-    store_sales.customer.first_name asc nulls first,
-    store_sales.customer.salutation asc nulls first,
-    store_sales.customer.preferred_cust_flag desc nulls first,
-    store_sales.ticket_number asc nulls first
+    physical_sales.billing_customer.last_name asc nulls first,
+    physical_sales.billing_customer.first_name asc nulls first,
+    physical_sales.billing_customer.salutation asc nulls first,
+    physical_sales.billing_customer.preferred_cust_flag desc nulls first,
+    physical_sales.ticket_number asc nulls first
 ;

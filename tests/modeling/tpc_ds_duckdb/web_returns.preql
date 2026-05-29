@@ -1,3 +1,4 @@
+# For cross-channel returns analysis, prefer `all_sales` (carries returns alongside sales for all channels).
 # Web channel returns info at (item, order_number) grain: return amount,
 # return quantity, refunded cash, restocking / handling fee, and net loss.
 
@@ -7,7 +8,7 @@ import store as store;
 import web_sales as web_sales;
 import date as return_date;
 import time as time;
-import customer as customer;
+import customer as billing_customer;
 import customer as refunded_customer;
 import customer_demographic as refunded_demographic;
 import customer_demographic as returning_demographic;
@@ -26,7 +27,7 @@ datasource web_returns (
     WR_RETURNED_DATE_SK: return_date.id, # FK to the date the item was returned.
     WR_RETURN_TIME_SK: time.id, # FK to the time-of-day the return was processed.
     WR_ITEM_SK: web_sales.item.id, # FK to the returned item.
-    WR_RETURNING_CUSTOMER_SK: customer.id, # FK to the customer returning the item.
+    WR_RETURNING_CUSTOMER_SK: billing_customer.id, # FK to the customer returning the item.
     WR_REFUNDED_CUSTOMER_SK: refunded_customer.id, # FK to the customer receiving the refund (may differ).
     WR_RETURNING_CDEMO_SK: returning_demographic.id, # FK to the returning customer's demographic profile.
     WR_REFUNDED_CDEMO_SK: refunded_demographic.id, # FK to the refunded customer's demographic profile.

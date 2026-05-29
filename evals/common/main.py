@@ -26,6 +26,7 @@ PROVIDER_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "google": "GOOGLE_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
 }
 
 # OpenRouter multiplexes a model across providers; we only block AtlasCloud
@@ -37,7 +38,19 @@ OPENROUTER_ROUTING = {
     "allow_fallbacks": True,
 }
 
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+# Default to direct DeepSeek — bypasses OpenRouter's routing layer (and the
+# keep-alive comments it injects that mask upstream hangs from httpx's read
+# timeout). Pass --provider openrouter to fall back to the multiplexed route.
+#
+# Model is `deepseek-chat` (non-thinking variant) rather than `deepseek-v4-flash`
+# because the latter runs in thinking mode by default, which rejects ANY explicit
+# `tool_choice` (required, named, or otherwise) with a 400. Our agent loop uses
+# `tool_choice: required` to force tool calls — incompatible with thinking mode.
+# `deepseek-chat` deprecates 2026-07-24; revisit when DeepSeek exposes a way to
+# put `deepseek-v4-flash` into non-thinking mode, or relax the agent's reliance
+# on `tool_choice` so it works against thinking-mode APIs.
+DEFAULT_PROVIDER = "deepseek"
+DEFAULT_MODEL = "deepseek-chat"
 
 
 def _force_utf8_stdio() -> None:
@@ -56,7 +69,7 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model id")
-    parser.add_argument("--provider", default="openrouter", help="LLM provider")
+    parser.add_argument("--provider", default=DEFAULT_PROVIDER, help="LLM provider")
     parser.add_argument(
         "--scale-factor",
         type=float,
@@ -399,7 +412,15 @@ def run(spec: BenchmarkSpec) -> int:
         # tool-call arguments, producing `&lt;-` instead of `<-`. Decode at the
         # provider level so the agent doesn't have to learn the workaround.
         os.environ.setdefault("OPENROUTER_SANITIZE_HTML_ESCAPES", "true")
-    api_env = PROVIDER_ENV.get(args.provider, "OPENROUTER_API_KEY")
+    api_env = PROVIDER_ENV.get(args.provider)
+    if api_env is None:
+        print(
+            f"ERROR: unknown provider {args.provider!r} — known providers: "
+            f"{sorted(PROVIDER_ENV)}. Add it to PROVIDER_ENV in "
+            "evals/common/main.py and to api_key_env_map in agent_runner.py.",
+            file=sys.stderr,
+        )
+        return 2
     if not os.environ.get(api_env):
         print(
             f"ERROR: {api_env} is not set (looked in env and {args.env_file}).",
@@ -510,6 +531,16 @@ def run(spec: BenchmarkSpec) -> int:
             f"{type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
+    # Reference SQL directory: per-spec folder where each ``query<NN>.sql`` is
+    # the executable SQL the scorer compares the agent's output against, in
+    # place of ``PRAGMA <extension>(<NN>)``. Most files reproduce the PRAGMA
+    # output verbatim; a few override it with filter values that actually
+    # produce non-empty results at our scale factor (e.g. q32/q41/q44 at
+    # SF=0.1). Falls back to PRAGMA when the dir is unset or the file is
+    # missing for a given id.
+    references_dir: Path | None = spec.references_dir
+    if references_dir is not None and not references_dir.exists():
+        references_dir = None
     scoring_lock = threading.Lock()
     render_lock = threading.Lock()
     last_render = [0.0]
@@ -587,6 +618,7 @@ def run(spec: BenchmarkSpec) -> int:
                             qid,
                             spec.duckdb_extension,
                             params=entry.get("params"),
+                            custom_refs_dir=references_dir,
                         )
                 except Exception as exc:
                     per_query_scores[index] = scoring.QueryResult(
@@ -657,6 +689,7 @@ def run(spec: BenchmarkSpec) -> int:
                             entry["id"],
                             spec.duckdb_extension,
                             params=entry.get("params"),
+                            custom_refs_dir=references_dir,
                         )
                 except Exception as exc:
                     per_query_scores[i] = scoring.QueryResult(
@@ -703,7 +736,11 @@ def run(spec: BenchmarkSpec) -> int:
     else:
         try:
             query_results = scoring.score_queries(
-                workspace_db, workspace, query_ids, spec.duckdb_extension
+                workspace_db,
+                workspace,
+                query_ids,
+                spec.duckdb_extension,
+                custom_refs_dir=references_dir,
             )
         except Exception as exc:
             print(f"  scoring aborted: {type(exc).__name__}: {exc}", file=sys.stderr)

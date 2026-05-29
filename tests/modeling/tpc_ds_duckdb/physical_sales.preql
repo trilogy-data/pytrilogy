@@ -1,3 +1,4 @@
+# For cross-channel questions, prefer `all_sales` (combines this with catalog_sales and web_sales).
 # Store channel sales info at (item, ticket_number) grain: quantity,
 # sales / list / wholesale / extended prices, discount and coupon amounts,
 # net paid, extended tax, net profit, and an is_returned flag plus
@@ -10,7 +11,7 @@ import date as date;
 import date as return_date;
 import time as time;
 import time as return_time;
-import customer as customer;
+import customer as billing_customer;
 import customer as return_customer;
 import promotion as promotion;
 import customer_demographic as customer_demographic;
@@ -48,7 +49,7 @@ datasource store_sales (
     raw('''1'''): row_counter,
     SS_SOLD_DATE_SK: ?date.id, # FK to date the sale occurred (optional in source data).
     SS_SOLD_TIME_SK: ?time.id, # FK to time-of-day the sale occurred.
-    SS_CUSTOMER_SK: ?customer.id, # FK to the purchasing customer (optional — anonymous sales allowed).
+    SS_CUSTOMER_SK: ?billing_customer.id, # FK to the purchasing customer (optional — anonymous sales allowed).
     SS_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at time of sale.
     SS_HDEMO_SK: ?household_demographic.id, # FK to the customer's household profile at time of sale.
     SS_TICKET_NUMBER: ticket_number,

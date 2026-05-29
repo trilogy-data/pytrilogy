@@ -1,21 +1,21 @@
 #List all the states with at least 10 customers who during a given month bought items with the price tag at least
 #20% higher than the average price of items in the same category##
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 where
-    store_sales.date.year = 2001
-    and store_sales.item.category is not null
-    and store_sales.date.month_of_year = 1
-    and store_sales.item.current_price > 1.2 * avg(store_sales.item.current_price) by store_sales.item.category
-    and store_sales.customer.id is not null
-    and store_sales.customer.address.id is not null
+    physical_sales.date.year = 2001
+    and physical_sales.item.category is not null
+    and physical_sales.date.month_of_year = 1
+    and physical_sales.item.current_price > 1.2 * avg(physical_sales.item.current_price) by physical_sales.item.category
+    and physical_sales.billing_customer.id is not null
+    and physical_sales.billing_customer.address.id is not null
 select
-    store_sales.customer.address.state,
-    sum(store_sales.row_counter) as customer_count,
+    physical_sales.billing_customer.address.state,
+    sum(physical_sales.row_counter) as customer_count,
 having
     customer_count >= 10
 
 order by
     customer_count asc nulls first,
-    store_sales.customer.address.state asc nulls first
+    physical_sales.billing_customer.address.state asc nulls first
 ;

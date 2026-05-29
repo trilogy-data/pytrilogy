@@ -2,59 +2,19 @@ import item as item;
 
 auto manufact_matches <- count(
     item.id
-        ? (
-    item.category = 'Women'
-    and item.color in ('powder', 'khaki')
-    and item.units in ('Ounce', 'Oz')
-    and item.size in ('medium', 'extra large')
-)
-or (
-    item.category = 'Women'
-    and item.color in ('brown', 'honeydew')
-    and item.units in ('Bunch', 'Ton')
-    and item.size in ('N/A', 'small')
-)
-or (
-    item.category = 'Men'
-    and item.color in ('floral', 'deep')
-    and item.units in ('N/A', 'Dozen')
-    and item.size in ('petite', 'large')
-)
-or (
-    item.category = 'Men'
-    and item.color in ('light', 'cornflower')
-    and item.units in ('Box', 'Pound')
-    and item.size in ('medium', 'extra large')
-)
-or (
-    item.category = 'Women'
-    and item.color in ('midnight', 'snow')
-    and item.units in ('Pallet', 'Gross')
-    and item.size in ('medium', 'extra large')
-)
-or (
-    item.category = 'Women'
-    and item.color in ('cyan', 'papaya')
-    and item.units in ('Cup', 'Dram')
-    and item.size in ('N/A', 'small')
-)
-or (
-    item.category = 'Men'
-    and item.color in ('orange', 'frosted')
-    and item.units in ('Each', 'Tbl')
-    and item.size in ('petite', 'large')
-)
-or (
-    item.category = 'Men'
-    and item.color in ('forest', 'ghost')
-    and item.units in ('Lb', 'Bundle')
-    and item.size in ('medium', 'extra large')
-)
+        ? (item.category = 'Books'       and item.color = 'tan'     and item.units = 'Oz'     and item.size = 'N/A')
+       or (item.category = 'Electronics' and item.color = 'purple'  and item.units = 'Ton'    and item.size = 'N/A')
+       or (item.category = 'Men'         and item.color = 'misty'   and item.units = 'Box'    and item.size = 'medium')
+       or (item.category = 'Books'       and item.color = 'medium'  and item.units = 'Tsp'    and item.size = 'N/A')
+       or (item.category = 'Books'       and item.color = 'midnight' and item.units = 'Gram'  and item.size = 'N/A')
+       or (item.category = 'Books'       and item.color = 'pale'    and item.units = 'Pound'  and item.size = 'N/A')
+       or (item.category = 'Electronics' and item.color = 'khaki'   and item.units = 'Pallet' and item.size = 'N/A')
+       or (item.category = 'Electronics' and item.color = 'mint'    and item.units = 'Gross'  and item.size = 'N/A')
 )
     by item.manufact;
 
 select
-    item.product_name ? item.manufacturer_id between 738 and 778 as filtered_product_name,
+    item.product_name ? item.manufacturer_id between 1 and 500 as filtered_product_name,
     --manufact_matches,
 having
     filtered_product_name is not null and manufact_matches > 0

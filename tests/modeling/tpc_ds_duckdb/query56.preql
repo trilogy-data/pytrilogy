@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 auto color_ids <- sales.item.text_id ? sales.item.color in ('slate', 'blanched', 'burnished');
 

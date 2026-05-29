@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 import date as date;
 
 auto target_week_seq <- date.week_seq ? date._date_string = '2000-01-03';

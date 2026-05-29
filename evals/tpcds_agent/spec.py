@@ -22,7 +22,11 @@ SPEC = BenchmarkSpec(
     enriched_skip_prefixes=("query", "adhoc"),
     # tests/modeling/tpc_ds_duckdb is the hand-curated semantic model the
     # enriched leg of `--both-modes` seeds from instead of `trilogy ingest --all`.
+    # The same directory also holds query<NN>.sql reference SQL files; the
+    # scorer prefers these over PRAGMA tpcds() for queries where the spec
+    # filter values yield empty results at our scale factor.
     default_enriched_dir=EVAL_DIR.parents[1] / "tests" / "modeling" / "tpc_ds_duckdb",
+    references_dir=EVAL_DIR.parents[1] / "tests" / "modeling" / "tpc_ds_duckdb",
     default_scale_factor=0.01,
     default_num_queries=20,
 )

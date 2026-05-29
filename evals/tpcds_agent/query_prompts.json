@@ -17,7 +17,7 @@
   {
     "id": 4,
     "grade": "hard",
-    "prompt": "For each customer and each year, compute a customer 'year total' separately for each of three channels (store, catalog, web) as the sum of ((extended list price minus extended wholesale cost minus extended discount amount) plus extended sales price) divided by 2 over that channel's sales in that year. Restrict to customers who have year totals greater than zero in 2001 across all three channels. Among those, return only customers whose catalog 2002-over-2001 ratio exceeds both their store 2002-over-2001 ratio and their web 2002-over-2001 ratio (ratios computed only when the 2001 total is positive). Report the customer code (the stable business identifier), first name, last name, and preferred-customer flag (taken from the 2002 store record), ordered by those four fields with nulls first; limit 100 rows."
+    "prompt": "For each billing customer and each year, compute a customer 'year total' separately for each of three channels (store, catalog, web) as the sum of ((extended list price minus extended wholesale cost minus extended discount amount) plus extended sales price) divided by 2 over that channel's sales in that year. Restrict to billing customers who have year totals greater than zero in 2001 across all three channels. Among those, return only billing customers whose catalog 2002-over-2001 ratio exceeds both their store 2002-over-2001 ratio and their web 2002-over-2001 ratio (ratios computed only when the 2001 total is positive). Report the billing customer's code (the stable business identifier), first name, last name, and preferred-customer flag (taken from the 2002 store record), ordered by those four fields with nulls first; limit 100 rows."
   },
   {
     "id": 5,
@@ -45,12 +45,12 @@
         "description": "Comma-separated 5-digit ZIPs to intersect against the preferred-customer-ZIP set."
       }
     },
-    "prompt": "For store sales in the 2nd quarter of 1998, report total net profit per store name. Restrict to stores whose ZIP code's first 2 digits match the first 2 digits of any 5-digit ZIP code that appears in both of two sets: (a) the curated list provided via the `zips` parameter (a comma-separated string of 5-digit ZIPs — declare `parameter zips string;` and split with `split(zips, ',')`), and (b) the set of 5-digit ZIP codes where more than 10 preferred customers (those with the preferred-customer flag set to Y) have their current home address. Order by store name; limit 100 rows."
+    "prompt": "For store sales in the 2nd quarter of 1998, report total net profit per store name. Restrict to stores whose ZIP code's first 2 digits match the first 2 digits of any 5-digit ZIP code that appears in both of two sets: (a) the curated list provided via the `zips` parameter (a comma-separated string of 5-digit ZIPs â€” declare `parameter zips string;` and split with `split(zips, ',')`), and (b) the set of 5-digit ZIP codes where more than 10 preferred customers (those with the preferred-customer flag set to Y) have their current home address. Order by store name; limit 100 rows."
   },
   {
     "id": 9,
     "grade": "medium",
-    "prompt": "Return a single row with five values, computed from store sales bucketed by ticket quantity (1-20, 21-40, 41-60, 61-80, 81-100). For each bucket, if the count of store-sale line items in that quantity range exceeds a known threshold (74129, 122840, 56580, 10097, and 165306 respectively) then return the average extended discount amount in that bucket, otherwise return the average net paid in that bucket. Use the reason table restricted to the single reason record whose surrogate id is 1 (the internal row key, not the business code) as the framing row."
+    "prompt": "A single output row with five numeric columns, one per ticket-quantity bucket: 1-20, 21-40, 41-60, 61-80, 81-100. Each column's value comes from the store-channel sales whose ticket quantity falls in that bucket: if the line-item count in the bucket exceeds the bucket's threshold (74129, 122840, 56580, 10097, 165306 respectively), the column shows the average extended discount amount in that bucket; otherwise it shows the average net paid in that bucket. The reason table is not used for any computation or filter -- the result is just a single row, not a grouping."
   },
   {
     "id": 10,
@@ -60,7 +60,7 @@
   {
     "id": 11,
     "grade": "hard",
-    "prompt": "For each customer and each year, compute a per-year customer total separately for two channels: store (sum of extended list price minus extended discount amount across that year's store sales) and web (same expression over web sales by billing customer). Restrict to customers whose store total in 2001 and web total in 2001 are both positive. Among those, keep only customers whose web 2002-over-2001 ratio exceeds their store 2002-over-2001 ratio (treating either ratio as zero when the 2001 denominator is zero). Report customer code (the stable business identifier), first name, last name, and preferred-customer flag (from the 2002 store record), ordered by those four fields with nulls first; limit 100 rows."
+    "prompt": "Among customers active in both store and web channels in 2001, find those whose web revenue grew faster than their store revenue from 2001 to 2002. \"Revenue\" here is the sum of (extended list price minus extended discount amount) over that customer's sales in the given channel in the given year. Exclude customers whose 2001 total in either channel is not positive; treat a zero 2001 denominator as a zero ratio. Report billing customer code, first name, last name, and preferred-customer flag (from the 2002 store record); ordered by those four fields with nulls first; limit 100 rows."
   },
   {
     "id": 12,
@@ -74,8 +74,7 @@
   },
   {
     "id": 14,
-    "grade": "impossible",
-    "comment": "Cross-channel intersection: items whose (brand, class, category) triple appears in store sales AND catalog sales AND web sales over 1999-2001. At sf=0.01 the per-channel coverage of items is sparse and the 3-way intersection on the (brand, class, category) triple over only 3 years typically yields an empty set, so the channel-level totals are zero and no rows pass the having-clause threshold (channel sales > 3-channel average). Marked impossible.",
+    "grade": "hard",
     "prompt": "Find items whose (brand, class, category) combination appears in all three channels (store sales, catalog sales, and web sales) at some point during 1999 through 2001 inclusive. For each channel and each (brand, class, category) of such items, sum the per-line quantity times per-line list price for November 2001 sales and count those sales, but only keep groups where the per-channel sales total exceeds the overall average sale value (quantity times list price) across all three channels in 1999-2001. Roll up the result by (channel, brand, class, category) producing channel subtotals and a grand total. Report channel, numeric brand id, numeric class id, numeric category id, total sales, and total number of sales, ordered by those four grouping fields with nulls first; limit 100 rows."
   },
   {
@@ -101,7 +100,7 @@
   {
     "id": 19,
     "grade": "easy",
-    "prompt": "For items managed by manager 8, for store sales in November 1998 where the first 5 digits of the customer's own current home address ZIP code differ from those of the selling store's ZIP code, report — for each (numeric brand id, brand name, numeric manufacturer id, manufacturer name) combination — the total extended store sales price. Use the address on the customer record, not any address attached to the sale itself. Include all four of brand id, brand name, manufacturer id, and manufacturer name in the output. Order by revenue descending, then by brand and manufacturer; limit 100 rows."
+    "prompt": "For items managed by manager 8, for store sales in November 1998 where the first 5 digits of the customer's own current home address ZIP code differ from those of the selling store's ZIP code, report â€” for each (numeric brand id, brand name, numeric manufacturer id, manufacturer name) combination â€” the total extended store sales price. Use the address on the customer record, not any address attached to the sale itself. Include all four of brand id, brand name, manufacturer id, and manufacturer name in the output. Order by revenue descending, then by brand and manufacturer; limit 100 rows."
   },
   {
     "id": 20,
@@ -167,7 +166,7 @@
   {
     "id": 32,
     "grade": "medium",
-    "prompt": "For catalog sales of items from manufacturer 977 sold between 2000-01-27 and 2000-04-26 inclusive, return the total extended discount amount across only those sales whose per-line extended discount amount exceeds 1.3 times the average extended discount amount for that same item across all of its catalog sales in the same date window. Limit to 100 rows (the result is a single value)."
+    "prompt": "For catalog sales of items from manufacturer 48 sold between 2000-01-27 and 2000-04-26 inclusive, return the total extended discount amount across only those sales whose per-line extended discount amount exceeds 1.3 times the average extended discount amount for that same item across all of its catalog sales in the same date window. Limit to 100 rows (the result is a single value)."
   },
   {
     "id": 33,
@@ -212,7 +211,7 @@
   {
     "id": 41,
     "grade": "medium",
-    "prompt": "List the unique product names of items whose numeric manufacturer id is between 738 and 778 inclusive, restricted to items whose manufacturer (the manufacturer-text field, not the numeric manufacturer id) is shared by at least one other item matching any one of eight detailed attribute profiles. The eight profiles are: Women / powder or khaki / Ounce or Oz / medium or extra large; Women / brown or honeydew / Bunch or Ton / N/A or small; Men / floral or deep / N/A or Dozen / petite or large; Men / light or cornflower / Box or Pound / medium or extra large; Women / midnight or snow / Pallet or Gross / medium or extra large; Women / cyan or papaya / Cup or Dram / N/A or small; Men / orange or frosted / Each or Tbl / petite or large; Men / forest or ghost / Lb or Bundle / medium or extra large. Each profile constrains category, color, units, and size. Order by product name; limit 100 rows."
+    "prompt": "List the unique product names of items whose numeric manufacturer id is between 1 and 500 inclusive, restricted to items whose manufacturer (the manufacturer-text field, not the numeric manufacturer id) is shared by at least one other item matching any one of eight detailed attribute profiles. The eight profiles are: Books / tan / Oz / N/A; Electronics / purple / Ton / N/A; Men / misty / Box / medium; Books / medium / Tsp / N/A; Books / midnight / Gram / N/A; Books / pale / Pound / N/A; Electronics / khaki / Pallet / N/A; Electronics / mint / Gross / N/A. Each profile constrains category, color, units, and size. Order by product name; limit 100 rows."
   },
   {
     "id": 42,
@@ -227,7 +226,7 @@
   {
     "id": 44,
     "grade": "medium",
-    "prompt": "For store sales at the store whose surrogate id is 4 (the internal row key, not a business code), rank items by their average net profit. Keep only items whose average net profit exceeds 90 percent of the average net profit on sales at that same store where the sale's address key is missing (null). Take the top 10 items by ascending rank (best performers - lowest average net profit first) and the top 10 items by descending rank (worst performers - highest average net profit first), then pair them position by position by rank. For each pair, report the rank, the best-performer product name, and the worst-performer product name. Order by rank ascending, best-performer product name descending, then worst-performer product name descending; limit 100 rows."
+    "prompt": "For store sales at the store whose surrogate id is 1 (the internal row key, not a business code), rank items by their average net profit. Keep only items whose average net profit exceeds 90 percent of the average net profit on sales at that same store where the sale's address key is missing (null). Take the top 10 items by ascending rank (best performers - lowest average net profit first) and the top 10 items by descending rank (worst performers - highest average net profit first), then pair them position by position by rank. For each pair, report the rank, the best-performer product name, and the worst-performer product name. Order by rank ascending, best-performer product name descending, then worst-performer product name descending; limit 100 rows."
   },
   {
     "id": 45,
@@ -387,7 +386,7 @@
   {
     "id": 76,
     "grade": "medium",
-    "prompt": "Across three sales channels, find lines with a specific missing-reference situation: store sales whose selling store reference is null, web sales whose shipping customer reference is null, and catalog sales whose shipping address reference is null. For each such line, capture the year, quarter of year, and item category. Report — grouped by channel label ('store', 'web', 'catalog'), a label naming which reference is missing (use 'store reference', 'web ship customer reference', and 'catalog ship address reference' as the labels), year, quarter of year, and item category — the count of lines and the total extended sales price. Order by channel, the missing-reference label, year, quarter, then category, all with nulls first; limit 100 rows."
+    "prompt": "Across three sales channels, find lines with a specific missing-reference situation: store sales whose selling store reference is null, web sales whose shipping customer reference is null, and catalog sales whose shipping address reference is null. For each such line, capture the year, quarter of year, and item category. Report â€” grouped by channel label ('store', 'web', 'catalog'), a label naming which reference is missing (use 'store reference', 'web ship customer reference', and 'catalog ship address reference' as the labels), year, quarter of year, and item category â€” the count of lines and the total extended sales price. Order by channel, the missing-reference label, year, quarter, then category, all with nulls first; limit 100 rows."
   },
   {
     "id": 77,
@@ -422,12 +421,12 @@
   {
     "id": 83,
     "grade": "medium",
-    "prompt": "For each item, compute three return quantities — total store-return quantity, total catalog-return quantity, and total web-return quantity — restricted to returns whose returned date falls in any of the calendar weeks that contain 2000-06-30, 2000-09-27, or 2000-11-17. Keep only items that have at least one return in all three channels. For each such item, report the item code, the store-return quantity, the store-return quantity as a percentage of the three-channel total averaged across channels (the formula is store qty divided by the three-channel sum, divided by 3, times 100), the catalog-return quantity with its analogous percentage, the web-return quantity with its analogous percentage, and the three-channel average (sum divided by 3). Order by item code then store-return quantity, both with nulls first; limit 100 rows."
+    "prompt": "For each item, compute three return quantities â€” total store-return quantity, total catalog-return quantity, and total web-return quantity â€” restricted to returns whose returned date falls in any of the calendar weeks that contain 2000-06-30, 2000-09-27, or 2000-11-17. Keep only items that have at least one return in all three channels. For each such item, report the item code, the store-return quantity, the store-return quantity as a percentage of the three-channel total averaged across channels (the formula is store qty divided by the three-channel sum, divided by 3, times 100), the catalog-return quantity with its analogous percentage, the web-return quantity with its analogous percentage, and the three-channel average (sum divided by 3). Order by item code then store-return quantity, both with nulls first; limit 100 rows."
   },
   {
     "id": 84,
     "grade": "medium",
-    "prompt": "List the customer code (the stable business identifier) and full name (formatted as 'last name, first name', using empty strings for missing parts) for each match between a customer and a store return where: the customer's current home address is in the city of Edgewood; the income band of the customer's current household has lower bound at least 38128 and upper bound at most 88128; and the customer's current customer-demographic profile is the same one recorded on the store return. Report one row per qualifying (customer, store return) pair — do not deduplicate or aggregate by customer. Order by customer code with nulls first; limit 100 rows."
+    "prompt": "List the customer code (the stable business identifier) and full name (formatted as 'last name, first name', using empty strings for missing parts) for each match between a customer and a store return where: the customer's current home address is in the city of Edgewood; the income band of the customer's current household has lower bound at least 38128 and upper bound at most 88128; and the customer's current customer-demographic profile is the same one recorded on the store return. Report one row per qualifying (customer, store return) pair â€” do not deduplicate or aggregate by customer. Order by customer code with nulls first; limit 100 rows."
   },
   {
     "id": 85,
@@ -448,7 +447,7 @@
     "id": 88,
     "grade": "impossible",
     "comment": "Filters on store name 'ese'. At scale factor 0.01 this specific store name is typically absent from the sampled stores, so the filter returns no rows for every half-hour bucket. Same issue as query 96.",
-    "prompt": "For store sales at the store named 'ese', to households where the dependent count and vehicle count satisfy one of these three combinations — dependent count of 4 with vehicle count no more than 6, dependent count of 2 with vehicle count no more than 4, or dependent count of 0 with vehicle count no more than 2 — produce eight separate counts of qualifying sales bucketed by the half-hour of the sold time: 8:30-9:00, 9:00-9:30, 9:30-10:00, 10:00-10:30, 10:30-11:00, 11:00-11:30, 11:30-12:00, and 12:00-12:30. Output one row with the eight counts as separate columns."
+    "prompt": "For store sales at the store named 'ese', to households where the dependent count and vehicle count satisfy one of these three combinations â€” dependent count of 4 with vehicle count no more than 6, dependent count of 2 with vehicle count no more than 4, or dependent count of 0 with vehicle count no more than 2 â€” produce eight separate counts of qualifying sales bucketed by the half-hour of the sold time: 8:30-9:00, 9:00-9:30, 9:30-10:00, 10:00-10:30, 10:30-11:00, 11:00-11:30, 11:30-12:00, and 12:00-12:30. Output one row with the eight counts as separate columns."
   },
   {
     "id": 89,
@@ -490,7 +489,7 @@
   {
     "id": 96,
     "grade": "impossible",
-    "comment": "Filters on store name 'ese'. Trilogy infers a closed enum for store_name from the values present in the sampled data; below full scale 'ese' is usually absent, so the spec-faithful filter cannot parse. Not gradeable below full scale factor — kept for the record, excluded from runs.",
+    "comment": "Filters on store name 'ese'. Trilogy infers a closed enum for store_name from the values present in the sampled data; below full scale 'ese' is usually absent, so the spec-faithful filter cannot parse. Not gradeable below full scale factor â€” kept for the record, excluded from runs.",
     "prompt": "Count the store sale line items that were sold in the 8 PM hour at or after minute 30, at the store named 'ese', to customers whose household has a dependent count of 7. Order by the count; limit 100 rows."
   },
   {

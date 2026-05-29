@@ -1,16 +1,16 @@
-import store_returns as returns;
+import physical_returns as returns;
 
 where
     returns.store.state = 'TN' and returns.return_date.year = 2000
 select
-    returns.customer.text_id,
-    --sum(returns.return_amount) by returns.customer.id, returns.store.id as total_returns,
+    returns.billing_customer.text_id,
+    --sum(returns.return_amount) by returns.billing_customer.id, returns.store.id as total_returns,
     --returns.store.id,
     --avg(total_returns) by returns.store.id as avg_store_returns,
 having
     total_returns > (1.2 * avg_store_returns)
 
 order by
-    returns.customer.text_id asc
+    returns.billing_customer.text_id asc
 limit 100
 ;

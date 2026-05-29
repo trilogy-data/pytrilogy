@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 auto relevent_week_seq <- sales.date.week_seq ? sales.date.year in (2001, 2002);
 

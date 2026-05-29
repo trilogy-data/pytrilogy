@@ -1,6 +1,6 @@
 const _trilogyt._created_at <- current_datetime();
 
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 import customer as customer;
 
 const zips_pre <- unnest(
@@ -413,14 +413,14 @@ auto p_cust_zip <- customer.address.zip ? zip_p_count > 10;
 auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);
 
 where
-    store_sales.date.quarter = 2
-    and store_sales.date.year = 1998
-    and substring(store_sales.store.zip, 1, 2) in final_zips
+    physical_sales.date.quarter = 2
+    and physical_sales.date.year = 1998
+    and substring(physical_sales.store.zip, 1, 2) in final_zips
 select
-    store_sales.store.name,
-    sum(store_sales.net_profit) as store_net_profit,
+    physical_sales.store.name,
+    sum(physical_sales.net_profit) as store_net_profit,
 order by
-    store_sales.store.name asc
+    physical_sales.store.name asc
 limit 100
 ;
 
@@ -450,17 +450,17 @@ overwrite default.ds919671dbbd0d5a7992b04850b050127c7d4747da70dbf3c68a3149050f06
 ;
 
 overwrite default.dse88a2d960609f6f0eafa587b8ddffedd5456b4c892a59675a930b4fad8963029_filtered_on_quarter_year_zip_final_zips into dse88a2d960609f6f0eafa587b8ddffedd5456b4c892a59675a930b4fad8963029_filtered_on_quarter_year_zip_final_zips from where
-    store_sales.date.quarter = 2
-    and store_sales.date.year = 1998
-    and substring(store_sales.store.zip, 1, 2) in final_zips
+    physical_sales.date.quarter = 2
+    and physical_sales.date.year = 1998
+    and substring(physical_sales.store.zip, 1, 2) in final_zips
 select
-    store_sales.item.id,
-    store_sales.net_profit,
-    store_sales.store.name,
-    store_sales.ticket_number,
+    physical_sales.item.id,
+    physical_sales.net_profit,
+    physical_sales.store.name,
+    physical_sales.ticket_number,
 ;
 
 overwrite default.ds2b1ac618399dc1c0e796d4352205b315568130177560608a5b6bde0f228fce67 into ds2b1ac618399dc1c0e796d4352205b315568130177560608a5b6bde0f228fce67 from select
     store_net_profit,
-    store_sales.store.name,
+    physical_sales.store.name,
 ;

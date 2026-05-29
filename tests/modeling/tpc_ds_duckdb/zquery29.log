@@ -7,24 +7,19 @@ generated_sql = """
 WITH 
 uneven as (
 SELECT
-    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"correlated_store_sales_item_desc\",
-    \"store_sales_item_items\".\"I_ITEM_ID\" as \"correlated_store_sales_item_text_id\",
-    \"store_sales_store_store\".\"S_STORE_ID\" as \"correlated_store_sales_store_text_id\",
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"correlated_store_sales_store_name\",
+    \"physical_sales_item_items\".\"I_ITEM_DESC\" as \"correlated_physical_sales_item_desc\",
+    \"physical_sales_item_items\".\"I_ITEM_ID\" as \"correlated_physical_sales_item_text_id\",
+    \"physical_sales_store_store\".\"S_STORE_ID\" as \"correlated_physical_sales_store_text_id\",
+    \"physical_sales_store_store\".\"S_STORE_NAME\" as \"correlated_physical_sales_store_name\",
     sum(\"catalog_sales_catalog_sales\".\"CS_QUANTITY\") as \"catalog_sales_quantity\",
-    sum(\"store_sales_store_returns\".\"SR_RETURN_QUANTITY\") as \"store_returns_quantity\",
-    sum(\"store_sales_store_sales\".\"SS_QUANTITY\") as \"store_sales_quantity\"
+    sum(\"physical_sales_store_returns\".\"SR_RETURN_QUANTITY\") as \"store_returns_quantity\",
+    sum(\"physical_sales_store_sales\".\"SS_QUANTITY\") as \"store_sales_quantity\"
 FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
+    \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MOY\" = 9 and \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_return_date_date\".\"D_MOY\" BETWEEN 9 AND 12 and \"store_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
+    \"physical_sales_date_date\".\"D_MOY\" = 9 and \"physical_sales_date_date\".\"D_YEAR\" = 1999 and \"physical_sales_return_date_date\".\"D_MOY\" BETWEEN 9 AND 12 and \"physical_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
 
 GROUP BY
     1,
@@ -37,10 +32,10 @@ HAVING
 juicy as (
 SELECT
     \"uneven\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\",
-    \"uneven\".\"correlated_store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"uneven\".\"correlated_store_sales_item_text_id\" as \"store_sales_item_name\",
-    \"uneven\".\"correlated_store_sales_store_name\" as \"store_name\",
-    \"uneven\".\"correlated_store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    \"uneven\".\"correlated_physical_sales_item_desc\" as \"store_sales_item_desc\",
+    \"uneven\".\"correlated_physical_sales_item_text_id\" as \"store_sales_item_name\",
+    \"uneven\".\"correlated_physical_sales_store_name\" as \"store_name\",
+    \"uneven\".\"correlated_physical_sales_store_text_id\" as \"store_sales_store_text_id\",
     \"uneven\".\"store_returns_quantity\" as \"store_returns_quantity\",
     \"uneven\".\"store_sales_quantity\" as \"store_sales_quantity\"
 FROM

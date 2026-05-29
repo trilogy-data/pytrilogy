@@ -1,25 +1,25 @@
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
-auto sum_sales <- sum(store_sales.sales_price) by store_sales.item.manufacturer_id, store_sales.date.quarter;
-auto avg_quarterly_sales <- avg(sum_sales) by store_sales.item.manufacturer_id;
+auto sum_sales <- sum(physical_sales.sales_price) by physical_sales.item.manufacturer_id, physical_sales.date.quarter;
+auto avg_quarterly_sales <- avg(sum_sales) by physical_sales.item.manufacturer_id;
 
 where
-    store_sales.date.month_seq in (1200, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208, 1209, 1210, 1211)
-    and store_sales.store.id is not null
+    physical_sales.date.month_seq in (1200, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208, 1209, 1210, 1211)
+    and physical_sales.store.id is not null
     and (
         (
-            store_sales.item.category in ('Books', 'Children', 'Electronics')
-            and store_sales.item.class in ('personal', 'portable', 'reference', 'self-help')
-            and store_sales.item.brand_name in ('scholaramalgamalg #14', 'scholaramalgamalg #7', 'exportiunivamalg #9', 'scholaramalgamalg #9')
+            physical_sales.item.category in ('Books', 'Children', 'Electronics')
+            and physical_sales.item.class in ('personal', 'portable', 'reference', 'self-help')
+            and physical_sales.item.brand_name in ('scholaramalgamalg #14', 'scholaramalgamalg #7', 'exportiunivamalg #9', 'scholaramalgamalg #9')
         )
         or (
-            store_sales.item.category in ('Women', 'Music', 'Men')
-            and store_sales.item.class in ('accessories', 'classical', 'fragrances', 'pants')
-            and store_sales.item.brand_name in ('amalgimporto #1', 'edu packscholar #1', 'exportiimporto #1', 'importoamalg #1')
+            physical_sales.item.category in ('Women', 'Music', 'Men')
+            and physical_sales.item.class in ('accessories', 'classical', 'fragrances', 'pants')
+            and physical_sales.item.brand_name in ('amalgimporto #1', 'edu packscholar #1', 'exportiimporto #1', 'importoamalg #1')
         )
     )
 select
-    store_sales.item.manufacturer_id,
+    physical_sales.item.manufacturer_id,
     sum_sales,
     avg_quarterly_sales,
 having
@@ -31,6 +31,6 @@ having
 order by
     avg_quarterly_sales asc,
     sum_sales asc,
-    store_sales.item.manufacturer_id asc
+    physical_sales.item.manufacturer_id asc
 limit 100
 ;

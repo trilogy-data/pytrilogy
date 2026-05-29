@@ -5,6 +5,7 @@ import pytest
 from trilogy.ai.models import LLMMessage, LLMRequestOptions, LLMToolDefinition
 from trilogy.ai.providers.anthropic import AnthropicProvider
 from trilogy.ai.providers.base import parse_tool_arguments
+from trilogy.ai.providers.deepseek import DeepSeekProvider
 from trilogy.ai.providers.google import GoogleProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.ai.providers.openrouter import OpenRouterProvider
@@ -421,12 +422,50 @@ def test_openrouter_provider_prefers_named_tool_choice(monkeypatch):
         (OpenRouterProvider, "OPENROUTER_API_KEY"),
         (AnthropicProvider, "ANTHROPIC_API_KEY"),
         (GoogleProvider, "GOOGLE_API_KEY"),
+        (DeepSeekProvider, "DEEPSEEK_API_KEY"),
     ],
 )
 def test_provider_requires_api_key(monkeypatch, provider_cls, env_name):
     monkeypatch.delenv(env_name, raising=False)
     with pytest.raises(ValueError):
         provider_cls(name="p", model="m")
+
+
+def test_deepseek_points_at_deepseek_endpoint(monkeypatch):
+    """DeepSeek provider hits api.deepseek.com directly, not OpenAI's URL —
+    inheriting from OpenAIProvider but overriding base_completion_url."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    p = DeepSeekProvider(name="ds", model="deepseek-v4-flash")
+    assert p.base_completion_url == "https://api.deepseek.com/v1/chat/completions"
+    assert "openai.com" not in p.base_completion_url
+    from trilogy.ai.enums import Provider
+
+    assert p.type == Provider.DEEPSEEK
+
+
+def test_deepseek_posts_to_deepseek_url(monkeypatch):
+    """Round-trip: a generate_completion call lands at the DeepSeek URL with
+    the DEEPSEEK_API_KEY in the Authorization header, not OpenAI's URL/key."""
+    import httpx
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-test")
+    sink: dict = {}
+    response_payload = {
+        "choices": [{"message": {"content": "ok", "tool_calls": []}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=response_payload, sink=sink),
+    )
+    provider = DeepSeekProvider(name="ds", model="deepseek-v4-flash")
+    provider.generate_completion(
+        LLMRequestOptions(), [LLMMessage(role="user", content="hi")]
+    )
+    assert sink["url"] == "https://api.deepseek.com/v1/chat/completions"
+    assert sink["headers"]["Authorization"] == "Bearer sk-deepseek-test"
+    assert sink["json"]["model"] == "deepseek-v4-flash"
 
 
 @pytest.mark.parametrize(

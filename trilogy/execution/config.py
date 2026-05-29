@@ -74,6 +74,12 @@ class AgentConfig:
     # the system prompt). Narration messages compound quadratically through
     # history replays, so quiet mode is much cheaper for long unattended runs.
     quiet: bool = False
+    # Drop ``todo`` from the tool list (and its discipline rule + tool-list
+    # mention from the system prompt). Eval data shows todo-heavy runs
+    # correlate strongly with iteration exhaustion (avg 6.1 todos on
+    # exhausted vs 3.4 on pass); the .preql file itself is sufficient
+    # scratch space for the single-query tasks we evaluate.
+    disable_todo: bool = False
 
 
 @dataclass

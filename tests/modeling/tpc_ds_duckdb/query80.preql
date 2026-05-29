@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 auto channel_label <- case
     when sales.sales_channel = 'STORE' then 'store channel'

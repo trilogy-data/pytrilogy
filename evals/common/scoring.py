@@ -253,12 +253,20 @@ def score_query(
     idx: int,
     extension: str,
     params: dict | None = None,
+    custom_refs_dir: Path | None = None,
 ) -> QueryResult:
     """Score a single query — for live dashboard updates that don't want to
     wait for the whole run to finish before grading. ``params`` is the same
     shape as the prompt JSON's ``params`` field (``{name: {type, value}}``)
     and is injected into the executor's environment before generation."""
-    return _score_one(engine, workspace, idx, extension, params=params)
+    return _score_one(
+        engine,
+        workspace,
+        idx,
+        extension,
+        params=params,
+        custom_refs_dir=custom_refs_dir,
+    )
 
 
 def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
@@ -320,13 +328,37 @@ def apply_crash(result: QueryResult, exit_code: int, timed_out: bool) -> QueryRe
 
 
 def score_queries(
-    db_path: Path, workspace: Path, ids: list[int], extension: str
+    db_path: Path,
+    workspace: Path,
+    ids: list[int],
+    extension: str,
+    custom_refs_dir: Path | None = None,
 ) -> list[QueryResult]:
     """Run each agent-produced query against ``db_path`` and compare results to
     the benchmark's reference for that query id (``query<id>.preql`` vs
-    ``PRAGMA <extension>(<id>)``)."""
+    ``PRAGMA <extension>(<id>)``, or a custom ``.sql`` file from
+    ``custom_refs_dir`` when present)."""
     engine = make_scoring_engine(db_path, workspace, extension)
-    return [_score_one(engine, workspace, idx, extension) for idx in ids]
+    return [
+        _score_one(engine, workspace, idx, extension, custom_refs_dir=custom_refs_dir)
+        for idx in ids
+    ]
+
+
+def _load_reference(
+    engine, idx: int, extension: str, custom_refs_dir: Path | None
+) -> list:
+    """Reference rows for query ``idx``. Prefers ``<custom_refs_dir>/query<NN>.sql``
+    (raw SQL against the source tables) when present — used to override the
+    built-in PRAGMA template for prompts whose default filter values yield
+    empty results at our scale factor. Falls back to ``PRAGMA <extension>(<idx>)``."""
+    if custom_refs_dir is not None:
+        for name in (f"query{idx:02d}.sql", f"query{idx}.sql"):
+            sql_path = custom_refs_dir / name
+            if sql_path.exists():
+                sql = sql_path.read_text(encoding="utf-8")
+                return list(engine.execute_raw_sql(sql).fetchall())
+    return list(engine.execute_raw_sql(f"PRAGMA {extension}({idx});").fetchall())
 
 
 def _score_one(
@@ -335,6 +367,7 @@ def _score_one(
     idx: int,
     extension: str,
     params: dict | None = None,
+    custom_refs_dir: Path | None = None,
 ) -> QueryResult:
     from trilogy.core.models.environment import Environment
 
@@ -373,15 +406,13 @@ def _score_one(
         )
 
     try:
-        reference = list(
-            engine.execute_raw_sql(f"PRAGMA {extension}({idx});").fetchall()
-        )
+        reference = _load_reference(engine, idx, extension, custom_refs_dir)
     except Exception as exc:
         return QueryResult(
             id=idx,
             status="error",
             generated_sql_len=len(sql),
-            detail=f"reference PRAGMA failed: {exc}",
+            detail=f"reference load failed: {exc}",
         )
 
     passed = _multiset(candidate) == _multiset(reference)

@@ -1,21 +1,21 @@
 # compute the average quantity, list price, discount, and sales price for promotional items sold in stores where the
 # promotion is not offered by mail or a special event. Restrict the results to a specific gender, marital and
 # educational status.
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 where
-    store_sales.customer_demographic.gender = 'M'
-    and store_sales.customer_demographic.marital_status = 'S'
-    and store_sales.customer_demographic.education_status = 'College'
-    and (store_sales.promotion.channel_email = 'N' or store_sales.promotion.channel_event = 'N')
-    and store_sales.date.year = 2000
+    physical_sales.customer_demographic.gender = 'M'
+    and physical_sales.customer_demographic.marital_status = 'S'
+    and physical_sales.customer_demographic.education_status = 'College'
+    and (physical_sales.promotion.channel_email = 'N' or physical_sales.promotion.channel_event = 'N')
+    and physical_sales.date.year = 2000
 select
-    store_sales.item.text_id,
-    avg(store_sales.quantity) as avg_quantity,
-    avg(store_sales.list_price) as avg_list_price,
-    avg(store_sales.coupon_amt) as avg_coupon_amt,
-    avg(store_sales.sales_price) as avg_sales_price,
+    physical_sales.item.text_id,
+    avg(physical_sales.quantity) as avg_quantity,
+    avg(physical_sales.list_price) as avg_list_price,
+    avg(physical_sales.coupon_amt) as avg_coupon_amt,
+    avg(physical_sales.sales_price) as avg_sales_price,
 order by
-    store_sales.item.text_id asc
+    physical_sales.item.text_id asc
 limit 100
 ;

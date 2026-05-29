@@ -45,6 +45,14 @@ class BenchmarkSpec:
     leg. Lets ``run_eval.py --both-modes`` work without an explicit
     ``--enriched-model-dir`` argument."""
 
+    references_dir: Path | None = None
+    """Directory of ``query<NN>.sql`` reference SQL files. When present, the
+    scorer prefers these over the built-in ``PRAGMA <extension>(<NN>)`` for
+    queries where a file exists — used to override spec-default filter values
+    that yield empty results at our scale factor (q32, q41, q44 on TPC-DS
+    SF=0.1, where the canonical manufact_id / store_id / profile filters
+    don't match any rows). Falls back to PRAGMA when no file is found."""
+
     default_scale_factor: float = 0.01
     default_num_queries: int = 22
 

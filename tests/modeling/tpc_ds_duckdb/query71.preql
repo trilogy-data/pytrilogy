@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 where
     sales.date.year = 1999

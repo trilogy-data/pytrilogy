@@ -6,3 +6,4 @@ class Provider(Enum):
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
     OPENROUTER = "openrouter"
+    DEEPSEEK = "deepseek"
