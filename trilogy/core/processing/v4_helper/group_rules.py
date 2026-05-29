@@ -105,53 +105,112 @@ def partition_roots(
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
 ) -> list[GroupBucket]:
-    """Roots can always be co-sourced (joinable across datasources in a single
-    base scan), but only within a label. Each sub-graph (outer query plus
-    each rowset's inner walk) gets its own root bucket — their scans are
-    independent.
+    """Partition root concepts into independent scan buckets per label.
 
-    Exception: an isolated root (no concept-graph edges in or out) is a
-    pure existence-arg reference — `cr.order_number` from q16's
-    ``cs.order_number not in cr.order_number`` is reachable only via the
-    NOT IN subselect, never via the main row stream. Lumping it into the
-    main root bucket co-sources the catalog_returns scan with the
-    catalog_sales scan and leaves `_existence_for_group` unable to find a
-    separate source CTE for the subselect (the host atom's group == the
-    "source" group, so the existence-wiring short-circuit fires). Each
-    isolated root gets its own bucket so it surfaces as a standalone
-    group that the strategy walker can wire as an existence parent."""
+    Two roots co-source iff their downstream lineage reach overlaps — a
+    shared consumer (aggregate, basic, etc.) means the planner has to
+    join them into one row stream. Disjoint reach means the two roots
+    feed entirely separate sub-plans that only meet again at a later
+    cross-product merge (e.g. two global aggregates joined 1=1), so
+    they can be sourced independently.
+
+    Splitting is only safe when the concept graph proves independence:
+    every non-existence root has non-zero reach. A zero-reach root is a
+    leaf SELECT output or an inline WHERE filter arg (``date.year=2024``)
+    whose membership in a row stream is implicit — the d1 condition node
+    isn't materialized in the concept graph and the datasource FK that
+    ties it to a fact table lives elsewhere. With no signal to place it,
+    we conservatively keep everything in one bucket: matches the prior
+    behavior and avoids dropping filters (q08).
+
+    Existence-only roots (concepts only referenced as existence_args)
+    always stay in their own buckets so the existence wiring picks them
+    up as side-channel sources (q16).
+    """
     if not items:
         return []
     buckets: list[GroupBucket] = []
     for label_value, sub_items in _split_by_label(items).items():
         if not sub_items:
             continue
-        main_bucket = _bucket_for(
-            depth_label="root",
-            derivation=Derivation.ROOT.value,
-            grain=frozenset(),
-            label=label_value,
-        )
-        for node, data in sub_items:
-            if data.get("existence_only"):
-                # Existence-arg only (set on the node by build_concept_graph):
-                # split into its own bucket so it can serve as an independent
-                # subselect source — the existence wiring in strategy_builder
-                # finds it via `built[other_gid]` and attaches it as a
-                # side-channel parent.
-                solo = _bucket_for(
-                    depth_label="root",
-                    derivation=Derivation.ROOT.value,
-                    grain=frozenset(),
-                    label=label_value,
-                )
-                solo.discriminator = f"existence:{data.get('address', node)}"
-                _add_member(solo, node, data)
-                buckets.append(solo)
-            else:
-                _add_member(main_bucket, node, data)
-        if main_bucket.primary_members:
-            buckets.append(main_bucket)
+        addr_of = {node: data.get("address", node) for node, data in sub_items}
+        existence_only_nodes = [(n, d) for n, d in sub_items if d.get("existence_only")]
+        main_items = [(n, d) for n, d in sub_items if not d.get("existence_only")]
+
+        # Forward lineage reach per root. d1→d0 constraint edges are
+        # carried as is_constraint=True flags on lineage edges, so the
+        # single-kind filter still picks them up.
+        reaches: list[set[str]] = []
+        for node, _ in main_items:
+            seen: set[str] = set()
+            stack = [node]
+            while stack:
+                cur = stack.pop()
+                for nxt in concept_graph.successors(cur):
+                    if nxt in seen:
+                        continue
+                    if concept_graph.edges[cur, nxt].get("kind") != "lineage":
+                        continue
+                    seen.add(nxt)
+                    stack.append(nxt)
+            reaches.append(seen)
+
+        # Bail out to one bucket if any root has zero reach — see docstring.
+        can_split = bool(main_items) and all(reaches)
+
+        if can_split:
+            n = len(main_items)
+            parent = list(range(n))
+
+            def find(x: int) -> int:
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+
+            def union(a: int, b: int) -> None:
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[rb] = ra
+
+            for i in range(n):
+                for j in range(i + 1, n):
+                    if reaches[i] & reaches[j]:
+                        union(i, j)
+
+            components: dict[int, list[tuple[str, dict]]] = defaultdict(list)
+            for i, item in enumerate(main_items):
+                components[find(i)].append(item)
+        else:
+            components = defaultdict(list)
+            if main_items:
+                components[0] = list(main_items)
+
+        multi = len(components) > 1
+        for members in components.values():
+            bucket = _bucket_for(
+                depth_label="root",
+                derivation=Derivation.ROOT.value,
+                grain=frozenset(),
+                label=label_value,
+            )
+            if multi:
+                sig_repr = "|".join(sorted(addr_of[node] for node, _ in members))
+                bucket.discriminator = f"split:{abs(hash(sig_repr)) % (16**6):06x}"
+            for node, data in members:
+                _add_member(bucket, node, data)
+            buckets.append(bucket)
+
+        for node, data in existence_only_nodes:
+            solo = _bucket_for(
+                depth_label="root",
+                derivation=Derivation.ROOT.value,
+                grain=frozenset(),
+                label=label_value,
+            )
+            solo.discriminator = f"existence:{addr_of[node]}"
+            _add_member(solo, node, data)
+            buckets.append(solo)
     return buckets
 
 
