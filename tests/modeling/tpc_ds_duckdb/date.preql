@@ -1,25 +1,27 @@
+import std.date;
+
 # Date dimension (TPC-DS date_dim): calendar attributes (year, quarter,
 # month_of_year, day_of_week/month, named columns) plus week and month
 # sequence numbers. Imported many times under different aliases — sold_date,
 # ship_date, return_date, first_sales_date, etc. — by the sales/returns/
 # inventory facts.
 
-key id int;
+key id int; # Surrogate key uniquely identifying a calendar date.
 
 properties id (
-    date_string string,
-    _date_string string,
-    date date, # _year_string string,
-    year int,
-    day_of_week int,
-    day_of_month int?,
-    day_name string?,
-    week_seq int,
-    month_of_year int,
-    quarter int,
-    quarter_name string?,
-    d_week_seq1 int,
-    month_seq int,
+    date_string string, # Stable textual date identifier (16-char alphanumeric in TPC-DS).
+    _date_string string, # Raw D_DATE column value as string (intermediate stage for cast to date).
+    date date, # Actual calendar date value (cast from _date_string).
+    year int::year, # Four-digit calendar year (1900-2100 in TPC-DS).
+    day_of_week enum<int>[0, 1, 2, 3, 4, 5, 6], # Day-of-week index (0 = Sunday … 6 = Saturday).
+    day_of_month int::day?, # Day-of-month (1-31).
+    day_name enum<string>['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']?, # Spelled-out day name.
+    week_seq int::week, # Monotonically-increasing week sequence number across the calendar (week-of-time).
+    month_of_year enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], # Month of the year (1 = January … 12 = December).
+    quarter enum<int>[1, 2, 3, 4], # Calendar quarter (1-4) within the year.
+    quarter_name string?, # Quarter label combining year and quarter (e.g. '1998Q3').
+    d_week_seq1 int, # Alternate week sequence (legacy duplicate of week_seq for joinable subselects).
+    month_seq int, # Monotonically-increasing month sequence across the calendar (month-of-time).
 );
 
 datasource date (

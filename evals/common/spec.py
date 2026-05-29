@@ -40,6 +40,11 @@ class BenchmarkSpec:
     """File-name prefixes to skip when seeding raw/ from an enriched model dir.
     TPC-H adds ``cache`` because its test dir has cache_warm helpers."""
 
+    default_enriched_dir: Path | None = None
+    """Default enriched-model dir for ``--both-modes`` to use on the enriched
+    leg. Lets ``run_eval.py --both-modes`` work without an explicit
+    ``--enriched-model-dir`` argument."""
+
     default_scale_factor: float = 0.01
     default_num_queries: int = 22
 

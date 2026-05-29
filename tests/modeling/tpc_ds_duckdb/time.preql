@@ -3,15 +3,15 @@
 # by sales and returns models under aliases like time / return_time to
 # answer time-of-day questions (q08, q70, q90).
 
-key id int;
+key id int; # Surrogate key uniquely identifying a time-of-day row (seconds since midnight).
 
 properties id (
-    time_string string,
-    time int,
-    hour int,
-    minute int,
-    second int,
-    meal_time string?,
+    time_string string, # Stable textual time-of-day identifier (16-char alphanumeric in TPC-DS).
+    time int, # Seconds elapsed since midnight (0-86399).
+    hour int, # Hour of day (0-23).
+    minute int, # Minute within the hour (0-59).
+    second int, # Second within the minute (0-59).
+    meal_time enum<string>['', 'breakfast', 'lunch', 'dinner']?, # Meal-time bucket; empty string for off-meal hours.
 );
 
 datasource time (

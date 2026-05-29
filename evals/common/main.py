@@ -129,6 +129,14 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         "so the report headline reflects the full benchmark. Pass a run dir, "
         "'auto' (default) to pick the latest other run, or 'none' to disable.",
     )
+    parser.add_argument(
+        "--both-modes",
+        action="store_true",
+        help="run BOTH the base (ingest-only) and enriched legs in parallel, "
+        "then render dashboard_compare.png. Each leg writes its own results "
+        "subdir (<ts>_base, <ts>_enriched). Requires either --enriched-model-dir "
+        "or a `default_enriched_dir` configured on the BenchmarkSpec.",
+    )
     return parser
 
 
@@ -202,9 +210,187 @@ def _splice_prior_results(
     return report
 
 
+_BOTH_MODES_DROP_FLAGS = {"--both-modes"}
+_BOTH_MODES_DROP_FLAGS_WITH_VALUE = {
+    "--enriched-model-dir",
+    "--output-dir",
+    "--monitor",
+}
+
+
+def _argv_has_flag(argv: list[str], flag: str) -> bool:
+    """True iff ``flag`` is set on the command line — either space-separated
+    (``--foo VALUE``) or equals form (``--foo=VALUE``). Used to distinguish
+    'user actually said this' from 'argparse fell back to its default'."""
+    eq = flag + "="
+    return any(a == flag or a.startswith(eq) for a in argv)
+
+
+def _filter_both_modes_argv(argv: list[str]) -> list[str]:
+    """Strip `--both-modes` and any of the per-leg-overridden flags (with their
+    values) from the original CLI args so we can re-invoke the eval as a
+    subprocess for each leg without duplicating those flags."""
+    result: list[str] = []
+    skip_next = False
+    for a in argv:
+        if skip_next:
+            skip_next = False
+            continue
+        if a in _BOTH_MODES_DROP_FLAGS:
+            continue
+        if a in _BOTH_MODES_DROP_FLAGS_WITH_VALUE:
+            skip_next = True
+            continue
+        if any(a.startswith(f + "=") for f in _BOTH_MODES_DROP_FLAGS_WITH_VALUE):
+            continue
+        result.append(a)
+    return result
+
+
+def _extract_enriched_dir_from_argv(argv: list[str]) -> str | None:
+    """Pick up an explicit ``--enriched-model-dir`` value the user passed on
+    the same CLI invocation that requested ``--both-modes``."""
+    for i, a in enumerate(argv):
+        if a == "--enriched-model-dir" and i + 1 < len(argv):
+            return argv[i + 1]
+        if a.startswith("--enriched-model-dir="):
+            return a.split("=", 1)[1]
+    return None
+
+
+def _pump_with_prefix(stream, label: str) -> None:
+    prefix = f"[{label}] "
+    for line in stream:
+        sys.stdout.write(prefix + line)
+        sys.stdout.flush()
+    stream.close()
+
+
+def _run_both_modes(spec: BenchmarkSpec, raw_argv: list[str]) -> int:
+    """Spawn the base (ingest-only) and enriched legs as parallel subprocesses
+    of the same ``run_eval.py``. Each leg gets its own ``--output-dir`` and
+    forced ``--monitor quiet`` so the streamed output stays legible. After both
+    finish, render ``dashboard_compare.png`` from their respective reports."""
+    import subprocess
+
+    user_enriched = _extract_enriched_dir_from_argv(raw_argv)
+    enriched_path = user_enriched or (
+        str(spec.default_enriched_dir) if spec.default_enriched_dir else None
+    )
+    if enriched_path is None:
+        print(
+            "ERROR: --both-modes requires --enriched-model-dir on the command "
+            "line, or `default_enriched_dir` configured on the BenchmarkSpec.",
+            file=sys.stderr,
+        )
+        return 2
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    base_out = spec.results_dir / f"{timestamp}_base"
+    enriched_out = spec.results_dir / f"{timestamp}_enriched"
+
+    script = Path(sys.argv[0]).resolve()
+    common_argv = _filter_both_modes_argv(raw_argv)
+
+    # When the user didn't explicitly set --concurrency, halve the default for
+    # each leg so the parallel legs together don't exceed the single-leg
+    # default (limits OpenRouter rate-limit pressure). If the user passed
+    # --concurrency explicitly, respect it verbatim for both legs.
+    per_leg_concurrency: list[str] = []
+    if not _argv_has_flag(raw_argv, "--concurrency"):
+        default_concurrency = _build_argparser(spec).get_default("concurrency")
+        halved = max(1, default_concurrency // 2)
+        if halved != default_concurrency:
+            print(
+                f"[both-modes] auto-halving concurrency: "
+                f"{default_concurrency} → {halved} per leg "
+                "(pass --concurrency explicitly to override)."
+            )
+        per_leg_concurrency = ["--concurrency", str(halved)]
+
+    base_argv = [
+        *common_argv,
+        *per_leg_concurrency,
+        "--output-dir",
+        str(base_out),
+        "--monitor",
+        "quiet",
+    ]
+    enriched_argv = [
+        *common_argv,
+        *per_leg_concurrency,
+        "--output-dir",
+        str(enriched_out),
+        "--monitor",
+        "quiet",
+        "--enriched-model-dir",
+        enriched_path,
+    ]
+
+    print(
+        f"[both-modes] spawning two parallel runs:\n"
+        f"   base     → {base_out}\n"
+        f"   enriched → {enriched_out}  (model dir: {enriched_path})"
+    )
+
+    procs: list[tuple[str, subprocess.Popen]] = []
+    pumps: list[threading.Thread] = []
+    for label, leg_argv in (("base", base_argv), ("enriched", enriched_argv)):
+        proc = subprocess.Popen(
+            [sys.executable, str(script), *leg_argv],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        procs.append((label, proc))
+        t = threading.Thread(
+            target=_pump_with_prefix, args=(proc.stdout, label), daemon=True
+        )
+        t.start()
+        pumps.append(t)
+
+    exit_codes = [(label, proc.wait()) for label, proc in procs]
+    for t in pumps:
+        t.join(timeout=5)
+
+    for label, rc in exit_codes:
+        print(f"[both-modes] {label} leg exit={rc}")
+
+    base_report = base_out / "report.json"
+    enriched_report = enriched_out / "report.json"
+    if base_report.exists() and enriched_report.exists():
+        report_a, events_a = analyze_run.load_run(base_out)
+        report_b, events_b = analyze_run.load_run(enriched_out)
+        out = analyze_run.render_comparison(
+            report_a,
+            events_a,
+            report_b,
+            events_b,
+            spec.charts_dir / "dashboard_compare.png",
+            label_a="base",
+            label_b="enriched",
+        )
+        print(f"[both-modes] wrote {out}")
+    else:
+        print(
+            "[both-modes] skipping comparison render: "
+            f"base report present={base_report.exists()}, "
+            f"enriched report present={enriched_report.exists()}",
+            file=sys.stderr,
+        )
+
+    return max((rc for _, rc in exit_codes), default=0)
+
+
 def run(spec: BenchmarkSpec) -> int:
     args = _build_argparser(spec).parse_args()
     _force_utf8_stdio()
+
+    if args.both_modes:
+        return _run_both_modes(spec, sys.argv[1:])
 
     load_env(args.env_file)
     if args.provider == "openrouter":

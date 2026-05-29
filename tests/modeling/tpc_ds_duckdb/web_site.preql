@@ -1,9 +1,12 @@
-key id int;
+# Web site dimension (TPC-DS web_site): operator/company associated with
+# each storefront. Referenced by web_sales.WS_WEB_SITE_SK.
+
+key id int; # Surrogate key uniquely identifying a web site.
 
 properties id (
-    string_id string,
-    company_name string,
-    name string?,
+    string_id string, # Stable business identifier for the web site (16-char alphanumeric).
+    company_name string, # Operating company name for the web site.
+    name string?, # Display name of the web site.
 );
 
 datasource web_site (

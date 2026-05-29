@@ -147,13 +147,23 @@ def _is_literal_constant(expr: Any) -> bool:
 def _representative_types(types: list[CONCRETE_TYPES]) -> list[CONCRETE_TYPES]:
     """One representative per distinct base DataType, preferring richer
     (parameterized) types like NumericType over their bare DataType enum."""
-    by_base: dict[DataType, CONCRETE_TYPES] = {}
+
+    def _bucket(t: CONCRETE_TYPES) -> Any:
+        # Unwrap traits — they are pure annotations and should bucket with
+        # their underlying type. Then collapse parameterized wrappers
+        # (NumericType, ArrayType, ...) down to their base DataType enum so
+        # NumericType(15,2) and bare DataType.NUMERIC share a bucket.
+        inner = t.type if isinstance(t, TraitDataType) else t
+        return inner.data_type if not isinstance(inner, DataType) else inner
+
+    by_base: dict[Any, CONCRETE_TYPES] = {}
     for t in types:
-        existing = by_base.get(t.data_type)
+        key = _bucket(t)
+        existing = by_base.get(key)
         if existing is None or (
             isinstance(existing, DataType) and not isinstance(t, DataType)
         ):
-            by_base[t.data_type] = t
+            by_base[key] = t
     return list(by_base.values())
 
 

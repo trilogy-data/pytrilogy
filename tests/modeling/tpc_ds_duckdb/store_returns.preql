@@ -1,3 +1,5 @@
+import std.money;
+
 # Store channel returns (TPC-DS store_returns): item-level returns joined
 # back to the originating store_sales row by ticket_number + item.id. Exposes
 # return_amount; pair with store_sales.net_paid for return-rate analysis
@@ -11,17 +13,17 @@ import time as time;
 import customer as customer;
 import customer_demographic as customer_demographic;
 
-property <item.id, store_sales.ticket_number>.return_amount float;
+property <item.id, store_sales.ticket_number>.return_amount numeric::usd; # Dollar amount refunded to the customer for the returned item (USD).
 
 datasource store_returns (
-    SR_RETURNED_DATE_SK: return_date.id,
-    SR_RETURN_TIME_SK: time.id,
-    SR_ITEM_SK: item.id,
-    SR_CUSTOMER_SK: customer.id,
-    SR_CDEMO_SK: ?customer_demographic.id,
+    SR_RETURNED_DATE_SK: return_date.id, # FK to the date the item was returned.
+    SR_RETURN_TIME_SK: time.id, # FK to the time-of-day the return was processed.
+    SR_ITEM_SK: item.id, # FK to the returned item.
+    SR_CUSTOMER_SK: customer.id, # FK to the customer initiating the return.
+    SR_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at return time (optional).
     SR_RETURN_AMT: return_amount,
-    SR_TICKET_NUMBER: store_sales.ticket_number,
-    SR_STORE_SK: store.id,
+    SR_TICKET_NUMBER: store_sales.ticket_number, # FK to the original store-sale ticket the return is associated with.
+    SR_STORE_SK: store.id, # FK to the store the return was processed at.
 )
 grain (item.id, store_sales.ticket_number)
 address memory.store_returns;

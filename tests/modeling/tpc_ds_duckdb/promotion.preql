@@ -1,20 +1,22 @@
+import std.money;
+
 # Promotion dimension (TPC-DS promotion): channel flags (email, catalog,
 # event, dmail, tv, radio, press) plus cost per promo. Referenced by
 # *_PROMO_SK on sales facts; q07/q26/q61 use the channel flags to isolate
 # promoted vs un-promoted purchases.
 
-key id int;
+key id int; # Surrogate key uniquely identifying a promotion.
 
 properties id (
-    string_id string,
-    channel_email enum<string>['Y', 'N']?,
-    channel_catalog enum<string>['Y', 'N']?,
-    channel_event enum<string>['Y', 'N']?,
-    channel_dmail enum<string>['Y', 'N']?,
-    channel_tv enum<string>['Y', 'N']?,
-    channel_radio enum<string>['Y', 'N']?,
-    channel_press enum<string>['Y', 'N']?,
-    cost float,
+    string_id string, # Stable business identifier for the promotion (16-char alphanumeric).
+    channel_email enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the email channel, else 'N'.
+    channel_catalog enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the printed-catalog channel, else 'N'.
+    channel_event enum<string>['Y', 'N']?, # 'Y' if the promotion ran via in-person events, else 'N'.
+    channel_dmail enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the direct-mail channel, else 'N'.
+    channel_tv enum<string>['Y', 'N']?, # 'Y' if the promotion ran on TV, else 'N'.
+    channel_radio enum<string>['Y', 'N']?, # 'Y' if the promotion ran on radio, else 'N'.
+    channel_press enum<string>['Y', 'N']?, # 'Y' if the promotion ran in the press channel, else 'N'.
+    cost numeric::usd, # Total cost of running the promotion in USD.
 );
 
 datasource promotion (

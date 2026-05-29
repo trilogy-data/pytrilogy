@@ -20,6 +20,9 @@ SPEC = BenchmarkSpec(
     eval_dir=EVAL_DIR,
     prompts_file=EVAL_DIR / "query_prompts.json",
     enriched_skip_prefixes=("query", "adhoc"),
+    # tests/modeling/tpc_ds_duckdb is the hand-curated semantic model the
+    # enriched leg of `--both-modes` seeds from instead of `trilogy ingest --all`.
+    default_enriched_dir=EVAL_DIR.parents[1] / "tests" / "modeling" / "tpc_ds_duckdb",
     default_scale_factor=0.01,
     default_num_queries=20,
 )

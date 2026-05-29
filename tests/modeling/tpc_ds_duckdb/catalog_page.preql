@@ -2,15 +2,15 @@
 # (department, catalog number, page number) where a catalog product appeared.
 # Referenced by catalog_sales.CS_CATALOG_PAGE_SK.
 
-key id int;
+key id int; # Surrogate key uniquely identifying a catalog page slot.
 
 properties id (
-    text_id string,
-    department string?,
-    catalog_number int?,
-    catalog_page_number int?,
-    description string?,
-    type string?,
+    text_id string, # Stable business identifier for the catalog page (16-char alphanumeric).
+    department string?, # Department name the catalog page belongs to (e.g. 'DEPARTMENT').
+    catalog_number int?, # Catalog issue/edition number.
+    catalog_page_number int?, # Page number within the catalog.
+    description string?, # Free-form description of the catalog page contents.
+    type enum<string>['bi-annual', 'monthly', 'quarterly']?, # Publication cadence of the catalog.
 );
 
 datasource catalog_page (

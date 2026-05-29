@@ -1,3 +1,5 @@
+import std.money;
+
 # Catalog channel returns (TPC-DS catalog_returns): item/order grain returns
 # tied to the originating catalog_sales row. Exposes net_loss, refunded_cash,
 # store_credit and return_amount* plus a had_return boolean for filtered metrics.
@@ -13,31 +15,31 @@ import address as refunded_address;
 import call_center as call_center;
 import reason as reason;
 
-key order_number int;
+key order_number int; # Catalog order number linking the return back to the originating catalog sale.
 
 properties <order_number, item.id> (
-    net_loss float,
-    refunded_cash float?,
-    reversed_charge float?,
-    store_credit float?,
-    return_amount float?,
-    return_amt_inc_tax float?,
-    return_quantity int?,
-    had_return bool,
+    net_loss numeric::usd, # Net financial loss on the return in USD (refund plus handling costs minus any restocked value).
+    refunded_cash numeric::usd?, # Cash portion of the refund (USD).
+    reversed_charge numeric::usd?, # Amount reversed on the original payment method (USD).
+    store_credit numeric::usd?, # Store credit issued for the return (USD).
+    return_amount numeric::usd?, # Total amount refunded to the customer (USD).
+    return_amt_inc_tax numeric::usd?, # Total amount refunded including sales tax (USD).
+    return_quantity int?, # Number of units returned on this line.
+    had_return bool, # True if a return row exists for the line.
 );
 
 datasource catalog_returns (
-    CR_RETURNED_DATE_SK: date.id,
-    CR_RETURNED_TIME_SK: time.id,
-    CR_ITEM_SK: item.id,
-    CR_ORDER_NUMBER: sales.order_number,
+    CR_RETURNED_DATE_SK: date.id, # FK to the date the item was returned.
+    CR_RETURNED_TIME_SK: time.id, # FK to the time-of-day the return was processed.
+    CR_ITEM_SK: item.id, # FK to the returned item.
+    CR_ORDER_NUMBER: sales.order_number, # FK to the originating catalog sales order.
     CR_ORDER_NUMBER: order_number,
-    CR_RETURNING_CUSTOMER_SK: customer.id,
-    CR_REFUNDED_CUSTOMER_SK: refunded_customer.id,
-    CR_RETURNING_ADDR_SK: return_address.id,
-    CR_REFUNDED_ADDR_SK: refunded_address.id,
-    CR_CALL_CENTER_SK: call_center.id,
-    CR_REASON_SK: reason.id,
+    CR_RETURNING_CUSTOMER_SK: customer.id, # FK to the customer returning the item.
+    CR_REFUNDED_CUSTOMER_SK: refunded_customer.id, # FK to the customer receiving the refund (may differ from returning customer).
+    CR_RETURNING_ADDR_SK: return_address.id, # FK to the address the return originated from.
+    CR_REFUNDED_ADDR_SK: refunded_address.id, # FK to the address the refund was issued to.
+    CR_CALL_CENTER_SK: call_center.id, # FK to the call center that handled the return.
+    CR_REASON_SK: reason.id, # FK to the return-reason code.
     CR_NET_LOSS: net_loss,
     CR_REFUNDED_CASH: refunded_cash,
     CR_REVERSED_CHARGE: reversed_charge,

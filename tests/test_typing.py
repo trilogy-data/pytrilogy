@@ -200,6 +200,46 @@ sum(
     assert env.environment.concepts["total"].datatype.traits == ["money"]
 
 
+def test_case_with_trait_and_bare_numeric_literal():
+    """Regression: a CASE branch that mixes ``numeric(p,s)::usd`` with a bare
+    ``0.0::numeric(p,s)`` literal must not raise. The case-output validator
+    previously called ``is_compatible_datatype`` against the TraitDataType
+    wrapper, which dropped through to the ``isinstance(right, NumericType)``
+    False branch and reported a spurious type mismatch."""
+    env = Dialects.DUCK_DB.default_executor()
+    env.environment.parse("""
+import std.money;
+
+key id int;
+property id.ext_sales_price numeric(15,2)::usd;
+property id.day_of_week int;
+
+datasource sales (
+    id: id,
+    ext_sales_price: ext_sales_price,
+    day_of_week: day_of_week,
+)
+grain (id)
+query '''
+select 1 as id, cast(10.00 as numeric(15,2)) as ext_sales_price, 1 as day_of_week
+union all
+select 2 as id, cast(20.00 as numeric(15,2)) as ext_sales_price, 2 as day_of_week
+''';
+""")
+
+    results = env.execute_query("""SELECT
+sum(
+    case
+        when day_of_week = 1 then ext_sales_price
+        else 0.0::numeric(15,2)
+    end
+) -> monday_sales;""")
+
+    rows = results.fetchall()
+    assert rows[0].monday_sales == Decimal("10.00")
+    assert env.environment.concepts["monday_sales"].datatype.traits == ["usd"]
+
+
 def test_custom_trait_unnest_typing():
     env = Dialects.DUCK_DB.default_executor()
     env.environment.parse("""

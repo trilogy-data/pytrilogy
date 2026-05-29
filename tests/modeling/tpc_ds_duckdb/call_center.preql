@@ -1,13 +1,13 @@
 # Call center dimension (TPC-DS call_center): physical centers handling
 # catalog and web orders. Referenced by catalog_sales.CS_CALL_CENTER_SK.
 
-key id int;
+key id int; # Surrogate key uniquely identifying a call center.
 
 properties id (
-    text_id string,
-    county string,
-    name string,
-    manager string?,
+    text_id string, # Stable business identifier for the call center (16-char alphanumeric).
+    county string, # County in which the call center is physically located.
+    name string, # Display name of the call center.
+    manager string?, # Name of the call center's general manager.
 );
 
 datasource call_center (

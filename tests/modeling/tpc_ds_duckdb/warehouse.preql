@@ -1,14 +1,19 @@
-key id int;
+import std.geography;
+
+# Warehouse dimension (TPC-DS warehouse): physical storage locations
+# referenced by inventory snapshots and by catalog/web sales fulfillment.
+
+key id int; # Surrogate key uniquely identifying a warehouse.
 
 properties id (
-    string_id string,
-    name string,
-    square_feet int,
-    state string?,
-    city string?,
-    county string?,
-    zip string?,
-    country string?,
+    string_id string, # Stable business identifier for the warehouse (16-char alphanumeric).
+    name string?, # Warehouse display name.
+    square_feet int, # Total floor space of the warehouse in square feet.
+    state string::us_state_short?, # Two-letter US state code for the warehouse address.
+    city string?, # City of the warehouse address.
+    county string?, # County of the warehouse address.
+    zip string?, # ZIP/postal code of the warehouse address.
+    country string::country?, # Country of the warehouse address.
 );
 
 datasource warehouse (

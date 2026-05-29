@@ -3,17 +3,17 @@
 # and dependent counts (total / employed / college). Referenced from
 # customer.demographics and from the *_CDEMO_SK columns on sales facts.
 
-key id int;
+key id int; # Surrogate key uniquely identifying a customer demographic profile.
 
 properties id (
-    gender string,
-    marital_status string,
-    education_status string,
-    purchase_estimate string,
-    credit_rating string,
-    dependent_count int,
-    employed_dependent_count int,
-    college_dependent_count int,
+    gender enum<string>['M', 'F'], # Customer gender code: 'M' male, 'F' female.
+    marital_status enum<string>['M', 'S', 'D', 'W', 'U'], # Marital status: M=married, S=single, D=divorced, W=widowed, U=unknown.
+    education_status enum<string>['Primary', 'Secondary', 'College', '2 yr Degree', '4 yr Degree', 'Advanced Degree', 'Unknown'], # Highest education level attained.
+    purchase_estimate int, # Modeled annual purchase amount estimate (USD bucketed at $500 increments from 500 to 10000).
+    credit_rating enum<string>['Low Risk', 'Good', 'High Risk', 'Unknown'], # Categorical credit-risk rating.
+    dependent_count int, # Total number of dependents in the customer household (0-6).
+    employed_dependent_count int, # Number of dependents that are currently employed (0-6).
+    college_dependent_count int, # Number of dependents currently enrolled in college (0-6).
 );
 
 datasource customer_demographics (

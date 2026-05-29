@@ -1,8 +1,12 @@
-key id int;
+# Return reason dimension (TPC-DS reason): textual description of why an
+# item was returned. Referenced by *_REASON_SK on store/web/catalog returns;
+# used for return-cause segmentation (q35, q92, q93).
+
+key id int; # Surrogate key uniquely identifying a return reason.
 
 properties id (
-    string_id string,
-    desc string?,
+    string_id string, # Stable business identifier for the reason (16-char alphanumeric).
+    desc string?, # Free-form description of the reason (e.g. 'Did not fit', 'wrong color').
 );
 
 datasource reason (

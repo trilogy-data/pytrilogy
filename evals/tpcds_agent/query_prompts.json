@@ -2,7 +2,7 @@
   {
     "id": 1,
     "grade": "medium",
-    "prompt": "For returns to stores in Tennessee in 2000, find the customers whose total returns were more than 1.2 times what the average customer returns for that store were in that period. Order by customer id; limit 100 rows."
+    "prompt": "For returns to stores in Tennessee in 2000, find the customers whose total returns for a store were more than 1.2 times what the average customer returns for that store were in that period. Order by customer id; limit 100 rows."
   },
   {
     "id": 2,
@@ -142,7 +142,7 @@
   {
     "id": 27,
     "grade": "medium",
-    "prompt": "For store sales in 2002 at stores in TN, restricted to customer-demographics directly on the sale showing male, single, with 'College' education, report the average ticket quantity, average per-line list price, average per-line coupon amount, and average per-line sales price. Produce three groupings combined: per (item id, state) with a group-indicator of 0; per item id (state set to null) with a group-indicator of 1; and an overall total (both item id and state null) with a group-indicator of 1. Order by item id then state with nulls first; limit 100 rows."
+    "prompt": "For store sales in 2002 at stores in TN, restricted customers based on sale point demographic data, that are single, male with 'College' education -  report the average ticket quantity, average per-line list price, average per-line coupon amount, and average per-line sales price. Produce three groupings combined: per (item id, state) with a group-indicator of 0; per item id (state set to null) with a group-indicator of 1; and an overall total (both item id and state null) with a group-indicator of 1. Order by item id then state with nulls first; limit 100 rows."
   },
   {
     "id": 28,

@@ -5,13 +5,13 @@
 
 import income_band as income_band;
 
-key id int;
+key id int; # Surrogate key uniquely identifying a household demographic profile.
 
 properties id (
-    income_band_id int,
-    buy_potential string,
-    dependent_count int,
-    vehicle_count int,
+    income_band_id int, # FK to the income_band lookup defining the household's income range.
+    buy_potential enum<string>['0-500', '501-1000', '1001-5000', '5001-10000', '>10000', 'Unknown'], # Estimated annual spend bucket (USD).
+    dependent_count int, # Total dependents in the household (0-9).
+    vehicle_count int, # Number of vehicles in the household (-1 = unknown, 0-4 otherwise).
 );
 
 datasource household_demographics (
