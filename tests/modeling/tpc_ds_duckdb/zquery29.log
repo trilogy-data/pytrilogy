@@ -8,7 +8,7 @@ WITH
 uneven as (
 SELECT
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"correlated_store_sales_item_desc\",
-    \"store_sales_item_items\".\"I_ITEM_ID\" as \"correlated_store_sales_item_name\",
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"correlated_store_sales_item_text_id\",
     \"store_sales_store_store\".\"S_STORE_ID\" as \"correlated_store_sales_store_text_id\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"correlated_store_sales_store_name\",
     sum(\"catalog_sales_catalog_sales\".\"CS_QUANTITY\") as \"catalog_sales_quantity\",
@@ -38,7 +38,7 @@ juicy as (
 SELECT
     \"uneven\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\",
     \"uneven\".\"correlated_store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"uneven\".\"correlated_store_sales_item_name\" as \"store_sales_item_name\",
+    \"uneven\".\"correlated_store_sales_item_text_id\" as \"store_sales_item_name\",
     \"uneven\".\"correlated_store_sales_store_name\" as \"store_name\",
     \"uneven\".\"correlated_store_sales_store_text_id\" as \"store_sales_store_text_id\",
     \"uneven\".\"store_returns_quantity\" as \"store_returns_quantity\",

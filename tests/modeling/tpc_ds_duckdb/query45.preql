@@ -1,14 +1,14 @@
 import web_sales as web_sales;
 import item as item2;
 
-auto special_item_ids <- item2.name ? item2.id in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
+auto special_item_ids <- item2.text_id ? item2.id in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
 
 where
     web_sales.date.quarter = 2
     and web_sales.date.year = 2001
     and (
         substring(web_sales.customer.address.zip, 1, 5) in ('85669', '86197', '88274', '83405', '86475', '85392', '85460', '80348', '81792')
-        or web_sales.item.name in special_item_ids
+        or web_sales.item.text_id in special_item_ids
     )
 select
     web_sales.customer.address.zip,

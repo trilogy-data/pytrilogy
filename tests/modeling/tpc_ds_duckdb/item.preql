@@ -7,7 +7,7 @@ import std.money;
 key id int; # Surrogate key uniquely identifying a sellable item.
 
 properties id (
-    name string, # Stable item business identifier (16-char alphanumeric I_ITEM_ID, not a display name).
+    text_id string, # Stable business identifier for the item (16-char alphanumeric).
     product_name string, # Marketing product name shown to customers.
     brand_id int, # Numeric brand identifier (composite of category + class + brand digits).
     brand_name string, # Brand display name.
@@ -28,7 +28,7 @@ properties id (
 
 datasource items (
     I_ITEM_SK: id,
-    I_ITEM_ID: name,
+    I_ITEM_ID: text_id,
     I_ITEM_DESC: desc,
     I_BRAND: brand_name,
     I_BRAND_ID: brand_id,

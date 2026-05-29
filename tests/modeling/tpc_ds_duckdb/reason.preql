@@ -4,13 +4,13 @@
 key id int; # Surrogate key uniquely identifying a return reason.
 
 properties id (
-    string_id string, # Stable business identifier for the reason (16-char alphanumeric).
+    text_id string, # Stable business identifier for the return reason (16-char alphanumeric).
     desc string?, # Free-form description of the reason (e.g. 'Did not fit', 'wrong color').
 );
 
 datasource reason (
     R_REASON_SK: id,
-    R_REASON_ID: string_id,
+    R_REASON_ID: text_id,
     R_REASON_DESC: desc,
 )
 grain (id)

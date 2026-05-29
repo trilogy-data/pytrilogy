@@ -1,10 +1,10 @@
 query_id = "07"
-gen_length = 1615
-preql_size = 643
+gen_length = 1618
+preql_size = 649
 comp_size = 576
 generated_sql = """
 SELECT
-    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_text_id\",
     avg(\"store_sales_store_sales\".\"SS_QUANTITY\") as \"avg_quantity\",
     avg(\"store_sales_store_sales\".\"SS_LIST_PRICE\") as \"avg_list_price\",
     avg(\"store_sales_store_sales\".\"SS_COUPON_AMT\") as \"avg_coupon_amt\",

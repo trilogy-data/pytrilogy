@@ -10,12 +10,12 @@ where
     and (cs.promotion.channel_email = 'N' or cs.promotion.channel_event = 'N')
     and cs.date.year = 2000
 select
-    cs.item.name,
+    cs.item.text_id,
     avg(cs.quantity) as agg1,
     avg(cs.list_price) as agg2,
     avg(cs.coupon_amt) as agg3,
     avg(cs.sales_price) as agg4,
 order by
-    cs.item.name asc
+    cs.item.text_id asc
 limit 100
 ;

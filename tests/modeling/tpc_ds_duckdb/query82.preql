@@ -10,10 +10,10 @@ where
     and inventory.quantity_on_hand between 100 and 500
     and store_sales.item.id is not null
 select
-    inventory.item.name,
+    inventory.item.text_id,
     inventory.item.desc,
     inventory.item.current_price,
 order by
-    inventory.item.name asc
+    inventory.item.text_id asc
 limit 100
 ;

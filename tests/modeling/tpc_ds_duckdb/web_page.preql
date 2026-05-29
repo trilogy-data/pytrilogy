@@ -4,7 +4,7 @@
 key id int; # Surrogate key uniquely identifying a web page.
 
 properties id (
-    string_id string, # Stable business identifier for the web page (16-char alphanumeric).
+    text_id string, # Stable business identifier for the web page (16-char alphanumeric).
     char_count int?, # Total number of characters on the page.
     link_count int?, # Number of hyperlinks on the page.
     image_count int?, # Number of images on the page.
@@ -14,7 +14,7 @@ properties id (
 
 datasource web_page (
     WP_WEB_PAGE_SK: id,
-    WP_WEB_PAGE_ID: string_id,
+    WP_WEB_PAGE_ID: text_id,
     WP_CHAR_COUNT: char_count,
     WP_LINK_COUNT: link_count,
     WP_IMAGE_COUNT: image_count,

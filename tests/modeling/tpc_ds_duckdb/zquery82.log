@@ -1,6 +1,6 @@
 query_id = "82"
-gen_length = 1579
-preql_size = 549
+gen_length = 1582
+preql_size = 555
 comp_size = 590
 generated_sql = """
 
@@ -20,7 +20,7 @@ GROUP BY
     2,
     3)
 SELECT
-    \"inventory_item_items\".\"I_ITEM_ID\" as \"inventory_item_name\",
+    \"inventory_item_items\".\"I_ITEM_ID\" as \"inventory_item_text_id\",
     \"inventory_item_items\".\"I_ITEM_DESC\" as \"inventory_item_desc\",
     \"inventory_item_items\".\"I_CURRENT_PRICE\" as \"inventory_item_current_price\"
 FROM

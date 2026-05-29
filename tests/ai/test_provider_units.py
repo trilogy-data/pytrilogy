@@ -710,7 +710,7 @@ class _TransportErrorThenOkClient:
 
 @pytest.mark.parametrize(
     "error_factory_name",
-    ["ReadError", "ConnectError", "RemoteProtocolError"],
+    ["ReadError", "ConnectError", "RemoteProtocolError", "ReadTimeout", "PoolTimeout"],
 )
 def test_openrouter_retries_transport_errors(monkeypatch, error_factory_name):
     """Transient socket-level failures (connection closed mid-stream, DNS

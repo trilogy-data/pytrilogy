@@ -1,17 +1,17 @@
 import unified_sales as sales;
 
-auto music_item_ids <- sales.item.name ? sales.item.category = 'Music';
+auto music_item_ids <- sales.item.text_id ? sales.item.category = 'Music';
 
 where
-    sales.item.name in music_item_ids
+    sales.item.text_id in music_item_ids
     and sales.date.year = 1998
     and sales.date.month_of_year = 9
     and sales.bill_address.gmt_offset = -5
 select
-    sales.item.name,
+    sales.item.text_id,
     sum(sales.ext_sales_price) as total_sales,
 order by
-    sales.item.name asc,
+    sales.item.text_id asc,
     total_sales asc
 limit 100
 ;

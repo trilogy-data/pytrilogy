@@ -6,7 +6,7 @@ import std.geography;
 key id int; # Surrogate key uniquely identifying a warehouse.
 
 properties id (
-    string_id string, # Stable business identifier for the warehouse (16-char alphanumeric).
+    text_id string, # Stable business identifier for the warehouse (16-char alphanumeric).
     name string?, # Warehouse display name.
     square_feet int, # Total floor space of the warehouse in square feet.
     state string::us_state_short?, # Two-letter US state code for the warehouse address.
@@ -18,7 +18,7 @@ properties id (
 
 datasource warehouse (
     w_warehouse_sk: id,
-    w_warehouse_id: string_id,
+    w_warehouse_id: text_id,
     w_warehouse_name: ?name,
     w_warehouse_sq_ft: square_feet,
     w_state: state,

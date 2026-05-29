@@ -28,7 +28,7 @@ select
     store_sales.ticket_number,
     store_sales.item.id,
     catalog_sales.order_number,
-    store_sales.item.name,
+    store_sales.item.text_id,
     store_sales.item.desc,
     store_sales.store.text_id,
     store_sales.store.name,
@@ -38,7 +38,7 @@ select
 ;
 
 select
-    correlated.store_sales.item.name as store_sales_item_name,
+    correlated.store_sales.item.text_id as store_sales_item_name,
     correlated.store_sales.item.desc as store_sales_item_desc,
     correlated.store_sales.store.text_id as store_sales_store_text_id,
     correlated.store_sales.store.name as store_name,

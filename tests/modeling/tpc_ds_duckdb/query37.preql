@@ -11,10 +11,10 @@ where
     and items.manufacturer_id in (677, 940, 694, 808)
     and items.id in inv_item_ids
 select
-    items.name,
+    items.text_id,
     items.desc,
     items.current_price,
 order by
-    items.name asc nulls first
+    items.text_id asc nulls first
 limit 100
 ;

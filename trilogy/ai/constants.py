@@ -65,15 +65,26 @@ SELECT RULES:
   6. Logical `and`.
   7. Logical `or`.
 - Always use a reasonable `LIMIT` for final queries unless the request is for a time series or line chart.
-- Window functions: `rank entity [optional over group] by field desc` (e.g. `rank name over state by sum(births) desc as top_name`) Do not use parentheses for over.
+- Window functions use SQL-style syntax — the canonical form Trilogy parses, renders, and round-trips:
+  * Ranking: `rank(<key>) over (partition by <group> order by <expr> desc)` — e.g. `rank(name) over (partition by state order by sum(births) desc) as top_name`. `partition by` is OPTIONAL (omit for a single global window). `dense_rank`/`row_number` take the same shape.
+  * Multi-key ranking: `rank(a, b) over (...)` — all comma-separated args are equal-status grain keys (used when ranking ROLLUP output where the grain spans multiple columns).
+  * `partition by` accepts arbitrary expressions, not just identifiers: `partition by upper(country), case when region = 'EU' then 1 else 0 end`.
+  * Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate — write `sum(x) by g` directly instead of `sum(x) over (partition by g)`.
+  * lag/lead: `lag(<field>, <offset>) over (partition by <g> order by <expr>)`. Offset is optional and defaults to 1. Example: `lag(amount, 2) over (order by date asc) as prev_amount`.
 - Functions. All function names have parenthese (e.g. `sum(births)`, `date_part('year', dep_time)`). For no arguments, use empty parentheses (e.g. `current_date()`).
-- For lag/lead, offset is first: lag/lead offset field order by expr asc/desc.
-- For lag/lead with a window clause: lag/lead offset field by window_clause order by expr asc/desc.
+- Multi-level grouping (ROLLUP / CUBE / GROUPING SETS) attaches to an aggregate with a `by` clause and computes that aggregate at multiple grain levels in one pass:
+  * `agg(<expr>) by rollup d1, d2` → grouping sets `(d1, d2)`, `(d1)`, `()`. Standard SQL ROLLUP semantics, useful for subtotals + grand total.
+  * `agg(<expr>) by cube d1, d2` → every subset of the grouping keys.
+  * `agg(<expr>) by grouping sets (d1, d2), (d1), ()` → arbitrary, explicit grouping combinations. Parens around each set; `()` is the grand total.
+  * The `by rollup|cube|grouping sets ...` clause attaches to ONE aggregate. When several aggregates need the same expansion, wrap them in a `def` macro so the rollup spec stays consistent:
+        def rollup_avg(metric) -> avg(metric::numeric(12,2)) by rollup item.category, item.class;
+        select item.category, item.class, @rollup_avg(quantity) as agg1, @rollup_avg(price) as agg2;
+  * `grouping(<field>)` returns 1 when the field has been rolled up at that row, 0 otherwise — use it (or its sum, e.g. `grouping(a) + grouping(b)`) to compute the hierarchy level. Detection by output NULL works only when the source has no real NULLs in the rolled columns; when in doubt, prefer `grouping()`.
 - Use `::type` casting, e.g., `"2020-01-01"::date`.
 - Date_parts have no quotes; use `date_part(order_date, year)` instead of `date_part(order_date, 'year')`. Prefer idiomatic function casts (year(order_date) instead of date_part(order_date, year)) when possible.
 - Comments use `#` only, per line.
 - For complex logic, break down your query into concept declarations that can be resued
-- Two example queries: 
+- Three example queries:
 
 Query 1: For names with more than 10 births in vermont ever, find the top 10 names by total births 
 across the US in the 1940s and 1950s for Idaho, along with their Vermont births and ranks within Idaho
@@ -98,8 +109,8 @@ SELECT
       state,
       all_births,
       vermont_births,
-      rank name over state by all_births desc AS state_rank,
-      rank name by births_by_name_usa_wide desc AS all_rank
+      rank(name) over (partition by state order by all_births desc) AS state_rank,
+      rank(name) over (order by births_by_name_usa_wide desc) AS all_rank
   having 
       all_rank<11
       
@@ -119,8 +130,42 @@ and count(id2 ? year(dep_time::datetime) between 2000 and 2002) by carrier.name 
       total_flights / date_diff(min(dep_time.date), max(dep_time.date), DAY) AS average_daily_flights
  having
     average_daily_flights > 10
-  order by 
+  order by
     total_flights desc;"
+
+Query 3: store sales totals by item category and class, with subtotals for each
+category and a grand total. The ROLLUP expands one aggregate into three grain
+levels in one pass; `grouping()` tags which level each row is at so we can sort
+totals above their children.
+```
+where store_sales.date.year = 2001
+select
+    store_sales.item.category,
+    store_sales.item.class,
+    sum(store_sales.net_profit) by rollup store_sales.item.category, store_sales.item.class as profit,
+    grouping(store_sales.item.category) by rollup store_sales.item.category, store_sales.item.class as g_cat,
+    grouping(store_sales.item.class)    by rollup store_sales.item.category, store_sales.item.class as g_class,
+    g_cat + g_class as level  # 0 = leaf, 1 = category subtotal, 2 = grand total
+order by
+    level asc,
+    profit desc
+limit 100;
+```
+
+When several columns have the same calculation factor it into a `def` function
+to keep queries concise.
+```
+def by_geo(metric) -> avg(metric::numeric(12,2))
+    by rollup customer.address.country, customer.address.state, customer.address.county;
+
+select
+    customer.address.country,
+    customer.address.state,
+    customer.address.county,
+    @by_geo(sales.quantity)   as avg_qty,
+    @by_geo(sales.list_price) as avg_price
+limit 100;
+```
 """
 
 

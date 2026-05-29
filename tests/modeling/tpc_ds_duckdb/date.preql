@@ -7,8 +7,8 @@ import std.date;
 key id int; # Surrogate key uniquely identifying a calendar date.
 
 properties id (
-    date_string string, # Stable textual date identifier (16-char alphanumeric).
-    _date_string string, # Raw D_DATE column value as string (intermediate stage for cast to date).
+    text_id string, # Stable business identifier for the calendar date (16-char alphanumeric).
+    _date_string string, # Raw date value as string (intermediate stage for cast to date).
     date date, # Actual calendar date value (cast from _date_string).
     year int::year, # Four-digit calendar year (1900-2100).
     day_of_week enum<int>[0, 1, 2, 3, 4, 5, 6], # Day-of-week index (0 = Sunday … 6 = Saturday).
@@ -24,7 +24,7 @@ properties id (
 
 datasource date (
     D_DATE_SK: id,
-    D_DATE_ID: date_string,
+    D_DATE_ID: text_id,
     D_DATE: _date_string,
     _date_string::date: date,
     D_DOW: day_of_week,

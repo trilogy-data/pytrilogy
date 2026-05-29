@@ -145,7 +145,12 @@ class OpenRouterProvider(LLMProvider):
         try:
 
             def make_request():
-                timeout = httpx.Timeout(connect=10.0, read=60.0, write=30.0, pool=10.0)
+                # httpx `read` is per-chunk (between-bytes), not total elapsed —
+                # so a slow-drip response that trickles a byte every few seconds
+                # can hang forever at 60s. 30s is generous for any healthy
+                # generation; longer means the upstream is misbehaving and we
+                # should bail to the retry layer rather than wait it out.
+                timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
                 with httpx.Client(timeout=timeout) as client:
                     payload = {
                         "model": self.model,

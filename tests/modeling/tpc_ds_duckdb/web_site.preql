@@ -3,14 +3,14 @@
 key id int; # Surrogate key uniquely identifying a web site.
 
 properties id (
-    string_id string, # Stable business identifier for the web site (16-char alphanumeric).
+    text_id string, # Stable business identifier for the web site (16-char alphanumeric).
     company_name string, # Operating company name for the web site.
     name string?, # Display name of the web site.
 );
 
 datasource web_site (
     web_site_sk: id,
-    web_site_id: string_id,
+    web_site_id: text_id,
     web_company_name: company_name,
     web_name: name,
 )
