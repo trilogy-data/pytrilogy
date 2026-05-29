@@ -70,11 +70,11 @@ Execute a Trilogy script or all scripts in a directory.
 - `--config PATH`: Path to trilogy.toml configuration file
 - `--env KEY=VALUE`, `-e KEY=VALUE`: Set env vars (or pass an env file path)
 - `--import MODULE[:ALIAS]`: Prepend an `import` to an inline query. Repeatable.
-  Accepts bare names (`flight`), filenames (`flight.preql`), or relative paths
-  (`root/flight.preql`, converted to dotted form). Append `:ALIAS` to namespace
-  the import so the query reaches its concepts as `ALIAS.*` — e.g.
-  `--import raw/item:item` matches a file's `import raw.item as item;` and lets
-  you write `item.current_price`. Without an alias, concepts import unprefixed.
+  Use the SAME dotted form as in-file imports — `--import raw.item:item` becomes
+  `import raw.item as item;` and lets you write `item.current_price`. Slash and
+  `.preql` path forms (`raw/item.preql`) also work and convert to dotted; prefer
+  dots so CLI and file syntax stay identical (the file ALWAYS uses dots — never
+  slashes — `import raw.item as item;`, NEVER `import raw/item as item;`).
 
 **Examples:**
 ```bash
@@ -90,11 +90,11 @@ trilogy run jobs/ duckdb -p 4
 # Run with parameters
 trilogy run report.preql duckdb --param date=2024-01-01 --param region=US
 
-# Inline query against a file's concepts — `:alias` namespaces them as alias.*
-trilogy run --import flight.preql:flight "select flight.carrier, count(flight.id);" 
+# Inline query against a file's concepts — dotted form, `:alias` namespaces them
+trilogy run --import flight:flight "select flight.carrier, count(flight.id);"
 
 # Read the query from stdin (use `-` as input)
-echo "select item.id limit 5;" | trilogy run --import raw/item:item - 
+echo "select item.id limit 5;" | trilogy run --import raw.item:item -
 ```
 
 ---
@@ -159,7 +159,7 @@ trilogy explore raw/store_sales.preql --show concepts --purpose key --purpose pr
 
 ### trilogy unit <input> [options]
 
-Run unit tests on Trilogy scripts with mocked datasources. Always uses DuckDB.
+Run unit tests on Trilogy scripts with mocked datasources.
 
 **Arguments:**
 - `input` (required): Path to .preql file or directory
@@ -219,39 +219,18 @@ trilogy fmt messy_script.preql
 
 ---
 
-### trilogy render <input> [options]
+### trilogy render
 
-Render a markdown *report* — prose mixed with embedded ```trilogy code blocks —
-to a polished PNG or HTML file. `select` statements become tables and `chart`
-statements become charts; setup blocks (declarations only) produce no output.
-
-**Arguments:**
-- `input` (required): Path to a markdown (`.md`) report file.
-
-**Options:**
-- `--to {png|html}`: Output format (default: `png`).
-- `--theme {inter|editorial}`: Visual theme — font and colors (default: `inter`).
-- `--out PATH`, `-o PATH`: Output path (default: input path with the format's extension).
-
-**Examples:**
-```bash
-trilogy render quarterly.md --to png
-trilogy render quarterly.md --to html --theme editorial
-```
-
-Run `trilogy agent-info report` for the full report markdown format reference.
-Requires the `report` extra (`pip install pytrilogy[report]`); PNG output also
-needs `playwright install chromium`.
+Render a markdown report (prose + embedded ```trilogy blocks) to PNG/HTML.
+Run `trilogy agent-info report` for the command flags and the report format
+reference. Only relevant when producing a `.md` deliverable.
 
 ---
 
 ### trilogy file <subcommand>
 
-CRUD+ operations over pluggable storage backends. Agent-loop friendly: all
-read/write/delete/move operations go through the CLI, so an agent with only
-CLI access can manage workspace files. Currently supports the local
-filesystem; future backends (GCS, S3, remote git models) will plug in via the
-same commands.
+CRUD+ operations over pluggable storage backends. Currently supports the local
+filesystem only.
 
 **Subcommands:**
 - `list [path] [--recursive/-r] [--long/-l]`: List entries at PATH (default `.`).
@@ -313,60 +292,12 @@ trilogy database describe store_sales
 
 ---
 
-### trilogy ingest <sources> [dialect] [options] [conn_args...]
+### trilogy ingest
 
-Bootstrap datasources from existing warehouse tables OR from data files
-(local paths and remote URLs). Connects to a database, introspects schemas,
-and generates Trilogy datasource definitions.
-
-**Arguments:**
-- `sources` (required unless `--all`): Comma-separated list of either table names OR file
-  paths/URLs (cannot be mixed in one call). Supported file types: `.csv`,
-  `.tsv`, `.parquet`. URL schemes: `https://`, `http://`, `gs://`, `gcs://`,
-  `s3://`, `az://`.
-- `dialect` (optional): Database dialect. File ingest forces `duckdb`.
-- `conn_args` (optional): Connection arguments
-
-**Options:**
-- `--output PATH`, `-o PATH`: Output directory for generated files
-- `--schema NAME`, `-s NAME`: Schema/database to ingest from (table mode only)
-- `--config PATH`: Path to trilogy.toml
-- `--fks SPEC`: Foreign key relationships (format: table.col:ref_table.col)
-- `--name NAME`: Override the generated datasource name (single source only)
-- `--all`: Ingest every table in the database (table mode; omit `sources`)
-
-**Examples:**
-```bash
-# Ingest tables from DuckDB
-trilogy ingest "users,orders,products" duckdb "path/to/db.duckdb"
-
-# Ingest every table in the configured database in one step
-trilogy ingest --all
-
-# Ingest with schema and output directory
-trilogy ingest "customers" postgres -s public -o raw/ "postgresql://localhost/db"
-
-# Ingest with foreign key relationships
-trilogy ingest "orders,customers" duckdb --fks "orders.customer_id:customers.id"
-
-# Ingest a local CSV (DuckDB is auto-selected; dialect arg optional)
-trilogy ingest ./data/orders.csv
-
-# Ingest a remote parquet over HTTPS
-trilogy ingest https://example.com/data/events.parquet --name events
-
-# Ingest from a public GCS bucket
-trilogy ingest gs://my-bucket/sales.parquet -o raw/
-```
-
----
-
-### trilogy public / trilogy serve
-
-Hosting and model-distribution commands. Run `trilogy agent-info serve` for
-the full reference covering both `trilogy public list/fetch` (browsing and
-downloading trilogy-public-models) and `trilogy serve` (FastAPI server
-exposing a model directory). Not needed for query authoring.
+Bootstrap Trilogy datasource files from warehouse tables or data files (CSV /
+Parquet, local or cloud URL). Most agent tasks query an EXISTING model in
+`raw/` — you do not need this. Run `trilogy agent-info ingest` for the full
+reference when you actually need to generate new model files.
 
 ---
 
@@ -386,107 +317,10 @@ Pass off a multi-step orchestration task to an AI agent. (Not yet implemented)
 
 ## Authoring Datasources
 
-### Root Datasources
-
-Prefixing a datasource declaration with the `root` keyword marks it as a source-of-truth that
-Trilogy does not manage or refresh. Root datasources are external inputs — warehouse tables,
-files, or scripts that are populated outside of Trilogy.
-
-```trilogy
-root datasource raw_rides (
-    ride_id,
-    rider_id,
-    distance_miles,
-    duration_minutes
-)
-grain (ride_id)
-address source_schema.raw_rides;
-```
-
-**Key behaviors:**
-- Root datasources are **not eligible for refresh** — they are never marked stale and will not
-  be rebuilt by `trilogy run` or the refresh system.
-- Derived (non-root) datasources that depend on root datasources will be checked for staleness
-  relative to root watermarks when `freshness_by` is configured.
-- The state store will still query root datasources for watermark values when a downstream
-  datasource declares `freshness_by` pointing to a concept that lives on the root — no
-  configuration on the root itself is needed or allowed.
-
-**Convention:** place root datasource definitions in `assets/root/` so they can be imported
-via `import root;` in downstream scripts. This is convention only — the `root` keyword is what
-matters, not the file location.
-
-```trilogy
-# in a job or derived model:
-import root;
-
-auto total_rides <- COUNT(ride_id);
-select total_rides;
-```
-
----
-
-### File-Based Datasources (Parquet, CSV)
-
-Datasources declared with a `file` clause can be **read from and written to**. The file
-extension determines how the file is handled — no extra configuration is needed.
-
-| Extension | Behaviour |
-|-----------|-----------|
-| `.parquet` | `read_parquet(...)` / write parquet |
-| `.csv` | `read_csv(...)` / write csv |
-| `.tsv` | `read_csv(..., delim='\t')` / write tsv |
-| `.py` | `uv_run(...)` — Arrow IPC read-only (see below) |
-
-**Reading** — declare the datasource and query it like any other source:
-
-```trilogy
-key ride_id int;
-property ride_id.distance_miles float;
-
-root datasource raw_rides (
-    ride_id,
-    distance_miles
-)
-grain (ride_id)
-file `./data/rides.parquet`;
-```
-
-Glob patterns are supported for multi-file reads:
-
-```trilogy
-file `./data/rides_*.parquet`;
-```
-
-**Writing** — use `state unpublished` to mark the datasource as a write target, then
-populate it with `overwrite` or `persist`:
-
-```trilogy
-auto total_distance <- sum(distance_miles);
-
-datasource ride_summary (
-    total_distance
-)
-grain ()
-file `./output/ride_summary.parquet`
-state unpublished;
-
-overwrite ride_summary;
-```
-
-`overwrite` replaces the file contents. `persist` appends. Both work with local paths and
-cloud storage URIs (e.g. `gcs://bucket/path/out.parquet`) when the appropriate DuckDB
-extension is enabled.
-
----
-
-### Advanced Datasource Forms (partial, Python/Arrow)
-
-Two niche datasource forms — `partial` (union multiple subset datasources) and
-Python script datasources (Arrow IPC streams via `uv run`) — are documented
-separately. Run `trilogy agent-info datasources` for the full reference. Skip
-unless you actually need to union partitioned sources or feed Trilogy from a
-Python script.
+Most agent tasks query an EXISTING model — `raw/*.preql` already declares the
+datasources. You don't need to author one. When you do, run
+`trilogy agent-info datasources` for the full reference covering root,
+file-based (Parquet / CSV / Python+Arrow), and partial/complete forms.
 
 ---
 
@@ -551,10 +385,7 @@ trilogy unit hello_world.preql
 ```
 
 ### 2. Ingesting existing tables
-```bash
-trilogy ingest "fact_sales,dim_customers,dim_products" postgres \\
-    -s analytics -o assets/root/ "postgresql://localhost/warehouse"
-```
+Run `trilogy agent-info ingest` for the full command reference.
 
 ### 3. Running ETL jobs
 ```bash
@@ -579,28 +410,121 @@ trilogy --debug run query.preql duckdb
 
 ## Extended References (on demand)
 
-Niche reference sections live behind `trilogy agent-info <topic>` subcommands so
-the main dump stays small. Call one only when its topic is actually relevant to
+Reference sections live behind `trilogy agent-info <topic>` subcommands so the
+main dump stays small. Call one only when its topic is actually relevant to
 the current task:
 
-- `trilogy agent-info report` — markdown report format (embedded ```trilogy
-  blocks, `chart` statements, `:::row` side-by-side layout). For when you're
-  authoring a `.md` to render with `trilogy render`.
-- `trilogy agent-info datasources` — `partial` / `complete` datasource forms
-  for unioning partitioned subsets, and Python/Arrow script datasources
-  (`file \`./script.py\``). For when single-source modelling isn't enough.
+- `trilogy agent-info report` — `trilogy render` command flags AND the
+  markdown report format (```trilogy blocks, `chart` statements, `:::row`
+  side-by-side layout). For when producing a `.md` deliverable.
+- `trilogy agent-info datasources` — all datasource authoring forms: root,
+  file-based (Parquet / CSV / Python+Arrow), and partial/complete for
+  unioning partitioned subsets. For when you must declare a NEW datasource.
+- `trilogy agent-info ingest` — `trilogy ingest` full reference (warehouse
+  tables, CSV / Parquet, cloud URLs, `--fks`, `--all`, ...). For bootstrapping
+  a model from scratch.
 - `trilogy agent-info serve` — `trilogy public list/fetch` (browse and pull
   from trilogy-public-models) and `trilogy serve` (FastAPI server exposing
   model directories). For distribution/hosting, not query authoring.
 """
 
 
-DATASOURCE_ADVANCED_DOC = """# Trilogy Advanced Datasources - AI Agent Reference
+DATASOURCES_DOC = """# Trilogy Datasource Authoring - AI Agent Reference
 
-The basic `root datasource` and `file`-clause forms are covered in the main
-`trilogy agent-info` dump. This reference covers two niche additions:
-`partial` (union multiple subset datasources) and Python script datasources
-(Arrow IPC streams).
+When you must declare a NEW datasource (most agent tasks instead query an
+existing one in `raw/`), this reference covers every form Trilogy supports:
+the `root` keyword, file-based (Parquet / CSV / Python+Arrow), and the
+`partial` / `complete` forms for unioning partitioned subsets.
+
+## Root Datasources
+
+Prefixing a datasource declaration with the `root` keyword marks it as a source-of-truth that
+Trilogy does not manage or refresh. Root datasources are external inputs — warehouse tables,
+files, or scripts that are populated outside of Trilogy.
+
+```trilogy
+root datasource raw_rides (
+    ride_id,
+    rider_id,
+    distance_miles,
+    duration_minutes
+)
+grain (ride_id)
+address source_schema.raw_rides;
+```
+
+**Key behaviors:**
+- Root datasources are **not eligible for refresh** — they are never marked stale and will not
+  be rebuilt by `trilogy run` or the refresh system.
+- Derived (non-root) datasources that depend on root datasources will be checked for staleness
+  relative to root watermarks when `freshness_by` is configured.
+- The state store will still query root datasources for watermark values when a downstream
+  datasource declares `freshness_by` pointing to a concept that lives on the root — no
+  configuration on the root itself is needed or allowed.
+
+**Convention:** place root datasource definitions in `assets/root/` so they can be imported
+via `import root;` in downstream scripts. This is convention only — the `root` keyword is what
+matters, not the file location.
+
+```trilogy
+# in a job or derived model:
+import root;
+
+auto total_rides <- COUNT(ride_id);
+select total_rides;
+```
+
+## File-Based Datasources (Parquet, CSV)
+
+Datasources declared with a `file` clause can be **read from and written to**. The file
+extension determines how the file is handled — no extra configuration is needed.
+
+| Extension | Behaviour |
+|-----------|-----------|
+| `.parquet` | `read_parquet(...)` / write parquet |
+| `.csv` | `read_csv(...)` / write csv |
+| `.tsv` | `read_csv(..., delim='\t')` / write tsv |
+| `.py` | `uv_run(...)` — Arrow IPC read-only (see below) |
+
+**Reading** — declare the datasource and query it like any other source:
+
+```trilogy
+key ride_id int;
+property ride_id.distance_miles float;
+
+root datasource raw_rides (
+    ride_id,
+    distance_miles
+)
+grain (ride_id)
+file `./data/rides.parquet`;
+```
+
+Glob patterns are supported for multi-file reads:
+
+```trilogy
+file `./data/rides_*.parquet`;
+```
+
+**Writing** — use `state unpublished` to mark the datasource as a write target, then
+populate it with `overwrite` or `persist`:
+
+```trilogy
+auto total_distance <- sum(distance_miles);
+
+datasource ride_summary (
+    total_distance
+)
+grain ()
+file `./output/ride_summary.parquet`
+state unpublished;
+
+overwrite ride_summary;
+```
+
+`overwrite` replaces the file contents. `persist` appends. Both work with local paths and
+cloud storage URIs (e.g. `gcs://bucket/path/out.parquet`) when the appropriate DuckDB
+extension is enabled.
 
 ## Complete and Partial Datasources
 
@@ -804,6 +728,62 @@ trilogy serve ./models/ duckdb --port 8080
 """
 
 
+INGEST_DOC = """# trilogy ingest - AI Agent Reference
+
+Bootstrap datasources from existing warehouse tables OR from data files
+(local paths and remote URLs). Connects to a database, introspects schemas,
+and generates Trilogy datasource definitions under `raw/`.
+
+Most agent tasks query an EXISTING model — only invoke this when a fresh
+model needs to be generated.
+
+## Usage
+
+`trilogy ingest <sources> [dialect] [options] [conn_args...]`
+
+**Arguments:**
+- `sources` (required unless `--all`): Comma-separated list of either table names OR file
+  paths/URLs (cannot be mixed in one call). Supported file types: `.csv`,
+  `.tsv`, `.parquet`. URL schemes: `https://`, `http://`, `gs://`, `gcs://`,
+  `s3://`, `az://`.
+- `dialect` (optional): Database dialect. File ingest forces `duckdb`.
+- `conn_args` (optional): Connection arguments
+
+**Options:**
+- `--output PATH`, `-o PATH`: Output directory for generated files
+- `--schema NAME`, `-s NAME`: Schema/database to ingest from (table mode only)
+- `--config PATH`: Path to trilogy.toml
+- `--fks SPEC`: Foreign key relationships (format: table.col:ref_table.col)
+- `--name NAME`: Override the generated datasource name (single source only)
+- `--all`: Ingest every table in the database (table mode; omit `sources`)
+
+## Examples
+
+```bash
+# Ingest tables from DuckDB
+trilogy ingest "users,orders,products" duckdb "path/to/db.duckdb"
+
+# Ingest every table in the configured database in one step
+trilogy ingest --all
+
+# Ingest with schema and output directory
+trilogy ingest "customers" postgres -s public -o raw/ "postgresql://localhost/db"
+
+# Ingest with foreign key relationships
+trilogy ingest "orders,customers" duckdb --fks "orders.customer_id:customers.id"
+
+# Ingest a local CSV (DuckDB is auto-selected; dialect arg optional)
+trilogy ingest ./data/orders.csv
+
+# Ingest a remote parquet over HTTPS
+trilogy ingest https://example.com/data/events.parquet --name events
+
+# Ingest from a public GCS bucket
+trilogy ingest gs://my-bucket/sales.parquet -o raw/
+```
+"""
+
+
 REPORT_FORMAT_DOC = """# Trilogy Report Format - AI Agent Reference
 
 ## Overview
@@ -823,6 +803,14 @@ hand back a finished report.
 
 ## Rendering
 
+**Arguments:**
+- `input` (required): Path to a markdown (`.md`) report file.
+
+**Options:**
+- `--to {png|html}`: Output format (default: `png`).
+- `--theme {inter|editorial}`: Visual theme — font and colors (default: `inter`).
+- `--out PATH`, `-o PATH`: Output path (default: input path with the format's extension).
+
 ```bash
 trilogy render report.md                     # -> report.png (default)
 trilogy render report.md --to html           # -> report.html (interactive charts)
@@ -830,8 +818,8 @@ trilogy render report.md --theme editorial   # font + color theme
 trilogy render report.md -o out/q3.png       # explicit output path
 ```
 
-- `--to`: `png` (default) or `html`.
-- `--theme`: `inter` (default) or `editorial`.
+Requires the `report` extra (`pip install pytrilogy[report]`); PNG output also
+needs `playwright install chromium`.
 
 ## Trilogy code blocks
 
@@ -969,8 +957,14 @@ def agent_info_report() -> None:
 
 @agent_info.command("datasources")
 def agent_info_datasources() -> None:
-    """Print the advanced-datasources reference (partial + Python/Arrow)."""
-    print(DATASOURCE_ADVANCED_DOC)
+    """Print the datasource authoring reference (root, file, partial, Python)."""
+    print(DATASOURCES_DOC)
+
+
+@agent_info.command("ingest")
+def agent_info_ingest() -> None:
+    """Print the `trilogy ingest` command reference."""
+    print(INGEST_DOC)
 
 
 @agent_info.command("serve")

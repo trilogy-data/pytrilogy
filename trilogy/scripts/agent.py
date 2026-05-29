@@ -134,6 +134,12 @@ QUIET_SYSTEM_PROMPT = get_agent_instructions(False)
 
 MAX_SUBMIT_KICKBACKS = 2
 
+# Exit code used when the agent stops because it ran out of iterations rather
+# than because of a real crash. Distinct from the default ClickException exit
+# code (1) so callers (the eval scorer in particular) can distinguish "agent
+# gave up after N turns" from "agent process died unexpectedly".
+EXIT_ITERATION_EXHAUSTED = 2
+
 REVIEWER_SYSTEM_PROMPT = (
     "You are reviewing whether an AI agent actually finished its task. "
     "You will receive the original task and the agent's tool-use transcript. "
@@ -521,9 +527,11 @@ def _run_turn(
                         )
                         continue
                 return
-    raise click.ClickException(
+    exc = click.ClickException(
         f"Agent exhausted {max_iterations} iterations without returning control."
     )
+    exc.exit_code = EXIT_ITERATION_EXHAUSTED
+    raise exc
 
 
 @argument("command", type=str)

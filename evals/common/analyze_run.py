@@ -27,6 +27,7 @@ STATUS_COLORS = {
     "error": "#c62828",
     "missing": "#9e9e9e",
     "timeout": "#6a1b9a",
+    "exhausted": "#5e35b1",
     "crashed": "#4527a0",
 }
 # Lighter palette used for the second (enriched) series in side-by-side
@@ -39,9 +40,10 @@ STATUS_COLORS_ALT = {
     "error": "#e57373",
     "missing": "#cfcfcf",
     "timeout": "#ba68c8",
+    "exhausted": "#b39ddb",
     "crashed": "#9575cd",
 }
-STATUS_ORDER = ["pass", "fail", "error", "missing", "timeout", "crashed"]
+STATUS_ORDER = ["pass", "fail", "error", "missing", "timeout", "exhausted", "crashed"]
 OK_COLOR = "#2e7d32"
 ERR_COLOR = "#c62828"
 _RUN_FILE = re.compile(r"query(\d+)\.preql")

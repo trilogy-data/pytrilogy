@@ -704,12 +704,18 @@ def test_run_turn_return_control_drops_open_todos(monkeypatch):
 def test_run_turn_raises_after_max_iterations():
     import click
 
+    from trilogy.scripts.agent import EXIT_ITERATION_EXHAUSTED
+
     provider = ScriptedProvider(
         responses=[make_response(text="no tool") for _ in range(3)]
     )
     conv = make_conv(provider)
-    with pytest.raises(click.ClickException, match="exhausted"):
+    with pytest.raises(click.ClickException, match="exhausted") as excinfo:
         _run_turn(conv, AgentState(), max_iterations=3)
+    # Distinct exit code so the eval scorer can tell "agent gave up after N
+    # turns" apart from "agent process crashed" (default ClickException=1).
+    assert excinfo.value.exit_code == EXIT_ITERATION_EXHAUSTED
+    assert EXIT_ITERATION_EXHAUSTED != 1
 
 
 def test_run_turn_handles_unknown_tool_and_continues():

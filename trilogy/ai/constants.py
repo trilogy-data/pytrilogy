@@ -121,8 +121,10 @@ FUNCTIONS = "\n".join(
     ]
 )
 
-AGGREGATE_FUNCTIONS = [
-    x
-    for x, info in FunctionType.__members__.items()
-    if x in FunctionClass.AGGREGATE_FUNCTIONS.value
-]
+AGGREGATE_FUNCTIONS = "\n".join(
+    [
+        render_function(v, example=FUNCTION_EXAMPLES.get(v))
+        for _, v in FunctionType.__members__.items()
+        if v in FunctionClass.AGGREGATE_FUNCTIONS.value and v in FUNCTION_REGISTRY
+    ]
+)

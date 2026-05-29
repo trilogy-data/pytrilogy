@@ -590,6 +590,11 @@ def run(spec: BenchmarkSpec) -> int:
                 per_query_scores[index] = scoring.apply_timeout(
                     per_query_scores[index], result.get("timed_out", False)
                 )
+                per_query_scores[index] = scoring.apply_exhausted(
+                    per_query_scores[index],
+                    result.get("exit_code", 0),
+                    result.get("timed_out", False),
+                )
                 per_query_scores[index] = scoring.apply_crash(
                     per_query_scores[index],
                     result.get("exit_code", 0),
@@ -654,6 +659,15 @@ def run(spec: BenchmarkSpec) -> int:
                         else False
                     ),
                 )
+                per_query_scores[i] = scoring.apply_exhausted(
+                    per_query_scores[i],
+                    (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
+                    (
+                        per_query_runs[i].get("timed_out", False)
+                        if per_query_runs[i]
+                        else False
+                    ),
+                )
                 per_query_scores[i] = scoring.apply_crash(
                     per_query_scores[i],
                     (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
@@ -686,8 +700,16 @@ def run(spec: BenchmarkSpec) -> int:
             ]
         query_results = [
             scoring.apply_crash(
-                scoring.apply_timeout(
-                    qr,
+                scoring.apply_exhausted(
+                    scoring.apply_timeout(
+                        qr,
+                        (
+                            per_query_runs[i].get("timed_out", False)
+                            if per_query_runs[i]
+                            else False
+                        ),
+                    ),
+                    (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
                     (
                         per_query_runs[i].get("timed_out", False)
                         if per_query_runs[i]

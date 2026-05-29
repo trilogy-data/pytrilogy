@@ -62,17 +62,22 @@ class AgentMetrics:
 @dataclass
 class QueryResult:
     id: int
-    # pass    — candidate result set matches the TPC-DS reference
-    # fail    — query ran cleanly but the result set differs
-    # error   — engine threw (parse / generate_sql / execute / reference)
-    # missing — no query file produced (agent never wrote one)
-    # timeout — agent subprocess hit its wall-clock limit; overrides
-    #           fail/error/missing, but not `pass`
-    # crashed — agent subprocess exited non-zero without timing out
-    #           (provider transport failure, unhandled exception, OOM, ...);
-    #           overrides fail/error/missing, but not `pass` or `timeout`.
-    #           Distinct from `error` so the report tells the operator
-    #           "agent died" vs "scoring engine threw".
+    # pass      — candidate result set matches the TPC-DS reference
+    # fail      — query ran cleanly but the result set differs
+    # error     — engine threw (parse / generate_sql / execute / reference)
+    # missing   — no query file produced (agent never wrote one)
+    # timeout   — agent subprocess hit its wall-clock limit; overrides
+    #             fail/error/missing, but not `pass`
+    # exhausted — agent gave up after its --max-iterations budget (CLI
+    #             exits with EXIT_ITERATION_EXHAUSTED=2). A "the model
+    #             couldn't get there in N turns" signal, distinct from a
+    #             real crash; overrides fail/error/missing.
+    # crashed   — agent subprocess exited non-zero without timing out and
+    #             without the exhaustion exit code (provider transport
+    #             failure, unhandled exception, OOM, ...); overrides
+    #             fail/error/missing, but not `pass` or `timeout`. Distinct
+    #             from `error` so the report tells the operator "agent
+    #             died" vs "scoring engine threw".
     status: str
     ref_rows: int = 0
     cand_rows: int = 0
@@ -270,12 +275,41 @@ def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
     return result
 
 
+def apply_exhausted(
+    result: QueryResult, exit_code: int, timed_out: bool
+) -> QueryResult:
+    """Promote a non-passing, non-timeout result to ``status='exhausted'`` when
+    the agent CLI gave up after its --max-iterations budget (signalled by
+    exit code ``EXIT_ITERATION_EXHAUSTED``, currently 2). Distinct from
+    ``crashed`` — the process exited cleanly, the model just didn't get
+    there in N turns."""
+    from trilogy.scripts.agent import EXIT_ITERATION_EXHAUSTED
+
+    if timed_out or exit_code != EXIT_ITERATION_EXHAUSTED or result.status == "pass":
+        return result
+    detail = result.detail or "agent exhausted iteration budget"
+    if "exhausted" not in detail.lower():
+        detail = f"agent exhausted iterations (was: {result.status}) — {detail}"
+    result.status = "exhausted"
+    result.detail = detail
+    return result
+
+
 def apply_crash(result: QueryResult, exit_code: int, timed_out: bool) -> QueryResult:
-    """Promote a non-passing, non-timeout result to ``status='crashed'`` when
-    the agent subprocess exited non-zero. Timeout takes precedence (it's how
-    we kill the subprocess in the first place) and ``pass`` wins — a correct
-    query file written before the crash is still a correct answer."""
-    if timed_out or exit_code == 0 or result.status == "pass":
+    """Promote a non-passing, non-timeout, non-exhausted result to
+    ``status='crashed'`` when the agent subprocess exited non-zero. Timeout
+    takes precedence (it's how we kill the subprocess in the first place),
+    iteration exhaustion is handled separately by :func:`apply_exhausted`,
+    and ``pass`` wins — a correct query file written before the crash is
+    still a correct answer."""
+    from trilogy.scripts.agent import EXIT_ITERATION_EXHAUSTED
+
+    if (
+        timed_out
+        or exit_code == 0
+        or exit_code == EXIT_ITERATION_EXHAUSTED
+        or result.status == "pass"
+    ):
         return result
     detail = result.detail or "agent exited non-zero"
     if "agent crashed" not in detail.lower():

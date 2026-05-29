@@ -229,6 +229,39 @@ def test_format_import_alias():
     assert _format_import("root/flight.preql:f") == "import root.flight as f;\n"
 
 
+def test_format_import_accepts_dotted_form():
+    """Dotted form matches the in-file `import a.b as c;` syntax exactly. An
+    agent that learns the CLI form should be able to copy it verbatim into a
+    `.preql` file without rewriting separators — this is the whole point of
+    aligning the two surfaces."""
+    assert _format_import("raw.item") == "import raw.item;\n"
+    assert _format_import("raw.item:item") == "import raw.item as item;\n"
+    assert _format_import("raw.unified_sales:s") == "import raw.unified_sales as s;\n"
+
+
+def test_normalize_import_dotted_form_is_idempotent():
+    """Dotted input must round-trip unchanged so a single dotted form is the
+    canonical CLI spelling."""
+    assert _normalize_import("flight") == "flight"
+    assert _normalize_import("raw.item") == "raw.item"
+    assert _normalize_import("raw.unified_sales") == "raw.unified_sales"
+
+
+def test_run_import_dotted_form_works_end_to_end(
+    runner, monkeypatch, tmp_path: Path, sample_preql: Path
+):
+    """End-to-end check that the dotted `--import` form (matching in-file
+    syntax) actually runs — guards against a regression where the path-style
+    parsing path silently rejected pure dotted names."""
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        ["run", "--import", "flight:flight", "select flight.id;", "duckdb"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+
+
 def test_run_import_alias_namespaces(
     runner, monkeypatch, tmp_path: Path, sample_preql: Path
 ):
