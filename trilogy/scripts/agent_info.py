@@ -720,6 +720,231 @@ trilogy ingest https://example.com/data/events.parquet --name events
 # Ingest from a public GCS bucket
 trilogy ingest gs://my-bucket/sales.parquet -o raw/
 ```
+
+## Extended References (on demand)
+
+Niche reference sections live behind `trilogy agent-info <topic>` subcommands so
+the main dump stays small. Call one only when its topic is actually relevant to
+the current task:
+
+- `trilogy agent-info report` — markdown report format (embedded ```trilogy
+  blocks, `chart` statements, `:::row` side-by-side layout). For when you're
+  authoring a `.md` to render with `trilogy render`.
+- `trilogy agent-info datasources` — `partial` / `complete` datasource forms
+  for unioning partitioned subsets, and Python/Arrow script datasources
+  (`file \`./script.py\``). For when single-source modelling isn't enough.
+- `trilogy agent-info serve` — `trilogy public list/fetch` (browse and pull
+  from trilogy-public-models) and `trilogy serve` (FastAPI server exposing
+  model directories). For distribution/hosting, not query authoring.
+"""
+
+
+DATASOURCE_ADVANCED_DOC = """# Trilogy Advanced Datasources - AI Agent Reference
+
+The basic `root datasource` and `file`-clause forms are covered in the main
+`trilogy agent-info` dump. This reference covers two niche additions:
+`partial` (union multiple subset datasources) and Python script datasources
+(Arrow IPC streams).
+
+## Complete and Partial Datasources
+
+By default a datasource is "complete" — it represents the full dataset for its grain. The
+`partial` keyword declares that a datasource only covers a subset of rows, identified by a
+`complete where` clause. This enables Trilogy to union multiple partial datasources together
+when it needs the full population.
+
+**Complete datasource (default):**
+```trilogy
+datasource orders (
+    order_id,
+    status,
+    region
+)
+grain (order_id)
+address all_orders;
+```
+
+**Partial datasource:**
+```trilogy
+partial datasource orders_us (
+    order_id,
+    status,
+    region
+)
+grain (order_id)
+address orders_us_table
+complete where region = 'US';
+
+partial datasource orders_eu (
+    order_id,
+    status,
+    region
+)
+grain (order_id)
+address orders_eu_table
+complete where region = 'EU';
+```
+
+When Trilogy needs `order_id` it will union `orders_us` and `orders_eu` automatically. Partial
+datasources can also carry `incremental by` for time-partitioned appends:
+
+```trilogy
+partial datasource orders_us (
+    order_id,
+    status,
+    region,
+    created_at
+)
+grain (order_id)
+address orders_us_table
+complete where region = 'US'
+incremental by created_at;
+```
+
+The `root partial` combination is also valid for external partitioned sources (e.g. one
+Arrow/file source per partition):
+
+```trilogy
+root partial datasource raw_us (
+    id,
+    value,
+    region
+)
+grain (id)
+complete where region = 'US'
+file `./us_data.py`;
+```
+
+## Python Script Datasources (Arrow)
+
+Trilogy supports using a Python script as a datasource. The script must write an Apache Arrow
+IPC stream to `stdout`. This is powered by `uv run` under the hood, so the script can declare
+its own dependencies via inline script metadata.
+
+**Requirements:**
+- DuckDB executor with `enable_python_datasources=True` in `DuckDBConfig`
+- Script writes `pyarrow.Table` to `sys.stdout.buffer` using `pa.ipc.new_stream`
+- Script is referenced with a `file` clause using a backtick path
+
+**Datasource declaration (`.preql`):**
+```trilogy
+key row_index int;
+property row_index.value int;
+
+datasource my_source(
+    index: row_index,
+    value: value
+)
+grain (row_index)
+file `./my_script.py`;
+```
+
+**Script template (`my_script.py`):**
+```python
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pyarrow"]
+# ///
+
+import sys
+import pyarrow as pa
+
+def emit(table: pa.Table) -> None:
+    with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
+        writer.write_table(table)
+
+if __name__ == "__main__":
+    table = pa.table({"index": [1, 2, 3], "value": [10, 20, 30]})
+    emit(table)
+```
+
+**Enabling in Python:**
+```python
+from trilogy import Dialects, Environment
+from trilogy.execution import DuckDBConfig
+
+executor = Dialects.DUCK_DB.default_executor(
+    environment=Environment(working_path=...),
+    conf=DuckDBConfig(enable_python_datasources=True),
+)
+```
+
+**Enabling via `trilogy.toml`:**
+```toml
+[engine]
+dialect = "duckdb"
+
+[engine.config]
+enable_python_datasources = true
+```
+
+The column names in the Arrow table must match the column names declared in the datasource
+mapping. The script runs in an isolated `uv` environment, so it can have dependencies that
+differ from the main project.
+"""
+
+
+SERVE_DOC = """# Trilogy Distribution & Hosting - AI Agent Reference
+
+`trilogy public` browses and pulls models from the trilogy-public-models
+registry. `trilogy serve` exposes a model directory over HTTP. Neither is
+needed for query authoring — invoke this reference only when distributing or
+hosting models.
+
+## trilogy public <subcommand> [options]
+
+Browse and pull Trilogy models published in
+[trilogy-public-models](https://github.com/trilogy-data/trilogy-public-models).
+
+**Subcommands:**
+- `list`: Print available models from the studio index.
+- `fetch <model>`: Download a model's source files into a local directory.
+
+**`trilogy public list` options:**
+- `--engine NAME`, `-e NAME`: Filter by engine (e.g. `duckdb`, `bigquery`).
+- `--tag NAME`, `-t NAME`: Filter by tag.
+
+**`trilogy public fetch <model> [<path>]` arguments/options:**
+- `<path>`: Optional target directory (default `./<model>`).
+- `--no-examples`: Skip example scripts/dashboards.
+- `--force`, `-f`: Overwrite an existing non-empty target directory.
+
+Writes all components, a README.md from the model description, and a
+`trilogy.toml` with the engine dialect and any setup SQL preconfigured, so the
+directory is immediately usable with `trilogy refresh` / `trilogy serve`.
+
+**Example:**
+```bash
+trilogy public list --engine duckdb
+trilogy public fetch bike_data ./bike-demo
+cd bike-demo && trilogy refresh . && trilogy serve .
+```
+
+## trilogy serve <directory> [engine] [options]
+
+Start a FastAPI server to expose Trilogy models from a directory.
+Requires `pytrilogy[serve]` extras.
+
+**Arguments:**
+- `directory` (required): Directory containing model files
+- `engine` (optional): Engine type (default: generic)
+
+**Options:**
+- `--port N`, `-p N`: Port number (default: 8100)
+- `--host HOST`, `-h HOST`: Host to bind (default: 0.0.0.0)
+- `--timeout N`, `-t N`: Shutdown after N seconds
+
+**Endpoints exposed:**
+- `/` - Server info
+- `/index.json` - List of available models
+- `/models/<name>.json` - Specific model details
+- `/files/<name>` - Raw .preql/.sql file content
+
+**Example:**
+```bash
+trilogy serve ./models/ duckdb --port 8080
+```
 """
 
 
