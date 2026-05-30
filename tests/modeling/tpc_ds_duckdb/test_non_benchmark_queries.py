@@ -235,7 +235,7 @@ merge catalog_sales.bill_customer.id into physical_sales.billing_customer.id;
 merge catalog_sales.item.id into physical_sales.item.id;
 
 SELECT 
-    physical_sales.item.name,
+    physical_sales.item.product_name,
     physical_sales.item.desc,
     physical_sales.store.text_id,
     physical_sales.store.name,
@@ -248,7 +248,7 @@ WHERE
     and catalog_sales.date.year=2001 and catalog_sales.date.month_of_year between 4 and 10
     and physical_sales.return_customer.id = physical_sales.billing_customer.id
 ORDER BY 
-    physical_sales.item.name asc,
+    physical_sales.item.product_name asc,
     physical_sales.item.desc asc,
     physical_sales.store.text_id asc,
     physical_sales.store.name asc

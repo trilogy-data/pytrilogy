@@ -1,6 +1,6 @@
 query_id = "44"
 gen_length = 2856
-preql_size = 1002
+preql_size = 1005
 comp_size = 1462
 generated_sql = """
 
@@ -12,7 +12,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" = 4
+    \"ss_store_sales\".\"SS_STORE_SK\" = 1
 
 GROUP BY
     1),
@@ -22,7 +22,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" = 4
+    \"ss_store_sales\".\"SS_STORE_SK\" = 1
 
 GROUP BY
     1,
@@ -33,7 +33,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" = 4 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
+    \"ss_store_sales\".\"SS_STORE_SK\" = 1 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
 ),
 questionable as (
 SELECT

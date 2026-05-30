@@ -1,7 +1,7 @@
 query_id = "41"
-gen_length = 2396
-preql_size = 1611
-comp_size = 2745
+gen_length = 2108
+preql_size = 1268
+comp_size = 1166
 generated_sql = """
 
 WITH 
@@ -11,7 +11,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"item_items\"
 WHERE
-    ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('powder','khaki') and \"item_items\".\"I_UNITS\" in ('Ounce','Oz') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('brown','honeydew') and \"item_items\".\"I_UNITS\" in ('Bunch','Ton') and \"item_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('floral','deep') and \"item_items\".\"I_UNITS\" in ('N/A','Dozen') and \"item_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('light','cornflower') and \"item_items\".\"I_UNITS\" in ('Box','Pound') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('midnight','snow') and \"item_items\".\"I_UNITS\" in ('Pallet','Gross') and \"item_items\".\"I_SIZE\" in ('medium','extra large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Women' and \"item_items\".\"I_COLOR\" in ('cyan','papaya') and \"item_items\".\"I_UNITS\" in ('Cup','Dram') and \"item_items\".\"I_SIZE\" in ('N/A','small') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('orange','frosted') and \"item_items\".\"I_UNITS\" in ('Each','Tbl') and \"item_items\".\"I_SIZE\" in ('petite','large') ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" in ('forest','ghost') and \"item_items\".\"I_UNITS\" in ('Lb','Bundle') and \"item_items\".\"I_SIZE\" in ('medium','extra large') )
+    ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'tan' and \"item_items\".\"I_UNITS\" = 'Oz' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'purple' and \"item_items\".\"I_UNITS\" = 'Ton' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Men' and \"item_items\".\"I_COLOR\" = 'misty' and \"item_items\".\"I_UNITS\" = 'Box' and \"item_items\".\"I_SIZE\" = 'medium' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'medium' and \"item_items\".\"I_UNITS\" = 'Tsp' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'midnight' and \"item_items\".\"I_UNITS\" = 'Gram' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Books' and \"item_items\".\"I_COLOR\" = 'pale' and \"item_items\".\"I_UNITS\" = 'Pound' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'khaki' and \"item_items\".\"I_UNITS\" = 'Pallet' and \"item_items\".\"I_SIZE\" = 'N/A' ) or ( \"item_items\".\"I_CATEGORY\" = 'Electronics' and \"item_items\".\"I_COLOR\" = 'mint' and \"item_items\".\"I_UNITS\" = 'Gross' and \"item_items\".\"I_SIZE\" = 'N/A' )
 
 GROUP BY
     1
@@ -25,7 +25,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"item_items\"
 WHERE
-    \"item_items\".\"I_MANUFACT_ID\" BETWEEN 738 AND 778
+    \"item_items\".\"I_MANUFACT_ID\" BETWEEN 1 AND 500
 
 GROUP BY
     1,

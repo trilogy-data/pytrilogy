@@ -155,13 +155,13 @@ MAX_SUBMIT_KICKBACKS = 2
 EXIT_ITERATION_EXHAUSTED = 2
 
 REVIEWER_SYSTEM_PROMPT = (
-    "You are reviewing whether an AI agent actually finished its task." \
+    "You are reviewing whether an AI agent actually finished its task "
     "or prematurely called exit. "
     "You will receive the original task and the agent's tool-use transcript. "
     "Reply with exactly 'DONE' or 'NOT_DONE' on the first line, then one or "
     "two sentences explaining why. Be strict — if the agent's transcript "
-    "shows it (a) self-noted uncertainty it is still ivnestigation, 
-    "(b) didn't implement a key part of the ask or" 
+    "shows it (a) self-noted uncertainty it is still investigating, "
+    "(b) didn't implement a key part of the ask, or "
     "(c) cut off mid-thought, reply "
     "NOT_DONE. Otherwise reply DONE."
 )

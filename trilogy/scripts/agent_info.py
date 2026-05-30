@@ -12,9 +12,6 @@ Trilogy is a semantic ETL and reporting tool with a streamlined
 SQL-like syntax. This CLI enables workspace management, script execution, testing,
 and data ingestion.
 
-Defaults are managed by a trilogy.toml config file; convention
-will be to manage connection info there. CLI flags available for exceptions.
-
 ## Quick Start
 
 ```bash
@@ -102,22 +99,21 @@ echo "select item.id limit 5;" | trilogy run --import raw.item:item -
 ### trilogy explore <path>
 
 The canonical schema-discovery tool. Parses a `.preql` file and prints every
-concept (with purpose + datatype), every datasource, and every import that the
-file's environment exposes. No dialect or connection needed.
+information needed for a query.
 
-**Imports chain in** — exploring a fact file lists the dimensions it imports
-in the same output. If store_sales imports customer and dates,
-the output for `store_sales.preql` ALSO contains every concept under
-`store_sales.customer.*`, `store_sales.date_dim.*`, `store_sales.item.*`, etc.
-You do NOT need to explore those to work with store_sales data; reading
-store_sales contains the upserset of all information.
+**Imports included** — exploring a fact file lists the dimensions it imports
+in the same output. If my_fact imports customer and dates,
+the output for an explor `my_fact.preql` ALSO contains every concept under
+`my_fact.customer.*`, `my_fact.date_dim.*`, `my_fact.item.*`, etc.
+You do NOT need to explore those to work with my_fact data; reading
+my_fact contains the upserset of all information.
 
 Fetch facts first; avoid fetching dimensions to avoid duplicate outputs.
 
 **Trilogy auto-resolves joins.** Trilogy automatically resolves
 joins from the model's declared key/property relationships — there is no
-manual `JOIN` clause in this language. If `store_sales.date_dim.year` shows
-up in explore, you write `select store_sales.date_dim.year, ...;` and the
+manual `JOIN` clause in this language. If `my_fact.date_dim.year` shows
+up in explore, you write `select my_fact.date_dim.year, ...;` and the
 engine does the join planning. When using an existing model, you can 
 typically query all fields safely.
 
@@ -149,10 +145,10 @@ compact output. Datatype is rendered using the `value::trait` authoring syntax
 
 **Examples:**
 ```bash
-trilogy explore raw/store_sales.preql                    # full schema, grouped
-trilogy explore raw/store_sales.preql --regex customer --regex date
-trilogy explore raw/store_sales.preql --regex 'date\.(year|week_seq)'
-trilogy explore raw/store_sales.preql --show concepts --purpose key --purpose property
+trilogy explore raw/my_fact.preql                    # full schema, grouped
+trilogy explore raw/my_fact.preql --regex customer --regex date
+trilogy explore raw/my_fact.preql --regex 'date\.(year|week_seq)'
+trilogy explore raw/my_fact.preql --show concepts --purpose key --purpose property
 ```
 
 ---
@@ -288,7 +284,7 @@ before `ingest` to know what tables exist and what columns they have.
 ```bash
 # Discover the schema before building a model
 trilogy database list
-trilogy database describe store_sales
+trilogy database describe my_fact
 ```
 
 ---

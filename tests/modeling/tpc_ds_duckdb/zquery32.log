@@ -1,7 +1,7 @@
 query_id = "32"
-gen_length = 1239
-preql_size = 404
-comp_size = 750
+gen_length = 1238
+preql_size = 403
+comp_size = 527
 generated_sql = """
 
 WITH 
@@ -14,7 +14,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"item_items\" on \"catalog_sales\".\"CS_ITEM_SK\" = \"item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
 WHERE
-    \"item_items\".\"I_MANUFACT_ID\" = 977 and cast(\"sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
+    \"item_items\".\"I_MANUFACT_ID\" = 48 and cast(\"sold_date_date\".\"D_DATE\" as date) BETWEEN :start_date AND :end_date
 ),
 thoughtful as (
 SELECT

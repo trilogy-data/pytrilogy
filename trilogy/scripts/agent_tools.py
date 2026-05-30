@@ -22,6 +22,14 @@ from trilogy.scripts.file_helpers import preql_description
 
 MARKER_TEMPLATE = "\n...[truncated {n} bytes]...\n"
 
+# Tighter cap applies ONLY to broad `trilogy explore` calls — those without
+# any `--regex` filter, or those asking for `--show all`. Both can dump
+# 30-40KB of every concept in every imported namespace, which the agent then
+# has to skim rather than commit to a draft. With a regex (any regex), the
+# call is already deliberately narrowed; let it use the general budget so
+# targeted lookups don't get truncated mid-output. See ``_explore_output_cap``.
+_TRILOGY_EXPLORE_BROAD_CAP = 8192
+
 
 def truncate_middle(text: str, limit: int) -> str:
     if len(text) <= limit:
@@ -312,6 +320,27 @@ def _first_non_flag_arg(raw_args: list[str]) -> str | None:
     return None
 
 
+def _explore_output_cap(
+    subcommand: str | None, raw_args: list[str], general_limit: int
+) -> int:
+    """Return the truncation limit for a `trilogy explore` call. Broad calls
+    (no `--regex` filter, or `--show all`) get the tighter cap; narrow regex
+    calls get the general budget so a 12KB targeted result isn't sliced
+    mid-output. Non-explore subcommands always get the general budget."""
+    if subcommand != "explore":
+        return general_limit
+    has_regex = "--regex" in raw_args
+    asks_for_all = False
+    for i, a in enumerate(raw_args):
+        if a == "--show" and i + 1 < len(raw_args) and raw_args[i + 1] == "all":
+            asks_for_all = True
+            break
+    is_broad = not has_regex or asks_for_all
+    if is_broad:
+        return min(general_limit, _TRILOGY_EXPLORE_BROAD_CAP)
+    return general_limit
+
+
 def _trilogy_file_write_hint(raw_args: list[str]) -> str | None:
     """Detect the common ``trilogy file write`` misuse pattern where the agent
     split a single ``--content`` value across many positional args.
@@ -381,11 +410,17 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
         return "trilogy error: subprocess timed out after 600s."
     # `agent-info` is the language reference + CLI docs and must arrive whole —
     # middle-truncating it eats the syntax rules the agent needs to write queries.
-    if _first_non_flag_arg(raw_args) == "agent-info":
+    # `explore` gets a tighter cap ONLY when the call is broad (no --regex, or
+    # --show all) — those can dump 30-40KB of every concept in every imported
+    # namespace. Narrow regex calls already targeted the question; they use
+    # the full general budget so a 12KB result doesn't get sliced mid-output.
+    subcommand = _first_non_flag_arg(raw_args)
+    if subcommand == "agent-info":
         stdout = completed.stdout or ""
         stderr = completed.stderr or ""
     else:
-        stdout = truncate_middle(completed.stdout or "", state.tool_output_limit)
+        out_limit = _explore_output_cap(subcommand, raw_args, state.tool_output_limit)
+        stdout = truncate_middle(completed.stdout or "", out_limit)
         stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
     return (
         f"exit_code: {completed.returncode}\n"

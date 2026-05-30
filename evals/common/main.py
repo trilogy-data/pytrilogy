@@ -85,13 +85,13 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-iterations",
         type=int,
-        default=50,
+        default=75,
         help="agent tool-loop budget PER QUERY (each query is a fresh agent)",
     )
     parser.add_argument(
         "--timeout",
         type=int,
-        default=600,
+        default=900,
         help="agent subprocess timeout PER QUERY (seconds)",
     )
     parser.add_argument(
