@@ -1,13 +1,13 @@
 query_id = "79"
-gen_length = 2437
-preql_size = 1195
+gen_length = 2517
+preql_size = 1251
 comp_size = 1188
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
-    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_customer_id\",
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_billing_customer_id\",
     \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
     \"physical_sales_store_store\".\"S_CITY\" as \"physical_sales_store_city\",
     sum(\"physical_sales_store_sales\".\"SS_COUPON_AMT\") as \"amt\",
@@ -26,18 +26,18 @@ GROUP BY
     3,
     \"physical_sales_store_sales\".\"SS_ADDR_SK\")
 SELECT
-    \"physical_sales_customer_customers\".\"C_LAST_NAME\" as \"physical_sales_customer_last_name\",
-    \"physical_sales_customer_customers\".\"C_FIRST_NAME\" as \"physical_sales_customer_first_name\",
+    \"physical_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"physical_sales_billing_customer_last_name\",
+    \"physical_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"physical_sales_billing_customer_first_name\",
     SUBSTRING(\"cooperative\".\"physical_sales_store_city\",1,30) as \"city_short\",
     \"cooperative\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\",
     \"cooperative\".\"amt\" as \"amt\",
     \"cooperative\".\"profit\" as \"profit\"
 FROM
     \"cooperative\"
-    INNER JOIN \"memory\".\"customer\" as \"physical_sales_customer_customers\" on \"cooperative\".\"physical_sales_customer_id\" = \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"physical_sales_billing_customer_customers\" on \"cooperative\".\"physical_sales_billing_customer_id\" = \"physical_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 ORDER BY 
-    \"physical_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
-    \"physical_sales_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
+    \"physical_sales_billing_customer_customers\".\"C_LAST_NAME\" asc nulls first,
+    \"physical_sales_billing_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
     \"city_short\" asc nulls first,
     \"cooperative\".\"profit\" asc nulls first,
     \"cooperative\".\"physical_sales_ticket_number\" asc

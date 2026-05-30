@@ -520,6 +520,79 @@ order by id asc;
             assert row.category_sum == 20
 
 
+def test_window_self_keyed_no_recursion() -> None:
+    """Regression for q57: a `row_number()` window concept is keyed by itself
+    (concept.keys == {concept.address}). resolve_window_parent_concepts used
+    to feed `concept.keys` back as parent concepts, so source_concepts kept
+    re-dispatching to _generate_window_node on the same concept and the
+    planner ran out of stack.
+
+    Trigger: row_number() + lag()/lead() over an aggregate-auto in the same
+    SELECT, with HAVING referencing an aggregate-auto. Shape mirrors TPC-DS q57.
+    """
+    exec = Dialects.DUCK_DB.default_executor()
+    model = """
+key sold_date.id int;
+property sold_date.id.year int;
+property sold_date.id.month_of_year int;
+property sold_date.id.month_seq int;
+datasource dates (
+    id: sold_date.id, year: sold_date.year,
+    month: sold_date.month_of_year, mseq: sold_date.month_seq,
+) grain (sold_date.id) address dates;
+
+key item.id int;
+property item.id.category string;
+property item.id.brand_name string;
+datasource items (
+    id: item.id, cat: item.category, brand: item.brand_name,
+) grain (item.id) address items;
+
+key call_center.id int;
+property call_center.id.name string;
+datasource call_centers (
+    id: call_center.id, name: call_center.name,
+) grain (call_center.id) address call_centers;
+
+key order_number int;
+property <order_number, item.id>.ext_sales_price float;
+datasource sales (
+    order_number: order_number, item_id: item.id,
+    sold_date_id: sold_date.id, call_center_id: call_center.id,
+    ext_sales_price: ext_sales_price,
+) grain (item.id, order_number) address sales;
+
+auto monthly_total <- sum(ext_sales_price ?
+    (sold_date.year = 1999)
+    or (sold_date.year = 1998 and sold_date.month_of_year = 12)
+    or (sold_date.year = 2000 and sold_date.month_of_year = 1)
+) by item.category, item.brand_name, call_center.name,
+     sold_date.year, sold_date.month_of_year, sold_date.month_seq;
+auto avg_monthly_overall <- avg(monthly_total) by item.category, item.brand_name, call_center.name;
+auto seq_num <- row_number() over (partition by item.category, item.brand_name, call_center.name order by sold_date.year asc, sold_date.month_of_year asc);
+auto rel_deviation <- abs(monthly_total - avg_monthly_overall) / avg_monthly_overall;
+"""
+    query = """
+select
+    item.category, item.brand_name, call_center.name as call_center_name,
+    sold_date.year, sold_date.month_of_year,
+    avg_monthly_overall as avg_monthly_sales,
+    monthly_total, seq_num,
+    --rel_deviation,
+    lag(monthly_total, 1) over (partition by item.category, item.brand_name, call_center.name order by sold_date.year asc, sold_date.month_of_year asc) as prior_month_total,
+    lead(monthly_total, 1) over (partition by item.category, item.brand_name, call_center.name order by sold_date.year asc, sold_date.month_of_year asc) as next_month_total
+having
+    sold_date.year = 1999
+    and avg_monthly_overall > 0
+    and rel_deviation > 0.1
+order by item.category asc
+limit 100;
+"""
+    exec.parse_text(model)
+    sqls = exec.generate_sql(query)
+    assert len(sqls) == 1
+
+
 def test_window_with_derived_key_no_recursion() -> None:
     """Regression: a window concept ordered by a BASIC-derived key used to be
     included as a grain key by concept_is_relevant, which made gen_enrichment_node

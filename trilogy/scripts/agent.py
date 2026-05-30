@@ -35,6 +35,7 @@ from trilogy.execution.config import AgentConfig, apply_env_vars
 from trilogy.scripts.agent_tools import (
     ALL_TOOLS,
     SHOW_MESSAGE_TOOL,
+    TODO_TOOL,
     TOOL_HANDLERS,
     TRILOGY_TOOL,
     AgentState,
@@ -64,7 +65,7 @@ PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
 }
 
 
-def get_agent_instructions(include_show: bool = True) -> str:
+def get_agent_instructions(include_show: bool = True, include_todo: bool = True) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
 Available tools:
@@ -104,23 +105,31 @@ are rejected with the parse error. Re-issue the call with the COMPLETE body.
 - list_files(path=".", recursive=True): list files in the workspace.
   Call this when you are unsure what files exist (e.g. before guessing a
   path like `./store_sales.preql` — the model files live under `raw/`).
-  Skips noise (`__pycache__`, `.duckdb`, `_worker_*`).
+  Skips noise (`__pycache__`, `.duckdb`, `_worker_*`)."""
+    if include_todo:
+        base += """
 - todo(action, id=None, description=None): scratch TODO list, for multi-step
   tasks ONLY. Actions: "add" (description: one string, or a list to add
   several), "complete"/"remove" (id: one id or a list), "list". Most tasks
-  finish without ever calling this.
-- return_control_to_user(message): hand control back to the user. Open TODOs
-  are auto-discarded so you never need to clean them up just to exit.
+  finish without ever calling this."""
+    base += """
+- return_control_to_user(message): indicate you are done with the task."""
+    if include_todo:
+        base += " Open TODOs are auto-discarded so you never need to clean them up just to exit."
+    base += """
 
 Discipline:
 1. Bias toward action and use of the trilogy CLI. Never repeat exploration you have already done.
-2. Skip TODOs unless the task has 3+ truly independent steps. A single-query
-   task does not. Never use a TODO entry as a substitute for doing the work.
-3. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
-   the task is completely finished.
-4. If a tool call fails or returns the same error you have already seen, do
+2. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
+   the task is completely finished. Avoid reading raw files; explore will give you
+   richer content.
+3. If a tool call fails or returns the same error you have already seen, do
    NOT immediately re-issue the same call. First emit a short plain-text
    message naming the failure and what you will try differently."""
+    if include_todo:
+        base += """
+4. Skip TODOs unless the task has 3+ truly independent steps. A single-query
+   task does not. Never use a TODO entry as a substitute for doing the work."""
     if include_show:
         base += """
 5. Use `show_message` rarely — only for a genuine status change, never to
@@ -133,6 +142,8 @@ Discipline:
 # canonical reference. Inlining duplicated ~26KB of prompt tokens per run.
 SYSTEM_PROMPT = get_agent_instructions(True)
 QUIET_SYSTEM_PROMPT = get_agent_instructions(False)
+QUIET_NO_TODO_SYSTEM_PROMPT = get_agent_instructions(False, include_todo=False)
+NO_TODO_SYSTEM_PROMPT = get_agent_instructions(True, include_todo=False)
 
 
 MAX_SUBMIT_KICKBACKS = 2
@@ -144,13 +155,14 @@ MAX_SUBMIT_KICKBACKS = 2
 EXIT_ITERATION_EXHAUSTED = 2
 
 REVIEWER_SYSTEM_PROMPT = (
-    "You are reviewing whether an AI agent actually finished its task. "
+    "You are reviewing whether an AI agent actually finished its task." \
+    "or prematurely called exit. "
     "You will receive the original task and the agent's tool-use transcript. "
     "Reply with exactly 'DONE' or 'NOT_DONE' on the first line, then one or "
     "two sentences explaining why. Be strict — if the agent's transcript "
-    "shows it (a) self-noted uncertainty, (b) didn't implement a clause the "
-    "task explicitly required, (c) only wrote a query that runs cleanly but "
-    "doesn't match the requested logic, or (d) cut off mid-thought, reply "
+    "shows it (a) self-noted uncertainty it is still ivnestigation, 
+    "(b) didn't implement a key part of the ask or" 
+    "(c) cut off mid-thought, reply "
     "NOT_DONE. Otherwise reply DONE."
 )
 
@@ -610,11 +622,19 @@ def agent(
     cfg = runtime.agent
     actual_quiet = cfg.quiet if quiet is None else quiet
     llm_provider = _build_provider(cfg, model, provider)
+    excluded_tool_names: set[str] = set()
     if actual_quiet:
-        tools = [t for t in ALL_TOOLS if t.name != SHOW_MESSAGE_TOOL.name]
+        excluded_tool_names.add(SHOW_MESSAGE_TOOL.name)
+    if cfg.disable_todo:
+        excluded_tool_names.add(TODO_TOOL.name)
+    tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
+    if actual_quiet and cfg.disable_todo:
+        system_prompt = QUIET_NO_TODO_SYSTEM_PROMPT
+    elif actual_quiet:
         system_prompt = QUIET_SYSTEM_PROMPT
+    elif cfg.disable_todo:
+        system_prompt = NO_TODO_SYSTEM_PROMPT
     else:
-        tools = ALL_TOOLS
         system_prompt = SYSTEM_PROMPT
 
     log_path: Path | None = None

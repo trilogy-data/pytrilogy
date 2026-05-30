@@ -137,6 +137,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
         "max_iterations",
         "tool_output_limit",
         "quiet",
+        "disable_todo",
     },
 }
 
@@ -273,6 +274,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
         max_iterations=int(agent_raw.get("max_iterations", 50)),
         tool_output_limit=int(agent_raw.get("tool_output_limit", 8192)),
         quiet=bool(agent_raw.get("quiet", False)),
+        disable_todo=bool(agent_raw.get("disable_todo", False)),
     )
 
     # Canonical location is [engine].parallelism (matches docs and `trilogy init`

@@ -1,6 +1,6 @@
 query_id = "78"
-gen_length = 6265
-preql_size = 2492
+gen_length = 6297
+preql_size = 2588
 comp_size = 2512
 generated_sql = """
 
@@ -31,7 +31,7 @@ FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
 abundant as (
 SELECT
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_id\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
@@ -47,7 +47,7 @@ WHERE
 
 UNION ALL
 SELECT
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_id\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
@@ -63,7 +63,7 @@ WHERE
 
 UNION ALL
 SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_id\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
@@ -80,7 +80,7 @@ WHERE
 SELECT
     \"abundant\".\"sales_date_year\" as \"ss_sold_year\",
     \"abundant\".\"sales_item_id\" as \"ss_item_sk\",
-    \"abundant\".\"sales_customer_id\" as \"ss_customer_sk\",
+    \"abundant\".\"sales_billing_customer_id\" as \"ss_customer_sk\",
     round(cast(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as numeric(7,2)) / cast(coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as numeric(7,2)),2) as \"ratio\",
     sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"store_qty\",
     sum(CASE WHEN \"abundant\".\"sales_sales_channel\" = 'STORE' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END) as \"store_wholesale_cost\",

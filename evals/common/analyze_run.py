@@ -78,16 +78,29 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
 
 
 def tool_outcomes(events: list[dict]) -> dict[str, list[int]]:
-    """tool name -> [ok_count, error_count], pairing each call with its result."""
+    """tool name -> [ok_count, error_count], pairing each call with its result.
+
+    ``trilogy`` is bucketed by subcommand (``trilogy <args[0]>``) instead of
+    rolled up — half the iteration budget on exhausted runs goes to
+    ``trilogy explore``, so a single ``trilogy`` bar hides where the cost
+    actually lives. Other tools (``read_file``, ``todo``, ...) keep their
+    flat name."""
     outcomes: dict[str, list[int]] = defaultdict(lambda: [0, 0])
-    pending: str | None = None
+    pending: tuple[str, str] | None = None
     for e in events:
         if e.get("type") == "tool_call":
-            pending = str(e.get("name", "?"))
+            name = str(e.get("name", "?"))
+            if name == "trilogy":
+                args = (e.get("arguments") or {}).get("args") or []
+                sub = (str(args[0]) if isinstance(args, list) and args else "").strip()
+                label = f"trilogy {sub}" if sub else "trilogy"
+            else:
+                label = name
+            pending = (name, label)
         elif e.get("type") == "tool_result" and pending is not None:
-            name = str(e.get("name", pending))
-            is_err = scoring._is_error_result(name, str(e.get("result") or ""))
-            outcomes[name][1 if is_err else 0] += 1
+            tool_name, label = pending
+            is_err = scoring._is_error_result(tool_name, str(e.get("result") or ""))
+            outcomes[label][1 if is_err else 0] += 1
             pending = None
     return outcomes
 
@@ -261,7 +274,7 @@ def write_failures_report(
     return out_path
 
 
-_TOOL_LABEL_MAX = 24
+_TOOL_LABEL_MAX = 28
 
 
 def _short_tool_label(name: str) -> str:
@@ -269,7 +282,9 @@ def _short_tool_label(name: str) -> str:
     crammed an entire CLI invocation into the `name` field instead of using
     arguments) doesn't blow up the bar-chart layout. The Unknown-tool branch
     in the agent loop rejects these on the wire; the dashboard just needs to
-    render them without wrapping a 500-char label across the whole figure."""
+    render them without wrapping a 500-char label across the whole figure.
+    Wider cap fits ``trilogy <subcommand>`` labels (``trilogy database``,
+    ``trilogy agent-info``) without truncation."""
     if len(name) <= _TOOL_LABEL_MAX:
         return name
     return name[: _TOOL_LABEL_MAX - 1] + "…"

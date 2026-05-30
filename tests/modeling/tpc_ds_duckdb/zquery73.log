@@ -1,13 +1,13 @@
 query_id = "73"
-gen_length = 2823
-preql_size = 1344
+gen_length = 2935
+preql_size = 1416
 comp_size = 1437
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
-    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_customer_id\",
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_billing_customer_id\",
     \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"physical_sales_ticket_number\",
     count(\"physical_sales_store_sales\".\"SS_ITEM_SK\") as \"ticket_cnt\"
 FROM
@@ -28,17 +28,17 @@ HAVING
     \"ticket_cnt\" >= 1 and \"ticket_cnt\" <= 5
 )
 SELECT
-    \"physical_sales_customer_customers\".\"C_LAST_NAME\" as \"physical_sales_customer_last_name\",
-    \"physical_sales_customer_customers\".\"C_FIRST_NAME\" as \"physical_sales_customer_first_name\",
-    \"physical_sales_customer_customers\".\"C_SALUTATION\" as \"physical_sales_customer_salutation\",
-    \"physical_sales_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"physical_sales_customer_preferred_cust_flag\",
+    \"physical_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"physical_sales_billing_customer_last_name\",
+    \"physical_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"physical_sales_billing_customer_first_name\",
+    \"physical_sales_billing_customer_customers\".\"C_SALUTATION\" as \"physical_sales_billing_customer_salutation\",
+    \"physical_sales_billing_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"physical_sales_billing_customer_preferred_cust_flag\",
     \"cooperative\".\"physical_sales_ticket_number\" as \"physical_sales_ticket_number\",
     \"cooperative\".\"ticket_cnt\" as \"ticket_cnt\"
 FROM
     \"cooperative\"
-    INNER JOIN \"memory\".\"customer\" as \"physical_sales_customer_customers\" on \"cooperative\".\"physical_sales_customer_id\" = \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"physical_sales_billing_customer_customers\" on \"cooperative\".\"physical_sales_billing_customer_id\" = \"physical_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 ORDER BY 
     \"cooperative\".\"ticket_cnt\" desc,
-    \"physical_sales_customer_customers\".\"C_LAST_NAME\" asc,
+    \"physical_sales_billing_customer_customers\".\"C_LAST_NAME\" asc,
     \"cooperative\".\"physical_sales_ticket_number\" asc,
-    \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\" asc"""
+    \"physical_sales_billing_customer_customers\".\"C_CUSTOMER_SK\" asc"""

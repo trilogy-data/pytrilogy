@@ -50,6 +50,8 @@ from trilogy.core.models.author import (
     Conditional,
     Function,
     Grain,
+    OrderBy,
+    OrderItem,
     Parenthetical,
     UndefinedConcept,
     UndefinedConceptFull,
@@ -372,6 +374,64 @@ def _validate_having_aggregates_match_select(
             select.having_clause.conditional = new_conditional
 
 
+def _alias_rename_map(select: SelectStatement) -> dict[str, ConceptRef]:
+    """For pure-rename SELECT items (`X as Y` where the source side is just a
+    ConceptRef), return a `source_address -> ConceptRef(output)` map.
+
+    Downstream CTEs only carry the alias output address in their `source_map`,
+    so any HAVING/ORDER BY reference to the bare source name would miss the
+    lookup and fall through to a re-rendering path. Rewriting source refs
+    to alias refs here keeps the rendering layer's source_map lookup honest.
+
+    We intentionally only handle pure renames — for compound aliases like
+    `f(x, y) as z`, references to `x` in HAVING/ORDER BY are not synonyms
+    of `z` and must not be rewritten.
+    """
+    from trilogy.core.enums import FunctionType
+
+    rename_map: dict[str, ConceptRef] = {}
+    for item in select.selection:
+        if not isinstance(item.content, ConceptTransform):
+            continue
+        fn = item.content.function
+        if (
+            isinstance(fn, Function)
+            and fn.operator == FunctionType.ALIAS
+            and len(fn.arguments) == 1
+            and isinstance(fn.arguments[0], ConceptRef)
+        ):
+            rename_map[fn.arguments[0].address] = item.content.output.reference
+    return rename_map
+
+
+def _rewrite_aliased_source_refs(select: SelectStatement) -> None:
+    """Rewrite HAVING/ORDER BY references to a pure-rename source so they
+    point at the SELECT alias. Mirrors `_substitute_having_aggregates`, but
+    for plain ConceptRefs and extended to cover ORDER BY too."""
+    rename_map = _alias_rename_map(select)
+    if not rename_map:
+        return
+    replacements = [(src, ref) for src, ref in rename_map.items()]
+    if select.having_clause:
+        select.having_clause = select.having_clause.with_reference_replacement(
+            replacements
+        )
+    if select.order_by:
+        select.order_by = OrderBy(
+            items=[
+                OrderItem(
+                    expr=(
+                        item.expr.with_reference_replacement(replacements)
+                        if hasattr(item.expr, "with_reference_replacement")
+                        else item.expr
+                    ),
+                    order=item.order,
+                )
+                for item in select.order_by.items
+            ]
+        )
+
+
 def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     line_no = select.meta.line_number if select.meta else None
     if select.where_clause:
@@ -391,6 +451,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
             select.where_clause = select.where_clause.with_reference_replacement(
                 replacements
             )
+    _rewrite_aliased_source_refs(select)
     all_in_output = {x.address for x in select.output_components}
     locally_derived = select.locally_derived
     alias_sources = select.alias_source_addresses
