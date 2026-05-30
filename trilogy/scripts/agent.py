@@ -155,15 +155,20 @@ MAX_SUBMIT_KICKBACKS = 2
 EXIT_ITERATION_EXHAUSTED = 2
 
 REVIEWER_SYSTEM_PROMPT = (
-    "You are reviewing whether an AI agent actually finished its task "
-    "or prematurely called exit. "
-    "You will receive the original task and the agent's tool-use transcript. "
-    "Reply with exactly 'DONE' or 'NOT_DONE' on the first line, then one or "
-    "two sentences explaining why. Be strict — if the agent's transcript "
-    "shows it (a) self-noted uncertainty it is still investigating, "
-    "(b) didn't implement a key part of the ask, or "
-    "(c) cut off mid-thought, reply "
-    "NOT_DONE. Otherwise reply DONE."
+    "You check ONE narrow thing: did the agent ITSELF signal it was not finished "
+    "when it called return_control_to_user? You receive the task and the agent's "
+    "tool-use transcript. Reply with exactly 'DONE' or 'NOT_DONE' on the first "
+    "line, then one sentence quoting the agent's own words.\n"
+    "Reply NOT_DONE only when the agent's OWN final message shows it was still "
+    "working: it narrates a next step it hasn't taken ('now I'll...', 'let me...', "
+    "'I still need to...'), self-notes unresolved uncertainty it is investigating, "
+    "reports an error it is still chasing, or cuts off mid-thought.\n"
+    "Otherwise reply DONE. Do NOT grade the work. You have NO reference data and "
+    "must not judge whether the query is correct, complete, returns the right "
+    "rows, or implements every clause. If the agent states it finished and the "
+    "query ran, that is DONE — even if you suspect the output is wrong or a clause "
+    "looks missing. Trust the agent's self-report of completion; catch only "
+    "explicit 'still working' signals."
 )
 
 REVIEWER_TRANSCRIPT_MSG_LIMIT = 1200
