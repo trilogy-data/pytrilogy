@@ -1,38 +1,26 @@
 # Query 36
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (91 distinct)
+v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 91):
-  2x  (None, None, -0.4331652033071642, 2, 1)
-  2x  ('Men', None, -0.4331652033071642, 2, 1)
-  2x  ('Music', None, -0.4331652033071642, 2, 1)
-  1x  ('Books', 'cooking', -0.4331652033071642, 2, 1)
-  1x  ('Men', 'sports-apparel', -0.4331652033071642, 2, 1)
-only in ref (showing up to 5 of 99):
-  1x  ('Jewelry', None, -0.4422821387283753, 1, 1)
-  1x  ('Men', None, -0.4407722793549773, 1, 2)
-  1x  ('Books', None, -0.4378703075728192, 1, 3)
-  1x  ('Music', None, -0.435732438424966, 1, 4)
-  1x  ('Shoes', None, -0.4326919536021629, 1, 5)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2508 | 59 | 178.72 ms |
-| reference | 2553 | 60 | 190.32 ms |
-| v4 / ref | 0.98x | 0.98x | 0.94x |
+| v4 | 2510 | 54 | 97.90 ms |
+| reference | 2553 | 60 | 111.12 ms |
+| v4 / ref | 0.98x | 0.90x | 0.88x |
 
 ## Preql
 
@@ -116,35 +104,30 @@ FROM
     "thoughtful"
 GROUP BY
     ROLLUP (1, 2)),
-abundant as (
+questionable as (
 SELECT
     "cooperative"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
     "cooperative"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy",
+    "cooperative"."q36_rolled_r_category" as "q36_rolled_r_category",
+    "cooperative"."q36_rolled_r_class" as "q36_rolled_r_class",
     rank() over (partition by "cooperative"."q36_rolled_lochierarchy","cooperative"."q36_rolled_partition_cat" order by "cooperative"."q36_rolled_gross_margin" asc ) as "rank_within_parent"
-FROM
-    "cooperative"),
-questionable as (
-SELECT
-    "cooperative"."q36_rolled_r_category" as "i_category",
-    "cooperative"."q36_rolled_r_class" as "i_class"
 FROM
     "cooperative")
 SELECT
-    "abundant"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
-    "questionable"."i_category" as "i_category",
-    "questionable"."i_class" as "i_class",
-    "abundant"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy",
-    "abundant"."rank_within_parent" as "rank_within_parent"
+    "questionable"."q36_rolled_r_category" as "i_category",
+    "questionable"."q36_rolled_r_class" as "i_class",
+    "questionable"."rank_within_parent" as "rank_within_parent",
+    "questionable"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
+    "questionable"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy"
 FROM
     "questionable"
-    FULL JOIN "abundant" on 1=1
 ORDER BY 
-    "abundant"."q36_rolled_lochierarchy" desc nulls first,
+    "questionable"."q36_rolled_lochierarchy" desc nulls first,
     CASE
-	WHEN "abundant"."q36_rolled_lochierarchy" = 0 THEN "questionable"."i_category"
+	WHEN "questionable"."q36_rolled_lochierarchy" = 0 THEN "questionable"."q36_rolled_r_category"
 	ELSE null
 	END asc nulls first,
-    "abundant"."rank_within_parent" asc nulls first
+    "questionable"."rank_within_parent" asc nulls first
 LIMIT (100)
 ```
 
