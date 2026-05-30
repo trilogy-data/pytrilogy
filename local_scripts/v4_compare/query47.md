@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7403 | 106 | 207.13 ms |
-| reference | 5746 | 90 | 159.18 ms |
-| v4 / ref | 1.29x | 1.18x | 1.30x |
+| v4 | 7404 | 106 | 237.86 ms |
+| reference | 5744 | 93 | 173.74 ms |
+| v4 / ref | 1.29x | 1.14x | 1.37x |
 
 ## Preql
 
@@ -159,8 +159,8 @@ SELECT
     coalesce("abundant"."store_sales_store_company_name","thoughtful"."store_sales_store_company_name") as "store_sales_store_company_name",
     coalesce("abundant"."store_sales_store_name","thoughtful"."store_sales_store_name") as "store_sales_store_name"
 FROM
-    "abundant"
-    LEFT OUTER JOIN "thoughtful" on "abundant"."store_sales_date_year" = "thoughtful"."store_sales_date_year" AND "abundant"."store_sales_item_brand_name" = "thoughtful"."store_sales_item_brand_name" AND "abundant"."store_sales_item_category" is not distinct from "thoughtful"."store_sales_item_category" AND "abundant"."store_sales_store_company_name" is not distinct from "thoughtful"."store_sales_store_company_name" AND "abundant"."store_sales_store_name" is not distinct from "thoughtful"."store_sales_store_name"
+    "thoughtful"
+    RIGHT OUTER JOIN "abundant" on "thoughtful"."store_sales_date_year" = "abundant"."store_sales_date_year" AND "thoughtful"."store_sales_item_brand_name" = "abundant"."store_sales_item_brand_name" AND "thoughtful"."store_sales_item_category" is not distinct from "abundant"."store_sales_item_category" AND "thoughtful"."store_sales_store_company_name" is not distinct from "abundant"."store_sales_store_company_name" AND "thoughtful"."store_sales_store_name" is not distinct from "abundant"."store_sales_store_name"
 WHERE
     coalesce("abundant"."store_sales_date_year","thoughtful"."store_sales_date_year") = 1999 and "abundant"."avg_monthly_sales" > 0
 )
@@ -245,7 +245,10 @@ GROUP BY
     2,
     3,
     4,
-    5),
+    5
+HAVING
+    "avg_monthly_sales" > 0
+),
 questionable as (
 SELECT
     "thoughtful"."store_sales_date_month_of_year" as "store_sales_date_month_of_year",
@@ -271,10 +274,10 @@ SELECT
     "questionable"."psum" as "psum",
     "questionable"."nsum" as "nsum"
 FROM
-    "abundant"
-    LEFT OUTER JOIN "questionable" on "abundant"."store_sales_date_year" = "questionable"."store_sales_date_year" AND "abundant"."store_sales_item_brand_name" = "questionable"."store_sales_item_brand_name" AND "abundant"."store_sales_item_category" is not distinct from "questionable"."store_sales_item_category" AND "abundant"."store_sales_store_company_name" is not distinct from "questionable"."store_sales_store_company_name" AND "abundant"."store_sales_store_name" = "questionable"."store_sales_store_name"
+    "questionable"
+    RIGHT OUTER JOIN "abundant" on "questionable"."store_sales_date_year" = "abundant"."store_sales_date_year" AND "questionable"."store_sales_item_brand_name" = "abundant"."store_sales_item_brand_name" AND "questionable"."store_sales_item_category" is not distinct from "abundant"."store_sales_item_category" AND "questionable"."store_sales_store_company_name" is not distinct from "abundant"."store_sales_store_company_name" AND "questionable"."store_sales_store_name" = "abundant"."store_sales_store_name"
 WHERE
-    coalesce("abundant"."store_sales_date_year","questionable"."store_sales_date_year") = 1999 and "abundant"."avg_monthly_sales" > 0 and CASE
+    coalesce("abundant"."store_sales_date_year","questionable"."store_sales_date_year") = 1999 and CASE
 	WHEN "abundant"."avg_monthly_sales" > 0 THEN abs("questionable"."sum_sales" - "abundant"."avg_monthly_sales") / "abundant"."avg_monthly_sales"
 	ELSE null
 	END > 0.1

@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2418 | 55 | 33.71 ms |
-| reference | 2419 | 61 | 41.14 ms |
-| v4 / ref | 1.00x | 0.90x | 0.82x |
+| v4 | 2418 | 55 | 36.05 ms |
+| reference | 2419 | 61 | 44.24 ms |
+| v4 / ref | 1.00x | 0.90x | 0.81x |
 
 ## Preql
 
@@ -463,8 +463,8 @@ SELECT
     "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
     count(CASE WHEN "customer_customers"."C_PREFERRED_CUST_FLAG" = 'Y' THEN "customer_customers"."C_CUSTOMER_SK" ELSE NULL END) as "zip_p_count"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
 GROUP BY
     1),
 highfalutin as (
@@ -519,8 +519,8 @@ SELECT
     "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
     count("customer_customers"."C_CUSTOMER_SK") as "zip_p_count"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "customer_customers"."C_PREFERRED_CUST_FLAG" = 'Y'
 

@@ -18,9 +18,9 @@ ref rows: 100 (92 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1575 | 42 | 40.18 ms |
-| reference | 1734 | 48 | 29.05 ms |
-| v4 / ref | 0.91x | 0.88x | 1.38x |
+| v4 | 1575 | 42 | 32.84 ms |
+| reference | 1734 | 48 | 21.39 ms |
+| v4 / ref | 0.91x | 0.88x | 1.54x |
 
 ## Preql
 
@@ -76,8 +76,8 @@ abundant as (
 SELECT
     "thoughtful"."returns_customer_text_id" as "returns_customer_text_id"
 FROM
-    "questionable"
-    INNER JOIN "thoughtful" on "questionable"."returns_store_id" = "thoughtful"."returns_store_id"
+    "thoughtful"
+    INNER JOIN "questionable" on "thoughtful"."returns_store_id" = "questionable"."returns_store_id"
 WHERE
     "thoughtful"."total_returns" > ( 1.2 * "questionable"."avg_store_returns" )
 )

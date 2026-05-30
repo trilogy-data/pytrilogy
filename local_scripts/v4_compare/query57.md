@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6848 | 98 | 125.81 ms |
-| reference | 5355 | 83 | 97.02 ms |
-| v4 / ref | 1.28x | 1.18x | 1.30x |
+| v4 | 6849 | 98 | 122.79 ms |
+| reference | 5353 | 86 | 94.12 ms |
+| v4 / ref | 1.28x | 1.14x | 1.30x |
 
 ## Preql
 
@@ -149,8 +149,8 @@ SELECT
     coalesce("abundant"."catalog_sales_item_brand_name","thoughtful"."catalog_sales_item_brand_name") as "catalog_sales_item_brand_name",
     coalesce("abundant"."catalog_sales_item_category","thoughtful"."catalog_sales_item_category") as "catalog_sales_item_category"
 FROM
-    "abundant"
-    LEFT OUTER JOIN "thoughtful" on "abundant"."catalog_sales_call_center_name" is not distinct from "thoughtful"."catalog_sales_call_center_name" AND "abundant"."catalog_sales_date_year" = "thoughtful"."catalog_sales_date_year" AND "abundant"."catalog_sales_item_brand_name" = "thoughtful"."catalog_sales_item_brand_name" AND "abundant"."catalog_sales_item_category" is not distinct from "thoughtful"."catalog_sales_item_category"
+    "thoughtful"
+    RIGHT OUTER JOIN "abundant" on "thoughtful"."catalog_sales_call_center_name" is not distinct from "abundant"."catalog_sales_call_center_name" AND "thoughtful"."catalog_sales_date_year" = "abundant"."catalog_sales_date_year" AND "thoughtful"."catalog_sales_item_brand_name" = "abundant"."catalog_sales_item_brand_name" AND "thoughtful"."catalog_sales_item_category" is not distinct from "abundant"."catalog_sales_item_category"
 WHERE
     coalesce("abundant"."catalog_sales_date_year","thoughtful"."catalog_sales_date_year") = 1999 and "abundant"."avg_monthly_sales" > 0
 )
@@ -229,7 +229,10 @@ GROUP BY
     1,
     2,
     3,
-    4),
+    4
+HAVING
+    "avg_monthly_sales" > 0
+),
 questionable as (
 SELECT
     "thoughtful"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
@@ -253,10 +256,10 @@ SELECT
     "questionable"."psum" as "psum",
     "questionable"."nsum" as "nsum"
 FROM
-    "abundant"
-    LEFT OUTER JOIN "questionable" on "abundant"."catalog_sales_call_center_name" = "questionable"."catalog_sales_call_center_name" AND "abundant"."catalog_sales_date_year" = "questionable"."catalog_sales_date_year" AND "abundant"."catalog_sales_item_brand_name" = "questionable"."catalog_sales_item_brand_name" AND "abundant"."catalog_sales_item_category" is not distinct from "questionable"."catalog_sales_item_category"
+    "questionable"
+    RIGHT OUTER JOIN "abundant" on "questionable"."catalog_sales_call_center_name" = "abundant"."catalog_sales_call_center_name" AND "questionable"."catalog_sales_date_year" = "abundant"."catalog_sales_date_year" AND "questionable"."catalog_sales_item_brand_name" = "abundant"."catalog_sales_item_brand_name" AND "questionable"."catalog_sales_item_category" is not distinct from "abundant"."catalog_sales_item_category"
 WHERE
-    coalesce("abundant"."catalog_sales_date_year","questionable"."catalog_sales_date_year") = 1999 and "abundant"."avg_monthly_sales" > 0 and CASE
+    coalesce("abundant"."catalog_sales_date_year","questionable"."catalog_sales_date_year") = 1999 and CASE
 	WHEN "abundant"."avg_monthly_sales" > 0 THEN abs("questionable"."sum_sales" - "abundant"."avg_monthly_sales") / "abundant"."avg_monthly_sales"
 	ELSE null
 	END > 0.1

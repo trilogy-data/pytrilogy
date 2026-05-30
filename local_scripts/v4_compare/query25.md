@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2401 | 31 | 19.89 ms |
-| reference | 7129 | 114 | 63.33 ms |
-| v4 / ref | 0.34x | 0.27x | 0.31x |
+| v4 | 2390 | 31 | 38.81 ms |
+| reference | 6854 | 114 | 113.50 ms |
+| v4 / ref | 0.35x | 0.27x | 0.34x |
 
 ## Preql
 
@@ -69,9 +69,9 @@ FROM
     INNER JOIN "memory"."store_returns" as "analysis_store_returns" on "analysis_store_sales"."SS_ITEM_SK" = "analysis_store_returns"."SR_ITEM_SK" AND "analysis_store_sales"."SS_TICKET_NUMBER" = "analysis_store_returns"."SR_TICKET_NUMBER"
     INNER JOIN "memory"."date_dim" as "analysis_store_sale_date_date" on "analysis_store_sales"."SS_SOLD_DATE_SK" = "analysis_store_sale_date_date"."D_DATE_SK"
     INNER JOIN "memory"."date_dim" as "analysis_store_return_date_date" on "analysis_store_returns"."SR_RETURNED_DATE_SK" = "analysis_store_return_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."catalog_sales" as "analysis_catalog_sales" on "analysis_store_returns"."SR_CUSTOMER_SK" = "analysis_catalog_sales"."CS_BILL_CUSTOMER_SK" AND "analysis_store_returns"."SR_ITEM_SK" = "analysis_catalog_sales"."CS_ITEM_SK"
+    INNER JOIN "memory"."catalog_sales" as "analysis_catalog_sales" on "analysis_store_sales"."SS_CUSTOMER_SK" = "analysis_catalog_sales"."CS_BILL_CUSTOMER_SK" AND "analysis_store_sales"."SS_ITEM_SK" = "analysis_catalog_sales"."CS_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "analysis_catalog_date_date" on "analysis_catalog_sales"."CS_SOLD_DATE_SK" = "analysis_catalog_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."item" as "analysis_item_items" on "analysis_catalog_sales"."CS_ITEM_SK" = "analysis_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."item" as "analysis_item_items" on "analysis_store_sales"."SS_ITEM_SK" = "analysis_item_items"."I_ITEM_SK"
 WHERE
     "analysis_store_sale_date_date"."D_YEAR" = 2001 and "analysis_store_sale_date_date"."D_MOY" = 4 and "analysis_store_return_date_date"."D_YEAR" = 2001 and "analysis_store_return_date_date"."D_MOY" BETWEEN 4 AND 10 and "analysis_catalog_date_date"."D_YEAR" = 2001 and "analysis_catalog_date_date"."D_MOY" BETWEEN 4 AND 10 and SR_RETURN_TIME_SK IS NOT NULL
 
@@ -116,9 +116,9 @@ FROM
     INNER JOIN "memory"."store_returns" as "analysis_store_returns" on "analysis_store_sales"."SS_ITEM_SK" = "analysis_store_returns"."SR_ITEM_SK" AND "analysis_store_sales"."SS_TICKET_NUMBER" = "analysis_store_returns"."SR_TICKET_NUMBER"
     INNER JOIN "memory"."date_dim" as "analysis_store_sale_date_date" on "analysis_store_sales"."SS_SOLD_DATE_SK" = "analysis_store_sale_date_date"."D_DATE_SK"
     INNER JOIN "memory"."date_dim" as "analysis_store_return_date_date" on "analysis_store_returns"."SR_RETURNED_DATE_SK" = "analysis_store_return_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."catalog_sales" as "analysis_catalog_sales" on "analysis_store_returns"."SR_CUSTOMER_SK" = "analysis_catalog_sales"."CS_BILL_CUSTOMER_SK" AND "analysis_store_returns"."SR_ITEM_SK" = "analysis_catalog_sales"."CS_ITEM_SK"
+    INNER JOIN "memory"."catalog_sales" as "analysis_catalog_sales" on "analysis_store_sales"."SS_CUSTOMER_SK" = "analysis_catalog_sales"."CS_BILL_CUSTOMER_SK" AND "analysis_store_sales"."SS_ITEM_SK" = "analysis_catalog_sales"."CS_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "analysis_catalog_date_date" on "analysis_catalog_sales"."CS_SOLD_DATE_SK" = "analysis_catalog_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."item" as "analysis_item_items" on "analysis_catalog_sales"."CS_ITEM_SK" = "analysis_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."item" as "analysis_item_items" on "analysis_store_sales"."SS_ITEM_SK" = "analysis_item_items"."I_ITEM_SK"
 WHERE
     "analysis_store_sale_date_date"."D_YEAR" = 2001 and "analysis_store_sale_date_date"."D_MOY" = 4 and "analysis_store_return_date_date"."D_YEAR" = 2001 and "analysis_store_return_date_date"."D_MOY" BETWEEN 4 AND 10 and "analysis_catalog_date_date"."D_YEAR" = 2001 and "analysis_catalog_date_date"."D_MOY" BETWEEN 4 AND 10 and SR_RETURN_TIME_SK IS NOT NULL
 
@@ -128,8 +128,8 @@ GROUP BY
     3,
     4,
     5,
-    "analysis_catalog_sales"."CS_ORDER_NUMBER",
-    coalesce("analysis_catalog_sales"."CS_ITEM_SK","analysis_item_items"."I_ITEM_SK","analysis_store_returns"."SR_ITEM_SK","analysis_store_sales"."SS_ITEM_SK")),
+    "analysis_catalog_sales"."CS_ITEM_SK",
+    "analysis_catalog_sales"."CS_ORDER_NUMBER"),
 yummy as (
 SELECT
     "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
@@ -144,9 +144,9 @@ FROM
     INNER JOIN "memory"."store_returns" as "analysis_store_returns" on "analysis_store_sales"."SS_ITEM_SK" = "analysis_store_returns"."SR_ITEM_SK" AND "analysis_store_sales"."SS_TICKET_NUMBER" = "analysis_store_returns"."SR_TICKET_NUMBER"
     INNER JOIN "memory"."date_dim" as "analysis_store_sale_date_date" on "analysis_store_sales"."SS_SOLD_DATE_SK" = "analysis_store_sale_date_date"."D_DATE_SK"
     INNER JOIN "memory"."date_dim" as "analysis_store_return_date_date" on "analysis_store_returns"."SR_RETURNED_DATE_SK" = "analysis_store_return_date_date"."D_DATE_SK"
-    INNER JOIN "wakeful" on "analysis_store_returns"."SR_CUSTOMER_SK" = "wakeful"."analysis_customer_id" AND "analysis_store_returns"."SR_ITEM_SK" = "wakeful"."analysis_item_id"
+    INNER JOIN "wakeful" on "analysis_store_sales"."SS_CUSTOMER_SK" = "wakeful"."analysis_customer_id" AND "analysis_store_sales"."SS_ITEM_SK" = "wakeful"."analysis_item_id"
     INNER JOIN "memory"."date_dim" as "analysis_catalog_date_date" on "wakeful"."analysis_catalog_date_id" = "analysis_catalog_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."item" as "analysis_item_items" on "wakeful"."analysis_item_id" = "analysis_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."item" as "analysis_item_items" on "wakeful"."analysis_item_id" = "analysis_item_items"."I_ITEM_SK"
 WHERE
     "analysis_store_sale_date_date"."D_YEAR" = 2001 and "analysis_store_sale_date_date"."D_MOY" = 4 and "analysis_store_return_date_date"."D_YEAR" = 2001 and "analysis_store_return_date_date"."D_MOY" BETWEEN 4 AND 10 and "analysis_catalog_date_date"."D_YEAR" = 2001 and "analysis_catalog_date_date"."D_MOY" BETWEEN 4 AND 10 and SR_RETURN_TIME_SK IS NOT NULL
 
@@ -158,7 +158,7 @@ GROUP BY
     5,
     6,
     "analysis_store_sales"."SS_TICKET_NUMBER",
-    coalesce("analysis_item_items"."I_ITEM_SK","analysis_store_returns"."SR_ITEM_SK","analysis_store_sales"."SS_ITEM_SK","wakeful"."analysis_item_id")),
+    "wakeful"."analysis_item_id"),
 concerned as (
 SELECT
     "vacuous"."analysis_item_desc" as "analysis_item_desc",
@@ -197,8 +197,8 @@ SELECT
     "juicy"."store_returns_loss" as "store_returns_loss",
     "concerned"."catalog_sales_profit" as "catalog_sales_profit"
 FROM
-    "juicy"
-    INNER JOIN "concerned" on "juicy"."analysis_item_desc" is not distinct from "concerned"."analysis_item_desc" AND "juicy"."analysis_item_name" is not distinct from "concerned"."analysis_item_name" AND "juicy"."analysis_store_name" is not distinct from "concerned"."analysis_store_name" AND "juicy"."analysis_store_text_id" is not distinct from "concerned"."analysis_store_text_id"
+    "concerned"
+    INNER JOIN "juicy" on "concerned"."analysis_item_desc" is not distinct from "juicy"."analysis_item_desc" AND "concerned"."analysis_item_name" = "juicy"."analysis_item_name" AND "concerned"."analysis_store_name" is not distinct from "juicy"."analysis_store_name" AND "concerned"."analysis_store_text_id" is not distinct from "juicy"."analysis_store_text_id"
 ORDER BY 
     coalesce("concerned"."analysis_item_name","juicy"."analysis_item_name") asc,
     coalesce("concerned"."analysis_item_desc","juicy"."analysis_item_desc") asc,

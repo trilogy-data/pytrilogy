@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1388 | 34 | 34.96 ms |
-| reference | 914 | 19 | 25.12 ms |
-| v4 / ref | 1.52x | 1.79x | 1.39x |
+| v4 | 1385 | 34 | 36.74 ms |
+| reference | 914 | 19 | 25.75 ms |
+| v4 / ref | 1.52x | 1.79x | 1.43x |
 
 ## Preql
 
@@ -75,8 +75,8 @@ SELECT
     "cheerful"."customer_sk" as "customer_sk",
     "cooperative"."sumsales" as "sumsales"
 FROM
-    "cooperative"
-    FULL JOIN "cheerful" on "cooperative"."ss_customer_id" is not distinct from "cheerful"."ss_customer_id"
+    "cheerful"
+    FULL JOIN "cooperative" on "cheerful"."customer_sk" is not distinct from "cooperative"."ss_customer_id"
 ORDER BY 
     "cooperative"."sumsales" asc nulls first,
     "cheerful"."customer_sk" asc nulls first

@@ -18,9 +18,9 @@ ref rows: 4 (4 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9377 | 214 | 847.05 ms |
-| reference | 7652 | 178 | 827.86 ms |
-| v4 / ref | 1.23x | 1.20x | 1.02x |
+| v4 | 9382 | 214 | 427.38 ms |
+| reference | 7657 | 178 | 464.49 ms |
+| v4 / ref | 1.23x | 1.20x | 0.92x |
 
 ## Preql
 
@@ -140,7 +140,7 @@ SELECT
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
     INNER JOIN "abundant" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "abundant"."sales_date_id"
-    INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
 WHERE
      'STORE'  = 'STORE'
 
@@ -359,7 +359,7 @@ SELECT
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
     INNER JOIN "questionable" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "questionable"."sales_date_id"
-    INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
 WHERE
      'STORE'  = 'STORE'
 

@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1459 | 36 | 26.20 ms |
-| reference | 1242 | 33 | 9.69 ms |
-| v4 / ref | 1.17x | 1.09x | 2.70x |
+| v4 | 1397 | 36 | 24.17 ms |
+| reference | 1242 | 33 | 9.48 ms |
+| v4 / ref | 1.12x | 1.09x | 2.55x |
 
 ## Preql
 
@@ -76,10 +76,10 @@ FROM
 SELECT
     sum("cheerful"."discount_amount") as "total_discount"
 FROM
-    "abundant"
-    INNER JOIN "cheerful" on "abundant"."item_id" = "cheerful"."item_id"
+    "cheerful"
+    INNER JOIN "abundant" on "cheerful"."item_id" = "abundant"."item_id"
 WHERE
-    "cheerful"."discount_amount" > "abundant"."avg_item_disc" and "cheerful"."discount_amount" > "abundant"."avg_item_disc"
+    "cheerful"."discount_amount" > "abundant"."avg_item_disc"
 
 LIMIT (100)
 ```
@@ -114,8 +114,8 @@ GROUP BY
 SELECT
     sum("cheerful"."discount_amount") as "total_discount"
 FROM
-    "thoughtful"
-    INNER JOIN "cheerful" on "thoughtful"."item_id" = "cheerful"."item_id"
+    "cheerful"
+    INNER JOIN "thoughtful" on "cheerful"."item_id" = "thoughtful"."item_id"
 WHERE
     "cheerful"."discount_amount" > 1.3 * "thoughtful"."_virt_agg_avg_5510773609506287"
 

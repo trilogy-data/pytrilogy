@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8025 | 122 | 74.32 ms |
-| reference | 6399 | 99 | 55.91 ms |
-| v4 / ref | 1.25x | 1.23x | 1.33x |
+| v4 | 7940 | 122 | 77.60 ms |
+| reference | 6399 | 99 | 59.37 ms |
+| v4 / ref | 1.24x | 1.23x | 1.31x |
 
 ## Preql
 
@@ -167,7 +167,7 @@ FROM
     RIGHT OUTER JOIN "abundant" on "questionable"."web_returns_customer_id" = "abundant"."web_returns_customer_id" AND "questionable"."web_returns_return_address_state" is not distinct from "abundant"."web_returns_return_address_state"
     INNER JOIN "vacuous" on "questionable"."web_returns_return_address_state" is not distinct from "vacuous"."web_returns_return_address_state"
 WHERE
-    "abundant"."customer_state_returns_2002" > "vacuous"."scaled_state_returns_2002" and "abundant"."customer_state_returns_2002" > "vacuous"."scaled_state_returns_2002"
+    "abundant"."customer_state_returns_2002" > "vacuous"."scaled_state_returns_2002"
 
 GROUP BY
     1,
@@ -237,8 +237,8 @@ SELECT
     "web_returns_customer_customers"."C_PREFERRED_CUST_FLAG" as "web_returns_customer_preferred_cust_flag",
     "web_returns_customer_customers"."C_SALUTATION" as "web_returns_customer_salutation"
 FROM
-    "memory"."customer_address" as "web_returns_customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "web_returns_customer_customers" on "web_returns_customer_address_customer_address"."CA_ADDRESS_SK" = "web_returns_customer_customers"."C_CURRENT_ADDR_SK"
+    "memory"."customer" as "web_returns_customer_customers"
+    INNER JOIN "memory"."customer_address" as "web_returns_customer_address_customer_address" on "web_returns_customer_customers"."C_CURRENT_ADDR_SK" = "web_returns_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "web_returns_customer_address_customer_address"."CA_STATE" = 'GA'
 ),
