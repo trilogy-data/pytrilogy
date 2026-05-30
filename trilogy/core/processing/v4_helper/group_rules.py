@@ -23,7 +23,7 @@ from .models import GroupBucket
 NodeItem = tuple[str, dict[str, Any]]
 EnsureAssignedFn = Callable[[str], None]
 PartitionFn = Callable[
-    [list[NodeItem], nx.DiGraph, dict[str, str], EnsureAssignedFn],
+    [list[NodeItem], nx.DiGraph, dict[str, str], EnsureAssignedFn, frozenset[str]],
     list[GroupBucket],
 ]
 
@@ -64,6 +64,7 @@ def partition_by_depth_and_grain(
     concept_graph: nx.DiGraph,
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
     """Default rule: two nodes share a group iff they have the same
     ``label``, ``depth_label``, ``grain`` and ``grouping_mode``. Label
@@ -104,6 +105,7 @@ def partition_roots(
     concept_graph: nx.DiGraph,
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
     """Partition root concepts into independent scan buckets per label.
 
@@ -122,6 +124,14 @@ def partition_roots(
     ties it to a fact table lives elsewhere. With no signal to place it,
     we conservatively keep everything in one bucket: matches the prior
     behavior and avoids dropping filters (q08).
+
+    Reach is also extended to the query's output projection: roots whose
+    lineage lands in ``output_addresses`` all recombine at the FINAL node,
+    so they are co-sourced even when their concept-graph reach is disjoint.
+    Every output column is a separate leaf here (the projection that unifies
+    them is only added to the group graph later), so without this they would
+    split and the FINAL merge would degrade to a ``1=1`` cross product (q04:
+    four customer attributes, each feeding only its own SELECT alias).
 
     Existence-only roots (concepts only referenced as existence_args)
     always stay in their own buckets so the existence wiring picks them
@@ -177,6 +187,21 @@ def partition_roots(
                 for j in range(i + 1, n):
                     if reaches[i] & reaches[j]:
                         union(i, j)
+
+            # Co-source roots that converge at the query output projection.
+            # `reaches` holds node ids; map to addresses to test membership.
+            if output_addresses:
+                output_roots = [
+                    i
+                    for i in range(n)
+                    if addr_of[main_items[i][0]] in output_addresses
+                    or any(
+                        concept_graph.nodes[x].get("address", x) in output_addresses
+                        for x in reaches[i]
+                    )
+                ]
+                for k in range(1, len(output_roots)):
+                    union(output_roots[0], output_roots[k])
 
             components: dict[int, list[tuple[str, dict]]] = defaultdict(list)
             for i, item in enumerate(main_items):
@@ -347,6 +372,7 @@ def partition_basics_by_signature(
     concept_graph: nx.DiGraph,
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
     """Group BASICs by `(label, stop-signature, grain-subset)`. See
     `_partition_by_signature_and_grain` for the full story — BASIC's
@@ -365,6 +391,7 @@ def partition_filters_by_signature(
     concept_graph: nx.DiGraph,
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
     """FILTERs are specialized BASICs — same scan-compatibility story.
     Two filters that look identical by depth/grain but read from

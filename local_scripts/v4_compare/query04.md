@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6824 | 123 | 183.29 ms |
-| reference | 11722 | 251 | 355.19 ms |
-| v4 / ref | 0.58x | 0.49x | 0.52x |
+| v4 | 5908 | 94 | 90.00 ms |
+| reference | 12153 | 278 | 326.41 ms |
+| v4 / ref | 0.49x | 0.34x | 0.28x |
 
 ## Preql
 
@@ -112,16 +112,7 @@ SELECT
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"),
-thoughtful as (
-SELECT
-    "cheerful"."sales_customer_id" as "sales_customer_id",
-    "cheerful"."sales_date_id" as "sales_date_id"
-FROM
-    "cheerful"
-GROUP BY
-    1,
-    2),
-uneven as (
+cooperative as (
 SELECT
     "cheerful"."sales_customer_id" as "sales_customer_id",
     sum((( ( "cheerful"."sales_ext_list_price" - "cheerful"."sales_ext_wholesale_cost" ) - "cheerful"."sales_ext_discount_amount" ) + "cheerful"."sales_ext_sales_price") / CASE WHEN "cheerful"."sales_sales_channel" = 'CATALOG' and "sales_date_date"."D_YEAR" = 2001 THEN 2 ELSE NULL END) as "catalog_first_year",
@@ -135,63 +126,43 @@ FROM
     LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
 GROUP BY
     1),
-abundant as (
+yummy as (
 SELECT
+    "cooperative"."catalog_first_year" as "catalog_first_year",
+    "cooperative"."catalog_second_year" as "catalog_second_year",
+    "cooperative"."store_first_year" as "store_first_year",
+    "cooperative"."store_second_year" as "store_second_year",
+    "cooperative"."web_first_year" as "web_first_year",
+    "cooperative"."web_second_year" as "web_second_year",
     "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
     "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
     "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name",
-    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag",
-    "thoughtful"."sales_customer_id" as "sales_customer_id"
+    "sales_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_customer_preferred_cust_flag"
 FROM
-    "thoughtful"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "thoughtful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
+    "cooperative"
+    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "cooperative"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "sales_date_date"."D_YEAR" in (2001,2002)
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-vacuous as (
-SELECT
-    "abundant"."sales_customer_first_name" as "sales_customer_first_name",
-    "abundant"."sales_customer_last_name" as "sales_customer_last_name",
-    "abundant"."sales_customer_preferred_cust_flag" as "sales_customer_preferred_cust_flag",
-    "abundant"."sales_customer_text_id" as "sales_customer_text_id",
-    "uneven"."catalog_first_year" as "catalog_first_year",
-    "uneven"."catalog_second_year" as "catalog_second_year",
-    "uneven"."store_first_year" as "store_first_year",
-    "uneven"."store_second_year" as "store_second_year",
-    "uneven"."web_first_year" as "web_first_year",
-    "uneven"."web_second_year" as "web_second_year"
-FROM
-    "uneven"
-    LEFT OUTER JOIN "abundant" on "uneven"."sales_customer_id" is not distinct from "abundant"."sales_customer_id"
-WHERE
-    "uneven"."store_first_year" > 0
+    "cooperative"."store_first_year" > 0
 )
 SELECT
-    "vacuous"."sales_customer_first_name" as "customer_first_name",
-    "vacuous"."sales_customer_text_id" as "customer_id",
-    "vacuous"."sales_customer_last_name" as "customer_last_name",
-    "vacuous"."sales_customer_preferred_cust_flag" as "customer_preferred_cust_flag"
+    "yummy"."sales_customer_first_name" as "customer_first_name",
+    "yummy"."sales_customer_text_id" as "customer_id",
+    "yummy"."sales_customer_last_name" as "customer_last_name",
+    "yummy"."sales_customer_preferred_cust_flag" as "customer_preferred_cust_flag"
 FROM
-    "vacuous"
+    "yummy"
 WHERE
-    "vacuous"."catalog_first_year" > 0 and "vacuous"."web_first_year" > 0 and ( CASE
-	WHEN "vacuous"."catalog_first_year" > 0 THEN "vacuous"."catalog_second_year" / "vacuous"."catalog_first_year"
+    "yummy"."catalog_first_year" > 0 and "yummy"."web_first_year" > 0 and ( CASE
+	WHEN "yummy"."catalog_first_year" > 0 THEN "yummy"."catalog_second_year" / "yummy"."catalog_first_year"
 	ELSE null
 	END ) > ( CASE
-	WHEN "vacuous"."store_first_year" > 0 THEN "vacuous"."store_second_year" / "vacuous"."store_first_year"
+	WHEN "yummy"."store_first_year" > 0 THEN "yummy"."store_second_year" / "yummy"."store_first_year"
 	ELSE null
 	END ) and ( CASE
-	WHEN "vacuous"."catalog_first_year" > 0 THEN "vacuous"."catalog_second_year" / "vacuous"."catalog_first_year"
+	WHEN "yummy"."catalog_first_year" > 0 THEN "yummy"."catalog_second_year" / "yummy"."catalog_first_year"
 	ELSE null
 	END ) > ( CASE
-	WHEN "vacuous"."web_first_year" > 0 THEN "vacuous"."web_second_year" / "vacuous"."web_first_year"
+	WHEN "yummy"."web_first_year" > 0 THEN "yummy"."web_second_year" / "yummy"."web_first_year"
 	ELSE null
 	END )
 
@@ -314,6 +285,9 @@ SELECT
     sum((( ( "uneven"."sales_ext_list_price" - "uneven"."sales_ext_wholesale_cost" ) - "uneven"."sales_ext_discount_amount" ) + "uneven"."sales_ext_sales_price") / CASE WHEN "uneven"."sales_sales_channel" = 'CATALOG' and "uneven"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "catalog_second_year"
 FROM
     "uneven"
+WHERE
+    "uneven"."sales_date_year" in (2001,2002)
+
 GROUP BY
     1),
 macho as (
@@ -322,14 +296,23 @@ SELECT
     sum((( ( "uneven"."sales_ext_list_price" - "uneven"."sales_ext_wholesale_cost" ) - "uneven"."sales_ext_discount_amount" ) + "uneven"."sales_ext_sales_price") / CASE WHEN "uneven"."sales_sales_channel" = 'STORE' and "uneven"."sales_date_year" = 2001 THEN 2 ELSE NULL END) as "store_first_year"
 FROM
     "uneven"
+WHERE
+    "uneven"."sales_date_year" in (2001,2002)
+
 GROUP BY
-    1),
+    1
+HAVING
+    "store_first_year" > 0
+),
 abhorrent as (
 SELECT
     "uneven"."sales_customer_id" as "sales_customer_id",
     sum((( ( "uneven"."sales_ext_list_price" - "uneven"."sales_ext_wholesale_cost" ) - "uneven"."sales_ext_discount_amount" ) + "uneven"."sales_ext_sales_price") / CASE WHEN "uneven"."sales_sales_channel" = 'STORE' and "uneven"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "store_second_year"
 FROM
     "uneven"
+WHERE
+    "uneven"."sales_date_year" in (2001,2002)
+
 GROUP BY
     1),
 concerned as (
@@ -338,6 +321,9 @@ SELECT
     sum((( ( "uneven"."sales_ext_list_price" - "uneven"."sales_ext_wholesale_cost" ) - "uneven"."sales_ext_discount_amount" ) + "uneven"."sales_ext_sales_price") / CASE WHEN "uneven"."sales_sales_channel" = 'WEB' and "uneven"."sales_date_year" = 2001 THEN 2 ELSE NULL END) as "web_first_year"
 FROM
     "uneven"
+WHERE
+    "uneven"."sales_date_year" in (2001,2002)
+
 GROUP BY
     1),
 yummy as (
@@ -346,6 +332,9 @@ SELECT
     sum((( ( "uneven"."sales_ext_list_price" - "uneven"."sales_ext_wholesale_cost" ) - "uneven"."sales_ext_discount_amount" ) + "uneven"."sales_ext_sales_price") / CASE WHEN "uneven"."sales_sales_channel" = 'WEB' and "uneven"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "web_second_year"
 FROM
     "uneven"
+WHERE
+    "uneven"."sales_date_year" in (2001,2002)
+
 GROUP BY
     1),
 vacuous as (
@@ -359,7 +348,10 @@ SELECT
     coalesce("abundant"."sales_customer_id","yummy"."sales_customer_id") as "sales_customer_id"
 FROM
     "abundant"
-    FULL JOIN "yummy" on "abundant"."sales_customer_id" is not distinct from "yummy"."sales_customer_id"),
+    INNER JOIN "yummy" on "abundant"."sales_customer_id" is not distinct from "yummy"."sales_customer_id"
+WHERE
+    "abundant"."sales_date_year" in (2001,2002)
+),
 sparkling as (
 SELECT
     "concerned"."web_first_year" as "web_first_year",
@@ -372,7 +364,10 @@ SELECT
     coalesce("concerned"."sales_customer_id","vacuous"."sales_customer_id") as "sales_customer_id"
 FROM
     "vacuous"
-    FULL JOIN "concerned" on "vacuous"."sales_customer_id" is not distinct from "concerned"."sales_customer_id"),
+    FULL JOIN "concerned" on "vacuous"."sales_customer_id" is not distinct from "concerned"."sales_customer_id"
+WHERE
+    "vacuous"."sales_date_year" in (2001,2002)
+),
 late as (
 SELECT
     "abhorrent"."store_second_year" as "store_second_year",
@@ -386,7 +381,10 @@ SELECT
     coalesce("abhorrent"."sales_customer_id","sparkling"."sales_customer_id") as "sales_customer_id"
 FROM
     "sparkling"
-    FULL JOIN "abhorrent" on "sparkling"."sales_customer_id" is not distinct from "abhorrent"."sales_customer_id"),
+    FULL JOIN "abhorrent" on "sparkling"."sales_customer_id" is not distinct from "abhorrent"."sales_customer_id"
+WHERE
+    "sparkling"."sales_date_year" in (2001,2002)
+),
 friendly as (
 SELECT
     "late"."sales_customer_first_name" as "sales_customer_first_name",
@@ -403,7 +401,7 @@ FROM
     "late"
     INNER JOIN "macho" on "late"."sales_customer_id" is not distinct from "macho"."sales_customer_id"
 WHERE
-    "late"."sales_date_year" in (2001,2002) and "macho"."store_first_year" > 0
+    "late"."sales_date_year" in (2001,2002)
 ),
 busy as (
 SELECT

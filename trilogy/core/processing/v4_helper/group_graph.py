@@ -138,6 +138,7 @@ def _add_d1_root_bucket(
 
 def _assign_groups(
     concept_graph: nx.DiGraph,
+    output_addresses: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, str], dict[str, GroupBucket]]:
     """Group every concept by dispatching to its derivation's rule.
 
@@ -162,7 +163,9 @@ def _assign_groups(
         assigned.add(derivation)
         rule = GROUPING_RULES.get(derivation, DEFAULT_RULE)
         items = by_derivation.get(derivation, [])
-        for bucket in rule(items, concept_graph, primary_group, ensure_assigned):
+        for bucket in rule(
+            items, concept_graph, primary_group, ensure_assigned, output_addresses
+        ):
             group_id = _group_id_for(bucket)
             buckets[group_id] = bucket
             for node_id_member in bucket.primary_node_ids:
@@ -748,7 +751,8 @@ def build_group_graph(
     most derivations group by equality on `(depth_label, grain)`; ROOT
     collapses to one bucket; BASIC merges by grain subset/equality.
     """
-    primary_group, buckets = _assign_groups(concept_graph)
+    output_addresses = frozenset(c.address for c in mandatory_list or [])
+    primary_group, buckets = _assign_groups(concept_graph, output_addresses)
     d1_calc_roots, d1_subgraph = _d1_calc_subgraph(concept_graph)
     d1_root_gid = _add_d1_root_bucket(concept_graph, buckets, d1_calc_roots)
     _attach_secondary_members(concept_graph, buckets)
