@@ -52,6 +52,12 @@ def _build_argparser() -> argparse.ArgumentParser:
         action="store_true",
         help="ingest-only model instead of the enriched hand-curated dir",
     )
+    p.add_argument(
+        "--force-tool-choice",
+        action="store_true",
+        help="force tool_choice=required every turn (no plain-text reasoning). "
+        "Default is tool_choice: auto; pass this to A/B the old forced-tool behavior.",
+    )
     p.add_argument("--output-dir", type=Path, default=None)
     p.add_argument("--env-file", type=Path, default=REPO_ROOT / ".env.secrets")
     return p
@@ -123,7 +129,12 @@ def main() -> int:
     cached = db.build_database(SPEC, args.scale_factor)
     workspace_db = db.copy_database(cached, workspace / SPEC.db_filename)
     agent_runner.write_trilogy_toml(
-        workspace, SPEC, args.provider, args.model, args.max_iterations
+        workspace,
+        SPEC,
+        args.provider,
+        args.model,
+        args.max_iterations,
+        force_tool_choice=args.force_tool_choice,
     )
     print(f"[2/3] Seeding {'base (ingest)' if args.base else 'enriched'} model ...")
     _seed_model(workspace, args.base)

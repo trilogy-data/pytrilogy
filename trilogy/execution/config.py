@@ -80,6 +80,13 @@ class AgentConfig:
     # exhausted vs 3.4 on pass); the .preql file itself is sufficient
     # scratch space for the single-query tasks we evaluate.
     disable_todo: bool = False
+    # When False (default) the agent loop sends ``tool_choice: auto`` — the model
+    # may reason in plain text before acting. Forcing ``tool_choice: required``
+    # (set True) makes the model act every turn with no preamble, which on hard
+    # tasks degenerates into no-commit explore loops (eval: full-suite exhausted
+    # 11->2 and total tokens -51% when this was flipped to auto). Thinking-mode
+    # models also reject forced tool_choice, so auto is the more portable default.
+    force_tool_choice: bool = False
 
 
 @dataclass
@@ -138,6 +145,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
         "tool_output_limit",
         "quiet",
         "disable_todo",
+        "force_tool_choice",
     },
 }
 
@@ -275,6 +283,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
         tool_output_limit=int(agent_raw.get("tool_output_limit", 8192)),
         quiet=bool(agent_raw.get("quiet", False)),
         disable_todo=bool(agent_raw.get("disable_todo", False)),
+        force_tool_choice=bool(agent_raw.get("force_tool_choice", False)),
     )
 
     # Canonical location is [engine].parallelism (matches docs and `trilogy init`

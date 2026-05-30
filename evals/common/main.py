@@ -150,6 +150,13 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         "subdir (<ts>_base, <ts>_enriched). Requires either --enriched-model-dir "
         "or a `default_enriched_dir` configured on the BenchmarkSpec.",
     )
+    parser.add_argument(
+        "--force-tool-choice",
+        action="store_true",
+        help="force tool_choice=required every turn (no plain-text reasoning). "
+        "Default is tool_choice: auto, which lets the model deliberate before "
+        "acting; pass this to A/B the old forced-tool behavior.",
+    )
     return parser
 
 
@@ -437,7 +444,12 @@ def run(spec: BenchmarkSpec) -> int:
     workspace_db = db.copy_database(cached, workspace / spec.db_filename)
 
     agent_runner.write_trilogy_toml(
-        workspace, spec, args.provider, args.model, args.max_iterations
+        workspace,
+        spec,
+        args.provider,
+        args.model,
+        args.max_iterations,
+        force_tool_choice=args.force_tool_choice,
     )
     if args.query_ids:
         wanted = {int(x.strip()) for x in args.query_ids.split(",") if x.strip()}

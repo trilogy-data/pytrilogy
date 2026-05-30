@@ -463,8 +463,9 @@ def _run_turn(
     provider: LLMProvider | None = None,
     original_task: str = "",
     validate_completion: bool = True,
+    require_tool: bool = False,
 ) -> None:
-    options = LLMRequestOptions(tools=tools or ALL_TOOLS, require_tool=True)
+    options = LLMRequestOptions(tools=tools or ALL_TOOLS, require_tool=require_tool)
     for _ in range(max_iterations):
         with with_status("Thinking"):
             response = conv.get_response(options)
@@ -673,6 +674,7 @@ def agent(
             tools=tools,
             provider=llm_provider,
             original_task=command,
+            require_tool=cfg.force_tool_choice,
         )
     finally:
         if log_path:
@@ -706,6 +708,7 @@ def agent(
                 tools=tools,
                 provider=llm_provider,
                 original_task=next_command,
+                require_tool=cfg.force_tool_choice,
             )
         finally:
             if log_path:

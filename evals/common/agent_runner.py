@@ -207,7 +207,12 @@ def run_pre_ingest(workspace: Path, timeout: int = 600) -> dict:
 
 
 def write_trilogy_toml(
-    workspace: Path, spec: BenchmarkSpec, provider: str, model: str, max_iterations: int
+    workspace: Path,
+    spec: BenchmarkSpec,
+    provider: str,
+    model: str,
+    max_iterations: int,
+    force_tool_choice: bool = False,
 ) -> None:
     """Configure the agent subprocess: DuckDB pointing at the benchmark file,
     provider/model, and the per-query iteration budget. ``quiet = true`` drops
@@ -248,6 +253,9 @@ tool_output_limit = 32768
 # Narration messages compound quadratically through history replays in long
 # unattended runs; the eval drops show_message entirely.
 quiet = true
+# When false, the model may reason in plain text before calling a tool
+# (tool_choice: auto) instead of being forced to act every turn.
+force_tool_choice = {str(force_tool_choice).lower()}
 """,
         encoding="utf-8",
     )
