@@ -7,6 +7,7 @@ from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.parsing.v2.errors import (
     create_generic_syntax_error,
     create_syntax_error,
+    detect_group_by,
     detect_subselect,
 )
 from trilogy.parsing.v2.syntax import (
@@ -266,6 +267,11 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     sub_pos = detect_subselect(text, pos)
     if sub_pos is not None:
         return create_syntax_error(102, sub_pos, text)
+
+    # 103: SQL-style `GROUP BY` clause (trilogy groups automatically).
+    gb_pos = detect_group_by(text, pos)
+    if gb_pos is not None:
+        return create_syntax_error(103, gb_pos, text)
 
     # 202: trailing-terminator missing. Check only when the error position
     # is at or past the last non-whitespace character — otherwise we'd mask

@@ -512,7 +512,9 @@
     _COUNT.1: "count("i
     count:   _COUNT  expr ")"
     
-    count_distinct: "count_distinct"i "(" expr ")"
+    // `_COUNT "distinct" ...` accepts the SQL-habit `count(distinct x)` as an
+    // alias for `count_distinct(x)` (_COUNT already consumes `count(`).
+    count_distinct: "count_distinct"i "(" expr ")" | _COUNT "distinct"i expr ")"
     grouping: "grouping"i "(" expr ")"
     grouping_id: "grouping_id"i "(" (expr ",")* expr ")"
     

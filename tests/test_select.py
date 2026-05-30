@@ -118,6 +118,27 @@ def test_double_aggregate():
     generator.compile_statement(query)
 
 
+def test_count_distinct_sql_alias():
+    """`count(distinct x)` is accepted as an alias for `count_distinct(x)` (both
+    grammars). Plain `count(x)` stays COUNT."""
+    from trilogy.core.enums import FunctionType
+
+    env, _ = parse(
+        "key x int;\n"
+        "auto a <- count(distinct x);\n"
+        "auto b <- count_distinct(x);\n"
+        "auto c <- count(x);\n"
+    )
+
+    def op(name: str) -> FunctionType:
+        lineage = env.concepts[f"local.{name}"].lineage
+        return getattr(lineage, "operator", None) or lineage.function.operator
+
+    assert op("a") == FunctionType.COUNT_DISTINCT
+    assert op("b") == FunctionType.COUNT_DISTINCT
+    assert op("c") == FunctionType.COUNT
+
+
 def test_modifiers():
 
     q1 = """

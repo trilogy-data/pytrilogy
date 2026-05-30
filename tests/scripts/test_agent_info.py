@@ -24,7 +24,6 @@ def test_agent_info():
     assert "### trilogy unit" in result.output
     assert "### trilogy integration" in result.output
     assert "### trilogy fmt" in result.output
-    assert "### trilogy agent" in result.output
     # render/ingest now have short stubs that point at their subcommands —
     # the heading is present but the full body has moved.
     assert "### trilogy render" in result.output
@@ -39,14 +38,10 @@ def test_agent_info():
     assert "trilogy agent-info config" in result.output
     assert "trilogy agent-info serve" in result.output
 
-    # Check configuration section
+    # Check configuration section (stub in the main dump; full schema +
+    # dialects moved to `agent-info config`).
     assert "## Configuration File" in result.output
     assert "trilogy.toml" in result.output
-
-    # Check dialects section
-    assert "## Supported Dialects" in result.output
-    assert "duckdb" in result.output
-    assert "postgres" in result.output
 
     # Check common workflows
     assert "## Common Workflows" in result.output
@@ -122,6 +117,10 @@ def test_agent_info_config_subcommand():
     # API-key conventions live here too.
     assert "OPENROUTER_API_KEY" in result.output
     assert "ANTHROPIC_API_KEY" in result.output
+    # Supported dialects moved here with the rest of the config reference.
+    assert "## Supported Dialects" in result.output
+    assert "duckdb" in result.output
+    assert "postgres" in result.output
     assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
 
 

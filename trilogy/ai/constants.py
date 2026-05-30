@@ -201,11 +201,36 @@ FUNCTION_EXAMPLES = {
     FunctionType.CURRENT_TIMESTAMP: "now()",
 }
 
+# AST-internal / operator-duplicate function types that the agent should never
+# call by name — they are noise in the reference and (e.g. `union`) tempt agents
+# into complex constructs not worth using yet. Arithmetic is written with
+# operators (`a + b`, not `add(a, b)`); member/index access with `.`/`[]`;
+# parentheses/aliases/constants are surface syntax, not callable functions.
+_AGENT_HIDDEN_FUNCTIONS = {
+    FunctionType.NOOP,
+    FunctionType.CUSTOM,
+    FunctionType.UNION,
+    FunctionType.RECURSE_EDGE,
+    FunctionType.ALIAS,
+    FunctionType.PARENTHETICAL,
+    FunctionType.CONSTANT,
+    FunctionType.TYPED_CONSTANT,
+    FunctionType.BOOL,
+    FunctionType.INDEX_ACCESS,
+    FunctionType.MAP_ACCESS,
+    FunctionType.ATTR_ACCESS,
+    FunctionType.GROUP,
+    FunctionType.ADD,
+    FunctionType.SUBTRACT,
+    FunctionType.MULTIPLY,
+    FunctionType.DIVIDE,
+}
+
 FUNCTIONS = "\n".join(
     [
         render_function(v, example=FUNCTION_EXAMPLES.get(v))
         for x, v in FunctionType.__members__.items()
-        if v in FUNCTION_REGISTRY
+        if v in FUNCTION_REGISTRY and v not in _AGENT_HIDDEN_FUNCTIONS
     ]
 )
 
@@ -213,6 +238,8 @@ AGGREGATE_FUNCTIONS = "\n".join(
     [
         render_function(v, example=FUNCTION_EXAMPLES.get(v))
         for _, v in FunctionType.__members__.items()
-        if v in FunctionClass.AGGREGATE_FUNCTIONS.value and v in FUNCTION_REGISTRY
+        if v in FunctionClass.AGGREGATE_FUNCTIONS.value
+        and v in FUNCTION_REGISTRY
+        and v not in _AGENT_HIDDEN_FUNCTIONS
     ]
 )

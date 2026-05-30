@@ -14,6 +14,12 @@ ERROR_CODES: dict[int, str] = {
         "`where ss.store_id in (select store_id where store.state = 'TN')`, "
         "write `where ss.store.state = 'TN'`."
     ),
+    103: (
+        "Using a GROUP BY clause? Trilogy has no GROUP BY — remove it. Grouping "
+        "is automatic by the non-aggregated fields in your SELECT. To aggregate "
+        "at a different grain than the select, write `agg(x) by dim1, dim2` "
+        "inline (e.g. `sum(sales.amount) by sales.store.id`)."
+    ),
     201: 'Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y`',
     202: "Missing closing semicolon? Statements must be terminated with a semicolon `;`.",
     203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
@@ -56,6 +62,21 @@ def detect_subselect(text: str, pos: int) -> int | None:
     if closed_before_pos:
         return None
     return open_paren
+
+
+_GROUP_BY_RE = re.compile(r"\bgroup\s+by\b", re.IGNORECASE)
+
+
+def detect_group_by(text: str, pos: int) -> int | None:
+    """Locate a SQL-style `GROUP BY` clause at ``pos``. Returns the position of
+    the `group` keyword, or None. Both backends report the error right at the
+    offending `group`, so scan a small window around ``pos``. Shared by both
+    grammar backends."""
+    window = text[max(0, pos - 2) : pos + 12]
+    m = _GROUP_BY_RE.search(window)
+    if m is None:
+        return None
+    return max(0, pos - 2) + m.start()
 
 
 DEFAULT_ERROR_SPAN: int = 30

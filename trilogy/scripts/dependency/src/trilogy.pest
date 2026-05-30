@@ -466,7 +466,9 @@ GROUP_TARGET = @{ ^"group" ~ (" " | "\t" | "\r" | "\n")+ ~ (ASCII_ALPHA | "_") ~
 aggregate_by = { GROUP_TARGET ~ ^"by" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
 
 count          = { ^"count" ~ "(" ~ expr ~ ")" }
-count_distinct = { ^"count_distinct" ~ "(" ~ expr ~ ")" }
+// Accept the SQL-habit `count(distinct x)` as an alias for `count_distinct(x)`.
+// Tried before `count` in aggregate_functions, so `count(x)` still resolves to count.
+count_distinct = { (^"count_distinct" ~ "(" ~ expr ~ ")") | (^"count" ~ "(" ~ ^"distinct" ~ expr ~ ")") }
 grouping       = { ^"grouping" ~ "(" ~ expr ~ ")" }
 grouping_id    = { ^"grouping_id" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")" }
 sum            = { ^"sum" ~ "(" ~ expr ~ ")" }
