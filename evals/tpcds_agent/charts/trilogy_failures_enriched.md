@@ -22,21 +22,34 @@
 - `trilogy `
 
   ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 81 (char 80). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 100 (char 99). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 94 (char 93). Re-issue the call with valid JSON arguments.
+
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy run query01.preql`
+
+  ```text
+  maximum recursion depth exceeded
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 64 (char 63). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
   Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run --import raw.date:date select date.week_seq, date.year, date.day_of_week order by date.id limit 20;`
-
-  ```text
-  ORDER BY references 'date.id', which is not in the SELECT
-  projection (line 2). Add it to SELECT to sort by it — prefix with `--` to keep
-  it out of the output rows, e.g. `select ..., --date.id order by date.id asc`.
-  ```
-- `trilogy run --import raw.all_sales:all_sales select all_sales.billing_customer.id as cid, all_sales.date.year as yr, all_sales.sales_channel as ch, sum(((all…iscount_amount) + all_sales.ext_sales_price) / 2) as yt where all_sales.date.year = 2001 and all_sales.sales_channel = 'CATALOG' and yt > 0 limit 20;`
-
-  ```text
-  Cannot reference an aggregate derived in the select
-  (local.yt) in the same statement where clause; move to the HAVING clause
-  instead; Line: 2
   ```
 - `trilogy `
 
@@ -51,12 +64,12 @@
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 82 (char 81). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 85 (char 84). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run query06.preql`
+- `trilogy explore raw/physical_sales.preql --regex ^(date\.|?date\.)`
 
   ```text
-  Multiple where clauses are not supported
+  Invalid --regex pattern '^(date\\.|?date\\.)': nothing to repeat at position 9
   ```
 - `trilogy `
 
@@ -66,13 +79,88 @@
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 87 (char 86). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run query10.preql duckdb`
+- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
   ```text
-  Unable to import '.\physical_sales.preql': [Errno 2] No such
-  file or directory: '.\\physical_sales.preql'. Did you mean: raw.physical_sales?
+  (_duckdb.BinderException) Binder Error: Referenced table
+  "highfalutin" not found!
+  Candidate tables: "store_sales_date_date"
+
+  LINE 54: ...TRING("store_sales_store_store"."S_ZIP",1,2) in
+  (SUBSTRING("highfalutin"."_virt_unnest_4565099077345551",1,2)) and...
+                                                                         ^
+  [SQL:
+  WITH
+  quizzical as (
+  SELECT
+      STRING_SPLIT( $1 , ',' ) as "param_zips"
+  ),
+  questionable as (
+  SELECT
+      "store_sales_billing_customer_customers"."C_CURRENT_ADDR_SK" as
+  "store_sales_billing_customer_address_id",
+      "store_sales_billing_customer_customers"."C_P
+  …
+  "store_sales_store_store"."S_ZIP",1,2) in
+  (SUBSTRING("highfalutin"."_virt_unnest_4565099077345551",1,2)) and
+  SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in
+  (SUBSTRING("uneven"."preferred_zips",1,2))
+
+  GROUP BY
+      1,
+      2,
+      "store_sales_store_sales"."SS_ITEM_SK",
+      "store_sales_store_sales"."SS_TICKET_NUMBER")
+  SELECT
+      "sparkling"."store_sales_store_name" as "store_name",
+      sum("sparkling"."store_sales_net_profit") as "total_net_profit"
+  FROM
+      "sparkling"
+  GROUP BY
+      1
+  ORDER BY
+      "store_name" asc
+  LIMIT (100)]
+
+  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 82 (char 81). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run --import raw/physical_sales.preql:physical_sales select count(physical_sales.row_counter ? (sum(physical_sales.quantity) by physical_sales.ticket_number) between 21 and 40) as cnt;`
+
+  ```text
+  (_duckdb.BinderException) Binder Error: aggregate function
+  calls cannot be nested
+
+  LINE 2:     count(CASE WHEN ( sum("physical_sales_store_sales"."SS_QUANTITY") )
+  BETWEEN...
+                                ^
+  [SQL: SELECT
+      count(CASE WHEN ( sum("physical_sales_store_sales"."SS_QUANTITY") ) BETWEEN
+  21 AND 40 THEN 1 ELSE NULL END) as "cnt"
+  FROM
+      "store_sales" as "physical_sales_store_sales"]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 96 (char 95). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 1383 (char 1382). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 81 (char 80). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
@@ -82,40 +170,7 @@
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 73 (char 72). Re-issue the call with valid JSON arguments.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
-
-  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
-
-  [guidance] You have issued this identical call 5 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 6 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 96 (char 95). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
@@ -125,7 +180,12 @@
 - `trilogy `
 
   ```text
-  trilogy error: 'args' must be a list of strings.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 55 (char 54). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 81 (char 80). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
@@ -133,74 +193,50 @@
   trilogy error: 'args' must be a list of strings.
 
   [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy run query13.preql`
-
-  ```text
-  Unable to import '.\physical_sales.preql': [Errno 2] No such
-  file or directory: '.\\physical_sales.preql'. Did you mean: raw.physical_sales?
-  ```
-- `trilogy run -e SELECT count(1) FROM store_sales as ss JOIN date_dim as d ON ss.ss_sold_date_sk = d.d_date_sk WHERE d.d_year = 2001 LIMIT 10;`
-
-  ```text
-  Some scripts failed during execution.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 85 (char 84). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 1322 (char 1321). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 85 (char 84). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
   ```
 - `trilogy run query14.preql duckdb`
 
   ```text
-  HAVING references 'local.overall_avg_sale', which is not in
-  the SELECT projection (line 25). Fix one of: (a) add it to SELECT — prefix with
+  Unable to import '.\all_sales.preql': [Errno 2] No such file
+  or directory: '.\\all_sales.preql'. Did you mean: raw.all_sales?
+  ```
+- `trilogy run query14.preql duckdb`
+
+  ```text
+  HAVING references 'local.avg_sale_all', which is not in the
+  SELECT projection (line 35). Fix one of: (a) add it to SELECT — prefix with
   `--` to keep it out of the output rows, e.g. `select ...,
-  --local.overall_avg_sale`; (b) move the filter to WHERE — for an aggregate
+  --local.avg_sale_all`; (b) move the filter to WHERE — for an aggregate
   condition on a non-output grain, write the aggregate inline as `agg(x) by
   grain` directly in WHERE.
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 86 (char 85). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run query16.preql`
+
+  ```text
+  Unable to import '.\catalog_sales.preql': [Errno 2] No such
+  file or directory: '.\\catalog_sales.preql'. Did you mean: raw.catalog_sales?
+  ```
+- `trilogy run query16.preql`
+
+  ```text
+  Have
+  {'GroupNode<catalog_sales.order_number,local._virt_agg_count_3804749603066067>'
+  : None} and need catalog_sales.ship_date.date@Grain<catalog_sales.ship_date.id>
+  between constant(2002-02-01) and constant(2002-04-02) and
+  catalog_sales.customer_address.state = GA and catalog_sales.call_center.county
+  = Williamson County and local._virt_agg_count_3804749603066067 > 1 and
+  local._virt_agg_count_5414203329674744 = 0
+  ```
+- `trilogy run query19.preql`
+
+  ```text
+  Unable to import '.\physical_sales.preql': [Errno 2] No such
+  file or directory: '.\\physical_sales.preql'. Did you mean: raw.physical_sales?
   ```
 
 ### `syntax-parse`
@@ -975,7 +1011,7 @@ limit 10;`
 
 ### `type-error`
 
-- `trilogy run query08.preql --param zips=24128`
+- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
   ```text
   Invalid argument type 'ArrayType<STRING>' passed into
