@@ -49,7 +49,7 @@ from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts,
 )
 from trilogy.core.processing.condition_utility import strip_tautological_not_null
-from trilogy.core.statements.author import SelectStatement
+from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TPCDS_DIR = REPO_ROOT / "tests" / "modeling" / "tpc_ds_duckdb"
@@ -722,7 +722,7 @@ def render_group_digraph(
 
 def _materialize_for_query(
     environment: Environment,
-    statement: SelectStatement,
+    statement: SelectStatement | MultiSelectStatement,
     history: V4History,
 ) -> tuple[
     BuildSelectLineage | BuildMultiSelectLineage,
@@ -770,12 +770,14 @@ def _materialize_for_query(
     return build_statement, build_env, conditions
 
 
-def _find_select(queries: list) -> SelectStatement:
-    selects = [q for q in queries if isinstance(q, SelectStatement)]
+def _find_select(queries: list) -> SelectStatement | MultiSelectStatement:
+    selects = [
+        q for q in queries if isinstance(q, (SelectStatement, MultiSelectStatement))
+    ]
     if not selects:
         raise ValueError(
-            "No SelectStatement found in parsed queries — multiselect / persist "
-            "statements aren't wired into this harness yet."
+            "No SelectStatement / MultiSelectStatement found in parsed queries — "
+            "persist statements aren't wired into this harness yet."
         )
     return selects[-1]
 
