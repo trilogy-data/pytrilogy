@@ -22,248 +22,25 @@
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 87 (char 86). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 936 (char 935). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run query04.preql`
-
-  ```text
-  Have
-  {'GroupNode<local.catalog_2001,store_sales.billing_customer.id>': None,
-  'GroupNode<local.store_2001,store_sales.billing_customer.id>': None,
-  'GroupNode<local.web_2001,web_sales.billing_customer.id>': None,
-  'GroupNode<store_sales.billing_customer.first_name,store_sales.billing_customer
-  .last_name,store_sales.billing_customer.preferred_cust_flag...1 more>': None}
-  and need local.store_2001 > 0 and local.catalog_2001 > 0 and local.web_2001 > 0
-  and local.catalog_ratio > local.store_ratio and local.catalog_ratio >
-  local.web_ratio
-  ```
-- `trilogy run query04.preql`
-
-  ```text
-  Cannot resolve query. No remaining priority concepts, have
-  attempted {'local.catalog_yt', 'local.web_yt', 'local.store_yt'} out of  with
-  found {'local.store_yt', 'web_sales.date.year', 'local.catalog_yt',
-  'catalog_sales.sold_date.year', 'catalog_sales.bill_customer.id',
-  'web_sales.billing_customer.id', 'store_sales.billing_customer.id',
-  'local.web_yt', 'store_sales.date.year'}
-  ```
-- `trilogy run query04.preql`
-
-  ```text
-  Have
-  {'GroupNode<local.c_2001,store_sales.billing_customer.id>': None,
-  'GroupNode<local.s_2001,store_sales.billing_customer.id>': None,
-  'GroupNode<local.w_2001,web_sales.billing_customer.id>': None,
-  'GroupNode<store_sales.billing_customer.first_name,store_sales.billing_customer
-  .last_name,store_sales.billing_customer.preferred_cust_flag...1 more>': None}
-  and need local.s_2001 > 0 and local.c_2001 > 0 and local.w_2001 > 0 and
-  local.c_ratio > local.s_ratio and local.c_ratio > local.w_ratio
-  ```
-- `trilogy run query04.preql`
-
-  ```text
-  Cannot resolve query. No remaining priority concepts, have
-  attempted {'local.c_2001', 'local.w_2001', 'local.s_2001'} out of  with found
-  {'web_sales.ext_sales_price', 'local.s_2001', 'web_sales.billing_customer.id',
-  'local.c_2001', 'store_sales.billing_customer.id',
-  'web_sales.item.wholesale_cost', 'web_sales.ext_discount_amount',
-  'web_sales.item.id', 'local.w_2001', 'web_sales.quantity',
-  'web_sales.list_price', 'web_sales.date.year', 'web_sales.order_number',
-  'catalog_sales.bill_customer.id'}
-  ```
-- `trilogy run query04.preql`
-
-  ```text
-  Cannot resolve query. No remaining priority concepts, have
-  attempted {'local.s_2001', 'local.w_2001', 'local.c_2001'} out of  with found
-  {'local.s_2001', 'local.w_2001', 'web_sales.list_price',
-  'web_sales.ext_discount_amount', 'web_sales.order_number',
-  'catalog_sales.bill_customer.id', 'web_sales.date.year', 'web_sales.quantity',
-  'web_sales.item.wholesale_cost', 'web_sales.ext_sales_price',
-  'web_sales.item.id', 'local.c_2001', 'web_sales.billing_customer.id',
-  'store_sales.billing_customer.id'}
-  ```
-- `trilogy `
-
-  ```text
   Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run query05.preql`
+- `trilogy run --import raw.date:d select d.year, d.week_seq where d.year in (2000,2001,2002) and d.day_of_week=0 order by year, week_seq limit 10;`
 
   ```text
-  Unable to import '.\all_sales.preql': [Errno 2] No such file
-  or directory: '.\\all_sales.preql'. Did you mean: raw.all_sales?
+  ORDER BY references 'local.year', which is not in the SELECT
+  projection (line 2). Add it to SELECT to sort by it — prefix with `--` to keep
+  it out of the output rows, e.g. `select ..., --local.year order by local.year
+  asc`.
   ```
-- `trilogy file write query05.preql --content None`
+- `trilogy `
 
   ```text
-  trilogy error: 'args' must be a list of strings.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 79 (char 78). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run --import raw.all_sales:all_sales --all-rows --displayed-rows 200 select
-    all_sales.sales_channel,
-    concat(
-        case all_sales.sales_cha…all_sales.date.date between '2000-08-23'::date and '2000-09-06'::date
-order by
-    all_sales.sales_channel asc,
-    outlet asc nulls first
-limit 100;`
+- `trilogy `
 
   ```text
-  (_duckdb.BinderException) Binder Error: column
-  "all_sales_sales_channel" must appear in the GROUP BY clause or must be part of
-  an aggregate function.
-  Either add it to the GROUP BY list, or use "ANY_VALUE(all_sales_sales_channel)"
-  if the exact value of "all_sales_sales_channel" is not important.
-
-  LINE 138:     "sweltering"."all_sales_sales_channel" as "all_sales_sales_...
-                ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as
-  "all_sales_channel_dim_id",
-      "all_sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as
-  "all_sales_channel_dim_t
-  …
-  sales_sales_channel" = "abhorrent"."all_sales_sales_channel")
-  SELECT
-      "sweltering"."all_sales_sales_channel" as "all_sales_sales_channel",
-      "sweltering"."outlet" as "outlet",
-      "sweltering"."total_sales" as "total_sales",
-      sum("sweltering"."all_sales_return_amount") as "total_returns",
-      sum("sweltering"."all_sales_net_profit") -
-  sum("sweltering"."all_sales_return_net_loss") as "profit"
-  FROM
-      "sweltering"
-  ORDER BY
-      "sweltering"."all_sales_sales_channel" asc,
-      "sweltering"."outlet" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy file write query05.preql --content None`
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy run query05.preql --all-rows --displayed-rows 200`
-
-  ```text
-  (_duckdb.BinderException) Binder Error: column
-  "all_sales_sales_channel" must appear in the GROUP BY clause or must be part of
-  an aggregate function.
-  Either add it to the GROUP BY list, or use "ANY_VALUE(all_sales_sales_channel)"
-  if the exact value of "all_sales_sales_channel" is not important.
-
-  LINE 138:     "sweltering"."all_sales_sales_channel" as "all_sales_sales_...
-                ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as
-  "all_sales_channel_dim_id",
-      "all_sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as
-  "all_sales_channel_dim_t
-  …
-  sales_sales_channel" = "abhorrent"."all_sales_sales_channel")
-  SELECT
-      "sweltering"."all_sales_sales_channel" as "all_sales_sales_channel",
-      "sweltering"."outlet" as "outlet",
-      "sweltering"."total_sales" as "total_sales",
-      sum("sweltering"."all_sales_return_amount") as "total_returns",
-      sum("sweltering"."all_sales_net_profit") -
-  sum("sweltering"."all_sales_return_net_loss") as "profit"
-  FROM
-      "sweltering"
-  ORDER BY
-      "sweltering"."all_sales_sales_channel" asc,
-      "sweltering"."outlet" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query05.preql --all-rows --displayed-rows 200`
-
-  ```text
-  (_duckdb.BinderException) Binder Error: column
-  "all_sales_sales_channel" must appear in the GROUP BY clause or must be part of
-  an aggregate function.
-  Either add it to the GROUP BY list, or use "ANY_VALUE(all_sales_sales_channel)"
-  if the exact value of "all_sales_sales_channel" is not important.
-
-  LINE 138:     "sweltering"."all_sales_sales_channel" as "all_sales_sales_...
-                ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as
-  "all_sales_channel_dim_id",
-      "all_sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as
-  "all_sales_channel_dim_t
-  …
-  sales_sales_channel" = "abhorrent"."all_sales_sales_channel")
-  SELECT
-      "sweltering"."all_sales_sales_channel" as "all_sales_sales_channel",
-      "sweltering"."outlet" as "outlet",
-      "sweltering"."total_sales" as "total_sales",
-      sum("sweltering"."all_sales_return_amount") as "total_returns",
-      sum("sweltering"."all_sales_net_profit") -
-  sum("sweltering"."all_sales_return_net_loss") as "profit"
-  FROM
-      "sweltering"
-  ORDER BY
-      "sweltering"."all_sales_sales_channel" asc,
-      "sweltering"."outlet" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  Have
-  {'MergeNode<store_sales.item.id,store_sales.net_profit,store_sales.store.date.q
-  uarter...3 more>': None} and need store_sales.store.date.year = 1998 and
-  store_sales.store.date.quarter = 2 and local.param_match@Grain<store.id> and
-  local.pref_match@Grain<customer.address.id,store.id>
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  Have
-  {'MergeNode<store_sales.item.id,store_sales.net_profit,store_sales.store.date.q
-  uarter...3 more>': None} and need store_sales.store.date.year = 1998 and
-  store_sales.store.date.quarter = 2 and local.param_match@Grain<store.id> and
-  local.pref_match@Grain<customer.address.id,store.id>
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  Have
-  {'MergeNode<store_sales.item.id,store_sales.net_profit,store_sales.store.date.q
-  uarter...3 more>': None} and need store_sales.store.date.year = 1998 and
-  store_sales.store.date.quarter = 2 and local.param_match@Grain<store.id> and
-  local.pref_match@Grain<customer.address.id,store.id>
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  Have
-  {'MergeNode<store_sales.item.id,store_sales.net_profit,store_sales.store.date.q
-  uarter...3 more>': None} and need store_sales.store.date.year = 1998 and
-  store_sales.store.date.quarter = 2 and local.param_match@Grain<store.id> and
-  local.pref_match@Grain<customer.address.id,store.id>
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 86 (char 85). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
@@ -273,22 +50,21 @@ limit 100;`
 
   Candidate bindings: : "s_closed_date_sk"
 
-  LINE 30: ...    INNER JOIN "date_dim" as "store_sales_store_date_date" on
+  LINE 34: ...    INNER JOIN "date_dim" as "store_sales_store_date_date" on
   "store_sales_store_store"."S_CLOSED_DATE" = "store_sales_st...
                                                                             ^
   [SQL:
   WITH
-  wakeful as (
+  cheerful as (
   SELECT
-      "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
-      count("customer_customers"."C_CUSTOMER_SK") as "pref_zip_count"
-  FROM
-      "customer_address" as "customer_addres
+      "store_sales_billing_customer_address_customer_address"."CA_ZIP" as
+  "store_sales_billing_customer_address_zip",
+      count("store_sales_billing_customer_customers"."C_CUSTOMER_SK") as
+  "
   …
-  XP_MATCHES($1,('(^|,)' ||
-  SUBSTRING("store_sales_store_store"."S_ZIP",1,2) || '\\d{3}($|,)')) and
-  SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in
-  (SUBSTRING("thoughtful"."_virt_filter_zip_4720087241414976",1,2))
+  tore_sales_store_store"."S_ZIP" in (select
+  quizzical."_virt_func_split_4785012549328100" from quizzical where
+  quizzical."_virt_func_split_4785012549328100" is not null)
 
   GROUP BY
       1,
@@ -296,14 +72,14 @@ limit 100;`
       "store_sales_store_sales"."SS_ITEM_SK",
       "store_sales_store_sales"."SS_TICKET_NUMBER")
   SELECT
-      "juicy"."store_sales_store_name" as "store_name",
-      sum("juicy"."store_sales_net_profit") as "total_net_profit"
+      "concerned"."store_sales_store_name" as "store_sales_store_name",
+      sum("concerned"."store_sales_net_profit") as "total_net_profit"
   FROM
-      "juicy"
+      "concerned"
   GROUP BY
       1
   ORDER BY
-      "store_name" asc
+      "concerned"."store_sales_store_name" asc
   LIMIT (100)]
 
   (Background on this error at: https://sqlalche.me/e/20/f405)
@@ -311,170 +87,174 @@ limit 100;`
 - `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
   ```text
-  (_duckdb.BinderException) Binder Error: Referenced table
-  "thoughtful" not found!
-  Candidate tables: "store_sales_date_date"
+  (_duckdb.BinderException) Binder Error: Table
+  "store_sales_store_store" does not have a column named "S_CLOSED_DATE"
 
-  LINE 32: ...TRING("store_sales_store_store"."S_ZIP",1,2) in
-  (SUBSTRING("thoughtful"."_virt_filter_zip_4720087241414976",1,2))
-                                                                         ^
-  [SQL:
-  WITH
-  wakeful as (
-  SELECT
-      "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
-      count("customer_customers"."C_CUSTOMER_SK") as "pref_zip_count"
-  FROM
-      "customer_address" as "customer_address_customer_address"
-      INNER JOIN "customer" as "
-  …
-  XP_MATCHES($1,('(^|,)' ||
-  SUBSTRING("store_sales_store_store"."S_ZIP",1,2) || '\\d{3}($|,)')) and
-  SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in
-  (SUBSTRING("thoughtful"."_virt_filter_zip_4720087241414976",1,2))
+  Candidate bindings: : "s_closed_date_sk"
 
-  GROUP BY
-      1,
-      2,
-      "store_sales_store_sales"."SS_ITEM_SK",
-      "store_sales_store_sales"."SS_TICKET_NUMBER")
-  SELECT
-      "juicy"."store_sales_store_name" as "store_name",
-      sum("juicy"."store_sales_net_profit") as "total_net_profit"
-  FROM
-      "juicy"
-  GROUP BY
-      1
-  ORDER BY
-      "store_name" asc
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (_duckdb.BinderException) Binder Error: Referenced table
-  "thoughtful" not found!
-  Candidate tables: "store_sales_date_date"
-
-  LINE 32: ...TRING("store_sales_store_store"."S_ZIP",1,2) in
-  (SUBSTRING("thoughtful"."_virt_filter_zip_4720087241414976",1,2)) and...
-                                                                         ^
-  [SQL:
-  WITH
-  wakeful as (
-  SELECT
-      "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
-      count("customer_customers"."C_CUSTOMER_SK") as "pref_zip_count"
-  FROM
-      "customer_address" as "customer_address_customer_address"
-      INNER JOIN "custome
-  …
-  TRING("store_sales_store_store"."S_ZIP",1,2) in
-  (SUBSTRING("thoughtful"."_virt_filter_zip_4720087241414976",1,2)) and
-  REGEXP_MATCHES($1,('(^|,)' || SUBSTRING("store_sales_store_store"."S_ZIP",1,2)
-  || '\\d{3}($|,)'))
-
-  GROUP BY
-      1,
-      2,
-      "store_sales_store_sales"."SS_ITEM_SK",
-      "store_sales_store_sales"."SS_TICKET_NUMBER")
-  SELECT
-      "juicy"."store_sales_store_name" as "store_name",
-      sum("juicy"."store_sales_net_profit") as "total_net_profit"
-  FROM
-      "juicy"
-  GROUP BY
-      1
-  ORDER BY
-      "store_name" asc
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query08.preql --param zips=24128`
-
-  ```text
-  (_duckdb.BinderException) Binder Error: Referenced table
-  "cooperative" not found!
-  Candidate tables: "store_store"
-
-  LINE 29:     SUBSTRING("store_store"."S_ZIP",1,2) in
-  (SUBSTRING("cooperative"."_virt_filter_zip_4720087241414976",1,2))
-                                                                  ^
+  LINE 34: ...    INNER JOIN "date_dim" as "store_sales_store_date_date" on
+  "store_sales_store_store"."S_CLOSED_DATE" = "store_sales_st...
+                                                                            ^
   [SQL:
   WITH
   cheerful as (
   SELECT
-      "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
-      count("customer_customers"."C_CUSTOMER_SK") as "pref_zip_count"
-  FROM
-      "customer_address" as "customer_address_customer_address"
-      INNER JOIN "customer" as "customer_customers" o
+      "store_sales_billing_customer_address_customer_address"."CA_ZIP" as
+  "store_sales_billing_customer_address_zip",
+      count("store_sales_billing_customer_customers"."C_CUSTOMER_SK") as
+  "
   …
-  ilter_zip_4720087241414976"
-  FROM
-      "cheerful"
-      INNER JOIN "customer_address" as "customer_address_customer_address" on
-  "cheerful"."customer_address_zip" =
-  "customer_address_customer_address"."CA_ZIP"
-  GROUP BY
-      1)
-  SELECT
-      SUBSTRING("store_store"."S_ZIP",1,2) as "prefix",
-      count("store_store"."S_STORE_SK") as "cnt"
-  FROM
-      "store" as "store_store"
-  WHERE
-      SUBSTRING("store_store"."S_ZIP",1,2) in
-  (SUBSTRING("cooperative"."_virt_filter_zip_4720087241414976",1,2))
+  tore_sales_store_store"."S_ZIP" in (select
+  quizzical."_virt_func_split_4785012549328100" from quizzical where
+  quizzical."_virt_func_split_4785012549328100" is not null)
 
+  GROUP BY
+      1,
+      2,
+      "store_sales_store_sales"."SS_ITEM_SK",
+      "store_sales_store_sales"."SS_TICKET_NUMBER")
+  SELECT
+      "concerned"."store_sales_store_name" as "store_sales_store_name",
+      sum("concerned"."store_sales_net_profit") as "total_net_profit"
+  FROM
+      "concerned"
   GROUP BY
       1
   ORDER BY
-      "prefix" asc
+      "concerned"."store_sales_store_name" asc
   LIMIT (100)]
+
   (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-- `trilogy run query08.preql --param zips=24128`
+- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
   ```text
-  Have
-  {'MergeNode<store_sales.date.quarter,store_sales.date.year,store_sales.item.id.
-  ..3 more>': None} and need store_sales.date.year = 1998 and
-  store_sales.date.quarter = 2 and
-  regexp_contains(:local_zips,concat((^|,),local.store_prefix@Grain<store.id>,\\d
-  {3}($|,))) and
-  BuildSubselectComparison(left=local.store_prefix@Grain<store.id>,
-  right=(substring(local._virt_filter_zip_4720087241414976@Grain<customer.address
-  .id>,1,2)), operator=<ComparisonOperator.IN: 'in'>)
+  (_duckdb.BinderException) Binder Error: Cannot compare values
+  of type VARCHAR and VARCHAR[] in IN/ANY/ALL clause - an explicit cast is
+  required
+
+  LINE 36: ...prefix" is not null) and "store_sales_store_store"."S_ZIP" in
+  (select quizzical."_virt_func_split_4785012549328100...
+                                                                         ^
+  [SQL:
+  WITH
+  cheerful as (
+  SELECT
+      "store_sales_billing_customer_address_customer_address"."CA_ZIP" as
+  "store_sales_billing_customer_address_zip",
+      count("store_sales_billing_customer_customers"."C_CUSTOMER_SK") as
+  "preferred_by_zip"
+  FROM
+
+  …
+  tore_sales_store_store"."S_ZIP" in (select
+  quizzical."_virt_func_split_4785012549328100" from quizzical where
+  quizzical."_virt_func_split_4785012549328100" is not null)
+
+  GROUP BY
+      1,
+      2,
+      "store_sales_store_sales"."SS_ITEM_SK",
+      "store_sales_store_sales"."SS_TICKET_NUMBER")
+  SELECT
+      "concerned"."store_sales_store_name" as "store_sales_store_name",
+      sum("concerned"."store_sales_net_profit") as "total_net_profit"
+  FROM
+      "concerned"
+  GROUP BY
+      1
+  ORDER BY
+      "concerned"."store_sales_store_name" asc
+  LIMIT (100)]
+
+  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-- `trilogy run query08.preql --param zips=24128`
+- `trilogy run query08.preql`
 
   ```text
-  Have
-  {'MergeNode<store_sales.date.quarter,store_sales.date.year,store_sales.item.id.
-  ..3 more>': None} and need store_sales.date.year = 1998 and
-  store_sales.date.quarter = 2 and local.param_zip_check@Grain<store.id> and
-  local.pref_zip_check@Grain<customer.address.id,store.id>
+  This script requires parameter "zips" to be set in
+  environment.
   ```
-- `trilogy run query08.preql --param zips=24128`
+- `trilogy run --import raw.physical_sales:store_sales --param zips=24128,76232,65084 select store_sales.store.name, store_sales.store.zip, store_sales.date.yea…e.year = 1998 and store_sales.date.quarter = 2 and store_sales.store.zip in split('24128,76232,65084', ',') order by store_sales.store.name limit 10;`
 
   ```text
-  Have
-  {'MergeNode<store_sales.date.quarter,store_sales.date.year,store_sales.item.id.
-  ..3 more>': None} and need store_sales.date.year = 1998 and
-  store_sales.date.quarter = 2 and local.param_zip_check@Grain<store.id> and
-  local.pref_zip_check@Grain<customer.address.id,store.id>
+  (_duckdb.BinderException) Binder Error: Cannot compare values
+  of type VARCHAR and VARCHAR[] in IN/ANY/ALL clause - an explicit cast is
+  required
+
+  LINE 18: ...te_date"."D_QOY" = 2 and "store_sales_store_store"."S_ZIP" in
+  (select quizzical."_virt_func_split_3106282253538863...
+                                                                         ^
+  [SQL:
+  WITH
+  quizzical as (
+  SELECT
+      STRING_SPLIT( '24128,76232,65084' , ',' ) as
+  "_virt_func_split_3106282253538863"
+  )
+  SELECT
+      "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
+      "store_sales_store_store"."S_ZIP" as "sto
+  …
+  es_date_date"."D_DATE_SK"
+      INNER JOIN "store" as "store_sales_store_store" on
+  "store_sales_store_sales"."SS_STORE_SK" =
+  "store_sales_store_store"."S_STORE_SK"
+  WHERE
+      "store_sales_date_date"."D_YEAR" = 1998 and "store_sales_date_date"."D_QOY"
+  = 2 and "store_sales_store_store"."S_ZIP" in (select
+  quizzical."_virt_func_split_3106282253538863" from quizzical where
+  quizzical."_virt_func_split_3106282253538863" is not null)
+
+  GROUP BY
+      1,
+      2,
+      3,
+      4
+  ORDER BY
+      "store_sales_store_store"."S_STORE_NAME" asc
+  LIMIT (10)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-- `trilogy run -`
+- `trilogy run --import raw.physical_sales:store_sales --param zips=24128,76232,65084 select store_sales.store.name, store_sales.store.zip, store_sales.date.yea… = 1998 and store_sales.date.quarter = 2 and substring(store_sales.store.zip, 1, 2) in split('24128', ',' ) order by store_sales.store.name limit 10;`
 
   ```text
-  Cannot reference an aggregate derived in the select
-  (local.qty_per_ticket) in the same statement where clause; move to the HAVING
-  clause instead; Line: 2
+  (_duckdb.BinderException) Binder Error: Cannot compare values
+  of type VARCHAR and VARCHAR[] in IN/ANY/ALL clause - an explicit cast is
+  required
+
+  LINE 18: ..." = 2 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in
+  (select quizzical."_virt_func_split_7516790893574274...
+                                                                         ^
+  [SQL:
+  WITH
+  quizzical as (
+  SELECT
+      STRING_SPLIT( '24128' , ',' ) as "_virt_func_split_7516790893574274"
+  )
+  SELECT
+      "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
+      "store_sales_store_store"."S_ZIP" as "store_sales_stor
+  …
+  D_DATE_SK"
+      INNER JOIN "store" as "store_sales_store_store" on
+  "store_sales_store_sales"."SS_STORE_SK" =
+  "store_sales_store_store"."S_STORE_SK"
+  WHERE
+      "store_sales_date_date"."D_YEAR" = 1998 and "store_sales_date_date"."D_QOY"
+  = 2 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select
+  quizzical."_virt_func_split_7516790893574274" from quizzical where
+  quizzical."_virt_func_split_7516790893574274" is not null)
+
+  GROUP BY
+      1,
+      2,
+      3,
+      4
+  ORDER BY
+      "store_sales_store_store"."S_STORE_NAME" asc
+  LIMIT (10)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
 - `trilogy `
 
@@ -484,492 +264,17 @@ limit 100;`
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 100 (char 99). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 216 (char 215). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
   ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 80 (char 79). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy run query10.preql`
-
-  ```text
-  Have
-  {'MergeNode<customer.address.county,customer.demographics.college_dependent_cou
-  nt,customer.demographics.credit_rating...7 more>': None} and need
-  BuildSubselectComparison(left=customer.address.county@Grain<customer.address.id
-  >, right=('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County',
-  'La Porte County'), operator=<ComparisonOperator.IN: 'in'>) and
-  local._virt_agg_count_89820483538232 >= 1 and
-  (local._virt_agg_count_6124933137961963 >= 1 or
-  local._virt_agg_count_8306150851820695 >= 1)
-  ```
-- `trilogy run query10.preql`
-
-  ```text
-  Have
-  {'MergeNode<customer.address.county,customer.demographics.college_dependent_cou
-  nt,customer.demographics.credit_rating...7 more>': None} and need
-  BuildSubselectComparison(left=customer.address.county@Grain<customer.address.id
-  >, right=('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County',
-  'La Porte County'), operator=<ComparisonOperator.IN: 'in'>) and
-  local._virt_agg_count_89820483538232 >= 1 and
-  (local._virt_agg_count_6124933137961963 >= 1 or
-  local._virt_agg_count_8306150851820695 >= 1)
-  ```
-- `trilogy run query10.preql`
-
-  ```text
-  Have
-  {'MergeNode<customer.address.county,customer.demographics.college_dependent_cou
-  nt,customer.demographics.credit_rating...7 more>': None} and need
-  BuildSubselectComparison(left=customer.address.county@Grain<customer.address.id
-  >, right=('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County',
-  'La Porte County'), operator=<ComparisonOperator.IN: 'in'>) and
-  local._virt_agg_count_89820483538232 >= 1 and
-  (local._virt_agg_count_6124933137961963 >= 1 or
-  local._virt_agg_count_8306150851820695 >= 1)
-  ```
-- `trilogy run query10.preql`
-
-  ```text
-  Have
-  {'MergeNode<customer.address.county,customer.demographics.college_dependent_cou
-  nt,customer.demographics.credit_rating...7 more>': None} and need
-  BuildSubselectComparison(left=customer.address.county@Grain<customer.address.id
-  >, right=('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County',
-  'La Porte County'), operator=<ComparisonOperator.IN: 'in'>) and
-  local._virt_agg_count_2903771304087651 >= 1 and
-  (local._virt_agg_count_6365333489879973 >= 1 or
-  local._virt_agg_count_4211921610073389 >= 1)
-  ```
-- `trilogy run query10.preql`
-
-  ```text
-  Have
-  {'MergeNode<customer.address.county,customer.demographics.college_dependent_cou
-  nt,customer.demographics.credit_rating...7 more>': None} and need
-  BuildSubselectComparison(left=customer.address.county@Grain<customer.address.id
-  >, right=('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County',
-  'La Porte County'), operator=<ComparisonOperator.IN: 'in'>) and
-  local._virt_agg_count_2903771304087651 >= 1 and
-  (local._virt_agg_count_6365333489879973 >= 1 or
-  local._virt_agg_count_4211921610073389 >= 1)
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 251 (char 250). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 96 (char 95). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
   ```text
   Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 81 (char 80). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  HAVING references 'local.overall_avg_sale', which is not in
-  the SELECT projection (line 7). Fix one of: (a) add it to SELECT — prefix with
-  `--` to keep it out of the output rows, e.g. `select ...,
-  --local.overall_avg_sale`; (b) move the filter to WHERE — for an aggregate
-  condition on a non-output grain, write the aggregate inline as `agg(x) by
-  grain` directly in WHERE.
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  HAVING references 'local.overall_avg_sale', which is not in
-  the SELECT projection (line 8). Fix one of: (a) add it to SELECT — prefix with
-  `--` to keep it out of the output rows, e.g. `select ...,
-  --local.overall_avg_sale`; (b) move the filter to WHERE — for an aggregate
-  condition on a non-output grain, write the aggregate inline as `agg(x) by
-  grain` directly in WHERE.
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  (_duckdb.ParserException) Parser Error: syntax error at or
-  near "source"
-
-  LINE 106: ...sales_quantity" * CASE WHEN INVALID_REFERENCE_BUG_<Missing source
-  reference to all_sales.date.year> BETWEEN 1999 AND...
-                                                                          ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id",
-      "all_sales_catalog_sales_unified"."CS_ITEM_SK" as "all_sales_item_id",
-       'CATALOG'  as "all_sales_sales_channel",
-      "all_sales_catalog_sales_unified"."CS_LIST_PRICE" as
-  "all_sales_list_price",
-  …
-  "g_class",
-      grouping("vacuous"."all_sales_item_category_id") as "g_category"
-  FROM
-      "vacuous"
-  GROUP BY
-      ROLLUP (1, 2, 3, 4)
-  HAVING
-      "total_sales" > avg("vacuous"."all_sales_quantity" * CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN INVALID_REFERENCE_BUG_<Missing source reference to
-  all_sales.list_price> ELSE NULL END)
-
-  ORDER BY
-      "channel" asc nulls first,
-      "brand" asc nulls first,
-      "class" asc nulls first,
-      "category" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  HAVING references 'local.over_all_avg', which is not in the
-  SELECT projection (line 7). Fix one of: (a) add it to SELECT — prefix with `--`
-  to keep it out of the output rows, e.g. `select ..., --local.over_all_avg`; (b)
-  move the filter to WHERE — for an aggregate condition on a non-output grain,
-  write the aggregate inline as `agg(x) by grain` directly in WHERE.
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  (_duckdb.ParserException) Parser Error: syntax error at or
-  near "source"
-
-  LINE 115: ...sales_quantity" * CASE WHEN INVALID_REFERENCE_BUG_<Missing source
-  reference to all_sales.date.year> BETWEEN 1999 AND...
-                                                                          ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id",
-      "all_sales_catalog_sales_unified"."CS_ITEM_SK" as "all_sales_item_id",
-       'CATALOG'  as "all_sales_sales_channel",
-      "all_sales_catalog_sales_unified"."CS_LIST_PRICE" as
-  "all_sales_list_price",
-  …
-  sum("juicy"."all_sales_quantity" * CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN INVALID_REFERENCE_BUG_<Missing source reference to
-  all_sales.list_price> ELSE NULL END) / count(CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN "juicy"."all_sales_item_id" ELSE NULL END)
-
-  ORDER BY
-      "channel" asc nulls first,
-      "brand" asc nulls first,
-      "class" asc nulls first,
-      "category" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  (_duckdb.ParserException) Parser Error: syntax error at or
-  near "source"
-
-  LINE 115: ...sales_quantity" * CASE WHEN INVALID_REFERENCE_BUG_<Missing source
-  reference to all_sales.date.year> BETWEEN 1999 AND...
-                                                                          ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id",
-      "all_sales_catalog_sales_unified"."CS_ITEM_SK" as "all_sales_item_id",
-       'CATALOG'  as "all_sales_sales_channel",
-      "all_sales_catalog_sales_unified"."CS_LIST_PRICE" as
-  "all_sales_list_price",
-  …
-  "."all_sales_quantity" * CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN INVALID_REFERENCE_BUG_<Missing source reference to
-  all_sales.list_price> ELSE NULL END) / nullif(count(CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN "juicy"."all_sales_item_id" ELSE NULL END),0)
-
-  ORDER BY
-      "channel" asc nulls first,
-      "brand" asc nulls first,
-      "class" asc nulls first,
-      "category" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  (_duckdb.ParserException) Parser Error: syntax error at or
-  near "source"
-
-  LINE 115: ...sales_quantity" * CASE WHEN INVALID_REFERENCE_BUG_<Missing source
-  reference to all_sales.date.year> BETWEEN 1999 AND...
-                                                                          ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id",
-      "all_sales_catalog_sales_unified"."CS_ITEM_SK" as "all_sales_item_id",
-       'CATALOG'  as "all_sales_sales_channel",
-      "all_sales_catalog_sales_unified"."CS_LIST_PRICE" as
-  "all_sales_list_price",
-  …
-  um("juicy"."all_sales_quantity" *
-  CASE WHEN INVALID_REFERENCE_BUG_<Missing source reference to
-  all_sales.date.year> BETWEEN 1999 AND 2001 THEN INVALID_REFERENCE_BUG_<Missing
-  source reference to all_sales.list_price> ELSE NULL END) / count(CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN "juicy"."all_sales_item_id" ELSE NULL END)
-
-  ORDER BY
-      "channel" asc nulls first,
-      "brand" asc nulls first,
-      "class" asc nulls first,
-      "category" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  (_duckdb.ParserException) Parser Error: syntax error at or
-  near "source"
-
-  LINE 115: ...sales_quantity" * CASE WHEN INVALID_REFERENCE_BUG_<Missing source
-  reference to all_sales.date.year> BETWEEN 1999 AND...
-                                                                          ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id",
-      "all_sales_catalog_sales_unified"."CS_ITEM_SK" as "all_sales_item_id",
-       'CATALOG'  as "all_sales_sales_channel",
-      "all_sales_catalog_sales_unified"."CS_LIST_PRICE" as
-  "all_sales_list_price",
-  …
-  sum("juicy"."all_sales_quantity" * CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN INVALID_REFERENCE_BUG_<Missing source reference to
-  all_sales.list_price> ELSE NULL END) / count(CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN "juicy"."all_sales_item_id" ELSE NULL END)
-
-  ORDER BY
-      "channel" asc nulls first,
-      "brand" asc nulls first,
-      "class" asc nulls first,
-      "category" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  HAVING references 'local.overall_sum_sales', which is not in
-  the SELECT projection (line 8). Fix one of: (a) add it to SELECT — prefix with
-  `--` to keep it out of the output rows, e.g. `select ...,
-  --local.overall_sum_sales`; (b) move the filter to WHERE — for an aggregate
-  condition on a non-output grain, write the aggregate inline as `agg(x) by
-  grain` directly in WHERE.
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  (_duckdb.ParserException) Parser Error: syntax error at or
-  near "source"
-
-  LINE 115: ...sales_quantity" * CASE WHEN INVALID_REFERENCE_BUG_<Missing source
-  reference to all_sales.date.year> BETWEEN 1999 AND...
-                                                                          ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id",
-      "all_sales_catalog_sales_unified"."CS_ITEM_SK" as "all_sales_item_id",
-       'CATALOG'  as "all_sales_sales_channel",
-      "all_sales_catalog_sales_unified"."CS_LIST_PRICE" as
-  "all_sales_list_price",
-  …
-  sum("juicy"."all_sales_quantity" * CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN INVALID_REFERENCE_BUG_<Missing source reference to
-  all_sales.list_price> ELSE NULL END) / count(CASE WHEN
-  INVALID_REFERENCE_BUG_<Missing source reference to all_sales.date.year> BETWEEN
-  1999 AND 2001 THEN "juicy"."all_sales_item_id" ELSE NULL END)
-
-  ORDER BY
-      "channel" asc nulls first,
-      "brand" asc nulls first,
-      "class" asc nulls first,
-      "category" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  (_duckdb.ParserException) Parser Error: syntax error at or
-  near "<"
-
-  LINE 187: ...l_sales" > "scrawny"."overall_sum" / INVALID_REFERENCE_BUG_<Cannot
-  render aggregate local._virt_agg_count_639529659470...
-                                                                          ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id",
-      "all_sales_catalog_sales_unified"."CS_ITEM_SK" as "all_sales_item_id",
-      "all_sales_catalog_sales_unified"."CS_ORDER_NUMBER" as
-  "all_sales_order_id",
-       'CATALOG'  as "all_sales_sales_channel",
-
-  …
-  wny"."overall_sum" /
-  INVALID_REFERENCE_BUG_<Cannot render aggregate
-  local._virt_agg_count_6395296594708827 in CTE friendly: source_map miss and CTE
-  grain Grain<local.brand,local.category,local.channel,local.class> != aggregate
-  by-grain <['all_sales.item.brand_id', 'all_sales.item.category_id',
-  'all_sales.item.class_id', 'all_sales.sales_channel']>>
-
-  ORDER BY
-      "scrawny"."channel" asc nulls first,
-      "scrawny"."brand" asc nulls first,
-      "scrawny"."class" asc nulls first,
-      "scrawny"."category" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 86 (char 85). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 95 (char 94). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 99 (char 98). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 95 (char 94). Re-issue the call with valid JSON arguments.
-
-  [guidance] You have issued this identical call 4 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
   ```
 - `trilogy `
 
@@ -979,12 +284,49 @@ limit 100;`
 - `trilogy `
 
   ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
   Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 96 (char 95). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  trilogy error: 'args' must be a list of strings.
+
+  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  ```
+- `trilogy `
+
+  ```text
+  trilogy error: 'args' must be a list of strings.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
   ```
 
 ### `syntax-parse`
@@ -1523,7 +865,7 @@ limit 100;`
 limit 100;`
 
   ```text
-  refused to write 'query14.preql': not syntactically valid Trilogy.
+  refused to write 'query06.preql': not syntactically valid Trilogy.
 
   Parse error:
   Syntax [203]: Missing assignment operator '<-' and expression in derivation.
@@ -1681,62 +1023,110 @@ limit 100;`
 - `trilogy run query20.preql`
 
   ```text
+  (UndefinedConceptException(...), 'Undefined concept:
+  first_name.')
+  ```
+- `trilogy run query11.preql`
+
+  ```text
+  (UndefinedConceptException(...), 'Undefined concept:
+  first_name.')
+  ```
+- `trilogy run query11.preql`
+
+  ```text
+  (UndefinedConceptException(...), 'Undefined concept:
+  first_name.')
+  ```
+- `trilogy run query19.preql`
+
+  ```text
+  (UndefinedConceptException(...), "line: 3: Undefined concept:
+  item.brand_id. Suggestions: ['store_sales.item.brand_id']")
+  ```
+- `trilogy run query19.preql`
+
+  ```text
   (UndefinedConceptException(...), "Undefined concept:
-  web_sales.ext_list_price. Suggestions: ['web_sales.list_price',
-  'store_sales.ext_list_price', 'web_sales.ext_sales_price']")
-  ```
-- `trilogy run --import raw/all_sales:all_sales select all_sales.catalog_sales.bill_customer.address.zip, all_sales.catalog_sales.bill_customer.address.state, all_sales.catalog_sales.sold_date.year, all_sales.catalog_sales.sold_date.quarter limit 5;`
-
-  ```text
-  (UndefinedConceptException(...), "line: 2: Undefined concept:
-  all_sales.catalog_sales.bill_customer.address.zip. Suggestions:
-  ['all_sales.billing_customer.address.zip',
-  'all_sales.ship_customer.address.zip',
-  'all_sales.billing_customer.address.id']")
-  ```
-- `trilogy run --import raw/physical_sales select physical_sales.date.quarter_name, count(physical_sales.ticket_number) as cnt limit 5;`
-
-  ```text
-  (UndefinedConceptException(...), "line: 2: Undefined concept:
-  physical_sales.date.quarter_name. Suggestions: ['store.date.quarter_name',
-  'date.quarter_name', 'return_store.date.quarter_name']")
-  ```
-- `trilogy run --import raw/physical_sales select physical_sales.store.date.quarter_name, count(physical_sales.ticket_number) as cnt limit 5;`
-
-  ```text
-  (UndefinedConceptException(...), "line: 2: Undefined concept:
-  physical_sales.store.date.quarter_name. Suggestions:
-  ['store.date.quarter_name', 'return_store.date.quarter_name',
-  'store.date.quarter']")
-  ```
-- `trilogy run --import raw/physical_sales select physical_sales.store.state, count(physical_sales.ticket_number) as cnt limit 5;`
-
-  ```text
-  (UndefinedConceptException(...), 'line: 2: Undefined concept:
-  physical_sales.store.state.')
+  date.year. Suggestions: ['store_sales.date.year']")
   ```
 
 ### `cli-misuse`
 
-- `trilogy trilogy run query04.preql`
+- `trilogy explore raw/sales_channel.preql`
 
   ```text
-  No such command 'trilogy'.
+  Invalid value for 'PATH': File 'raw/sales_channel.preql' does not exist.
   ```
-- `trilogy explore raw/physical_sales.preql --regex promotion\.channel_email promotion\.channel_event`
+- `trilogy explore raw/raw/physical_sales.preql --regex return_amount|return_net_loss|net_profit`
 
   ```text
-  Got unexpected extra argument (promotion\.channel_event)
+  Invalid value for 'PATH': File 'raw/raw/physical_sales.preql' does not exist.
   ```
-- `trilogy read_file raw/physical_sales.preql`
-
-  ```text
-  No such command 'read_file'.
-  ```
-- `trilogy explore raw/store_sales.preql --regex store --regex address --regex zip --regex z i p --regex zip_code`
+- `trilogy explore raw/store_sales.preql`
 
   ```text
   Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
+  ```
+- `trilogy explore raw/customer_address.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
+  ```
+- `trilogy run -i raw.physical_sales:store_sales select store_sales.ticket_number, sum(store_sales.quantity) as ticket_qty, avg(store_sales.ext_discount_amount) as avg_disc, avg(store_sales.net_paid) as avg_paid group by store_sales.ticket_number limit 10;`
+
+  ```text
+  'raw.physical_sales:store_sales' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
+  ```
+- `trilogy explore raw/store_sales.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
+  ```
+- `trilogy explore raw/customer_address.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
+  ```
+- `trilogy explore raw/store_sales.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
+  ```
+
+### `syntax-missing-alias`
+
+- `trilogy run --import raw.sales_channel:sc select distinct sc.sales_channel;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...hannel as sc; select distinct ??? sc.sales_channel;
+  ```
+- `trilogy run --import raw.sales_channel:sc select distinct sc.sales_channel as sc;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...hannel as sc; select distinct ??? sc.sales_channel as sc;
+  ```
+- `trilogy run --import raw.all_sales:s select distinct s.sales_channel as chan;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...l_sales as s; select distinct ??? s.sales_channel as chan;
+  ```
+- `trilogy run --import raw.all_sales select distinct all_sales.sales_channel as chan;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...aw.all_sales; select distinct ??? all_sales.sales_channel as cha...
   ```
 
 ### `syntax-missing-alias`
@@ -1810,6 +1200,12 @@ limit 10;`
 
 ### `type-error`
 
+- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+
+  ```text
+  Invalid argument type ArrayType<STRING>' passed into
+  SUBSTRING function from function SPLIT in position 1. Valid: 'STRING'
+  ```
 - `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
   ```text
