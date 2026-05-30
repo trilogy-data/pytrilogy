@@ -602,9 +602,16 @@ def add_node_join_concept(
         v = environment.alias_origin_lookup.get(
             v_address, environment.concepts[v_address]
         )
-        if f"c~{v.address}" in graph.nodes:
+        pseudo_name = f"c~{v.address}"
+        if pseudo_name in graph.nodes:
+            # Another datasource already registered this pseudonym node.
+            # Still connect *this* datasource — otherwise the pseudonym
+            # link is invisible to find_all_connecting_concepts and the
+            # join falls back to a 1=1 cross product (q23 final merge:
+            # basic's local.c_first_name ↔ aggregate's sales.customer.first_name).
+            graph.add_edge(ds_node, pseudo_name)
             continue
-        if v != concept.address:
+        if v.address != concept.address:
             add_node_join_concept(
                 graph=graph,
                 concept=v,
