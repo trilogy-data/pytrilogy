@@ -16,7 +16,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 0 | 0 | — |
-| reference | 16008 | 244 | 398.69 ms |
+| reference | 15819 | 244 | 462.60 ms |
 
 ## Preql
 
@@ -199,8 +199,8 @@ cooperative as (
 SELECT
     "wakeful"."cr_sales_item_id" as "cs_ui_cs_ui_item_id"
 FROM
-    "wakeful"
-    INNER JOIN "thoughtful" on "wakeful"."cr_sales_item_id" = "thoughtful"."cr_sales_item_id"
+    "thoughtful"
+    INNER JOIN "wakeful" on "thoughtful"."cr_sales_item_id" = "wakeful"."cr_sales_item_id"
 WHERE
     "thoughtful"."cs_ui_sale" > 2 * "wakeful"."cs_ui_refund"
 ),
@@ -253,7 +253,7 @@ FROM
     LEFT OUTER JOIN "memory"."date_dim" as "ss_customer_first_shipto_date_date" on "ss_customer_customers"."C_FIRST_SHIPTO_DATE_SK" = "ss_customer_first_shipto_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
-    "ss_item_items"."I_ITEM_SK" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "ss_date_date"."D_YEAR" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_address_customer_address"."CA_ADDRESS_SK" is not null and "ss_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" != "ss_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
+    "ss_item_items"."I_ITEM_SK" in (select cooperative."cs_ui_cs_ui_item_id" from cooperative where cooperative."cs_ui_cs_ui_item_id" is not null) and "ss_date_date"."D_YEAR" = 1999 and SR_RETURN_TIME_SK IS NOT NULL and "ss_item_items"."I_COLOR" in ('purple','burlywood','indian','spring','floral','medium') and "ss_item_items"."I_CURRENT_PRICE" BETWEEN 65 AND 74 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_STORE_SK" is not null and "ss_store_sales"."SS_ADDR_SK" is not null and "ss_customer_address_customer_address"."CA_ADDRESS_SK" is not null
 
 GROUP BY
     1,
@@ -377,13 +377,13 @@ SELECT
     "scrawny"."ss_rows_99_ss_customer_address_street_number" as "_q64_results_c_sn_99",
     "scrawny"."ss_rows_99_ss_customer_address_zip" as "_q64_results_c_zip_99",
     "scrawny"."ss_rows_99_ss_date_year" as "_q64_results_syear_99",
+    "scrawny"."ss_rows_99_ss_item_id" as "item_sk",
     "scrawny"."ss_rows_99_ss_sale_address_city" as "_q64_results_b_city_99",
     "scrawny"."ss_rows_99_ss_sale_address_street_name" as "_q64_results_b_str_99",
     "scrawny"."ss_rows_99_ss_sale_address_street_number" as "_q64_results_b_sn_99",
     "scrawny"."ss_rows_99_ss_sale_address_zip" as "_q64_results_b_zip_99",
     "scrawny"."ss_rows_99_ss_store_name" as "s_name",
-    "scrawny"."ss_rows_99_ss_store_zip" as "s_zip",
-    coalesce("friendly"."ss_rows_99_ss_item_id","scrawny"."ss_rows_99_ss_item_id") as "item_sk"
+    "scrawny"."ss_rows_99_ss_store_zip" as "s_zip"
 FROM
     "scrawny"
     INNER JOIN "friendly" on "scrawny"."ss_rows_99_ss_item_id" is not distinct from "friendly"."ss_rows_99_ss_item_id")
@@ -427,28 +427,35 @@ ORDER BY
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 218, in generate_v4_sql
     info, build_env, _, build_stmt = run_tpcds_query(query_id)
                                      ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 870, in run_tpcds_query
     info = search_concepts(
         mandatory_list=list(build_stmt.output_components),
     ...<4 lines>...
         conditions=[conditions] if conditions else [],
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 136, in search_concepts
     result = _search_concepts(
         mandatory_list,
     ...<5 lines>...
         conditions=conditions,
     )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 57, in _search_concepts
-    group_graph = build_group_graph(concept_graph, conditions, mandatory_list)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 627, in build_group_graph
-    condition_group_ids = _inject_conditions(group_graph, buckets, conditions)
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 341, in _inject_conditions
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 98, in _search_concepts
+    group_graph, group_attrs = build_group_graph(
+                               ~~~~~~~~~~~~~~~~~^
+        concept_graph, conditions, mandatory_list
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 784, in build_group_graph
+    condition_group_ids = _inject_conditions(
+        group_graph, attrs, buckets, conditions, mandatory_list
+    )
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\group_graph.py", line 441, in _inject_conditions
     raise ValueError(
     ...<3 lines>...
     )
-ValueError: Atom q64_results.cnt_00 <= q64_results.cnt_99 would be injected at grp:rowset:d0:q64_results.item_sk_99, which is downstream of d0 barrier(s) ['grp:aggregate:d0:ss_rows_00.ss.date.year|ss_rows_00.ss.item.id|ss_rows_00.ss.store.name|ss_rows_00.ss.store.zip', 'grp:aggregate:d0:ss_rows_99.ss.customer.address.city|ss_rows_99.ss.customer.address.street_name|ss_rows_99.ss.customer.address.street_number|ss_rows_99.ss.customer.address.zip|ss_rows_99.ss.customer.first_sales_date.year|ss_rows_99.ss.customer.first_shipto_date.year|ss_rows_99.ss.date.year|ss_rows_99.ss.item.id|ss_rows_99.ss.sale_address.city|ss_rows_99.ss.sale_address.street_name|ss_rows_99.ss.sale_address.street_number|ss_rows_99.ss.sale_address.zip|ss_rows_99.ss.store.name|ss_rows_99.ss.store.zip', 'grp:rowset:d0:ss_rows_00.ss.coupon_amt|ss_rows_00.ss.customer.demographics.marital_status|ss_rows_00.ss.customer_demographic.marital_status|ss_rows_00.ss.date.year|ss_rows_00.ss.item.id|ss_rows_00.ss.list_price|ss_rows_00.ss.store.name|ss_rows_00.ss.store.zip|ss_rows_00.ss.ticket_number|ss_rows_00.ss.wholesale_cost', 'grp:rowset:d0:ss_rows_00.ss.item.id', 'grp:rowset:d0:ss_rows_00.ss.item.id|ss_rows_00.ss.ticket_number', 'grp:rowset:d0:ss_rows_00.ss.ticket_number', 'grp:rowset:d0:ss_rows_99.ss.coupon_amt|ss_rows_99.ss.customer.address.city|ss_rows_99.ss.customer.address.street_name|ss_rows_99.ss.customer.address.street_number|ss_rows_99.ss.customer.address.zip|ss_rows_99.ss.customer.demographics.marital_status|ss_rows_99.ss.customer.first_sales_date.year|ss_rows_99.ss.customer.first_shipto_date.year|ss_rows_99.ss.customer_demographic.marital_status|ss_rows_99.ss.date.year|ss_rows_99.ss.item.id|ss_rows_99.ss.item.product_name|ss_rows_99.ss.list_price|ss_rows_99.ss.sale_address.city|ss_rows_99.ss.sale_address.street_name|ss_rows_99.ss.sale_address.street_number|ss_rows_99.ss.sale_address.zip|ss_rows_99.ss.store.name|ss_rows_99.ss.store.zip|ss_rows_99.ss.ticket_number|ss_rows_99.ss.wholesale_cost', 'grp:rowset:d0:ss_rows_99.ss.item.id', 'grp:rowset:d0:ss_rows_99.ss.item.id|ss_rows_99.ss.ticket_number', 'grp:rowset:d0:ss_rows_99.ss.ticket_number']; conditions cannot be pushed past row-shape changes.
+ValueError: Atom q64_results.cnt_00 <= q64_results.cnt_99 would be injected at grp:rowset:d0:q64_results.item_sk_99, which is downstream of d0 barrier(s) ['grp:[q64_results]rowset:d0:ss_rows_99.ss.item.id']; conditions cannot be pushed past row-shape changes.
 ```

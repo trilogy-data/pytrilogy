@@ -1,30 +1,26 @@
 # Query 54
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (1, 10715)
-only in ref (showing up to 5 of 1):
-  1x  (1, 10715, 535750)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3828 | 87 | 68.87 ms |
-| reference | 4183 | 91 | 63.95 ms |
-| v4 / ref | 0.92x | 0.96x | 1.08x |
+| v4 | 3966 | 89 | 33.70 ms |
+| reference | 4183 | 91 | 36.29 ms |
+| v4 / ref | 0.95x | 0.98x | 0.93x |
 
 ## Preql
 
@@ -156,8 +152,8 @@ SELECT
     "concerned"."cust_ss_ss_cust_id" as "my_revenue_rev_cust_id",
     "concerned"."cust_ss_ss_revenue" * "sparkling"."stores_cs_scs_count" as "my_revenue_revenue"
 FROM
-    "concerned"
-    INNER JOIN "sparkling" on "concerned"."cust_ss_ss_cust_county" = "sparkling"."stores_cs_scs_county" AND "concerned"."cust_ss_ss_cust_state" = "sparkling"."stores_cs_scs_state"
+    "sparkling"
+    INNER JOIN "concerned" on "sparkling"."stores_cs_scs_county" = "concerned"."cust_ss_ss_cust_county" AND "sparkling"."stores_cs_scs_state" = "concerned"."cust_ss_ss_cust_state"
 GROUP BY
     1,
     2),
@@ -168,19 +164,21 @@ FROM
     "sweltering"),
 late as (
 SELECT
+    cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) * 50 as "segment_base",
     cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) as "segment"
 FROM
     "sweltering")
 SELECT
     "late"."segment" as "segment",
-    coalesce("macho"."num_customers",0) as "num_customers"
+    coalesce("macho"."num_customers",0) as "num_customers",
+    "late"."segment_base" as "segment_base"
 FROM
     "macho"
     FULL JOIN "late" on 1=1
 ORDER BY 
     "late"."segment" asc nulls first,
     coalesce("macho"."num_customers",0) asc nulls first,
-    "late"."segment" * 50 asc nulls first
+    "late"."segment_base" asc nulls first
 LIMIT (100)
 ```
 
@@ -247,8 +245,8 @@ late as (
 SELECT
     "concerned"."cust_ss_ss_cust_id" as "my_revenue_rev_cust_id"
 FROM
-    "concerned"
-    INNER JOIN "sparkling" on "concerned"."cust_ss_ss_cust_county" = "sparkling"."stores_cs_scs_county" AND "concerned"."cust_ss_ss_cust_state" = "sparkling"."stores_cs_scs_state"
+    "sparkling"
+    INNER JOIN "concerned" on "sparkling"."stores_cs_scs_county" = "concerned"."cust_ss_ss_cust_county" AND "sparkling"."stores_cs_scs_state" = "concerned"."cust_ss_ss_cust_state"
 GROUP BY
     1),
 sweltering as (
@@ -256,8 +254,8 @@ SELECT
     cast(round(( "concerned"."cust_ss_ss_revenue" * "sparkling"."stores_cs_scs_count" ) / 50,0) as int) * 50 as "segment_base",
     cast(round(( "concerned"."cust_ss_ss_revenue" * "sparkling"."stores_cs_scs_count" ) / 50,0) as int) as "segment"
 FROM
-    "concerned"
-    INNER JOIN "sparkling" on "concerned"."cust_ss_ss_cust_county" = "sparkling"."stores_cs_scs_county" AND "concerned"."cust_ss_ss_cust_state" = "sparkling"."stores_cs_scs_state"
+    "sparkling"
+    INNER JOIN "concerned" on "sparkling"."stores_cs_scs_county" = "concerned"."cust_ss_ss_cust_county" AND "sparkling"."stores_cs_scs_state" = "concerned"."cust_ss_ss_cust_state"
 GROUP BY
     1,
     2),

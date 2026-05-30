@@ -1,22 +1,26 @@
 # Query 75
 
-**Status:** `gen_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 8613 | 184 | 389.82 ms |
+| v4 | 9716 | 211 | 117.47 ms |
+| reference | 8613 | 184 | 113.81 ms |
+| v4 / ref | 1.13x | 1.15x | 1.03x |
 
 ## Preql
 
@@ -94,7 +98,219 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+thoughtful as (
+SELECT
+    "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_id",
+    "sales_catalog_returns_unified"."CR_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_returns_unified"."CR_RETURN_AMOUNT" as "sales_return_amount",
+    "sales_catalog_returns_unified"."CR_RETURN_QUANTITY" as "sales_return_quantity",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_returns" as "sales_catalog_returns_unified"
+UNION ALL
+SELECT
+    "sales_store_returns_unified"."SR_ITEM_SK" as "sales_item_id",
+    "sales_store_returns_unified"."SR_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_returns_unified"."SR_RETURN_AMT" as "sales_return_amount",
+    "sales_store_returns_unified"."SR_RETURN_QUANTITY" as "sales_return_quantity",
+     'STORE'  as "sales_sales_channel"
+FROM
+    "memory"."store_returns" as "sales_store_returns_unified"
+UNION ALL
+SELECT
+    "sales_web_returns_unified"."WR_ITEM_SK" as "sales_item_id",
+    "sales_web_returns_unified"."WR_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_returns_unified"."WR_RETURN_AMT" as "sales_return_amount",
+    "sales_web_returns_unified"."WR_RETURN_QUANTITY" as "sales_return_quantity",
+     'WEB'  as "sales_sales_channel"
+FROM
+    "memory"."web_returns" as "sales_web_returns_unified"),
+uneven as (
+SELECT
+    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
+     'CATALOG'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002) and "sales_item_items"."I_CATEGORY" = 'Books'
+
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
+     'STORE'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002) and "sales_item_items"."I_CATEGORY" = 'Books'
+
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
+     'WEB'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002) and "sales_item_items"."I_CATEGORY" = 'Books'
+),
+quizzical as (
+SELECT
+    2001 as "prev_year",
+    2002 as "year_"
+),
+young as (
+SELECT
+    "sales_item_items"."I_BRAND_ID" as "deduped_sales_item_brand_id",
+    "sales_item_items"."I_CATEGORY_ID" as "deduped_sales_item_category_id",
+    "sales_item_items"."I_CLASS_ID" as "deduped_sales_item_class_id",
+    "sales_item_items"."I_MANUFACT_ID" as "deduped_sales_item_manufacturer_id",
+    "uneven"."sales_ext_sales_price" - coalesce("thoughtful"."sales_return_amount",0.0) as "deduped_amt_per_row",
+    "uneven"."sales_quantity" - coalesce("thoughtful"."sales_return_quantity",0) as "deduped_cnt_per_row"
+FROM
+    "uneven"
+    LEFT OUTER JOIN "thoughtful" on "uneven"."sales_item_id" = "thoughtful"."sales_item_id" AND "uneven"."sales_order_id" = "thoughtful"."sales_order_id" AND "uneven"."sales_sales_channel" = "thoughtful"."sales_sales_channel"
+    INNER JOIN "memory"."item" as "sales_item_items" on "uneven"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "uneven"."sales_date_year" = 2002
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "uneven"."sales_date_year"),
+vacuous as (
+SELECT
+    "sales_item_items"."I_BRAND_ID" as "deduped_sales_item_brand_id",
+    "sales_item_items"."I_CATEGORY_ID" as "deduped_sales_item_category_id",
+    "sales_item_items"."I_CLASS_ID" as "deduped_sales_item_class_id",
+    "sales_item_items"."I_MANUFACT_ID" as "deduped_sales_item_manufacturer_id",
+    "uneven"."sales_ext_sales_price" - coalesce("thoughtful"."sales_return_amount",0.0) as "deduped_amt_per_row",
+    "uneven"."sales_quantity" - coalesce("thoughtful"."sales_return_quantity",0) as "deduped_cnt_per_row"
+FROM
+    "uneven"
+    LEFT OUTER JOIN "thoughtful" on "uneven"."sales_item_id" = "thoughtful"."sales_item_id" AND "uneven"."sales_order_id" = "thoughtful"."sales_order_id" AND "uneven"."sales_sales_channel" = "thoughtful"."sales_sales_channel"
+    INNER JOIN "memory"."item" as "sales_item_items" on "uneven"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
+WHERE
+    "uneven"."sales_date_year" = 2001
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "uneven"."sales_date_year"),
+sparkling as (
+SELECT
+    "young"."deduped_sales_item_brand_id" as "i_brand_id",
+    "young"."deduped_sales_item_category_id" as "i_category_id",
+    "young"."deduped_sales_item_class_id" as "i_class_id",
+    "young"."deduped_sales_item_manufacturer_id" as "i_manufact_id",
+    sum("young"."deduped_amt_per_row") as "_year_pair_curr_amt",
+    sum("young"."deduped_cnt_per_row") as "_year_pair_curr_cnt"
+FROM
+    "young"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+concerned as (
+SELECT
+    "vacuous"."deduped_sales_item_brand_id" as "i_brand_id",
+    "vacuous"."deduped_sales_item_category_id" as "i_category_id",
+    "vacuous"."deduped_sales_item_class_id" as "i_class_id",
+    "vacuous"."deduped_sales_item_manufacturer_id" as "i_manufact_id",
+    sum("vacuous"."deduped_amt_per_row") as "_year_pair_prev_amt",
+    sum("vacuous"."deduped_cnt_per_row") as "_year_pair_prev_cnt"
+FROM
+    "vacuous"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+abhorrent as (
+SELECT
+    "concerned"."_year_pair_prev_amt" as "year_pair_prev_amt",
+    "concerned"."_year_pair_prev_cnt" as "year_pair_prev_cnt",
+    "sparkling"."_year_pair_curr_amt" as "year_pair_curr_amt",
+    "sparkling"."_year_pair_curr_cnt" as "year_pair_curr_cnt",
+    coalesce("concerned"."i_brand_id","sparkling"."i_brand_id") as "year_pair_i_brand_id",
+    coalesce("concerned"."i_category_id","sparkling"."i_category_id") as "year_pair_i_category_id",
+    coalesce("concerned"."i_class_id","sparkling"."i_class_id") as "year_pair_i_class_id",
+    coalesce("concerned"."i_manufact_id","sparkling"."i_manufact_id") as "year_pair_i_manufact_id"
+FROM
+    "sparkling"
+    FULL JOIN "concerned" on "sparkling"."i_brand_id" is not distinct from "concerned"."i_brand_id" AND "sparkling"."i_category_id" is not distinct from "concerned"."i_category_id" AND "sparkling"."i_class_id" is not distinct from "concerned"."i_class_id" AND "sparkling"."i_manufact_id" is not distinct from "concerned"."i_manufact_id"),
+sweltering as (
+SELECT
+    "abhorrent"."year_pair_curr_amt" - "abhorrent"."year_pair_prev_amt" as "sales_amt_diff",
+    "abhorrent"."year_pair_curr_cnt" - "abhorrent"."year_pair_prev_cnt" as "sales_cnt_diff",
+    "abhorrent"."year_pair_curr_cnt" as "curr_yr_cnt",
+    "abhorrent"."year_pair_prev_cnt" as "prev_yr_cnt"
+FROM
+    "abhorrent"),
+late as (
+SELECT
+    "abhorrent"."year_pair_i_brand_id" as "year_pair_i_brand_id",
+    "abhorrent"."year_pair_i_category_id" as "year_pair_i_category_id",
+    "abhorrent"."year_pair_i_class_id" as "year_pair_i_class_id",
+    "abhorrent"."year_pair_i_manufact_id" as "year_pair_i_manufact_id",
+    "quizzical"."prev_year" as "prev_year",
+    "quizzical"."year_" as "year_",
+    "sweltering"."curr_yr_cnt" as "curr_yr_cnt",
+    "sweltering"."prev_yr_cnt" as "prev_yr_cnt",
+    "sweltering"."sales_amt_diff" as "sales_amt_diff",
+    "sweltering"."sales_cnt_diff" as "sales_cnt_diff"
+FROM
+    "abhorrent"
+    INNER JOIN "sweltering" on "abhorrent"."year_pair_curr_cnt" = "sweltering"."curr_yr_cnt" AND "abhorrent"."year_pair_prev_cnt" = "sweltering"."prev_yr_cnt"
+    LEFT OUTER JOIN "quizzical" on 1=1
+WHERE
+    cast("sweltering"."curr_yr_cnt" as numeric(17,2)) / cast("sweltering"."prev_yr_cnt" as numeric(17,2)) < 0.9
+)
+SELECT
+    "late"."prev_year" as "prev_year",
+    "late"."year_" as "year_",
+    "late"."year_pair_i_brand_id" as "year_pair_i_brand_id",
+    "late"."year_pair_i_class_id" as "year_pair_i_class_id",
+    "late"."year_pair_i_category_id" as "year_pair_i_category_id",
+    "late"."year_pair_i_manufact_id" as "year_pair_i_manufact_id",
+    "late"."prev_yr_cnt" as "prev_yr_cnt",
+    "late"."curr_yr_cnt" as "curr_yr_cnt",
+    "late"."sales_cnt_diff" as "sales_cnt_diff",
+    "late"."sales_amt_diff" as "sales_amt_diff"
+FROM
+    "late"
+ORDER BY 
+    "late"."sales_cnt_diff" asc nulls first,
+    "late"."sales_amt_diff" asc nulls first
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -283,41 +499,4 @@ ORDER BY
     "sparkling"."sales_cnt_diff" asc nulls first,
     "sparkling"."sales_amt_diff" asc nulls first
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 58, in _search_concepts
-    strategy_node = build_strategy_node(
-        group_graph, mandatory_list, environment, g, history
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 412, in build_strategy_node
-    # pass in `_compute_concept_sets`. The SELECT needs to project the
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 223, in _topological_order
-    return list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```

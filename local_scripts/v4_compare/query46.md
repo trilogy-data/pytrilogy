@@ -16,7 +16,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 0 | 0 | — |
-| reference | 2870 | 51 | 188.52 ms |
+| reference | 2870 | 51 | 75.55 ms |
 
 ## Preql
 
@@ -73,8 +73,8 @@ SELECT
     "customer_customers"."C_FIRST_NAME" as "customer_first_name",
     "customer_customers"."C_LAST_NAME" as "customer_last_name"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"),
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"),
 uneven as (
 SELECT
     "store_sales_sale_address_customer_address"."CA_CITY" as "bought_city",
@@ -122,12 +122,12 @@ LIMIT (100)
 
 ```
 Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 204, in generate_v4_sql
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 218, in generate_v4_sql
     info, build_env, _, build_stmt = run_tpcds_query(query_id)
                                      ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 473, in run_tpcds_query
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 865, in run_tpcds_query
     select = _find_select(queries)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 387, in _find_select
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 776, in _find_select
     raise ValueError(
     ...<2 lines>...
     )

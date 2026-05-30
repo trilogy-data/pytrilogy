@@ -5,28 +5,28 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (69685 rows) |
+| v4 execution | OK (64847 rows) |
 | reference execution | OK (1031 rows) |
 | results identical | NO |
 
 ## Result comparison
 
-v4 rows: 69685 (1031 distinct)
+v4 rows: 64847 (1031 distinct)
 ref rows: 1031 (1031 distinct)
 only in v4 (showing up to 5 of 1031):
-  215x  ('exportischolar #1', 5003001, None, 9, 3)
+  179x  ('exportischolar #1', 5003001, None, 9, 3)
   23x  ('edu packnameless #9', 8004009, None, 8, 59)
   35x  ('amalgmaxi #9', 8011009, None, 19, 15)
-  17x  ('corpunivamalg #3', 9016003, None, 8, 42)
+  14x  ('corpunivamalg #3', 9016003, None, 8, 42)
   5x  ('namelesscorp #5', 6008005, Decimal('20597.76'), 17, 47)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4940 | 96 | 960.25 ms |
-| reference | 3459 | 60 | 82.79 ms |
-| v4 / ref | 1.43x | 1.60x | 11.60x |
+| v4 | 4315 | 83 | 279.22 ms |
+| reference | 3459 | 60 | 30.12 ms |
+| v4 / ref | 1.25x | 1.38x | 9.27x |
 
 ## Preql
 
@@ -97,60 +97,47 @@ WHERE
 ),
 abundant as (
 SELECT
-    "cheerful"."sales_ext_sales_price" as "sales_ext_sales_price",
     "sales_item_items"."I_BRAND" as "sales_item_brand_name",
     "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
     "sales_time_time"."T_HOUR" as "sales_time_hour",
-    "sales_time_time"."T_MINUTE" as "sales_time_minute"
+    "sales_time_time"."T_MINUTE" as "sales_time_minute",
+    sum("cheerful"."sales_ext_sales_price") as "ext_price"
 FROM
     "cheerful"
     INNER JOIN "memory"."item" as "sales_item_items" on "cheerful"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
-    LEFT OUTER JOIN "memory"."time_dim" as "sales_time_time" on "cheerful"."sales_time_id" = "sales_time_time"."T_TIME_SK"),
-juicy as (
-SELECT
-    "abundant"."sales_item_brand_id" as "sales_item_brand_id",
-    "abundant"."sales_item_brand_name" as "sales_item_brand_name",
-    "abundant"."sales_time_hour" as "sales_time_hour",
-    "abundant"."sales_time_minute" as "sales_time_minute",
-    sum("abundant"."sales_ext_sales_price") as "ext_price"
-FROM
-    "abundant"
+    LEFT OUTER JOIN "memory"."time_dim" as "sales_time_time" on "cheerful"."sales_time_id" = "sales_time_time"."T_TIME_SK"
 GROUP BY
     1,
     2,
     3,
     4),
-yummy as (
+juicy as (
 SELECT
-    "abundant"."sales_time_hour" as "sales_time_hour",
     "abundant"."sales_time_hour" as "t_hour",
-    "abundant"."sales_time_minute" as "sales_time_minute",
     "abundant"."sales_time_minute" as "t_minute"
 FROM
     "abundant"),
-uneven as (
+yummy as (
 SELECT
     "abundant"."sales_item_brand_id" as "brand_id",
-    "abundant"."sales_item_brand_id" as "sales_item_brand_id",
-    "abundant"."sales_item_brand_name" as "brand",
-    "abundant"."sales_item_brand_name" as "sales_item_brand_name"
+    "abundant"."sales_item_brand_name" as "brand"
 FROM
     "abundant")
 SELECT
-    "uneven"."brand_id" as "brand_id",
-    "uneven"."brand" as "brand",
-    "yummy"."t_hour" as "t_hour",
-    "yummy"."t_minute" as "t_minute",
-    "juicy"."ext_price" as "ext_price"
+    "yummy"."brand_id" as "brand_id",
+    "yummy"."brand" as "brand",
+    "juicy"."t_hour" as "t_hour",
+    "juicy"."t_minute" as "t_minute",
+    "abundant"."ext_price" as "ext_price"
 FROM
-    "juicy"
-    LEFT OUTER JOIN "yummy" on "juicy"."sales_time_hour" = "yummy"."sales_time_hour" AND "juicy"."sales_time_minute" = "yummy"."sales_time_minute"
-    INNER JOIN "uneven" on "juicy"."sales_item_brand_id" = "uneven"."sales_item_brand_id" AND "juicy"."sales_item_brand_name" = "uneven"."sales_item_brand_name"
+    "abundant"
+    INNER JOIN "yummy" on "abundant"."sales_item_brand_id" = "yummy"."brand_id" AND "abundant"."sales_item_brand_name" = "yummy"."brand"
+    LEFT OUTER JOIN "juicy" on "abundant"."sales_time_hour" = "juicy"."t_hour" AND "abundant"."sales_time_minute" = "juicy"."t_minute"
 ORDER BY 
-    "juicy"."ext_price" desc nulls first,
-    "uneven"."brand_id" asc nulls first,
-    "yummy"."t_hour" asc nulls first,
-    "yummy"."t_minute" asc nulls first
+    "abundant"."ext_price" desc nulls first,
+    "yummy"."brand_id" asc nulls first,
+    "juicy"."t_hour" asc nulls first,
+    "juicy"."t_minute" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

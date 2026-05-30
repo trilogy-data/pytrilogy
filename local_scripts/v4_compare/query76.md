@@ -1,24 +1,38 @@
 # Query 76
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
-| reference execution | FAILED |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 100):
+  1x  (None, None, Decimal('13630.14'), None, None, 'Books', 'catalog', None, None, 'catalog', None, None, 9, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Books', None, None, 1, Decimal('13630.14'), 9, None, None, 1998)
+  1x  (None, None, Decimal('36422.12'), None, None, 'Children', 'catalog', None, None, 'catalog', None, None, 14, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Children', None, None, 1, Decimal('36422.12'), 14, None, None, 1998)
+  1x  (None, None, Decimal('18547.58'), None, None, 'Electronics', 'catalog', None, None, 'catalog', None, None, 17, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Electronics', None, None, 1, Decimal('18547.58'), 17, None, None, 1998)
+  1x  (None, None, Decimal('17219.87'), None, None, 'Home', 'catalog', None, None, 'catalog', None, None, 9, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Home', None, None, 1, Decimal('17219.87'), 9, None, None, 1998)
+  1x  (None, None, Decimal('21296.55'), None, None, 'Jewelry', 'catalog', None, None, 'catalog', None, None, 11, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Jewelry', None, None, 1, Decimal('21296.55'), 11, None, None, 1998)
+only in ref (showing up to 5 of 100):
+  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Books', Decimal('13630.14'), 9)
+  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Children', Decimal('36422.12'), 14)
+  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Electronics', Decimal('18547.58'), 17)
+  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Home', Decimal('17219.87'), 9)
+  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Jewelry', Decimal('21296.55'), 11)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9875 | 212 | — |
-| reference | 7609 | 176 | — |
-| v4 / ref | 1.30x | 1.20x | — |
+| v4 | 9734 | 212 | 161.68 ms |
+| reference | 7468 | 176 | 117.50 ms |
+| v4 / ref | 1.30x | 1.20x | 1.38x |
 
 ## Preql
 
@@ -157,7 +171,7 @@ FROM
     "memory"."web_sales" as "ws_web_sales"
     INNER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
 WHERE
-    "ws_web_sales"."WS_SHIP_CUSTOMER_SK" is null and "ws_web_sales"."WS_ORDER_NUMBER" is not null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
+    "ws_web_sales"."WS_ORDER_NUMBER" is not null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
 ),
 juicy as (
 SELECT
@@ -170,7 +184,7 @@ FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" is null and "ss_store_sales"."SS_TICKET_NUMBER" is not null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
+    "ss_store_sales"."SS_TICKET_NUMBER" is not null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
 ),
 thoughtful as (
 SELECT
@@ -183,7 +197,7 @@ FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
 WHERE
-    "cs_catalog_sales"."CS_SHIP_ADDR_SK" is null and "cs_catalog_sales"."CS_ORDER_NUMBER" is not null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
+    "cs_catalog_sales"."CS_ORDER_NUMBER" is not null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
 ),
 kaput as (
 SELECT
@@ -230,9 +244,9 @@ SELECT
     sum("kaput"."ws_row_flag") as "_q76_results_cnt_b",
     sum("macho"."ws_ext_sales_price") as "_q76_results_amt_b"
 FROM
-    "macho"
-    INNER JOIN "kaput" on "macho"."ws_item_id" = "kaput"."ws_item_id" AND "macho"."ws_order_number" = "kaput"."ws_order_number"
-    INNER JOIN "memory"."item" as "ws_item_items" on "macho"."ws_item_id" = "ws_item_items"."I_ITEM_SK"
+    "kaput"
+    INNER JOIN "macho" on "kaput"."ws_item_id" = "macho"."ws_item_id" AND "kaput"."ws_order_number" = "macho"."ws_order_number"
+    INNER JOIN "memory"."item" as "ws_item_items" on "kaput"."ws_item_id" = "ws_item_items"."I_ITEM_SK"
 GROUP BY
     2,
     4,
@@ -254,9 +268,9 @@ SELECT
     sum("juicy"."ss_ext_sales_price") as "_q76_results_amt_a",
     sum("young"."ss_row_flag") as "_q76_results_cnt_a"
 FROM
-    "juicy"
-    INNER JOIN "young" on "juicy"."ss_item_id" = "young"."ss_item_id" AND "juicy"."ss_ticket_number" = "young"."ss_ticket_number"
-    INNER JOIN "memory"."item" as "ss_item_items" on "juicy"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
+    "young"
+    INNER JOIN "juicy" on "young"."ss_item_id" = "juicy"."ss_item_id" AND "young"."ss_ticket_number" = "juicy"."ss_ticket_number"
+    INNER JOIN "memory"."item" as "ss_item_items" on "young"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
 GROUP BY
     2,
     4,
@@ -374,7 +388,7 @@ FROM
     "memory"."web_sales" as "ws_web_sales"
     INNER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
 WHERE
-    "ws_web_sales"."WS_SHIP_CUSTOMER_SK" is null and "ws_web_sales"."WS_ORDER_NUMBER" is not null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
+    "ws_web_sales"."WS_ORDER_NUMBER" is not null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
 ),
 juicy as (
 SELECT
@@ -387,7 +401,7 @@ FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" is null and "ss_store_sales"."SS_TICKET_NUMBER" is not null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
+    "ss_store_sales"."SS_TICKET_NUMBER" is not null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
 ),
 thoughtful as (
 SELECT
@@ -400,7 +414,7 @@ FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
 WHERE
-    "cs_catalog_sales"."CS_SHIP_ADDR_SK" is null and "cs_catalog_sales"."CS_ORDER_NUMBER" is not null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
+    "cs_catalog_sales"."CS_ORDER_NUMBER" is not null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
 ),
 kaput as (
 SELECT
@@ -442,9 +456,9 @@ SELECT
     sum("kaput"."ws_row_flag") as "_q76_results_cnt_b",
     sum("macho"."ws_ext_sales_price") as "_q76_results_amt_b"
 FROM
-    "macho"
-    INNER JOIN "kaput" on "macho"."ws_item_id" = "kaput"."ws_item_id" AND "macho"."ws_order_number" = "kaput"."ws_order_number"
-    INNER JOIN "memory"."item" as "ws_item_items" on "macho"."ws_item_id" = "ws_item_items"."I_ITEM_SK"
+    "kaput"
+    INNER JOIN "macho" on "kaput"."ws_item_id" = "macho"."ws_item_id" AND "kaput"."ws_order_number" = "macho"."ws_order_number"
+    INNER JOIN "memory"."item" as "ws_item_items" on "kaput"."ws_item_id" = "ws_item_items"."I_ITEM_SK"
 GROUP BY
     1,
     2,
@@ -461,9 +475,9 @@ SELECT
     sum("juicy"."ss_ext_sales_price") as "_q76_results_amt_a",
     sum("young"."ss_row_flag") as "_q76_results_cnt_a"
 FROM
-    "juicy"
-    INNER JOIN "young" on "juicy"."ss_item_id" = "young"."ss_item_id" AND "juicy"."ss_ticket_number" = "young"."ss_ticket_number"
-    INNER JOIN "memory"."item" as "ss_item_items" on "juicy"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
+    "young"
+    INNER JOIN "juicy" on "young"."ss_item_id" = "juicy"."ss_item_id" AND "young"."ss_ticket_number" = "juicy"."ss_ticket_number"
+    INNER JOIN "memory"."item" as "ss_item_items" on "young"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
 GROUP BY
     1,
     2,
@@ -508,52 +522,4 @@ ORDER BY
     "q76_results_d_qoy" asc nulls first,
     "q76_results_i_category" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 179, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(
-                                             ~~~~~^
-        lambda: execute(con, v4_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 180, in <lambda>
-    lambda: execute(con, v4_sql)
-            ~~~~~~~^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.ParserException: Parser Error: syntax error at or near ":"
-
-LINE 109:     :_q76_results_channel_b as "_q76_results_channel_b",
-              ^
-```
-
-## reference execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 187, in run_one
-    result.ref_exec_seconds, result.ref_rows = _time(
-                                               ~~~~~^
-        lambda: execute(con, ref_sql)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 45, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 188, in <lambda>
-    lambda: execute(con, ref_sql)
-            ~~~~~~~^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 120, in execute
-    cursor = con.execute(sql)
-_duckdb.ParserException: Parser Error: syntax error at or near ":"
-
-LINE 106:     :_q76_results_channel_b as "channel",
-              ^
 ```
