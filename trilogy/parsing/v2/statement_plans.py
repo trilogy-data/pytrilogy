@@ -196,6 +196,9 @@ class ShowStatementPlan(StatementPlanBase):
 class ImportStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: ImportStatement | None = None
+    # same-line trailing comment on the import, captured by the planner so it
+    # can be stored on the resulting Import for explore to surface.
+    description: str | None = None
 
     def load_imports(self, hydrator: "NativeHydrator") -> None:
         # Imports materialize in their own early phase because later
@@ -219,6 +222,7 @@ class ImportStatementPlan(StatementPlanBase):
         else:
             return
         if isinstance(request, ImportRequest):
+            request.description = self.description
             self.output = hydrator.import_service.execute(request)
 
     def commit(self, hydrator: "NativeHydrator") -> ImportStatement | None:

@@ -162,8 +162,12 @@ def main() -> int:
             with score_lock:
                 try:
                     score = scoring.score_query(
-                        engine, worker, qid, SPEC.duckdb_extension,
-                        params=entry.get("params"), custom_refs_dir=refs,
+                        engine,
+                        worker,
+                        qid,
+                        SPEC.duckdb_extension,
+                        params=entry.get("params"),
+                        custom_refs_dir=refs,
                     )
                 except Exception as exc:
                     score = scoring.QueryResult(
@@ -209,15 +213,21 @@ def main() -> int:
     summary = _summarize([r for r in records if r is not None])
     report = {
         "meta": {
-            "query_id": qid, "repeats": args.repeats, "model": args.model,
-            "provider": args.provider, "scale_factor": args.scale_factor,
-            "max_iterations": args.max_iterations, "mode": "base" if args.base else "enriched",
+            "query_id": qid,
+            "repeats": args.repeats,
+            "model": args.model,
+            "provider": args.provider,
+            "scale_factor": args.scale_factor,
+            "max_iterations": args.max_iterations,
+            "mode": "base" if args.base else "enriched",
             "trilogy_version": _trilogy_version(),
         },
         "summary": summary,
         "runs": [r for r in records if r is not None],
     }
-    (out / "repeat_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (out / "repeat_report.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8"
+    )
     print("\n=== SUMMARY ===")
     print(json.dumps(summary, indent=2))
     print(f"\nArtifacts in {out}")

@@ -184,16 +184,13 @@ def test_having_rejects_off_grain_aggregate_not_in_select():
 
     raised = None
     try:
-        parse(
-            _HAVING_AGG_SCHEMA
-            + """
+        parse(_HAVING_AGG_SCHEMA + """
 select
     store_id,
     customer_id,
     sum(amount) as total
 having sum(amount) > 1.2 * sum(amount) by store_id;
-"""
-        )
+""")
     except Exception as e:
         raised = e
     assert isinstance(
@@ -208,16 +205,13 @@ def test_having_rejects_nested_aggregate_not_in_select():
 
     raised = None
     try:
-        parse(
-            _HAVING_AGG_SCHEMA
-            + """
+        parse(_HAVING_AGG_SCHEMA + """
 select
     store_id,
     customer_id,
     sum(amount) as total
 having sum(amount) > 1.2 * avg(sum(amount) by store_id);
-"""
-        )
+""")
     except Exception as e:
         raised = e
     assert isinstance(
@@ -230,9 +224,7 @@ having sum(amount) > 1.2 * avg(sum(amount) by store_id);
 def test_having_substitutes_matching_off_grain_aggregate_with_alias():
     from trilogy import Dialects
 
-    text = (
-        _HAVING_AGG_SCHEMA
-        + """
+    text = _HAVING_AGG_SCHEMA + """
 select
     store_id,
     customer_id,
@@ -240,7 +232,6 @@ select
     sum(amount) by store_id as store_total
 having sum(amount) > 1.2 * sum(amount) by store_id;
 """
-    )
     sql = Dialects.DUCK_DB.default_executor().generate_sql(text)
     joined = "\n".join(sql)
     assert "INVALID_REFERENCE" not in joined, joined
@@ -248,15 +239,15 @@ having sum(amount) > 1.2 * sum(amount) by store_id;
     # No nested aggregates in the rendered SQL.
     import re
 
-    assert not re.search(r"\b(sum|avg|min|max|count)\s*\(\s*(sum|avg|min|max|count)\s*\(", joined), joined
+    assert not re.search(
+        r"\b(sum|avg|min|max|count)\s*\(\s*(sum|avg|min|max|count)\s*\(", joined
+    ), joined
 
 
 def test_having_substitutes_matching_nested_aggregate_with_alias():
     from trilogy import Dialects
 
-    text = (
-        _HAVING_AGG_SCHEMA
-        + """
+    text = _HAVING_AGG_SCHEMA + """
 select
     store_id,
     customer_id,
@@ -264,11 +255,12 @@ select
     avg(sum(amount) by store_id) as avg_store_total
 having sum(amount) > 1.2 * avg(sum(amount) by store_id);
 """
-    )
     sql = Dialects.DUCK_DB.default_executor().generate_sql(text)
     joined = "\n".join(sql)
     assert "INVALID_REFERENCE" not in joined, joined
     assert '"avg_store_total"' in joined, joined
     import re
 
-    assert not re.search(r"\b(sum|avg|min|max|count)\s*\(\s*(sum|avg|min|max|count)\s*\(", joined), joined
+    assert not re.search(
+        r"\b(sum|avg|min|max|count)\s*\(\s*(sum|avg|min|max|count)\s*\(", joined
+    ), joined

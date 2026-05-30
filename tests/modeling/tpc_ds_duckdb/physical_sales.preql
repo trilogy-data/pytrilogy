@@ -3,6 +3,7 @@
 # sales / list / wholesale / extended prices, discount and coupon amounts,
 # net paid, extended tax, net profit, and an is_returned flag plus
 # per-line refund amount / quantity / net loss for returned items.
+#
 
 import std.money;
 
@@ -11,11 +12,11 @@ import date as date;
 import date as return_date;
 import time as time;
 import time as return_time;
-import customer as billing_customer;
-import customer as return_customer;
+import customer as billing_customer; # link to our latest records for the customer associated with payment
+import customer as return_customer; # the customer account tied to the return
 import promotion as promotion;
-import customer_demographic as customer_demographic;
-import household_demographic as household_demographic;
+import customer_demographic as customer_demographic; # The customer demograph info at POS
+import household_demographic as household_demographic; # The household demographic info at POS
 import store as store;
 import store as return_store;
 import address as sale_address;

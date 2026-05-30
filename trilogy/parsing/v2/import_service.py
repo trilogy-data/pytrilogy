@@ -29,6 +29,8 @@ class ImportRequest:
     is_stdlib: bool = False
     concepts: list[str] | None = None
     leading_dots: int = 0
+    # same-line trailing comment on the import statement (set by the planner)
+    description: str | None = None
 
 
 def _suggest_import_paths(
@@ -221,6 +223,7 @@ class ImportHydrationService:
                 path=parsed_path,
                 input_path=Path(request.target) if is_file_resolver else None,
                 concepts=request.concepts,
+                description=request.description,
             ),
         )
         return ImportStatement(

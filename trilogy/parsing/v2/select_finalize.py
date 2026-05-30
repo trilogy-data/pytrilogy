@@ -307,7 +307,9 @@ def _substitute_having_aggregates(
             high=_substitute_having_aggregates(node.high, sig_to_ref),
         )
     if isinstance(node, Function):
-        new_args = [_substitute_having_aggregates(a, sig_to_ref) for a in node.arguments]
+        new_args = [
+            _substitute_having_aggregates(a, sig_to_ref) for a in node.arguments
+        ]
         if all(a is b for a, b in zip(new_args, node.arguments)):
             return node
         replacement = Function.__new__(Function)

@@ -42,14 +42,13 @@ def show_execution_info(
 ) -> None:
     """Display execution information in a clean format."""
     debug_str = (
-        f"enabled (file: {debug_file})" if debug and debug_file
-        else "enabled" if debug
-        else None
+        f"enabled (file: {debug_file})"
+        if debug and debug_file
+        else "enabled" if debug else None
     )
     if _core.RICH_AVAILABLE and _core.console is not None:
         info_text = (
-            f"Input: {input_type} ({input_name})\n"
-            f"Dialect: [cyan]{dialect}[/cyan]"
+            f"Input: {input_type} ({input_name})\n" f"Dialect: [cyan]{dialect}[/cyan]"
         )
         if debug_str:
             info_text += f"\nDebug: {debug_str}"

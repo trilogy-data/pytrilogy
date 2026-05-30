@@ -103,7 +103,7 @@ order by (monthly_total - avg_monthly_overall) asc;
     assert "INVALID_REFERENCE_BUG" not in sql
     order_by_section = sql.split("ORDER BY")[1]
     # The arithmetic must keep both operands distinct — no collapse.
-    assert "monthly_total\" - \"" in order_by_section.replace("`", '"')
+    assert 'monthly_total" - "' in order_by_section.replace("`", '"')
     assert "avg_sales" in order_by_section
     # Outer WHERE (HAVING after pushdown) must filter on the alias.
     where_section = sql.split("WHERE")[-1].split("ORDER BY")[0]

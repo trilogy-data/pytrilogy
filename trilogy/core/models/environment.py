@@ -71,6 +71,11 @@ class Import:
     )
     # explicit concept filter: only these names are public when imported
     concepts: list[str] | None = None
+    # same-line trailing comment on the `import ... as ...;` statement, e.g.
+    # `import customer_demographic as customer_demographic; # demographics at POS`.
+    # Surfaced under the namespace header in `trilogy explore` to disambiguate
+    # otherwise-identical-looking imports (sale-time vs customer-current, etc.).
+    description: str | None = None
 
 
 @dataclass

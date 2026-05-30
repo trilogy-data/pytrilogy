@@ -73,6 +73,35 @@ def test_explore_show_concepts_only(runner, sample_preql: Path):
     assert "Imports" not in result.output
 
 
+@pytest.fixture
+def annotated_import_preql(tmp_path: Path) -> Path:
+    (tmp_path / "dem.preql").write_text(dedent("""
+            key cd_id int;
+            property cd_id.edu string;
+            datasource cd (cd_id, edu) grain(cd_id)
+            query '''select 1 as cd_id, 'College' as edu''';
+            """).strip() + "\n")
+    parent = tmp_path / "sales.preql"
+    parent.write_text("import dem as dem; # demographics recorded at point of sale\n")
+    return parent
+
+
+def test_explore_surfaces_import_description_in_groups(runner, annotated_import_preql):
+    result = runner.invoke(cli, ["explore", str(annotated_import_preql)])
+    assert result.exit_code == 0, result.output
+    assert "demographics recorded at point of sale" in result.output
+
+
+def test_explore_surfaces_import_description_in_imports_table(
+    runner, annotated_import_preql
+):
+    result = runner.invoke(
+        cli, ["explore", str(annotated_import_preql), "--show", "imports"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "demographics recorded at point of sale" in result.output
+
+
 def test_explore_show_datasources_only(runner, sample_preql: Path):
     result = runner.invoke(cli, ["explore", str(sample_preql), "--show", "datasources"])
     assert result.exit_code == 0

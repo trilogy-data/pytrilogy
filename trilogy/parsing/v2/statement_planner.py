@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from trilogy.core.models.author import Comment
+from trilogy.parsing.helpers import comment_body
 from trilogy.parsing.v2.statement_plans import (
     ChartStatementPlan,
     CommentStatementPlan,
@@ -77,6 +79,29 @@ class StatementPlanner:
                     plans.append(CommentStatementPlan(detached))
         return plans
 
+    def _attached_trailing_comment(self, block: SyntaxNode) -> str | None:
+        """Same-line trailing comment(s) on a block's statement, joined — the
+        attached counterpart of ``_detached_block_comments``. Used to carry an
+        import's inline description (`import x as x; # ...`) to its plan."""
+        if not block.children:
+            return None
+        statement = block.children[0]
+        base_line = statement.end_line if isinstance(statement, SyntaxNode) else None
+        if base_line is None:
+            return None
+        parts: list[str] = []
+        for child in block.children[1:]:
+            if (
+                isinstance(child, SyntaxToken)
+                and child.kind == SyntaxTokenKind.COMMENT
+                and child.line == base_line
+            ):
+                parts.append(comment_body(Comment(text=child.value.rstrip())))
+                base_line = child.end_line
+            else:
+                break
+        return "\n".join(parts) if parts else None
+
     def _detached_block_comments(self, block: SyntaxNode) -> list[SyntaxToken]:
         if not block.children:
             return []
@@ -118,7 +143,9 @@ class StatementPlanner:
             if statement.kind == SyntaxNodeKind.FUNCTION:
                 return self._plan_function_block(form, statement)
             if statement.kind in _IMPORT_KINDS:
-                return ImportStatementPlan(statement)
+                return ImportStatementPlan(
+                    statement, description=self._attached_trailing_comment(form)
+                )
             if statement.kind == SyntaxNodeKind.SELECT_STATEMENT:
                 return SelectStatementPlan(statement)
             if statement.kind == SyntaxNodeKind.MULTI_SELECT_STATEMENT:

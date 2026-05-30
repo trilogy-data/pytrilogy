@@ -192,7 +192,9 @@ def _emit_flat_line(
 
 
 def _emit_groups(
-    concept_items: list[tuple[str, Concept]], expand_imports: bool = False
+    concept_items: list[tuple[str, Concept]],
+    expand_imports: bool = False,
+    import_descriptions: dict[str, str] | None = None,
 ) -> None:
     """Two-tier listing: this file's own concepts (``namespace == 'local'``)
     in full per-concept detail; imported namespaces collapsed to a name-only
@@ -221,12 +223,15 @@ def _emit_groups(
         imported_items = [
             (addr, c) for addr, c in concept_items if c.namespace != DEFAULT_NAMESPACE
         ]
-    _emit_local_groups(local_items)
+    _emit_local_groups(local_items, import_descriptions)
     if imported_items:
-        _emit_imported_summary(imported_items)
+        _emit_imported_summary(imported_items, import_descriptions)
 
 
-def _emit_local_groups(concept_items: list[tuple[str, Concept]]) -> None:
+def _emit_local_groups(
+    concept_items: list[tuple[str, Concept]],
+    import_descriptions: dict[str, str] | None = None,
+) -> None:
     """Render the full per-concept layout for one set of concepts (typically
     the local ones). Pulled out so the import-collapsing path can reuse it
     on the local slice without duplicating the namespace bucketing."""
@@ -248,14 +253,18 @@ def _emit_local_groups(concept_items: list[tuple[str, Concept]]) -> None:
         # multi-namespace dump (web_sales has 46 sections); the `#` prefix
         # makes the header obviously not a concept line.
         click.echo()
-        click.echo(f"# {ns}")
+        desc = (import_descriptions or {}).get(ns)
+        click.echo(f"# {ns}  — {desc.strip()}" if desc else f"# {ns}")
         _emit_namespace(ns, by_ns[ns])
 
 
 _IMPORT_LIST_WIDTH = 100
 
 
-def _emit_imported_summary(imported_items: list[tuple[str, Concept]]) -> None:
+def _emit_imported_summary(
+    imported_items: list[tuple[str, Concept]],
+    import_descriptions: dict[str, str] | None = None,
+) -> None:
     """Compact rendering of imported namespaces: one block per namespace
     with the concept count and a comma-separated list of full addresses,
     wrapped at ``_IMPORT_LIST_WIDTH``. No purpose / datatype / description
@@ -289,7 +298,11 @@ def _emit_imported_summary(imported_items: list[tuple[str, Concept]]) -> None:
             for addr in by_ns[ns]
         )
         click.echo()
-        click.echo(f"# {ns}.* ({len(leaves)} concepts) — reach as {ns}.<leaf>")
+        header = f"# {ns}.* ({len(leaves)} concepts) — reach as {ns}.<leaf>"
+        desc = (import_descriptions or {}).get(ns)
+        if desc:
+            header += f"  — {desc.strip()}"
+        click.echo(header)
         click.echo(
             textwrap.fill(
                 ", ".join(leaves),
@@ -458,11 +471,24 @@ def explore(
             (k, v) for k, v in concept_items if any(p.search(k) for p in compiled)
         ]
 
+    # alias -> trailing-comment description from the `import ... as ...;` lines,
+    # surfaced under namespace headers to disambiguate look-alike imports.
+    import_descriptions = {
+        alias: imp.description
+        for alias, imps in env.imports.items()
+        for imp in imps
+        if imp.description
+    }
+
     if show in ("all", "groups"):
         # `--regex` is a deliberate filter — show matches in full even if
         # imported, so the agent doesn't have to re-issue with --expand-imports.
         expand = expand_imports or bool(regex_patterns)
-        _emit_groups(concept_items, expand_imports=expand)
+        _emit_groups(
+            concept_items,
+            expand_imports=expand,
+            import_descriptions=import_descriptions,
+        )
 
     if show in ("all", "concepts"):
         rows = [_concept_row(k, v) for k, v in sorted(concept_items)]
@@ -487,9 +513,11 @@ def explore(
         import_rows = []
         for alias, stmts in sorted(env.imports.items()):
             for stmt in stmts:
-                import_rows.append((alias, str(stmt.path)))
+                import_rows.append(
+                    (alias, str(stmt.path), (stmt.description or "").strip())
+                )
         _emit_table(
             f"Imports ({len(import_rows)})",
-            ("alias", "path"),
+            ("alias", "path", "description"),
             import_rows,
         )

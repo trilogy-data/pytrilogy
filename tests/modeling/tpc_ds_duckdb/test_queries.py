@@ -462,7 +462,9 @@ def test_forty_five(engine):
 def test_forty_six(engine):
     query = run_query(engine, 46)
     assert len(query) < 8000, query
-    assert '"memory"."customer" as "physical_sales_customer_customers"' not in query, query
+    assert (
+        '"memory"."customer" as "physical_sales_customer_customers"' not in query
+    ), query
     assert query.count("GROUP BY") == 1, query
 
 
@@ -574,7 +576,9 @@ def test_sixty_seven(engine):
 def test_sixty_eight(engine):
     query = run_query(engine, 68)
     assert len(query) < 8000, query
-    assert '"memory"."customer" as "physical_sales_customer_customers"' not in query, query
+    assert (
+        '"memory"."customer" as "physical_sales_customer_customers"' not in query
+    ), query
 
 
 def test_sixty_nine(engine):
