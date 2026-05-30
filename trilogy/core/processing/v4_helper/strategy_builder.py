@@ -204,23 +204,37 @@ def _satisfiable_outputs(
     are aggregates/windows, the roots were collapsed away and aren't in any
     parent's output. Without this filter those concepts end up in
     `output_concepts` with no source map entry, producing
-    `INVALID_REFERENCE_BUG_<...>` markers in the rendered SQL."""
+    `INVALID_REFERENCE_BUG_<...>` markers in the rendered SQL.
+
+    A group computes all its outputs together, so an output's lineage args
+    can be satisfied by a *sibling* output of this same group, not just a
+    parent's. Basic chains do exactly this (q28: `filtered_lp` derives from
+    `bucket_id`, both in one basic group). Resolve with a fixpoint — keep an
+    output once every arg is parent-available or a sibling already kept —
+    so a multi-level chain settles regardless of iteration order."""
     if not parents:
         return outputs
     available: set[str] = set()
     for parent in parents:
         for output in parent.output_concepts:
             available.add(output.address)
-    keep: list[BuildConcept] = []
-    for concept in outputs:
-        if concept.address in available:
-            keep.append(concept)
-            continue
-        if concept.lineage is not None:
-            args = {a.address for a in concept.lineage.concept_arguments}
-            if args <= available:
-                keep.append(concept)
-    return keep
+    keep_addrs: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for concept in outputs:
+            if concept.address in keep_addrs:
+                continue
+            if concept.address in available:
+                keep_addrs.add(concept.address)
+                changed = True
+                continue
+            if concept.lineage is not None:
+                args = {a.address for a in concept.lineage.concept_arguments}
+                if all(a in available or a in keep_addrs for a in args):
+                    keep_addrs.add(concept.address)
+                    changed = True
+    return [c for c in outputs if c.address in keep_addrs]
 
 
 def _topological_order(group_graph: nx.DiGraph) -> list[str]:
