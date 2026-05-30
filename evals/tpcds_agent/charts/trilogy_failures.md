@@ -1,153 +1,321 @@
-# Trilogy failure analysis — 20260530-031442
+# Trilogy failure analysis — 20260530-040508
 
-- Run `20260530-031441_base` | `deepseek/deepseek-chat` | sf=0.1
-- `trilogy` calls: 730 | failed: 81 (11%)
+- Run `20260530-040508_base` | `deepseek/deepseek-chat` | sf=0.1
+- `trilogy` calls: 854 | failed: 115 (13%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `syntax-parse` | 30 | 37% |
-| `other` | 23 | 28% |
-| `undefined-concept` | 12 | 15% |
-| `join-resolution` | 11 | 14% |
-| `syntax-missing-alias` | 2 | 2% |
-| `cli-misuse` | 2 | 2% |
-| `file-not-found` | 1 | 1% |
+| `syntax-parse` | 45 | 39% |
+| `other` | 25 | 22% |
+| `syntax-missing-alias` | 23 | 20% |
+| `undefined-concept` | 9 | 8% |
+| `cli-misuse` | 8 | 7% |
+| `join-resolution` | 5 | 4% |
 
 ## Detail
 
 ### `syntax-parse`
 
-- `trilogy file write query01.preql --content import raw.store_returns as store_returns;
-
-# Filter: returns in 2000 at stores in Tennessee
-where store_returns.d…eturn_amt) by store_returns.store.store_sk;
-
-select
-    store_returns.customer.customer_id
-order by
-    store_returns.customer.customer_id
-limit 100;`
+- `trilogy run - --import raw.date_dim:dd`
 
   ```text
-  refused to write 'query01.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 8, column 1.
-  Expected one of:
-          * SELECT
-  Previous tokens: [Token('QUOTE', "'")]
-
-  Location:
-  ...amount per customer per store ??? auto cust_store_return_amt <-
-
-  Write stats: received 599 chars / 599 bytes; tail: …'d\\norder by\\n
-  store_returns.customer.customer_id\\nlimit 100;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query01.preql -e -c import raw.store_returns as store_returns;
-
-# Filter: returns in 2000 at stores in Tennessee
-where store_returns.date_…eturn_amt) by store_returns.store.store_sk;
-
-select
-    store_returns.customer.customer_id
-order by
-    store_returns.customer.customer_id
-limit 100;`
-
-  ```text
-  refused to write 'query01.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 8, column 1.
-  Expected one of:
-          * SELECT
-  Previous tokens: [Token('QUOTE', "'")]
-
-  Location:
-  ...amount per customer per store ??? auto cust_store_return_amt <-
-
-  Write stats: received 599 chars / 599 bytes; tail: …'d\\norder by\\n
-  store_returns.customer.customer_id\\nlimit 100;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy run --import raw.store_returns:store_returns select store_returns.customer.customer_id, store_returns.store.store_id, sum(store_returns.return_amt) a…returns.store.state = 'TN' and store_returns.date_dim.year = 2000 group by store_returns.customer.customer_id, store_returns.store.store_id limit 10;`
-
-  ```text
-  --> 2:198
+  --> 2:135
     |
-  2 | select store_returns.customer.customer_id, store_returns.store.store_id,
-  sum(store_returns.return_amt) as total_return where store_returns.store.state =
-  'TN' and store_returns.date_dim.year = 2000 group by
-  store_returns.customer.customer_id, store_returns.store.store_id limit 10;
+  2 | select dd.year, min(dd.week_seq) as min_ws, max(dd.week_seq) as max_ws,
+  count(dd.date_sk) as days where dd.year in (2000, 2001, 2002) group by dd.year
+  order by dd.year;
     |
   ^---
     |
     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
   bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-  ..._returns.date_dim.year = 2000 ??? group by store_returns.custome...
+  ...dd.year in (2000, 2001, 2002) ??? group by dd.year order by dd.y...
   ```
-- `trilogy file write query01.preql -e -c import raw.store_returns as store_returns;
+- `trilogy file write query02.preql --content import raw.catalog_sales as catalog_sales;
+import raw.web_sales as web_sales;
 
-# Filter: returns in 2000 at stores in Tennessee
-where store_returns.date_…urns.customer.customer_id
-where
-    cust_store_return_amt > 1.2 * avg_cust_return_by_store
-order by
-    store_returns.customer.customer_id
-limit 100;`
+# Merge the fact tables through a s…d_date.dow = 5) as fri,
+    sum(ws_2001 ? web_sales.sold_date.dow = 6) as sat
+where web_sales.sold_date.year = 2001
+order by wk_seq asc nulls first;
+`
 
   ```text
-  refused to write 'query01.preql': not syntactically valid Trilogy.
+  refused to write 'query02.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 8, column 1.
+  Unexpected token Token('__ANON_7', 'by') at line 11, column 37.
   Expected one of:
-          * SELECT
-  Previous tokens: [Token('QUOTE', "'")]
+          * _TERMINATOR
 
   Location:
-  ...amount per customer per store ??? auto cust_store_return_amt <-
+  ...ales_by_ws_dow <- daily_sales ??? by web_sales.sold_date.week_se...
 
-  Write stats: received 727 chars / 727 bytes; tail: …'e\\norder by\\n
-  store_returns.customer.customer_id\\nlimit 100;'.
+  Write stats: received 1333 chars / 1333 bytes; tail: …'ales.sold_date.year =
+  2001\\norder by wk_seq asc nulls first;\\n'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
   partial draft.
   ```
-- `trilogy file write query01.preql --content import raw.store_returns as store_returns;
-where store_returns.date_dim.year = 2000
-  and store_returns.store.stat…urns.customer.customer_id
-where
-    cust_store_return_amt > 1.2 * avg_cust_return_by_store
-order by
-    store_returns.customer.customer_id
+- `trilogy file write query02.preql --content import raw.catalog_sales as catalog_sales;
+import raw.web_sales as web_sales;
+
+merge catalog_sales.sold_date.date_…ld_date.dow = 5) as fri,
+    sum(ws_2001 ? web_sales.sold_date.dow = 6) as sat
+where web_sales.sold_date.year = 2001
+order by wk_seq asc nulls first;`
+
+  ```text
+  refused to write 'query02.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('__ANON_7', 'by') at line 9, column 5.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ..._by_ws_dow <- daily_sales     ??? by (web_sales.sold_date.week_s...
+
+  Write stats: received 984 chars / 984 bytes; tail: …'sales.sold_date.year =
+  2001\\norder by wk_seq asc nulls first;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query02.preql --content import raw.catalog_sales as catalog_sales;
+import raw.web_sales as web_sales;
+
+merge catalog_sales.sold_date.date_…price);
+
+# Sales grouped by week and day-of-week
+auto sales_by_ws_dow <- daily_sales
+    by (web_sales.sold_date.week_seq, web_sales.sold_date.dow);
+`
+
+  ```text
+  refused to write 'query02.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('__ANON_7', 'by') at line 11, column 5.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ..._by_ws_dow <- daily_sales     ??? by (web_sales.sold_date.week_s...
+
+  Write stats: received 424 chars / 424 bytes; tail: …'by
+  (web_sales.sold_date.week_seq, web_sales.sold_date.dow);\\n'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query02.preql --content import raw.catalog_sales as catalog_sales;
+import raw.web_sales as web_sales;
+
+merge catalog_sales.sold_date.date_…y
+auto sales_by_ws_dow_2001 <- daily_sales
+    by (web_sales.sold_date.week_seq, web_sales.sold_date.dow)
+    where web_sales.sold_date.year = 2001;
+`
+
+  ```text
+  refused to write 'query02.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('__ANON_7', 'by') at line 11, column 5.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ...s_dow_2001 <- daily_sales     ??? by (web_sales.sold_date.week_s...
+
+  Write stats: received 490 chars / 490 bytes; tail: …'s.sold_date.dow)\\n
+  where web_sales.sold_date.year = 2001;\\n'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query05.preql --content import raw.store_sales as store_sales;
+import raw.store_returns as store_returns;
+import raw.catalog_sales as cata…ales,
+    sum(web_returns_amt) as total_returns,
+    sum(web_profit) as profit
+having channel = 'Web'
+order by channel, outlet nulls first
 limit 100;`
 
   ```text
-  refused to write 'query01.preql': not syntactically valid Trilogy.
+  refused to write 'query05.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 4, column 1.
+  Unexpected token Token('ORDER_IDENTIFIER', 'union\n') at line 45, column 1.
   Expected one of:
-          * SELECT
+          * ORDER
+          * MERGE
+          * _TERMINATOR
+          * LIMIT
   Previous tokens: [Token('QUOTE', "'")]
 
   Location:
-  ...re_returns.store.state = 'TN' ??? auto cust_store_return_amt <-
+  ...ofit having channel = 'Store' ??? union select     channel_name
 
-  Write stats: received 514 chars / 514 bytes; tail: …'e\\norder by\\n
-  store_returns.customer.customer_id\\nlimit 100;'.
+  Write stats: received 3612 chars / 3612 bytes; tail: …"nnel = 'Web'\\norder by
+  channel, outlet nulls first\\nlimit 100;".
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query05.preql --content import raw.store_sales as store_sales;
+import raw.store_returns as store_returns;
+import raw.catalog_sales as cata…date and '2000-09-06'::date) - sum(web_returns.net_loss ? web_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as web_profit;`
+
+  ```text
+  …
+  T
+          * PARAMETER
+          * _PROPERTIES
+          * WHERE
+          * _DEF_TABLE
+          * RAW_SQL
+          * PARSE_COMMENT
+          * TYPE
+          * "merge"i
+          * WITH
+          * PURPOSE
+          * IMPORT
+          * SELECT
+          * CREATE
+          * MOCK
+          * DATASOURCE_ROOT
+          * PROPERTY
+          * AUTO
+          * FROM
+          * UNIQUE
+          * PERSIST_MODE
+          * SHORTHAND_MODIFIER
+          * ROWSET
+          * DATASOURCE_PARTIAL
+          * SHOW
+          * DEF
+          * VALIDATE
+          * PUBLISH_ACTION
+          * PARAM
+  Previous tokens: [Token('PARSE_COMMENT', '# Store channel\n')]
+
+  Location:
+  ...ers, combined # Store channel ??? store_sales.store.store_id, 'S...
+
+  Write stats: received 2749 chars / 2749 bytes; tail: …"en '2000-08-23'::date
+  and '2000-09-06'::date) as web_profit;".
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query05.preql --content import raw.store_sales as store_sales;
+import raw.store_returns as store_returns;
+import raw.catalog_sales as cata…ns.net_loss ? web_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date)) as profit
+order by channel, outlet nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query05.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('ORDER_IDENTIFIER', 'union\n') at line 25, column 1.
+  Expected one of:
+          * WHERE
+          * METADATA
+          * _TERMINATOR
+          * LIMIT
+          * MERGE
+          * HAVING
+          * ORDER
+          * COMMA
+  Previous tokens: [Token('IDENTIFIER', 'profit')]
+
+  Location:
+  ...2000-09-06'::date)) as profit ??? union select     'Catalog' as
+
+  Write stats: received 2630 chars / 2630 bytes; tail: …')) as profit\\norder by
+  channel, outlet nulls first\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query05.preql --content import raw.store_sales as store_sales;
+import raw.store_returns as store_returns;
+import raw.catalog_sales as cata…l.channel, web_channel.outlet, web_channel.total_sales, web_channel.total_returns, web_channel.profit
+order by channel, outlet nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query05.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [203]: Missing assignment operator '<-' and expression in derivation.
+  Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`).
+  Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.
+  Location:
+   channel rowset store_channel ??? (     channel string,     outl...
+
+  Write stats: received 3483 chars / 3483 bytes; tail: …'annel.profit\\norder by
+  channel, outlet nulls first\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy run --import raw/store_sales.preql:store_sales select store_sales.promotion.channel_email, store_sales.promotion.channel_event, count(store_sales.ticket_number) as cnt where store_sales.date_dim.year = 2000 group by 1,2;`
+
+  ```text
+  --> 2:161
+    |
+  2 | select store_sales.promotion.channel_email,
+  store_sales.promotion.channel_event, count(store_sales.ticket_number) as cnt
+  where store_sales.date_dim.year = 2000 group by 1,2;
+    |
+  ^---
+    |
+    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
+  bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...re_sales.date_dim.year = 2000 ??? group by 1,2;
+  ```
+- `trilogy file write query08.preql --content parameter zips string;
+
+import raw.store_sales as store_sales;
+import raw.customer as customer;
+import raw.custome…fixes)
+
+select
+    store_sales.store.store_name as store_name,
+    sum(store_sales.net_profit) as total_net_profit
+order by store_name asc
+limit 100;`
+
+  ```text
+  refused to write 'query08.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('WHERE', 'where') at line 9, column 5.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ...s <- customer_address.zip     ??? where customer.preferred_cust_...
+
+  Write stats: received 1430 chars / 1430 bytes; tail: …'ofit) as
+  total_net_profit\\norder by store_name asc\\nlimit 100;'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
@@ -155,311 +323,295 @@ limit 100;`
   ```
 - `trilogy file write query08.preql --content parameter zips string;
 
-# Step 1: Split the zips parameter into an array of 5-digit ZIP strings
-auto zips_array <-…oy = 2
+import raw.store_sales as store_sales;
+import raw.customer as customer;
+import raw.custome…fixes)
 
 select
     store_sales.store.store_name as store_name,
     sum(store_sales.net_profit) as total_net_profit
-order by
-    store_name
+order by store_name asc
 limit 100;`
 
   ```text
   refused to write 'query08.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('AS', 'as') at line 9, column 83.
+  Unexpected token Token('WHERE', 'where') at line 9, column 5.
   Expected one of:
           * _TERMINATOR
 
   Location:
-  ...customer_sk) by preferred_zip ??? as zip_pref_count;  where
+  ...s <- customer_address.zip     ??? where customer.preferred_cust_...
 
-  Write stats: received 697 chars / 697 bytes; tail: …'ofit) as
-  total_net_profit\\norder by\\n    store_name\\nlimit 100;'.
+  Write stats: received 1430 chars / 1430 bytes; tail: …'ofit) as
+  total_net_profit\\norder by store_name asc\\nlimit 100;'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
   partial draft.
   ```
-- `trilogy file write query09.preql --content import raw.store_sales as store_sales;
-
-# Ticket-quantity buckets
-# bucket 1: 1-20
-# bucket 2: 21-40
-# bucket 3: 4…
-    sum(bucket_2_val) as b2_21_40,
-    sum(bucket_3_val) as b3_41_60,
-    sum(bucket_4_val) as b4_61_80,
-    sum(bucket_5_val) as b5_81_100
-limit 1;`
+- `trilogy file write query08.preql --content parameter zips string;
+import raw.store_sales as store_sales;
+import raw.customer as customer;
+import raw.customer…ching_prefixes)
+select store_sales.store.store_name as store_name, sum(store_sales.net_profit) as total_net_profit order by store_name asc limit 100;`
 
   ```text
-  refused to write 'query09.preql': not syntactically valid Trilogy.
+  refused to write 'query08.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('_TERMINATOR', ';') at line 16, column 2.
+  Unexpected token Token('WHERE', 'where') at line 5, column 50.
   Expected one of:
-          * WHEN
+          * _TERMINATOR
 
   Location:
-  ...antity between 81 and 100, 5 ) ??? ;  # count of line items (rows...
+  ..._zips <- customer_address.zip ??? where customer.preferred_cust_...
 
-  Write stats: received 1640 chars / 1640 bytes; tail: …'al) as b4_61_80,\\n
-  sum(bucket_5_val) as b5_81_100\\nlimit 1;'.
+  Write stats: received 868 chars / 868 bytes; tail: …'ofit) as total_net_profit
+  order by store_name asc limit 100;'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
   partial draft.
   ```
-- `trilogy file write query09.preql --content import raw.store_sales as store_sales;
-
-auto qty_bucket <- case(
-    store_sales.quantity between 1 and 20, 1,
-   …y_bucket = 4) as b4_61_80,
-    max(case(bucket_line_count > 165306, bucket_avg_discount, bucket_avg_net_paid) ? qty_bucket = 5) as b5_81_100
-limit 1;`
+- `trilogy run --import raw.store_sales:store_sales select '24' in (select substring(unnest(split('24128,76232,65084', ',')), 1, 2)) as check; duckdb`
 
   ```text
-  refused to write 'query09.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('_TERMINATOR', ';') at line 9, column 2.
-  Expected one of:
-          * WHEN
-
+  Syntax [102]: Using a SQL-style subquery (SELECT/WITH inside
+  parens)? Trilogy does not support subqueries — joins are auto-resolved from
+  dotted paths. To filter on a value that lives on a related dimension, reference
+  its dot-path directly. Example: instead of `where ss.store_id in (select
+  store_id where store.state = 'TN')`, write `where ss.store.state = 'TN'`.
   Location:
-  ...antity between 81 and 100, 5 ) ??? ;  auto bucket_line_count <- c...
-
-  Write stats: received 1105 chars / 1105 bytes; tail: …'bucket_avg_net_paid) ?
-  qty_bucket = 5) as b5_81_100\\nlimit 1;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
+  ...s store_sales; select '24' in ??? (select substring(unnest(split...
   ```
-- `trilogy file write query09.preql --content import raw.store_sales as store_sales;
-
-# Compute per-ticket quantity by summing the quantity per ticket
-auto tick…60,
-    case(cnt > 10097, avg_disc, avg_paid) ? bucket = 4 as b4_61_80,
-    case(cnt > 165306, avg_disc, avg_paid) ? bucket = 5 as b5_81_100
-limit 1;`
+- `trilogy run --import raw.store_sales:store_sales select substring(store_sales.store.zip, 1, 2) as f2, store_sales.store.store_name as sn, sum(store_sales.net_profit) as profit where store_sales.date_dim.year = 1998 and store_sales.date_dim.qoy = 2 group by sn order by sn asc limit 100; duckdb`
 
   ```text
-  refused to write 'query09.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('_TERMINATOR', ';') at line 13, column 2.
-  Expected one of:
-          * WHEN
-
+  --> 2:200
+    |
+  2 | select substring(store_sales.store.zip, 1, 2) as f2,
+  store_sales.store.store_name as sn, sum(store_sales.net_profit) as profit where
+  store_sales.date_dim.year = 1998 and store_sales.date_dim.qoy = 2 group by sn
+  order by sn asc limit 100;
+    |
+  ^---
+    |
+    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
+  bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-  ...et_qty between 81 and 100, 5 ) ??? ;  # Per-bucket metrics: line-...
-
-  Write stats: received 1022 chars / 1022 bytes; tail: …'5306, avg_disc,
-  avg_paid) ? bucket = 5 as b5_81_100\\nlimit 1;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
+   store_sales.date_dim.qoy = 2 ??? group by sn order by sn asc li...
   ```
-- `trilogy file write query09.preql --content import raw.store_sales as store_sales;
+- `trilogy file write query08.preql --content parameter zips string;
 
-# Per-ticket quantity sum
-auto ticket_qty <- sum(store_sales.quantity) by …se(cnt > 10097, avg_disc, avg_paid) ? item_bucket = 4 as b4_61_80,
-    case(cnt > 165306, avg_disc, avg_paid) ? item_bucket = 5 as b5_81_100
-limit 1;`
+import raw.store_sales as store_sales;
 
-  ```text
-  refused to write 'query09.preql': not syntactically valid Trilogy.
+# Preferred customer ZIPs (>10 preferred customers… '67')
 
-  Parse error:
-  Unexpected token Token('LOGICAL_AND', 'and') at line 8, column 21.
-  Expected one of:
-          * RPAR
-          * COMMA
-
-  Location:
-   <- case(     ticket_qty >= 1 ??? and ticket_qty <= 20, 1,     t...
-
-  Write stats: received 1261 chars / 1261 bytes; tail: …' avg_disc, avg_paid) ?
-  item_bucket = 5 as b5_81_100\\nlimit 1;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query09.preql --content import raw.store_sales as store_sales;
-
-# Per-ticket quantity sum
-auto ticket_qty <- sum(store_sales.quantity) by …se(cnt > 10097, avg_disc, avg_paid) ? item_bucket = 4 as b4_61_80,
-    case(cnt > 165306, avg_disc, avg_paid) ? item_bucket = 5 as b5_81_100
-limit 1;`
-
-  ```text
-  refused to write 'query09.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('_TERMINATOR', ';') at line 13, column 2.
-  Expected one of:
-          * WHEN
-
-  Location:
-  ...et_qty between 81 and 100, 5 ) ??? ;  # Now re-express at line-it...
-
-  Write stats: received 1216 chars / 1216 bytes; tail: …' avg_disc, avg_paid) ?
-  item_bucket = 5 as b5_81_100\\nlimit 1;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy run --import raw.store_sales:store_sales select case(1=1, 1, 2) as test;`
-
-  ```text
-  --> 2:24
-    |
-  2 | select case(1=1, 1, 2) as test;
-    |                        ^---
-    |
-    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR,
-  PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or fcase_simple_when
-  Location:
-  ...sales; select case(1=1, 1, 2) ??? as test;
-  ```
-- `trilogy run --import raw.store_sales:store_sales select simple_case(1=1, 1, 2) as test;`
-
-  ```text
-  --> 2:19
-    |
-  2 | select simple_case(1=1, 1, 2) as test;
-    |                   ^---
-    |
-    = expected limit, order_by, where, having, dot_tail, bracket_tail,
-  dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
-  Location:
-  ...tore_sales; select simple_case ??? (1=1, 1, 2) as test;
-  ```
-- `trilogy run --import raw.store_sales:store_sales select sum(store_sales.quantity) as ticket_qty
-by store_sales.ticket_number
-limit 10;`
-
-  ```text
-  --> 3:1
-    |
-  3 | by store_sales.ticket_number
-    | ^---
-    |
-    = expected metadata, limit, order_by, where, or having
-  Location:
-  ...sales.quantity) as ticket_qty ??? by store_sales.ticket_number l...
-  ```
-- `trilogy run --import raw.store_sales:store_sales select
-    sum(store_sales.quantity) as ticket_qty
-    by store_sales.ticket_number
-limit 10;`
-
-  ```text
-  --> 4:5
-    |
-  4 |     by store_sales.ticket_number
-    |     ^---
-    |
-    = expected metadata, limit, order_by, where, or having
-  Location:
-  ...s.quantity) as ticket_qty     ??? by store_sales.ticket_number l...
-  ```
-- `trilogy run --import raw.store_sales:store_sales select
-    sum(store_sales.quantity) as ticket_qty
-    by (store_sales.ticket_number)
-limit 10;`
-
-  ```text
-  --> 4:5
-    |
-  4 |     by (store_sales.ticket_number)
-    |     ^---
-    |
-    = expected metadata, limit, order_by, where, or having
-  Location:
-  ...s.quantity) as ticket_qty     ??? by (store_sales.ticket_number)...
-  ```
-- `trilogy file write query09.preql --content import raw.store_sales as store_sales;
-
-# Per-ticket total quantity (sum across all items on that ticket)
-auto tic…
-    count(store_sales.ticket_number) as cnt,
-    avg(store_sales.ext_discount_amt) as avg_disc,
-    avg(store_sales.net_paid) as avg_paid
+select
+    store_sales.store.store_name as store_name,
+    sum(store_sales.net_profit) as total_net_profit
+order by store_name asc
 limit 100;`
 
   ```text
-  refused to write 'query09.preql': not syntactically valid Trilogy.
+  refused to write 'query08.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('__ANON_7', 'by') at line 7, column 36.
+  Unexpected token Token('_SUBSTRING', 'substring(') at line 6, column 41.
+  Expected one of:
+          * _TERMINATOR
+  Previous tokens: [Token('IDENTIFIER', 'distinct')]
+
+  Location:
+  ...cust_zip_prefixes <- distinct ??? substring(store_sales.customer...
+
+  Write stats: received 1914 chars / 1914 bytes; tail: …'ofit) as
+  total_net_profit\\norder by store_name asc\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query08.preql`
+
+  ```text
+  refused to write 'query08.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('_SUBSTRING', 'substring(') at line 6, column 41.
+  Expected one of:
+          * _TERMINATOR
+  Previous tokens: [Token('IDENTIFIER', 'distinct')]
+
+  Location:
+  ...cust_zip_prefixes <- distinct ??? substring(store_sales.customer...
+
+  Write stats: received 1244 chars / 1244 bytes; tail: …') as
+  total_net_profit\r\\norder by store_name asc\r\\nlimit 100;\r\\n'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query08.preql`
+
+  ```text
+  refused to write 'query08.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('WHERE', 'where') at line 7, column 5.
   Expected one of:
           * _TERMINATOR
 
   Location:
-  ...ticket_qty_line <- ticket_qty ??? by store_sales.ticket_number,
+  ...mer.customer_address.zip     ??? where store_sales.customer.pre...
 
-  Write stats: received 817 chars / 817 bytes; tail: …'g_disc,\\n
-  avg(store_sales.net_paid) as avg_paid\\nlimit 100;'.
+  Write stats: received 1607 chars / 1607 bytes; tail: …') as
+  total_net_profit\r\\norder by store_name asc\r\\nlimit 100;\r\\n'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
   partial draft.
   ```
-- `trilogy file write query09.preql --content import raw.store_sales as store_sales;
-
-# Per-ticket total quantity
-auto ticket_qty <- sum(store_sales.quantity) b…t) as b4_61_80
-    where bucket = 4,
-    case(ticket_cnt > 165306, avg_disc_by_bucket, avg_paid_by_bucket) as b5_81_100
-    where bucket = 5
-limit 1;`
+- `trilogy file write query08.preql`
 
   ```text
-  refused to write 'query09.preql': not syntactically valid Trilogy.
+  refused to write 'query08.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('_TERMINATOR', ';') at line 13, column 2.
+  Unexpected token Token('WHERE', 'where') at line 6, column 66.
   Expected one of:
-          * WHEN
+          * _TERMINATOR
 
   Location:
-  ...et_qty between 81 and 100, 5 ) ??? ;  # Count of tickets per buck...
+  ...customer.customer_address.zip ??? where store_sales.customer.pre...
 
-  Write stats: received 1373 chars / 1373 bytes; tail: …'g_paid_by_bucket) as
-  b5_81_100\\n    where bucket = 5\\nlimit 1;'.
+  Write stats: received 1454 chars / 1454 bytes; tail: …'it) as total_net_profit
+  order by store_name asc limit 100;\r\\n'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
   partial draft.
   ```
-- `trilogy file write query09.preql --content import raw.store_sales as store_sales;
-
-# Per-ticket total quantity
-auto ticket_qty <- sum(store_sales.quantity) b…by_bucket) as b4_61_80 where bucket = 4,
-    case(ticket_cnt > 165306, avg_disc_by_bucket, avg_paid_by_bucket) as b5_81_100 where bucket = 5
-limit 1;`
+- `trilogy file write query08.preql`
 
   ```text
-  refused to write 'query09.preql': not syntactically valid Trilogy.
+  refused to write 'query08.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('_TERMINATOR', ';') at line 13, column 2.
+  Unexpected token Token('WHERE', 'where') at line 6, column 107.
   Expected one of:
-          * WHEN
+          * _TERMINATOR
 
   Location:
-  ...et_qty between 81 and 100, 5 ) ??? ;  # Count of tickets per buck...
+  ...customer.customer_address.zip ??? where store_sales.customer.pre...
 
-  Write stats: received 1353 chars / 1353 bytes; tail: …', avg_paid_by_bucket) as
-  b5_81_100 where bucket = 5\\nlimit 1;'.
+  Write stats: received 1018 chars / 1018 bytes; tail: …') as
+  total_net_profit\r\\norder by store_name asc\r\\nlimit 100;\r\\n'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query08.preql`
+
+  ```text
+  refused to write 'query08.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('WHERE', 'where') at line 7, column 66.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ...customer.customer_address.zip ??? where pref_zip_cnt > 10; auto...
+
+  Write stats: received 820 chars / 820 bytes; tail: …') as
+  total_net_profit\r\\norder by store_name asc\r\\nlimit 100;\r\\n'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy run --import raw.store_sales:store_sales auto pref_zip_cnt <- count(store_sales.customer.customer_sk ? store_sales.customer.preferred_cust_flag = 'Y'…tore_sales.customer.customer_address.zip; auto gt10 <- store_sales.customer.customer_address.zip where pref_zip_cnt > 10; select gt10 limit 5; duckdb`
+
+  ```text
+  --> 2:212
+    |
+  2 | auto pref_zip_cnt <- count(store_sales.customer.customer_sk ?
+  store_sales.customer.preferred_cust_flag = 'Y') by
+  store_sales.customer.customer_address.zip; auto gt10 <-
+  store_sales.customer.customer_address.zip where pref_zip_cnt > 10; select gt10
+  limit 5;
+    |
+  ^---
+    |
+    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...customer.customer_address.zip ??? where pref_zip_cnt > 10; selec...
+  ```
+- `trilogy run --import raw.store_sales:store_sales auto pref_zip_cnt <- count(store_sales.customer.customer_sk ? store_sales.customer.preferred_cust_flag = 'Y'…dress.zip; auto pref_pfx <- distinct substring(store_sales.customer.customer_address.zip ? pref_zip_cnt > 10, 1, 2); select pref_pfx limit 10; duckdb`
+
+  ```text
+  --> 2:183
+    |
+  2 | auto pref_zip_cnt <- count(store_sales.customer.customer_sk ?
+  store_sales.customer.preferred_cust_flag = 'Y') by
+  store_sales.customer.customer_address.zip; auto pref_pfx <- distinct
+  substring(store_sales.customer.customer_address.zip ? pref_zip_cnt > 10, 1, 2);
+  select pref_pfx limit 10;
+    |
+  ^---
+    |
+    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...ip; auto pref_pfx <- distinct ??? substring(store_sales.customer...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select count(store_sales.ticket_number) by sum(store_sales.quantity) by store_sales.ticket_number as bucket limit 5;`
+
+  ```text
+  Syntax [211]: Expression in `by` clause must be wrapped in
+  parens — write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work
+  without parens, but any function call, cast, or other expression needs them.
+  Location:
+  ...nt(store_sales.ticket_number) ??? by sum(store_sales.quantity) b...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select bucket, cnt from (auto ticket_qty <- sum(store_sales.quantity) by store_sales.ticket_number;
+auto buc…et_number) as cnt, avg(store_sales.ext_discount_amt) as avg_ext_discount_amt, avg(store_sales.net_paid) as avg_net_paid) where bucket in (1,2,3,4,5);`
+
+  ```text
+  Syntax [101]: Using FROM keyword? Trilogy does not have a
+  FROM clause (Datasource resolution is automatic).
+  Location:
+  ...ore_sales; select bucket, cnt ??? from (auto ticket_qty <- sum(s...
+  ```
+- `trilogy file write query11.preql --content import raw.store_sales as store_sales;
+import raw.web_sales as web_sales;
+
+merge store_sales.customer.customer_sk …    customer_code asc nulls first,
+    first_name asc nulls first,
+    last_name asc nulls first,
+    preferred_cust_flag asc nulls first
+limit 100;
+`
+
+  ```text
+  refused to write 'query11.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('IDENTIFIER', 'auto') at line 19, column 1.
+  Expected one of:
+          * SELECT
+
+  Location:
+   (zero denominator = 0 ratio) ??? auto ss_growth <- ss_rev_2002
+
+  Write stats: received 1657 chars / 1657 bytes; tail: …'s first,\\n
+  preferred_cust_flag asc nulls first\\nlimit 100;\\n'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
@@ -468,11 +620,10 @@ limit 1;`
 - `trilogy file write query11.preql --content import raw.store_sales as store_sales;
 import raw.web_sales as web_sales;
 
-# Customers who have sales in BOTH stor…rder by
-    billing_customer_code nulls first,
-    first_name nulls first,
-    last_name nulls first,
-    preferred_cust_flag nulls first
+merge store_sales.customer.customer_sk …    customer_code asc nulls first,
+    first_name asc nulls first,
+    last_name asc nulls first,
+    preferred_cust_flag asc nulls first
 limit 100;
 `
 
@@ -480,422 +631,623 @@ limit 100;
   refused to write 'query11.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('LOGICAL_AND', 'and') at line 19, column 5.
+  Unexpected token Token('IDENTIFIER', 'auto') at line 16, column 1.
   Expected one of:
-          * _TERMINATOR
+          * SELECT
 
   Location:
-  ....customer.customer_sk > 0     ??? and count(web_sales.order_numb...
+   (zero denominator = 0 ratio) ??? auto ss_growth <- ss_rev_2002
 
-  Write stats: received 2269 chars / 2269 bytes; tail: …'nulls first,\\n
-  preferred_cust_flag nulls first\\nlimit 100;\\n'.
+  Write stats: received 1472 chars / 1472 bytes; tail: …'s first,\\n
+  preferred_cust_flag asc nulls first\\nlimit 100;\\n'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
   partial draft.
   ```
-- `trilogy file write query11.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
-
-auto store_rev_2001 <- sum(store_sales.…rder by
-    billing_customer_code nulls first,
-    first_name nulls first,
-    last_name nulls first,
-    preferred_cust_flag nulls first
-limit 100;
-`
+- `trilogy file write query11.preql`
 
   ```text
   refused to write 'query11.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('LOGICAL_AND', 'and') at line 16, column 36.
+  Unexpected token Token('IDENTIFIER', 'auto') at line 16, column 1.
   Expected one of:
-          * _TERMINATOR
+          * SELECT
 
   Location:
-  ...active_both <- has_store_2001 ??? and has_web_2001;  where activ...
+  ...(zero denominator = 0 ratio) ??? auto ss_growth <- ss_rev_2002
 
-  Write stats: received 1821 chars / 1821 bytes; tail: …'nulls first,\\n
-  preferred_cust_flag nulls first\\nlimit 100;\\n'.
+  Write stats: received 1501 chars / 1501 bytes; tail: …' first,\r\\n
+  preferred_cust_flag asc nulls first\r\\nlimit 100;'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
   partial draft.
   ```
-- `trilogy file write query14.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale…_inc_ship) by (web_sales.item.brand, web_sales.item.class_id, web_sales.item.category_id)
-    where web_sales.sold_date.year between 1999 and 2001;
-
-`
+- `trilogy file write query11.preql`
 
   ```text
-  refused to write 'query14.preql': not syntactically valid Trilogy.
+  refused to write 'query11.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('WHERE', 'where') at line 17, column 5.
+  Unexpected token Token('IDENTIFIER', 'auto') at line 14, column 1.
   Expected one of:
-          * _TERMINATOR
+          * SELECT
 
   Location:
-  ...e_sales.item.category_id)     ??? where store_sales.date_dim.yea...
+  ...01 > 0 and ws_rev_2001 > 0  ??? auto ss_growth <- ss_rev_2002
 
-  Write stats: received 1293 chars / 1293 bytes; tail: …'\\n    where
-  web_sales.sold_date.year between 1999 and 2001;\\n\\n'.
+  Write stats: received 1374 chars / 1374 bytes; tail: …' first,\r\\n
+  preferred_cust_flag asc nulls first\r\\nlimit 100;'.
   If the tail looks cut off (mid-identifier, mid-statement) your response was
   likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
   resend the same bytes. Pass --force to bypass validation only when you intend a
   partial draft.
   ```
-- `trilogy run --import raw.store_sales:store_sales --import raw.catalog_sales:catalog_sales --import raw.web_sales:web_sales select store_sales.item.brand, sto…, store_sales.item.category_id, count(store_sales.ticket_number) as cnt where store_sales.date_dim.year between 1999 and 2001 group by 1,2,3 limit 5;`
+- `trilogy run --import raw.store_sales:store_sales select store_sales.customer.customer_demographics.marital_status, store_sales.customer.customer_demographics…raphics.dep_count, store_sales.sales_price, count(store_sales.ticket_number) as cnt where store_sales.date_dim.year = 2001 group by 1,2,3,4 limit 20;`
 
   ```text
-  --> 4:183
+  --> 2:287
     |
-  4 | select store_sales.item.brand, store_sales.item.class_id,
-  store_sales.item.category_id, count(store_sales.ticket_number) as cnt where
-  store_sales.date_dim.year between 1999 and 2001 group by 1,2,3 limit 5;
+  2 | select store_sales.customer.customer_demographics.marital_status,
+  store_sales.customer.customer_demographics.education_status,
+  store_sales.customer.household_demographics.dep_count, store_sales.sales_price,
+  count(store_sales.ticket_number) as cnt where store_sales.date_dim.year = 2001
+  group by 1,2,3,4 limit 20;
     |
   ^---
     |
     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
   bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-  ...im.year between 1999 and 2001 ??? group by 1,2,3 limit 5;
+  ...re_sales.date_dim.year = 2001 ??? group by 1,2,3,4 limit 20;
   ```
-- `trilogy file write query14.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale…istinct channels it appears in
-auto combo_channels <- count(1) by (store_sales.item.brand, store_sales.item.class_id, store_sales.item.category_id);
-`
+- `trilogy run --import raw/store_sales:s select s.item.brand_id as brand, s.item.class_id as class, s.item.category_id as cat, s.date_dim.year as yr, count(s.quantity) as cnt where s.date_dim.year between 1999 and 2001 group by brand, class, cat, yr limit 5;`
 
   ```text
-  …
-
-          * _DATE_ADD
-          * _WEEK
-          * _HOUR
-          * FILTER
-          * _ILIKE
-          * INT_LITERAL_PART
-          * _REGEXP_REPLACE
-          * LBRACE
-          * _DAY_NAME
-          * _PARSE_TIME
-          * GREATEST
-          * _DATE_DIFF
-          * _ATTR_ACCESS
-          * _BOOL_AND
-          * CURRENT_DATE
-          * _VARIANCE
-          * GROUPING
-          * _GEO_Y
-          * COALESCE
-          * MULTILINE_STRING
-          * _GEO_CENTROID
-          * _ARRAY_SUM
-          * _QUARTER
-          * _DATE_SUB
-          * FALSE
-          * _DATE
-          * _MAP_KEYS
-          * DIVIDE
-  Previous tokens: [Token('LPAR', '(')]
-
-  Location:
-  ...ar between 1999 and 2001) by ( ??? )     and avg(catalog_sales.qu...
-
-  Write stats: received 2175 chars / 2175 bytes; tail: …',
-  store_sales.item.class_id, store_sales.item.category_id);\\n'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale…, item_class_id, item_category_id) ? web_sales.sold_date.year between 1999 and 2001) > 0
-
-select item_brand, item_class_id, item_category_id
-limit 5;`
-
-  ```text
-  …
-   _UNNEST
-          * _DATE_PART
-          * /\-?[0-9]*\.[0-9]+/
-          * _ARRAY_SUM
-          * TRUE
-          * DIVIDE
-          * _ARRAY_TRANSFORM
-          * WINDOW_TYPE_SQL_NUMBERING
-          * COALESCE
-          * COUNT_DISTINCT
-          * _PARSE_TIME
-          * LEAST
-          * LSQB
-          * _ARRAY_SORT
-          * FALSE
-          * _COUNT
-          * _DATE_ADD
-          * _DAY_NAME
-          * BOOL
-          * _LIKE
-          * CONDITION_NOT
-          * NULLIF
-          * _LOG
-          * _SPLIT
-          * _GROUP
-          * _RANDOM
-          * "@"
-          * _BOOL_AND
-          * _BOOL_OR
-  Previous tokens: [Token('LPAR', '(')]
-
-  Location:
-  ...l_amt <- sum(ss_sale_val) by ( ??? ) where store_sales.date_dim.y...
-
-  Write stats: received 2183 chars / 2183 bytes; tail: …'\\nselect item_brand,
-  item_class_id, item_category_id\\nlimit 5;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale… ();
-
-select
-    store_sales.item.brand as brand,
-    store_sales.item.class_id as class_id,
-    store_sales.item.category_id as category_id
-limit 5;`
-
-  ```text
-  …
-  _TRUNC
-          * _MIN
-          * _GENERATE_ARRAY
-          * _COUNT
-          * _GEO_TRANSFORM
-          * LEN
-          * WINDOW_TYPE_SQL_NAVIGATION
-          * FILTER
-          * GROUPING_ID
-          * _LOWER
-          * /(group)\s+(*)/i
-          * _LTRIM
-          * "@"
-          * _DAY
-          * CONCAT
-          * CURRENT_DATE
-          * _HOUR
-          * _ARRAY_FILTER
-          * _RTRIM
-          * _ARRAY_SORT
-          * WINDOW_TYPE_SQL_NUMBERING
-          * /add\(/
-          * DATETIME
-          * WINDOW_TYPE_LEGACY
-          * /\-?[0-9]*\.[0-9]+/
-          * _PARSE_TIME
-          * LBRACE
-  Previous tokens: [Token('LPAR', '(')]
-
-  Location:
-  ...ar between 1999 and 2001) by ( ??? );  select     store_sales.ite...
-
-  Write stats: received 730 chars / 730 bytes; tail: …'id,\\n
-  store_sales.item.category_id as category_id\\nlimit 5;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query14.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale…s total_sales,
-    count(store_sales.ticket_number) as total_count
-where store_sales.date_dim.year = 2001 and store_sales.date_dim.moy = 11
-limit 10;`
-
-  ```text
-  …
-  EXP_EXTRACT
-          * _GEO_DISTANCE
-          * _GEO_POINT
-          * _UNNEST
-          * _ARRAY_SORT
-          * _GEO_X
-          * _DAY_NAME
-          * _GEO_CENTROID
-          * _HEX
-          * LPAR
-          * CASE
-          * _BOOL_AND
-          * _TIMESTAMP
-          * LEN
-          * _DATE_DIFF
-          * _CEIL
-          * LEAST
-          * COUNT_DISTINCT
-          * _RTRIM
-          * _TRIM
-          * _BOOL_OR
-          * _LTRIM
-          * _AVG
-          * _DATE_TRUNC
-          * "@"
-          * _REGEXP_CONTAINS
-          * _LOWER
-          * CONDITION_NOT
-          * _REPLACE
-          * DIVIDE
-  Previous tokens: [Token('LPAR', '(')]
-
-  Location:
-  ...* store_sales.list_price) by ( ??? ) where store_sales.date_dim.y...
-
-  Write stats: received 1060 chars / 1060 bytes; tail: …'_dim.year = 2001 and
-  store_sales.date_dim.moy = 11\\nlimit 10;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query17.preql --content import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as cata…uantity) / avg(catalog_sales.quantity) as cs_qty_cv
-order by item_code nulls first, item_description nulls first, store_state nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'query17.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('MERGE', 'merge') at line 11, column 1.
-  Expected one of:
-          * SELECT
-
-  Location:
-  ...urn date in 2001Q1, Q2, or Q3 ??? merge store_returns.item.item_...
-
-  Write stats: received 2081 chars / 2081 bytes; tail: …'description nulls first,
-  store_state nulls first\\nlimit 100;\\n'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query17.preql -e -c import raw.store_sales as store_sales;
-import raw.store_returns as store_returns;
-import raw.catalog_sales as catalog_…uantity) / avg(catalog_sales.quantity) as cs_qty_cv
-order by item_code nulls first, item_description nulls first, store_state nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'query17.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('MERGE', 'merge') at line 11, column 1.
-  Expected one of:
-          * SELECT
-
-  Location:
-  ...urn date in 2001Q1, Q2, or Q3 ??? merge store_returns.item.item_...
-
-  Write stats: received 2081 chars / 2081 bytes; tail: …'description nulls first,
-  store_state nulls first\\nlimit 100;\\n'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy run --import raw.date_dim:date_dim select date_dim.fy_year, date_dim.fy_quarter_seq, date_dim.quarter_name, date_dim.date, count(date_dim.date_sk) as…m.fy_quarter_seq in (1,2,3) group by date_dim.fy_year, date_dim.fy_quarter_seq, date_dim.quarter_name, date_dim.date order by date_dim.date limit 10;`
-
-  ```text
-  --> 2:189
+  --> 2:179
     |
-  2 | select date_dim.fy_year, date_dim.fy_quarter_seq, date_dim.quarter_name,
-  date_dim.date, count(date_dim.date_sk) as cnt where date_dim.fy_year = 2001 and
-  date_dim.fy_quarter_seq in (1,2,3) group by date_dim.fy_year,
-  date_dim.fy_quarter_seq, date_dim.quarter_name, date_dim.date order by
-  date_dim.date limit 10;
+  2 | select s.item.brand_id as brand, s.item.class_id as class,
+  s.item.category_id as cat, s.date_dim.year as yr, count(s.quantity) as cnt
+  where s.date_dim.year between 1999 and 2001 group by brand, class, cat, yr
+  limit 5;
     |
   ^---
     |
     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
   bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-  ...dim.fy_quarter_seq in (1,2,3) ??? group by date_dim.fy_year, dat...
+  ...im.year between 1999 and 2001 ??? group by brand, class, cat, yr...
+  ```
+- `trilogy run --import raw/store_sales:s --import raw/catalog_sales:c --import raw/web_sales:w select s.item.brand_id as brand_id, s.item.class_id as class_id, s.item.category_id as cat_id, sum(s.quantity * s.list_price) as s_val from s where s.date_dim.year between 1999 and 2001 limit 5;`
+
+  ```text
+  Syntax [101]: Using FROM keyword? Trilogy does not have a
+  FROM clause (Datasource resolution is automatic).
+  Location:
+  ...tity * s.list_price) as s_val ??? from s where s.date_dim.year b...
+  ```
+- `trilogy run --import raw/store_sales:store_sales select store_sales.date_dim.month_seq as mseq, min(store_sales.date_dim.year) as min_yr, max(store_sales.date_dim.year) as max_yr where store_sales.date_dim.year between 1999 and 2001 group by mseq order by mseq limit 20;`
+
+  ```text
+  --> 2:185
+    |
+  2 | select store_sales.date_dim.month_seq as mseq,
+  min(store_sales.date_dim.year) as min_yr, max(store_sales.date_dim.year) as
+  max_yr where store_sales.date_dim.year between 1999 and 2001 group by mseq
+  order by mseq limit 20;
+    |
+  ^---
+    |
+    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
+  bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...im.year between 1999 and 2001 ??? group by mseq order by mseq li...
+  ```
+- `trilogy run --import raw/store_sales:store_sales select store_sales.date_dim.month_seq as mseq from store_sales limit 5;`
+
+  ```text
+  Syntax [101]: Using FROM keyword? Trilogy does not have a
+  FROM clause (Datasource resolution is automatic).
+  Location:
+  ...es.date_dim.month_seq as mseq ??? from store_sales limit 5;
+  ```
+- `trilogy run --import raw/store_sales:store_sales select store_sales.date_dim.month_seq as mseq, min(store_sales.date_dim.year) as min_yr where store_sales.date_dim.year = 2001 group by mseq order by mseq limit 5;`
+
+  ```text
+  --> 2:128
+    |
+  2 | select store_sales.date_dim.month_seq as mseq,
+  min(store_sales.date_dim.year) as min_yr where store_sales.date_dim.year = 2001
+  group by mseq order by mseq limit 5;
+    |
+  ^---
+    |
+    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
+  bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...re_sales.date_dim.year = 2001 ??? group by mseq order by mseq li...
+  ```
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales select store_sales.item.brand as b…sum(store_sales.quantity * store_sales.list_price) as total where store_sales.date_dim.year between 1999 and 2001 group by brand, class, cat limit 5;`
+
+  ```text
+  --> 4:222
+    |
+  4 | select store_sales.item.brand as brand, store_sales.item.class as class,
+  store_sales.item.category as cat, sum(store_sales.quantity *
+  store_sales.list_price) as total where store_sales.date_dim.year between 1999
+  and 2001 group by brand, class, cat limit 5;
+    |
+  ^---
+    |
+    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail,
+  bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...im.year between 1999 and 2001 ??? group by brand, class, cat lim...
+  ```
+- `trilogy file write query15.preql --content import raw.catalog_sales as catalog_sales;
+
+where
+    catalog_sales.sold_date.year = 2001
+    and catalog_sales.so…elect
+    catalog_sales.bill_addr.zip as zip_code,
+    catalog_sales.sales_price as per_line_sales_price
+order by
+    zip_code nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query15.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('ORDER_IDENTIFIER', 'regexp ') at line 7, column 37.
+  Expected one of:
+          * RPAR
+          * LOGICAL_AND
+          * LOGICAL_OR
+          * COMMA
+  Previous tokens: [Token('IDENTIFIER', 'catalog_sales.bill_addr.zip')]
+
+  Location:
+    catalog_sales.bill_addr.zip ??? regexp '^(85669|86197|88274|83...
+
+  Write stats: received 509 chars / 509 bytes; tail: …'ine_sales_price\\norder
+  by\\n    zip_code nulls first\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query15.preql --content import raw.catalog_sales as catalog_sales;
+
+where
+    catalog_sales.sold_date.year = 2001
+    and catalog_sales.so…addr.zip as zip_code,
+    sum(catalog_sales.sales_price) as total_per_line_sales_price
+group by zip_code
+order by
+    zip_code nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query15.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('ORDER_IDENTIFIER', 'group ') at line 15, column 1.
+  Expected one of:
+          * _TERMINATOR
+          * WHERE
+          * ORDER
+          * MERGE
+          * HAVING
+          * COMMA
+          * LIMIT
+          * METADATA
+  Previous tokens: [Token('IDENTIFIER', 'total_per_line_sales_price')]
+
+  Location:
+  ...as total_per_line_sales_price ??? group by zip_code order by
+
+  Write stats: received 846 chars / 846 bytes; tail: …'oup by zip_code\\norder
+  by\\n    zip_code nulls first\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write debug10.preql --content import raw.catalog_sales as cs;
+# Check: does the warehouse_sk appear in TPC-DS catalog_sales table?
+# In TPC-DS, catalog_sales has a warehouse_sk column.
+# Let's look at the datasource to see what columns map to what
+read_file raw/catalog_sales.preql`
+
+  ```text
+  …
+   DATASOURCE_ROOT
+          * "merge"i
+          * PARAMETER
+          * TYPE
+          * PERSIST_MODE
+          * DATASOURCE
+          * DATASOURCE_PARTIAL
+          * AUTO
+          * SHOW
+          * COPY
+          * _DEF_TABLE
+          * PURPOSE
+          * UNIQUE
+          * FROM
+          * CREATE
+          * WHERE
+          * PARSE_COMMENT
+          * ROWSET
+          * _PROPERTIES
+          * DEF
+          * IMPORT
+          * PARAM
+          * VALIDATE
+          * CHART
+          * $END
+          * RAW_SQL
+          * SELECT
+  Previous tokens: [Token('PARSE_COMMENT', "# Let's look at the datasource to see
+  what columns map to what\n")]
+
+  Location:
+   see what columns map to what ??? read_file raw/catalog_sales.pr...
+
+  Write stats: received 251 chars / 251 bytes; tail: …'e what columns map to
+  what\\nread_file raw/catalog_sales.preql'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write debug19.preql --content import raw.catalog_sales as cs;
+# Both 11952 and 12669 have matching returns! So after the anti-join, both get eli…count(distinct cs.order_number) as unique_orders,
+    sum(cs.ext_ship_cost) as total_ship_cost,
+    sum(cs.net_profit) as total_net_profit
+limit 100;`
+
+  ```text
+  refused to write 'debug19.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('WILDCARD_IDENTIFIER', 'cs.order_number') at line 20,
+  column 20.
+  Expected one of:
+          * RPAR
+  Previous tokens: [Token('IDENTIFIER', 'distinct')]
+
+  Location:
+  ...= 0 select     count(distinct ??? cs.order_number) as unique_ord...
+
+  Write stats: received 1058 chars / 1058 bytes; tail: …'_cost,\\n
+  sum(cs.net_profit) as total_net_profit\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy run --import raw.store_sales:ss select count(ss.ticket_number) as cnt, count(distinct ss.item.item_id) as items, count(distinct ss.store.store_sk) as stores limit 5;`
+
+  ```text
+  --> 2:55
+    |
+  2 | select count(ss.ticket_number) as cnt, count(distinct ss.item.item_id) as
+  items, count(distinct ss.store.store_sk) as stores limit 5;
+    |                                                       ^---
+    |
+    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...umber) as cnt, count(distinct ??? ss.item.item_id) as items, cou...
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr select count(ss.ticket_number) as ss_cnt, count(sr.ticket_number) as sr_cnt, count(distinct ss.item.item_id) as items limit 5;`
+
+  ```text
+  --> 3:93
+    |
+  3 | select count(ss.ticket_number) as ss_cnt, count(sr.ticket_number) as
+  sr_cnt, count(distinct ss.item.item_id) as items limit 5;
+    |
+  ^---
+    |
+    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...er) as sr_cnt, count(distinct ??? ss.item.item_id) as items limi...
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs merge sr.item.item_sk into ~ss.item.item_sk; merge sr.cus…count(ss.ticket_number) as ss_cnt, count(sr.ticket_number) as sr_cnt, count(cs.quantity) as cs_cnt, count(distinct ss.item.item_id) as items limit 5;`
+
+  ```text
+  --> 4:340
+    |
+  4 | merge sr.item.item_sk into ~ss.item.item_sk; merge sr.customer.customer_sk
+  into ~ss.customer.customer_sk; merge cs.item.item_sk into ~ss.item.item_sk;
+  merge cs.bill_customer.customer_sk into ~ss.customer.customer_sk; select
+  count(ss.ticket_number) as ss_cnt, count(sr.ticket_number) as sr_cnt,
+  count(cs.quantity) as cs_cnt, count(distinct ss.item.item_id) as items limit 5;
+    |
+  ^---
+    |
+    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...ty) as cs_cnt, count(distinct ??? ss.item.item_id) as items limi...
+  ```
+- `trilogy run --import raw.catalog_sales:cs select count(cs.quantity) as cnt, cs.sold_date.fy_year as yr, cs.sold_date.qoy as q, count(distinct cs.item.item_sk) as items_distinct, count(cs.item.item_sk) as items_raw limit 10;`
+
+  ```text
+  --> 2:101
+    |
+  2 | select count(cs.quantity) as cnt, cs.sold_date.fy_year as yr,
+  cs.sold_date.qoy as q, count(distinct cs.item.item_sk) as items_distinct,
+  count(cs.item.item_sk) as items_raw limit 10;
+    |
+  ^---
+    |
+    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR,
+  PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...date.qoy as q, count(distinct ??? cs.item.item_sk) as items_dist...
+  ```
+- `trilogy file write query18.preql --content import raw.catalog_sales as catalog_sales;
+
+# For catalog sales in 1998, restricted to:
+# - billing customer-demog…es.bill_customer.customer_address.county nulls first,
+    catalog_sales.item.item_id nulls first,
+    g_country,
+    g_state,
+    g_county
+limit 100;`
+
+  ```text
+  refused to write 'query18.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('ORDER_IDENTIFIER', 'def ') at line 15, column 1.
+  Expected one of:
+          * SELECT
+  Previous tokens: [Token('RPAR', ')')]
+
+  Location:
+  ...S','IN','ND','OK','NM','VA')  ??? def avg_rollup(metric) -> avg(...
+
+  Write stats: received 2755 chars / 2755 bytes; tail: …'s first,\\n
+  g_country,\\n    g_state,\\n    g_county\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
   ```
 
 ### `other`
 
-- `trilogy `
+- `trilogy run query01.preql`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 92 (char 91). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 84 (char 83). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 87 (char 86). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy run query04.preql`
-
-  ```text
-  HAVING references 'local.year_total_catalog', which is not in
-  the SELECT projection (line 19). Fix one of: (a) add it to SELECT — prefix with
+  HAVING references 'local.cust_store_returns', which is not in
+  the SELECT projection (line 9). Fix one of: (a) add it to SELECT — prefix with
   `--` to keep it out of the output rows, e.g. `select ...,
-  --local.year_total_catalog`; (b) move the filter to WHERE — for an aggregate
+  --local.cust_store_returns`; (b) move the filter to WHERE — for an aggregate
   condition on a non-output grain, write the aggregate inline as `agg(x) by
   grain` directly in WHERE.
   ```
-- `trilogy run - --import raw.store_sales:store_sales --import raw.catalog_sales:catalog_sales --import raw.web_sales:web_sales`
-
-  ```text
-  maximum recursion depth exceeded
-  ```
-- `trilogy run - --import raw.store_sales:store_sales --import raw.catalog_sales:catalog_sales --import raw.web_sales:web_sales`
-
-  ```text
-  maximum recursion depth exceeded
-  ```
-- `trilogy run query07.preql`
-
-  ```text
-  Unable to import '.\store_sales.preql': [Errno 2] No such
-  file or directory: '.\\store_sales.preql'. Did you mean: raw.store_sales?
-  ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 98 (char 97). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 86 (char 85). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy `
+- `trilogy run query02.preql`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 103 (char 102). Re-issue the call with valid JSON arguments.
+  Recursion error building concept local.sun_ratio with grain
+  Grain<Abstract> and lineage
+  divide(ref:local.sun_sales_2002,ref:local.sun_sales_2001). This is likely due
+  to a circular reference.
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+  Recursion error building concept local.sun with grain
+  Grain<Abstract> and lineage
+  divide(ref:local.sun_sales_02,ref:local.sun_sales_01). This is likely due to a
+  circular reference.
+  ```
+- `trilogy run - --import raw.catalog_sales:cs --import raw.web_sales:ws`
+
+  ```text
+  Recursion error building concept local.sun_02 with grain
+  Grain<local.sun_01,local.sun_02,ws.sold_date.week_seq>|ref:ws.sold_date.week_se
+  q between 5270 and 5275 and lineage <Filter: ref:local.sales_by where
+  ref:ws.sold_date.year = 2002 and ref:ws.sold_date.dow = 0>. This is likely due
+  to a circular reference.
   ```
 - `trilogy `
 
   ```text
   Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.cs_2001', 'local.ws_2001', 'local.first_name',
+  'local.preferred_flag', 'local.customer_code', 'local.last_name',
+  'local.ss_2001'} out of  with found {'local.cs_2001',
+  'catalog_sales.bill_customer.customer_sk', 'local.ws_2002', 'local.ss_2002',
+  'local.ws_2001', 'local.ss_2001', 'web_sales.bill_customer.customer_sk',
+  'local.cs_2002', 'store_sales.customer.customer_sk'}
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 94 (char 93). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run --import raw.store_sales:store_sales --import raw.store_returns:store_returns select store_sales.store.store_id, sum(store_sales.ext_sales_price … '2000-09-06'::date) - sum(store_returns.net_loss ? store_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as profit limit 5;`
+
+  ```text
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local._virt_agg_sum_9444807640129606',
+  'local._virt_agg_sum_9914007459767470', 'local.total_returns'} out of  with
+  found {'local._virt_agg_sum_9914007459767470', 'local.total_sales',
+  'store_sales.store.store_id'}
+  ```
+- `trilogy file write --escapes --content parameter zips string;
+
+import raw.store_sales as store_sales;
+
+# Preferred customer ZIPs (>10 preferred customers)
+au…
+    store_sales.store.store_name as store_name,
+    sum(store_sales.net_profit) as total_net_profit
+order by store_name asc
+limit 100; query08.preql`
+
+  ```text
+  trilogy file write: `--content` takes a SINGLE string argument. Your args list put 2 separate tokens after --content (treating it like a shell command). In a tool call, pass the entire file body as one string element after --content, with newlines embedded literally — e.g.
+    {"args": ["file", "write", "query70.preql", "--content", "import raw.store_sales as store_sales;\n\nselect ..."]}
+  Alternatively use `--escapes` with a single-line `\n`-escaped string.
+  ```
+- `trilogy run --import raw.store_sales:store_sales select sum(store_sales.quantity) by store_sales.ticket_number as ticket_qty, count(store_sales.ticket_number…er as avg_disc, avg(store_sales.net_paid) by store_sales.ticket_number as avg_net where ticket_qty between 1 and 100 order by ticket_qty asc limit 5;`
+
+  ```text
+  Cannot reference an aggregate derived in the select
+  (local.ticket_qty) in the same statement where clause; move to the HAVING
+  clause instead; Line: 2
+  ```
+- `trilogy run --import raw.store_sales:store_sales auto ticket_qty <- sum(store_sales.quantity) by store_sales.ticket_number;
+auto line_items <- count(store_sa… avg(store_sales.net_paid) by store_sales.ticket_number;
+select avg_disc, avg_net where ticket_qty between 1 and 100 order by ticket_qty asc limit 5;`
+
+  ```text
+  ORDER BY references 'local.ticket_qty', which is not in the
+  SELECT projection (line 6). Add it to SELECT to sort by it — prefix with `--`
+  to keep it out of the output rows, e.g. `select ..., --local.ticket_qty order
+  by local.ticket_qty asc`.
+  ```
+- `trilogy run --import raw.store_sales:store_sales auto ticket_qty <- sum(store_sales.quantity) by store_sales.ticket_number;
+auto bucket <- case when ticket_q… 4 when ticket_qty between 81 and 100 then 5 end;
+select bucket, count(store_sales.ticket_number) as tickets_in_bucket, --ticket_qty order by bucket;`
+
+  ```text
+  (_duckdb.ParserException) Parser Error: syntax error at or
+  near "aggregate"
+
+  LINE 19:     INVALID_REFERENCE_BUG_<Cannot render aggregate
+  local.tickets_in_bucket in CTE wakeful: source_map...
+                                                    ^
+  [SQL:
+  WITH
+  quizzical as (
+  SELECT
+      "store_sales_store_sales"."ss_ticket_number" as
+  "store_sales_ticket_number",
+      sum("store_sales_store_sales"."ss_quantity") as "ticket_qty"
+  FROM
+      "store_sales" as "store_sales_store_sales"
+  GROUP BY
+      1)
+  SELECT
+      CASE
+          WHEN "quizzical"."ticket_qty" BETWEEN 1 AND 20 THEN 1
+          WHEN "quizzical"."ticket_qty" BETWEEN 21 AND 40 THEN 2
+          WHEN "quizzical"."ticket_qty" BETWEEN 41 AND 60 THEN 3
+          WHEN "quizzical"."ticket_qty" BETWEEN 61 AND 80 THEN 4
+          WHEN "quizzical"."ticket_qty" BETWEEN 81 AND 100 THEN 5
+          END as "bucket",
+      INVALID_REFERENCE_BUG_<Cannot render aggregate local.tickets_in_bucket in
+  CTE wakeful: source_map miss and CTE grain Grain<local.bucket,local.ticket_qty>
+  != aggregate by-grain <['local.ticket_qty']>> as "tickets_in_bucket"
+  FROM
+      "quizzical"
+  ORDER BY
+      "bucket" asc]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```
+- `trilogy run --import raw.store_sales:store_sales auto ticket_qty <- sum(store_sales.quantity) by store_sales.ticket_number;
+auto bucket <- case when ticket_q…then 4 when ticket_qty between 81 and 100 then 5 end;
+auto cnt <- count(store_sales.ticket_number) by ticket_qty;
+select bucket, cnt order by bucket;`
+
+  ```text
+  (_duckdb.ParserException) Parser Error: syntax error at or
+  near "aggregate"
+
+  LINE 20:     INVALID_REFERENCE_BUG_<Cannot render aggregate local.cnt in CTE
+  wakeful: source_map miss and...
+                                                    ^
+  [SQL:
+  WITH
+  quizzical as (
+  SELECT
+      "store_sales_store_sales"."ss_ticket_number" as
+  "store_sales_ticket_number",
+      sum("store_sales_store_sales"."ss_quantity") as "ticket_qty"
+  FROM
+      "store_sales" as "store_sales_store_sales"
+  GROUP BY
+      1),
+  wakeful as (
+  SELECT
+      CASE
+          WHEN "quizzical"."ticket_qty" BETWEEN 1 AND 20 THEN 1
+          WHEN "qui
+  …
+  AND 60 THEN 3
+          WHEN "quizzical"."ticket_qty" BETWEEN 61 AND 80 THEN 4
+          WHEN "quizzical"."ticket_qty" BETWEEN 81 AND 100 THEN 5
+          END as "bucket",
+      INVALID_REFERENCE_BUG_<Cannot render aggregate local.cnt in CTE wakeful:
+  source_map miss and CTE grain Grain<local.bucket,local.ticket_qty> != aggregate
+  by-grain <['local.ticket_qty']>> as "cnt"
+  FROM
+      "quizzical")
+  SELECT
+      "wakeful"."bucket" as "bucket",
+      "wakeful"."cnt" as "cnt"
+  FROM
+      "wakeful"
+  GROUP BY
+      1,
+      2
+  ORDER BY
+      "wakeful"."bucket" asc]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 501 (char 500). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run query10.preql`
+
+  ```text
+  Duplicate select output for local.customer_count; Line: 8
+  ```
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales select store_sales.item.brand_id a…_val, count(catalog_sales.quantity) as cs_cnt, sum(web_sales.quantity * web_sales.list_price) as ws_val, count(web_sales.quantity) as ws_cnt limit 5;`
+
+  ```text
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.ws_val', 'local.ws_cnt', 'local.cs_val', 'local.cs_cnt',
+  'local.ss_cnt'} out of  with found {'store_sales.item.category_id',
+  'store_sales.item.class_id', 'store_sales.item.brand_id', 'local.ss_val',
+  'local.ss_cnt'}
+  ```
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales select store_sales.item.brand_id a…_id as catid, sum(store_sales.quantity * store_sales.list_price) as ss_val, sum(catalog_sales.quantity * catalog_sales.list_price) as cs_val limit 5;`
+
+  ```text
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.ss_val', 'local.cs_val'} out of  with found
+  {'store_sales.item.brand_id', 'local.ss_val', 'store_sales.item.category_id',
+  'store_sales.item.class_id'}
   ```
 - `trilogy `
 
@@ -905,299 +1257,452 @@ limit 100;
 - `trilogy `
 
   ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 101 (char 100). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run --import raw.store_sales:store_sales select case when 1=1 then 1 else 2 end as test;`
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs merge sr.item.item_sk into ~ss.item.item_sk; merge sr.cus…ustomer.customer_sk as csk, ss.item.item_sk as isk, ss.ticket_number as tn, count(sr.ticket_number) as sr_cnt, count(cs.quantity) as cs_cnt limit 10;`
 
   ```text
-  'int' object has no attribute 'concept_arguments'
-  ```
-- `trilogy run --import raw.store_sales:store_sales select
-    sum(store_sales.quantity) by store_sales.ticket_number as ticket_qty
-where ticket_qty between 1 and 20 or ticket_qty between 21 and 40 or ticket_qty between 41 and 60 or ticket_qty between 61 and 80 or ticket_qty between 81 and 100
-limit 5;`
+  (_duckdb.BinderException) Binder Error: Referenced table
+  "ss_item_item" not found!
+  Candidate tables: "ss_date_dim_date_dim", "ss_customer_customer",
+  "sr_date_dim_date_dim", "ss_store_sales", "sr_store_returns"
 
-  ```text
-  Cannot reference an aggregate derived in the select
-  (local.ticket_qty) in the same statement where clause; move to the HAVING
-  clause instead; Line: 2
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  HAVING references 'local.web_rev_2002', which is not in the
-  SELECT projection (line 13). Fix one of: (a) add it to SELECT — prefix with
-  `--` to keep it out of the output rows, e.g. `select ...,
-  --local.web_rev_2002`; (b) move the filter to WHERE — for an aggregate
-  condition on a non-output grain, write the aggregate inline as `agg(x) by
-  grain` directly in WHERE.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 4987 (char 4986). Re-issue the call with valid JSON arguments.
+  LINE 60:
+  ...falutin"."ss_item_item_sk","sr_store_returns"."sr_item_sk","ss_item_item"."i
+  tem_sk","ss_store_sales"."ss_item_sk")...
+                                                                         ^
+  [SQL:
+  WITH
+  cooperative as (
+  SELECT
+      "sr_store_returns"."sr_customer_sk" as "ss_customer_customer_sk",
+      "sr_store_returns"."sr_item_sk" as "ss_item_item_sk",
+      coalesce("sr
+  …
+  rned"."ss_ticket_number")
+  SELECT
+      "young"."ss_customer_customer_sk" as "csk",
+      coalesce("abhorrent"."ss_item_item_sk","young"."ss_item_item_sk") as "isk",
+      coalesce("abhorrent"."ss_ticket_number","young"."ss_ticket_number") as
+  "tn",
+      coalesce("young"."sr_cnt",0) as "sr_cnt",
+      coalesce("abhorrent"."cs_cnt",0) as "cs_cnt"
+  FROM
+      "young"
+      FULL JOIN "abhorrent" on "young"."ss_item_item_sk" =
+  "abhorrent"."ss_item_item_sk" AND "young"."ss_ticket_number" is not distinct
+  from "abhorrent"."ss_ticket_number"
+  LIMIT (10)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 3570 (char 3569). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run - duckdb --import raw/catalog_sales.preql:catalog_sales --import raw/catalog_returns.preql:catalog_returns`
+- `trilogy run query19.preql`
 
   ```text
-  Duplicate select output for catalog_sales.order_number; Line:
-  6
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
+  Unable to import '.\store_sales.preql': [Errno 2] No such
+  file or directory: '.\\store_sales.preql'. Did you mean: raw.store_sales?
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
-  ```
-
-### `undefined-concept`
-
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  customer.customer_sk.')
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  customer.preferred_cust_flag.')
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  customer.preferred_cust_flag.')
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  customer.preferred_cust_flag.')
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (UndefinedConceptException(...), 'line: 5: Undefined concept:
-  local.net_profit.')
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (UndefinedConceptException(...), 'line: 5: Undefined concept:
-  local.net_profit.')
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (UndefinedConceptException(...), 'line: 5: Undefined concept:
-  local.net_profit.')
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  first_name.')
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  first_name.')
-  ```
-- `trilogy explore query11.preql`
-
-  ```text
-  Failed to parse query11.preql: (UndefinedConceptException(...), 'Undefined
-  concept: first_name.')
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  (UndefinedConceptException(...), "Undefined concept:
-  first_name. Suggestions: ['customer.first_name']")
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  first_name.')
-  ```
-
-### `join-resolution`
-
-- `trilogy run query02.preql`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.week_seq<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.sunday<Purpose.METRIC>Derivation.BASIC>',
-  'local.monday<Purpose.METRIC>Derivation.BASIC>',
-  'local.tuesday<Purpose.METRIC>Derivation.BASIC>',
-  'local.wednesday<Purpose.METRIC>Derivation.BASIC>',
-  'local.thursday<Purpose.METRIC>Derivation.BASIC>',
-  'local.friday<Purpose.METRIC>Derivation.BASIC>',
-  'local.saturday<Purpose.METRIC>Derivation.BASIC>'] from current model.
-  ```
-- `trilogy run query10.preql`
-
-  ```text
-  Could not resolve connections for query with output
-  ['customer_demographics.gender<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer_demographics.marital_status<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer_demographics.education_status<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer_demographics.purchase_estimate<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer_demographics.credit_rating<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer_demographics.dep_count<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer_demographics.dep_employed_count<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer_demographics.dep_college_count<Purpose.PROPERTY>Derivation.ROOT>',
-  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current
-  model.
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.billing_customer_code<Purpose.PROPERTY>Derivation.BASIC>',
-  'customer.first_name<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer.last_name<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer.preferred_cust_flag<Purpose.PROPERTY>Derivation.ROOT>'] from current
-  model.
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.billing_customer_code<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.first_name<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.last_name<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.preferred_cust_flag<Purpose.PROPERTY>Derivation.BASIC>'] from current
-  model.
-  ```
-- `trilogy run query11.preql`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.billing_customer_code<Purpose.PROPERTY>Derivation.BASIC>',
-  'customer.first_name<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer.last_name<Purpose.PROPERTY>Derivation.ROOT>',
-  'customer.preferred_cust_flag<Purpose.PROPERTY>Derivation.ROOT>'] from current
-  model.
-  ```
-- `trilogy run --import raw.store_sales:store_sales --import raw.catalog_sales:catalog_sales --import raw.web_sales:web_sales select avg(store_sales.quantity * …ate_dim.year between 1999 and 2001 and catalog_sales.sold_date.year between 1999 and 2001 and web_sales.sold_date.year between 1999 and 2001 limit 5;`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.overall_avg_sale<Purpose.METRIC>Derivation.AGGREGATE>'] from current
-  model.
-  ```
-- `trilogy run --import raw.store_sales:store_sales --import raw.catalog_sales:catalog_sales --import raw.web_sales:web_sales select avg(store_sales.quantity * store_sales.list_price) as overall_avg where catalog_sales.sold_date.year between 1999 and 2001 limit 5;`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.overall_avg<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy run --import raw.store_sales:store_sales --import raw.catalog_sales:catalog_sales --import raw.web_sales:web_sales select store_sales.item.brand as b…and store_sales.date_dim.moy = 11 and catalog_sales.sold_date.year between 1999 and 2001 and web_sales.sold_date.year between 1999 and 2001 limit 10;`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.brand<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.class_id<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.category_id<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.total_sales<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.total_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy run --import raw.store_sales:store_sales --import raw.catalog_sales:catalog_sales --import raw.web_sales:web_sales select store_sales.item.brand as b…atalog_sales.sold_date.year = 2001 and catalog_sales.sold_date.moy = 11 and web_sales.sold_date.year = 2001 and web_sales.sold_date.moy = 11 limit 5;`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.brand<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.class_id<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.category_id<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.ss_sales<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.ss_count<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.cs_sales<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.cs_count<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.ws_sales<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.ws_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy run --import raw.store_sales:store_sales --import raw.catalog_sales:catalog_sales select store_sales.item.brand as brand, store_sales.item.class_id a…sales, count(catalog_sales.net_paid_inc_ship_tax) as cs_count where catalog_sales.sold_date.year = 2001 and catalog_sales.sold_date.moy = 11 limit 5;`
-
-  ```text
-  Could not resolve connections for query with output
-  ['local.brand<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.class_id<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.category_id<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.cs_sales<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.cs_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
-  ```
-- `trilogy run - duckdb --import raw/catalog_sales.preql:catalog_sales --import raw/catalog_returns.preql:catalog_returns`
-
-  ```text
-  Could not resolve connections for query with output
-  ['catalog_sales.order_number<Purpose.PROPERTY>Derivation.ROOT>',
-  'catalog_returns.order_number<Purpose.PROPERTY>Derivation.ROOT>'] from current
-  model.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
   ```
 
 ### `syntax-missing-alias`
 
-- `trilogy run --import raw.store_returns:store_returns select store_returns.date_dim.year, store_returns.store.state, count(store_returns.ticket_number) limit 10;`
+- `trilogy run - --import raw.date_dim:dd`
 
   ```text
   Syntax [201]: Missing alias? Alias must be specified with
   "AS" - e.g. `SELECT x+1 AS y`
   Location:
-  ...(store_returns.ticket_number) ??? limit 10;
+  ...as dd; select min(dd.week_seq) ??? , max(dd.week_seq), min(dd.yea...
   ```
-- `trilogy run --import raw.store_sales:store_sales select store_sales.store.zip, count(store_sales.item.item_sk) order by 2 desc limit 5;`
+- `trilogy run --import raw.store_sales:store_sales --import raw.store_returns:store_returns --import raw.catalog_sales:catalog_sales --import raw.catalog_retur…ns --import raw.web_sales:web_sales --import raw.web_returns:web_returns select store_sales.store.store_id, sum(store_sales.ext_sales_price) limit 5;`
 
   ```text
   Syntax [201]: Missing alias? Alias must be specified with
   "AS" - e.g. `SELECT x+1 AS y`
   Location:
-  ...unt(store_sales.item.item_sk) ??? order by 2 desc limit 5;
+  ...(store_sales.ext_sales_price) ??? limit 5;
+  ```
+- `trilogy run --import raw.catalog_returns:catalog_returns select catalog_returns.catalog_page.catalog_page_sk, sum(catalog_returns.net_loss) limit 5;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...sum(catalog_returns.net_loss) ??? limit 5;
+  ```
+- `trilogy run --import raw.store_sales:store_sales select substring('31904', 1, 2); duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...elect substring('31904', 1, 2) ??? ;
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring('24128', 1, 2) as f2, unnest(split('24128,76232,65084', ',')) as zip; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring('24128', 1, 2) as f2...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(unnest(split('24128,76232,65084', ',')), 1, 2) as f2; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(unnest(split('24128,...
+  ```
+- `trilogy run --import raw.store_sales:store_sales SELECT distinct substring(unnest(split('24128,76232,65084', ',')), 1, 2) as f2; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; SELECT distinct ??? substring(unnest(split('24128,...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(store_sales.customer.customer_address.zip, 1, 2) as f2 where store_sales.customer.preferred_cust_flag = 'Y' and count(store_sales.customer.customer_sk) by store_sales.customer.customer_address.zip > 10; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(store_sales.customer...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(store_sales.customer.customer_address.zip, 1, 2) as f2 where store_sales.customer.preferred_cust_flag = 'Y' and count(store_sales.customer.customer_sk) by store_sales.customer.customer_address.zip > 10; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(store_sales.customer...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(unnest(split('24128,76232,65084', ',')), 1, 2) as f2; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(unnest(split('24128,...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(unnest(split('24128,76232,65084', ',')), 1, 2) as f2; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(unnest(split('24128,...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct unnest(split('24128,76232,65084', ',')) as zip; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? unnest(split('24128,76232,6508...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(store_sales.customer.customer_address.zip, 1, 2) as pfx where store_sales.customer.preferred_cust_flag = 'Y' and count(store_sales.customer.customer_sk) by store_sales.customer.customer_address.zip > 10; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(store_sales.customer...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(store_sales.customer.customer_address.zip, 1, 2) as pfx where store_sales.customer.preferred_cust_flag = 'Y' and count(store_sales.customer.customer_sk) by store_sales.customer.customer_address.zip > 10; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(store_sales.customer...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(store_sales.customer.customer_address.zip, 1, 2) as pfx where store_sales.customer.preferred_cust_flag = 'Y' and count(store_sales.customer.customer_sk) by store_sales.customer.customer_address.zip > 10; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(store_sales.customer...
+  ```
+- `trilogy run --import raw.store_sales:store_sales select distinct substring(store_sales.store.zip, 1, 2) as pfx; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+   store_sales; select distinct ??? substring(store_sales.store.zi...
+  ```
+- `trilogy run --import raw.store_sales:store_sales auto pref_zip_cnt <- count(store_sales.customer.customer_sk ? store_sales.customer.preferred_cust_flag = 'Y'…ustomer_address.zip; auto gt10 <- store_sales.customer.customer_address.zip ? pref_zip_cnt > 10; select distinct substring(gt10, 1, 2) as pfx; duckdb`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...zip_cnt > 10; select distinct ??? substring(gt10, 1, 2) as pfx;
+  ```
+- `trilogy run --import raw.store_sales:store_sales select store_sales.quantity, store_sales.sales_price, store_sales.ext_sales_price, store_sales.ext_wholesale…on_status = 'Advanced Degree' AND store_sales.sales_price between 100 and 150 AND store_sales.customer.household_demographics.dep_count = 3 limit 20;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...ress.state IN ('VA','TX','MS') ??? , store_sales.customer.custome...
+  ```
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales select store_sales.date_dim.year, store_sales.date_dim.month_seq, count(store_sales.quantity) limit 5;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ..., count(store_sales.quantity) ??? limit 5;
+  ```
+- `trilogy file write debug8.preql --content import raw.catalog_sales as cs;
+# Check: warehouse_sk has NULLs - does the condition count_distinct(...)>1 work wit…inct counts NULL as a distinct value
+
+# First, just get all distinct warehouse_sk values
+select distinct cs.warehouse.warehouse_sk as wh_sk
+limit 10;`
+
+  ```text
+  refused to write 'debug8.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT
+  x+1 AS y`
+  Location:
+  ...nct cs.warehouse.warehouse_sk ??? as wh_sk limit 10;
+
+  Write stats: received 877 chars / 877 bytes; tail: …'select distinct
+  cs.warehouse.warehouse_sk as wh_sk\\nlimit 10;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write debug15.preql --content import raw.catalog_sales as cs;
+# There are orders with NULL warehouse_sk in the full dataset
+# But in the filtere…
+# warehouse_sk values. Let's just check what warehouse_sk values exist in the FULL dataset
+select distinct cs.warehouse.warehouse_sk as wh
+limit 10;`
+
+  ```text
+  refused to write 'debug15.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT
+  x+1 AS y`
+  Location:
+  ...nct cs.warehouse.warehouse_sk ??? as wh limit 10;
+
+  Write stats: received 1329 chars / 1329 bytes; tail: …'et\\nselect distinct
+  cs.warehouse.warehouse_sk as wh\\nlimit 10;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs select count(ss.ticket_number), count(sr.ticket_number), count(cs.order_number), count(distinct ss.item.item_id), count(distinct ss.store.store_sk) limit 5;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...select count(ss.ticket_number) ??? , count(sr.ticket_number), cou...
+  ```
+- `trilogy file write query18.preql --content import raw.catalog_sales as catalog_sales;
+
+# For catalog sales in 1998, restricted to:
+# - billing customer-demog…es.bill_customer.customer_address.county nulls first,
+    catalog_sales.item.item_id nulls first,
+    g_country,
+    g_state,
+    g_county
+limit 100;`
+
+  ```text
+  refused to write 'query18.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT
+  x+1 AS y`
+  Location:
+  ...es.quantity)::numeric(12,2) by ??? rollup item_code, catalog_sal...
+
+  Write stats: received 3214 chars / 3214 bytes; tail: …'s first,\\n
+  g_country,\\n    g_state,\\n    g_county\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+
+### `undefined-concept`
+
+- `trilogy run query03.preql`
+
+  ```text
+  (UndefinedConceptException(...), "Undefined concept:
+  date_dim.moy. Suggestions: ['store_sales.date_dim.moy',
+  'store_sales.date_dim.qoy']")
+  ```
+- `trilogy run --import raw.web_returns:web_returns select web_returns.web_site.site_id, sum(web_returns.return_amt ? web_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as total_returns limit 5;`
+
+  ```text
+  (UndefinedConceptException(...), "line: 2: Undefined concept:
+  web_returns.web_site.site_id. Suggestions: ['web_returns.item.item_id',
+  'web_returns.item.item_desc', 'web_returns.item.size']")
+  ```
+- `trilogy run --import raw.store_sales:store_sales --import raw.store_returns:store_returns merge store_returns.item.id into ~store_sales.item.id; merge store_… '2000-09-06'::date) - sum(store_returns.net_loss ? store_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as profit limit 5;`
+
+  ```text
+  (UndefinedConceptException(...), "Undefined concept:
+  store_returns.item.id. Suggestions: ['store_returns.item.size',
+  'store_returns.item.item_id', 'store_returns.item.units']")
+  ```
+- `trilogy run query06.preql`
+
+  ```text
+  (UndefinedConceptException(...), "Undefined concept:
+  item.current_price. Suggestions: ['store_sales.item.current_price',
+  'store_sales.promotion.item.current_price']")
+  ```
+- `trilogy run query06.preql`
+
+  ```text
+  (UndefinedConceptException(...), "Undefined concept:
+  store_sales.item.is_overpriced. Suggestions: ['store_sales.item.size',
+  'store_sales.item.item_id', 'store_sales.list_price']")
+  ```
+- `trilogy run --import raw.store_sales:store_sales select count(customer.customer_address.zip) as cnt where customer.preferred_cust_flag = 'Y' and count(customer.customer_sk) by customer.customer_address.zip > 10; duckdb`
+
+  ```text
+  (UndefinedConceptException(...), "line: 2: Undefined concept:
+  customer.customer_address.zip. Suggestions:
+  ['store_sales.customer.customer_address.zip',
+  'store_sales.customer_address.zip',
+  'store_sales.customer.customer_address.city']")
+  ```
+- `trilogy run --import raw.store_sales:store_sales select count(ticket_number) as all_tickets;`
+
+  ```text
+  (UndefinedConceptException(...), "line: 2: Undefined concept:
+  local.ticket_number. Suggestions: ['store_sales.ticket_number']")
+  ```
+- `trilogy run query19.preql`
+
+  ```text
+  (UndefinedConceptException(...), "Undefined concept:
+  item.manager_id. Suggestions: ['store_sales.item.manager_id']")
+  ```
+- `trilogy run -`
+
+  ```text
+  (UndefinedConceptException(...), 'Undefined concept:
+  category.')
   ```
 
 ### `cli-misuse`
 
-- `trilogy read_file raw/store_sales.preql`
+- `trilogy explore raw/store_sales.precl`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/store_sales.precl' does not exist.
+  ```
+- `trilogy run --import raw.store_sales:store_sales --import raw.store_returns:store_returns merge store_returns.item.id into ~store_sales.item.id; merge store_… '2000-09-06'::date) - sum(store_returns.net_loss ? store_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as profit limit 5;`
+
+  ```text
+  'merge store_returns.ticket_number into ~store_sales.ticket_number;' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
+  ```
+- `trilogy run catalog_sales --import raw.catalog_sales:catalog_sales --import raw.catalog_returns:catalog_returns merge catalog_returns.item.item_sk into ~cata…09-06'::date) - sum(catalog_returns.net_loss ? catalog_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date)) as profit limit 100;`
+
+  ```text
+  'merge catalog_returns.item.item_sk into ~catalog_sales.item.item_sk; merge catalog_returns.order_number into ~catalog_sales.order_number; select 'Catalog' as channel, concat('catalog_page_', catalog_sales.catalog_page.catalog_page_id) as outlet, sum(catalog_sales.ext_sales_price ? catalog_sales.sold_date.date between '2000-08-23'::date and '2000-09-06'::date) as total_sales, sum(catalog_returns.return_amount ? catalog_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date) as total_returns, (sum(catalog_sales.net_profit ? catalog_sales.sold_date.date between '2000-08-23'::date and '2000-09-06'::date) - sum(catalog_returns.net_loss ? catalog_returns.date_dim.date between '2000-08-23'::date and '2000-09-06'::date)) as profit limit 100;' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
+  ```
+- `trilogy explore raw/store_sales.precl --show imports`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/store_sales.precl' does not exist.
+  ```
+- `trilogy file write --escapes --content parameter zips string;
+
+import raw.store_sales as store_sales;
+import raw.customer as customer;
+import raw.customer_ad…fixes)
+
+select
+    store_sales.store.store_name as store_name,
+    sum(store_sales.net_profit) as total_net_profit
+order by store_name asc
+limit 100;`
+
+  ```text
+  Missing argument 'PATH'.
+  ```
+- `trilogy read_file raw/household_demographics.preql`
 
   ```text
   No such command 'read_file'.
   ```
-- `trilogy explore raw/catalog_sales.preql --show all --regex call_center .county`
+- `trilogy explore raw/database_relationship.preql`
 
   ```text
-  Got unexpected extra argument (.county)
+  Invalid value for 'PATH': File 'raw/database_relationship.preql' does not exist.
+  ```
+- `trilogy read_file raw/catalog_sales.preql`
+
+  ```text
+  No such command 'read_file'.
   ```
 
-### `file-not-found`
+### `join-resolution`
 
-- `trilogy run query17.preql`
+- `trilogy run --import raw/store_sales:store_sales --import raw/catalog_sales:catalog_sales --import raw/web_sales:web_sales select sum(store_sales.quantity * …sales.quantity) + count(catalog_sales.quantity) + count(web_sales.quantity) as cnt_all where store_sales.date_dim.year between 1999 and 2001 limit 5;`
 
   ```text
-  Input 'query17.preql' does not exist.
+  Could not resolve connections for query with output
+  ['local.total_all<Purpose.METRIC>Derivation.BASIC>',
+  'local.cnt_all<Purpose.METRIC>Derivation.BASIC>'] from current model.
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs merge sr.item.item_sk into ~ss.item.item_sk; merge sr.cus…01 and cs.sold_date.qoy in (1,2,3) select count(ss.ticket_number) as ss_cnt, count(sr.ticket_number) as sr_cnt, count(cs.quantity) as cs_cnt limit 5;`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.ss_cnt<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.sr_cnt<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.cs_cnt<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs merge sr.item.item_sk into ~ss.item.item_sk; merge sr.cus…01 and cs.sold_date.qoy in (1,2,3) select count(ss.ticket_number) as ss_cnt, count(sr.ticket_number) as sr_cnt, count(cs.quantity) as cs_cnt limit 5;`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.ss_cnt<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.sr_cnt<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.cs_cnt<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs merge sr.item.item_sk into ~ss.item.item_sk; merge sr.cus…fy_year=2001 and ss.date_dim.qoy=1 select count(ss.ticket_number) as ss_cnt, count(sr.ticket_number) as sr_cnt, count(cs.quantity) as cs_cnt limit 5;`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.ss_cnt<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.sr_cnt<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.cs_cnt<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs merge sr.item.item_sk into ~ss.item.item_sk; merge sr.cus…001 and sr.date_dim.qoy in (1,2,3) select count(ss.ticket_number) as ss_cnt, count(sr.ticket_number) as sr_cnt, count(cs.quantity) as cs_cnt limit 5;`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.ss_cnt<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.sr_cnt<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.cs_cnt<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
   ```
