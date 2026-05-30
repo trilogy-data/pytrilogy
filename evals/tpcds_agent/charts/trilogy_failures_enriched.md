@@ -22,240 +22,145 @@
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run --import raw.date:d select d.year, d.week_seq where d.year in (2000,2001,2002) and d.day_of_week=0 order by year, week_seq limit 10;`
-
-  ```text
-  ORDER BY references 'local.year', which is not in the SELECT
-  projection (line 2). Add it to SELECT to sort by it — prefix with `--` to keep
-  it out of the output rows, e.g. `select ..., --local.year order by local.year
-  asc`.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 98 (char 97). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 1 column 79 (char 78). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 82 (char 81). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 86 (char 85). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 96 (char 95). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+- `trilogy `
 
   ```text
-  (_duckdb.BinderException) Binder Error: Table
-  "store_sales_store_store" does not have a column named "S_CLOSED_DATE"
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 96 (char 95). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
 
-  Candidate bindings: : "s_closed_date_sk"
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 85 (char 84). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run --import raw.all_sales:all_sales select
+    sum(((all_sales.ext_list_price - all_sales.ext_wholesale_cost - all_sales.ext_discount_amount + all_s…EB' and all_sales.date.year = 2001) as w2001,
+    count(all_sales.billing_customer.id) as cust_count
+    where s2001 > 0 and c2001 > 0 and w2001 > 0;`
 
-  LINE 34: ...    INNER JOIN "date_dim" as "store_sales_store_date_date" on
-  "store_sales_store_store"."S_CLOSED_DATE" = "store_sales_st...
-                                                                            ^
+  ```text
+  Cannot reference an aggregate derived in the select
+  (local.s2001) in the same statement where clause; move to the HAVING clause
+  instead; Line: 2
+  ```
+- `trilogy run --import raw.all_sales:all_sales select
+  sum(1.0 ? all_sales.sales_channel = 'STORE' and all_sales.date.year = 2001 and all_sales.billing_custom… all_sales.billing_customer.id as web_flag,
+  count(all_sales.billing_customer.id) as cnt where store_flag > 0 and catalog_flag > 0 and web_flag > 0;`
+
+  ```text
+  Cannot reference an aggregate derived in the select
+  (local.store_flag) in the same statement where clause; move to the HAVING
+  clause instead; Line: 2
+  ```
+- `trilogy run test_debug3.preql`
+
+  ```text
+  (_duckdb.BinderException) Binder Error: GROUP BY clause
+  cannot contain aggregates!
+
+  LINE 70:     sum(CASE WHEN "cooperative"."all_sales_sales_channel" =...
+               ^
   [SQL:
   WITH
   cheerful as (
   SELECT
-      "store_sales_billing_customer_address_customer_address"."CA_ZIP" as
-  "store_sales_billing_customer_address_zip",
-      count("store_sales_billing_customer_customers"."C_CUSTOMER_SK") as
-  "
+      "all_sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as
+  "all_sales_billing_customer_id",
+      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id",
+      "all_sales_catalog_sales_unified"."CS_EXT_DISCOUNT_AMT" as
+  "all_sales_ext_discount_amount",
+      "all_sales_catalog_sales_unified"."CS_EXT_LIST_PRICE" as
+  "all_sales_ext_list_price",
+      "all_sales_catalog_sales_
   …
-  tore_sales_store_store"."S_ZIP" in (select
-  quizzical."_virt_func_split_4785012549328100" from quizzical where
-  quizzical."_virt_func_split_4785012549328100" is not null)
-
+  e"."all_sales_date_year" = 2002 THEN (( (
+  "cooperative"."all_sales_ext_list_price" -
+  "cooperative"."all_sales_ext_wholesale_cost" ) -
+  "cooperative"."all_sales_ext_discount_amount" ) +
+  "cooperative"."all_sales_ext_sales_price") / 2.0 ELSE NULL END) /
+  "questionable"."w_2001" as "w_ratio"
+  FROM
+      "questionable"
+      LEFT OUTER JOIN "cooperative" on
+  "questionable"."all_sales_billing_customer_id" is not distinct from
+  "cooperative"."all_sales_billing_customer_id"
   GROUP BY
       1,
       2,
-      "store_sales_store_sales"."SS_ITEM_SK",
-      "store_sales_store_sales"."SS_TICKET_NUMBER")
-  SELECT
-      "concerned"."store_sales_store_name" as "store_sales_store_name",
-      sum("concerned"."store_sales_net_profit") as "total_net_profit"
-  FROM
-      "concerned"
-  GROUP BY
-      1
-  ORDER BY
-      "concerned"."store_sales_store_name" asc
-  LIMIT (100)]
-
+      3,
+      4,
+      8,
+      9,
+      10
+  LIMIT (30)]
   (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+- `trilogy `
 
   ```text
-  (_duckdb.BinderException) Binder Error: Table
-  "store_sales_store_store" does not have a column named "S_CLOSED_DATE"
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 85 (char 84). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run query05.preql`
 
-  Candidate bindings: : "s_closed_date_sk"
+  ```text
+  (_duckdb.BinderException) Binder Error: column "channel" must
+  appear in the GROUP BY clause or must be part of an aggregate function.
+  Either add it to the GROUP BY list, or use "ANY_VALUE(channel)" if the exact
+  value of "channel" is not important.
 
-  LINE 34: ...    INNER JOIN "date_dim" as "store_sales_store_date_date" on
-  "store_sales_store_store"."S_CLOSED_DATE" = "store_sales_st...
-                                                                            ^
+  LINE 131:     "abhorrent"."channel" as "channel",
+                ^
   [SQL:
   WITH
   cheerful as (
   SELECT
-      "store_sales_billing_customer_address_customer_address"."CA_ZIP" as
-  "store_sales_billing_customer_address_zip",
-      count("store_sales_billing_customer_customers"."C_CUSTOMER_SK") as
-  "
-  …
-  tore_sales_store_store"."S_ZIP" in (select
-  quizzical."_virt_func_split_4785012549328100" from quizzical where
-  quizzical."_virt_func_split_4785012549328100" is not null)
-
-  GROUP BY
-      1,
-      2,
-      "store_sales_store_sales"."SS_ITEM_SK",
-      "store_sales_store_sales"."SS_TICKET_NUMBER")
-  SELECT
-      "concerned"."store_sales_store_name" as "store_sales_store_name",
-      sum("concerned"."store_sales_net_profit") as "total_net_profit"
+      "sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "sales_channel_dim_id",
+      "sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as
+  "sales_channel_dim_text_id",
+       'CATALOG'  as "sales_sales_channel"
   FROM
-      "concerned"
-  GROUP BY
-      1
+      "catalog_page" as "sales_catalog_
+  …
+  OIN "young" on "sparkling"."channel" is not distinct from
+  "young"."channel" AND "sparkling"."outlet" is not distinct from
+  "young"."outlet")
+  SELECT
+      "abhorrent"."channel" as "channel",
+      "abhorrent"."outlet" as "outlet",
+      "abhorrent"."total_sales" as "total_sales",
+      "abhorrent"."total_returns" as "total_returns",
+      sum("abhorrent"."sales_net_profit") -
+  sum("abhorrent"."sales_return_net_loss") as "profit"
+  FROM
+      "abhorrent"
   ORDER BY
-      "concerned"."store_sales_store_name" asc
+      "abhorrent"."channel" asc,
+      "abhorrent"."outlet" asc nulls first
   LIMIT (100)]
-
   (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+- `trilogy `
 
   ```text
-  (_duckdb.BinderException) Binder Error: Cannot compare values
-  of type VARCHAR and VARCHAR[] in IN/ANY/ALL clause - an explicit cast is
-  required
-
-  LINE 36: ...prefix" is not null) and "store_sales_store_store"."S_ZIP" in
-  (select quizzical."_virt_func_split_4785012549328100...
-                                                                         ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "store_sales_billing_customer_address_customer_address"."CA_ZIP" as
-  "store_sales_billing_customer_address_zip",
-      count("store_sales_billing_customer_customers"."C_CUSTOMER_SK") as
-  "preferred_by_zip"
-  FROM
-
-  …
-  tore_sales_store_store"."S_ZIP" in (select
-  quizzical."_virt_func_split_4785012549328100" from quizzical where
-  quizzical."_virt_func_split_4785012549328100" is not null)
-
-  GROUP BY
-      1,
-      2,
-      "store_sales_store_sales"."SS_ITEM_SK",
-      "store_sales_store_sales"."SS_TICKET_NUMBER")
-  SELECT
-      "concerned"."store_sales_store_name" as "store_sales_store_name",
-      sum("concerned"."store_sales_net_profit") as "total_net_profit"
-  FROM
-      "concerned"
-  GROUP BY
-      1
-  ORDER BY
-      "concerned"."store_sales_store_name" asc
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/f405)
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 96 (char 95). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run query08.preql`
+- `trilogy run qdebug4.preql`
 
   ```text
   This script requires parameter "zips" to be set in
   environment.
   ```
-- `trilogy run --import raw.physical_sales:store_sales --param zips=24128,76232,65084 select store_sales.store.name, store_sales.store.zip, store_sales.date.yea…e.year = 1998 and store_sales.date.quarter = 2 and store_sales.store.zip in split('24128,76232,65084', ',') order by store_sales.store.name limit 10;`
-
-  ```text
-  (_duckdb.BinderException) Binder Error: Cannot compare values
-  of type VARCHAR and VARCHAR[] in IN/ANY/ALL clause - an explicit cast is
-  required
-
-  LINE 18: ...te_date"."D_QOY" = 2 and "store_sales_store_store"."S_ZIP" in
-  (select quizzical."_virt_func_split_3106282253538863...
-                                                                         ^
-  [SQL:
-  WITH
-  quizzical as (
-  SELECT
-      STRING_SPLIT( '24128,76232,65084' , ',' ) as
-  "_virt_func_split_3106282253538863"
-  )
-  SELECT
-      "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
-      "store_sales_store_store"."S_ZIP" as "sto
-  …
-  es_date_date"."D_DATE_SK"
-      INNER JOIN "store" as "store_sales_store_store" on
-  "store_sales_store_sales"."SS_STORE_SK" =
-  "store_sales_store_store"."S_STORE_SK"
-  WHERE
-      "store_sales_date_date"."D_YEAR" = 1998 and "store_sales_date_date"."D_QOY"
-  = 2 and "store_sales_store_store"."S_ZIP" in (select
-  quizzical."_virt_func_split_3106282253538863" from quizzical where
-  quizzical."_virt_func_split_3106282253538863" is not null)
-
-  GROUP BY
-      1,
-      2,
-      3,
-      4
-  ORDER BY
-      "store_sales_store_store"."S_STORE_NAME" asc
-  LIMIT (10)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run --import raw.physical_sales:store_sales --param zips=24128,76232,65084 select store_sales.store.name, store_sales.store.zip, store_sales.date.yea… = 1998 and store_sales.date.quarter = 2 and substring(store_sales.store.zip, 1, 2) in split('24128', ',' ) order by store_sales.store.name limit 10;`
-
-  ```text
-  (_duckdb.BinderException) Binder Error: Cannot compare values
-  of type VARCHAR and VARCHAR[] in IN/ANY/ALL clause - an explicit cast is
-  required
-
-  LINE 18: ..." = 2 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in
-  (select quizzical."_virt_func_split_7516790893574274...
-                                                                         ^
-  [SQL:
-  WITH
-  quizzical as (
-  SELECT
-      STRING_SPLIT( '24128' , ',' ) as "_virt_func_split_7516790893574274"
-  )
-  SELECT
-      "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
-      "store_sales_store_store"."S_ZIP" as "store_sales_stor
-  …
-  D_DATE_SK"
-      INNER JOIN "store" as "store_sales_store_store" on
-  "store_sales_store_sales"."SS_STORE_SK" =
-  "store_sales_store_store"."S_STORE_SK"
-  WHERE
-      "store_sales_date_date"."D_YEAR" = 1998 and "store_sales_date_date"."D_QOY"
-  = 2 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select
-  quizzical."_virt_func_split_7516790893574274" from quizzical where
-  quizzical."_virt_func_split_7516790893574274" is not null)
-
-  GROUP BY
-      1,
-      2,
-      3,
-      4
-  ORDER BY
-      "store_sales_store_store"."S_STORE_NAME" asc
-  LIMIT (10)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
 - `trilogy `
 
   ```text
@@ -264,17 +169,12 @@
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 216 (char 215). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 87 (char 86). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 96 (char 95). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 87 (char 86). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
@@ -284,12 +184,42 @@
 - `trilogy `
 
   ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 99 (char 98). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 99 (char 98). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
   Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy `
+- `trilogy run query14.preql duckdb`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  maximum recursion depth exceeded
+  ```
+- `trilogy run query14.preql duckdb`
+
+  ```text
+  HAVING references 'local.overall_avg_sale', which is not in
+  the SELECT projection (line 15). Add it to SELECT, each prefixed with `--` so
+  it stays out of the output rows — keep your HAVING as-is:
+      select <your existing columns>, --local.overall_avg_sale
+  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
+  non-output grain, write `agg(x) by grain` inline in WHERE.
+  ```
+- `trilogy run query14.preql duckdb --displayed-rows 200`
+
+  ```text
+  HAVING references 'local.overall_avg_sale', which is not in
+  the SELECT projection (line 12). Add it to SELECT, each prefixed with `--` so
+  it stays out of the output rows — keep your HAVING as-is:
+      select <your existing columns>, --local.overall_avg_sale
+  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
+  non-output grain, write `agg(x) by grain` inline in WHERE.
   ```
 - `trilogy `
 
@@ -299,29 +229,12 @@
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 101 (char 100). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
-  ```
-- `trilogy `
-
-  ```text
-  trilogy error: 'args' must be a list of strings.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 95 (char 94). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy `
 
@@ -989,6 +902,73 @@ limit 100;`
   partial draft.
   ```
 
+### `syntax-missing-alias`
+
+- `trilogy run --import raw.all_sales:all_sales select all_sales.date.year, count(all_sales.order_id) order by all_sales.date.year;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...ar, count(all_sales.order_id) ??? order by all_sales.date.year;
+  ```
+- `trilogy file write qdebug.preql --content import raw.physical_sales as store_sales;
+
+# Check store ZIP prefixes
+select distinct substring(store_sales.store.zip, 1, 2) as zip_prefix,
+       count(store_sales.store.id) as store_count
+order by zip_prefix
+limit 50;`
+
+  ```text
+  refused to write 'qdebug.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT
+  x+1 AS y`
+  Location:
+  ...xes select distinct substring( ??? store_sales.store.zip, 1, 2) a...
+
+  Write stats: received 219 chars / 219 bytes; tail: …'sales.store.id) as
+  store_count\\norder by zip_prefix\\nlimit 50;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy run --import raw.physical_sales:ps select count(ps.ticket_number) limit 10;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...elect count(ps.ticket_number) ??? limit 10;
+  ```
+- `trilogy run --import raw.catalog_sales:cs select cs.ship_date.date, count(cs.order_number) limit 10;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ....date, count(cs.order_number) ??? limit 10;
+  ```
+- `trilogy run --import raw.call_center:cc select cc.county, count(cc.id) limit 20;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...elect cc.county, count(cc.id) ??? limit 20;
+  ```
+- `trilogy run --import raw.catalog_sales:cs select count(cs.order_number) where cs.sold_date.year=2001 and cs.sold_date.quarter in (1,2,3) limit 10;`
+
+  ```text
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y`
+  Location:
+  ...select count(cs.order_number) ??? where cs.sold_date.year=2001 a...
+  ```
+
 ### `undefined-concept`
 
 - `trilogy run query11.preql`
@@ -1053,32 +1033,17 @@ limit 100;`
 
 ### `cli-misuse`
 
-- `trilogy explore raw/sales_channel.preql`
-
-  ```text
-  Invalid value for 'PATH': File 'raw/sales_channel.preql' does not exist.
-  ```
-- `trilogy explore raw/raw/physical_sales.preql --regex return_amount|return_net_loss|net_profit`
-
-  ```text
-  Invalid value for 'PATH': File 'raw/raw/physical_sales.preql' does not exist.
-  ```
-- `trilogy explore raw/store_sales.preql`
-
-  ```text
-  Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
-  ```
 - `trilogy explore raw/customer_address.preql`
 
   ```text
   Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.
   ```
-- `trilogy run -i raw.physical_sales:store_sales select store_sales.ticket_number, sum(store_sales.quantity) as ticket_qty, avg(store_sales.ext_discount_amount) as avg_disc, avg(store_sales.net_paid) as avg_paid group by store_sales.ticket_number limit 10;`
+- `trilogy run --import raw.physical_sales:ss --import raw.catalog_sales:cs merge ss.item.id into ~cs.item.id; merge ss.billing_customer.id into ~cs.bill_custom…and cs.sold_date.year=2001 and cs.sold_date.quarter in (1,2,3) and ss.billing_customer.id = cs.bill_customer.id and ss.item.id = cs.item.id limit 10;`
 
   ```text
-  'raw.physical_sales:store_sales' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
+  'merge ss.billing_customer.id into ~cs.bill_customer.id;' is not a valid dialect. Choose one of: bigquery, sql_server, duck_db, sqlite, presto, trino, postgres, snowflake, dataframe, clickhouse.
   ```
-- `trilogy explore raw/store_sales.preql`
+- `trilogy run --import raw.physical_sales:ss --import raw.catalog_sales:cs merge ss.item.id into ~cs.item.id; merge ss.billing_customer.id into ~cs.bill_custom… sc, cs.bill_customer.id as cc where ss.date.year=2001 and ss.date.quarter=1 and cs.sold_date.year=2001 and cs.sold_date.quarter in (1,2,3) limit 10;`
 
   ```text
   Invalid value for 'PATH': File 'raw/store_sales.preql' does not exist.
