@@ -430,17 +430,36 @@ def resolve_join_order_v2(
     return output
 
 
+def _side_nullable(
+    concept: BuildConcept, side: QueryDatasource | BuildDatasource | None
+) -> bool:
+    if side is None:
+        return False
+    # A pseudonym is the same column under another name; compare across
+    # equivalent_addresses so a NULLABLE stamp the datasource carries under a
+    # pseudonym address is still seen for a key referenced by its canonical one.
+    equivalent = concept.equivalent_addresses
+    return any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts)
+
+
 def get_modifiers(
-    concept: str,
-    join: JoinOrderOutput,
-    ds_node_map: dict[str, QueryDatasource | BuildDatasource],
-):
-    base = []
-    if join.right and concept in ds_node_map[join.right].nullable_concepts:
-        base.append(Modifier.NULLABLE)
-    if join.left and concept in ds_node_map[join.left].nullable_concepts:
-        base.append(Modifier.NULLABLE)
-    return list(set(base))
+    concept: BuildConcept,
+    left: QueryDatasource | BuildDatasource | None,
+    right: QueryDatasource | BuildDatasource | None,
+) -> list[Modifier]:
+    """NULLABLE only when ``concept`` is datasource-nullable on BOTH join sides.
+
+    The null-safe equality wrapper (``a is not distinct from b``) only changes
+    results when a NULL key must match a NULL key — i.e. both sides can be NULL.
+    If either side is a non-null key (e.g. a dimension PK), ``is not distinct
+    from`` is equivalent to ``=`` and just costs performance, so stay plain.
+
+    ``left`` is the pair's own ``existing_datasource`` (``JoinOrderOutput.left``
+    is ``None`` for the common multi-left join).
+    """
+    if _side_nullable(concept, left) and _side_nullable(concept, right):
+        return [Modifier.NULLABLE]
+    return []
 
 
 def _collect_deep_partial_addresses(
@@ -649,52 +668,45 @@ def get_node_joins(
                 environment=environment,
             )
 
-    # Propagate partial information from sub-datasources.
-    # Mark concepts as partial when any sub-datasource has them as partial,
-    # and add graph edges for partial pseudonyms to enable correct join ordering.
+    # Propagate partial/nullable status onto the graph so the join scorer sees
+    # it on whatever address ends up being the shared join key node.
+    #
+    # Two things are propagated, both because a pseudonym is the same column
+    # under another name:
+    #   - PARTIAL from sub-datasources (deep partials), including across merge
+    #     pseudonyms — e.g. q80 ``thoughtful`` where a partial fact column joins
+    #     a dimension under an aliased key.
+    #   - NULLABLE across merge pseudonyms — ``store_sales.date.id`` carries the
+    #     NULLABLE modifier, but after ``MERGE store_sales.date.* into ~date.*``
+    #     the join key is ``c~date.id`` while ``nullable_concepts`` still
+    #     references the pre-merge address. Without this the scorer treats the
+    #     merged key as non-nullable and emits ``date_dim LEFT JOIN fact``,
+    #     dropping fact rows with NULL FK.
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
         deep_partials = _collect_deep_partial_addresses(datasource)
-        if not deep_partials:
-            continue
-        # Mark direct graph neighbors as partial
+        nullable_addrs = {c.address for c in datasource.nullable_concepts}
+        # Deep partials may land on a direct neighbor without a pseudonym hop.
         for concept_node in list(graph.neighbors(ds_node)):
             addr = concept_node.removeprefix("c~")
             if addr in deep_partials and concept_node not in partials[ds_node]:
                 partials[ds_node].append(concept_node)
-        # Add edges for partial pseudonyms (merge aliases)
         for concept in datasource.output_concepts:
             if concept.address in datasource.hidden_concepts:
                 continue
+            is_nullable = concept.address in nullable_addrs
             for pseudo_addr in concept.pseudonyms:
                 pseudo_name = f"c~{pseudo_addr}"
-                if (
-                    pseudo_name in graph.nodes
-                    and not graph.has_edge(ds_node, pseudo_name)
-                    and pseudo_addr in deep_partials
-                ):
-                    graph.add_edge(ds_node, pseudo_name)
+                if pseudo_name not in graph.nodes:
+                    continue
+                if pseudo_addr in deep_partials:
+                    # The pseudonym carries the partial column; wire it up so
+                    # ``find_all_connecting_concepts`` and the scorer both see it.
+                    if not graph.has_edge(ds_node, pseudo_name):
+                        graph.add_edge(ds_node, pseudo_name)
                     if pseudo_name not in partials[ds_node]:
                         partials[ds_node].append(pseudo_name)
-    # Propagate nullability across merge pseudonyms. ``store_sales.date.id``
-    # carries the NULLABLE modifier; after ``MERGE store_sales.date.* into
-    # ~date.*`` the join key is ``c~date.id``, but ``nullable_concepts`` still
-    # references the pre-merge address. Without this, the join scorer treats
-    # the merged key as non-nullable and emits ``date_dim LEFT JOIN fact``,
-    # dropping fact rows with NULL FK.
-    for datasource in datasources:
-        ds_node = f"ds~{datasource.identifier}"
-        nullable_addrs = {c.address for c in datasource.nullable_concepts}
-        if not nullable_addrs:
-            continue
-        for concept in datasource.output_concepts:
-            if concept.address in datasource.hidden_concepts:
-                continue
-            if concept.address not in nullable_addrs:
-                continue
-            for pseudo_addr in concept.pseudonyms:
-                pseudo_name = f"c~{pseudo_addr}"
-                if pseudo_name in graph.nodes and pseudo_name not in nullables[ds_node]:
+                if is_nullable and pseudo_name not in nullables[ds_node]:
                     nullables[ds_node].append(pseudo_name)
 
     joins = resolve_join_order_v2(graph, partials=partials, nullables=nullables)
@@ -716,7 +728,9 @@ def get_node_joins(
                         ),
                         existing_datasource=ds_node_map[k],
                         modifiers=get_modifiers(
-                            concept_map[concept].address, j, ds_node_map
+                            concept_map[concept],
+                            ds_node_map[k],
+                            ds_node_map[j.right],
                         )
                         + (
                             [Modifier.PARTIAL] if concept in partials.get(k, []) else []

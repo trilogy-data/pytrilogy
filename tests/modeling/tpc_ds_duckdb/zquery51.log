@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 4015
+gen_length = 3996
 preql_size = 1391
 comp_size = 1999
 generated_sql = """
@@ -94,7 +94,7 @@ SELECT
     coalesce(\"juicy\".\"sales_item_id\",\"uneven\".\"sales_item_id\") as \"item_sk\"
 FROM
     \"uneven\"
-    FULL JOIN \"juicy\" on \"uneven\".\"sales_date_date\" is not distinct from \"juicy\".\"sales_date_date\" AND \"uneven\".\"sales_item_id\" = \"juicy\".\"sales_item_id\")
+    FULL JOIN \"juicy\" on \"uneven\".\"sales_date_date\" = \"juicy\".\"sales_date_date\" AND \"uneven\".\"sales_item_id\" = \"juicy\".\"sales_item_id\")
 SELECT
     \"vacuous\".\"item_sk\" as \"item_sk\",
     \"vacuous\".\"d_date\" as \"d_date\",
