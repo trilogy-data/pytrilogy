@@ -443,21 +443,22 @@ def _side_nullable(
 
 
 def get_modifiers(
-    concept: BuildConcept,
+    left_concept: BuildConcept,
+    right_concept: BuildConcept,
     left: QueryDatasource | BuildDatasource | None,
     right: QueryDatasource | BuildDatasource | None,
 ) -> list[Modifier]:
-    """NULLABLE only when ``concept`` is datasource-nullable on BOTH join sides.
+    """NULLABLE only when the join key is datasource-nullable on BOTH sides.
 
     The null-safe equality wrapper (``a is not distinct from b``) only changes
     results when a NULL key must match a NULL key — i.e. both sides can be NULL.
     If either side is a non-null key (e.g. a dimension PK), ``is not distinct
     from`` is equivalent to ``=`` and just costs performance, so stay plain.
 
-    ``left`` is the pair's own ``existing_datasource`` (``JoinOrderOutput.left``
-    is ``None`` for the common multi-left join).
+    Each side is checked with the concept that side actually exposes (the two are
+    pseudonym-equivalent but may carry different addresses).
     """
-    if _side_nullable(concept, left) and _side_nullable(concept, right):
+    if _side_nullable(left_concept, left) and _side_nullable(right_concept, right):
         return [Modifier.NULLABLE]
     return []
 
@@ -512,34 +513,6 @@ def _collect_intrinsic_partial_addresses(
             result |= _collect_intrinsic_partial_addresses(sub)
         return result
     return set()
-
-
-def resolve_instantiated_concept(
-    concept: BuildConcept, datasource: QueryDatasource | BuildDatasource
-) -> BuildConcept:
-    if concept.address in datasource.output_concepts:
-        return concept
-    for k in concept.pseudonyms:
-        if k in datasource.output_concepts:
-            return next(x for x in datasource.output_concepts if x.address == k)
-        if any(k in x.pseudonyms for x in datasource.output_concepts):
-            return next(x for x in datasource.output_concepts if k in x.pseudonyms)
-    # Reverse direction: an output concept may declare us as its pseudonym
-    # without us declaring it as ours. Pseudonym maps from rename basics
-    # (`local.channel` ← pseudonym → `l0_filtered.channel_l0`) are set on the
-    # rename side only — the rowset concept doesn't carry the back-reference.
-    # Without this check, a downstream merge that wants to join on the rowset
-    # address can't find its renamed equivalent on the sibling side (q14:
-    # rollup aggregate emits `l0_filtered.channel_l0` and tries to find it on
-    # the basic side that only exposes `local.channel`).
-    for x in datasource.output_concepts:
-        if concept.address in x.pseudonyms:
-            return x
-    raise SyntaxError(
-        f"Could not find {concept.address} in {datasource.identifier} output "
-        f"{[c.address for c in datasource.output_concepts]}, "
-        f"acceptable synonyms {concept.pseudonyms}"
-    )
 
 
 def reduce_concept_pairs(
@@ -606,38 +579,48 @@ def reduce_concept_pairs(
     return final
 
 
-def add_node_join_concept(
-    graph: nx.Graph | nx.DiGraph,
-    concept: BuildConcept,
-    concept_map: dict[str, BuildConcept],
-    ds_node: str,
+def build_canonical_address_map(
+    datasources: list[QueryDatasource | BuildDatasource],
     environment: BuildEnvironment,
-):
-    name = f"c~{concept.address}"
-    graph.add_node(name, type=NodeType.CONCEPT)
-    graph.add_edge(ds_node, name)
-    concept_map[name] = concept
-    for v_address in concept.pseudonyms:
-        v = environment.alias_origin_lookup.get(
-            v_address, environment.concepts[v_address]
-        )
-        pseudo_name = f"c~{v.address}"
-        if pseudo_name in graph.nodes:
-            # Another datasource already registered this pseudonym node.
-            # Still connect *this* datasource — otherwise the pseudonym
-            # link is invisible to find_all_connecting_concepts and the
-            # join falls back to a 1=1 cross product (q23 final merge:
-            # basic's local.c_first_name ↔ aggregate's sales.customer.first_name).
-            graph.add_edge(ds_node, pseudo_name)
-            continue
-        if v.address != concept.address:
-            add_node_join_concept(
-                graph=graph,
-                concept=v,
-                concept_map=concept_map,
-                ds_node=ds_node,
-                environment=environment,
-            )
+) -> dict[str, str]:
+    """Collapse pseudonym-equivalent concept addresses to one canonical address.
+
+    A pseudonym is the same column under another name, so for join resolution the
+    whole equivalence class is a single graph node. The equivalence relation is
+    the (transitively closed) pseudonym graph — the same relation
+    ``get_canonical_pseudonyms`` exposes directly, closed here via connected
+    components so one-way rowset aliases collapse too (q14: a rollup's
+    ``l0_filtered.channel_l0`` and the basic side's ``local.channel``). Pseudonym
+    addresses are also linked through ``alias_origin_lookup`` so the merged
+    target and its pre-merge address share a class.
+    """
+    from trilogy.core import graph as nx
+
+    pseudonym_graph = nx.Graph()
+    for datasource in datasources:
+        hidden = datasource.hidden_concepts
+        for concept in datasource.output_concepts:
+            if concept.address in hidden:
+                continue
+            pseudonym_graph.add_node(concept.address)
+            for pseudo_addr in concept.pseudonyms:
+                pseudonym_graph.add_edge(concept.address, pseudo_addr)
+                origin = environment.alias_origin_lookup.get(pseudo_addr)
+                if origin is not None and origin.address != pseudo_addr:
+                    pseudonym_graph.add_edge(pseudo_addr, origin.address)
+
+    # Representative = the "live" (non-alias) address of the class, matching the
+    # system's canonical notion (a merge rewrites the source to point at the
+    # target; the target is not an alias_origin). Prefer it so join ordering
+    # keys off the same name the rest of the pipeline uses; fall back to a stable
+    # lexicographic pick when a class has no clear live address (one-way rowset
+    # aliases). Aligns with ``get_canonical_pseudonyms``.
+    canonical: dict[str, str] = {}
+    for component in nx.connected_components(pseudonym_graph):
+        root = min(component, key=lambda a: (a in environment.alias_origin_lookup, a))
+        for address in component:
+            canonical[address] = root
+    return canonical
 
 
 def get_node_joins(
@@ -646,68 +629,49 @@ def get_node_joins(
 ) -> list[BaseJoin]:
     from trilogy.core import graph as nx
 
+    # One canonical address per pseudonym-equivalence class. Every concept maps
+    # to a single ``c~<canonical>`` graph node, so pseudonyms join exactly like
+    # the column they alias — no per-pseudonym nodes, no propagation fix-ups.
+    canonical = build_canonical_address_map(datasources, environment)
+
+    def canon_node(address: str) -> str:
+        return f"c~{canonical.get(address, address)}"
+
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     nullables: dict[str, list[str]] = {}
     ds_node_map: dict[str, QueryDatasource | BuildDatasource] = {}
-    concept_map: dict[str, BuildConcept] = {}
+    # (ds_node, canonical concept node) -> the concept that datasource exposes,
+    # used to build join pairs with the right per-side instance.
+    ds_concept_map: dict[tuple[str, str], BuildConcept] = {}
+
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource
         graph.add_node(ds_node, type=NodeType.NODE)
-        partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]
-        nullables[ds_node] = [f"c~{c.address}" for c in datasource.nullable_concepts]
+        # Partial/nullable status, mapped to canonical nodes. Deep partials reach
+        # into sub-datasources (e.g. q80's partial fact column under an aliased
+        # key); NULLABLE on a merged FK must survive to the canonical join key
+        # else the scorer emits an inner join and drops NULL-FK rows.
+        partial_nodes = {
+            canon_node(a) for a in _collect_deep_partial_addresses(datasource)
+        }
+        nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
+        p_list: list[str] = []
+        n_list: list[str] = []
         for concept in datasource.output_concepts:
             if concept.address in datasource.hidden_concepts:
                 continue
-            add_node_join_concept(
-                graph=graph,
-                concept=concept,
-                concept_map=concept_map,
-                ds_node=ds_node,
-                environment=environment,
-            )
-
-    # Propagate partial/nullable status onto the graph so the join scorer sees
-    # it on whatever address ends up being the shared join key node.
-    #
-    # Two things are propagated, both because a pseudonym is the same column
-    # under another name:
-    #   - PARTIAL from sub-datasources (deep partials), including across merge
-    #     pseudonyms — e.g. q80 ``thoughtful`` where a partial fact column joins
-    #     a dimension under an aliased key.
-    #   - NULLABLE across merge pseudonyms — ``store_sales.date.id`` carries the
-    #     NULLABLE modifier, but after ``MERGE store_sales.date.* into ~date.*``
-    #     the join key is ``c~date.id`` while ``nullable_concepts`` still
-    #     references the pre-merge address. Without this the scorer treats the
-    #     merged key as non-nullable and emits ``date_dim LEFT JOIN fact``,
-    #     dropping fact rows with NULL FK.
-    for datasource in datasources:
-        ds_node = f"ds~{datasource.identifier}"
-        deep_partials = _collect_deep_partial_addresses(datasource)
-        nullable_addrs = {c.address for c in datasource.nullable_concepts}
-        # Deep partials may land on a direct neighbor without a pseudonym hop.
-        for concept_node in list(graph.neighbors(ds_node)):
-            addr = concept_node.removeprefix("c~")
-            if addr in deep_partials and concept_node not in partials[ds_node]:
-                partials[ds_node].append(concept_node)
-        for concept in datasource.output_concepts:
-            if concept.address in datasource.hidden_concepts:
-                continue
-            is_nullable = concept.address in nullable_addrs
-            for pseudo_addr in concept.pseudonyms:
-                pseudo_name = f"c~{pseudo_addr}"
-                if pseudo_name not in graph.nodes:
-                    continue
-                if pseudo_addr in deep_partials:
-                    # The pseudonym carries the partial column; wire it up so
-                    # ``find_all_connecting_concepts`` and the scorer both see it.
-                    if not graph.has_edge(ds_node, pseudo_name):
-                        graph.add_edge(ds_node, pseudo_name)
-                    if pseudo_name not in partials[ds_node]:
-                        partials[ds_node].append(pseudo_name)
-                if is_nullable and pseudo_name not in nullables[ds_node]:
-                    nullables[ds_node].append(pseudo_name)
+            node = canon_node(concept.address)
+            graph.add_node(node, type=NodeType.CONCEPT)
+            graph.add_edge(ds_node, node)
+            ds_concept_map.setdefault((ds_node, node), concept)
+            if node in partial_nodes and node not in p_list:
+                p_list.append(node)
+            if node in nullable_nodes and node not in n_list:
+                n_list.append(node)
+        partials[ds_node] = p_list
+        nullables[ds_node] = n_list
 
     joins = resolve_join_order_v2(graph, partials=partials, nullables=nullables)
     return [
@@ -720,15 +684,12 @@ def get_node_joins(
             concept_pairs=reduce_concept_pairs(
                 [
                     ConceptPair(
-                        left=resolve_instantiated_concept(
-                            concept_map[concept], ds_node_map[k]
-                        ),
-                        right=resolve_instantiated_concept(
-                            concept_map[concept], ds_node_map[j.right]
-                        ),
+                        left=ds_concept_map[(k, concept)],
+                        right=ds_concept_map[(j.right, concept)],
                         existing_datasource=ds_node_map[k],
                         modifiers=get_modifiers(
-                            concept_map[concept],
+                            ds_concept_map[(k, concept)],
+                            ds_concept_map[(j.right, concept)],
                             ds_node_map[k],
                             ds_node_map[j.right],
                         )
