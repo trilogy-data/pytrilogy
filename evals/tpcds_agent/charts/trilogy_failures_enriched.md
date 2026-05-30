@@ -1033,7 +1033,7 @@ limit 50;`
 
 ### `cli-misuse`
 
-- `trilogy explore raw/customer_address.preql`
+- `trilogy explore raw/store_sales.preql`
 
   ```text
   Invalid value for 'PATH': File 'raw/customer_address.preql' does not exist.

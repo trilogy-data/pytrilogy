@@ -1671,276 +1671,123 @@ limit 5;`
   Alternatively move a row-level filter to WHERE; for an aggregate condition on a
   non-output grain, write `agg(x) by grain` inline in WHERE.
   ```
-- `trilogy run --import raw.date_dim:date_dim select date_dim.week_seq, date_dim.year order by date_dim.date asc limit 20;`
+- `trilogy run query02.preql`
 
   ```text
-  ORDER BY references 'date_dim.date', which is not in the
-  SELECT projection (line 2). Add it to SELECT to sort by it — prefix with `--`
-  to keep it out of the output rows, e.g. `select ..., --date_dim.date order by
-  date_dim.date asc`.
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local._virt_agg_sum_1524274500237560',
+  'local._virt_agg_sum_4071775869425486'} out of  with found
+  {'web_sales.sold_date.dow', 'web_sales.sold_date.week_seq',
+  'local._virt_agg_sum_4071775869425486', 'web_sales.sold_date.year'}
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+  Recursion error building concept local.s2001 with grain
+  Grain<Abstract> and lineage <Filter: ref:local.sales_by_day where
+  ref:catalog_sales.sold_date.year = 2001>. This is likely due to a circular
+  reference.
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+  Recursion error building concept local.sales_by_day with
+  grain Grain<catalog_sales.sold_date.date_sk> and lineage
+  add(sum(ref:web_sales.ext_sales_price)<abstract>,sum(ref:catalog_sales.ext_sale
+  s_price)<['ref:catalog_sales.sold_date.year',
+  'ref:catalog_sales.sold_date.week_seq', 'ref:catalog_sales.sold_date.dow']>).
+  This is likely due to a circular reference.
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+  Recursion error building concept local.sun_ratio with grain
+  Grain<catalog_sales.item.item_sk,catalog_sales.time_dim.time_sk,web_sales.net_p
+  aid_inc_ship> and lineage
+  divide(ref:local.sun_2002,nullif(ref:local.sun_2001,0)). This is likely due to
+  a circular reference.
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 89 (char 88). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 55 column 12 (char 2868). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run --import raw.web_sales:ws --import raw.catalog_sales:cs merge ws.sold_date.date_sk into ~cs.sold_date.date_sk;
-
-select ws.sold_date.week_seq,
-   …old_date.week_seq - 53), ws.sold_date.dow) as mon_02
-where ws.sold_date.week_seq between 5270 and 5272 and ws.sold_date.dow between 0 and 1
-limit 20;`
+- `trilogy run query04.preql`
 
   ```text
-  Recursion error building concept local.sun_02 with grain
-  Grain<cs.net_paid_inc_ship_tax,cs.sold_date.date_sk,ws.net_paid_inc_ship> and
-  lineage add(sum(<Filter: ref:ws.ext_sales_price where ref:ws.sold_date.dow = 0
-  and ref:ws.sold_date.year = 2002>)<abstract>,sum(<Filter:
-  ref:cs.ext_sales_price where ref:cs.sold_date.dow = 0 and ref:cs.sold_date.year
-  = 2002>)<['ref:local._virt_paren_5901083230450481', 'ref:ws.sold_date.dow']>).
-  This is likely due to a circular reference.
+  HAVING references 'local.catalog_2002', 'local.catalog_2001',
+  'local.store_2002', 'local.store_2001', 'local.web_2002', 'local.web_2001',
+  which are not in the SELECT projection (line 27). Add them to SELECT, each
+  prefixed with `--` so they stay out of the output rows — keep your HAVING
+  as-is:
+      select <your existing columns>, --local.catalog_2002, --local.catalog_2001,
+  --local.store_2002, --local.store_2001, --local.web_2002, --local.web_2001
+  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
+  non-output grain, write `agg(x) by grain` inline in WHERE.
   ```
-- `trilogy run --import raw.web_sales:ws --import raw.catalog_sales:cs merge ws.sold_date.date_sk into ~cs.sold_date.date_sk;
-
-auto ws_01 <- ws.sold_date.week_s… + sum(cs.ext_sales_price ? cs.sold_date.dow=1) by (ws_02 - 53);
-
-select ws_01, mon_01, mon_02
-having ws_01 between 5270 and 5272
-order by ws_01 asc;`
-
-  ```text
-  Recursion error building concept local.mon_01 with grain
-  Grain<ws.sold_date.date_sk> and lineage add(sum(<Filter: ref:ws.ext_sales_price
-  where ref:ws.sold_date.dow = 1>)<abstract>,sum(<Filter: ref:cs.ext_sales_price
-  where ref:cs.sold_date.dow = 1>)<['ref:local.ws_01']>). This is likely due to a
-  circular reference.
-  ```
-- `trilogy run query04.preql duckdb`
+- `trilogy run query04.preql`
 
   ```text
   maximum recursion depth exceeded
   ```
-- `trilogy run query04.preql duckdb`
+- `trilogy run query04.preql`
 
   ```text
   maximum recursion depth exceeded
   ```
-- `trilogy run query04.preql duckdb`
+- `trilogy run query04.preql`
 
   ```text
   maximum recursion depth exceeded
-  ```
-- `trilogy run query04.preql duckdb`
-
-  ```text
-  maximum recursion depth exceeded
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-  (_duckdb.Error) Parameter not supported in ORDER BY clause
-  [SQL:
-  WITH
-  cooperative as (
-  SELECT
-      ('store_' || "store_sales_store_store"."s_store_id") as "outlet",
-      $1 as "channel",
-      sum("store_returns_store_returns"."sr_return_amt") as "total_returns",
-      sum("store_sales_store_sales"."ss_ext_sales_price") as "total_sales",
-      sum("store_sales_store_sales"."ss_net_profit") -
-  sum("store_returns_store_returns"."sr_net_loss") as "total_profit"
-  FROM
-      "store_sales" as "store_sales_store_sales"
-      INNER JOIN "store_returns" as "store_returns_store_returns" on
-  "store_sales_store_sal
-  …
-  tore_sales_date_dim_date_dim"."d_date" BETWEEN date
-  '2000-08-23' AND date '2000-09-06'
-
-  GROUP BY
-      1,
-      "store_sales_store_store"."s_store_id")
-  SELECT
-      "cooperative"."channel" as "channel",
-      "cooperative"."outlet" as "outlet",
-      "cooperative"."total_sales" as "total_sales",
-      "cooperative"."total_returns" as "total_returns",
-      "cooperative"."total_profit" as "total_profit"
-  FROM
-      "cooperative"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5
-  ORDER BY
-      $1 asc,
-      "cooperative"."outlet" asc nulls first
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/dbapi)
   ```
 - `trilogy run query05.preql`
 
   ```text
   Cannot resolve query. No remaining priority concepts, have
-  attempted {'local.store_returns_amt', 'local.store_sales_amt'} out of  with
-  found {'local.store_sales_profit', 'store_sales.store.store_id',
-  'store_returns.store.store_id', 'local.store_returns_amt',
-  'local.store_sales_amt', 'local.store_returns_loss'}
+  attempted {'local._virt_agg_sum_4448137742130880',
+  'local._virt_agg_sum_4678507381734329', 'local.st_returns'} out of  with found
+  {'local.st_sales', 'local._virt_agg_sum_4678507381734329', 'ss.store.store_sk'}
   ```
 - `trilogy run query05.preql`
 
   ```text
-  (_duckdb.NotImplementedException) Not implemented Error:
-  Unable to transform python value of type '<enum 'MagicConstants'>' to DuckDB
-  LogicalType
-  [SQL:
-  WITH
-  cool as (
-  SELECT
-      "wr_web_returns"."wr_return_amt" as
-  "_virt_filter_return_amt_2222098767211036"
-  FROM
-      "item" as "wr_item_item"
-      LEFT OUTER JOIN "web_returns" as "wr_web_returns" on
-  "wr_item_item"."i_item_sk" = "wr_web_returns"."wr_item_sk"
-      RIGHT OUTER JOIN "date_dim" as "wr_date_dim_date_dim" on
-  "wr_web_returns"."wr_returned_date_sk" = "wr_date_dim_date_dim"."d_date_sk"
-  WHERE
-      "wr_date_dim_date_dim"."d_date" BETWEE
-  …
-    sum("cool"."_virt_filter_return_amt_2222098767211036") as "total_returns"
-  FROM
-      "cool"),
-  vast as (
-  SELECT
-      0 - sum("courageous"."_virt_filter_net_loss_5606254344611810") as
-  "total_profit"
-  FROM
-      "courageous")
-  SELECT
-      "quizzical"."channel" as "channel",
-      "quizzical"."outlet" as "outlet",
-      "quizzical"."total_sales" as "total_sales",
-      "elated"."total_returns" as "total_returns",
-      "vast"."total_profit" as "total_profit"
-  FROM
-      "quizzical"
-      FULL JOIN "vast" on 1=1
-      FULL JOIN "elated" on 1=1
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/tw8g)
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.st_net_loss', 'local.st_net_profit'} out of  with found
+  {'local.st_returns', 'sr.store.store_sk', 'local.st_net_loss',
+  'ss.store.store_sk', 'local.st_net_profit', 'local.st_sales'}
   ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+- `trilogy run query05.preql`
 
   ```text
-  (_duckdb.InvalidInputException) Invalid Input Error: missing
-  ): (^|,)(31
-  [SQL:
-  WITH
-  wakeful as (
-  SELECT
-      "store_sales_customer_customer_address_customer_address"."ca_zip" as
-  "store_sales_customer_customer_address_zip"
-  FROM
-      "customer_address" as
-  "store_sales_customer_customer_address_customer_address"
-      INNER JOIN "customer" as "store_sales_customer_customer" on
-  "store_sales_customer_customer_address_customer_address"."ca_address_sk" =
-  "store_sales_customer_customer"."c_current_addr_sk"
-  WHERE
-      "store_sales_customer_customer"."c_preferred_cust_flag" = 'Y'
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.ss_profit', 'local.sr_returns'} out of  with found
+  {'ss.store.store_sk', 'sr.store.store_sk', 'local.sr_returns',
+  'ss.store.store_id', 'local.ss_sales', 'local.ss_profit'}
+  ```
+- `trilogy run query05.preql`
 
-  GROUP BY
-      1
-  HAVI
-  …
-  _address"."ca_zip",1,2
-  ) and REGEXP_MATCHES($1,('(^|,)(' ||
-  SUBSTRING("store_sales_store_store"."s_zip",1,2)))
-  )
-  SELECT
-      "abundant"."store_sales_store_store_name" as
-  "store_sales_store_store_name",
-      sum("abundant"."store_sales_net_profit") as "total_net_profit"
-  FROM
-      "abundant"
-      INNER JOIN "wakeful" on
-  "abundant"."store_sales_customer_customer_address_zip" is not distinct from
-  "wakeful"."store_sales_customer_customer_address_zip"
-  GROUP BY
-      1
-  ORDER BY
-      "abundant"."store_sales_store_store_name" asc
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```text
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.ss_profit', 'local.sr_returns', 'local.sr_loss'} out of  with
+  found {'local.ss_sales', 'local.ss_profit', 'ss.store.store_sk',
+  'ss.store.store_id'}
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 46 column 12 (char 2315). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy run query11.preql`
 
   ```text
-  HAVING references 'local.store_rev_2001',
-  'local.web_rev_2001', which are not in the SELECT projection (line 15). Add
-  them to SELECT, each prefixed with `--` so they stay out of the output rows —
-  keep your HAVING as-is:
-      select <your existing columns>, --local.store_rev_2001,
-  --local.web_rev_2001
-  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
-  non-output grain, write `agg(x) by grain` inline in WHERE.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  maximum recursion depth exceeded
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  maximum recursion depth exceeded
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  maximum recursion depth exceeded
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  maximum recursion depth exceeded
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  maximum recursion depth exceeded
-  ```
-- `trilogy run query14.preql`
-
-  ```text
-  maximum recursion depth exceeded
+  Unable to import '.\store_sales.preql': [Errno 2] No such
+  file or directory: '.\\store_sales.preql'. Did you mean: raw.store_sales?
   ```
 - `trilogy run query14.preql`
 
   ```text
   HAVING references 'local.overall_avg', which is not in the
-  SELECT projection (line 22). Add it to SELECT, each prefixed with `--` so it
+  SELECT projection (line 38). Add it to SELECT, each prefixed with `--` so it
   stays out of the output rows — keep your HAVING as-is:
       select <your existing columns>, --local.overall_avg
   Alternatively move a row-level filter to WHERE; for an aggregate condition on a
@@ -1949,31 +1796,121 @@ order by ws_01 asc;`
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 44 column 12 (char 2210). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy `
+
+### `syntax-parse`
+
+- `trilogy file write query02.preql --content import raw.web_sales as web_sales;
+import raw.catalog_sales as catalog_sales;
+
+# Combine web and catalog sales: da… nullif(sum(sales_2001.value ? sales_2001.week_seq + 53 = sales_2002.week_seq and dow = 6), 0) as sat_ratio
+order by wk_seq asc nulls first
+limit 55;`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 84 (char 83). Re-issue the call with valid JSON arguments.
+  refused to write 'query02.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('__ANON_7', 'by') at line 8, column 34.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ...o sales_by_day <- daily_sales ??? by web_sales.sold_date.year, w...
+
+  Write stats: received 1773 chars / 1773 bytes; tail: …'), 0) as
+  sat_ratio\\norder by wk_seq asc nulls first\\nlimit 55;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
   ```
-- `trilogy `
+- `trilogy file write query02.preql --content import raw.web_sales as web_sales;
+import raw.catalog_sales as catalog_sales;
+
+merge web_sales.sold_date.date_sk i…ow = 6) / nullif(sum(s2002.value ? s2002.week_seq = s2001.week_seq + 53 and s2002.dow = 6), 0) as sat_ratio
+order by wk_seq asc nulls first
+limit 55;`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 84 (char 83). Re-issue the call with valid JSON arguments.
+  refused to write 'query02.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('__ANON_7', 'by') at line 10, column 34.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ...o sales_by_day <- daily_sales ??? by catalog_sales.sold_date.yea...
+
+  Write stats: received 1697 chars / 1697 bytes; tail: …'), 0) as
+  sat_ratio\\norder by wk_seq asc nulls first\\nlimit 55;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
   ```
-- `trilogy `
+- `trilogy file write query04.preql --content import raw.store_sales as store_sales;
+import raw.catalog_sales as catalog_sales;
+import raw.web_sales as web_sale….customer.first_name nulls first,
+    store_sales.customer.last_name nulls first,
+    store_sales.customer.preferred_cust_flag nulls first
+limit 100;`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 84 (char 83). Re-issue the call with valid JSON arguments.
+  refused to write 'query04.preql': not syntactically valid Trilogy.
 
-  [guidance] You have issued this identical call 3 times in a row with the same result — it is not making progress. Stop repeating it and take a different action.
+  Parse error:
+  Unexpected token Token('__ANON_7', 'by') at line 14, column 149.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+   store_sales.ext_sales_price) ??? by store_sales.customer.custom...
+
+  Write stats: received 3008 chars / 3008 bytes; tail:
+  …'re_sales.customer.preferred_cust_flag nulls first\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
   ```
-- `trilogy `
+- `trilogy file write query04.preql --content import raw.store_sales as store_sales;
+import raw.catalog_sales as catalog_sales;
+import raw.web_sales as web_sale….customer.first_name nulls first,
+    store_sales.customer.last_name nulls first,
+    store_sales.customer.preferred_cust_flag nulls first
+limit 100;`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 97 (char 96). Re-issue the call with valid JSON arguments.
+  refused to write 'query04.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('HAVING', 'having') at line 30, column 1.
+  Expected one of:
+          * SELECT
+
+  Location:
+  ...AND catalog ratio > web ratio ??? having (catalog_2002 / catalog...
+
+  Write stats: received 2644 chars / 2644 bytes; tail:
+  …'re_sales.customer.preferred_cust_flag nulls first\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
   ```
-- `trilogy `
+- `trilogy file write query06.preql --content import raw.store_sales as store_sales;
+
+# Filter to January 2001 sales
+where year(store_sales.date_dim.date) = 200…omer.customer_sk) as customer_count
+having
+    customer_count >= 10
+order by
+    customer_count asc nulls first,
+    state asc nulls first
+limit 100;`
 
   ```text
   Tool call 'trilogy' rejected: invalid tool arguments: Invalid control character at: line 1 column 93 (char 92). Re-issue the call with valid JSON arguments.
