@@ -2,7 +2,7 @@
   {
     "id": 1,
     "grade": "medium",
-    "prompt": "For returns to stores in Tennessee in 2000, find the customers whose total returns for a store were more than 1.2 times what the average customer returns for that store were in that period. Print to output only the alphanumeric customer id, order by that; limit 100 rows."
+    "prompt": "For returns to stores in Tennessee in 2000, find the billing customers whose total returns for a store were more than 1.2 times what the average billing customer returns for that store were in that period. Print only the alphanumeric billing customer id, order by that; limit 100 rows."
   },
   {
     "id": 2,
@@ -22,7 +22,7 @@
   {
     "id": 5,
     "grade": "hard",
-    "prompt": "For the date range 2000-08-23 to 2000-09-06 inclusive, produce a rolled-up summary across three sales channels (store, catalog, web). For each channel, combine sales and returns into one stream: store sales/store returns per store, catalog sales/catalog returns per catalog page, and web sales/web returns (matching returns to their originating sale by item and order number) per web site. Per group, sum the extended sales price as sales, the return amount as returns, and the net profit minus net loss as profit. Then aggregate to channel-level and grand-total levels with a rollup over (channel, outlet), where the outlet is the group's business code prefixed with its kind (store, catalog_page, or web_site). Report channel, outlet, total sales, total returns, and total profit, ordered by channel and outlet with nulls first; limit 100 rows."
+    "prompt": "For the date range 2000-08-23 to 2000-09-06 inclusive, produce a rolled-up summary across three sales channels (store, catalog, web). Combine sales and returns into one stream: store sales/store returns per store, catalog sales/catalog returns per catalog page, and web sales/web returns (matching returns to their originating sale by item and order number) per web site. Per group, sum the extended sales price as sales, the return amount as returns, and the net profit minus net loss as profit. Then aggregate to channel-level and grand-total levels with a rollup over (channel, outlet), where the outlet is the group's business code prefixed with its kind (store, catalog_page, or web_site). Report channel, outlet, total sales, total returns, and total profit, ordered by channel and outlet with nulls first; limit 100 rows."
   },
   {
     "id": 6,

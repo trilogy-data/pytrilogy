@@ -19,40 +19,34 @@ auto return_id_label <- case
     else null
 end;
 
-rowset q5_results <- where
+where
     sales.channel_dim_text_id is not null
     and sales.date.date between '2000-08-23'::date and '2000-09-06'::date
 select
-    channel_label as s_channel,
-    sales_id_label as s_id,
-    sum(sales.ext_sales_price) by rollup channel_label, sales_id_label as sales_total_a,
-    sum(sales.net_profit) by rollup channel_label, sales_id_label as profit_only_a,
+    --channel_label as s_channel,
+    --sales_id_label as s_id,
+    --sum(sales.ext_sales_price) by rollup channel_label, sales_id_label as sales_total_a,
+    --sum(sales.net_profit) by rollup channel_label, sales_id_label as profit_only_a,
 merge
 where
     sales.return_channel_dim_text_id is not null
     and sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date
 select
-    channel_label as r_channel,
-    return_id_label as r_id,
-    sum(coalesce(sales.return_amount, 0)) by rollup channel_label, return_id_label as returns_total_b,
-    sum(coalesce(sales.return_net_loss, 0)) by rollup channel_label, return_id_label as loss_only_b,
+    --channel_label as r_channel,
+    --return_id_label as r_id,
+    --sum(coalesce(sales.return_amount, 0)) by rollup channel_label, return_id_label as returns_total_b,
+    --sum(coalesce(sales.return_net_loss, 0)) by rollup channel_label, return_id_label as loss_only_b,
 align
     channel: s_channel, r_channel
     and id: s_id, r_id
 derive
-    coalesce(q5_results.sales_total_a, 0.0) -> sales_metric,
-    coalesce(q5_results.returns_total_b, 0.0) -> returns_metric,
-    coalesce(q5_results.profit_only_a, 0.0) - coalesce(q5_results.loss_only_b, 0.0) -> profit_metric
-;
-
-select
-    q5_results.channel,
-    q5_results.id,
-    q5_results.sales_metric as sales,
-    q5_results.returns_metric as returns_,
-    q5_results.profit_metric as profit,
+    coalesce(sales_total_a, 0.0) -> sales_metric,
+    coalesce(returns_total_b, 0.0) -> returns_metric,
+    coalesce(profit_only_a, 0.0) - coalesce(loss_only_b, 0.0) -> profit_metric
 order by
-    q5_results.channel asc nulls first,
-    q5_results.id asc nulls first
+    channel asc nulls first,
+    id asc nulls first
 limit 100
 ;
+
+

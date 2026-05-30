@@ -137,6 +137,15 @@ def _grain_coverage_addresses(
                     concept, include_aggregate_by_keys=include_aggregate_by_keys
                 )
             )
+    # Follow each covered address to its pseudonyms. A MULTISELECT align alias
+    # expands to its keys (e.g. `grp` -> `ga`, `gb`), but those keys are often
+    # themselves aliases of the underlying column (`ga`/`gb` -> `g`). Without
+    # this second hop a pregrain carrying the source column looks like extra
+    # grain and forces a spurious group.
+    for address in list(addresses):
+        equivalent = environment.concepts.get(address)
+        if equivalent:
+            addresses.update(equivalent.equivalent_addresses)
     return addresses
 
 

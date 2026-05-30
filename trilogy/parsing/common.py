@@ -1221,6 +1221,11 @@ def derive_item_to_concept(
         namespace=namespace or DEFAULT_NAMESPACE,
         granularity=Granularity.MULTI_ROW,
         derivation=Derivation.MULTISELECT,
+        # A derive output is computed at the merge grain, so its keys are the
+        # aligned concepts. Without this it has no keys and gets treated as a
+        # grain component itself, forcing a spurious top-level GROUP BY over the
+        # derived metric columns.
+        keys=set(item.aligned_concept for item in lineage.align.items),
     )
     return new
 

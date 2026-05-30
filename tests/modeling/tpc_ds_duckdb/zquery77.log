@@ -103,13 +103,7 @@ SELECT
     cast(coalesce(\"macho\".\"sr_grouped_sr_returns\",0) as numeric(15,2)) as \"u_returns\"
 FROM
     \"macho\"
-    INNER JOIN \"sparkling\" on \"macho\".\"sr_grouped_sr_store_id\" = \"sparkling\".\"ss_grouped_ss_store_id\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
+    INNER JOIN \"sparkling\" on \"macho\".\"sr_grouped_sr_store_id\" = \"sparkling\".\"ss_grouped_ss_store_id\"),
 thoughtful as (
 SELECT
     count(\"wakeful\".\"cr_grouped_cr_cc_key\") as \"_cr_totals_cr_n_groups\",
