@@ -43,8 +43,8 @@ SELECT
     \"cheerful\".\"itemrevenue\" as \"itemrevenue\",
     (\"cheerful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" as \"revenueratio\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"cheerful\" on \"cooperative\".\"web_sales_item_class\" is not distinct from \"cheerful\".\"web_sales_item_class\"
+    \"cheerful\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"web_sales_item_class\" is not distinct from \"cooperative\".\"web_sales_item_class\"
 ORDER BY 
     \"cheerful\".\"web_sales_item_category\" asc,
     coalesce(\"cheerful\".\"web_sales_item_class\",\"cooperative\".\"web_sales_item_class\") asc,

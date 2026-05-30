@@ -43,8 +43,8 @@ SELECT
     \"uneven\".\"part_supplier_name\" as \"part_supplier_name\",
     sum(\"uneven\".\"row_counter\") as \"numwait\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"uneven\" on \"thoughtful\".\"order_id\" = \"uneven\".\"order_id\"
+    \"uneven\"
+    INNER JOIN \"thoughtful\" on \"uneven\".\"order_id\" = \"thoughtful\".\"order_id\"
 GROUP BY
     1
 ORDER BY 

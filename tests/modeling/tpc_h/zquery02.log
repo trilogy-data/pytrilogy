@@ -30,8 +30,8 @@ SELECT
     \"partsupp\".\"ps_partkey\" as \"id\",
     min(\"partsupp\".\"ps_supplycost\") as \"min_supply_cost_in_europe\"
 FROM
-    \"memory\".\"supplier\" as \"supplier_supplier\"
-    INNER JOIN \"memory\".\"partsupp\" as \"partsupp\" on \"supplier_supplier\".\"s_suppkey\" = \"partsupp\".\"ps_suppkey\"
+    \"memory\".\"partsupp\" as \"partsupp\"
+    INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
     INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
 WHERE
@@ -49,8 +49,8 @@ SELECT
     \"cooperative\".\"supplier_phone\" as \"supplier_phone\",
     \"cooperative\".\"supplier_comment\" as \"supplier_comment\"
 FROM
-    \"questionable\"
-    INNER JOIN \"cooperative\" on \"questionable\".\"id\" = \"cooperative\".\"id\"
+    \"cooperative\"
+    INNER JOIN \"questionable\" on \"cooperative\".\"id\" = \"questionable\".\"id\"
 WHERE
     \"cooperative\".\"supply_cost\" = \"questionable\".\"min_supply_cost_in_europe\"
 

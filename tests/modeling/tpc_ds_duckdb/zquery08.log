@@ -10,8 +10,8 @@ SELECT
     \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\",
     count(\"customer_customers\".\"C_CUSTOMER_SK\") as \"zip_p_count\"
 FROM
-    \"memory\".\"customer_address\" as \"customer_address_customer_address\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
+    \"memory\".\"customer\" as \"customer_customers\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" = 'Y'
 

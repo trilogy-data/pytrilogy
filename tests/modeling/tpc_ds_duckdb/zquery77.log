@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 7821
+gen_length = 7778
 preql_size = 3215
 comp_size = 3129
 generated_sql = """
@@ -92,14 +92,8 @@ SELECT
     cast(\"puzzled\".\"ws_grouped_ws_sales\" as numeric(15,2)) as \"u_sales\",
     cast(coalesce(\"busy\".\"wr_grouped_wr_returns\",0) as numeric(15,2)) as \"u_returns\"
 FROM
-    \"busy\"
-    INNER JOIN \"puzzled\" on \"busy\".\"wr_grouped_wr_wp_id\" = \"puzzled\".\"ws_grouped_ws_wp_id\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
+    \"puzzled\"
+    INNER JOIN \"busy\" on \"puzzled\".\"ws_grouped_ws_wp_id\" = \"busy\".\"wr_grouped_wr_wp_id\"),
 friendly as (
 SELECT
     \"sparkling\".\"ss_grouped_ss_profit\" - cast(coalesce(\"macho\".\"sr_grouped_sr_loss\",0) as numeric(15,2)) as \"u_profit\",

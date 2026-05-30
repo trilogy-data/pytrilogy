@@ -114,9 +114,9 @@ SELECT
     sum(\"kaput\".\"ws_row_flag\") as \"_q76_results_cnt_b\",
     sum(\"macho\".\"ws_ext_sales_price\") as \"_q76_results_amt_b\"
 FROM
-    \"macho\"
-    INNER JOIN \"kaput\" on \"macho\".\"ws_item_id\" = \"kaput\".\"ws_item_id\" AND \"macho\".\"ws_order_number\" = \"kaput\".\"ws_order_number\"
-    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"macho\".\"ws_item_id\" = \"ws_item_items\".\"I_ITEM_SK\"
+    \"kaput\"
+    INNER JOIN \"macho\" on \"kaput\".\"ws_item_id\" = \"macho\".\"ws_item_id\" AND \"kaput\".\"ws_order_number\" = \"macho\".\"ws_order_number\"
+    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"kaput\".\"ws_item_id\" = \"ws_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,
@@ -133,9 +133,9 @@ SELECT
     sum(\"juicy\".\"ss_ext_sales_price\") as \"_q76_results_amt_a\",
     sum(\"young\".\"ss_row_flag\") as \"_q76_results_cnt_a\"
 FROM
-    \"juicy\"
-    INNER JOIN \"young\" on \"juicy\".\"ss_item_id\" = \"young\".\"ss_item_id\" AND \"juicy\".\"ss_ticket_number\" = \"young\".\"ss_ticket_number\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"juicy\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
+    \"young\"
+    INNER JOIN \"juicy\" on \"young\".\"ss_item_id\" = \"juicy\".\"ss_item_id\" AND \"young\".\"ss_ticket_number\" = \"juicy\".\"ss_ticket_number\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"young\".\"ss_item_id\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2,

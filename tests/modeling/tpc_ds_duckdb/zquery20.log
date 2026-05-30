@@ -43,8 +43,8 @@ SELECT
     \"cheerful\".\"revenue\" as \"revenue\",
     ( \"cheerful\".\"revenue\" * 100.0 ) / (\"cooperative\".\"_virt_agg_sum_9832457364876792\") as \"revenue_ratio\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"cheerful\" on \"cooperative\".\"cs_item_class\" is not distinct from \"cheerful\".\"cs_item_class\"
+    \"cheerful\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"cs_item_class\" is not distinct from \"cooperative\".\"cs_item_class\"
 ORDER BY 
     \"cheerful\".\"cs_item_category\" asc nulls first,
     coalesce(\"cheerful\".\"cs_item_class\",\"cooperative\".\"cs_item_class\") asc nulls first,

@@ -22,8 +22,8 @@ SELECT
     \"order_orders\".\"o_orderpriority\" as \"order_priority\",
     count(\"quizzical\".\"order_id\") as \"order_count\"
 FROM
-    \"quizzical\"
-    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"quizzical\".\"order_id\" = \"order_orders\".\"o_orderkey\"
+    \"memory\".\"orders\" as \"order_orders\"
+    INNER JOIN \"quizzical\" on \"order_orders\".\"o_orderkey\" = \"quizzical\".\"order_id\"
 WHERE
     \"order_orders\".\"o_orderdate\" >= date '1993-07-01' and \"order_orders\".\"o_orderdate\" < date '1993-10-01'
 

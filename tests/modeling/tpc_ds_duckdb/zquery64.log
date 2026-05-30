@@ -26,8 +26,8 @@ cooperative as (
 SELECT
     \"wakeful\".\"cr_sales_item_id\" as \"cs_ui_cs_ui_item_id\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"thoughtful\" on \"wakeful\".\"cr_sales_item_id\" = \"thoughtful\".\"cr_sales_item_id\"
+    \"thoughtful\"
+    INNER JOIN \"wakeful\" on \"thoughtful\".\"cr_sales_item_id\" = \"wakeful\".\"cr_sales_item_id\"
 WHERE
     \"thoughtful\".\"cs_ui_sale\" > 2 * \"wakeful\".\"cs_ui_refund\"
 ),

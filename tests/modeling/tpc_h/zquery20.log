@@ -1,5 +1,5 @@
 query_id = "20"
-gen_length = 1867
+gen_length = 1730
 preql_size = 395
 comp_size = 908
 generated_sql = """
@@ -23,11 +23,10 @@ abundant as (
 SELECT
     \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
-    \"part_supplier_supplier\".\"s_suppkey\" as \"part_supplier_id\",
-    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\"
+    \"part_supplier_supplier\".\"s_suppkey\" as \"part_supplier_id\"
 FROM
-    \"memory\".\"nation\" as \"part_supplier_nation_nation\"
-    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"part_supplier_nation_nation\".\"n_nationkey\" = \"part_supplier_supplier\".\"s_nationkey\"
+    \"memory\".\"supplier\" as \"part_supplier_supplier\"
+    INNER JOIN \"memory\".\"nation\" as \"part_supplier_nation_nation\" on \"part_supplier_supplier\".\"s_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\"
 WHERE
     UPPER(\"part_supplier_nation_nation\".\"n_name\")  = 'CANADA'
 )
@@ -38,9 +37,9 @@ FROM
     \"memory\".\"partsupp\" as \"part_partsupp\"
     INNER JOIN \"memory\".\"part\" as \"part_part\" on \"part_partsupp\".\"ps_partkey\" = \"part_part\".\"p_partkey\"
     INNER JOIN \"wakeful\" on \"part_part\".\"p_partkey\" = \"wakeful\".\"part_id\" AND \"part_partsupp\".\"ps_suppkey\" = \"wakeful\".\"part_supplier_id\"
-    INNER JOIN \"abundant\" on \"wakeful\".\"part_supplier_id\" = \"abundant\".\"part_supplier_id\"
+    INNER JOIN \"abundant\" on \"part_partsupp\".\"ps_suppkey\" = \"abundant\".\"part_supplier_id\"
 WHERE
-    \"part_part\".\"p_name\" like 'forest%' and \"part_partsupp\".\"ps_availqty\" > 0.5 * \"wakeful\".\"qty_per_partsupp_1994\" and \"abundant\".\"part_supplier_nation_name\" = 'CANADA'
+    \"part_part\".\"p_name\" like 'forest%' and \"part_partsupp\".\"ps_availqty\" > 0.5 * \"wakeful\".\"qty_per_partsupp_1994\"
 
 GROUP BY
     1,

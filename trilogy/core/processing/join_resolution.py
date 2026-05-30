@@ -201,14 +201,22 @@ def ensure_content_preservation(joins: list[JoinOrderOutput]):
         has_prior_left = False
         has_prior_right = False
         for pred in predecessors:
-            if (
-                pred.type in (JoinType.LEFT_OUTER, JoinType.FULL)
-                and pred.right in review_join.lefts
-            ):
+            # Which side(s) of ``pred`` does this join build on?
+            on_pred_right = pred.right in review_join.lefts
+            on_pred_left = any(x in review_join.lefts for x in pred.lefts)
+            # A FULL join is symmetric (``A FULL B`` == ``B FULL A``) and
+            # null-extends BOTH sides, so a join building on either side inherits
+            # nulls from both. Treat it symmetrically — otherwise the upgrade
+            # depends on which side the ordering happened to record as left/right
+            # of the FULL, making the plan order-dependent (q5: two distinct
+            # unioned-returns sources FULL-joined, then joined to a date dim).
+            if pred.type == JoinType.FULL and (on_pred_right or on_pred_left):
                 has_prior_left = True
-            if pred.type in (JoinType.RIGHT_OUTER, JoinType.FULL) and any(
-                x in review_join.lefts for x in pred.lefts
-            ):
+                has_prior_right = True
+                continue
+            if pred.type == JoinType.LEFT_OUTER and on_pred_right:
+                has_prior_left = True
+            if pred.type == JoinType.RIGHT_OUTER and on_pred_left:
                 has_prior_right = True
         if has_prior_left and has_prior_right:
             target = JoinType.FULL
@@ -230,6 +238,13 @@ def ensure_content_preservation(joins: list[JoinOrderOutput]):
             review_join.type = target
 
 
+def _estimated_grain_size(ds: QueryDatasource | BuildDatasource) -> int:
+    """Estimated grain size (number of grain components), a stand-in for row
+    cardinality. Wrapped so it can later use a real estimate.
+    """
+    return len(ds.grain.components)
+
+
 def _score_join_candidate(
     x: str,
     *,
@@ -237,6 +252,7 @@ def _score_join_candidate(
     eligible_left: set[str],
     partials: dict[str, list[str]],
     nullables: dict[str, list[str]],
+    grain_size: dict[str, int],
     multi_partial: bool,
 ) -> tuple[int, int, str]:
     base = 1
@@ -254,12 +270,28 @@ def _score_join_candidate(
         # NULL-key rows. Flipping it to RIGHT would force FULL (per
         # ``get_join_type``) just to keep them.
         base += 1
-    return (base, len(x), x)
+    # Tiebreak by biggest estimated grain — a structural, rename-stable key.
+    # Correctness must not depend on this; that is the join-type logic's job.
+    return (base, grain_size.get(x, 0), x)
 
 
 def resolve_join_order_v2(
-    g: nx.Graph, partials: dict[str, list[str]], nullables: dict[str, list[str]]
+    g: nx.Graph,
+    partials: dict[str, list[str]],
+    nullables: dict[str, list[str]],
+    grain_size: dict[str, int] | None = None,
 ) -> list[JoinOrderOutput]:
+    """Greedily order the datasources into a join tree.
+
+    Pick a pivot (shared concept), then absorb datasources that connect to the
+    growing left set, scoring candidates by eligibility / partial / nullable
+    status and breaking ties on estimated grain size (``_score_join_candidate``).
+    Every choice point sorts its inputs, so the plan is deterministic across runs.
+
+    Ordering is a heuristic for plan shape only — ``ensure_content_preservation``
+    guarantees the result set regardless of the order chosen here.
+    """
+    grain_size = grain_size or {}
     datasources = sorted(x for x in g.nodes if x.startswith("ds~"))
     concepts = sorted(x for x in g.nodes if x.startswith("c~"))
 
@@ -313,6 +345,7 @@ def resolve_join_order_v2(
             eligible_left=eligible_left,
             partials=partials,
             nullables=nullables,
+            grain_size=grain_size,
             multi_partial=multi_partial,
         )
 
@@ -392,10 +425,13 @@ def resolve_join_order_v2(
             if not eligible_left:
                 eligible_left.add(ds)
                 continue
-            # Try to find if there are any connecting keys with existing left tables
+            # Try to find if there are any connecting keys with existing left tables.
+            # Iterate sorted: ``eligible_left`` is a set, and str hashing is
+            # randomized per process, so an unsorted scan (or ``list(...)[0]``)
+            # would pick a different left run-to-run for ties.
             best_left = None
             best_keys: set[str] = set()
-            for existing_left in eligible_left:
+            for existing_left in sorted(eligible_left):
                 connecting_keys = get_connection_keys(
                     all_connections, existing_left, ds
                 )
@@ -415,8 +451,8 @@ def resolve_join_order_v2(
             else:
                 output.append(
                     JoinOrderOutput(
-                        # pick random one to be left
-                        left=list(eligible_left)[0],
+                        # no connecting keys: cross join against a deterministic left
+                        left=sorted(eligible_left)[0],
                         right=ds,
                         type=JoinType.FULL,
                         keys={},
@@ -640,6 +676,7 @@ def get_node_joins(
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     nullables: dict[str, list[str]] = {}
+    grain_size: dict[str, int] = {}
     ds_node_map: dict[str, QueryDatasource | BuildDatasource] = {}
     # (ds_node, canonical concept node) -> the concept that datasource exposes,
     # used to build join pairs with the right per-side instance.
@@ -648,6 +685,7 @@ def get_node_joins(
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource
+        grain_size[ds_node] = _estimated_grain_size(datasource)
         graph.add_node(ds_node, type=NodeType.NODE)
         # Partial/nullable status, mapped to canonical nodes. Deep partials reach
         # into sub-datasources (e.g. q80's partial fact column under an aliased
@@ -673,7 +711,9 @@ def get_node_joins(
         partials[ds_node] = p_list
         nullables[ds_node] = n_list
 
-    joins = resolve_join_order_v2(graph, partials=partials, nullables=nullables)
+    joins = resolve_join_order_v2(
+        graph, partials=partials, nullables=nullables, grain_size=grain_size
+    )
     return [
         BaseJoin(
             left_datasource=ds_node_map[j.left] if j.left else None,

@@ -66,8 +66,8 @@ SELECT
     \"questionable\".\"sales_customer_first_name\" as \"customer_first_name\",
     \"questionable\".\"sales_customer_last_name\" as \"customer_last_name\"
 FROM
-    \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"sales_customer_id\" = \"questionable\".\"sales_customer_id\"
+    \"questionable\"
+    INNER JOIN \"uneven\" on \"questionable\".\"sales_customer_id\" = \"uneven\".\"sales_customer_id\"
 GROUP BY
     1,
     2,

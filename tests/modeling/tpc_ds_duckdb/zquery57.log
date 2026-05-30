@@ -1,5 +1,5 @@
 query_id = "57"
-gen_length = 5347
+gen_length = 5348
 preql_size = 2050
 comp_size = 2122
 generated_sql = """
@@ -70,8 +70,8 @@ SELECT
     \"questionable\".\"psum\" as \"psum\",
     \"questionable\".\"nsum\" as \"nsum\"
 FROM
-    \"abundant\"
-    LEFT OUTER JOIN \"questionable\" on \"abundant\".\"catalog_sales_call_center_name\" = \"questionable\".\"catalog_sales_call_center_name\" AND \"abundant\".\"catalog_sales_date_year\" = \"questionable\".\"catalog_sales_date_year\" AND \"abundant\".\"catalog_sales_item_brand_name\" = \"questionable\".\"catalog_sales_item_brand_name\" AND \"abundant\".\"catalog_sales_item_category\" is not distinct from \"questionable\".\"catalog_sales_item_category\"
+    \"questionable\"
+    RIGHT OUTER JOIN \"abundant\" on \"questionable\".\"catalog_sales_call_center_name\" = \"abundant\".\"catalog_sales_call_center_name\" AND \"questionable\".\"catalog_sales_date_year\" = \"abundant\".\"catalog_sales_date_year\" AND \"questionable\".\"catalog_sales_item_brand_name\" = \"abundant\".\"catalog_sales_item_brand_name\" AND \"questionable\".\"catalog_sales_item_category\" is not distinct from \"abundant\".\"catalog_sales_item_category\"
 WHERE
     coalesce(\"abundant\".\"catalog_sales_date_year\",\"questionable\".\"catalog_sales_date_year\") = 1999 and CASE
 	WHEN \"abundant\".\"avg_monthly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\") / \"abundant\".\"avg_monthly_sales\"

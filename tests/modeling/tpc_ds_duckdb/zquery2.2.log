@@ -104,8 +104,8 @@ SELECT
     round(( \"abundant\".\"_virt_agg_sum_8833754379564371\" + \"thoughtful\".\"_virt_agg_sum_4518379598128005\" ) / (lead(\"abundant\".\"_virt_agg_sum_8833754379564371\" + \"thoughtful\".\"_virt_agg_sum_4518379598128005\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc )),2) as \"friday_increase\",
     round(( \"abundant\".\"_virt_agg_sum_9238538473336606\" + \"thoughtful\".\"_virt_agg_sum_5446384850356435\" ) / (lead(\"abundant\".\"_virt_agg_sum_9238538473336606\" + \"thoughtful\".\"_virt_agg_sum_5446384850356435\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc )),2) as \"sunday_increase\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"abundant\" on \"thoughtful\".\"date_week_seq\" = \"abundant\".\"date_week_seq\")
+    \"abundant\"
+    INNER JOIN \"thoughtful\" on \"abundant\".\"date_week_seq\" = \"thoughtful\".\"date_week_seq\")
 SELECT
     \"yummy\".\"date_week_seq\" as \"date_week_seq\",
     \"yummy\".\"sunday_increase\" as \"sunday_increase\",

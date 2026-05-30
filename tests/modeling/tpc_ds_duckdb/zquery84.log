@@ -7,8 +7,8 @@ SELECT
     \"customer_customers\".\"C_CUSTOMER_ID\" as \"customer_text_id\",
     (coalesce(\"customer_customers\".\"C_LAST_NAME\",'') || ', ' || coalesce(\"customer_customers\".\"C_FIRST_NAME\",'')) as \"customername\"
 FROM
-    \"memory\".\"customer_address\" as \"customer_address_customer_address\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
+    \"memory\".\"customer\" as \"customer_customers\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"store_returns\" as \"returns_store_returns\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not distinct from \"returns_store_returns\".\"SR_CDEMO_SK\"
     INNER JOIN \"memory\".\"household_demographics\" as \"customer_household_demographic_household_demographics\" on \"customer_customers\".\"C_CURRENT_HDEMO_SK\" = \"customer_household_demographic_household_demographics\".\"HD_DEMO_SK\"
     INNER JOIN \"memory\".\"income_band\" as \"customer_household_demographic_income_band_income_band\" on \"customer_household_demographic_household_demographics\".\"HD_INCOME_BAND_SK\" = \"customer_household_demographic_income_band_income_band\".\"IB_INCOME_BAND_SK\"

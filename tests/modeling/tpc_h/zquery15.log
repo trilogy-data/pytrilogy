@@ -29,8 +29,8 @@ SELECT
     \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",
     \"quizzical\".\"supplier_rev\" as \"supplier_rev\"
 FROM
-    \"quizzical\"
-    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"quizzical\".\"part_supplier_id\" = \"part_supplier_supplier\".\"s_suppkey\")
+    \"memory\".\"supplier\" as \"part_supplier_supplier\"
+    INNER JOIN \"quizzical\" on \"part_supplier_supplier\".\"s_suppkey\" = \"quizzical\".\"part_supplier_id\")
 SELECT
     \"cooperative\".\"part_supplier_id\" as \"part_supplier_id\",
     \"cooperative\".\"part_supplier_name\" as \"part_supplier_name\",
