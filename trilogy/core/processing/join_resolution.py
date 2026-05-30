@@ -20,6 +20,8 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.utility import NodeType
 
+DataSource = QueryDatasource | BuildDatasource
+
 
 @dataclass
 class JoinOrderOutput:
@@ -29,35 +31,18 @@ class JoinOrderOutput:
     left: str | None = None
 
     @property
-    def lefts(self):
+    def lefts(self) -> set[str]:
         return set(self.keys.keys())
+
+
+OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
+DIRECTIONAL_OUTER_JOIN_TYPES = (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
 
 
 def compute_outer_null_status(
     joins: list,
 ) -> dict[str, int]:
-    """Map each datasource identifier to a null-ability score.
-
-    A score of 0 means the datasource is preserved by every upstream join —
-    its concepts are guaranteed non-NULL in the final result. Higher scores
-    mean the datasource sits on the NULL-able side of one or more outer
-    joins; projecting from it could silently produce NULLs.
-
-    Used by ``MergeNode._resolve`` to (a) order ``final_datasets`` so
-    ``resolve_concept_map``'s first-wins picks the preserved side for shared
-    concepts and (b) drop NULL-able-side ``ConceptPair`` entries from JOIN ON
-    when a preserved-side pair exists for the same key.
-
-    Conventions:
-        - ``LEFT OUTER A↔B``: B is NULL-able.
-        - ``RIGHT OUTER A↔B``: A is NULL-able.
-        - ``FULL A↔B``: both are NULL-able.
-        - ``INNER``: neither — no contribution.
-
-    For multi-left joins (``join.left_datasource is None``), the LEFT side is
-    a previously-merged set whose individual datasources keep whatever score
-    they accumulated from earlier joins; only the right side is touched here.
-    """
+    """Score how often each datasource is null-extended by outer joins."""
     score: dict[str, int] = {}
     for join in joins:
         if not isinstance(join, BaseJoin):
@@ -80,22 +65,11 @@ def prune_outer_join_pairs(
     joins: list,
     null_status: dict[str, int],
 ) -> None:
-    """In-place prune of ``ConceptPair`` entries on ``LEFT/RIGHT OUTER`` joins.
-
-    When the JOIN ON has multiple pairs sharing the same ``(right_addr,
-    left_addr)`` (multi-left case — e.g. q80 ``thoughtful``: both sales and
-    returns supply ``sales_channel`` as a join key), keep only the pair whose
-    ``existing_datasource`` is most preserved per ``null_status``. The other
-    pair would render ``coalesce(preserved.k, nullable.k) = right.k`` — which
-    always evaluates to ``preserved.k`` and is pure SQL bloat.
-
-    Skipped for ``FULL`` joins: both sides may be NULL there, so coalesce
-    actually contributes — we want every left in JOIN ON.
-    """
+    """Drop redundant duplicate-key pairs from directional outer joins."""
     for join in joins:
         if not isinstance(join, BaseJoin) or not join.concept_pairs:
             continue
-        if join.join_type not in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER):
+        if join.join_type not in DIRECTIONAL_OUTER_JOIN_TYPES:
             continue
         groups: dict[tuple[str, str], list[ConceptPair]] = {}
         for pair in join.concept_pairs:
@@ -118,16 +92,18 @@ def prune_outer_join_pairs(
 
 
 def find_all_connecting_concepts(g: nx.Graph, ds1: str, ds2: str) -> set[str]:
-    """Find all concepts that connect two datasources"""
     return set(g.neighbors(ds1)) & set(g.neighbors(ds2))
 
 
 def get_connection_keys(
     all_connections: dict[tuple[str, str], set[str]], left: str, right: str
 ) -> set[str]:
-    """Get all concepts that connect two datasources"""
     key: tuple[str, str] = (min(left, right), max(left, right))
     return all_connections.get(key, set())
+
+
+def _has_any(keys: set[str], source: str, lookup: dict[str, list[str]]) -> bool:
+    return any(key in lookup.get(source, []) for key in keys)
 
 
 def get_join_type(
@@ -137,16 +113,10 @@ def get_join_type(
     nullables: dict[str, list[str]],
     all_connecting_keys: set[str],
 ) -> JoinType:
-    left_is_partial = any(key in partials.get(left, []) for key in all_connecting_keys)
-    left_is_nullable = any(
-        key in nullables.get(left, []) for key in all_connecting_keys
-    )
-    right_is_partial = any(
-        key in partials.get(right, []) for key in all_connecting_keys
-    )
-    right_is_nullable = any(
-        key in nullables.get(right, []) for key in all_connecting_keys
-    )
+    left_is_partial = _has_any(all_connecting_keys, left, partials)
+    left_is_nullable = _has_any(all_connecting_keys, left, nullables)
+    right_is_partial = _has_any(all_connecting_keys, right, partials)
+    right_is_nullable = _has_any(all_connecting_keys, right, nullables)
 
     left_complete = not left_is_partial and not left_is_nullable
     right_complete = not right_is_partial and not right_is_nullable
@@ -154,23 +124,13 @@ def get_join_type(
     if not left_complete and not right_complete:
         return JoinType.FULL
     elif not left_complete and right_complete:
-        # Differentiate "partial" (left's row set is a subset of expected) from
-        # "nullable" (left has all its rows but the join key can be NULL).
-        # - partial-only: preserve the complete right (RIGHT_OUTER).
-        # - nullable-only: preserve left's NULL-key rows (LEFT_OUTER). RIGHT_OUTER
-        #   would drop them since NULL doesn't match anything on the right.
-        # - both: FULL preserves the complete right AND left's NULL-key rows.
+        # Partial means missing rows; nullable means complete rows with NULL keys.
         if left_is_nullable and left_is_partial:
             return JoinType.FULL
         if left_is_nullable:
             return JoinType.LEFT_OUTER
         return JoinType.RIGHT_OUTER
     elif not right_complete and left_complete:
-        # LEFT_OUTER would preserve the complete left and drop the right's
-        # unmatched rows. With null-aware equality NULL only matches NULL, so
-        # if the right has nulls on the join key the non-nullable left has
-        # nothing to match them against — they'd land on the dropped side.
-        # Upgrade to FULL so they survive.
         if right_is_nullable:
             return JoinType.FULL
         return JoinType.LEFT_OUTER
@@ -191,9 +151,7 @@ def reduce_join_types(join_types: set[JoinType]) -> JoinType:
     return JoinType.INNER
 
 
-def ensure_content_preservation(joins: list[JoinOrderOutput]):
-    # ensure that for a join, if we have prior joins that would
-    # introduce nulls, we are controlling for that
+def ensure_content_preservation(joins: list[JoinOrderOutput]) -> None:
     for idx, review_join in enumerate(joins):
         predecessors = joins[:idx]
         if review_join.type == JoinType.FULL:
@@ -201,14 +159,15 @@ def ensure_content_preservation(joins: list[JoinOrderOutput]):
         has_prior_left = False
         has_prior_right = False
         for pred in predecessors:
-            if (
-                pred.type in (JoinType.LEFT_OUTER, JoinType.FULL)
-                and pred.right in review_join.lefts
-            ):
+            on_pred_right = pred.right in review_join.lefts
+            on_pred_left = any(x in review_join.lefts for x in pred.lefts)
+            if pred.type == JoinType.FULL and (on_pred_right or on_pred_left):
                 has_prior_left = True
-            if pred.type in (JoinType.RIGHT_OUTER, JoinType.FULL) and any(
-                x in review_join.lefts for x in pred.lefts
-            ):
+                has_prior_right = True
+                continue
+            if pred.type == JoinType.LEFT_OUTER and on_pred_right:
+                has_prior_left = True
+            if pred.type == JoinType.RIGHT_OUTER and on_pred_left:
                 has_prior_right = True
         if has_prior_left and has_prior_right:
             target = JoinType.FULL
@@ -230,6 +189,10 @@ def ensure_content_preservation(joins: list[JoinOrderOutput]):
             review_join.type = target
 
 
+def _estimated_grain_size(ds: DataSource) -> int:
+    return len(ds.grain.components)
+
+
 def _score_join_candidate(
     x: str,
     *,
@@ -237,6 +200,7 @@ def _score_join_candidate(
     eligible_left: set[str],
     partials: dict[str, list[str]],
     nullables: dict[str, list[str]],
+    grain_size: dict[str, int],
     multi_partial: bool,
 ) -> tuple[int, int, str]:
     base = 1
@@ -244,26 +208,34 @@ def _score_join_candidate(
         base += 3
     is_partial = root in partials.get(x, [])
     if multi_partial and is_partial:
-        # boost partial tables so they join together first
         base += 2
     elif is_partial:
-        # single partial: lower weight as before
         base -= 1
     if root in nullables.get(x, []):
-        # Prefer the nullable side as LEFT so a LEFT_OUTER JOIN preserves its
-        # NULL-key rows. Flipping it to RIGHT would force FULL (per
-        # ``get_join_type``) just to keep them.
         base += 1
-    return (base, len(x), x)
+    return (base, grain_size.get(x, 0), x)
 
 
 def resolve_join_order_v2(
-    g: nx.Graph, partials: dict[str, list[str]], nullables: dict[str, list[str]]
+    g: nx.Graph,
+    partials: dict[str, list[str]],
+    nullables: dict[str, list[str]],
+    grain_size: dict[str, int] | None = None,
 ) -> list[JoinOrderOutput]:
+    """Greedily order the datasources into a join tree.
+
+    Pick a pivot (shared concept), then absorb datasources that connect to the
+    growing left set, scoring candidates by eligibility / partial / nullable
+    status and breaking ties on estimated grain size (``_score_join_candidate``).
+    Every choice point sorts its inputs, so the plan is deterministic across runs.
+
+    Ordering is a heuristic for plan shape only — ``ensure_content_preservation``
+    guarantees the result set regardless of the order chosen here.
+    """
+    grain_size = grain_size or {}
     datasources = sorted(x for x in g.nodes if x.startswith("ds~"))
     concepts = sorted(x for x in g.nodes if x.startswith("c~"))
 
-    # Pre-compute all possible connections between datasources
     all_connections: dict[tuple[str, str], set[str]] = {}
     for i, ds1 in enumerate(datasources):
         for ds2 in datasources[i + 1 :]:
@@ -273,21 +245,17 @@ def resolve_join_order_v2(
 
     output: list[JoinOrderOutput] = []
 
-    # create our map of pivots, or common join concepts
     pivot_map = {
         concept: [x for x in g.neighbors(concept) if x in datasources]
         for concept in concepts
     }
-    pivots = list(
-        sorted(
-            [x for x in pivot_map if len(pivot_map[x]) > 1],
-            key=lambda x: (len(pivot_map[x]), len(x), x),
-        )
+    pivots = sorted(
+        [x for x in pivot_map if len(pivot_map[x]) > 1],
+        key=lambda x: (len(pivot_map[x]), len(x), x),
     )
     solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
     eligible_left: set[str] = set()
 
-    # while we have pivots, keep joining them in
     while pivots:
         next_pivots = [
             x for x in pivots if any(y in eligible_left for y in pivot_map[x])
@@ -298,49 +266,38 @@ def resolve_join_order_v2(
         else:
             root = pivots.pop(0)
 
-        # Check if multiple unjoined datasources have the concept as partial.
-        # When true, partial (fact) tables should be joined together first
-        # before complete (dimension) tables.
         unjoined_for_root = [x for x in pivot_map[root] if x not in eligible_left]
         multi_partial = (
             sum(1 for x in unjoined_for_root if root in partials.get(x, [])) > 1
         )
 
-        # sort so less partials is last and eligible lefts are first
         score_key = partial(
             _score_join_candidate,
             root=root,
             eligible_left=eligible_left,
             partials=partials,
             nullables=nullables,
+            grain_size=grain_size,
             multi_partial=multi_partial,
         )
 
-        # get remaining un-joined datasets
         to_join = sorted(
             [x for x in pivot_map[root] if x not in eligible_left], key=score_key
         )
         while to_join:
-            # need to sort this to ensure we join on the best match
-            # but check ALL left in case there are non-pivot keys to join on
             base = sorted([x for x in eligible_left], key=score_key)
             if not base:
                 new = to_join.pop()
                 eligible_left.add(new)
                 base = [new]
             right = to_join.pop()
-            # we already joined it
-            # this could happen if the same pivot is shared with multiple DSes
             if right in eligible_left:
                 continue
 
             joinkeys: dict[str, set[str]] = {}
-            # sorting puts the best candidate last for pop
-            # so iterate over the reversed list
-            join_types = set()
+            join_types: set[JoinType] = set()
 
             for left_candidate in reversed(base):
-                # Get all concepts that connect these two datasources
                 all_connecting_keys = get_connection_keys(
                     all_connections, left_candidate, right
                 )
@@ -348,20 +305,14 @@ def resolve_join_order_v2(
                 if not all_connecting_keys:
                     continue
 
-                # Check if we already have this exact set of keys from
-                # a non-partial left. If both left candidates share
-                # the same keys and are partial, keep both so the
-                # renderer can COALESCE them.
                 exists = False
                 for existing_left, v in joinkeys.items():
                     if v == all_connecting_keys:
-                        left_is_partial = any(
-                            key in partials.get(left_candidate, [])
-                            for key in all_connecting_keys
+                        left_is_partial = _has_any(
+                            all_connecting_keys, left_candidate, partials
                         )
-                        existing_is_partial = any(
-                            key in partials.get(existing_left, [])
-                            for key in all_connecting_keys
+                        existing_is_partial = _has_any(
+                            all_connecting_keys, existing_left, partials
                         )
                         if not (left_is_partial and existing_is_partial):
                             exists = True
@@ -392,10 +343,9 @@ def resolve_join_order_v2(
             if not eligible_left:
                 eligible_left.add(ds)
                 continue
-            # Try to find if there are any connecting keys with existing left tables
             best_left = None
             best_keys: set[str] = set()
-            for existing_left in eligible_left:
+            for existing_left in sorted(eligible_left):
                 connecting_keys = get_connection_keys(
                     all_connections, existing_left, ds
                 )
@@ -415,8 +365,7 @@ def resolve_join_order_v2(
             else:
                 output.append(
                     JoinOrderOutput(
-                        # pick random one to be left
-                        left=list(eligible_left)[0],
+                        left=sorted(eligible_left)[0],
                         right=ds,
                         type=JoinType.FULL,
                         keys={},
@@ -424,44 +373,34 @@ def resolve_join_order_v2(
                 )
             eligible_left.add(ds)
 
-    # only once we have all joins do we know if some inners need to be left outers
     ensure_content_preservation(output)
 
     return output
 
 
+def _side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
+    if side is None:
+        return False
+    equivalent = concept.equivalent_addresses
+    return any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts)
+
+
 def get_modifiers(
-    concept: str,
-    join: JoinOrderOutput,
-    ds_node_map: dict[str, QueryDatasource | BuildDatasource],
-):
-    base = []
-    if join.right and concept in ds_node_map[join.right].nullable_concepts:
-        base.append(Modifier.NULLABLE)
-    if join.left and concept in ds_node_map[join.left].nullable_concepts:
-        base.append(Modifier.NULLABLE)
-    return list(set(base))
+    left_concept: BuildConcept,
+    right_concept: BuildConcept,
+    left: DataSource | None,
+    right: DataSource | None,
+) -> list[Modifier]:
+    """Use null-safe equality only when both exposed join keys can be NULL."""
+    if _side_nullable(left_concept, left) and _side_nullable(right_concept, right):
+        return [Modifier.NULLABLE]
+    return []
 
 
 def _collect_deep_partial_addresses(
-    ds: QueryDatasource | BuildDatasource,
+    ds: DataSource,
 ) -> set[str]:
-    """Collect partial concept addresses from a datasource and all its sub-datasources.
-
-    UNION nodes are special: their child branches carry table-level PARTIAL
-    stamps (each `partial datasource` covers only its slice of the universe),
-    but the UNION itself combines those slices into a covering view. Table-
-    level stamps subside; only intrinsic column-level partials (``~col``)
-    survive — those represent columns that are missing values *within* every
-    branch's complete-for slice (e.g. ``~order_id`` on a returns table: not
-    every order has a return), so the union remains partial for them too.
-
-    Note: this only affects join-resolution (the join graph reads from
-    ``_collect_deep_partial_addresses``). The UnionNode's ``partial_concepts``
-    is unchanged at the QueryDatasource level — propagating intrinsic
-    partials there breaks output validation for unions whose ``~col`` is a
-    syntactic union-eligibility marker rather than a true partial column.
-    """
+    """Collect partial addresses, suppressing UNION table-level stamps."""
     result: set[str] = {c.address for c in ds.partial_concepts}
     if isinstance(ds, QueryDatasource):
         if ds.source_type == SourceType.UNION:
@@ -474,17 +413,9 @@ def _collect_deep_partial_addresses(
 
 
 def _collect_intrinsic_partial_addresses(
-    ds: QueryDatasource | BuildDatasource,
+    ds: DataSource,
 ) -> set[str]:
-    """Like ``_collect_deep_partial_addresses`` but only counts column-level
-    (intrinsic) partials, never table-level stamps. Used when descending into
-    a UNION's branches for join-resolution.
-
-    A QueryDatasource's own ``partial_concepts`` is skipped because it may
-    contain inherited table-level stamps (a SELECT wrapping a ``partial
-    datasource`` reports every column as partial). Recurse to leaf
-    BuildDatasources where intrinsic partials are tracked explicitly.
-    """
+    """Collect column-level partial addresses only."""
     if isinstance(ds, BuildDatasource):
         return set(ds.column_level_partial_addresses)
     if isinstance(ds, QueryDatasource):
@@ -495,63 +426,24 @@ def _collect_intrinsic_partial_addresses(
     return set()
 
 
-def resolve_instantiated_concept(
-    concept: BuildConcept, datasource: QueryDatasource | BuildDatasource
-) -> BuildConcept:
-    if concept.address in datasource.output_concepts:
-        return concept
-    for k in concept.pseudonyms:
-        if k in datasource.output_concepts:
-            return next(x for x in datasource.output_concepts if x.address == k)
-        if any(k in x.pseudonyms for x in datasource.output_concepts):
-            return next(x for x in datasource.output_concepts if k in x.pseudonyms)
-    # Reverse direction: an output concept may declare us as its pseudonym
-    # without us declaring it as ours. Pseudonym maps from rename basics
-    # (`local.channel` ← pseudonym → `l0_filtered.channel_l0`) are set on the
-    # rename side only — the rowset concept doesn't carry the back-reference.
-    # Without this check, a downstream merge that wants to join on the rowset
-    # address can't find its renamed equivalent on the sibling side (q14:
-    # rollup aggregate emits `l0_filtered.channel_l0` and tries to find it on
-    # the basic side that only exposes `local.channel`).
-    for x in datasource.output_concepts:
-        if concept.address in x.pseudonyms:
-            return x
-    raise SyntaxError(
-        f"Could not find {concept.address} in {datasource.identifier} output "
-        f"{[c.address for c in datasource.output_concepts]}, "
-        f"acceptable synonyms {concept.pseudonyms}"
-    )
-
-
 def reduce_concept_pairs(
-    input: list[ConceptPair],
-    right_source: QueryDatasource | BuildDatasource,
+    pairs: list[ConceptPair],
+    right_source: DataSource,
     join_type: JoinType = JoinType.INNER,
 ) -> list[ConceptPair]:
     from trilogy.core.enums import Purpose
 
-    left_keys = set()
-    right_keys = set()
-    for pair in input:
-        if pair.left.purpose == Purpose.KEY:
-            left_keys.add(pair.left.address)
-        if pair.right.purpose == Purpose.KEY:
-            right_keys.add(pair.right.address)
+    left_keys = {
+        pair.left.address for pair in pairs if pair.left.purpose == Purpose.KEY
+    }
+    right_keys = {
+        pair.right.address for pair in pairs if pair.right.purpose == Purpose.KEY
+    }
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
-    # Track (right_addr, left_addr) combinations from different datasources.
-    # Same left concept from multiple datasources: kept when either pair is
-    # partial (FULL JOIN → COALESCE needed) OR the join itself is an outer
-    # join (one of the lefts may be NULL on the outer-joined branch — without
-    # both pairs, the renderer can't COALESCE around that NULL). Different
-    # left concepts for the same right: always kept (distinct conditions).
-    is_outer = join_type in (
-        JoinType.FULL,
-        JoinType.LEFT_OUTER,
-        JoinType.RIGHT_OUTER,
-    )
+    is_outer = join_type in OUTER_JOIN_TYPES
     right_left_seen: dict[tuple[str, str], bool] = {}
-    for pair in input:
+    for pair in pairs:
         dedup_key = (pair.right.address, pair.existing_datasource.identifier)
         if dedup_key in seen:
             continue
@@ -587,129 +479,102 @@ def reduce_concept_pairs(
     return final
 
 
-def add_node_join_concept(
-    graph: nx.Graph | nx.DiGraph,
-    concept: BuildConcept,
-    concept_map: dict[str, BuildConcept],
-    ds_node: str,
+def build_canonical_address_map(
+    datasources: list[DataSource],
     environment: BuildEnvironment,
-):
-    name = f"c~{concept.address}"
-    graph.add_node(name, type=NodeType.CONCEPT)
-    graph.add_edge(ds_node, name)
-    concept_map[name] = concept
-    for v_address in concept.pseudonyms:
-        v = environment.alias_origin_lookup.get(
-            v_address, environment.concepts[v_address]
-        )
-        if f"c~{v.address}" in graph.nodes:
-            continue
-        if v != concept.address:
-            add_node_join_concept(
-                graph=graph,
-                concept=v,
-                concept_map=concept_map,
-                ds_node=ds_node,
-                environment=environment,
-            )
+) -> dict[str, str]:
+    """Collapse pseudonym-equivalent concept addresses to one canonical address.
+
+    Join resolution treats each class as one graph node. Pseudonym addresses are
+    also linked through ``alias_origin_lookup`` so merged targets and their
+    pre-merge addresses share a class.
+    """
+    from trilogy.core import graph as nx
+
+    pseudonym_graph = nx.Graph()
+    for datasource in datasources:
+        hidden = datasource.hidden_concepts
+        for concept in datasource.output_concepts:
+            if concept.address in hidden:
+                continue
+            pseudonym_graph.add_node(concept.address)
+            for pseudo_addr in concept.pseudonyms:
+                pseudonym_graph.add_edge(concept.address, pseudo_addr)
+                origin = environment.alias_origin_lookup.get(pseudo_addr)
+                if origin is not None and origin.address != pseudo_addr:
+                    pseudonym_graph.add_edge(pseudo_addr, origin.address)
+
+    canonical: dict[str, str] = {}
+    for component in nx.connected_components(pseudonym_graph):
+        root = min(component, key=lambda a: (a in environment.alias_origin_lookup, a))
+        for address in component:
+            canonical[address] = root
+    return canonical
 
 
 def get_node_joins(
-    datasources: list[QueryDatasource | BuildDatasource],
+    datasources: list[DataSource],
     environment: BuildEnvironment,
 ) -> list[BaseJoin]:
     from trilogy.core import graph as nx
 
+    canonical = build_canonical_address_map(datasources, environment)
+
+    def canon_node(address: str) -> str:
+        return f"c~{canonical.get(address, address)}"
+
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     nullables: dict[str, list[str]] = {}
-    ds_node_map: dict[str, QueryDatasource | BuildDatasource] = {}
-    concept_map: dict[str, BuildConcept] = {}
+    grain_size: dict[str, int] = {}
+    ds_node_map: dict[str, DataSource] = {}
+    ds_concept_map: dict[tuple[str, str], BuildConcept] = {}
+
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource
+        grain_size[ds_node] = _estimated_grain_size(datasource)
         graph.add_node(ds_node, type=NodeType.NODE)
-        partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]
-        nullables[ds_node] = [f"c~{c.address}" for c in datasource.nullable_concepts]
+        partial_nodes = {
+            canon_node(a) for a in _collect_deep_partial_addresses(datasource)
+        }
+        nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
+        p_list: list[str] = []
+        n_list: list[str] = []
         for concept in datasource.output_concepts:
             if concept.address in datasource.hidden_concepts:
                 continue
-            add_node_join_concept(
-                graph=graph,
-                concept=concept,
-                concept_map=concept_map,
-                ds_node=ds_node,
-                environment=environment,
-            )
+            node = canon_node(concept.address)
+            graph.add_node(node, type=NodeType.CONCEPT)
+            graph.add_edge(ds_node, node)
+            ds_concept_map.setdefault((ds_node, node), concept)
+            if node in partial_nodes and node not in p_list:
+                p_list.append(node)
+            if node in nullable_nodes and node not in n_list:
+                n_list.append(node)
+        partials[ds_node] = p_list
+        nullables[ds_node] = n_list
 
-    # Propagate partial information from sub-datasources.
-    # Mark concepts as partial when any sub-datasource has them as partial,
-    # and add graph edges for partial pseudonyms to enable correct join ordering.
-    for datasource in datasources:
-        ds_node = f"ds~{datasource.identifier}"
-        deep_partials = _collect_deep_partial_addresses(datasource)
-        if not deep_partials:
-            continue
-        # Mark direct graph neighbors as partial
-        for concept_node in list(graph.neighbors(ds_node)):
-            addr = concept_node.removeprefix("c~")
-            if addr in deep_partials and concept_node not in partials[ds_node]:
-                partials[ds_node].append(concept_node)
-        # Add edges for partial pseudonyms (merge aliases)
-        for concept in datasource.output_concepts:
-            if concept.address in datasource.hidden_concepts:
-                continue
-            for pseudo_addr in concept.pseudonyms:
-                pseudo_name = f"c~{pseudo_addr}"
-                if (
-                    pseudo_name in graph.nodes
-                    and not graph.has_edge(ds_node, pseudo_name)
-                    and pseudo_addr in deep_partials
-                ):
-                    graph.add_edge(ds_node, pseudo_name)
-                    if pseudo_name not in partials[ds_node]:
-                        partials[ds_node].append(pseudo_name)
-    # Propagate nullability across merge pseudonyms. ``store_sales.date.id``
-    # carries the NULLABLE modifier; after ``MERGE store_sales.date.* into
-    # ~date.*`` the join key is ``c~date.id``, but ``nullable_concepts`` still
-    # references the pre-merge address. Without this, the join scorer treats
-    # the merged key as non-nullable and emits ``date_dim LEFT JOIN fact``,
-    # dropping fact rows with NULL FK.
-    for datasource in datasources:
-        ds_node = f"ds~{datasource.identifier}"
-        nullable_addrs = {c.address for c in datasource.nullable_concepts}
-        if not nullable_addrs:
-            continue
-        for concept in datasource.output_concepts:
-            if concept.address in datasource.hidden_concepts:
-                continue
-            if concept.address not in nullable_addrs:
-                continue
-            for pseudo_addr in concept.pseudonyms:
-                pseudo_name = f"c~{pseudo_addr}"
-                if pseudo_name in graph.nodes and pseudo_name not in nullables[ds_node]:
-                    nullables[ds_node].append(pseudo_name)
-
-    joins = resolve_join_order_v2(graph, partials=partials, nullables=nullables)
+    joins = resolve_join_order_v2(
+        graph, partials=partials, nullables=nullables, grain_size=grain_size
+    )
     return [
         BaseJoin(
             left_datasource=ds_node_map[j.left] if j.left else None,
             right_datasource=ds_node_map[j.right],
             join_type=j.type,
-            # preserve empty field for maps
             concepts=[] if not j.keys else None,
             concept_pairs=reduce_concept_pairs(
                 [
                     ConceptPair(
-                        left=resolve_instantiated_concept(
-                            concept_map[concept], ds_node_map[k]
-                        ),
-                        right=resolve_instantiated_concept(
-                            concept_map[concept], ds_node_map[j.right]
-                        ),
+                        left=ds_concept_map[(k, concept)],
+                        right=ds_concept_map[(j.right, concept)],
                         existing_datasource=ds_node_map[k],
                         modifiers=get_modifiers(
-                            concept_map[concept].address, j, ds_node_map
+                            ds_concept_map[(k, concept)],
+                            ds_concept_map[(j.right, concept)],
+                            ds_node_map[k],
+                            ds_node_map[j.right],
                         )
                         + (
                             [Modifier.PARTIAL] if concept in partials.get(k, []) else []

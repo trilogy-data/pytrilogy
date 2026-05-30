@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4140 | 73 | 68.30 ms |
-| reference | 4137 | 80 | 77.93 ms |
-| v4 / ref | 1.00x | 0.91x | 0.88x |
+| v4 | 4140 | 73 | 74.43 ms |
+| reference | 4137 | 80 | 83.66 ms |
+| v4 / ref | 1.00x | 0.91x | 0.89x |
 
 ## Preql
 
@@ -129,8 +129,8 @@ SELECT
     "customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_demographics_marital_status",
     "customer_demographics_customer_demographics"."CD_PURCHASE_ESTIMATE" as "customer_demographics_purchase_estimate"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     LEFT OUTER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
     "customer_address_customer_address"."CA_STATE" in ('KY','GA','NM') and "customer_customers"."C_CUSTOMER_SK" in (select uneven."store_buyers_store_cust_id" from uneven where uneven."store_buyers_store_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select vacuous."web_buyers_web_cust_id" from vacuous where vacuous."web_buyers_web_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select thoughtful."catalog_buyers_cat_cust_id" from thoughtful where thoughtful."catalog_buyers_cat_cust_id" is not null)
@@ -207,8 +207,8 @@ SELECT
     "customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_demographics_marital_status",
     "customer_demographics_customer_demographics"."CD_PURCHASE_ESTIMATE" as "customer_demographics_purchase_estimate"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     LEFT OUTER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
     "customer_address_customer_address"."CA_STATE" in ('KY','GA','NM') and "customer_customers"."C_CUSTOMER_SK" in (select abundant."store_buyers_store_cust_id" from abundant where abundant."store_buyers_store_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select juicy."web_buyers_web_cust_id" from juicy where juicy."web_buyers_web_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select cheerful."catalog_buyers_cat_cust_id" from cheerful where cheerful."catalog_buyers_cat_cust_id" is not null)

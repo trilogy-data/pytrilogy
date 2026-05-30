@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2439 | 59 | 27.90 ms |
-| reference | 1984 | 48 | 23.93 ms |
-| v4 / ref | 1.23x | 1.23x | 1.17x |
+| v4 | 2439 | 59 | 24.23 ms |
+| reference | 1984 | 48 | 25.31 ms |
+| v4 / ref | 1.23x | 1.23x | 0.96x |
 
 ## Preql
 
@@ -94,8 +94,8 @@ SELECT
     "cooperative"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792",
     coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") as "cs_item_class"
 FROM
-    "cooperative"
-    INNER JOIN "cheerful" on "cooperative"."cs_item_class" is not distinct from "cheerful"."cs_item_class")
+    "cheerful"
+    INNER JOIN "cooperative" on "cheerful"."cs_item_class" is not distinct from "cooperative"."cs_item_class")
 SELECT
     "questionable"."cs_item_name" as "cs_item_name",
     "questionable"."cs_item_desc" as "cs_item_desc",
@@ -157,8 +157,8 @@ SELECT
     "cheerful"."revenue" as "revenue",
     ( "cheerful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
 FROM
-    "cooperative"
-    INNER JOIN "cheerful" on "cooperative"."cs_item_class" is not distinct from "cheerful"."cs_item_class"
+    "cheerful"
+    INNER JOIN "cooperative" on "cheerful"."cs_item_class" is not distinct from "cooperative"."cs_item_class"
 ORDER BY 
     "cheerful"."cs_item_category" asc nulls first,
     coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") asc nulls first,

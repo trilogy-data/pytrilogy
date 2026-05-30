@@ -31,8 +31,8 @@ GROUP BY
 SELECT
     sum(\"cheerful\".\"discount_amount\") as \"total_discount\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"cheerful\" on \"thoughtful\".\"item_id\" = \"cheerful\".\"item_id\"
+    \"cheerful\"
+    INNER JOIN \"thoughtful\" on \"cheerful\".\"item_id\" = \"thoughtful\".\"item_id\"
 WHERE
     \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_5510773609506287\"
 

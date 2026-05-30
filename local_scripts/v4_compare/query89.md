@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4123 | 68 | 67.90 ms |
-| reference | 4123 | 68 | 64.98 ms |
-| v4 / ref | 1.00x | 1.00x | 1.04x |
+| v4 | 4123 | 68 | 82.97 ms |
+| reference | 4123 | 68 | 72.62 ms |
+| v4 / ref | 1.00x | 1.00x | 1.14x |
 
 ## Preql
 
@@ -126,8 +126,8 @@ SELECT
     "thoughtful"."sum_sales" as "sum_sales",
     "questionable"."avg_monthly_sales" as "avg_monthly_sales"
 FROM
-    "questionable"
-    INNER JOIN "thoughtful" on "questionable"."store_sales_item_brand_name" = "thoughtful"."store_sales_item_brand_name" AND "questionable"."store_sales_item_category" is not distinct from "thoughtful"."store_sales_item_category" AND "questionable"."store_sales_store_company_name" is not distinct from "thoughtful"."store_sales_store_company_name" AND "questionable"."store_sales_store_name" is not distinct from "thoughtful"."store_sales_store_name"
+    "thoughtful"
+    INNER JOIN "questionable" on "thoughtful"."store_sales_item_brand_name" = "questionable"."store_sales_item_brand_name" AND "thoughtful"."store_sales_item_category" is not distinct from "questionable"."store_sales_item_category" AND "thoughtful"."store_sales_store_company_name" is not distinct from "questionable"."store_sales_store_company_name" AND "thoughtful"."store_sales_store_name" is not distinct from "questionable"."store_sales_store_name"
 WHERE
     CASE
 	WHEN "questionable"."avg_monthly_sales" != 0 THEN abs("thoughtful"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"
@@ -199,8 +199,8 @@ SELECT
     "thoughtful"."sum_sales" as "sum_sales",
     "questionable"."avg_monthly_sales" as "avg_monthly_sales"
 FROM
-    "questionable"
-    INNER JOIN "thoughtful" on "questionable"."store_sales_item_brand_name" = "thoughtful"."store_sales_item_brand_name" AND "questionable"."store_sales_item_category" is not distinct from "thoughtful"."store_sales_item_category" AND "questionable"."store_sales_store_company_name" is not distinct from "thoughtful"."store_sales_store_company_name" AND "questionable"."store_sales_store_name" is not distinct from "thoughtful"."store_sales_store_name"
+    "thoughtful"
+    INNER JOIN "questionable" on "thoughtful"."store_sales_item_brand_name" = "questionable"."store_sales_item_brand_name" AND "thoughtful"."store_sales_item_category" is not distinct from "questionable"."store_sales_item_category" AND "thoughtful"."store_sales_store_company_name" is not distinct from "questionable"."store_sales_store_company_name" AND "thoughtful"."store_sales_store_name" is not distinct from "questionable"."store_sales_store_name"
 WHERE
     CASE
 	WHEN "questionable"."avg_monthly_sales" != 0 THEN abs("thoughtful"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"

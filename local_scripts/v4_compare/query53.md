@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2518 | 48 | 28.83 ms |
-| reference | 2518 | 48 | 29.35 ms |
-| v4 / ref | 1.00x | 1.00x | 0.98x |
+| v4 | 2518 | 48 | 28.34 ms |
+| reference | 2518 | 48 | 27.75 ms |
+| v4 / ref | 1.00x | 1.00x | 1.02x |
 
 ## Preql
 
@@ -95,8 +95,8 @@ SELECT
     "cheerful"."sum_sales" as "sum_sales",
     "cooperative"."avg_quarterly_sales" as "avg_quarterly_sales"
 FROM
-    "cooperative"
-    INNER JOIN "cheerful" on "cooperative"."store_sales_item_manufacturer_id" = "cheerful"."store_sales_item_manufacturer_id"
+    "cheerful"
+    INNER JOIN "cooperative" on "cheerful"."store_sales_item_manufacturer_id" = "cooperative"."store_sales_item_manufacturer_id"
 WHERE
     CASE
 	WHEN "cooperative"."avg_quarterly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_quarterly_sales") / "cooperative"."avg_quarterly_sales"
@@ -148,8 +148,8 @@ SELECT
     "cheerful"."sum_sales" as "sum_sales",
     "cooperative"."avg_quarterly_sales" as "avg_quarterly_sales"
 FROM
-    "cooperative"
-    INNER JOIN "cheerful" on "cooperative"."store_sales_item_manufacturer_id" = "cheerful"."store_sales_item_manufacturer_id"
+    "cheerful"
+    INNER JOIN "cooperative" on "cheerful"."store_sales_item_manufacturer_id" = "cooperative"."store_sales_item_manufacturer_id"
 WHERE
     CASE
 	WHEN "cooperative"."avg_quarterly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_quarterly_sales") / "cooperative"."avg_quarterly_sales"

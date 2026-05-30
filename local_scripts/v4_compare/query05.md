@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10578 | 216 | 79.15 ms |
-| reference | 10357 | 212 | 77.34 ms |
-| v4 / ref | 1.02x | 1.02x | 1.02x |
+| v4 | 10989 | 234 | 97.53 ms |
+| reference | 10768 | 230 | 96.43 ms |
+| v4 / ref | 1.02x | 1.02x | 1.01x |
 
 ## Preql
 
@@ -96,6 +96,9 @@ SELECT
      'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_page" as "sales_catalog_dim_unified"
+WHERE
+    "sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" is not null
+
 UNION ALL
 SELECT
     "sales_store_dim_unified"."S_STORE_SK" as "sales_channel_dim_id",
@@ -103,13 +106,19 @@ SELECT
      'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store" as "sales_store_dim_unified"
+WHERE
+    "sales_store_dim_unified"."S_STORE_ID" is not null
+
 UNION ALL
 SELECT
     "sales_web_dim_unified"."web_site_sk" as "sales_channel_dim_id",
     "sales_web_dim_unified"."web_site_id" as "sales_channel_dim_text_id",
      'WEB'  as "sales_sales_channel"
 FROM
-    "memory"."web_site" as "sales_web_dim_unified"),
+    "memory"."web_site" as "sales_web_dim_unified"
+WHERE
+    "sales_web_dim_unified"."web_site_id" is not null
+),
 scrawny as (
 SELECT
     "sales_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "sales_channel_dim_id",
@@ -153,6 +162,9 @@ SELECT
      'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_page" as "sales_catalog_dim_return_unified"
+WHERE
+    "sales_catalog_dim_return_unified"."CP_CATALOG_PAGE_ID" is not null
+
 UNION ALL
 SELECT
     "sales_store_dim_return_unified"."S_STORE_SK" as "sales_return_channel_dim_id",
@@ -160,13 +172,19 @@ SELECT
      'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store" as "sales_store_dim_return_unified"
+WHERE
+    "sales_store_dim_return_unified"."S_STORE_ID" is not null
+
 UNION ALL
 SELECT
     "sales_web_dim_return_unified"."web_site_sk" as "sales_return_channel_dim_id",
     "sales_web_dim_return_unified"."web_site_id" as "sales_return_channel_dim_text_id",
      'WEB'  as "sales_sales_channel"
 FROM
-    "memory"."web_site" as "sales_web_dim_return_unified"),
+    "memory"."web_site" as "sales_web_dim_return_unified"
+WHERE
+    "sales_web_dim_return_unified"."web_site_id" is not null
+),
 abundant as (
 SELECT
     "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_id",
@@ -260,8 +278,8 @@ SELECT
 	ELSE null
 	END as "return_id_label"
 FROM
-    "abundant"
-    INNER JOIN "yummy" on "abundant"."sales_item_id" = "yummy"."sales_item_id" AND "abundant"."sales_order_id" = "yummy"."sales_order_id" AND "abundant"."sales_sales_channel" = "yummy"."sales_sales_channel"
+    "yummy"
+    INNER JOIN "abundant" on "yummy"."sales_item_id" = "abundant"."sales_item_id" AND "yummy"."sales_order_id" = "abundant"."sales_order_id" AND "yummy"."sales_sales_channel" = "abundant"."sales_sales_channel"
     INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "abundant"."sales_return_date_id" = "sales_return_date_date"."D_DATE_SK"
     INNER JOIN "cheerful" on "yummy"."sales_return_channel_dim_id" = "cheerful"."sales_return_channel_dim_id" AND coalesce("yummy"."sales_sales_channel", "abundant"."sales_sales_channel") = "cheerful"."sales_sales_channel"
 WHERE
@@ -317,6 +335,9 @@ SELECT
      'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_page" as "sales_catalog_dim_unified"
+WHERE
+    "sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" is not null
+
 UNION ALL
 SELECT
     "sales_store_dim_unified"."S_STORE_SK" as "sales_channel_dim_id",
@@ -324,13 +345,19 @@ SELECT
      'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store" as "sales_store_dim_unified"
+WHERE
+    "sales_store_dim_unified"."S_STORE_ID" is not null
+
 UNION ALL
 SELECT
     "sales_web_dim_unified"."web_site_sk" as "sales_channel_dim_id",
     "sales_web_dim_unified"."web_site_id" as "sales_channel_dim_text_id",
      'WEB'  as "sales_sales_channel"
 FROM
-    "memory"."web_site" as "sales_web_dim_unified"),
+    "memory"."web_site" as "sales_web_dim_unified"
+WHERE
+    "sales_web_dim_unified"."web_site_id" is not null
+),
 scrawny as (
 SELECT
     "sales_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "sales_channel_dim_id",
@@ -374,6 +401,9 @@ SELECT
      'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_page" as "sales_catalog_dim_return_unified"
+WHERE
+    "sales_catalog_dim_return_unified"."CP_CATALOG_PAGE_ID" is not null
+
 UNION ALL
 SELECT
     "sales_store_dim_return_unified"."S_STORE_SK" as "sales_return_channel_dim_id",
@@ -381,13 +411,19 @@ SELECT
      'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store" as "sales_store_dim_return_unified"
+WHERE
+    "sales_store_dim_return_unified"."S_STORE_ID" is not null
+
 UNION ALL
 SELECT
     "sales_web_dim_return_unified"."web_site_sk" as "sales_return_channel_dim_id",
     "sales_web_dim_return_unified"."web_site_id" as "sales_return_channel_dim_text_id",
      'WEB'  as "sales_sales_channel"
 FROM
-    "memory"."web_site" as "sales_web_dim_return_unified"),
+    "memory"."web_site" as "sales_web_dim_return_unified"
+WHERE
+    "sales_web_dim_return_unified"."web_site_id" is not null
+),
 abundant as (
 SELECT
     "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_id",
@@ -481,8 +517,8 @@ SELECT
 	ELSE null
 	END as "return_id_label"
 FROM
-    "abundant"
-    INNER JOIN "yummy" on "abundant"."sales_item_id" = "yummy"."sales_item_id" AND "abundant"."sales_order_id" = "yummy"."sales_order_id" AND "abundant"."sales_sales_channel" = "yummy"."sales_sales_channel"
+    "yummy"
+    INNER JOIN "abundant" on "yummy"."sales_item_id" = "abundant"."sales_item_id" AND "yummy"."sales_order_id" = "abundant"."sales_order_id" AND "yummy"."sales_sales_channel" = "abundant"."sales_sales_channel"
     INNER JOIN "memory"."date_dim" as "sales_return_date_date" on "abundant"."sales_return_date_id" = "sales_return_date_date"."D_DATE_SK"
     INNER JOIN "cheerful" on "yummy"."sales_return_channel_dim_id" = "cheerful"."sales_return_channel_dim_id" AND coalesce("yummy"."sales_sales_channel", "abundant"."sales_sales_channel") = "cheerful"."sales_sales_channel"
 WHERE

@@ -48,8 +48,8 @@ SELECT
     \"customer_demographics_customer_demographics\".\"CD_GENDER\" as \"customer_demographics_gender\",
     \"customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"customer_demographics_marital_status\"
 FROM
-    \"memory\".\"customer_address\" as \"customer_address_customer_address\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
+    \"memory\".\"customer\" as \"customer_customers\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
     \"customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers_store_cust_id\" from abundant where abundant.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"web_buyers_web_cust_id\" from juicy where juicy.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select cheerful.\"catalog_buyers_cat_cust_id\" from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not null) ) and \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null
@@ -71,8 +71,8 @@ SELECT
     \"customer_demographics_customer_demographics\".\"CD_GENDER\" as \"customer_demographics_gender\",
     \"customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"customer_demographics_marital_status\"
 FROM
-    \"memory\".\"customer_address\" as \"customer_address_customer_address\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
+    \"memory\".\"customer\" as \"customer_customers\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
     \"customer_customers\".\"C_CUSTOMER_SK\" in (select abundant.\"store_buyers_store_cust_id\" from abundant where abundant.\"store_buyers_store_cust_id\" is not null) and ( \"customer_customers\".\"C_CUSTOMER_SK\" in (select juicy.\"web_buyers_web_cust_id\" from juicy where juicy.\"web_buyers_web_cust_id\" is not null) or \"customer_customers\".\"C_CUSTOMER_SK\" in (select cheerful.\"catalog_buyers_cat_cust_id\" from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not null) ) and \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null

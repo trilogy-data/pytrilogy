@@ -11,8 +11,8 @@ SELECT
     \"partsupp\".\"ps_partkey\" as \"id\",
     \"partsupp\".\"ps_supplycost\" as \"supply_cost\"
 FROM
-    \"memory\".\"supplier\" as \"supplier_supplier\"
-    INNER JOIN \"memory\".\"partsupp\" as \"partsupp\" on \"supplier_supplier\".\"s_suppkey\" = \"partsupp\".\"ps_suppkey\"
+    \"memory\".\"partsupp\" as \"partsupp\"
+    INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
 WHERE
     UPPER(\"supplier_nation_nation\".\"n_name\")  = 'GERMANY'

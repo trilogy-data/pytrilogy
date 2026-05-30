@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5106 | 86 | 55.25 ms |
-| reference | 10103 | 157 | 106.49 ms |
-| v4 / ref | 0.51x | 0.55x | 0.52x |
+| v4 | 5106 | 86 | 56.09 ms |
+| reference | 10103 | 157 | 110.78 ms |
+| v4 / ref | 0.51x | 0.55x | 0.51x |
 
 ## Preql
 
@@ -108,17 +108,6 @@ WHERE
 
 GROUP BY
     1),
-thoughtful as (
-SELECT
-    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "catalog_buyers_cat_cust_id"
-FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_date_date"."D_YEAR" = 2002 and "sales_date_date"."D_QOY" < 4 and  'CATALOG'  = 'CATALOG' and "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" is not null
-
-GROUP BY
-    1),
 vacuous as (
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "web_buyers_web_cust_id"
@@ -127,6 +116,17 @@ FROM
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
     "sales_date_date"."D_YEAR" = 2002 and "sales_date_date"."D_QOY" < 4 and  'WEB'  = 'WEB' and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "catalog_buyers_cat_cust_id"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 2002 and "sales_date_date"."D_QOY" < 4 and  'CATALOG'  = 'CATALOG' and "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" is not null
 
 GROUP BY
     1),
@@ -140,8 +140,8 @@ SELECT
     "customer_demographics_customer_demographics"."CD_GENDER" as "customer_demographics_gender",
     "customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_demographics_marital_status"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
     "customer_customers"."C_CURRENT_CDEMO_SK" is not null and "customer_customers"."C_CUSTOMER_SK" in (select uneven."store_buyers_store_cust_id" from uneven where uneven."store_buyers_store_cust_id" is not null) and ( "customer_customers"."C_CUSTOMER_SK" in (select vacuous."web_buyers_web_cust_id" from vacuous where vacuous."web_buyers_web_cust_id" is not null) or "customer_customers"."C_CUSTOMER_SK" in (select thoughtful."catalog_buyers_cat_cust_id" from thoughtful where thoughtful."catalog_buyers_cat_cust_id" is not null) )
@@ -231,8 +231,8 @@ SELECT
     "customer_demographics_customer_demographics"."CD_GENDER" as "customer_demographics_gender",
     "customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_demographics_marital_status"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
     "customer_customers"."C_CUSTOMER_SK" in (select abundant."store_buyers_store_cust_id" from abundant where abundant."store_buyers_store_cust_id" is not null) and ( "customer_customers"."C_CUSTOMER_SK" in (select juicy."web_buyers_web_cust_id" from juicy where juicy."web_buyers_web_cust_id" is not null) or "customer_customers"."C_CUSTOMER_SK" in (select cheerful."catalog_buyers_cat_cust_id" from cheerful where cheerful."catalog_buyers_cat_cust_id" is not null) ) and "customer_customers"."C_CURRENT_CDEMO_SK" is not null
@@ -254,8 +254,8 @@ SELECT
     "customer_demographics_customer_demographics"."CD_GENDER" as "customer_demographics_gender",
     "customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_demographics_marital_status"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
     "customer_customers"."C_CUSTOMER_SK" in (select abundant."store_buyers_store_cust_id" from abundant where abundant."store_buyers_store_cust_id" is not null) and ( "customer_customers"."C_CUSTOMER_SK" in (select juicy."web_buyers_web_cust_id" from juicy where juicy."web_buyers_web_cust_id" is not null) or "customer_customers"."C_CUSTOMER_SK" in (select cheerful."catalog_buyers_cat_cust_id" from cheerful where cheerful."catalog_buyers_cat_cust_id" is not null) ) and "customer_customers"."C_CURRENT_CDEMO_SK" is not null

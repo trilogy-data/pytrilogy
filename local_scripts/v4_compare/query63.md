@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2522 | 48 | 12.10 ms |
-| reference | 2522 | 48 | 11.73 ms |
-| v4 / ref | 1.00x | 1.00x | 1.03x |
+| v4 | 2522 | 48 | 11.60 ms |
+| reference | 2522 | 48 | 11.12 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -95,8 +95,8 @@ SELECT
     "cooperative"."avg_monthly_sales" as "avg_monthly_sales",
     coalesce("cheerful"."store_sales_item_manager_id","cooperative"."store_sales_item_manager_id") as "store_sales_item_manager_id"
 FROM
-    "cooperative"
-    INNER JOIN "cheerful" on "cooperative"."store_sales_item_manager_id" is not distinct from "cheerful"."store_sales_item_manager_id"
+    "cheerful"
+    INNER JOIN "cooperative" on "cheerful"."store_sales_item_manager_id" is not distinct from "cooperative"."store_sales_item_manager_id"
 WHERE
     CASE
 	WHEN "cooperative"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_monthly_sales") / "cooperative"."avg_monthly_sales"
@@ -148,8 +148,8 @@ SELECT
     "cooperative"."avg_monthly_sales" as "avg_monthly_sales",
     coalesce("cheerful"."store_sales_item_manager_id","cooperative"."store_sales_item_manager_id") as "store_sales_item_manager_id"
 FROM
-    "cooperative"
-    INNER JOIN "cheerful" on "cooperative"."store_sales_item_manager_id" is not distinct from "cheerful"."store_sales_item_manager_id"
+    "cheerful"
+    INNER JOIN "cooperative" on "cheerful"."store_sales_item_manager_id" is not distinct from "cooperative"."store_sales_item_manager_id"
 WHERE
     CASE
 	WHEN "cooperative"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_monthly_sales") / "cooperative"."avg_monthly_sales"

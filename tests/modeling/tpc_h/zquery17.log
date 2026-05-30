@@ -26,8 +26,8 @@ GROUP BY
 SELECT
     sum(\"wakeful\".\"extended_price\") / 7.0 as \"avg_yearly\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"wakeful\" on \"cheerful\".\"part_id\" = \"wakeful\".\"part_id\"
+    \"wakeful\"
+    INNER JOIN \"cheerful\" on \"wakeful\".\"part_id\" = \"cheerful\".\"part_id\"
 WHERE
     \"wakeful\".\"part_brand\" = 'Brand#23' and \"wakeful\".\"part_container\" = 'MED BOX' and \"wakeful\".\"quantity\" < 0.2 * \"cheerful\".\"avg_qty_per_part\"
 """

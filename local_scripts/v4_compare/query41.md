@@ -18,9 +18,9 @@ ref rows: 4 (4 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2531 | 32 | 8.36 ms |
-| reference | 2464 | 40 | 10.49 ms |
-| v4 / ref | 1.03x | 0.80x | 0.80x |
+| v4 | 2531 | 32 | 8.92 ms |
+| reference | 2400 | 42 | 11.38 ms |
+| v4 / ref | 1.05x | 0.76x | 0.78x |
 
 ## Preql
 
@@ -135,15 +135,17 @@ LIMIT (100)
 WITH 
 highfalutin as (
 SELECT
-    "item_items"."I_MANUFACT" as "item_manufact",
-    count("item_items"."I_ITEM_SK") as "manufact_matches"
+    "item_items"."I_MANUFACT" as "item_manufact"
 FROM
     "memory"."item" as "item_items"
 WHERE
     ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('powder','khaki') and "item_items"."I_UNITS" in ('Ounce','Oz') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('brown','honeydew') and "item_items"."I_UNITS" in ('Bunch','Ton') and "item_items"."I_SIZE" in ('N/A','small') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('floral','deep') and "item_items"."I_UNITS" in ('N/A','Dozen') and "item_items"."I_SIZE" in ('petite','large') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('light','cornflower') and "item_items"."I_UNITS" in ('Box','Pound') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('midnight','snow') and "item_items"."I_UNITS" in ('Pallet','Gross') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('cyan','papaya') and "item_items"."I_UNITS" in ('Cup','Dram') and "item_items"."I_SIZE" in ('N/A','small') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('orange','frosted') and "item_items"."I_UNITS" in ('Each','Tbl') and "item_items"."I_SIZE" in ('petite','large') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('forest','ghost') and "item_items"."I_UNITS" in ('Lb','Bundle') and "item_items"."I_SIZE" in ('medium','extra large') )
 
 GROUP BY
-    1),
+    1
+HAVING
+    count("item_items"."I_ITEM_SK") > 0
+),
 cheerful as (
 SELECT
     "item_items"."I_MANUFACT" as "item_manufact",
@@ -163,7 +165,7 @@ FROM
     "cheerful"
     INNER JOIN "highfalutin" on "cheerful"."item_manufact" is not distinct from "highfalutin"."item_manufact"
 WHERE
-    "cheerful"."filtered_product_name" is not null and coalesce("highfalutin"."manufact_matches",0) > 0
+    "cheerful"."filtered_product_name" is not null
 )
 SELECT
     "cooperative"."filtered_product_name" as "filtered_product_name"

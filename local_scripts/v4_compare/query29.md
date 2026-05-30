@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3781 | 65 | 33.67 ms |
-| reference | 3694 | 60 | 40.96 ms |
-| v4 / ref | 1.02x | 1.08x | 0.82x |
+| v4 | 3777 | 65 | 34.42 ms |
+| reference | 3739 | 63 | 43.31 ms |
+| v4 / ref | 1.01x | 1.03x | 0.79x |
 
 ## Preql
 
@@ -105,7 +105,7 @@ FROM
     INNER JOIN "memory"."date_dim" as "store_sales_return_date_date" on "store_sales_store_returns"."SR_RETURNED_DATE_SK" = "store_sales_return_date_date"."D_DATE_SK"
     INNER JOIN "memory"."catalog_sales" as "catalog_sales_catalog_sales" on "store_sales_store_returns"."SR_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK" AND "store_sales_store_sales"."SS_ITEM_SK" = "catalog_sales_catalog_sales"."CS_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "catalog_sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."item" as "store_sales_item_items" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
 WHERE
     "store_sales_date_date"."D_MOY" = 9 and "store_sales_date_date"."D_YEAR" = 1999 and "store_sales_return_date_date"."D_MOY" BETWEEN 9 AND 12 and "store_sales_return_date_date"."D_YEAR" = 1999 and "catalog_sales_date_date"."D_YEAR" in (1999,2000,2001) and "catalog_sales_catalog_sales"."CS_QUANTITY" > 0 and SR_RETURN_TIME_SK IS NOT NULL and "store_sales_store_sales"."SS_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK"
 
@@ -175,7 +175,7 @@ FROM
     INNER JOIN "memory"."date_dim" as "store_sales_return_date_date" on "store_sales_store_returns"."SR_RETURNED_DATE_SK" = "store_sales_return_date_date"."D_DATE_SK"
     INNER JOIN "memory"."catalog_sales" as "catalog_sales_catalog_sales" on "store_sales_store_returns"."SR_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK" AND "store_sales_store_sales"."SS_ITEM_SK" = "catalog_sales_catalog_sales"."CS_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "catalog_sales_date_date"."D_DATE_SK"
-    LEFT OUTER JOIN "memory"."item" as "store_sales_item_items" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    LEFT OUTER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
 WHERE
     "store_sales_date_date"."D_MOY" = 9 and "store_sales_date_date"."D_YEAR" = 1999 and "store_sales_return_date_date"."D_MOY" BETWEEN 9 AND 12 and "store_sales_return_date_date"."D_YEAR" = 1999 and "catalog_sales_date_date"."D_YEAR" in (1999,2000,2001) and "catalog_sales_catalog_sales"."CS_QUANTITY" > 0 and SR_RETURN_TIME_SK IS NOT NULL and "store_sales_store_sales"."SS_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK"
 
@@ -197,7 +197,10 @@ SELECT
     "uneven"."store_returns_quantity" as "store_returns_quantity",
     "uneven"."store_sales_quantity" as "store_sales_quantity"
 FROM
-    "uneven")
+    "uneven"
+WHERE
+    "uneven"."catalog_sales_quantity" > 0
+)
 SELECT
     "juicy"."store_sales_item_name" as "store_sales_item_name",
     "juicy"."store_sales_item_desc" as "store_sales_item_desc",

@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6403 | 116 | 138.45 ms |
-| reference | 4839 | 84 | 80.57 ms |
-| v4 / ref | 1.32x | 1.38x | 1.72x |
+| v4 | 6400 | 116 | 139.41 ms |
+| reference | 4848 | 84 | 82.46 ms |
+| v4 / ref | 1.32x | 1.38x | 1.69x |
 
 ## Preql
 
@@ -119,10 +119,10 @@ SELECT
 FROM
     "yummy"
     LEFT OUTER JOIN "memory"."date_dim" as "web_sales_date_date" on "yummy"."web_sales_date_id" = "web_sales_date_date"."D_DATE_SK"
-    FULL JOIN "quizzical" on "yummy"."customer_id" is not distinct from "quizzical"."customer_id"
-    FULL JOIN "questionable" on coalesce("quizzical"."customer_id", "yummy"."customer_id") = "questionable"."customer_id"
-    FULL JOIN "memory"."customer" as "customer_customers" on coalesce("quizzical"."customer_id", "questionable"."customer_id", "yummy"."customer_id") = "customer_customers"."C_CUSTOMER_SK"
-    LEFT OUTER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
+    FULL JOIN "questionable" on "yummy"."customer_id" is not distinct from "questionable"."customer_id"
+    FULL JOIN "quizzical" on coalesce("yummy"."customer_id", "questionable"."customer_id") = "quizzical"."customer_id"
+    FULL JOIN "memory"."customer" as "customer_customers" on coalesce("yummy"."customer_id", "questionable"."customer_id", "quizzical"."customer_id") = "customer_customers"."C_CUSTOMER_SK"
+    FULL JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     FULL JOIN "memory"."date_dim" as "store_sales_date_date" on "questionable"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
     FULL JOIN "memory"."date_dim" as "catalog_sales_date_date" on "quizzical"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"
 GROUP BY
@@ -233,9 +233,9 @@ SELECT
 FROM
     "yummy"
     LEFT OUTER JOIN "memory"."date_dim" as "web_sales_date_date" on "yummy"."web_sales_date_id" = "web_sales_date_date"."D_DATE_SK"
-    FULL JOIN "quizzical" on "yummy"."customer_id" is not distinct from "quizzical"."customer_id"
-    RIGHT OUTER JOIN "questionable" on coalesce("quizzical"."customer_id", "yummy"."customer_id") = "questionable"."customer_id"
-    INNER JOIN "memory"."customer" as "customer_customers" on coalesce("quizzical"."customer_id", "questionable"."customer_id", "yummy"."customer_id") = "customer_customers"."C_CUSTOMER_SK"
+    RIGHT OUTER JOIN "questionable" on "yummy"."customer_id" is not distinct from "questionable"."customer_id"
+    LEFT OUTER JOIN "quizzical" on coalesce("yummy"."customer_id", "questionable"."customer_id") = "quizzical"."customer_id"
+    INNER JOIN "memory"."customer" as "customer_customers" on coalesce("yummy"."customer_id", "questionable"."customer_id", "quizzical"."customer_id") = "customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "questionable"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
     LEFT OUTER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "quizzical"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"

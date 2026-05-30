@@ -194,8 +194,8 @@ SELECT
 	ELSE null
 	END as \"return_id_label\"
 FROM
-    \"abundant\"
-    INNER JOIN \"yummy\" on \"abundant\".\"sales_item_id\" = \"yummy\".\"sales_item_id\" AND \"abundant\".\"sales_order_id\" = \"yummy\".\"sales_order_id\" AND \"abundant\".\"sales_sales_channel\" = \"yummy\".\"sales_sales_channel\"
+    \"yummy\"
+    INNER JOIN \"abundant\" on \"yummy\".\"sales_item_id\" = \"abundant\".\"sales_item_id\" AND \"yummy\".\"sales_order_id\" = \"abundant\".\"sales_order_id\" AND \"yummy\".\"sales_sales_channel\" = \"abundant\".\"sales_sales_channel\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"abundant\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"cheerful\" on \"yummy\".\"sales_return_channel_dim_id\" = \"cheerful\".\"sales_return_channel_dim_id\" AND coalesce(\"yummy\".\"sales_sales_channel\", \"abundant\".\"sales_sales_channel\") = \"cheerful\".\"sales_sales_channel\"
 WHERE

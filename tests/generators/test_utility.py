@@ -132,7 +132,10 @@ def test_resolve_join_order_v2():
         ),
         JoinOrderOutput(
             right="ds~customer_address",
-            type=JoinType.LEFT_OUTER,
+            # customer was null-extended by the FULL join above; building onto it
+            # is upgraded to FULL (a FULL predecessor is symmetric, so the upgrade
+            # cannot depend on which side it recorded as left/right).
+            type=JoinType.FULL,
             keys={"ds~customer": {"c~customer_id"}},
         ),
     ]
@@ -212,8 +215,11 @@ def test_prior_right_outer_promotes_to_right_outer():
     assert join2.type == JoinType.RIGHT_OUTER
 
 
-def test_prior_full_join_promotes_to_left_outer():
-    """Test that a prior FULL join promotes current join to LEFT_OUTER (acts as LEFT_OUTER)."""
+def test_prior_full_join_promotes_to_full():
+    """A prior FULL join null-extends BOTH its sides and is symmetric
+    (``A FULL B`` == ``B FULL A``), so a join building on either side is upgraded
+    to FULL. Anything weaker would depend on which side the ordering recorded as
+    the FULL's left/right, making the plan order-dependent."""
     join1 = JoinOrderOutput(
         right="table_b", type=JoinType.FULL, keys={"table_a": {"id"}}
     )
@@ -223,7 +229,20 @@ def test_prior_full_join_promotes_to_left_outer():
     joins = [join1, join2]
     ensure_content_preservation(joins)
     assert join1.type == JoinType.FULL
-    assert join2.type == JoinType.LEFT_OUTER
+    assert join2.type == JoinType.FULL
+
+
+def test_prior_full_join_order_invariant():
+    """Building on either side of a symmetric FULL must give the same result."""
+    for left, right in (("table_a", "table_b"), ("table_b", "table_a")):
+        j1 = JoinOrderOutput(right=right, type=JoinType.FULL, keys={left: {"id"}})
+        # join builds on table_b regardless of which side it was in the FULL
+        j2 = JoinOrderOutput(
+            right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
+        )
+        joins = [j1, j2]
+        ensure_content_preservation(joins)
+        assert j2.type == JoinType.FULL, (left, right)
 
 
 def test_both_prior_conditions_promote_to_full():

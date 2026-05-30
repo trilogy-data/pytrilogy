@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 3739
+gen_length = 3735
 preql_size = 1537
 comp_size = 1089
 generated_sql = """
@@ -22,7 +22,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"store_sales_date_date\".\"D_MOY\" = 9 and \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_return_date_date\".\"D_MOY\" BETWEEN 9 AND 12 and \"store_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
 

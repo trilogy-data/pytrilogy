@@ -65,8 +65,8 @@ SELECT
     \"questionable\".\"days_91_120\" as \"days_91_120\",
     \"questionable\".\"days_120_plus\" as \"days_120_plus\"
 FROM
-    \"questionable\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"questionable\".\"store_sales_store_id\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    \"memory\".\"store\" as \"store_sales_store_store\"
+    INNER JOIN \"questionable\" on \"store_sales_store_store\".\"S_STORE_SK\" = \"questionable\".\"store_sales_store_id\"
 ORDER BY 
     \"store_sales_store_store\".\"S_STORE_NAME\" asc nulls first,
     \"store_sales_store_store\".\"S_COMPANY_ID\" asc nulls first,
