@@ -1,0 +1,19 @@
+# Surrogate-keyed fact whose grain is (surrogate, date_sk) — mirrors a
+# TPC-DS-style ingest that picks a measure column as a surrogate primary key.
+import date_dim as sold_date;
+
+key surrogate_a numeric;
+
+properties <surrogate_a, sold_date.date_sk> (
+    ext_sales_price numeric?,
+);
+
+datasource sales_a (
+    sa_surrogate: surrogate_a,
+    sa_date_sk: sold_date.date_sk,
+    sa_week_seq: sold_date.week_seq,
+    sa_dow: sold_date.dow,
+    sa_ext_sales_price: ?ext_sales_price,
+)
+grain (surrogate_a, sold_date.date_sk)
+address sales_a;

@@ -82,6 +82,17 @@ def test_parse_tool_arguments_variants():
         parse_tool_arguments("[]")
 
 
+def test_parse_tool_arguments_tolerates_raw_newlines_in_strings():
+    """Models emit multi-line `--content` bodies with real newlines instead of
+    escaped `\\n`; strict JSON rejects that, but the tool call is otherwise
+    valid, so we parse with strict=False."""
+    raw = (
+        '{"args": ["file", "write", "q.preql", "--content", "import x;\n\nselect 1;"]}'
+    )
+    parsed = parse_tool_arguments(raw)
+    assert parsed["args"][-1] == "import x;\n\nselect 1;"
+
+
 def test_build_tool_call_parses_valid_arguments():
     from trilogy.ai.providers.base import build_tool_call
 

@@ -1378,21 +1378,28 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             final_grain = grain
             keys = set(grain.components)
         elif self.derivation == Derivation.BASIC:
-
-            pkeys: set[str] = set()
             assert new_lineage
-            for x_ref in new_lineage.concept_arguments:
-                x = environment.concepts[x_ref.address]
-                if isinstance(x, UndefinedConcept):
-                    continue
-                _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
-                if parent_keys:
-                    pkeys.update(parent_keys)
-            raw_keys = pkeys
-            # deduplicate
-
-            final_grain = Grain.from_concepts(raw_keys, environment)
-            keys = final_grain.components
+            by_refs, has_by_aggregate = _aggregate_by_grain_refs(
+                new_lineage, environment
+            )
+            if has_by_aggregate:
+                # A row-wise combination of aggregates is a metric whose grain is
+                # the union of its aggregates' `by` keys — not the keys of the
+                # aggregate inputs (see `_aggregate_by_grain_refs`).
+                final_grain = Grain.from_concepts(by_refs, environment)
+                keys = final_grain.components
+            else:
+                pkeys: set[str] = set()
+                for x_ref in new_lineage.concept_arguments:
+                    x = environment.concepts[x_ref.address]
+                    if isinstance(x, UndefinedConcept):
+                        continue
+                    _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
+                    if parent_keys:
+                        pkeys.update(parent_keys)
+                # deduplicate
+                final_grain = Grain.from_concepts(pkeys, environment)
+                keys = final_grain.components
         return new_lineage, final_grain, keys
 
     def set_select_grain(self, grain: Grain, environment: Environment) -> Self:
@@ -2449,6 +2456,47 @@ def _by_item_with_reference_replacement(item, replacements):
 
 def _grain_concept_refs(grain: "Grain", environment: Environment) -> list[ConceptRef]:
     return [environment.concepts[c].reference for c in grain.component_order]
+
+
+def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str], bool]:
+    """Grain-determining addresses for a row-wise expression that combines
+    aggregates (e.g. ``sum(a) + sum(b) by x, y``), plus whether any aggregate
+    carried an explicit ``by``.
+
+    By-aggregates contribute their ``by`` keys; abstract aggregates contribute
+    nothing (they resolve to the enclosing select grain at build time). The
+    aggregate *inputs* are never traversed: the aggregate has already collapsed
+    them, so descending would surface source-datasource grain keys (often a
+    surrogate primary key) and yield a spurious — frequently circular — grain.
+    """
+    refs: list[str] = []
+    has_by = False
+    if isinstance(expr, AggregateWrapper):
+        if expr.by:
+            for b in expr.by:
+                refs.extend(a.address for a in get_concept_arguments(b))
+            return refs, True
+        return refs, False
+    if isinstance(expr, ConceptRef):
+        concept = environment.concepts.get(expr.address)
+        if concept is not None and concept.is_aggregate and concept.grain.components:
+            return list(concept.grain.component_order), True
+        return refs, False
+    if isinstance(expr, FunctionCallWrapper):
+        return _aggregate_by_grain_refs(expr.content, environment)
+    if isinstance(expr, Parenthetical):
+        return _aggregate_by_grain_refs(expr.content, environment)
+    if isinstance(expr, (Comparison, Conditional)):
+        left_refs, left_by = _aggregate_by_grain_refs(expr.left, environment)
+        right_refs, right_by = _aggregate_by_grain_refs(expr.right, environment)
+        return left_refs + right_refs, left_by or right_by
+    if isinstance(expr, Function):
+        for arg in expr.arguments:
+            arg_refs, arg_by = _aggregate_by_grain_refs(arg, environment)
+            refs.extend(arg_refs)
+            has_by = has_by or arg_by
+        return refs, has_by
+    return refs, False
 
 
 @dataclass

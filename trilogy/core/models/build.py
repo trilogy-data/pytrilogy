@@ -2183,6 +2183,10 @@ class Factory:
             {} if datasource_build_cache is None else datasource_build_cache
         )
         self.build_grain = self.build(self.grain) if self.grain else None
+        # Addresses currently mid-build, in dependency order. Used to expand a
+        # self-referential metric out of an abstract aggregate's resolution
+        # grain (see `_abstract_resolution_grain`).
+        self._building: list[str] = []
 
     def instantiate_concept(
         self,
@@ -2423,13 +2427,55 @@ class Factory:
     def _(self, base: Concept) -> BuildConcept:
         return self._build_concept(base)
 
+    def _abstract_resolution_grain(self) -> Grain:
+        """Factory grain for resolving an abstract aggregate, with any metric
+        that is currently mid-build (an ancestor on the build stack) replaced by
+        its own grain keys.
+
+        A selected aggregate is a grain component, so the factory grain can
+        contain a metric. Resolving an abstract sub-aggregate of that metric
+        against the raw grain would group it by — and rebuild — the metric,
+        recursing. Expanding only on-stack metrics scopes the fix to true
+        self-references: a metric used purely as a grouping dimension (e.g. the
+        q13 ``count(x) by y`` distribution) is never an ancestor here, so its
+        resolution is unchanged.
+        """
+        building = set(self._building)
+        if not (building & self.grain.components):
+            return self.grain
+        out: list[str] = []
+        seen: set[str] = set()
+
+        def expand(addr: str) -> None:
+            if addr in seen:
+                return
+            seen.add(addr)
+            concept = self.environment.concepts.get(addr)
+            if (
+                addr in building
+                and concept is not None
+                and concept.purpose == Purpose.METRIC
+                and concept.grain.components
+            ):
+                for component in concept.grain.component_order:
+                    expand(component)
+            elif addr not in out:
+                out.append(addr)
+
+        for component in self.grain.component_order:
+            expand(component)
+        return Grain(components=set(out), component_order=out)
+
     def _build_concept(self, base: Concept) -> BuildConcept:
+        self._building.append(base.address)
         try:
             return self.__build_concept(base)
         except RecursionError as e:
             raise RecursionError(
                 f"Recursion error building concept {base.address} with grain {base.grain} and lineage {base.lineage}. This is likely due to a circular reference."
             ) from e
+        finally:
+            self._building.pop()
 
     def __build_concept(self, base: Concept) -> BuildConcept:
         # TODO: if we are using parameters, wrap it in a new model and use that in rendering
@@ -2491,8 +2537,11 @@ class Factory:
             self.local_concepts[base.address] = rval
             self.canonical_build_cache[base.address] = rval
             return rval
+        resolution_grain = (
+            self._abstract_resolution_grain() if base.is_aggregate else self.grain
+        )
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
-            self.grain, self.environment
+            resolution_grain, self.environment
         )
 
         if new_lineage:

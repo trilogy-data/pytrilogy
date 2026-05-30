@@ -27,6 +27,9 @@ SPEC = BenchmarkSpec(
     # filter values yield empty results at our scale factor.
     default_enriched_dir=EVAL_DIR.parents[1] / "tests" / "modeling" / "tpc_ds_duckdb",
     references_dir=EVAL_DIR.parents[1] / "tests" / "modeling" / "tpc_ds_duckdb",
-    default_scale_factor=0.01,
+    # sf=1 by default: smaller factors leave many TPC-DS queries with empty
+    # result sets, which agents spin on (re-exploring instead of accepting a
+    # valid 0-row answer). Override with --scale-factor for quick local runs.
+    default_scale_factor=1.0,
     default_num_queries=20,
 )
