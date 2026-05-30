@@ -1053,9 +1053,20 @@ limit 100;`
 - `trilogy run query06.preql`
 
   ```text
-  (UndefinedConceptException(...), "Undefined concept:
-  item.category. Suggestions: ['store_sales.item.category',
-  'store_sales.item.category_id']")
+  Failed to parse query04.preql: (UndefinedConceptException(...), 'Undefined
+  concept: customer_id.')
+  ```
+- `trilogy explore query04.preql --include-hidden`
+
+  ```text
+  Failed to parse query04.preql: (UndefinedConceptException(...), 'Undefined
+  concept: customer_id.')
+  ```
+- `trilogy run query07.preql`
+
+  ```text
+  (UndefinedConceptException(...), 'line: 8: Undefined concept:
+  local.quantity.')
   ```
 - `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 

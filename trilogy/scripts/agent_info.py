@@ -1048,9 +1048,8 @@ trilogy serve ./models/ duckdb --port 8080
 
 CONFIG_DOC = """# trilogy.toml Configuration - AI Agent Reference
 
-Every Trilogy workspace has a `trilogy.toml` at its root. The eval workspace
-ships with a working one — you should NOT need to edit it. When you do, the
-schema and API-key conventions are below.
+Every Trilogy workspace has a `trilogy.toml` at its root. 
+The first one found recursively from the working directory is used.
 
 ## Example
 
@@ -1063,7 +1062,7 @@ dialect = "duckdb"
 parallelism = 3
 
 [setup]
-# Startup scripts to run before execution
+# Startup scripts to run in a database on connection
 trilogy = ["setup.preql"]
 sql = ["init.sql"]
 
@@ -1101,6 +1100,17 @@ model = "claude-sonnet-4-6"
 
 OpenRouter gives access to models from many providers through a single API
 and key.
+
+## Supported Dialects
+
+- `duckdb` / `duck_db` - DuckDB (default for unit tests)
+- `sqlite` / `sqlite3` - SQLite
+- `postgres` / `postgresql` - PostgreSQL
+- `bigquery` - Google BigQuery
+- `snowflake` - Snowflake
+- `redshift` - Amazon Redshift
+- `trino` - Trino/Presto
+- `sql_server` - Microsoft SQL Server
 """
 
 
