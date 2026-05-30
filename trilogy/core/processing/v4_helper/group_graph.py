@@ -669,6 +669,23 @@ def _compute_concept_sets(
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
                 outs |= cap_gid & mandatory_addresses
+                # Same-grain FINAL contributors must expose their shared grain
+                # so the merge joins on the grain key, not on whatever columns
+                # happen to be shared (q39: a cov basic and the aggregate are
+                # both at (item, warehouse) but the cov group exposed only
+                # mean/cov, so the merge joined on `mean` values). Only our own
+                # grain, only what we can actually produce (capability), and
+                # only when a sibling contributor shares it — much narrower than
+                # pulling every sibling's grain, which over-exposes constraint-
+                # sibling keys (q08).
+                my_grain = grain_of.get(gid, frozenset())
+                if my_grain:
+                    for sibling in group_graph.predecessors(succ):
+                        if sibling == gid or sibling == FINAL_NODE_ID:
+                            continue
+                        if grain_of.get(sibling, frozenset()) & my_grain:
+                            outs |= my_grain & cap_gid
+                            break
                 continue
             edge_kind = group_graph.edges[gid, succ].get("kind", "lineage")
             # Existence siblings flow via subselect, not the row stream.

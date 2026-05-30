@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2418 | 55 | 39.22 ms |
-| reference | 2419 | 61 | 44.93 ms |
-| v4 / ref | 1.00x | 0.90x | 0.87x |
+| v4 | 2778 | 63 | 158.91 ms |
+| reference | 2419 | 61 | 67.97 ms |
+| v4 / ref | 1.15x | 1.03x | 2.34x |
 
 ## Preql
 
@@ -461,29 +461,37 @@ SELECT
 thoughtful as (
 SELECT
     "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
-    count(CASE WHEN "customer_customers"."C_PREFERRED_CUST_FLAG" = 'Y' THEN "customer_customers"."C_CUSTOMER_SK" ELSE NULL END) as "zip_p_count"
+    "customer_customers"."C_CUSTOMER_SK" as "customer_id",
+    "customer_customers"."C_PREFERRED_CUST_FLAG" as "customer_preferred_cust_flag"
 FROM
     "memory"."customer" as "customer_customers"
-    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
-GROUP BY
-    1),
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"),
 highfalutin as (
 SELECT
     SUBSTRING(cast("quizzical"."zips_pre" as string),1,5) as "zips"
 FROM
     "quizzical"),
+cooperative as (
+SELECT
+    "thoughtful"."customer_address_zip" as "customer_address_zip",
+    count(CASE WHEN "thoughtful"."customer_preferred_cust_flag" = 'Y' THEN "thoughtful"."customer_id" ELSE NULL END) as "zip_p_count"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
 abundant as (
 SELECT
-    SUBSTRING(CASE WHEN "thoughtful"."zip_p_count" > 10 THEN "thoughtful"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
+    SUBSTRING(CASE WHEN "cooperative"."zip_p_count" > 10 THEN "thoughtful"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
 FROM
-    "thoughtful"),
-yummy as (
+    "cooperative"
+    INNER JOIN "thoughtful" on "cooperative"."customer_address_zip" = "thoughtful"."customer_address_zip"),
+juicy as (
 SELECT
     SUBSTRING(CASE WHEN "highfalutin"."zips" in (select abundant."_virt_func_substring_4293448550966409" from abundant where abundant."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END,1,2) as "final_zips"
 FROM
     "abundant"
     FULL JOIN "highfalutin" on 1=1),
-abhorrent as (
+sweltering as (
 SELECT
     "store_sales_store_sales"."SS_NET_PROFIT" as "store_sales_net_profit",
     "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
@@ -493,20 +501,20 @@ FROM
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
 WHERE
-    "store_sales_date_date"."D_QOY" = 2 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select yummy."final_zips" from yummy where yummy."final_zips" is not null)
+    "store_sales_date_date"."D_QOY" = 2 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select juicy."final_zips" from juicy where juicy."final_zips" is not null)
 )
 SELECT
-    sum("abhorrent"."store_sales_net_profit") as "store_net_profit",
-    "abhorrent"."store_sales_store_name" as "store_sales_store_name"
+    sum("sweltering"."store_sales_net_profit") as "store_net_profit",
+    "sweltering"."store_sales_store_name" as "store_sales_store_name"
 FROM
-    "abhorrent"
+    "sweltering"
 WHERE
-    SUBSTRING("abhorrent"."store_sales_store_zip",1,2) in (select yummy."final_zips" from yummy where yummy."final_zips" is not null)
+    SUBSTRING("sweltering"."store_sales_store_zip",1,2) in (select juicy."final_zips" from juicy where juicy."final_zips" is not null)
 
 GROUP BY
     2
 ORDER BY 
-    "abhorrent"."store_sales_store_name" asc
+    "sweltering"."store_sales_store_name" asc
 LIMIT (100)
 ```
 

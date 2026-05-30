@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3777 | 65 | 36.99 ms |
-| reference | 3739 | 63 | 46.19 ms |
-| v4 / ref | 1.01x | 1.03x | 0.80x |
+| v4 | 4882 | 85 | 69.71 ms |
+| reference | 3739 | 63 | 58.33 ms |
+| v4 / ref | 1.31x | 1.35x | 1.20x |
 
 ## Preql
 
@@ -90,13 +90,13 @@ limit 100
 WITH 
 uneven as (
 SELECT
+    "catalog_sales_catalog_sales"."CS_QUANTITY" as "correlated_catalog_sales_quantity",
     "store_sales_item_items"."I_ITEM_DESC" as "correlated_store_sales_item_desc",
     "store_sales_item_items"."I_ITEM_ID" as "correlated_store_sales_item_name",
+    "store_sales_store_returns"."SR_RETURN_QUANTITY" as "correlated_store_sales_return_quantity",
+    "store_sales_store_sales"."SS_QUANTITY" as "correlated_store_sales_quantity",
     "store_sales_store_store"."S_STORE_ID" as "correlated_store_sales_store_text_id",
-    "store_sales_store_store"."S_STORE_NAME" as "correlated_store_sales_store_name",
-    sum("catalog_sales_catalog_sales"."CS_QUANTITY") as "catalog_sales_quantity",
-    sum("store_sales_store_returns"."SR_RETURN_QUANTITY") as "store_returns_quantity",
-    sum("store_sales_store_sales"."SS_QUANTITY") as "store_sales_quantity"
+    "store_sales_store_store"."S_STORE_NAME" as "correlated_store_sales_store_name"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
@@ -108,49 +108,69 @@ FROM
     LEFT OUTER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
 WHERE
     "store_sales_date_date"."D_MOY" = 9 and "store_sales_date_date"."D_YEAR" = 1999 and "store_sales_return_date_date"."D_MOY" BETWEEN 9 AND 12 and "store_sales_return_date_date"."D_YEAR" = 1999 and "catalog_sales_date_date"."D_YEAR" in (1999,2000,2001) and "catalog_sales_catalog_sales"."CS_QUANTITY" > 0 and SR_RETURN_TIME_SK IS NOT NULL and "store_sales_store_sales"."SS_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK"
-
+),
+juicy as (
+SELECT
+    "uneven"."correlated_store_sales_store_name" as "correlated_store_sales_store_name",
+    "uneven"."correlated_store_sales_store_text_id" as "correlated_store_sales_store_text_id",
+    sum("uneven"."correlated_catalog_sales_quantity") as "catalog_sales_quantity",
+    sum("uneven"."correlated_store_sales_quantity") as "store_sales_quantity",
+    sum("uneven"."correlated_store_sales_return_quantity") as "store_returns_quantity"
+FROM
+    "uneven"
 GROUP BY
     1,
     2,
-    3,
-    4),
-vacuous as (
+    "uneven"."correlated_store_sales_item_desc",
+    "uneven"."correlated_store_sales_item_name"),
+yummy as (
 SELECT
     "uneven"."correlated_store_sales_item_desc" as "store_sales_item_desc",
     "uneven"."correlated_store_sales_item_name" as "store_sales_item_name"
 FROM
-    "uneven"
-WHERE
-    "uneven"."catalog_sales_quantity" > 0
-),
-juicy as (
+    "uneven"),
+vacuous as (
 SELECT
-    "uneven"."catalog_sales_quantity" as "catalog_sales_quantity",
-    "uneven"."correlated_store_sales_store_name" as "store_name",
-    "uneven"."correlated_store_sales_store_text_id" as "store_sales_store_text_id",
-    "uneven"."store_returns_quantity" as "store_returns_quantity",
-    "uneven"."store_sales_quantity" as "store_sales_quantity"
+    "juicy"."catalog_sales_quantity" as "catalog_sales_quantity",
+    "juicy"."correlated_store_sales_store_name" as "store_name",
+    "juicy"."correlated_store_sales_store_text_id" as "store_sales_store_text_id",
+    "juicy"."store_returns_quantity" as "store_returns_quantity",
+    "juicy"."store_sales_quantity" as "store_sales_quantity"
 FROM
-    "uneven"
+    "juicy"
 WHERE
-    "uneven"."catalog_sales_quantity" > 0
+    "juicy"."catalog_sales_quantity" > 0
+),
+concerned as (
+SELECT
+    "vacuous"."catalog_sales_quantity" as "catalog_sales_quantity",
+    "vacuous"."store_name" as "store_name",
+    "vacuous"."store_returns_quantity" as "store_returns_quantity",
+    "vacuous"."store_sales_quantity" as "store_sales_quantity",
+    "vacuous"."store_sales_store_text_id" as "store_sales_store_text_id",
+    "yummy"."store_sales_item_desc" as "store_sales_item_desc",
+    "yummy"."store_sales_item_name" as "store_sales_item_name"
+FROM
+    "yummy"
+    RIGHT OUTER JOIN "vacuous" on 1=1
+WHERE
+    "vacuous"."catalog_sales_quantity" > 0
 )
 SELECT
-    "vacuous"."store_sales_item_name" as "store_sales_item_name",
-    "vacuous"."store_sales_item_desc" as "store_sales_item_desc",
-    "juicy"."store_sales_store_text_id" as "store_sales_store_text_id",
-    "juicy"."store_name" as "store_name",
-    "juicy"."store_sales_quantity" as "store_sales_quantity",
-    "juicy"."store_returns_quantity" as "store_returns_quantity",
-    "juicy"."catalog_sales_quantity" as "catalog_sales_quantity"
+    "concerned"."store_sales_item_name" as "store_sales_item_name",
+    "concerned"."store_sales_item_desc" as "store_sales_item_desc",
+    "concerned"."store_sales_store_text_id" as "store_sales_store_text_id",
+    "concerned"."store_name" as "store_name",
+    "concerned"."store_sales_quantity" as "store_sales_quantity",
+    "concerned"."store_returns_quantity" as "store_returns_quantity",
+    "concerned"."catalog_sales_quantity" as "catalog_sales_quantity"
 FROM
-    "vacuous"
-    FULL JOIN "juicy" on 1=1
+    "concerned"
 ORDER BY 
-    "vacuous"."store_sales_item_name" asc,
-    "vacuous"."store_sales_item_desc" asc,
-    "juicy"."store_sales_store_text_id" asc,
-    "juicy"."store_name" asc
+    "concerned"."store_sales_item_name" asc,
+    "concerned"."store_sales_item_desc" asc,
+    "concerned"."store_sales_store_text_id" asc,
+    "concerned"."store_name" asc
 LIMIT (100)
 ```
 

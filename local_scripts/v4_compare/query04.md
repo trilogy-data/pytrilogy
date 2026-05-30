@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5908 | 94 | 100.86 ms |
-| reference | 12153 | 278 | 406.86 ms |
-| v4 / ref | 0.49x | 0.34x | 0.25x |
+| v4 | 5970 | 95 | 103.54 ms |
+| reference | 12153 | 278 | 465.05 ms |
+| v4 / ref | 0.49x | 0.34x | 0.22x |
 
 ## Preql
 
@@ -130,6 +130,7 @@ yummy as (
 SELECT
     "cooperative"."catalog_first_year" as "catalog_first_year",
     "cooperative"."catalog_second_year" as "catalog_second_year",
+    "cooperative"."sales_customer_id" as "sales_customer_id",
     "cooperative"."store_first_year" as "store_first_year",
     "cooperative"."store_second_year" as "store_second_year",
     "cooperative"."web_first_year" as "web_first_year",

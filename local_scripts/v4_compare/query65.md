@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3234 | 72 | 71.20 ms |
-| reference | 2446 | 61 | 49.53 ms |
-| v4 / ref | 1.32x | 1.18x | 1.44x |
+| v4 | 3299 | 73 | 77.81 ms |
+| reference | 2446 | 61 | 58.41 ms |
+| v4 / ref | 1.35x | 1.20x | 1.33x |
 
 ## Preql
 
@@ -81,13 +81,13 @@ GROUP BY
     "store_sales_item_items"."I_ITEM_SK"),
 abundant as (
 SELECT
-    "thoughtful"."store_sales_store_name" as "store_sales_store_name",
+    "thoughtful"."store_sales_store_id" as "store_sales_store_id",
     avg("thoughtful"."item_revenue") as "store_avg_revenue"
 FROM
     "thoughtful"
 GROUP BY
     1,
-    "thoughtful"."store_sales_store_id"),
+    "thoughtful"."store_sales_store_name"),
 questionable as (
 SELECT
     "thoughtful"."item_revenue" as "revenue",
@@ -95,20 +95,21 @@ SELECT
     "thoughtful"."store_sales_item_current_price" as "store_sales_item_current_price",
     "thoughtful"."store_sales_item_desc" as "store_sales_item_desc",
     "thoughtful"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
+    "thoughtful"."store_sales_store_id" as "store_sales_store_id",
     "thoughtful"."store_sales_store_name" as "store_sales_store_name"
 FROM
     "thoughtful"),
 uneven as (
 SELECT
-    "abundant"."store_sales_store_name" as "store_sales_store_name",
     "questionable"."revenue" as "revenue",
     "questionable"."store_sales_item_brand_name" as "store_sales_item_brand_name",
     "questionable"."store_sales_item_current_price" as "store_sales_item_current_price",
     "questionable"."store_sales_item_desc" as "store_sales_item_desc",
-    "questionable"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost"
+    "questionable"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
+    "questionable"."store_sales_store_name" as "store_sales_store_name"
 FROM
-    "abundant"
-    INNER JOIN "questionable" on "abundant"."store_sales_store_name" = "questionable"."store_sales_store_name"
+    "questionable"
+    INNER JOIN "abundant" on "questionable"."store_sales_store_id" = "abundant"."store_sales_store_id"
 WHERE
     "questionable"."revenue" <= 0.1 * "abundant"."store_avg_revenue"
 )
