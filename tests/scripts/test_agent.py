@@ -32,7 +32,6 @@ from trilogy.scripts.agent_tools import (
     AgentState,
     TodoItem,
     handle_list_files,
-    handle_read_file,
     handle_return_control,
     handle_show_message,
     handle_todo,
@@ -204,13 +203,6 @@ def test_maybe_flag_loop_resets_on_different_call():
     assert "[guidance]" not in _maybe_flag_loop(state, b, "ok")
 
 
-def test_read_file_returns_content_and_reports_missing(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "q.preql").write_text("select 1 -> x;", encoding="utf-8")
-    assert handle_read_file(AgentState(), {"path": "q.preql"}) == "select 1 -> x;"
-    assert "no such file" in handle_read_file(AgentState(), {"path": "missing.preql"})
-
-
 def test_list_files_recursive_shows_nested_paths(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "raw").mkdir()
@@ -250,11 +242,6 @@ def test_list_files_validates_args():
     assert "must be a boolean" in handle_list_files(
         AgentState(), {"path": ".", "recursive": "yes"}
     )
-
-
-def test_read_file_validates_path():
-    assert "non-empty string" in handle_read_file(AgentState(), {})
-    assert "non-empty string" in handle_read_file(AgentState(), {"path": ""})
 
 
 def test_return_control_rejects_non_string_message():
@@ -587,19 +574,6 @@ def test_read_preql_description_handles_oserror(monkeypatch, tmp_path):
 
     monkeypatch.setattr(Path, "open", boom)
     assert preql_description.read_preql_description(p) is None
-
-
-def test_read_file_reports_oserror(monkeypatch, tmp_path):
-    target = tmp_path / "q.preql"
-    target.write_text("x", encoding="utf-8")
-
-    def boom(self, *a, **kw):
-        raise OSError("permission denied")
-
-    monkeypatch.setattr(Path, "read_text", boom)
-    result = handle_read_file(AgentState(), {"path": str(target)})
-    assert "read_file error" in result
-    assert "permission denied" in result
 
 
 def test_first_non_flag_arg_skips_value_flag_and_options():
@@ -1426,7 +1400,6 @@ def test_all_tools_registered():
     assert names == {
         "show_message",
         "trilogy",
-        "read_file",
         "list_files",
         "todo",
         "return_control_to_user",

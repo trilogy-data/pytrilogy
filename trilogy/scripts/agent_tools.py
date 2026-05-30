@@ -99,18 +99,6 @@ TRILOGY_TOOL = LLMToolDefinition(
     },
 )
 
-READ_FILE_TOOL = LLMToolDefinition(
-    name="read_file",
-    description="Return the text content of the file at `path`.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "path": {"type": "string", "description": "Path of the file to read."},
-        },
-        "required": ["path"],
-    },
-)
-
 LIST_FILES_TOOL = LLMToolDefinition(
     name="list_files",
     description=(
@@ -189,7 +177,6 @@ RETURN_CONTROL_TOOL = LLMToolDefinition(
 ALL_TOOLS: list[LLMToolDefinition] = [
     SHOW_MESSAGE_TOOL,
     TRILOGY_TOOL,
-    READ_FILE_TOOL,
     LIST_FILES_TOOL,
     TODO_TOOL,
     RETURN_CONTROL_TOOL,
@@ -287,20 +274,6 @@ def handle_list_files(state: AgentState, args: dict) -> str:
         return f"(no files under {path})"
     header = f"files under {path} ({file_count}{'+' if truncated else ''}):\n"
     return header + "\n".join(entries)
-
-
-def handle_read_file(state: AgentState, args: dict) -> str:
-    path = args.get("path")
-    if not isinstance(path, str) or not path:
-        return "read_file error: 'path' must be a non-empty string."
-    target = Path(path)
-    if not target.is_file():
-        return f"read_file error: no such file: {path}"
-    try:
-        text = target.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        return f"read_file error: {exc}"
-    return truncate_middle(text, state.tool_output_limit)
 
 
 def _first_non_flag_arg(raw_args: list[str]) -> str | None:
@@ -506,7 +479,6 @@ def handle_return_control(state: AgentState, args: dict) -> str:
 TOOL_HANDLERS: dict[str, Callable[[AgentState, dict], str]] = {
     SHOW_MESSAGE_TOOL.name: handle_show_message,
     TRILOGY_TOOL.name: handle_trilogy,
-    READ_FILE_TOOL.name: handle_read_file,
     LIST_FILES_TOOL.name: handle_list_files,
     TODO_TOOL.name: handle_todo,
     RETURN_CONTROL_TOOL.name: handle_return_control,

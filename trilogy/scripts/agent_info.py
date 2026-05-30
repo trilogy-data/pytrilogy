@@ -32,23 +32,9 @@ trilogy integration script.preql dialect [connection_args...]
 
 ### trilogy init [path]
 
-Create a new Trilogy workspace with default configuration and structure.
-
-**Arguments:**
-- `path` (optional): Directory to initialize (default: current directory)
-
-**Creates:**
-- `trilogy.toml` - Configuration file
-- `assets/root/` - Directory for base data models (the `root` namespace)
-- `jobs/` - Directory for job scripts
-- `hello_world.preql` - Example script
-
-**Example:**
-```bash
-trilogy init my_project
-cd my_project
-trilogy unit hello_world.preql
-```
+Create a new workspace (default: current dir): `trilogy init [path]`. Scaffolds
+`trilogy.toml`, `assets/root/` (the `root` namespace), `jobs/`, and a
+`hello_world.preql` example.
 
 ---
 
@@ -75,14 +61,8 @@ Execute a Trilogy script or all scripts in a directory.
 
 **Examples:**
 ```bash
-# Run single script with DuckDB
+# Run a script with DuckDB
 trilogy run query.preql duckdb
-
-# Run with connection string
-trilogy run etl.preql postgres "postgresql://user:pass@host/db"
-
-# Run directory with parallelism
-trilogy run jobs/ duckdb -p 4
 
 # Run with parameters
 trilogy run report.preql duckdb --param date=2024-01-01 --param region=US
@@ -93,6 +73,7 @@ trilogy run --import flight:flight "select flight.carrier, count(flight.id);"
 # Read the query from stdin (use `-` as input)
 echo "select item.id limit 5;" | trilogy run --import raw.item:item -
 ```
+(Connection string and directory `-p N` parallelism work too — see Options.)
 
 ---
 
@@ -121,8 +102,8 @@ AVOID merging in a model that is already accessible as a subpath of a
 an existing model; merges are best reserved for adhoc combinations of
 otherwise disjoint datasets.
 
-Prefer this tool  over `read_file` on a model file; richer and more
-compact output. Datatype is rendered using the `value::trait` authoring syntax
+Prefer this over reading the raw model file (`trilogy file read`); richer and
+more compact output. Datatype is rendered using the `value::trait` authoring syntax
 (`string::us_state`, `enum<'TN'>::us_state`).
 
 **Arguments:**
@@ -155,49 +136,17 @@ trilogy explore raw/my_fact.preql --show concepts --purpose key --purpose proper
 
 ### trilogy unit <input> [options]
 
-Run unit tests on Trilogy scripts with mocked datasources.
-
-**Arguments:**
-- `input` (required): Path to .preql file or directory
-
-**Options:**
-- `--param KEY=VALUE`: Environment parameters
-- `--parallelism N`, `-p N`: Max parallel workers
-- `--config PATH`: Path to trilogy.toml
-
-**Examples:**
-```bash
-# Test single file
-trilogy unit test_query.preql
-
-# Test entire directory
-trilogy unit tests/ -p 4
-```
+Run unit tests with mocked datasources (no connection needed):
+`trilogy unit <file|dir>`. Options: `--param KEY=VALUE`, `--parallelism/-p N`,
+`--config PATH`.
 
 ---
 
-### trilogy integration <input> [dialect] [options] [conn_args...]
+### trilogy integration <input> [dialect] [conn_args...]
 
-Run integration tests on Trilogy scripts with real database connections. Integration tests
-run validation that all datasources are configured properly. They do not execute code.
-
-To set up new tables, run first then do integration.
-
-**Arguments:**
-- `input` (required): Path to .preql file or directory
-- `dialect` (optional): Database dialect
-- `conn_args` (optional): Connection arguments
-
-**Options:**
-- `--param KEY=VALUE`: Environment parameters
-- `--parallelism N`, `-p N`: Max parallel workers
-- `--config PATH`: Path to trilogy.toml
-
-**Examples:**
-```bash
-# Integration test against Postgres
-trilogy integration tests/ postgres "postgresql://localhost/testdb"
-```
+Validate that every datasource is configured and connectable — does NOT execute
+code: `trilogy integration <file|dir> <dialect> <conn>`. Same
+`--param`/`-p`/`--config` options as `unit`.
 
 ---
 
@@ -251,19 +200,11 @@ trilogy file write scratch.preql --content "import flight; select count(id);"
 # Multi-line via --escapes (portable across bash, zsh, PowerShell, cmd.exe)
 trilogy file write scratch.preql -e -c "import flight;\nselect count(id);\n"
 
-# Update an existing script from a local file (CI/agent-friendly)
-trilogy file write reporting.preql --from-file snippets/reporting.preql
-
-# Pull a hosted snippet (raw GitHub URL)
-trilogy file write reporting.preql --from-url https://example.com/reporting.preql
-
 # Inspect and list
 trilogy file read reporting.preql
 trilogy file list . --recursive --long
-
-# Clean up
-trilogy file delete old_assets/ --recursive
 ```
+(`--from-file`/`--from-url` write from a local path or URL; `delete`/`move`/`exists` round out the CRUD set.)
 
 ---
 
@@ -299,20 +240,6 @@ reference when needed.
 
 ---
 
-### trilogy agent <command> [options]
-
-Pass off a multi-step orchestration task to an AI agent. (Not yet implemented)
-
-**Arguments:**
-- `command` (required): Natural language command
-
-**Options:**
-- `--context PATH`, `-c PATH`: Additional context files
-- `--model NAME`, `-m NAME`: AI model to use
-- `--interactive`, `-i`: Interactive mode with feedback
-
----
-
 ## Authoring Datasources
 
 When you need to author or edit a model, isntead of just
@@ -336,30 +263,11 @@ for the full schema and API-key conventions. before making edits.
 
 ## Common Workflows
 
-### 1. Setting up a new project
-```bash
-trilogy init my_analytics
-cd my_analytics
-# Configure trilogy.toml with your dialect and connection
-trilogy unit hello_world.preql
-```
-
-### 2. Ingesting existing tables
-Run `trilogy agent-info ingest` for the full command reference.
-
-### 3. Running ETL jobs
-```bash
-trilogy run jobs/ postgres -p 4 "postgresql://localhost/warehouse"
-```
-
-### 4. Testing before deployment
-```bash
-# Unit tests (fast, no connection needed)
-trilogy unit .
-
-# Integration tests (real connection)
-trilogy integration . postgres "postgresql://localhost/testdb"
-```
+- **New project**: `trilogy init` → configure `trilogy.toml` dialect/connection → author models.
+- **Bootstrap a model from existing data**: `trilogy ingest` (see `trilogy agent-info ingest`).
+- **Query an existing model**: `trilogy explore <model>.preql` to discover concepts → write a `.preql` `select` → `trilogy run <file> <dialect>`.
+- **ETL / directory runs**: `trilogy run jobs/ <dialect> -p N`.
+- **Test before deploy**: `trilogy unit .` (mocked) and `trilogy integration . <dialect> <conn>` (real connection).
 
 ## Debug Mode
 

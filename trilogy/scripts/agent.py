@@ -87,15 +87,15 @@ Available tools:
       fact file (e.g. `sales.preql`) ALSO lists all dimensions it
       imports (`product.*`, `date.*`, `customer.*`, …) in the same output.
       You do NOT need to explore each dimension separately. Prefer this over
-      `read_file` on a model file. Use `--regex` (repeatable, Python regex) to filter.
+      reading the raw model file. Use `--regex` (repeatable, Python regex) to filter.
       Trilogy auto-resolves joins from the model's declared relationships.
       Join discovery is not needed;
     write `select store_sales.date_dim.year, ...;` and Trilogy
       handles the join. There is no manual JOIN clause in this language.
+    * ["file", "read", "<path>"] — read a file's raw contents (rarely needed;
+      prefer explore for model files).
     * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
-      etc. `trilogy agent-info` lists everything that exists.
-- read_file(path): return the text content of a file; use this for
-  code understanding; prefer explore for usage.
+      `read_file`, etc. `trilogy agent-info` lists everything that exists.
 
 To create or overwrite a file (every .preql query file you write), use
 `trilogy file write <path> --content <full body>`. Pass the complete file

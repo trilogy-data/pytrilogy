@@ -39,6 +39,11 @@ SELECT RULES:
       These fields can be hidden for conveience.
       select customer.state, --sum(sales.amount) as total_sales
       having total_sales > 1000
+  * Nested aggregate — compare a per-entity total to the GROUP AVERAGE of those totals (a common "above 1.2x the group norm" ask). Define each grain with its own `by`, then filter in HAVING. Both derived metrics are selected hidden (`--`) so HAVING can reference them while the output stays just the id:
+      auto cust_store_total <- sum(sales.amount) by sales.customer.id, sales.store.id;
+      auto store_avg <- avg(cust_store_total) by sales.store.id;
+      select sales.customer.id, --cust_store_total, --store_avg
+      having cust_store_total > 1.2 * store_avg
   * To filter rows by an aggregate condition that is NOT in the output, write the aggregate directly in WHERE using inline grouping `agg(x) by grain`:
       Remember that other where conditions are not pushed through an aggregate in the where; use an inline condition if you
       need to filter inside those. 

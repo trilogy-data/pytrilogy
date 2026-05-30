@@ -479,17 +479,31 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                 )
         _validate_where_aggregate_matches_select(select, line_no)
     if select.having_clause:
+        # Report ALL missing refs at once (deduped, in order). Raising on the
+        # first one makes an agent fix it, re-run, hit the next, and loop — one
+        # message listing every missing ref collapses those rewrite cycles.
+        missing: list[str] = []
         for cref in select.having_clause.concept_arguments:
-            if cref.address not in allowed_addresses:
-                raise SyntaxError(
-                    f"HAVING references '{cref.address}', which is not in the "
-                    f"SELECT projection (line {line_no}). Fix one of: "
-                    f"(a) add it to SELECT — prefix with `--` to keep it out of "
-                    f"the output rows, e.g. `select ..., --{cref.address}`; "
-                    f"(b) move the filter to WHERE — for an aggregate condition "
-                    f"on a non-output grain, write the aggregate inline as "
-                    f"`agg(x) by grain` directly in WHERE."
-                )
+            if cref.address not in allowed_addresses and cref.address not in missing:
+                missing.append(cref.address)
+        if missing:
+            refs = ", ".join(f"'{a}'" for a in missing)
+            verb, obj, subj, stay = (
+                ("is", "it", "it", "stays")
+                if len(missing) == 1
+                else ("are", "them", "they", "stay")
+            )
+            snippet = ", ".join(f"--{a}" for a in missing)
+            raise SyntaxError(
+                f"HAVING references {refs}, which {verb} not in the SELECT "
+                f"projection (line {line_no}). Add {obj} to SELECT, each prefixed "
+                f"with `--` so {subj} {stay} out of the output rows — keep your "
+                f"HAVING as-is:\n"
+                f"    select <your existing columns>, {snippet}\n"
+                f"Alternatively move a row-level filter to WHERE; for an aggregate "
+                f"condition on a non-output grain, write `agg(x) by grain` inline "
+                f"in WHERE."
+            )
         _validate_having_aggregates_match_select(select, context, line_no)
     if select.order_by:
         for cref in select.order_by.concept_arguments:

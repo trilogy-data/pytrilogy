@@ -109,9 +109,13 @@ def main() -> int:
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     qid = args.query_id
-    out = args.output_dir or (
-        SPEC.results_dir / f"repeat_q{qid:02d}_{ts}{'_base' if args.base else ''}"
-    )
+    # Resolve to absolute: the agent subprocess runs with cwd=worker, so a
+    # relative --output-dir would make the --log-file path resolve under the
+    # worker dir (nonexistent nested parents) and crash the agent on startup.
+    out = (
+        args.output_dir
+        or SPEC.results_dir / f"repeat_q{qid:02d}_{ts}{'_base' if args.base else ''}"
+    ).resolve()
     workspace = out / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
 
