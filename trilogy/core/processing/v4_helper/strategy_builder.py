@@ -165,6 +165,40 @@ def _parent_nodes_for(
     return parents
 
 
+def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
+    """Absorb a parent into a row-preserving sibling that already reaches it.
+
+    When a plain projection B (a non-grouping SelectNode) can reach another
+    parent A's columns from B's own source (A's outputs are all available off
+    B's parents), B carries A's columns as a passthrough and A is dropped —
+    instead of cross-joining two views of the same scan (q50: a
+    `days_to_return` projection of the base scan exposed only itself, so
+    merging it back with the base degraded to `1=1`).
+
+    Passthrough = widen B's input AND output: `resolve_concept_map` sources an
+    output from a parent only when it's also an input."""
+    dropped: set[int] = set()
+    for b in parents:
+        if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
+            continue
+        available = {o.address for p in b.parents for o in p.output_concepts}
+        for a in parents:
+            if a is b or id(a) in dropped or not a.output_concepts:
+                continue
+            if not all(o.address in available for o in a.output_concepts):
+                continue
+            in_addrs = {c.address for c in b.input_concepts}
+            out_addrs = {c.address for c in b.output_concepts}
+            for o in a.output_concepts:
+                if o.address not in in_addrs:
+                    b.input_concepts.append(o)
+                if o.address not in out_addrs:
+                    b.output_concepts.append(o)
+            b.rebuild_cache()
+            dropped.add(id(a))
+    return [p for p in parents if id(p) not in dropped]
+
+
 def _pre_merge_parents(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -176,6 +210,9 @@ def _pre_merge_parents(
     yields `Referenced table "X" not found` binder errors when the SELECT
     references the dropped parent. Wrapping here keeps the generators
     simple and the join logic in one place."""
+    if len(parents) <= 1:
+        return parents
+    parents = _fold_passthrough_parents(parents)
     if len(parents) <= 1:
         return parents
     seen: set[str] = set()
