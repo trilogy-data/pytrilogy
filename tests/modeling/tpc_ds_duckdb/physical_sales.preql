@@ -46,6 +46,8 @@ properties <ticket_number, item.id> (
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line profit.
 
+auto line_item_count<- sum(row_counter); # Measure for unique ticket/item.id combos sold
+
 datasource store_sales (
     raw('''1'''): row_counter,
     SS_SOLD_DATE_SK: ?date.id, # FK to date the sale occurred (optional in source data).

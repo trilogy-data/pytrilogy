@@ -27,7 +27,7 @@
   {
     "id": 6,
     "grade": "medium",
-    "prompt": "Find the states in which at least 10 customers bought items whose current price is more than 1.2 times the average current price of the distinct items in the same category. Restrict to store sales in January 2001. Use the state from the customer's own current home address. Report state and customer count, ordered by count ascending with nulls first, then state with nulls first; limit 100 rows."
+    "prompt": "Find the states with at least 10 qualifying store-sale line items (unique ticket-and-item combinations) in January 2001 where the item current price is more than 1.2 times the average current price of items in the same category. Use the state from the customer's own current home address. Report the state and that line-item count, ordered by the count ascending with nulls first, then state with nulls first; limit 100 rows."
   },
   {
     "id": 7,

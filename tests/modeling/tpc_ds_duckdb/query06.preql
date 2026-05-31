@@ -11,11 +11,11 @@ where
     and physical_sales.billing_customer.address.id is not null
 select
     physical_sales.billing_customer.address.state,
-    sum(physical_sales.row_counter) as customer_count,
+    physical_sales.line_item_count
 having
-    customer_count >= 10
+    physical_sales.line_item_count >= 10
 
 order by
-    customer_count asc nulls first,
+    physical_sales.line_item_count asc nulls first,
     physical_sales.billing_customer.address.state asc nulls first
 ;

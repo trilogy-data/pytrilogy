@@ -1,6 +1,6 @@
 query_id = "06"
-gen_length = 2386
-preql_size = 674
+gen_length = 2434
+preql_size = 686
 comp_size = 654
 generated_sql = """
 
@@ -33,7 +33,7 @@ GROUP BY
     1)
 SELECT
     \"cooperative\".\"physical_sales_billing_customer_address_state\" as \"physical_sales_billing_customer_address_state\",
-    sum(\"cooperative\".\"physical_sales_row_counter\") as \"customer_count\"
+    sum(\"cooperative\".\"physical_sales_row_counter\") as \"physical_sales_line_item_count\"
 FROM
     \"cooperative\"
     INNER JOIN \"questionable\" on \"cooperative\".\"physical_sales_item_category\" is not distinct from \"questionable\".\"physical_sales_item_category\"
@@ -43,8 +43,8 @@ WHERE
 GROUP BY
     1
 HAVING
-    \"customer_count\" >= 10
+    \"physical_sales_line_item_count\" >= 10
 
 ORDER BY 
-    \"customer_count\" asc nulls first,
+    \"physical_sales_line_item_count\" asc nulls first,
     \"cooperative\".\"physical_sales_billing_customer_address_state\" asc nulls first"""
