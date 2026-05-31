@@ -1,0 +1,93 @@
+# For cross-channel questions, prefer `all_sales` (combines this with catalog_sales and web_sales).
+# Store channel sales info at (item, ticket_number) grain: quantity,
+# sales / list / wholesale / extended prices, discount and coupon amounts,
+# net paid, extended tax, net profit, and an is_returned flag plus
+# per-line refund amount / quantity / net loss for returned items.
+#
+
+import std.money;
+
+import item as item;
+import date as date;
+import date as return_date;
+import time as time;
+import time as return_time;
+import customer as billing_customer; # link to our latest records for the customer associated with payment
+import customer as return_customer; # the customer account tied to the return
+import promotion as promotion;
+import customer_demographic as customer_demographic; # The customer demograph info at POS
+import household_demographic as household_demographic; # The household demographic info at POS
+import store as store;
+import store as return_store;
+import address as sale_address;
+import reason as return_reason;
+
+key ticket_number int; # Store-sale ticket (receipt) number identifying a single in-store transaction.
+
+properties <ticket_number, item.id> (
+    quantity int, # Number of units of the item sold on this ticket line.
+    sales_price numeric::usd, # Per-unit sales price actually charged (USD).
+    list_price numeric::usd, # Per-unit list price before discounts (USD).
+    ext_sales_price numeric(15,2)::usd, # Line-extended sales price (USD).
+    ext_wholesale_cost numeric::usd, # Line-extended wholesale cost (USD).
+    ext_list_price numeric::usd, # Line-extended list price (USD).
+    ext_discount_amount numeric::usd, # Extended discount applied to the line (USD).
+    coupon_amt numeric::usd, # Coupon/credit amount applied to the line (USD).
+    net_profit numeric::usd, # Net profit reported for the line (USD).
+    is_returned bool, # True if at least part of this ticket line was later returned (derived from store_returns).
+    net_paid numeric::usd, # Net amount paid by the customer for the line, excluding tax (USD).
+    ext_tax numeric::usd, # Extended sales tax on the line (USD).
+    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost (USD).
+    return_amount numeric::usd?, # Refund amount if the item on this line was returned (USD).
+    return_quantity int?, # Number of units returned for this line.
+    return_net_loss numeric::usd?, # Net financial loss on the return for this line (USD).
+    row_counter int, # Constant 1, used for unconditional row counts.
+);
+
+auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line profit.
+
+auto line_item_count<- sum(row_counter); # Measure for unique ticket/item.id combos sold
+
+datasource store_sales (
+    raw('''1'''): row_counter,
+    SS_SOLD_DATE_SK: ?date.id, # FK to date the sale occurred (optional in source data).
+    SS_SOLD_TIME_SK: ?time.id, # FK to time-of-day the sale occurred.
+    SS_CUSTOMER_SK: ?billing_customer.id, # FK to the purchasing customer (optional — anonymous sales allowed).
+    SS_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at time of sale.
+    SS_HDEMO_SK: ?household_demographic.id, # FK to the customer's household profile at time of sale.
+    SS_TICKET_NUMBER: ticket_number,
+    SS_ITEM_SK: item.id, # FK to the item sold.
+    SS_SALES_PRICE: sales_price,
+    SS_LIST_PRICE: list_price,
+    SS_EXT_SALES_PRICE: ext_sales_price,
+    SS_EXT_LIST_PRICE: ext_list_price,
+    SS_EXT_WHOLESALE_COST: ext_wholesale_cost,
+    SS_EXT_DISCOUNT_AMT: ext_discount_amount,
+    SS_NET_PROFIT: net_profit,
+    SS_PROMO_SK: ?promotion.id, # FK to the promotion applied to the line, if any.
+    SS_QUANTITY: quantity,
+    SS_COUPON_AMT: coupon_amt,
+    SS_STORE_SK: ?store.id, # FK to the store the sale occurred at.
+    SS_NET_PAID: net_paid,
+    SS_EXT_TAX: ext_tax,
+    SS_WHOLESALE_COST: wholesale_cost,
+    SS_ADDR_SK: ?sale_address.id, # FK to the customer's address at time of sale.
+)
+grain (item.id, ticket_number)
+address memory.store_sales;
+
+datasource store_returns (
+    SR_RETURNED_DATE_SK: return_date.id, # FK to date the return occurred.
+    SR_RETURN_TIME_SK: return_time.id, # FK to time-of-day the return was processed.
+    SR_ITEM_SK: ~item.id,
+    SR_CUSTOMER_SK: return_customer.id, # FK to the customer returning the item (may differ from purchaser).
+    SR_RETURN_AMT: return_amount,
+    SR_RETURN_QUANTITY: return_quantity,
+    SR_TICKET_NUMBER: ~ticket_number,
+    SR_STORE_SK: return_store.id, # FK to the store the return was processed at.
+    SR_REASON_SK: return_reason.id, # FK to the return-reason code.
+    SR_NET_LOSS: return_net_loss,
+    raw('''SR_RETURN_TIME_SK IS NOT NULL'''): is_returned, # Derived: true when a return row exists.
+)
+grain (item.id, ticket_number)
+address memory.store_returns;

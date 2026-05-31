@@ -1,6 +1,6 @@
 query_id = "56"
-gen_length = 3293
-preql_size = 437
+gen_length = 3311
+preql_size = 445
 comp_size = 1857
 generated_sql = """
 
@@ -18,7 +18,7 @@ GROUP BY
 thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\"
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_text_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"sales_catalog_sales_unified\".\"CS_BILL_ADDR_SK\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
@@ -30,7 +30,7 @@ WHERE
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\"
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_text_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"sales_store_sales_unified\".\"SS_ADDR_SK\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
@@ -42,7 +42,7 @@ WHERE
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
-    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\"
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_text_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_bill_address_customer_address\" on \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" = \"sales_bill_address_customer_address\".\"CA_ADDRESS_SK\"
@@ -52,7 +52,7 @@ WHERE
     \"sales_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select abundant.\"color_ids\" from abundant where abundant.\"color_ids\" is not null)
 )
 SELECT
-    \"thoughtful\".\"sales_item_name\" as \"sales_item_name\",
+    \"thoughtful\".\"sales_item_text_id\" as \"sales_item_text_id\",
     sum(\"thoughtful\".\"sales_ext_sales_price\") as \"total_sales\"
 FROM
     \"thoughtful\"
@@ -60,5 +60,5 @@ GROUP BY
     1
 ORDER BY 
     \"total_sales\" asc nulls first,
-    \"thoughtful\".\"sales_item_name\" asc nulls first
+    \"thoughtful\".\"sales_item_text_id\" asc nulls first
 LIMIT (100)"""

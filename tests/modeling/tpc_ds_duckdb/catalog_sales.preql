@@ -1,59 +1,67 @@
+# For cross-channel questions, prefer `all_sales` (combines this with physical_sales and web_sales).
+# Catalog channel sales info at (item, order_number) grain: quantity,
+# sales / list / wholesale / extended prices, discount and coupon amounts,
+# net paid (with and without tax), net profit, and sold vs ship dates.
+
+import std.money;
+
 import item as item;
 import date as date;
 import date as ship_date;
 import date as sold_date;
 import time as time;
-import customer as customer;
-import customer as bill_customer;
+import customer as billing_customer; # the bill-to customer's latest/current records
+import customer as bill_customer; # the bill-to customer's latest/current records
 import call_center as call_center;
 import catalog_page as catalog_page;
 import warehouse as warehouse;
-import customer_demographic as bill_customer_demographic;
-import household_demographic as bill_household_demographic;
+import customer_demographic as bill_customer_demographic; # customer demographics recorded on the sale at point of sale (NOT the customer's current profile, which is bill_customer.demographics)
+import household_demographic as bill_household_demographic; # household demographics recorded on the sale at point of sale
 import promotion as promotion;
 import ship_mode as ship_mode;
 import address as customer_address;
 import address as bill_address;
 
-key warehouse_id int;
-key order_number int;
-auto days_to_ship <- date_diff(sold_date.date, ship_date.date, day);
+key warehouse_id int; # Warehouse identifier used in role-played warehouse joins.
+key order_number int; # Catalog order number identifying a single catalog sales transaction.
+auto days_to_ship <- date_diff(sold_date.date, ship_date.date, day); # Number of calendar days between sold and ship dates.
+
 
 # metrics
 properties <order_number, item.id> (
-    quantity int,
-    sales_price float,
-    list_price float,
-    wholesale_cost float,
-    discount_amount float,
-    ext_sales_price numeric(15,2),
-    ext_list_price float,
-    ext_ship_cost float,
-    ext_wholesale_cost float,
-    net_profit float,
-    net_paid float,
-    net_paid_inc_tax float,
-    coupon_amt float,
-    return_amount float?,
-    return_quantity int?,
-    row_counter int,
+    quantity int, # Number of units of the item ordered on this line.
+    sales_price numeric::usd, # Per-unit sales price actually charged.
+    list_price numeric::usd, # Per-unit catalog list price before discounts.
+    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost.
+    discount_amount numeric::usd, # Extended (line-level) discount amount applied to the order line.
+    ext_sales_price numeric(15,2)::usd, # Line-extended sales price (USD).
+    ext_list_price numeric::usd, # Line-extended list price (USD).
+    ext_ship_cost numeric::usd, # Line-extended shipping cost (USD).
+    ext_wholesale_cost numeric::usd, # Line-extended wholesale cost (USD).
+    net_profit numeric::usd, # Net profit reported for the line.
+    net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping.
+    net_paid_inc_tax numeric::usd, # Net amount paid including sales tax.
+    coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
+    return_amount numeric::usd?, # Refund amount if the line was returned.
+    return_quantity int?, # Units returned for this line.
+    row_counter int, # Constant 1, used for unconditional row counts.
 );
 
-auto profit <- list_price - wholesale_cost - discount_amount + ext_sales_price;
+auto profit <- list_price - wholesale_cost - discount_amount + ext_sales_price; # Derived per-line profit.
 
 datasource catalog_sales (
     raw('''1'''): row_counter,
-    CS_SOLD_DATE_SK: ?date.id,
-    CS_SOLD_DATE_SK: ?sold_date.id,
-    CS_SOLD_TIME_SK: ?time.id,
-    CS_SHIP_DATE_SK: ?ship_date.id,
-    CS_SHIP_CUSTOMER_SK: ?customer.id,
-    CS_SHIP_ADDR_SK: ?customer_address.id,
-    CS_BILL_CUSTOMER_SK: ?bill_customer.id,
-    CS_BILL_CDEMO_SK: ?bill_customer_demographic.id,
-    CS_BILL_HDEMO_SK: ?bill_household_demographic.id,
-    CS_BILL_ADDR_SK: ?bill_address.id,
-    CS_ITEM_SK: item.id,
+    CS_SOLD_DATE_SK: ?date.id, # FK to date the order was sold.
+    CS_SOLD_DATE_SK: ?sold_date.id, # Role-played alias of the sold-date FK.
+    CS_SOLD_TIME_SK: ?time.id, # FK to time-of-day the order was placed.
+    CS_SHIP_DATE_SK: ?ship_date.id, # FK to date the order shipped.
+    CS_SHIP_CUSTOMER_SK: ?billing_customer.id, # FK to the customer the order was shipped to.
+    CS_SHIP_ADDR_SK: ?customer_address.id, # FK to the shipping address.
+    CS_BILL_CUSTOMER_SK: ?bill_customer.id, # FK to the customer billed for the order.
+    CS_BILL_CDEMO_SK: ?bill_customer_demographic.id, # FK to the bill-to customer's demographic profile.
+    CS_BILL_HDEMO_SK: ?bill_household_demographic.id, # FK to the bill-to customer's household profile.
+    CS_BILL_ADDR_SK: ?bill_address.id, # FK to the billing address.
+    CS_ITEM_SK: item.id, # FK to the item ordered.
     CS_QUANTITY: quantity,
     CS_LIST_PRICE: list_price,
     CS_SALES_PRICE: sales_price,
@@ -61,16 +69,16 @@ datasource catalog_sales (
     CS_WHOLESALE_COST: wholesale_cost,
     CS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     CS_EXT_DISCOUNT_AMT: discount_amount,
-    CS_CALL_CENTER_SK: ?call_center.id,
-    CS_CATALOG_PAGE_SK: ?catalog_page.id,
+    CS_CALL_CENTER_SK: ?call_center.id, # FK to the call center that took the order.
+    CS_CATALOG_PAGE_SK: ?catalog_page.id, # FK to the catalog page slot the item appeared on.
     CS_EXT_SHIP_COST: ext_ship_cost,
     CS_EXT_SALES_PRICE: ext_sales_price,
     CS_EXT_LIST_PRICE: ext_list_price,
     CS_NET_PROFIT: net_profit,
     CS_COUPON_AMT: coupon_amt,
-    CS_WAREHOUSE_SK: ?warehouse.id,
-    CS_PROMO_SK: ?promotion.id,
-    CS_SHIP_MODE_SK: ?ship_mode.id,
+    CS_WAREHOUSE_SK: ?warehouse.id, # FK to the warehouse fulfilling the order.
+    CS_PROMO_SK: ?promotion.id, # FK to the promotion applied to the line, if any.
+    CS_SHIP_MODE_SK: ?ship_mode.id, # FK to the ship-mode used for the order.
     CS_NET_PAID: net_paid,
     CS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )

@@ -1,14 +1,14 @@
 # Generate counts of (customer, item) pairs that appear only in store sales,
 # only in catalog sales, or in both, within a 12-month window.
-import unified_sales as sales;
+import all_sales as sales;
 
 rowset pair_presence <- where
     sales.sales_channel in ('STORE', 'CATALOG')
     and sales.date.month_seq between 1200 and 1200 + 11
-    and sales.customer.id is not null
+    and sales.billing_customer.id is not null
     and sales.item.id is not null
 select
-    sales.customer.id,
+    sales.billing_customer.id,
     sales.item.id,
     max(
             case

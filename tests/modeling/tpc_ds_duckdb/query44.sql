@@ -11,12 +11,12 @@ FROM
         (SELECT ss_item_sk item_sk,
                 avg(ss_net_profit) rank_col
          FROM store_sales ss1
-         WHERE ss_store_sk = 4
+         WHERE ss_store_sk = 1
          GROUP BY ss_item_sk
          HAVING avg(ss_net_profit) > 0.9*
            (SELECT avg(ss_net_profit) rank_col
             FROM store_sales
-            WHERE ss_store_sk = 4
+            WHERE ss_store_sk = 1
               AND ss_addr_sk IS NULL
             GROUP BY ss_store_sk))V1)V11
    WHERE rnk < 11) asceding,
@@ -29,12 +29,12 @@ FROM
         (SELECT ss_item_sk item_sk,
                 avg(ss_net_profit) rank_col
          FROM store_sales ss1
-         WHERE ss_store_sk = 4
+         WHERE ss_store_sk = 1
          GROUP BY ss_item_sk
          HAVING avg(ss_net_profit) > 0.9*
            (SELECT avg(ss_net_profit) rank_col
             FROM store_sales
-            WHERE ss_store_sk = 4
+            WHERE ss_store_sk = 1
               AND ss_addr_sk IS NULL
             GROUP BY ss_store_sk))V2)V21
    WHERE rnk < 11) descending,

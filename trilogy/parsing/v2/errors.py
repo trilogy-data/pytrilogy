@@ -14,6 +14,12 @@ ERROR_CODES: dict[int, str] = {
         "`where ss.store_id in (select store_id where store.state = 'TN')`, "
         "write `where ss.store.state = 'TN'`."
     ),
+    103: (
+        "Using a GROUP BY clause? Trilogy has no GROUP BY — remove it. Grouping "
+        "is automatic by the non-aggregated fields in your SELECT. To aggregate "
+        "at a different grain than the select, write `agg(x) by dim1, dim2` "
+        "inline (e.g. `sum(sales.amount) by sales.store.id`)."
+    ),
     201: 'Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y`',
     202: "Missing closing semicolon? Statements must be terminated with a semicolon `;`.",
     203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
@@ -58,6 +64,21 @@ def detect_subselect(text: str, pos: int) -> int | None:
     return open_paren
 
 
+_GROUP_BY_RE = re.compile(r"\bgroup\s+by\b", re.IGNORECASE)
+
+
+def detect_group_by(text: str, pos: int) -> int | None:
+    """Locate a SQL-style `GROUP BY` clause at ``pos``. Returns the position of
+    the `group` keyword, or None. Both backends report the error right at the
+    offending `group`, so scan a small window around ``pos``. Shared by both
+    grammar backends."""
+    window = text[max(0, pos - 2) : pos + 12]
+    m = _GROUP_BY_RE.search(window)
+    if m is None:
+        return None
+    return max(0, pos - 2) + m.start()
+
+
 DEFAULT_ERROR_SPAN: int = 30
 
 
@@ -81,10 +102,86 @@ def inject_context_maker(pos: int, text: str, span: int = 40) -> str:
     return f"{lcap}{before}{lpad}???{rpad}{after}{rcap}"
 
 
+_IDENT_RE = re.compile(r"[a-zA-Z_]\w*")
+_FUNC_CALL_RE = re.compile(r"^([a-zA-Z_]\w*)\s*\((.*)\)$", re.DOTALL)
+
+
+_SELECT_BOUNDARY_RE = re.compile(
+    r"(where|having|order|group|limit|as)\b", re.IGNORECASE
+)
+
+
+def _unaliased_select_expr(text: str, pos: int) -> str | None:
+    """Extract the select item that is missing its alias. The two backends
+    report ``pos`` at different offsets (pest at the expr, lark past the next
+    token), so anchor on ``pos`` only to pick the item, then bound it by
+    structure: start at the nearest depth-0 comma / `select`, end at the first
+    depth-0 clause boundary (`,`, `;`, or a where/having/order/group/limit/as
+    keyword). Depth tracking survives commas inside `grouping_id(a, b)`."""
+    head = text[:pos]
+    sel = None
+    for m in re.finditer(r"\bselect\b", head, re.IGNORECASE):
+        sel = m
+    floor = sel.end() if sel else 0
+    start = floor
+    depth = 0
+    for i in range(pos - 1, floor - 1, -1):
+        c = text[i]
+        if c in ")]":
+            depth += 1
+        elif c in "([":
+            depth -= 1
+        elif c == "," and depth <= 0:
+            start = i + 1
+            break
+    depth = 0
+    end = len(text)
+    j = start
+    while j < len(text):
+        c = text[j]
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            depth -= 1
+        elif depth == 0:
+            if c in ",;":
+                end = j
+                break
+            at_word_start = j == start or (
+                not text[j - 1].isalnum() and text[j - 1] != "_"
+            )
+            if at_word_start and _SELECT_BOUNDARY_RE.match(text, j):
+                end = j
+                break
+        j += 1
+    expr = text[start:end].strip().lstrip("-").strip()
+    return expr or None
+
+
+def _suggest_alias(expr: str) -> str:
+    """A safe snake_case alias for an unaliased select expression. For
+    `count(store_sales.ext_sales_price)` -> `ext_sales_price_count`; otherwise a
+    sanitized fallback."""
+    m = _FUNC_CALL_RE.match(expr)
+    if m:
+        func = m.group(1).lower()
+        idents = _IDENT_RE.findall(m.group(2))
+        if idents:
+            return f"{idents[-1]}_{func}".lower()
+        return func
+    sanitized = re.sub(r"[^a-zA-Z0-9]+", "_", expr).strip("_").lower()
+    return sanitized[:40] or "value"
+
+
 def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxException:
+    message = ERROR_CODES[code]
+    if code == 201:
+        expr = _unaliased_select_expr(text, pos)
+        if expr is not None:
+            message += f" Here: `{expr} as {_suggest_alias(expr)}`"
     return InvalidSyntaxException(
         f"Syntax [{code}]: "
-        + ERROR_CODES[code]
+        + message
         + "\nLocation:\n"
         + inject_context_maker(pos, text.replace("\n", " "), DEFAULT_ERROR_SPAN)
     )

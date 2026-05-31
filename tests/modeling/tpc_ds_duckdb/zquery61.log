@@ -1,6 +1,6 @@
 query_id = "61"
-gen_length = 3442
-preql_size = 610
+gen_length = 3538
+preql_size = 621
 comp_size = 1279
 generated_sql = """
 
@@ -16,11 +16,11 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"
     LEFT OUTER JOIN \"memory\".\"promotion\" as \"ss_promotion_promotion\" on \"ss_store_sales\".\"SS_PROMO_SK\" = \"ss_promotion_promotion\".\"P_PROMO_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"ss_customer_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"ss_billing_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"ss_billing_customer_address_customer_address\" on \"ss_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ss_date_date\".\"D_YEAR\" = 1998 and \"ss_date_date\".\"D_MOY\" = 11 and \"ss_item_items\".\"I_CATEGORY\" = 'Jewelry' and \"ss_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"ss_store_store\".\"S_GMT_OFFSET\" = -5
+    \"ss_date_date\".\"D_YEAR\" = 1998 and \"ss_date_date\".\"D_MOY\" = 11 and \"ss_item_items\".\"I_CATEGORY\" = 'Jewelry' and \"ss_billing_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"ss_store_store\".\"S_GMT_OFFSET\" = -5
 ),
 vacuous as (
 SELECT
@@ -30,10 +30,10 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"ss_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"ss_customer_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"ss_billing_customer_customers\" on \"ss_store_sales\".\"SS_CUSTOMER_SK\" = \"ss_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"ss_billing_customer_address_customer_address\" on \"ss_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ss_date_date\".\"D_YEAR\" = 1998 and \"ss_date_date\".\"D_MOY\" = 11 and \"ss_item_items\".\"I_CATEGORY\" = 'Jewelry' and \"ss_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"ss_store_store\".\"S_GMT_OFFSET\" = -5
+    \"ss_date_date\".\"D_YEAR\" = 1998 and \"ss_date_date\".\"D_MOY\" = 11 and \"ss_item_items\".\"I_CATEGORY\" = 'Jewelry' and \"ss_billing_customer_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"ss_store_store\".\"S_GMT_OFFSET\" = -5
 ),
 uneven as (
 SELECT

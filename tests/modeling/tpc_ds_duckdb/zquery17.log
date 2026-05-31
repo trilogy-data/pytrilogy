@@ -20,7 +20,7 @@ vacuous as (
 SELECT
     \"analysis_catalog_sales\".\"CS_QUANTITY\" as \"analysis_catalog_quantity\",
     \"analysis_item_items\".\"I_ITEM_DESC\" as \"analysis_item_desc\",
-    \"analysis_item_items\".\"I_ITEM_ID\" as \"analysis_item_name\",
+    \"analysis_item_items\".\"I_ITEM_ID\" as \"analysis_item_text_id\",
     \"analysis_store_store\".\"S_STATE\" as \"analysis_store_state\"
 FROM
     \"memory\".\"store_sales\" as \"analysis_store_sales\"
@@ -44,7 +44,7 @@ GROUP BY
 yummy as (
 SELECT
     \"analysis_item_items\".\"I_ITEM_DESC\" as \"analysis_item_desc\",
-    \"analysis_item_items\".\"I_ITEM_ID\" as \"analysis_item_name\",
+    \"analysis_item_items\".\"I_ITEM_ID\" as \"analysis_item_text_id\",
     \"analysis_store_returns\".\"SR_RETURN_QUANTITY\" as \"analysis_store_return_quantity\",
     \"analysis_store_sales\".\"SS_QUANTITY\" as \"analysis_store_quantity\",
     \"analysis_store_store\".\"S_STATE\" as \"analysis_store_state\"
@@ -71,7 +71,7 @@ GROUP BY
 concerned as (
 SELECT
     \"vacuous\".\"analysis_item_desc\" as \"analysis_item_desc\",
-    \"vacuous\".\"analysis_item_name\" as \"analysis_item_name\",
+    \"vacuous\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
     \"vacuous\".\"analysis_store_state\" as \"analysis_store_state\",
     avg(\"vacuous\".\"analysis_catalog_quantity\") as \"_virt_agg_avg_1688371525139287\",
     avg(\"vacuous\".\"analysis_catalog_quantity\") as \"catalog_sales_quantityave\",
@@ -87,7 +87,7 @@ GROUP BY
 juicy as (
 SELECT
     \"yummy\".\"analysis_item_desc\" as \"analysis_item_desc\",
-    \"yummy\".\"analysis_item_name\" as \"analysis_item_name\",
+    \"yummy\".\"analysis_item_text_id\" as \"analysis_item_text_id\",
     \"yummy\".\"analysis_store_state\" as \"analysis_store_state\",
     avg(\"yummy\".\"analysis_store_quantity\") as \"_virt_agg_avg_7518273379920258\",
     avg(\"yummy\".\"analysis_store_quantity\") as \"store_sales_quantityave\",
@@ -106,7 +106,7 @@ GROUP BY
     2,
     3)
 SELECT
-    coalesce(\"concerned\".\"analysis_item_name\",\"juicy\".\"analysis_item_name\") as \"analysis_item_name\",
+    coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") as \"analysis_item_text_id\",
     coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") as \"analysis_item_desc\",
     coalesce(\"concerned\".\"analysis_store_state\",\"juicy\".\"analysis_store_state\") as \"analysis_store_state\",
     coalesce(\"juicy\".\"store_sales_quantitycount\",0) as \"store_sales_quantitycount\",
@@ -125,7 +125,7 @@ FROM
     \"concerned\"
     INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_name\" = \"juicy\".\"analysis_item_name\" AND \"concerned\".\"analysis_store_state\" is not distinct from \"juicy\".\"analysis_store_state\"
 ORDER BY 
-    coalesce(\"concerned\".\"analysis_item_name\",\"juicy\".\"analysis_item_name\") asc nulls first,
+    coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") asc nulls first,
     coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") asc nulls first,
     coalesce(\"concerned\".\"analysis_store_state\",\"juicy\".\"analysis_store_state\") asc nulls first
 LIMIT (100)"""

@@ -1,18 +1,18 @@
 query_id = "40"
-gen_length = 1807
-preql_size = 1082
+gen_length = 1844
+preql_size = 1088
 comp_size = 1047
 generated_sql = """
 SELECT
     \"catalog_sales_warehouse_warehouse\".\"w_state\" as \"catalog_sales_warehouse_state\",
-    \"catalog_sales_item_items\".\"I_ITEM_ID\" as \"catalog_sales_item_name\",
+    \"catalog_sales_item_items\".\"I_ITEM_ID\" as \"catalog_sales_item_text_id\",
     sum(CASE
 	WHEN cast(\"catalog_sales_sold_date_date\".\"D_DATE\" as date) < :cutoff THEN \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" - coalesce(\"catalog_returns_catalog_returns\".\"CR_REFUNDED_CASH\",0.0)
-	ELSE 0.0
+	ELSE cast(0.0 as numeric)
 	END) as \"sales_before\",
     sum(CASE
 	WHEN cast(\"catalog_sales_sold_date_date\".\"D_DATE\" as date) >= :cutoff THEN \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" - coalesce(\"catalog_returns_catalog_returns\".\"CR_REFUNDED_CASH\",0.0)
-	ELSE 0.0
+	ELSE cast(0.0 as numeric)
 	END) as \"sales_after\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"

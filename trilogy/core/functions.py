@@ -82,11 +82,16 @@ def get_unnest_output_type(args: list[Any]) -> CONCRETE_TYPES:
 def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
     non_null = [x for x in args if not x == MagicConstants.NULL]
     processed = [arg_to_datatype(x) for x in non_null if x]
-    if not len(set(processed)) == 1:
+    if not processed:
+        return DataType.UNKNOWN
+    # Bucket by base family so that traits + parameterized variants of the
+    # same family (e.g. numeric(15,2)::usd, numeric::usd) collapse together.
+    reps = _representative_types(processed)
+    if len(reps) != 1:
         raise InvalidSyntaxException(
             f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)} for {str(args)}"
         )
-    return processed[0]
+    return reps[0]
 
 
 def get_transform_output_type(args: list[Any]) -> CONCRETE_TYPES:
@@ -147,13 +152,23 @@ def _is_literal_constant(expr: Any) -> bool:
 def _representative_types(types: list[CONCRETE_TYPES]) -> list[CONCRETE_TYPES]:
     """One representative per distinct base DataType, preferring richer
     (parameterized) types like NumericType over their bare DataType enum."""
-    by_base: dict[DataType, CONCRETE_TYPES] = {}
+
+    def _bucket(t: CONCRETE_TYPES) -> Any:
+        # Unwrap traits — they are pure annotations and should bucket with
+        # their underlying type. Then collapse parameterized wrappers
+        # (NumericType, ArrayType, ...) down to their base DataType enum so
+        # NumericType(15,2) and bare DataType.NUMERIC share a bucket.
+        inner = t.type if isinstance(t, TraitDataType) else t
+        return inner.data_type if not isinstance(inner, DataType) else inner
+
+    by_base: dict[Any, CONCRETE_TYPES] = {}
     for t in types:
-        existing = by_base.get(t.data_type)
+        key = _bucket(t)
+        existing = by_base.get(key)
         if existing is None or (
             isinstance(existing, DataType) and not isinstance(t, DataType)
         ):
-            by_base[t.data_type] = t
+            by_base[key] = t
     return list(by_base.values())
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -24,9 +25,9 @@ from trilogy.ai.models import (
     LLMToolCall,
     LLMToolDefinition,
 )
-from trilogy.ai.prompts import get_trilogy_prompt
 from trilogy.ai.providers.anthropic import AnthropicProvider
 from trilogy.ai.providers.base import LLMProvider
+from trilogy.ai.providers.deepseek import DeepSeekProvider
 from trilogy.ai.providers.google import GoogleProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.ai.providers.openrouter import OpenRouterProvider
@@ -34,6 +35,7 @@ from trilogy.execution.config import AgentConfig, apply_env_vars
 from trilogy.scripts.agent_tools import (
     ALL_TOOLS,
     SHOW_MESSAGE_TOOL,
+    TODO_TOOL,
     TOOL_HANDLERS,
     TRILOGY_TOOL,
     AgentState,
@@ -51,6 +53,7 @@ PROVIDER_DEFAULT_ENV: dict[Provider, str] = {
     Provider.OPENAI: "OPENAI_API_KEY",
     Provider.GOOGLE: "GOOGLE_API_KEY",
     Provider.OPENROUTER: "OPENROUTER_API_KEY",
+    Provider.DEEPSEEK: "DEEPSEEK_API_KEY",
 }
 
 PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
@@ -58,10 +61,11 @@ PROVIDER_CLASSES: dict[Provider, Callable[..., LLMProvider]] = {
     Provider.OPENAI: OpenAIProvider,
     Provider.GOOGLE: GoogleProvider,
     Provider.OPENROUTER: OpenRouterProvider,
+    Provider.DEEPSEEK: DeepSeekProvider,
 }
 
 
-def get_agent_instructions(include_show: bool = True) -> str:
+def get_agent_instructions(include_show: bool = True, include_todo: bool = True) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
 Available tools:
@@ -83,15 +87,15 @@ Available tools:
       fact file (e.g. `sales.preql`) ALSO lists all dimensions it
       imports (`product.*`, `date.*`, `customer.*`, …) in the same output.
       You do NOT need to explore each dimension separately. Prefer this over
-      `read_file` on a model file. Use `--grep` (repeatable) to filter.
+      reading the raw model file. Use `--regex` (repeatable, Python regex) to filter.
       Trilogy auto-resolves joins from the model's declared relationships.
       Join discovery is not needed;
     write `select store_sales.date_dim.year, ...;` and Trilogy
       handles the join. There is no manual JOIN clause in this language.
+    * ["file", "read", "<path>"] — read a file's raw contents (rarely needed;
+      prefer explore for model files).
     * Only documented subcommands work — do NOT invent `list`, `raw`, `shell`,
-      etc. `trilogy agent-info` lists everything that exists.
-- read_file(path): return the text content of a file; use this for
-  code understanding; prefer explore for usage.
+      `read_file`, etc. `trilogy agent-info` lists everything that exists.
 
 To create or overwrite a file (every .preql query file you write), use
 `trilogy file write <path> --content <full body>`. Pass the complete file
@@ -101,23 +105,31 @@ are rejected with the parse error. Re-issue the call with the COMPLETE body.
 - list_files(path=".", recursive=True): list files in the workspace.
   Call this when you are unsure what files exist (e.g. before guessing a
   path like `./store_sales.preql` — the model files live under `raw/`).
-  Skips noise (`__pycache__`, `.duckdb`, `_worker_*`).
+  Skips noise (`__pycache__`, `.duckdb`, `_worker_*`)."""
+    if include_todo:
+        base += """
 - todo(action, id=None, description=None): scratch TODO list, for multi-step
   tasks ONLY. Actions: "add" (description: one string, or a list to add
   several), "complete"/"remove" (id: one id or a list), "list". Most tasks
-  finish without ever calling this.
-- return_control_to_user(message): hand control back to the user. Open TODOs
-  are auto-discarded so you never need to clean them up just to exit.
+  finish without ever calling this."""
+    base += """
+- return_control_to_user(message): indicate you are done with the task."""
+    if include_todo:
+        base += " Open TODOs are auto-discarded so you never need to clean them up just to exit."
+    base += """
 
 Discipline:
 1. Bias toward action and use of the trilogy CLI. Never repeat exploration you have already done.
-2. Skip TODOs unless the task has 3+ truly independent steps. A single-query
-   task does not. Never use a TODO entry as a substitute for doing the work.
-3. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
-   the task is completely finished.
-4. If a tool call fails or returns the same error you have already seen, do
+2. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
+   the task is completely finished. Avoid reading raw files; explore will give you
+   richer content.
+3. If a tool call fails or returns the same error you have already seen, do
    NOT immediately re-issue the same call. First emit a short plain-text
    message naming the failure and what you will try differently."""
+    if include_todo:
+        base += """
+4. Skip TODOs unless the task has 3+ truly independent steps. A single-query
+   task does not. Never use a TODO entry as a substitute for doing the work."""
     if include_show:
         base += """
 5. Use `show_message` rarely — only for a genuine status change, never to
@@ -125,29 +137,38 @@ Discipline:
     return base
 
 
-# The Trilogy language reference has one source of truth, get_trilogy_prompt()
-# (also used by `trilogy agent-info`); never paraphrase it here.
-_TRILOGY_PROMPT_SECTION = get_trilogy_prompt(
-    intro=(
-        "When you write a Trilogy query file (.preql), follow this syntax "
-        "reference exactly — Trilogy is NOT SQL:"
-    )
-)
-SYSTEM_PROMPT = get_agent_instructions(True) + "\n\n" + _TRILOGY_PROMPT_SECTION
-QUIET_SYSTEM_PROMPT = get_agent_instructions(False) + "\n\n" + _TRILOGY_PROMPT_SECTION
+# The Trilogy language reference is NOT inlined here — discipline rule #1
+# directs the agent to call `trilogy agent-info` first, which returns the
+# canonical reference. Inlining duplicated ~26KB of prompt tokens per run.
+SYSTEM_PROMPT = get_agent_instructions(True)
+QUIET_SYSTEM_PROMPT = get_agent_instructions(False)
+QUIET_NO_TODO_SYSTEM_PROMPT = get_agent_instructions(False, include_todo=False)
+NO_TODO_SYSTEM_PROMPT = get_agent_instructions(True, include_todo=False)
 
 
 MAX_SUBMIT_KICKBACKS = 2
 
+# Exit code used when the agent stops because it ran out of iterations rather
+# than because of a real crash. Distinct from the default ClickException exit
+# code (1) so callers (the eval scorer in particular) can distinguish "agent
+# gave up after N turns" from "agent process died unexpectedly".
+EXIT_ITERATION_EXHAUSTED = 2
+
 REVIEWER_SYSTEM_PROMPT = (
-    "You are reviewing whether an AI agent actually finished its task. "
-    "You will receive the original task and the agent's tool-use transcript. "
-    "Reply with exactly 'DONE' or 'NOT_DONE' on the first line, then one or "
-    "two sentences explaining why. Be strict — if the agent's transcript "
-    "shows it (a) self-noted uncertainty, (b) didn't implement a clause the "
-    "task explicitly required, (c) only wrote a query that runs cleanly but "
-    "doesn't match the requested logic, or (d) cut off mid-thought, reply "
-    "NOT_DONE. Otherwise reply DONE."
+    "You check ONE narrow thing: did the agent ITSELF signal it was not finished "
+    "when it called return_control_to_user? You receive the task and the agent's "
+    "tool-use transcript. Reply with exactly 'DONE' or 'NOT_DONE' on the first "
+    "line, then one sentence quoting the agent's own words.\n"
+    "Reply NOT_DONE only when the agent's OWN final message shows it was still "
+    "working: it narrates a next step it hasn't taken ('now I'll...', 'let me...', "
+    "'I still need to...'), self-notes unresolved uncertainty it is investigating, "
+    "reports an error it is still chasing, or cuts off mid-thought.\n"
+    "Otherwise reply DONE. Do NOT grade the work. You have NO reference data and "
+    "must not judge whether the query is correct, complete, returns the right "
+    "rows, or implements every clause. If the agent states it finished and the "
+    "query ran, that is DONE — even if you suspect the output is wrong or a clause "
+    "looks missing. Trust the agent's self-report of completion; catch only "
+    "explicit 'still working' signals."
 )
 
 REVIEWER_TRANSCRIPT_MSG_LIMIT = 1200
@@ -249,17 +270,122 @@ def _log_event(log_path: Path | None, event: dict[str, Any]) -> None:
         f.write(json.dumps(event, default=str) + "\n")
 
 
+_CONV_WRAP_WIDTH = 80
+
+
+def _wrap_value_lines(text: str, indent: int, prefix: str = "") -> list[str]:
+    """Wrap ``text`` to ``_CONV_WRAP_WIDTH`` at the given indent, preserving
+    embedded newlines (each input line wraps independently). ``prefix`` is
+    applied to the first physical line only; continuation lines align under
+    the start of the prefix's content."""
+    pad = " " * indent
+    out: list[str] = []
+    for line in text.splitlines() or [""]:
+        first = pad + prefix
+        cont = pad + " " * len(prefix)
+        if len(first + line) <= _CONV_WRAP_WIDTH:
+            out.append(first + line)
+            continue
+        wrapped = textwrap.wrap(
+            line,
+            width=_CONV_WRAP_WIDTH,
+            initial_indent=first,
+            subsequent_indent=cont,
+            break_long_words=False,
+            break_on_hyphens=False,
+            replace_whitespace=False,
+            drop_whitespace=False,
+        )
+        out.extend(wrapped or [first + line])
+    return out
+
+
+def _format_arg(key: str, value: Any, indent: int) -> list[str]:
+    """Render one tool-call argument as wrapped lines. Lists/dicts expand
+    one-item-per-line; scalars inline when short, block-style when long."""
+    pad = " " * indent
+    if isinstance(value, list):
+        if not value:
+            return [f"{pad}{key}: []"]
+        out = [f"{pad}{key}:"]
+        for item in value:
+            item_str = item if isinstance(item, str) else json.dumps(item)
+            out.extend(_wrap_value_lines(item_str, indent + 2, prefix="- "))
+        return out
+    if isinstance(value, dict):
+        if not value:
+            return [f"{pad}{key}: {{}}"]
+        out = [f"{pad}{key}:"]
+        for k, v in value.items():
+            out.extend(_format_arg(k, v, indent + 2))
+        return out
+    sval = value if isinstance(value, str) else json.dumps(value)
+    inline = f"{pad}{key}: {sval}"
+    if "\n" not in sval and len(inline) <= _CONV_WRAP_WIDTH:
+        return [inline]
+    return [f"{pad}{key}: |", *_wrap_value_lines(sval, indent + 2)]
+
+
+def _format_tool_call(tc: dict) -> list[str]:
+    name = tc.get("name", "?")
+    args = tc.get("arguments") or {}
+    lines = [f"[tool_call] {name}"]
+    if isinstance(args, dict):
+        for key, value in args.items():
+            lines.extend(_format_arg(key, value, indent=2))
+    else:
+        lines.extend(_wrap_value_lines(json.dumps(args), indent=2))
+    return lines
+
+
+def _try_parse_tool_result(content: str) -> dict | None:
+    """Detect content of the form ``{"tool": <name>, "result": <string>}``
+    that ``_run_turn`` writes for every tool result. Returns the parsed payload
+    or None — None falls back to printing the raw content verbatim."""
+    s = content.strip()
+    if not (s.startswith("{") and s.endswith("}")):
+        return None
+    try:
+        data = json.loads(s)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict) or "tool" not in data or "result" not in data:
+        return None
+    return data
+
+
+def _format_tool_result(payload: dict) -> list[str]:
+    """Render a parsed tool-result payload as a multi-line block. The result
+    string (which often has embedded newlines and can be tens of KB after
+    truncation) is wrapped at 80 cols so the dump stays scannable."""
+    name = payload.get("tool", "?")
+    result = payload.get("result", "")
+    sresult = result if isinstance(result, str) else json.dumps(result)
+    lines = [f"[tool_result] {name}"]
+    lines.extend(_wrap_value_lines(sresult, indent=2))
+    return lines
+
+
 def _dump_conversation(conv: Conversation, log_path: Path) -> None:
     """Write the full final message list to a `<log>.conversation.txt` sidecar —
-    every message in order, with model_info (tool calls) shown — so the exact
-    history sent to the model can be inspected for append bugs."""
+    every message in order, with tool calls pretty-printed (one per line,
+    wrapped at 80 cols) so the exact history sent to the model can be
+    inspected for append bugs without scrolling sideways."""
     dump_path = log_path.with_suffix(".conversation.txt")
     blocks: list[str] = []
     for i, msg in enumerate(conv.messages):
         block = [f"===== message {i} [{msg.role}] ====="]
-        block.append(msg.content if msg.content else "(empty content)")
-        if msg.model_info:
-            block.append(f"[model_info] {json.dumps(msg.model_info, default=str)}")
+        payload = _try_parse_tool_result(msg.content) if msg.content else None
+        if payload is not None:
+            block.extend(_format_tool_result(payload))
+        else:
+            block.append(msg.content if msg.content else "(empty content)")
+        info = msg.model_info or {}
+        for tc in info.get("tool_calls", []) or []:
+            block.extend(_format_tool_call(tc))
+        extra = {k: v for k, v in info.items() if k != "tool_calls"}
+        if extra:
+            block.append("[model_info] " + json.dumps(extra, default=str))
         blocks.append("\n".join(block))
     dump_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
 
@@ -337,8 +463,9 @@ def _run_turn(
     provider: LLMProvider | None = None,
     original_task: str = "",
     validate_completion: bool = True,
+    require_tool: bool = False,
 ) -> None:
-    options = LLMRequestOptions(tools=tools or ALL_TOOLS, require_tool=True)
+    options = LLMRequestOptions(tools=tools or ALL_TOOLS, require_tool=require_tool)
     for _ in range(max_iterations):
         with with_status("Thinking"):
             response = conv.get_response(options)
@@ -421,9 +548,11 @@ def _run_turn(
                         )
                         continue
                 return
-    raise click.ClickException(
+    exc = click.ClickException(
         f"Agent exhausted {max_iterations} iterations without returning control."
     )
+    exc.exit_code = EXIT_ITERATION_EXHAUSTED
+    raise exc
 
 
 @argument("command", type=str)
@@ -499,11 +628,19 @@ def agent(
     cfg = runtime.agent
     actual_quiet = cfg.quiet if quiet is None else quiet
     llm_provider = _build_provider(cfg, model, provider)
+    excluded_tool_names: set[str] = set()
     if actual_quiet:
-        tools = [t for t in ALL_TOOLS if t.name != SHOW_MESSAGE_TOOL.name]
+        excluded_tool_names.add(SHOW_MESSAGE_TOOL.name)
+    if cfg.disable_todo:
+        excluded_tool_names.add(TODO_TOOL.name)
+    tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
+    if actual_quiet and cfg.disable_todo:
+        system_prompt = QUIET_NO_TODO_SYSTEM_PROMPT
+    elif actual_quiet:
         system_prompt = QUIET_SYSTEM_PROMPT
+    elif cfg.disable_todo:
+        system_prompt = NO_TODO_SYSTEM_PROMPT
     else:
-        tools = ALL_TOOLS
         system_prompt = SYSTEM_PROMPT
 
     log_path: Path | None = None
@@ -537,6 +674,7 @@ def agent(
             tools=tools,
             provider=llm_provider,
             original_task=command,
+            require_tool=cfg.force_tool_choice,
         )
     finally:
         if log_path:
@@ -570,6 +708,7 @@ def agent(
                 tools=tools,
                 provider=llm_provider,
                 original_task=next_command,
+                require_tool=cfg.force_tool_choice,
             )
         finally:
             if log_path:

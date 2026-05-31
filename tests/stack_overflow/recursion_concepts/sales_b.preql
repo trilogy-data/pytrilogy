@@ -1,0 +1,20 @@
+# Second surrogate-keyed fact with a *different* surrogate key, sharing the
+# date dimension. Merging the two date keys is what lets a cross-model additive
+# aggregate be grouped by a multi-key grain.
+import date_dim as sold_date;
+
+key surrogate_b numeric;
+
+properties <surrogate_b, sold_date.date_sk> (
+    ext_sales_price numeric?,
+);
+
+datasource sales_b (
+    sb_surrogate: surrogate_b,
+    sb_date_sk: sold_date.date_sk,
+    sb_week_seq: sold_date.week_seq,
+    sb_dow: sold_date.dow,
+    sb_ext_sales_price: ?ext_sales_price,
+)
+grain (surrogate_b, sold_date.date_sk)
+address sales_b;

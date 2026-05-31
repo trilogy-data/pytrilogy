@@ -18,8 +18,17 @@ from typing import Callable
 
 from trilogy.ai.models import LLMToolDefinition
 from trilogy.scripts.display_core import print_info
+from trilogy.scripts.file_helpers import preql_description
 
 MARKER_TEMPLATE = "\n...[truncated {n} bytes]...\n"
+
+# Tighter cap applies ONLY to broad `trilogy explore` calls — those without
+# any `--regex` filter, or those asking for `--show all`. Both can dump
+# 30-40KB of every concept in every imported namespace, which the agent then
+# has to skim rather than commit to a draft. With a regex (any regex), the
+# call is already deliberately narrowed; let it use the general budget so
+# targeted lookups don't get truncated mid-output. See ``_explore_output_cap``.
+_TRILOGY_EXPLORE_BROAD_CAP = 8192
 
 
 def truncate_middle(text: str, limit: int) -> str:
@@ -90,24 +99,14 @@ TRILOGY_TOOL = LLMToolDefinition(
     },
 )
 
-READ_FILE_TOOL = LLMToolDefinition(
-    name="read_file",
-    description="Return the text content of the file at `path`.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "path": {"type": "string", "description": "Path of the file to read."},
-        },
-        "required": ["path"],
-    },
-)
-
 LIST_FILES_TOOL = LLMToolDefinition(
     name="list_files",
     description=(
         "List files in the workspace (default: current directory, recursive). "
         "Use this when unsure what files exist — for example, before assuming "
-        "a path like './store_sales.preql' (the model files live under raw/)."
+        "a path like './store_sales.preql' (the model files live under raw/). "
+        "For .preql files, a leading `#` comment block at the top of the file "
+        "is shown beneath the path as a one-line description (truncated)."
     ),
     input_schema={
         "type": "object",
@@ -178,7 +177,6 @@ RETURN_CONTROL_TOOL = LLMToolDefinition(
 ALL_TOOLS: list[LLMToolDefinition] = [
     SHOW_MESSAGE_TOOL,
     TRILOGY_TOOL,
-    READ_FILE_TOOL,
     LIST_FILES_TOOL,
     TODO_TOOL,
     RETURN_CONTROL_TOOL,
@@ -208,6 +206,13 @@ _LIST_FILES_SKIP_PREFIXES = ("_worker_",)
 _LIST_FILES_SKIP_SUFFIXES = (".duckdb", ".pyc")
 _LIST_FILES_MAX_ENTRIES = 500
 
+# Description-rendering constants live in the shared helper so ``trilogy
+# file list`` and the agent's ``list_files`` use identical truncation. The
+# `_`-prefixed re-exports below preserve the names existing agent tests
+# already reference.
+_LIST_FILES_DESC_LIMIT = preql_description.LIST_FILES_DESC_LIMIT
+_LIST_FILES_DESC_PREFIX = preql_description.LIST_FILES_DESC_PREFIX
+
 
 def _should_skip_entry(name: str) -> bool:
     if name in _LIST_FILES_SKIP_DIRS:
@@ -217,6 +222,12 @@ def _should_skip_entry(name: str) -> bool:
     if any(name.endswith(s) for s in _LIST_FILES_SKIP_SUFFIXES):
         return True
     return False
+
+
+def _append_preql_description(entries: list[str], path: Path) -> None:
+    line = preql_description.format_preql_description(path)
+    if line:
+        entries.append(line)
 
 
 def handle_list_files(state: AgentState, args: dict) -> str:
@@ -232,6 +243,7 @@ def handle_list_files(state: AgentState, args: dict) -> str:
     if not root.is_dir():
         return f"list_files error: not a directory: {path}"
     entries: list[str] = []
+    file_count = 0
     truncated = False
     if recursive:
         for current, dirs, files in os.walk(root):
@@ -242,7 +254,9 @@ def handle_list_files(state: AgentState, args: dict) -> str:
                     continue
                 rel_path = (rel / name).as_posix() if str(rel) != "." else name
                 entries.append(rel_path)
-                if len(entries) >= _LIST_FILES_MAX_ENTRIES:
+                _append_preql_description(entries, Path(current) / name)
+                file_count += 1
+                if file_count >= _LIST_FILES_MAX_ENTRIES:
                     truncated = True
                     break
             if truncated:
@@ -253,24 +267,13 @@ def handle_list_files(state: AgentState, args: dict) -> str:
                 continue
             suffix = "/" if child.is_dir() else ""
             entries.append(child.name + suffix)
-    if not entries:
+            if child.is_file():
+                _append_preql_description(entries, child)
+            file_count += 1
+    if file_count == 0:
         return f"(no files under {path})"
-    header = f"files under {path} ({len(entries)}{'+' if truncated else ''}):\n"
+    header = f"files under {path} ({file_count}{'+' if truncated else ''}):\n"
     return header + "\n".join(entries)
-
-
-def handle_read_file(state: AgentState, args: dict) -> str:
-    path = args.get("path")
-    if not isinstance(path, str) or not path:
-        return "read_file error: 'path' must be a non-empty string."
-    target = Path(path)
-    if not target.is_file():
-        return f"read_file error: no such file: {path}"
-    try:
-        text = target.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        return f"read_file error: {exc}"
-    return truncate_middle(text, state.tool_output_limit)
 
 
 def _first_non_flag_arg(raw_args: list[str]) -> str | None:
@@ -288,6 +291,27 @@ def _first_non_flag_arg(raw_args: list[str]) -> str | None:
             continue
         return arg
     return None
+
+
+def _explore_output_cap(
+    subcommand: str | None, raw_args: list[str], general_limit: int
+) -> int:
+    """Return the truncation limit for a `trilogy explore` call. Broad calls
+    (no `--regex` filter, or `--show all`) get the tighter cap; narrow regex
+    calls get the general budget so a 12KB targeted result isn't sliced
+    mid-output. Non-explore subcommands always get the general budget."""
+    if subcommand != "explore":
+        return general_limit
+    has_regex = "--regex" in raw_args
+    asks_for_all = False
+    for i, a in enumerate(raw_args):
+        if a == "--show" and i + 1 < len(raw_args) and raw_args[i + 1] == "all":
+            asks_for_all = True
+            break
+    is_broad = not has_regex or asks_for_all
+    if is_broad:
+        return min(general_limit, _TRILOGY_EXPLORE_BROAD_CAP)
+    return general_limit
 
 
 def _trilogy_file_write_hint(raw_args: list[str]) -> str | None:
@@ -359,11 +383,17 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
         return "trilogy error: subprocess timed out after 600s."
     # `agent-info` is the language reference + CLI docs and must arrive whole —
     # middle-truncating it eats the syntax rules the agent needs to write queries.
-    if _first_non_flag_arg(raw_args) == "agent-info":
+    # `explore` gets a tighter cap ONLY when the call is broad (no --regex, or
+    # --show all) — those can dump 30-40KB of every concept in every imported
+    # namespace. Narrow regex calls already targeted the question; they use
+    # the full general budget so a 12KB result doesn't get sliced mid-output.
+    subcommand = _first_non_flag_arg(raw_args)
+    if subcommand == "agent-info":
         stdout = completed.stdout or ""
         stderr = completed.stderr or ""
     else:
-        stdout = truncate_middle(completed.stdout or "", state.tool_output_limit)
+        out_limit = _explore_output_cap(subcommand, raw_args, state.tool_output_limit)
+        stdout = truncate_middle(completed.stdout or "", out_limit)
         stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
     return (
         f"exit_code: {completed.returncode}\n"
@@ -449,7 +479,6 @@ def handle_return_control(state: AgentState, args: dict) -> str:
 TOOL_HANDLERS: dict[str, Callable[[AgentState, dict], str]] = {
     SHOW_MESSAGE_TOOL.name: handle_show_message,
     TRILOGY_TOOL.name: handle_trilogy,
-    READ_FILE_TOOL.name: handle_read_file,
     LIST_FILES_TOOL.name: handle_list_files,
     TODO_TOOL.name: handle_todo,
     RETURN_CONTROL_TOOL.name: handle_return_control,

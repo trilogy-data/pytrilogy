@@ -31,6 +31,7 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
@@ -410,6 +411,34 @@ class CTE:
     def group_concepts(self) -> List[BuildConcept]:
         rollup_addresses = {c.address for c in self.rollup_concepts}
 
+        def has_local_aggregate(c: BuildConcept) -> bool:
+            # does the rendered column value of `c` contain an aggregate computed
+            # in this CTE? A concept sourced from a parent is a plain column here,
+            # so any aggregate in its lineage was already materialized upstream.
+            if len(self.source_map.get(c.address, [])) > 0:
+                return False
+            if c.derivation == Derivation.AGGREGATE:
+                return True
+            if (
+                c.purpose == Purpose.METRIC
+                and isinstance(c.lineage, BuildFunction)
+                and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+            ):
+                return True
+            # only the filtered content renders as the value; the where condition
+            # (which may aggregate) becomes a predicate, not the column expression
+            if c.derivation == Derivation.FILTER and isinstance(
+                c.lineage, BuildFilterItem
+            ):
+                return any(
+                    has_local_aggregate(x) for x in c.lineage.content_concept_arguments
+                )
+            if c.derivation == Derivation.BASIC and c.lineage:
+                return any(
+                    has_local_aggregate(x) for x in c.lineage.rendered_concept_arguments
+                )
+            return False
+
         def check_is_not_in_group(c: BuildConcept):
             if c.address in rollup_addresses:
                 return True
@@ -441,6 +470,11 @@ class CTE:
                     and c.lineage.operator == FunctionType.GROUP
                 ):
                     return check_is_not_in_group(c.lineage.concept_arguments[0])
+                # a basic expression mixing a group key with a locally-computed
+                # aggregate (e.g. a ratio `a / sum(x)`) contains an aggregate and
+                # cannot appear in GROUP BY
+                if has_local_aggregate(c):
+                    return True
                 return False
             if c.purpose == Purpose.METRIC:
                 return True

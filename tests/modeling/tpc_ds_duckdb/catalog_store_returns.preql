@@ -1,3 +1,11 @@
+# Combined info for store-sales, store-returns, and catalog-sales line
+# items keyed by a single shared (customer, item) so the same customer's
+# activity across all three tables can be queried as one model. Exposes
+# store quantity / net_profit, store return quantity / amount / net_loss,
+# and catalog quantity / net_profit.
+
+import std.money;
+
 import item as item;
 import customer as customer;
 import store as store;
@@ -6,25 +14,15 @@ import date as store_return_date;
 import date as catalog_date;
 import time as time;
 
-# Cross-channel correlation source for q17/q25:
-# "items the same customer bought at a store, returned at a store, and also
-#  bought via catalog". A single `customer` concept is shared across all three
-# physical tables — trilogy's cross-source join on (customer, item) then
-# constrains the customer match without any per-query `merge` declarations.
-#
-# NB: this conflates SS_CUSTOMER_SK / SR_CUSTOMER_SK / CS_BILL_CUSTOMER_SK,
-# which is fine for q17/q25 but not for q29 (q29's original SQL explicitly
-# requires SS_CUSTOMER_SK = SR_CUSTOMER_SK, which a single-concept model
-# can't express). q29 stays on the merge form for now.
-key ticket_number int;
-key catalog_order_number int;
+key ticket_number int; # Store-sale ticket number identifying a single in-store transaction.
+key catalog_order_number int; # Catalog order number identifying a single catalog sales transaction.
 
 datasource store_sales (
-    SS_SOLD_DATE_SK: ?store_sale_date.id,
-    SS_CUSTOMER_SK: customer.id,
+    SS_SOLD_DATE_SK: ?store_sale_date.id, # FK to date the store sale occurred.
+    SS_CUSTOMER_SK: customer.id, # FK to the purchasing customer.
     SS_TICKET_NUMBER: ticket_number,
-    SS_ITEM_SK: item.id,
-    SS_STORE_SK: ?store.id,
+    SS_ITEM_SK: item.id, # FK to the item sold.
+    SS_STORE_SK: ?store.id, # FK to the store the sale occurred at.
     SS_QUANTITY: store_quantity,
     SS_NET_PROFIT: store_net_profit,
 )
@@ -32,36 +30,36 @@ grain (item.id, ticket_number)
 address memory.store_sales;
 
 datasource store_returns (
-    SR_RETURNED_DATE_SK: store_return_date.id,
-    SR_RETURN_TIME_SK: time.id,
+    SR_RETURNED_DATE_SK: store_return_date.id, # FK to date the store return occurred.
+    SR_RETURN_TIME_SK: time.id, # FK to time-of-day of the return.
     SR_ITEM_SK: ~item.id,
-    SR_CUSTOMER_SK: customer.id,
+    SR_CUSTOMER_SK: customer.id, # FK to the customer initiating the return.
     SR_TICKET_NUMBER: ~ticket_number,
     SR_RETURN_QUANTITY: store_return_quantity,
     SR_RETURN_AMT: store_return_amount,
     SR_NET_LOSS: store_return_net_loss,
-    raw('''SR_RETURN_TIME_SK IS NOT NULL'''): is_returned,
+    raw('''SR_RETURN_TIME_SK IS NOT NULL'''): is_returned, # Derived: true when a return row exists for this line.
 )
 grain (item.id, ticket_number)
 address memory.store_returns;
 
 properties <ticket_number, item.id> (
-    store_quantity int,
-    store_net_profit float,
-    is_returned bool,
-    store_return_quantity int?,
-    store_return_amount float?,
-    store_return_net_loss float?,
+    store_quantity int, # Units sold at the store on this ticket line.
+    store_net_profit numeric::usd, # Net profit reported on the store sale line (USD).
+    is_returned bool, # True if the store-sold line was later returned.
+    store_return_quantity int?, # Units returned for the store-sold line.
+    store_return_amount numeric::usd?, # Refund amount for the store-sold line (USD).
+    store_return_net_loss numeric::usd?, # Net financial loss on the store return (USD).
 );
 properties <catalog_order_number, item.id> (
-    catalog_quantity int?,
-    catalog_net_profit float?,
+    catalog_quantity int?, # Units purchased via catalog for the same (customer, item).
+    catalog_net_profit numeric::usd?, # Net profit reported on the catalog sale line (USD).
 );
 
 datasource catalog_sales (
-    CS_BILL_CUSTOMER_SK: customer.id,
-    CS_ITEM_SK: item.id,
-    CS_SOLD_DATE_SK: ?catalog_date.id,
+    CS_BILL_CUSTOMER_SK: customer.id, # FK to the billed customer (joined to store_sales customer).
+    CS_ITEM_SK: item.id, # FK to the item ordered.
+    CS_SOLD_DATE_SK: ?catalog_date.id, # FK to date the catalog order was sold.
     CS_ORDER_NUMBER: catalog_order_number,
     CS_QUANTITY: catalog_quantity,
     CS_NET_PROFIT: catalog_net_profit,

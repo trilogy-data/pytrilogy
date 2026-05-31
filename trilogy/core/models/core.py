@@ -454,6 +454,13 @@ def is_compatible_datatype(left, right):
         return any(is_compatible_datatype(ltype, right) for ltype in left)
     if isinstance(right, list):
         return any(is_compatible_datatype(left, rtype) for rtype in right)
+    # Traits are pure annotations layered on top of an underlying type — strip
+    # them before doing structural compatibility so numeric(15,2)::usd matches
+    # the bare numeric(15,2) it wraps.
+    if isinstance(left, TraitDataType):
+        return is_compatible_datatype(left.type, right)
+    if isinstance(right, TraitDataType):
+        return is_compatible_datatype(left, right.type)
     if left == DataType.ANY or right == DataType.ANY:
         return True
     if left == DataType.NULL or right == DataType.NULL:

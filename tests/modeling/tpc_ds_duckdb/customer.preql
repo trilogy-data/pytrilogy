@@ -1,28 +1,34 @@
+# Customer info: names, salutation, login, email, preferred-customer
+# flag, country of birth, and decomposed birth date (year / month / day).
+
+import std.date;
+import std.geography;
+
 import customer_demographic as demographics;
 import household_demographic as household_demographic;
 import address as address;
 import date as first_sales_date;
 import date as first_shipto_date;
 
-key id int;
-unique property id.text_id string; # text version of ID
+key id int; # Surrogate key uniquely identifying a customer.
+unique property id.text_id string; # Stable natural/business customer ID (16-char alphanumeric).
 
 properties id (
-    last_name string, # Customer last name (not guaranteed unique; weak for identity)
-    first_name string, # Customer first name (display only; low analytical value alone)
-    preferred_cust_flag string, # 'Y'/'N' indicator for preferred/loyalty status (use for segmentation, LTV analysis)
-    birth_day int, # Day of birth (1–31; combine with month/year for full DOB)
-    birth_month int, # Month of birth (1–12)
-    birth_year int, # Year of birth (used for age calculation, cohorting)
-    birth_country string, # Country of birth (demographic segmentation; may differ from residence)
-    salutation string, # Title (e.g., 'Mr.', 'Ms.', 'Dr.'; mostly presentation, sometimes demographic proxy)
-    email_address string, # Contact email (quasi-unique, but not reliable as a key; can change over time)
-    login string, # Account username/login (more stable than email, often used for authentication)
-    last_review_date string, # Last date customer submitted a review (string in TPC-DS; should be cast to date)
+    last_name string, # Customer last (family) name. Not guaranteed unique; weak for identity.
+    first_name string, # Customer first (given) name. Display only; low analytical value alone.
+    preferred_cust_flag enum<string>['Y', 'N'], # 'Y' if the customer is flagged as a preferred/loyalty customer, else 'N'.
+    birth_day int::day, # Day-of-month of birth (1-31; combine with month/year for full DOB).
+    birth_month int::month, # Month of birth (1-12).
+    birth_year int::year, # Four-digit year of birth (1924-1992 in this dataset).
+    birth_country string::country, # Country of birth (free-form name, e.g. 'UNITED STATES').
+    salutation enum<string>['Dr.', 'Miss', 'Mr.', 'Mrs.', 'Ms.', 'Sir'], # Title/salutation prefix.
+    email_address string, # Customer email address (quasi-unique but not a key; can change over time).
+    login string, # Account username/login (more stable than email).
+    last_review_date string, # FK to date for customer's last review (stored as string; should be cast to date).
 );
 
-auto full_name <- concat(salutation, ' ', first_name, ' ', last_name);
-auto birth_date <- concat(birth_year::string, '/', birth_month::string, '/', birth_day::string)::date;
+auto full_name <- concat(salutation, ' ', first_name, ' ', last_name); # Derived display name: 'Salutation First Last'.
+auto birth_date <- concat(birth_year::string, '/', birth_month::string, '/', birth_day::string)::date; # Derived calendar birth date assembled from year/month/day components.
 
 datasource customers (
     C_CUSTOMER_SK: id,

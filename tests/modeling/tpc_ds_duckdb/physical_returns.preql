@@ -1,0 +1,30 @@
+# For cross-channel returns analysis, prefer `all_sales` (carries returns alongside sales for all channels).
+# Store channel returns info at (item, ticket_number) grain: per-line
+# refund amount (USD) for items returned in-store.
+
+import std.money;
+
+import store as store;
+
+import item as item;
+import date as return_date;
+import time as time;
+import customer as billing_customer;
+import customer_demographic as customer_demographic;
+
+key ticket_number int; # Surrogate key uniquely identifying a store sales ticket.
+
+property <item.id, ticket_number>.return_amount numeric::usd; # Dollar amount refunded to the customer for the returned item (USD).
+
+datasource store_returns (
+    SR_RETURNED_DATE_SK: return_date.id, # FK to the date the item was returned.
+    SR_RETURN_TIME_SK: time.id, # FK to the time-of-day the return was processed.
+    SR_ITEM_SK: item.id, # FK to the returned item.
+    SR_CUSTOMER_SK: billing_customer.id, # FK to the customer initiating the return.
+    SR_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at return time (optional).
+    SR_RETURN_AMT: return_amount,
+    SR_TICKET_NUMBER: ticket_number, # FK to the original store-sale ticket the return is associated with.
+    SR_STORE_SK: store.id, # FK to the store the return was processed at.
+)
+grain (item.id, ticket_number)
+address memory.store_returns;

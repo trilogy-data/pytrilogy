@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from trilogy.ai.enums import Provider
@@ -30,13 +32,13 @@ from trilogy.scripts.agent_tools import (
     AgentState,
     TodoItem,
     handle_list_files,
-    handle_read_file,
     handle_return_control,
     handle_show_message,
     handle_todo,
     handle_trilogy,
     truncate_middle,
 )
+from trilogy.scripts.file_helpers import preql_description
 
 try:
     import rich  # noqa: F401
@@ -201,13 +203,6 @@ def test_maybe_flag_loop_resets_on_different_call():
     assert "[guidance]" not in _maybe_flag_loop(state, b, "ok")
 
 
-def test_read_file_returns_content_and_reports_missing(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "q.preql").write_text("select 1 -> x;", encoding="utf-8")
-    assert handle_read_file(AgentState(), {"path": "q.preql"}) == "select 1 -> x;"
-    assert "no such file" in handle_read_file(AgentState(), {"path": "missing.preql"})
-
-
 def test_list_files_recursive_shows_nested_paths(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "raw").mkdir()
@@ -247,11 +242,6 @@ def test_list_files_validates_args():
     assert "must be a boolean" in handle_list_files(
         AgentState(), {"path": ".", "recursive": "yes"}
     )
-
-
-def test_read_file_validates_path():
-    assert "non-empty string" in handle_read_file(AgentState(), {})
-    assert "non-empty string" in handle_read_file(AgentState(), {"path": ""})
 
 
 def test_return_control_rejects_non_string_message():
@@ -463,18 +453,127 @@ def test_list_files_reports_empty_directory(tmp_path):
     assert "no files under" in out
 
 
-def test_read_file_reports_oserror(monkeypatch, tmp_path):
-    target = tmp_path / "q.preql"
-    target.write_text("x", encoding="utf-8")
-    from pathlib import Path
+def test_list_files_shows_preql_header_description(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "store_sales.preql").write_text(
+        "# Store channel sales — fact table at ticket/item grain.\n"
+        "# Joins back to store_returns via ticket_number+item.id.\n"
+        "\n"
+        "key ticket_number int;\n",
+        encoding="utf-8",
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    lines = out.splitlines()
+    idx = lines.index("store_sales.preql")
+    desc = lines[idx + 1]
+    assert agent_tools_mod._LIST_FILES_DESC_PREFIX in desc
+    assert "Store channel sales" in desc
+    assert "store_returns" in desc
+    # File count in the header counts files only, not the trailing desc line.
+    assert "(1)" in lines[0]
+
+
+def test_list_files_skips_description_when_no_header_comment(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "bare.preql").write_text("key id int;\n", encoding="utf-8")
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "bare.preql" in out
+    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+
+
+def test_list_files_ignores_comments_not_at_top(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "midcomment.preql").write_text(
+        "key id int;\n# this comment is not the leading block\n",
+        encoding="utf-8",
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+
+
+def test_list_files_truncates_long_descriptions(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    long_desc = "x" * (agent_tools_mod._LIST_FILES_DESC_LIMIT + 200)
+    (tmp_path / "wordy.preql").write_text(
+        f"# {long_desc}\nkey id int;\n", encoding="utf-8"
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    desc_lines = [
+        ln for ln in out.splitlines() if agent_tools_mod._LIST_FILES_DESC_PREFIX in ln
+    ]
+    assert len(desc_lines) == 1
+    assert "…" in desc_lines[0]
+    # Truncated body is bounded by the configured limit + a tiny prefix/marker.
+    assert (
+        len(desc_lines[0])
+        <= len(agent_tools_mod._LIST_FILES_DESC_PREFIX)
+        + agent_tools_mod._LIST_FILES_DESC_LIMIT
+    )
+
+
+def test_list_files_skips_description_for_non_preql(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "notes.md").write_text(
+        "# Markdown header that is not a preql description\n", encoding="utf-8"
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "notes.md" in out
+    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+
+
+def test_list_files_shows_description_in_non_recursive_mode(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "item.preql").write_text(
+        "# Item dimension — brand, category, price.\nkey id int;\n",
+        encoding="utf-8",
+    )
+    out = handle_list_files(AgentState(), {"path": ".", "recursive": False})
+    assert "Item dimension" in out
+
+
+def test_list_files_shows_description_for_nested_preql(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "customer.preql").write_text(
+        "# Customer dimension — names and demographics.\nkey id int;\n",
+        encoding="utf-8",
+    )
+    out = handle_list_files(AgentState(), {"path": "."})
+    assert "raw/customer.preql" in out
+    assert "Customer dimension" in out
+
+
+def test_read_preql_description_handles_blank_lines_before_comment(tmp_path):
+    p = tmp_path / "x.preql"
+    p.write_text(
+        "\n\n# First real line is the header.\n# Second header line.\nkey id int;\n",
+        encoding="utf-8",
+    )
+    desc = preql_description.read_preql_description(p)
+    assert desc == "First real line is the header. Second header line."
+
+
+def test_read_preql_description_returns_none_for_no_comment(tmp_path):
+    p = tmp_path / "x.preql"
+    p.write_text("key id int;\n", encoding="utf-8")
+    assert preql_description.read_preql_description(p) is None
+
+
+def test_read_preql_description_strips_double_hash(tmp_path):
+    p = tmp_path / "x.preql"
+    p.write_text("## Heading style still works\nkey id int;\n", encoding="utf-8")
+    assert preql_description.read_preql_description(p) == "Heading style still works"
+
+
+def test_read_preql_description_handles_oserror(monkeypatch, tmp_path):
+    p = tmp_path / "x.preql"
+    p.write_text("# header\n", encoding="utf-8")
 
     def boom(self, *a, **kw):
-        raise OSError("permission denied")
+        raise OSError("denied")
 
-    monkeypatch.setattr(Path, "read_text", boom)
-    result = handle_read_file(AgentState(), {"path": str(target)})
-    assert "read_file error" in result
-    assert "permission denied" in result
+    monkeypatch.setattr(Path, "open", boom)
+    assert preql_description.read_preql_description(p) is None
 
 
 def test_first_non_flag_arg_skips_value_flag_and_options():
@@ -579,12 +678,18 @@ def test_run_turn_return_control_drops_open_todos(monkeypatch):
 def test_run_turn_raises_after_max_iterations():
     import click
 
+    from trilogy.scripts.agent import EXIT_ITERATION_EXHAUSTED
+
     provider = ScriptedProvider(
         responses=[make_response(text="no tool") for _ in range(3)]
     )
     conv = make_conv(provider)
-    with pytest.raises(click.ClickException, match="exhausted"):
+    with pytest.raises(click.ClickException, match="exhausted") as excinfo:
         _run_turn(conv, AgentState(), max_iterations=3)
+    # Distinct exit code so the eval scorer can tell "agent gave up after N
+    # turns" apart from "agent process crashed" (default ClickException=1).
+    assert excinfo.value.exit_code == EXIT_ITERATION_EXHAUSTED
+    assert EXIT_ITERATION_EXHAUSTED != 1
 
 
 def test_run_turn_handles_unknown_tool_and_continues():
@@ -887,8 +992,154 @@ def test_dump_conversation_renders_tool_call_model_info(tmp_path):
     log_path.write_text("", encoding="utf-8")
     _dump_conversation(conv, log_path)
     dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "[tool_call] todo" in dump
+    assert "action: list" in dump
+
+
+def test_dump_conversation_wraps_long_list_args(tmp_path):
+    """Long list-shaped tool args (e.g. trilogy's repeated --regex) render
+    one item per line so the dump stays under 80 cols and is grep-friendly."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("hi", role="user")
+    long_args = [
+        "explore",
+        "raw/web_sales.preql",
+        "--regex",
+        "extended_price",
+        "--regex",
+        "sold_date",
+        "--regex",
+        "week_seq",
+    ]
+    msg = LLMMessage(
+        role="assistant",
+        content="",
+        model_info={
+            "tool_calls": [{"name": "trilogy", "arguments": {"args": long_args}}]
+        },
+    )
+    conv.messages.append(msg)
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "[tool_call] trilogy" in dump
+    assert "  args:" in dump
+    assert "    - explore" in dump
+    assert "    - --regex" in dump
+    # Each rendered line must be wrapped to at most 80 cols.
+    assert all(len(line) <= 80 for line in dump.splitlines())
+
+
+def test_dump_conversation_block_wraps_long_string_args(tmp_path):
+    """A multi-line --content string for `trilogy file write` is rendered as
+    a block-style scalar so long content doesn't blow past 80 cols."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    body = "import std.money;\nselect sum(sales.price) as total_sales order by total_sales desc;"
+    msg = LLMMessage(
+        role="assistant",
+        content="",
+        model_info={
+            "tool_calls": [
+                {
+                    "name": "trilogy",
+                    "arguments": {
+                        "args": ["file", "write", "q.preql"],
+                        "content": body,
+                    },
+                }
+            ]
+        },
+    )
+    conv.messages.append(msg)
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "  content: |" in dump
+    assert "    import std.money;" in dump
+    assert (
+        "    select sum(sales.price) as total_sales order by total_sales desc;" in dump
+    )
+    assert all(len(line) <= 80 for line in dump.splitlines())
+
+
+def test_dump_conversation_pretty_prints_tool_result(tmp_path):
+    """User-role messages whose content is the ``{"tool": ..., "result": ...}``
+    payload that ``_run_turn`` writes get rendered as a ``[tool_result]`` block
+    with the result string un-escaped (real newlines) and wrapped at 80 cols."""
+    import json as _json
+
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    result_body = "exit_code: 0\n--- stdout ---\nfoo bar baz\n--- stderr ---\n"
+    conv.add_message(
+        _json.dumps({"tool": "trilogy", "result": result_body}), role="user"
+    )
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "[tool_result] trilogy" in dump
+    assert "  exit_code: 0" in dump
+    assert "  --- stdout ---" in dump
+    assert "  foo bar baz" in dump
+    # Escaped \n should NOT survive — embedded newlines must be expanded.
+    assert "\\n" not in dump
+    assert all(len(line) <= 80 for line in dump.splitlines())
+
+
+def test_dump_conversation_keeps_non_tool_result_user_content(tmp_path):
+    """User content that isn't the ``{tool, result}`` shape (e.g. the initial
+    task prompt) is rendered verbatim — no JSON parsing attempted."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("write me a query that counts sales", role="user")
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    assert "write me a query that counts sales" in dump
+    assert "[tool_result]" not in dump
+
+
+def test_dump_conversation_preserves_non_tool_call_model_info(tmp_path):
+    """Other keys in model_info (anything that isn't ``tool_calls``) still
+    surface under the original ``[model_info]`` line so we don't silently
+    drop provider metadata."""
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("hi", role="user")
+    msg = LLMMessage(
+        role="assistant",
+        content="thinking",
+        model_info={"finish_reason": "stop", "provider_latency_ms": 1234},
+    )
+    conv.messages.append(msg)
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
     assert "[model_info]" in dump
-    assert "tool_calls" in dump
+    assert "finish_reason" in dump
+    assert "provider_latency_ms" in dump
 
 
 # --- tool call logging / status formatting ---
@@ -1149,7 +1400,6 @@ def test_all_tools_registered():
     assert names == {
         "show_message",
         "trilogy",
-        "read_file",
         "list_files",
         "todo",
         "return_control_to_user",

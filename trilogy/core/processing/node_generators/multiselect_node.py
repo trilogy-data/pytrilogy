@@ -8,6 +8,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildMultiSelectLineage,
     BuildWhereClause,
+    get_concept_arguments,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair
@@ -103,6 +104,21 @@ def gen_multiselect_node(
         return None
     lineage: BuildMultiSelectLineage = concept.lineage
 
+    # Hidden inner-select columns are normally dropped from each branch's output,
+    # but the multiselect still consumes some of them internally: align keys (the
+    # FULL-JOIN machinery) and derive arguments (referenced by the derived output
+    # expressions). If a branch hides one of these, it never reaches the merge
+    # node, so the planner recomputes it at the outer level where the source
+    # column is out of scope and the renderer emits INVALID_REFERENCE_BUG. Keep
+    # them visible on the branch; the outer projection still hides them from the
+    # final output via the lineage's hidden_components.
+    internal_needed: set[str] = set()
+    for align_item in lineage.align.items:
+        internal_needed.update(c.address for c in align_item.concepts)
+    if lineage.derive:
+        for ditem in lineage.derive.items:
+            internal_needed.update(a.address for a in get_concept_arguments(ditem.expr))
+
     base_parents: List[StrategyNode] = []
     partial = []
     for select in lineage.selects:
@@ -124,6 +140,10 @@ def gen_multiselect_node(
                 merge = environment.concepts[merge_name]
                 snode.output_concepts.append(merge)
                 merge_concepts.append(merge)
+        # keep internally-consumed (align/derive) columns visible to the merge node
+        snode.hidden_concepts = {
+            h for h in snode.hidden_concepts if h not in internal_needed
+        }
         # clear cache so QPS
         snode.rebuild_cache()
         for mc in merge_concepts:
@@ -137,22 +157,16 @@ def gen_multiselect_node(
         logger.info(snode.hidden_concepts)
 
     node_joins = extra_align_joins(lineage, environment, base_parents)
-    logger.info(
-        f"Non-hidden {[x for y in base_parents for x in y.output_concepts if x.address not in y.hidden_concepts]}"
-    )
+    merge_concepts_in = [
+        x
+        for y in base_parents
+        for x in y.output_concepts
+        if x.address not in y.hidden_concepts
+    ]
+    logger.info(f"Non-hidden {merge_concepts_in}")
     node = MergeNode(
-        input_concepts=[
-            x
-            for y in base_parents
-            for x in y.output_concepts
-            if x.address not in y.hidden_concepts
-        ],
-        output_concepts=[
-            x
-            for y in base_parents
-            for x in y.output_concepts
-            if x.address not in y.hidden_concepts
-        ],
+        input_concepts=list(merge_concepts_in),
+        output_concepts=list(merge_concepts_in),
         environment=environment,
         depth=depth,
         parents=base_parents,

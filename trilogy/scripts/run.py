@@ -99,11 +99,11 @@ def _format_import(value: str) -> str:
     "imports",
     multiple=True,
     help=(
-        "Prepend an import to an inline query. Accepts bare module names "
-        "(flight), filenames (flight.preql), or relative paths "
-        "(root/flight.preql). Append ':alias' to namespace the import so its "
-        "concepts are reached as alias.* (e.g. raw/item:item), matching "
-        "file-based 'import ... as ...'. Repeatable."
+        "Prepend an import to an inline query. Use the SAME dotted form as "
+        "in-file imports: 'raw.unified_sales:s' becomes 'import "
+        "raw.unified_sales as s;'. Slash/.preql path forms ('raw/item.preql') "
+        "still work and convert to dotted, but prefer the dotted form so the "
+        "CLI and file syntax match. Repeatable."
     ),
 )
 @option(

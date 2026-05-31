@@ -382,7 +382,10 @@ def test_thirty_one(engine):
 
 
 def test_thirty_two(engine):
-    query = run_query(engine, 32)
+    # Our query32.preql uses manufacturer 48 (sf=1 has zero catalog sales for
+    # the spec's 977 in the date window); compare against the matching .sql
+    # file rather than PRAGMA, which still uses the spec constant.
+    query = run_query(engine, 32, sql_override=True)
     # size gating
     assert len(query) < 12640, query
 
@@ -428,7 +431,10 @@ def test_forty(engine):
 
 
 def test_forty_one(engine):
-    query = run_query(engine, 41)
+    # query41.preql uses manufacturer_id BETWEEN 1 AND 500 (spec's narrow
+    # profiles produce zero rows at this scale); compare against the matching
+    # .sql file rather than PRAGMA, which still uses spec constants.
+    query = run_query(engine, 41, sql_override=True)
     assert len(query) < 8000, query
 
 
@@ -442,7 +448,10 @@ def test_forty_three(engine):
 
 
 def test_forty_four(engine):
-    _ = run_query(engine, 44)
+    # query44.preql/.sql both filter to store id=1 (spec uses 4, which has
+    # no rows at this scale); compare against the matching .sql file rather
+    # than PRAGMA, which still uses the spec constant.
+    _ = run_query(engine, 44, sql_override=True)
 
 
 def test_forty_five(engine):
@@ -453,7 +462,9 @@ def test_forty_five(engine):
 def test_forty_six(engine):
     query = run_query(engine, 46)
     assert len(query) < 8000, query
-    assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
+    assert (
+        '"memory"."customer" as "physical_sales_customer_customers"' not in query
+    ), query
     assert query.count("GROUP BY") == 1, query
 
 
@@ -565,7 +576,9 @@ def test_sixty_seven(engine):
 def test_sixty_eight(engine):
     query = run_query(engine, 68)
     assert len(query) < 8000, query
-    assert '"memory"."customer" as "store_sales_customer_customers"' not in query, query
+    assert (
+        '"memory"."customer" as "physical_sales_customer_customers"' not in query
+    ), query
 
 
 def test_sixty_nine(engine):

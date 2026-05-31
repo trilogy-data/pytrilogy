@@ -1,6 +1,19 @@
+import sys
+
 import click
 
 from trilogy.scripts.click_utils import IGNORE_UNKNOWN, LazyGroup
+
+# Force UTF-8 stdio so non-ASCII output (e.g. the ``↳`` description marker
+# from ``file list``) renders on Windows consoles whose default codepage is
+# cp1252. Best-effort: a NotImplementedError or AttributeError just means
+# we're on a platform where the streams aren't reconfigurable, and we leave
+# them alone.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    except (AttributeError, ValueError, NotImplementedError):
+        pass
 
 
 def get_version() -> str:

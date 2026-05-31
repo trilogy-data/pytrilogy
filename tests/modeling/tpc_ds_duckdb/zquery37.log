@@ -1,6 +1,6 @@
 query_id = "37"
-gen_length = 1426
-preql_size = 474
+gen_length = 1429
+preql_size = 480
 comp_size = 592
 generated_sql = """
 
@@ -31,7 +31,7 @@ WHERE
 GROUP BY
     1)
 SELECT
-    \"items_items\".\"I_ITEM_ID\" as \"items_name\",
+    \"items_items\".\"I_ITEM_ID\" as \"items_text_id\",
     \"items_items\".\"I_ITEM_DESC\" as \"items_desc\",
     \"items_items\".\"I_CURRENT_PRICE\" as \"items_current_price\"
 FROM

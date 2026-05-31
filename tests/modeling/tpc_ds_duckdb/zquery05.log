@@ -1,6 +1,6 @@
 query_id = "05"
-gen_length = 10760
-preql_size = 2276
+gen_length = 10723
+preql_size = 2028
 comp_size = 4238
 generated_sql = """
 
@@ -205,8 +205,8 @@ divergent as (
 SELECT
     \"kaput\".\"channel_label\" as \"channel\",
     \"kaput\".\"sales_id_label\" as \"id\",
-    sum(\"kaput\".\"sales_ext_sales_price\") as \"_q5_results_sales_total_a\",
-    sum(\"kaput\".\"sales_net_profit\") as \"_q5_results_profit_only_a\"
+    sum(\"kaput\".\"sales_ext_sales_price\") as \"sales_total_a\",
+    sum(\"kaput\".\"sales_net_profit\") as \"profit_only_a\"
 FROM
     \"kaput\"
 GROUP BY
@@ -215,22 +215,22 @@ concerned as (
 SELECT
     \"vacuous\".\"channel_label\" as \"channel\",
     \"vacuous\".\"return_id_label\" as \"id\",
-    sum(coalesce(\"vacuous\".\"sales_return_amount\",0)) as \"_q5_results_returns_total_b\",
-    sum(coalesce(\"vacuous\".\"sales_return_net_loss\",0)) as \"_q5_results_loss_only_b\"
+    sum(coalesce(\"vacuous\".\"sales_return_amount\",0)) as \"returns_total_b\",
+    sum(coalesce(\"vacuous\".\"sales_return_net_loss\",0)) as \"loss_only_b\"
 FROM
     \"vacuous\"
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    coalesce(\"concerned\".\"channel\",\"divergent\".\"channel\") as \"q5_results_channel\",
-    coalesce(\"concerned\".\"id\",\"divergent\".\"id\") as \"q5_results_id\",
-    coalesce(\"divergent\".\"_q5_results_sales_total_a\",0.0) as \"sales\",
-    coalesce(\"concerned\".\"_q5_results_returns_total_b\",0.0) as \"returns_\",
-    coalesce(\"divergent\".\"_q5_results_profit_only_a\",0.0) - coalesce(\"concerned\".\"_q5_results_loss_only_b\",0.0) as \"profit\"
+    coalesce(\"concerned\".\"channel\",\"divergent\".\"channel\") as \"channel\",
+    coalesce(\"concerned\".\"id\",\"divergent\".\"id\") as \"id\",
+    coalesce(\"divergent\".\"sales_total_a\",0.0) as \"sales_metric\",
+    coalesce(\"concerned\".\"returns_total_b\",0.0) as \"returns_metric\",
+    coalesce(\"divergent\".\"profit_only_a\",0.0) - coalesce(\"concerned\".\"loss_only_b\",0.0) as \"profit_metric\"
 FROM
     \"divergent\"
     FULL JOIN \"concerned\" on \"divergent\".\"channel\" is not distinct from \"concerned\".\"channel\" AND \"divergent\".\"id\" is not distinct from \"concerned\".\"id\"
 ORDER BY 
-    \"q5_results_channel\" asc nulls first,
-    \"q5_results_id\" asc nulls first
+    coalesce(\"concerned\".\"channel\",\"divergent\".\"channel\") asc nulls first,
+    coalesce(\"concerned\".\"id\",\"divergent\".\"id\") asc nulls first
 LIMIT (100)"""

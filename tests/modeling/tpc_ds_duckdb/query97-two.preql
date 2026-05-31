@@ -1,13 +1,13 @@
 # Generate counts of promotional sales and total sales, and their ratio from the web channel for a particular item
 #category and month to customers in a given time zone
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 import catalog_sales as catalog_sales;
 
 rowset merged <- where
-    store_sales.date.month_seq between 1200 and 1200 + 11
+    physical_sales.date.month_seq between 1200 and 1200 + 11
 select
-    store_sales.customer.id,
-    store_sales.item.id,
+    physical_sales.billing_customer.id,
+    physical_sales.item.id,
 merge
 where
     catalog_sales.date.month_seq between 1200 and 1200 + 11
@@ -15,15 +15,15 @@ select
     catalog_sales.bill_customer.id,
     catalog_sales.item.id,
 align
-    customer_id: store_sales.customer.id, catalog_sales.bill_customer.id
-    and item_id: store_sales.item.id, catalog_sales.item.id
+    customer_id: physical_sales.billing_customer.id, catalog_sales.bill_customer.id
+    and item_id: physical_sales.item.id, catalog_sales.item.id
 ;
 
 select
     sum(
             case
-                when merged.store_sales.customer.id is not null
-                and merged.store_sales.item.id is not null
+                when merged.physical_sales.billing_customer.id is not null
+                and merged.physical_sales.item.id is not null
                 and merged.catalog_sales.bill_customer.id is null
                 and merged.catalog_sales.item.id is null then 1
                 else 0
@@ -31,8 +31,8 @@ select
         ) as store_sale_count,
     sum(
             case
-                when merged.store_sales.customer.id is null
-                and merged.store_sales.item.id is null
+                when merged.physical_sales.billing_customer.id is null
+                and merged.physical_sales.item.id is null
                 and merged.catalog_sales.bill_customer.id is not null
                 and merged.catalog_sales.item.id is not null then 1
                 else 0
@@ -40,8 +40,8 @@ select
         ) as catalog_sale_count,
     sum(
             case
-                when merged.store_sales.customer.id is not null
-                and merged.store_sales.item.id is not null
+                when merged.physical_sales.billing_customer.id is not null
+                and merged.physical_sales.item.id is not null
                 and merged.catalog_sales.bill_customer.id is not null
                 and merged.catalog_sales.item.id is not null then 1
                 else 0

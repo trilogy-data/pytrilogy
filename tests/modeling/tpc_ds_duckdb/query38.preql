@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 # Per-channel presence flag for each (customer.last_name, customer.first_name, date.date) tuple,
 # evaluated within month_seq 1200..1211. Tuples with rows in ALL three channels are intersect.
@@ -6,29 +6,29 @@ auto store_in_window <- sum(
     case
         when sales.sales_channel = 'STORE'
         and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.customer.id is not null then 1
+        and sales.billing_customer.id is not null then 1
         else 0
     end
 )
-    by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
 auto catalog_in_window <- sum(
     case
         when sales.sales_channel = 'CATALOG'
         and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.customer.id is not null then 1
+        and sales.billing_customer.id is not null then 1
         else 0
     end
 )
-    by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
 auto web_in_window <- sum(
     case
         when sales.sales_channel = 'WEB'
         and sales.date.month_seq between 1200 and 1200 + 11
-        and sales.customer.id is not null then 1
+        and sales.billing_customer.id is not null then 1
         else 0
     end
 )
-    by sales.customer.last_name, sales.customer.first_name, sales.date.date;
+    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
 
 where
     sales.date.month_seq between 1200 and 1200 + 11

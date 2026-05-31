@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 # Per-channel daily ext_sales_price aggregated at (item, date) grain.
 # Uses inline `?` filter so only that channel's rows contribute to that channel's

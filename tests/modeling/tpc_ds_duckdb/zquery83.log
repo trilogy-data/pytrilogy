@@ -1,6 +1,6 @@
 query_id = "83"
-gen_length = 5922
-preql_size = 1680
+gen_length = 5949
+preql_size = 1703
 comp_size = 2195
 generated_sql = """
 
@@ -53,7 +53,7 @@ WHERE
 ),
 concerned as (
 SELECT
-    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\",
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_text_id\",
     CASE WHEN \"questionable\".\"sales_sales_channel\" = 'CATALOG' THEN \"questionable\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_7518965045904948\",
     CASE WHEN \"questionable\".\"sales_sales_channel\" = 'STORE' THEN \"questionable\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_5282889778133979\",
     CASE WHEN \"questionable\".\"sales_sales_channel\" = 'WEB' THEN \"questionable\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_4128599423878258\"
@@ -70,7 +70,7 @@ yummy as (
 SELECT
     \"questionable\".\"sales_return_quantity\" as \"sales_return_quantity\",
     \"questionable\".\"sales_sales_channel\" as \"sales_sales_channel\",
-    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_name\"
+    \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_text_id\"
 FROM
     \"memory\".\"item\" as \"sales_item_items\"
     LEFT OUTER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
@@ -82,7 +82,7 @@ GROUP BY
     \"sales_item_items\".\"I_ITEM_SK\"),
 abhorrent as (
 SELECT
-    \"concerned\".\"sales_item_name\" as \"sales_item_name\",
+    \"concerned\".\"sales_item_text_id\" as \"sales_item_text_id\",
     count(\"concerned\".\"_virt_filter_order_id_4128599423878258\") as \"wr_item_present\",
     count(\"concerned\".\"_virt_filter_order_id_5282889778133979\") as \"sr_item_present\",
     count(\"concerned\".\"_virt_filter_order_id_7518965045904948\") as \"cr_item_present\"
@@ -95,7 +95,7 @@ HAVING
 ),
 juicy as (
 SELECT
-    \"yummy\".\"sales_item_name\" as \"sales_item_name\",
+    \"yummy\".\"sales_item_text_id\" as \"sales_item_text_id\",
     sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"cr_item_qty\",
     sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
     sum(CASE WHEN \"yummy\".\"sales_sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\"
@@ -108,7 +108,7 @@ SELECT
     \"abhorrent\".\"cr_item_present\" as \"cr_item_present\",
     \"abhorrent\".\"wr_item_present\" as \"wr_item_present\",
     \"juicy\".\"cr_item_qty\" as \"cr_item_qty\",
-    \"juicy\".\"sales_item_name\" as \"item_id\",
+    \"juicy\".\"sales_item_text_id\" as \"item_id\",
     \"juicy\".\"sr_item_qty\" as \"sr_item_qty\",
     \"juicy\".\"wr_item_qty\" as \"wr_item_qty\",
     ( ( \"juicy\".\"sr_item_qty\" + \"juicy\".\"cr_item_qty\" ) + \"juicy\".\"wr_item_qty\" ) / 3.0 as \"average\",
@@ -117,7 +117,7 @@ SELECT
     ( ( (\"juicy\".\"wr_item_qty\" * 1.0) / ( ( \"juicy\".\"sr_item_qty\" + \"juicy\".\"cr_item_qty\" ) + \"juicy\".\"wr_item_qty\" ) ) / 3.0 ) * 100 as \"wr_dev\"
 FROM
     \"abhorrent\"
-    INNER JOIN \"juicy\" on \"abhorrent\".\"sales_item_name\" = \"juicy\".\"sales_item_name\"
+    INNER JOIN \"juicy\" on \"abhorrent\".\"sales_item_text_id\" = \"juicy\".\"sales_item_text_id\"
 WHERE
     \"abhorrent\".\"sr_item_present\" > 0
 )

@@ -1,35 +1,43 @@
+# Store info: physical stores with name, store/market manager, geography
+# (street, city, county, state, ZIP, market, GMT offset), operating hours,
+# employee count, floor space, tax percentage, operating company, and
+# closed date.
+
+import std.geography;
+import std.date;
+
 import date as date;
 
-key id int;
-unique property id.text_id string;
+key id int; # Surrogate key uniquely identifying a store.
+unique property id.text_id string; # Stable business identifier for the store (16-char alphanumeric).
 
 properties id (
-    name string,
-    employees int,
-    floor_space int,
-    hours string,
-    store_manager string,
-    geography_class string,
-    market_manager string,
-    tax_percentage float,
-    county string,
-    state string,
-    city string,
-    zip string,
-    market int,
-    gmt_offset float?,
-    company_name string?,
-    company_id int?,
-    street_number string?,
-    street_name string?,
-    street_type string?,
-    suite_number string?,
+    name string, # Store display name.
+    employees int, # Number of employees working at the store.
+    floor_space int, # Total floor space of the store in square feet.
+    hours string, # Operating-hours descriptor (free-form, e.g. '8AM-12AM').
+    store_manager string, # Name of the store manager.
+    geography_class string, # Geographic classification (free-form category).
+    market_manager string, # Name of the manager responsible for the store's market.
+    tax_percentage float, # Local sales-tax rate applied at the store (decimal fraction, e.g. 0.06 = 6%).
+    county string, # County the store is located in.
+    state string::us_state_short, # Two-letter US state code where the store is located.
+    city string, # City where the store is located.
+    zip string, # Postal/ZIP code of the store address.
+    market int, # Numeric market identifier the store belongs to.
+    gmt_offset float?, # GMT offset for the store timezone (hours).
+    company_name string?, # Operating company name for the store.
+    company_id int?, # Numeric company identifier.
+    street_number string?, # Numeric portion of the street address.
+    street_name string?, # Street name portion of the address.
+    street_type string?, # Street type suffix (e.g. 'Ave', 'Ln').
+    suite_number string?, # Suite/unit number, if any.
 );
 
 datasource store (
     S_STORE_SK: id,
     S_STORE_ID: text_id,
-    S_CLOSED_DATE: date.id,
+    S_CLOSED_DATE: date.id, # FK to the date the store was closed (null if still open).
     S_STORE_NAME: name,
     S_NUMBER_EMPLOYEES: employees,
     S_FLOOR_SPACE: floor_space,

@@ -1,4 +1,4 @@
-import store_sales as ss;
+import physical_sales as ss;
 import catalog_sales as cs;
 import web_sales as ws;
 

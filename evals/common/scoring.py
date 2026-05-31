@@ -62,12 +62,22 @@ class AgentMetrics:
 @dataclass
 class QueryResult:
     id: int
-    # pass    — candidate result set matches the TPC-DS reference
-    # fail    — query ran cleanly but the result set differs
-    # error   — engine threw (parse / generate_sql / execute / reference)
-    # missing — no query file produced (agent never wrote one)
-    # timeout — agent subprocess hit its wall-clock limit; overrides
-    #           fail/error/missing, but not `pass`
+    # pass      — candidate result set matches the TPC-DS reference
+    # fail      — query ran cleanly but the result set differs
+    # error     — engine threw (parse / generate_sql / execute / reference)
+    # missing   — no query file produced (agent never wrote one)
+    # timeout   — agent subprocess hit its wall-clock limit; overrides
+    #             fail/error/missing, but not `pass`
+    # exhausted — agent gave up after its --max-iterations budget (CLI
+    #             exits with EXIT_ITERATION_EXHAUSTED=2). A "the model
+    #             couldn't get there in N turns" signal, distinct from a
+    #             real crash; overrides fail/error/missing.
+    # crashed   — agent subprocess exited non-zero without timing out and
+    #             without the exhaustion exit code (provider transport
+    #             failure, unhandled exception, OOM, ...); overrides
+    #             fail/error/missing, but not `pass` or `timeout`. Distinct
+    #             from `error` so the report tells the operator "agent
+    #             died" vs "scoring engine threw".
     status: str
     ref_rows: int = 0
     cand_rows: int = 0
@@ -237,10 +247,26 @@ def make_scoring_engine(db_path: Path, workspace: Path, extension: str):
     return engine
 
 
-def score_query(engine, workspace: Path, idx: int, extension: str) -> QueryResult:
+def score_query(
+    engine,
+    workspace: Path,
+    idx: int,
+    extension: str,
+    params: dict | None = None,
+    custom_refs_dir: Path | None = None,
+) -> QueryResult:
     """Score a single query — for live dashboard updates that don't want to
-    wait for the whole run to finish before grading."""
-    return _score_one(engine, workspace, idx, extension)
+    wait for the whole run to finish before grading. ``params`` is the same
+    shape as the prompt JSON's ``params`` field (``{name: {type, value}}``)
+    and is injected into the executor's environment before generation."""
+    return _score_one(
+        engine,
+        workspace,
+        idx,
+        extension,
+        params=params,
+        custom_refs_dir=custom_refs_dir,
+    )
 
 
 def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
@@ -257,17 +283,92 @@ def apply_timeout(result: QueryResult, timed_out: bool) -> QueryResult:
     return result
 
 
+def apply_exhausted(
+    result: QueryResult, exit_code: int, timed_out: bool
+) -> QueryResult:
+    """Promote a non-passing, non-timeout result to ``status='exhausted'`` when
+    the agent CLI gave up after its --max-iterations budget (signalled by
+    exit code ``EXIT_ITERATION_EXHAUSTED``, currently 2). Distinct from
+    ``crashed`` — the process exited cleanly, the model just didn't get
+    there in N turns."""
+    from trilogy.scripts.agent import EXIT_ITERATION_EXHAUSTED
+
+    if timed_out or exit_code != EXIT_ITERATION_EXHAUSTED or result.status == "pass":
+        return result
+    detail = result.detail or "agent exhausted iteration budget"
+    if "exhausted" not in detail.lower():
+        detail = f"agent exhausted iterations (was: {result.status}) — {detail}"
+    result.status = "exhausted"
+    result.detail = detail
+    return result
+
+
+def apply_crash(result: QueryResult, exit_code: int, timed_out: bool) -> QueryResult:
+    """Promote a non-passing, non-timeout, non-exhausted result to
+    ``status='crashed'`` when the agent subprocess exited non-zero. Timeout
+    takes precedence (it's how we kill the subprocess in the first place),
+    iteration exhaustion is handled separately by :func:`apply_exhausted`,
+    and ``pass`` wins — a correct query file written before the crash is
+    still a correct answer."""
+    from trilogy.scripts.agent import EXIT_ITERATION_EXHAUSTED
+
+    if (
+        timed_out
+        or exit_code == 0
+        or exit_code == EXIT_ITERATION_EXHAUSTED
+        or result.status == "pass"
+    ):
+        return result
+    detail = result.detail or "agent exited non-zero"
+    if "agent crashed" not in detail.lower():
+        detail = f"agent crashed (exit {exit_code}, was: {result.status}) — {detail}"
+    result.status = "crashed"
+    result.detail = detail
+    return result
+
+
 def score_queries(
-    db_path: Path, workspace: Path, ids: list[int], extension: str
+    db_path: Path,
+    workspace: Path,
+    ids: list[int],
+    extension: str,
+    custom_refs_dir: Path | None = None,
 ) -> list[QueryResult]:
     """Run each agent-produced query against ``db_path`` and compare results to
     the benchmark's reference for that query id (``query<id>.preql`` vs
-    ``PRAGMA <extension>(<id>)``)."""
+    ``PRAGMA <extension>(<id>)``, or a custom ``.sql`` file from
+    ``custom_refs_dir`` when present)."""
     engine = make_scoring_engine(db_path, workspace, extension)
-    return [_score_one(engine, workspace, idx, extension) for idx in ids]
+    return [
+        _score_one(engine, workspace, idx, extension, custom_refs_dir=custom_refs_dir)
+        for idx in ids
+    ]
 
 
-def _score_one(engine, workspace: Path, idx: int, extension: str) -> QueryResult:
+def _load_reference(
+    engine, idx: int, extension: str, custom_refs_dir: Path | None
+) -> list:
+    """Reference rows for query ``idx``. Prefers ``<custom_refs_dir>/query<NN>.sql``
+    (raw SQL against the source tables) when present — used to override the
+    built-in PRAGMA template for prompts whose default filter values yield
+    empty results at our scale factor. Falls back to ``PRAGMA <extension>(<idx>)``."""
+    if custom_refs_dir is not None:
+        for name in (f"query{idx:02d}.sql", f"query{idx}.sql"):
+            sql_path = custom_refs_dir / name
+            if sql_path.exists():
+                sql = sql_path.read_text(encoding="utf-8")
+                return list(engine.execute_raw_sql(sql).fetchall())
+    return list(engine.execute_raw_sql(f"PRAGMA {extension}({idx});").fetchall())
+
+
+def _score_one(
+    engine,
+    workspace: Path,
+    idx: int,
+    extension: str,
+    params: dict | None = None,
+    custom_refs_dir: Path | None = None,
+) -> QueryResult:
     from trilogy.core.models.environment import Environment
 
     query_file = _find_query_file(workspace, idx)
@@ -277,6 +378,10 @@ def _score_one(engine, workspace: Path, idx: int, extension: str) -> QueryResult
     text = query_file.read_text(encoding="utf-8")
     try:
         engine.environment = Environment(working_path=workspace)
+        if params:
+            engine.environment.set_parameters(
+                **{name: spec.get("value") for name, spec in params.items()}
+            )
         statements = engine.generate_sql(text)
     except Exception as exc:
         return QueryResult(
@@ -301,15 +406,13 @@ def _score_one(engine, workspace: Path, idx: int, extension: str) -> QueryResult
         )
 
     try:
-        reference = list(
-            engine.execute_raw_sql(f"PRAGMA {extension}({idx});").fetchall()
-        )
+        reference = _load_reference(engine, idx, extension, custom_refs_dir)
     except Exception as exc:
         return QueryResult(
             id=idx,
             status="error",
             generated_sql_len=len(sql),
-            detail=f"reference PRAGMA failed: {exc}",
+            detail=f"reference load failed: {exc}",
         )
 
     passed = _multiset(candidate) == _multiset(reference)

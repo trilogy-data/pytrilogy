@@ -1,13 +1,21 @@
+# For cross-channel questions, prefer `all_sales` (combines this with physical_sales and catalog_sales).
+# Web channel sales info at (item, order_number) grain: quantity, sales /
+# list / extended prices, extended shipping cost, extended discount, net
+# paid, net profit, sold vs ship dates, and an is_returned flag with
+# per-line refund amount / quantity for returned orders.
+
+import std.money;
+
 import item as item;
 import date as date;
 import date as ship_date;
 import date as return_date;
 import time as time;
 import time as return_time;
-import customer as customer;
-import customer as ship_customer;
-import customer as return_customer;
-import customer as return_refund_customer;
+import customer as billing_customer; # the bill-to customer's latest/current records
+import customer as ship_customer; # the ship-to customer's latest/current records
+import customer as return_customer; # the customer tied to the return
+import customer as return_refund_customer; # the customer refunded for the return
 import web_site as web_site;
 import web_page as web_page;
 import promotion as promotion;
@@ -15,51 +23,51 @@ import warehouse as warehouse;
 import ship_mode as ship_mode;
 import address as ship_address;
 import address as bill_address;
-import household_demographic as ship_household_demographic;
-import household_demographic as bill_household_demographic;
+import household_demographic as ship_household_demographic; # household demographics recorded on the sale at point of sale (ship-to)
+import household_demographic as bill_household_demographic; # household demographics recorded on the sale at point of sale (bill-to)
 
-key order_number int;
-key return_order_number int;
+key order_number int; # Web order number identifying a single web sales transaction.
+key return_order_number int; # Web order number on the returns side, for return-only queries.
 
 properties <order_number, item.id> (
-    quantity int,
-    sales_price float,
-    list_price float,
-    net_profit float,
-    net_paid float,
-    ext_sales_price numeric(15,2),
-    ext_ship_cost float,
-    ext_discount_amount float?,
-    return_amount float,
-    return_quantity int?,
-    is_returned bool,
-    row_counter int,
+    quantity int, # Number of units of the item ordered on this line.
+    sales_price numeric::usd, # Per-unit sales price actually charged (USD).
+    list_price numeric::usd, # Per-unit list price before discounts (USD).
+    net_profit numeric::usd, # Net profit reported for the line (USD).
+    net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping (USD).
+    ext_sales_price numeric(15,2)::usd, # Line-extended sales price (USD).
+    ext_ship_cost numeric::usd, # Extended shipping cost charged on the line (USD).
+    ext_discount_amount numeric::usd?, # Extended discount amount applied to the line (USD).
+    return_amount numeric::usd, # Refund amount if the line was returned (USD, joined from web_returns).
+    return_quantity int?, # Units returned for this line (joined from web_returns).
+    is_returned bool, # Flag indicating whether a return row exists for this line.
+    row_counter int, # Constant 1, used for unconditional row counts.
 );
 
 datasource web_sales (
     raw('''1'''): row_counter,
-    WS_SOLD_DATE_SK: ?date.id,
-    WS_SOLD_TIME_SK: ?time.id,
-    WS_SHIP_DATE_SK: ?ship_date.id,
-    WS_BILL_CUSTOMER_SK: ?customer.id,
-    WS_SHIP_CUSTOMER_SK: ?ship_customer.id,
+    WS_SOLD_DATE_SK: ?date.id, # FK to the date the order was sold.
+    WS_SOLD_TIME_SK: ?time.id, # FK to the time-of-day the order was placed.
+    WS_SHIP_DATE_SK: ?ship_date.id, # FK to the date the order shipped.
+    WS_BILL_CUSTOMER_SK: ?billing_customer.id, # FK to the customer billed for the order.
+    WS_SHIP_CUSTOMER_SK: ?ship_customer.id, # FK to the customer the order was shipped to.
     WS_ORDER_NUMBER: order_number,
-    WS_ITEM_SK: item.id,
+    WS_ITEM_SK: item.id, # FK to the item ordered.
     WS_QUANTITY: quantity,
     WS_SALES_PRICE: sales_price,
     WS_EXT_SALES_PRICE: ext_sales_price,
     WS_EXT_SHIP_COST: ext_ship_cost,
     WS_NET_PROFIT: net_profit,
-    WS_WEB_SITE_SK: ?web_site.id,
-    WS_WEB_PAGE_SK: ?web_page.id,
-    WS_PROMO_SK: ?promotion.id,
-    WS_WAREHOUSE_SK: ?warehouse.id,
-    WS_SHIP_ADDR_SK: ?ship_address.id,
-    WS_BILL_ADDR_SK: ?bill_address.id,
-    WS_SHIP_MODE_SK: ?ship_mode.id,
+    WS_WEB_SITE_SK: ?web_site.id, # FK to the web site the order was placed through.
+    WS_WEB_PAGE_SK: ?web_page.id, # FK to the web page the order was placed on.
+    WS_PROMO_SK: ?promotion.id, # FK to the promotion applied to the line, if any.
+    WS_WAREHOUSE_SK: ?warehouse.id, # FK to the warehouse fulfilling the order.
+    WS_SHIP_ADDR_SK: ?ship_address.id, # FK to the shipping address.
+    WS_BILL_ADDR_SK: ?bill_address.id, # FK to the billing address.
+    WS_SHIP_MODE_SK: ?ship_mode.id, # FK to the ship-mode used for the order.
     WS_EXT_DISCOUNT_AMT: ext_discount_amount,
-    WS_SHIP_HDEMO_SK: ?ship_household_demographic.id,
-    WS_BILL_HDEMO_SK: ?bill_household_demographic.id,
+    WS_SHIP_HDEMO_SK: ?ship_household_demographic.id, # FK to the ship-to customer's household profile.
+    WS_BILL_HDEMO_SK: ?bill_household_demographic.id, # FK to the bill-to customer's household profile.
     WS_NET_PAID: net_paid,
     WS_LIST_PRICE: list_price,
 )
@@ -67,15 +75,15 @@ grain (item.id, order_number)
 address memory.web_sales;
 
 datasource web_returns (
-    WR_RETURNED_DATE_SK: return_date.id,
-    WR_RETURNED_TIME_SK: return_time.id,
+    WR_RETURNED_DATE_SK: return_date.id, # FK to the date the return occurred.
+    WR_RETURNED_TIME_SK: return_time.id, # FK to the time-of-day the return was processed.
     WR_ITEM_SK: ~item.id,
-    WR_RETURNING_CUSTOMER_SK: return_customer.id,
-    WR_REFUNDED_CUSTOMER_SK: return_refund_customer.id,
+    WR_RETURNING_CUSTOMER_SK: return_customer.id, # FK to the customer returning the item.
+    WR_REFUNDED_CUSTOMER_SK: return_refund_customer.id, # FK to the customer receiving the refund.
     WR_ORDER_NUMBER: ~order_number,
     WR_RETURN_AMT: return_amount,
     WR_RETURN_QUANTITY: return_quantity,
-    raw('''CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END'''): is_returned,
+    raw('''CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END'''): is_returned, # Derived flag: row exists in web_returns.
 )
 grain (item.id, order_number)
 complete where is_returned is True

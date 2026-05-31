@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 # UNION DISTINCT semantics in the reference's `sales_detail` subquery dedups
 # rows with identical (year, brand, class, cat, manufact, cnt_per_row,

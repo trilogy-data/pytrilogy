@@ -1,13 +1,13 @@
 query_id = "74"
-gen_length = 3344
-preql_size = 1364
+gen_length = 3570
+preql_size = 1432
 comp_size = 2151
 generated_sql = """
 
 WITH 
-cheerful as (
+thoughtful as (
 SELECT
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_id\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
      'STORE'  as \"sales_sales_channel\"
@@ -18,7 +18,7 @@ WHERE
 
 UNION ALL
 SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_customer_id\",
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_id\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_id\",
     \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
      'WEB'  as \"sales_sales_channel\"
@@ -27,44 +27,44 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 ),
-thoughtful as (
+cooperative as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\"
+    \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\"
 FROM
-    \"cheerful\"
+    \"thoughtful\"
 GROUP BY
     1,
-    \"cheerful\".\"sales_sales_channel\"),
+    \"thoughtful\".\"sales_sales_channel\"),
 uneven as (
 SELECT
-    \"cheerful\".\"sales_customer_id\" as \"sales_customer_id\"
+    \"thoughtful\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\"
 FROM
-    \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
+    \"thoughtful\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_id\" = \"sales_date_date\".\"D_DATE_SK\"
 GROUP BY
     1
 HAVING
-    sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
-	WHEN sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END)
+    sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
 	ELSE null
 	END ) > ( CASE
-	WHEN sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"cheerful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"cheerful\".\"sales_net_paid\" ELSE NULL END)
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
 	ELSE null
 	END )
 ),
 questionable as (
 SELECT
-    \"sales_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_customer_text_id\",
-    \"sales_customer_customers\".\"C_FIRST_NAME\" as \"sales_customer_first_name\",
-    \"sales_customer_customers\".\"C_LAST_NAME\" as \"sales_customer_last_name\",
-    \"thoughtful\".\"sales_customer_id\" as \"sales_customer_id\"
+    \"cooperative\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
+    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_text_id\",
+    \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
+    \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\"
 FROM
-    \"thoughtful\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_customer_customers\" on \"thoughtful\".\"sales_customer_id\" = \"sales_customer_customers\".\"C_CUSTOMER_SK\")
+    \"cooperative\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"cooperative\".\"sales_billing_customer_id\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\")
 SELECT
-    \"questionable\".\"sales_customer_text_id\" as \"customer_id\",
-    \"questionable\".\"sales_customer_first_name\" as \"customer_first_name\",
-    \"questionable\".\"sales_customer_last_name\" as \"customer_last_name\"
+    \"questionable\".\"sales_billing_customer_text_id\" as \"customer_id\",
+    \"questionable\".\"sales_billing_customer_first_name\" as \"customer_first_name\",
+    \"questionable\".\"sales_billing_customer_last_name\" as \"customer_last_name\"
 FROM
     \"questionable\"
     INNER JOIN \"uneven\" on \"questionable\".\"sales_customer_id\" = \"uneven\".\"sales_customer_id\"

@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 # Per-channel monthly aggregate. Web uses ext_sales_price + net_paid;
 # catalog uses sales_price + net_paid_inc_tax (matches the reference query).

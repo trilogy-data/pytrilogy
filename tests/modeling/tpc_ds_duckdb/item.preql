@@ -1,28 +1,34 @@
-key id int;
+# Item / product info: product name, free-form description, brand,
+# category and class hierarchies, manufacturer, current list price,
+# wholesale cost, color, size, and unit-of-measure.
+
+import std.money;
+
+key id int; # Surrogate key uniquely identifying a sellable item.
 
 properties id (
-    name string,
-    product_name string,
-    brand_id int,
-    brand_name string,
-    manufacturer_id int,
-    manufact string?,
-    category string?,
-    category_id int?,
-    current_price float?,
-    wholesale_cost float?,
-    class string?,
-    class_id int?,
-    desc string?,
-    color string,
-    manager_id int?,
-    size string,
-    units string?,
+    text_id string, # Stable business identifier for the item (16-char alphanumeric).
+    product_name string, # Marketing product name shown to customers.
+    brand_id int, # Numeric brand identifier (composite of category + class + brand digits).
+    brand_name string, # Brand display name.
+    manufacturer_id int, # Numeric manufacturer identifier (1-1000).
+    manufact string?, # Manufacturer display name.
+    category enum<string>['Books', 'Children', 'Electronics', 'Home', 'Jewelry', 'Men', 'Music', 'Shoes', 'Sports', 'Women']?, # Top-level product category.
+    category_id enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]?, # Numeric category identifier paired with category.
+    current_price numeric::usd?, # Current list/catalog price in USD.
+    wholesale_cost numeric::usd?, # Wholesale acquisition cost in USD.
+    class string?, # Product class (sub-category within a category).
+    class_id enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]?, # Numeric class identifier within the category.
+    desc string?, # Free-form item description.
+    color string, # Primary color of the item.
+    manager_id int?, # Identifier of the merchandise manager responsible for the item (1-100).
+    size enum<string>['N/A', 'economy', 'extra large', 'large', 'medium', 'petite', 'small'], # Size descriptor.
+    units string?, # Unit-of-measure descriptor (e.g. 'Each', 'Ounce', 'Pound', 'Box').
 );
 
 datasource items (
     I_ITEM_SK: id,
-    I_ITEM_ID: name,
+    I_ITEM_ID: text_id,
     I_ITEM_DESC: desc,
     I_BRAND: brand_name,
     I_BRAND_ID: brand_id,

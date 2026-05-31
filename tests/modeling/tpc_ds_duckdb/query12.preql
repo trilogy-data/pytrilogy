@@ -4,7 +4,7 @@ where
     web_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
     and web_sales.item.category in ('Sports', 'Books', 'Home')
 select
-    web_sales.item.name,
+    web_sales.item.text_id,
     web_sales.item.desc,
     web_sales.item.category,
     web_sales.item.class,
@@ -15,7 +15,7 @@ select
 order by
     web_sales.item.category asc,
     web_sales.item.class asc,
-    web_sales.item.name asc,
+    web_sales.item.text_id asc,
     web_sales.item.desc asc,
     revenueratio asc
 limit 100

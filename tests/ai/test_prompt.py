@@ -139,3 +139,33 @@ def test_query_request_options():
     assert len(options.tools) == 2
     assert options.tools[0] == TRILOGY_CREATE_QUERY_TOOL
     assert options.tools[1] == TRILOGY_QUERY_TOOL
+
+
+def test_aggregate_functions_renders_known_aggregates():
+    """The agent prompt's `Aggregate Functions:` section must list the actual
+    aggregate signatures. The previous filter used the enum name instead of
+    the member, leaving the list empty and rendering as ``[]`` — useless to
+    the model. Regression test for that exact bug."""
+    from trilogy.ai.constants import AGGREGATE_FUNCTIONS
+
+    assert isinstance(AGGREGATE_FUNCTIONS, str)
+    assert AGGREGATE_FUNCTIONS  # not empty
+    # Canonical aggregates must appear with their rendered signatures.
+    assert "sum(<arg1>)" in AGGREGATE_FUNCTIONS
+    assert "count(<arg1>)" in AGGREGATE_FUNCTIONS
+    assert "avg(<arg1>)" in AGGREGATE_FUNCTIONS
+    assert "max(<arg1>)" in AGGREGATE_FUNCTIONS
+    assert "min(<arg1>)" in AGGREGATE_FUNCTIONS
+
+
+def test_trilogy_syntax_reference_embeds_aggregate_functions():
+    """End-to-end check that the syntax reference the agent system prompt is
+    built from now contains real aggregate signatures, not the literal `[]`
+    that the broken filter used to produce."""
+    from trilogy.ai.prompts import get_trilogy_syntax_reference
+
+    ref = get_trilogy_syntax_reference()
+    assert "Aggregate Functions:" in ref
+    aggregates_block = ref.split("Aggregate Functions:", 1)[1].split("Functions:", 1)[0]
+    assert "sum(<arg1>)" in aggregates_block
+    assert aggregates_block.strip() != "[]"

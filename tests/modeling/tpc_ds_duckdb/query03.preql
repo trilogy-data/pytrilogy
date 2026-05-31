@@ -1,17 +1,17 @@
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 #Report the total extended sales price per item brand of a specific manufacturer for all sales in a specific month
 # of the year
 where
-    store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+    physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
 select
-    store_sales.date.year,
-    store_sales.item.brand_id,
-    store_sales.item.brand_name,
-    sum(store_sales.ext_sales_price) as sum_agg,
+    physical_sales.date.year,
+    physical_sales.item.brand_id,
+    physical_sales.item.brand_name,
+    sum(physical_sales.ext_sales_price) as sum_agg,
 order by
-    store_sales.date.year asc,
+    physical_sales.date.year asc,
     sum_agg desc,
-    store_sales.item.brand_id asc
+    physical_sales.item.brand_id asc
 limit 100
 ;

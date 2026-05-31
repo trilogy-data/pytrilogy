@@ -1,40 +1,40 @@
 const _trilogyt._created_at <- current_datetime();
 
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 WHERE
-    store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+    physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
 SELECT
-    store_sales.date.year,
-    store_sales.item.brand_id,
-    store_sales.item.brand_name,
-    sum(store_sales.ext_sales_price) -> sum_agg,
+    physical_sales.date.year,
+    physical_sales.item.brand_id,
+    physical_sales.item.brand_name,
+    sum(physical_sales.ext_sales_price) -> sum_agg,
 ORDER BY
-    store_sales.date.year asc,
+    physical_sales.date.year asc,
     sum_agg desc,
-    store_sales.item.brand_id asc
+    physical_sales.item.brand_id asc
 LIMIT 100
 ;
 
 PERSIST dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id INTO dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id FROM WHERE
-    store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+    physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
 SELECT
-    store_sales.date.month_of_year,
-    store_sales.date.year,
-    store_sales.ext_sales_price,
-    store_sales.item.brand_id,
-    store_sales.item.brand_name,
-    store_sales.item.id,
-    store_sales.item.manufacturer_id,
-    store_sales.ticket_number,
+    physical_sales.date.month_of_year,
+    physical_sales.date.year,
+    physical_sales.ext_sales_price,
+    physical_sales.item.brand_id,
+    physical_sales.item.brand_name,
+    physical_sales.item.id,
+    physical_sales.item.manufacturer_id,
+    physical_sales.ticket_number,
 ;
 
 # PERSIST dsstore_sales_date_year_store_sales_item_brand_id_store_sales_item_brand_name_a595e281 INTO dsstore_sales_date_year_store_sales_item_brand_id_store_sales_item_brand_name_a595e281 FROM 
 # WHERE
-#     store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+#     physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
 # SELECT
 #     sum_agg,
-#     store_sales.date.year,
-#     store_sales.item.brand_id,
-#     store_sales.item.brand_name,
+#     physical_sales.date.year,
+#     physical_sales.item.brand_id,
+#     physical_sales.item.brand_name,
 # ;

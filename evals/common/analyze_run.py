@@ -27,8 +27,23 @@ STATUS_COLORS = {
     "error": "#c62828",
     "missing": "#9e9e9e",
     "timeout": "#6a1b9a",
+    "exhausted": "#5e35b1",
+    "crashed": "#4527a0",
 }
-STATUS_ORDER = ["pass", "fail", "error", "missing", "timeout"]
+# Lighter palette used for the second (enriched) series in side-by-side
+# comparison plots — same hue, lower saturation, so the status semantics still
+# read at a glance but the two runs visibly differ. Pair with a triangle
+# marker (vs the base run's circle) for unambiguous separation.
+STATUS_COLORS_ALT = {
+    "pass": "#81c784",
+    "fail": "#ffb74d",
+    "error": "#e57373",
+    "missing": "#cfcfcf",
+    "timeout": "#ba68c8",
+    "exhausted": "#b39ddb",
+    "crashed": "#9575cd",
+}
+STATUS_ORDER = ["pass", "fail", "error", "missing", "timeout", "exhausted", "crashed"]
 OK_COLOR = "#2e7d32"
 ERR_COLOR = "#c62828"
 _RUN_FILE = re.compile(r"query(\d+)\.preql")
@@ -63,16 +78,29 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
 
 
 def tool_outcomes(events: list[dict]) -> dict[str, list[int]]:
-    """tool name -> [ok_count, error_count], pairing each call with its result."""
+    """tool name -> [ok_count, error_count], pairing each call with its result.
+
+    ``trilogy`` is bucketed by subcommand (``trilogy <args[0]>``) instead of
+    rolled up — half the iteration budget on exhausted runs goes to
+    ``trilogy explore``, so a single ``trilogy`` bar hides where the cost
+    actually lives. Other tools (``read_file``, ``todo``, ...) keep their
+    flat name."""
     outcomes: dict[str, list[int]] = defaultdict(lambda: [0, 0])
-    pending: str | None = None
+    pending: tuple[str, str] | None = None
     for e in events:
         if e.get("type") == "tool_call":
-            pending = str(e.get("name", "?"))
+            name = str(e.get("name", "?"))
+            if name == "trilogy":
+                args = (e.get("arguments") or {}).get("args") or []
+                sub = (str(args[0]) if isinstance(args, list) and args else "").strip()
+                label = f"trilogy {sub}" if sub else "trilogy"
+            else:
+                label = name
+            pending = (name, label)
         elif e.get("type") == "tool_result" and pending is not None:
-            name = str(e.get("name", pending))
-            is_err = scoring._is_error_result(name, str(e.get("result") or ""))
-            outcomes[name][1 if is_err else 0] += 1
+            tool_name, label = pending
+            is_err = scoring._is_error_result(tool_name, str(e.get("result") or ""))
+            outcomes[label][1 if is_err else 0] += 1
             pending = None
     return outcomes
 
@@ -246,12 +274,29 @@ def write_failures_report(
     return out_path
 
 
+_TOOL_LABEL_MAX = 28
+
+
+def _short_tool_label(name: str) -> str:
+    """Truncate hugely-long tool names so a malformed tool_call (e.g. a model
+    crammed an entire CLI invocation into the `name` field instead of using
+    arguments) doesn't blow up the bar-chart layout. The Unknown-tool branch
+    in the agent loop rejects these on the wire; the dashboard just needs to
+    render them without wrapping a 500-char label across the whole figure.
+    Wider cap fits ``trilogy <subcommand>`` labels (``trilogy database``,
+    ``trilogy agent-info``) without truncation."""
+    if len(name) <= _TOOL_LABEL_MAX:
+        return name
+    return name[: _TOOL_LABEL_MAX - 1] + "…"
+
+
 def _plot_tool_calls(ax, outcomes: dict[str, list[int]]) -> None:
     tools = sorted(outcomes, key=lambda t: -sum(outcomes[t]))
+    labels = [_short_tool_label(t) for t in tools]
     ok = [outcomes[t][0] for t in tools]
     err = [outcomes[t][1] for t in tools]
-    ax.bar(tools, ok, color=OK_COLOR, label="ok")
-    ax.bar(tools, err, bottom=ok, color=ERR_COLOR, label="error")
+    ax.bar(labels, ok, color=OK_COLOR, label="ok")
+    ax.bar(labels, err, bottom=ok, color=ERR_COLOR, label="error")
     for i in range(len(tools)):
         total = ok[i] + err[i]
         rate = ok[i] / total * 100 if total else 0
@@ -315,13 +360,27 @@ def _plot_outcomes(ax, breakdown: dict[str, int]) -> None:
 def _plot_metrics(ax, report: dict) -> None:
     meta, agent, summary = report["meta"], report["agent"], report["summary"]
     tok = agent["tokens"]
+    # `wall_duration_seconds` is the true elapsed wall clock; falls back to
+    # the sum-of-per-query `duration_seconds` for reports rendered before the
+    # field was added. `avg_query_seconds` is concurrency-independent so it
+    # stays comparable across runs at different parallelism levels.
+    wall = agent.get("wall_duration_seconds", agent["duration_seconds"])
+    avg = agent.get(
+        "avg_query_seconds",
+        (
+            round(agent["duration_seconds"] / meta["num_queries"], 1)
+            if meta.get("num_queries")
+            else 0.0
+        ),
+    )
     rows = [
         (
             "pass rate",
             f"{summary['pass_count']}/{meta['num_queries']}"
             f"  ({summary['pass_rate'] * 100:.0f}%)",
         ),
-        ("wall time", f"{agent['duration_seconds']:.0f}s"),
+        ("wall time", f"{wall:.0f}s"),
+        ("avg/query", f"{avg:.0f}s"),
         ("LLM iterations", str(agent["iterations"])),
         ("tool calls", str(agent["tool_calls_total"])),
         ("tool success", f"{agent['tool_success_rate'] * 100:.0f}%"),
@@ -335,6 +394,129 @@ def _plot_metrics(ax, report: dict) -> None:
     ax.text(0.0, 1.0, "Run metrics", fontsize=11, fontweight="bold", va="top")
     body = "\n".join(f"{k:<16}{v}" for k, v in rows)
     ax.text(0.0, 0.84, body, fontsize=10, va="top", family="monospace")
+
+
+def _plot_per_query_overlay(
+    ax,
+    queries_a: list[dict],
+    attempts_a: Counter[int],
+    queries_b: list[dict],
+    attempts_b: Counter[int],
+    label_a: str,
+    label_b: str,
+) -> None:
+    """Both runs' per-query results on one chart. Each query id gets two
+    markers — circle for run A (base palette), triangle for run B (alt
+    palette) — offset slightly along x so they don't overlap. Color encodes
+    final status; marker shape + palette encodes which run."""
+    from matplotlib.lines import Line2D
+
+    by_id_a = {q["id"]: q for q in queries_a}
+    by_id_b = {q["id"]: q for q in queries_b}
+    ids = sorted(set(by_id_a) | set(by_id_b))
+    xs = list(range(len(ids)))
+    max_y = 2
+
+    for x, qid in zip(xs, ids):
+        qa = by_id_a.get(qid)
+        qb = by_id_b.get(qid)
+        if qa is not None:
+            ya = attempts_a.get(qid, 0)
+            ax.scatter(
+                x - 0.18,
+                ya,
+                c=STATUS_COLORS.get(qa["status"], "#000000"),
+                s=180,
+                marker="o",
+                edgecolors="black",
+                linewidths=0.8,
+                zorder=3,
+            )
+            ax.text(
+                x - 0.18,
+                ya,
+                str(ya),
+                ha="center",
+                va="center",
+                fontsize=7,
+                color="white",
+            )
+            max_y = max(max_y, ya)
+        if qb is not None:
+            yb = attempts_b.get(qid, 0)
+            ax.scatter(
+                x + 0.18,
+                yb,
+                c=STATUS_COLORS_ALT.get(qb["status"], "#000000"),
+                s=180,
+                marker="^",
+                edgecolors="black",
+                linewidths=0.8,
+                zorder=3,
+            )
+            ax.text(
+                x + 0.18,
+                yb,
+                str(yb),
+                ha="center",
+                va="center",
+                fontsize=7,
+                color="black",
+            )
+            max_y = max(max_y, yb)
+
+    ax.set_xticks(xs)
+    ax.set_xticklabels([f"q{i}" for i in ids])
+    ax.set_ylim(-0.6, max_y + 1.4)
+    ax.set_ylabel("`trilogy run` attempts")
+    ax.set_title(
+        f"Per-query — run attempts, colored by final status  "
+        f"(○ {label_a}, △ {label_b})"
+    )
+    ax.grid(axis="y", alpha=0.3)
+
+    status_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            markerfacecolor=STATUS_COLORS[s],
+            markeredgecolor="black",
+            markersize=9,
+            label=s,
+        )
+        for s in STATUS_ORDER
+    ]
+    run_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            markerfacecolor="#bdbdbd",
+            markeredgecolor="black",
+            markersize=10,
+            label=label_a,
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="^",
+            color="w",
+            markerfacecolor="#bdbdbd",
+            markeredgecolor="black",
+            markersize=10,
+            label=label_b,
+        ),
+    ]
+    ax.legend(
+        handles=status_handles + run_handles,
+        fontsize=8,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.13),
+        ncol=len(STATUS_ORDER) + 2,
+    )
 
 
 def render(report: dict, events: list[dict], out_path: Path) -> Path:
@@ -363,6 +545,83 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
     return out_path
 
 
+def render_comparison(
+    report_a: dict,
+    events_a: list[dict],
+    report_b: dict,
+    events_b: list[dict],
+    out_path: Path,
+    label_a: str = "base",
+    label_b: str = "enriched",
+) -> Path:
+    """Single PNG that overlays two runs for direct comparison. Per-query
+    attempts share one chart (different marker + palette per run); tool
+    calls, outcomes and metrics are split across an axis-pair so each run
+    is read separately."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.gridspec import GridSpec
+
+    fig = plt.figure(figsize=(16, 14))
+    gs = GridSpec(
+        4, 2, figure=fig, height_ratios=[2.0, 1.4, 0.7, 1.0], hspace=0.55, wspace=0.18
+    )
+
+    meta_a, meta_b = report_a["meta"], report_b["meta"]
+    sum_a, sum_b = report_a["summary"], report_b["summary"]
+    fig.suptitle(
+        "comparison  |  "
+        f"{label_a}: {meta_a['timestamp']} pass {sum_a['pass_count']}/{meta_a['num_queries']}"
+        f"  vs  "
+        f"{label_b}: {meta_b['timestamp']} pass {sum_b['pass_count']}/{meta_b['num_queries']}",
+        fontsize=13,
+        fontweight="bold",
+    )
+
+    ax_per_query = fig.add_subplot(gs[0, :])
+    _plot_per_query_overlay(
+        ax_per_query,
+        report_a["queries"],
+        query_run_attempts(events_a),
+        report_b["queries"],
+        query_run_attempts(events_b),
+        label_a,
+        label_b,
+    )
+
+    ax_tools_a = fig.add_subplot(gs[1, 0])
+    ax_tools_b = fig.add_subplot(gs[1, 1])
+    _plot_tool_calls(ax_tools_a, tool_outcomes(events_a))
+    ax_tools_a.set_title(f"Tool calls — {label_a}")
+    _plot_tool_calls(ax_tools_b, tool_outcomes(events_b))
+    ax_tools_b.set_title(f"Tool calls — {label_b}")
+
+    ax_out_a = fig.add_subplot(gs[2, 0])
+    ax_out_b = fig.add_subplot(gs[2, 1])
+    _plot_outcomes(ax_out_a, sum_a["status_breakdown"])
+    ax_out_a.set_title(f"Outcomes — {label_a}")
+    _plot_outcomes(ax_out_b, sum_b["status_breakdown"])
+    ax_out_b.set_title(f"Outcomes — {label_b}")
+
+    ax_metrics_a = fig.add_subplot(gs[3, 0])
+    ax_metrics_b = fig.add_subplot(gs[3, 1])
+    _plot_metrics(ax_metrics_a, report_a)
+    ax_metrics_a.text(
+        0.0, 1.06, f"({label_a})", fontsize=9, va="bottom", style="italic"
+    )
+    _plot_metrics(ax_metrics_b, report_b)
+    ax_metrics_b.text(
+        0.0, 1.06, f"({label_b})", fontsize=9, va="bottom", style="italic"
+    )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
 def run_main(results_dir: Path, charts_dir: Path, argv: list[str] | None = None) -> int:
     """Per-benchmark shim entry: ``results_dir`` and ``charts_dir`` come from the
     BenchmarkSpec, so the same code serves every benchmark."""
@@ -378,6 +637,35 @@ def run_main(results_dir: Path, charts_dir: Path, argv: list[str] | None = None)
         default=charts_dir / "dashboard.png",
         help="output PNG",
     )
+    parser.add_argument(
+        "--compare-with",
+        type=Path,
+        default=None,
+        help=(
+            "render a side-by-side comparison PNG against this other run dir."
+            " Output goes to <charts_dir>/dashboard_compare.png by default"
+            " (override with --compare-out). Single-run dashboard is still"
+            " written if no other flags suppress it."
+        ),
+    )
+    parser.add_argument(
+        "--compare-out",
+        type=Path,
+        default=charts_dir / "dashboard_compare.png",
+        help="output PNG for the comparison render (only used with --compare-with).",
+    )
+    parser.add_argument(
+        "--label",
+        type=str,
+        default="base",
+        help="label for the primary run in the comparison legend.",
+    )
+    parser.add_argument(
+        "--compare-label",
+        type=str,
+        default="enriched",
+        help="label for the --compare-with run in the comparison legend.",
+    )
     args = parser.parse_args(argv)
     run_dir = args.run_dir or latest_run_dir(results_dir)
     report, events = load_run(run_dir)
@@ -388,4 +676,21 @@ def run_main(results_dir: Path, charts_dir: Path, argv: list[str] | None = None)
     )
     print(f"Wrote {out}  (run: {run_dir.name})")
     print(f"Wrote {md}  ({len(failures)} trilogy failures)")
+
+    if args.compare_with is not None:
+        report_b, events_b = load_run(args.compare_with)
+        compare_out = render_comparison(
+            report,
+            events,
+            report_b,
+            events_b,
+            args.compare_out,
+            label_a=args.label,
+            label_b=args.compare_label,
+        )
+        print(
+            f"Wrote {compare_out}  "
+            f"({args.label}: {run_dir.name}, "
+            f"{args.compare_label}: {args.compare_with.name})"
+        )
     return 0

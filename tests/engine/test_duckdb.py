@@ -27,6 +27,32 @@ def test_basic_query(duckdb_engine: Executor, expected_results):
     assert results[0].total_count == expected_results["total_count"]
 
 
+def test_where_on_aggregate_with_ratio_of_aggregates():
+    """Filtering on a derived aggregate AND selecting a ratio of aggregates at
+    the same grain must not leak the ratio expression into GROUP BY (DuckDB:
+    'GROUP BY clause cannot contain aggregates')."""
+    engine = Dialects.DUCK_DB.default_executor()
+    text = """
+key id int;
+property id.g string;
+property id.v int;
+datasource t (id, g, v)
+  grain (id)
+  query '''select 1 as id, 'a' as g, 10 as v
+           union all select 2, 'a', 20
+           union all select 3, 'b', 5''';
+
+auto a <- sum(v ? v > 5) by g;
+auto b <- sum(v ? v > 0) by g;
+auto r <- a / b;
+
+where a > 0
+select g, r;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert results == [("a", 1.0)]
+
+
 def test_concept_derivation():
     duckdb_engine = Dialects.DUCK_DB.default_executor()
     test_datetime = datetime(hour=12, day=1, month=2, year=2022, second=34)
@@ -1860,3 +1886,114 @@ ORDER BY lochierarchy desc nulls first;
     assert sql.count("ROLLUP") == 1, sql
     # The outer SELECT must execute without binder error.
     list(executor.execute_raw_sql(sql).fetchall())
+
+
+_HAVING_SUBSTITUTION_SCHEMA = """
+key sale_id int;
+property sale_id.store_id int;
+property sale_id.customer_id int;
+property sale_id.amount int;
+
+datasource sales (
+    sale_id: sale_id,
+    store_id: store_id,
+    customer_id: customer_id,
+    amount: amount
+)
+grain (sale_id)
+query '''
+    select 1 as sale_id, 1 as store_id, 1 as customer_id, 100 as amount
+    union all select 2 as sale_id, 1 as store_id, 2 as customer_id, 800 as amount
+    union all select 3 as sale_id, 2 as store_id, 1 as customer_id, 50 as amount
+    union all select 4 as sale_id, 2 as store_id, 2 as customer_id, 100 as amount
+''';
+"""
+
+
+def test_having_substitutes_off_grain_aggregate_e2e():
+    # Data:
+    #   (store=1, cust=1, 100), (store=1, cust=2, 800),
+    #   (store=2, cust=1, 50),  (store=2, cust=2, 100)
+    # Per-(store, customer) totals: 100, 800, 50, 100.
+    # Per-store totals: store 1 = 900, store 2 = 150.
+    # HAVING per_customer_store_total < 0.6 * store_total:
+    #   (1,1) 100 < 540 ✓; (1,2) 800 < 540 ✗;
+    #   (2,1) 50 < 90 ✓;   (2,2) 100 < 90 ✗  → 2 rows.
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_HAVING_SUBSTITUTION_SCHEMA)
+    text = """
+select
+    store_id,
+    customer_id,
+    sum(amount) as total,
+    sum(amount) by store_id as store_total
+having sum(amount) < 0.6 * sum(amount) by store_id
+order by store_id asc, customer_id asc;
+"""
+    sql = executor.generate_sql(text)[-1]
+    assert "INVALID_REFERENCE" not in sql, sql
+    rows = executor.execute_text(text)[0].fetchall()
+    assert [(r.store_id, r.customer_id, r.total, r.store_total) for r in rows] == [
+        (1, 1, 100, 900),
+        (2, 1, 50, 150),
+    ]
+
+
+def test_having_substitutes_nested_aggregate_e2e():
+    # Same data — per-(customer, store) totals: 100, 800, 50, 100.
+    # avg(sum by customer_id, store_id) by store_id:
+    #   store 1 → avg(100, 800) = 450; store 2 → avg(50, 100) = 75.
+    # HAVING total > per-store avg-of-customer-totals:
+    #   (1,1) 100 > 450 ✗; (1,2) 800 > 450 ✓;
+    #   (2,1) 50 > 75 ✗;   (2,2) 100 > 75 ✓  → 2 rows.
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_HAVING_SUBSTITUTION_SCHEMA)
+    text = """
+select
+    store_id,
+    customer_id,
+    sum(amount) as total,
+    avg(sum(amount) by customer_id, store_id) by store_id as avg_per_store
+having sum(amount) > avg(sum(amount) by customer_id, store_id) by store_id
+order by store_id asc, customer_id asc;
+"""
+    sql = executor.generate_sql(text)[-1]
+    assert "INVALID_REFERENCE" not in sql, sql
+    rows = executor.execute_text(text)[0].fetchall()
+    assert [(r.store_id, r.customer_id, r.total, r.avg_per_store) for r in rows] == [
+        (1, 2, 800, 450),
+        (2, 2, 100, 75),
+    ]
+
+
+_ORDER_BY_CONSTANT_SCHEMA = """key id int;
+property id.sid string;
+property id.iid string;
+property id.v int;
+datasource t (id, sid, iid, v)
+  grain (id)
+  query '''select 1 as id, 's1' as sid, 'i1' as iid, 10 as v
+           union all select 2, 's1', 'i2', 20
+           union all select 3, 's2', 'i1', 5''';
+
+auto by_store <- sum(v) by sid;
+auto by_item  <- sum(v) by iid;
+"""
+
+
+def test_order_by_constant_across_aggregate_ctes():
+    # A constant select column ordered by, in a multi-aggregate-CTE plan, must
+    # reference the materialized CTE column in ORDER BY rather than re-emitting
+    # the bind parameter (which DuckDB rejects: "Parameter not supported in
+    # ORDER BY clause"). The literal is still parameterized where it's defined.
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_ORDER_BY_CONSTANT_SCHEMA)
+    text = """select 'store' as channel, sid, by_store, by_item
+order by channel asc, sid asc nulls first;"""
+    sql = executor.generate_sql(text)[-1]
+    order_by = sql.split("ORDER BY")[-1]
+    assert "$1" not in order_by and ":channel" not in order_by, sql
+    assert '"channel"' in order_by, sql
+    rows = executor.execute_text(text)[0].fetchall()
+    assert all(r.channel == "store" for r in rows)
+    assert [r.sid for r in rows] == sorted(r.sid for r in rows)

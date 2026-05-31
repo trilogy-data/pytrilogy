@@ -1,4 +1,4 @@
-import unified_sales as sales;
+import all_sales as sales;
 
 const first_year <- 2001;
 const second_year <- 2002;
@@ -6,29 +6,29 @@ const second_year <- 2002;
 def channel_year_total(channel, year) -> sum(
     sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = channel and sales.date.year = year
 )
-    by sales.customer.id;
+    by sales.billing_customer.id;
 
 auto store_first_year <- sum(
     sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = 'STORE' and sales.date.year = first_year
 )
-    by sales.customer.id;
+    by sales.billing_customer.id;
 auto web_first_year <- sum(
     sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = 'WEB' and sales.date.year = first_year
 )
-    by sales.customer.id;
+    by sales.billing_customer.id;
 auto store_second_year <- sum(
     sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = 'STORE' and sales.date.year = second_year
 )
-    by sales.customer.id;
+    by sales.billing_customer.id;
 auto web_second_year <- sum(
     sales.ext_list_price - sales.ext_discount_amount ? sales.sales_channel = 'WEB' and sales.date.year = second_year
 )
-    by sales.customer.id;
+    by sales.billing_customer.id;
 
 where
     sales.sales_channel in ('STORE', 'WEB')
     and sales.date.year in (first_year, second_year)
-    and sales.customer.id is not null
+    and sales.billing_customer.id is not null
     and store_first_year > 0
     and web_first_year > 0
     and (case
@@ -39,14 +39,14 @@ where
             else 0.0
         end)
 select
-    sales.customer.text_id,
-    sales.customer.first_name,
-    sales.customer.last_name,
-    sales.customer.preferred_cust_flag,
+    sales.billing_customer.text_id,
+    sales.billing_customer.first_name,
+    sales.billing_customer.last_name,
+    sales.billing_customer.preferred_cust_flag,
 order by
-    sales.customer.text_id asc nulls first,
-    sales.customer.first_name asc nulls first,
-    sales.customer.last_name asc nulls first,
-    sales.customer.preferred_cust_flag asc nulls first
+    sales.billing_customer.text_id asc nulls first,
+    sales.billing_customer.first_name asc nulls first,
+    sales.billing_customer.last_name asc nulls first,
+    sales.billing_customer.preferred_cust_flag asc nulls first
 limit 100
 ;

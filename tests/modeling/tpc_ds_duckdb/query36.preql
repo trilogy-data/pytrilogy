@@ -1,4 +1,4 @@
-import store_sales as ss;
+import physical_sales as ss;
 
 # Single ROLLUP(category, class). All rollup aggregates AND grouping/CASE
 # derivations are computed INSIDE the rowset SELECT (with the underlying sums

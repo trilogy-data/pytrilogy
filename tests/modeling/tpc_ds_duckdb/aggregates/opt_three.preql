@@ -1,47 +1,47 @@
 const _trilogyt._created_at <- current_datetime();
 
-import ..store_sales as store_sales;
+import ..physical_sales as physical_sales;
 
 # WHERE
-#     store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+#     physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
 # SELECT
-#     store_sales.date.year,
-#     store_sales.item.brand_id,
-#     store_sales.item.brand_name,
-#     sum(store_sales.ext_sales_price) -> sum_agg,
+#     physical_sales.date.year,
+#     physical_sales.item.brand_id,
+#     physical_sales.item.brand_name,
+#     sum(physical_sales.ext_sales_price) -> sum_agg,
 # ORDER BY
-#     store_sales.date.year asc,
+#     physical_sales.date.year asc,
 #     sum_agg desc,
-#     store_sales.item.brand_id asc
+#     physical_sales.item.brand_id asc
 # LIMIT 100
 # ;
-auto sum_agg <- sum(store_sales.ext_sales_price)
-    by store_sales.date.year, store_sales.item.brand_id, store_sales.item.brand_name;
+auto sum_agg <- sum(physical_sales.ext_sales_price)
+    by physical_sales.date.year, physical_sales.item.brand_id, physical_sales.item.brand_name;
 
 partial datasource dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id (
-    store_sales_date_month_of_year: store_sales.date.month_of_year,
-    store_sales_date_year: store_sales.date.year,
-    store_sales_ext_sales_price: store_sales.ext_sales_price,
-    store_sales_item_brand_id: store_sales.item.brand_id,
-    store_sales_item_brand_name: store_sales.item.brand_name,
-    store_sales_item_id: store_sales.item.id,
-    store_sales_item_manufacturer_id: store_sales.item.manufacturer_id,
-    store_sales_ticket_number: store_sales.ticket_number,
+    physical_sales_date_month_of_year: physical_sales.date.month_of_year,
+    physical_sales_date_year: physical_sales.date.year,
+    physical_sales_ext_sales_price: physical_sales.ext_sales_price,
+    physical_sales_item_brand_id: physical_sales.item.brand_id,
+    physical_sales_item_brand_name: physical_sales.item.brand_name,
+    physical_sales_item_id: physical_sales.item.id,
+    physical_sales_item_manufacturer_id: physical_sales.item.manufacturer_id,
+    physical_sales_ticket_number: physical_sales.ticket_number,
 )
 
-complete where store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+complete where physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
 address dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id;
 
 # datasource dsstore_sales_date_year_store_sales_item_brand_id_store_sales_item_brand_name_a595e281 (
 #     sum_agg: sum_agg,
-#     store_sales_date_year: ~store_sales.date.year,
-#     store_sales_item_brand_id: ~store_sales.item.brand_id,
-#     store_sales_item_brand_name: ~store_sales.item.brand_name
+#     store_sales_date_year: ~physical_sales.date.year,
+#     store_sales_item_brand_id: ~physical_sales.item.brand_id,
+#     store_sales_item_brand_name: ~physical_sales.item.brand_name
 # )
 # grain (
-#     store_sales.date.year,
-#     store_sales.item.brand_id,
-#     store_sales.item.brand_name
+#     physical_sales.date.year,
+#     physical_sales.item.brand_id,
+#     physical_sales.item.brand_name
 # )
-# complete where store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+# complete where physical_sales.date.month_of_year = 11 and physical_sales.item.manufacturer_id = 128
 # address dsstore_sales_date_year_store_sales_item_brand_id_store_sales_item_brand_name_a595e281;

@@ -1,19 +1,19 @@
 query_id = "42"
-gen_length = 1017
-preql_size = 475
+gen_length = 1077
+preql_size = 511
 comp_size = 554
 generated_sql = """
 SELECT
-    \"store_sales_date_date\".\"D_YEAR\" as \"store_sales_date_year\",
-    \"store_sales_item_items\".\"I_CATEGORY_ID\" as \"store_sales_item_category_id\",
-    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total_ext_sales_price\"
+    \"physical_sales_date_date\".\"D_YEAR\" as \"physical_sales_date_year\",
+    \"physical_sales_item_items\".\"I_CATEGORY_ID\" as \"physical_sales_item_category_id\",
+    \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
+    sum(\"physical_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total_ext_sales_price\"
 FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"store_sales_item_items\".\"I_MANAGER_ID\" = 1 and \"store_sales_date_date\".\"D_MOY\" = 11 and \"store_sales_date_date\".\"D_YEAR\" = 2000
+    \"physical_sales_item_items\".\"I_MANAGER_ID\" = 1 and \"physical_sales_date_date\".\"D_MOY\" = 11 and \"physical_sales_date_date\".\"D_YEAR\" = 2000
 
 GROUP BY
     1,
@@ -21,7 +21,7 @@ GROUP BY
     3
 ORDER BY 
     \"total_ext_sales_price\" desc,
-    \"store_sales_date_date\".\"D_YEAR\" asc,
-    \"store_sales_item_items\".\"I_CATEGORY_ID\" asc,
-    \"store_sales_item_items\".\"I_CATEGORY\" asc
+    \"physical_sales_date_date\".\"D_YEAR\" asc,
+    \"physical_sales_item_items\".\"I_CATEGORY_ID\" asc,
+    \"physical_sales_item_items\".\"I_CATEGORY\" asc
 LIMIT (100)"""

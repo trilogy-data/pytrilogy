@@ -1,6 +1,6 @@
 query_id = "97.2"
-gen_length = 2277
-preql_size = 1563
+gen_length = 2360
+preql_size = 1642
 comp_size = 1159
 generated_sql = """
 
@@ -22,30 +22,30 @@ GROUP BY
     3),
 cooperative as (
 SELECT
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"item_id\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\"
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"physical_sales_billing_customer_id\",
+    \"physical_sales_store_sales\".\"SS_ITEM_SK\" as \"item_id\",
+    \"physical_sales_store_sales\".\"SS_ITEM_SK\" as \"physical_sales_item_id\"
 FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
+    \"physical_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
 
 GROUP BY
     2,
     4)
 SELECT
     sum(CASE
-	WHEN \"cooperative\".\"store_sales_customer_id\" is not null and \"cooperative\".\"store_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is null and \"quizzical\".\"catalog_sales_item_id\" is null THEN 1
+	WHEN \"cooperative\".\"physical_sales_billing_customer_id\" is not null and \"cooperative\".\"physical_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is null and \"quizzical\".\"catalog_sales_item_id\" is null THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"cooperative\".\"store_sales_customer_id\" is null and \"cooperative\".\"store_sales_item_id\" is null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
+	WHEN \"cooperative\".\"physical_sales_billing_customer_id\" is null and \"cooperative\".\"physical_sales_item_id\" is null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"cooperative\".\"store_sales_customer_id\" is not null and \"cooperative\".\"store_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
+	WHEN \"cooperative\".\"physical_sales_billing_customer_id\" is not null and \"cooperative\".\"physical_sales_item_id\" is not null and \"quizzical\".\"catalog_sales_bill_customer_id\" is not null and \"quizzical\".\"catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM

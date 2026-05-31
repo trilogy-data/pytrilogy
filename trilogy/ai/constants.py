@@ -6,6 +6,7 @@ Semantic model statements:
 - import <> imports a model to reuse; its fields become available. Imports CHAIN: when an imported model itself imports others (e.g. a fact table foreign-key-linked to its dimensions), reach those by chaining the path — after `import orders as orders;` write `orders.customer.name`. Import only the model(s) you take measures from; do NOT separately import a model already reachable by chaining (a separate import is a disconnected copy that will not join). A field belongs to exactly one model — never invent intermediate nesting: it is `orders.amount`, never `orders.date.amount`.
 - merge <a> into <b> links a concept from one model to another so the models that own them join. In general the two sides cover different-sized sets — merge the subset into the superset and mark the superset target with `~`: `merge inventory.item.id into ~store_sales.item.id;`. A plain `merge a into b` (no `~`) asserts strict equivalence — the two concepts are exactly the same set. When a query needs two separate models that share a concept (e.g. two fact tables each linked to `item`), import both and merge their shared concept before the query — one merge per concept. Use `merge` in the query; never edit model files to wire a join.
 - key|property|auto|metric defines fields locally. The output will also be visible in fields available to use, so you generally don't need to edit these unless requested.
+- `parameter NAME TYPE [default <literal>];` declares a runtime parameter — a value supplied at execution time by `trilogy run <file>.preql --param NAME=VALUE` (multiple `--param` flags allowed). Reference it as a regular field anywhere a value is valid. Without a `default`, the file requires `--param` at run-time; add `default <literal>` to make local validation work without flags.
 - datasource statements define a datasource, which is a mapping of fields to a SQL database table. The left side is the SQL column name, the right side is the field name.
 
 SELECT RULES:
@@ -13,14 +14,17 @@ SELECT RULES:
   * Wrong (SQL-style subselect): `where store_sales.store_id in (select store_id where store.state = 'TN')`
   * Right (dot-path on the related dim): `where store_sales.store.state = 'TN'`
   This pattern generalises: any "filter the fact by some attribute of a related entity" → reach across the import chain (`fact.dim.attr`) and put it in WHERE.
+- Existence / non-existence across two models that are NOT directly connected (no shared dotted path): import both, then test a linking key with `in` / `not in` against the OTHER model's key. This is the anti-join / semi-join — it is column-level (`key not in other.key`), NOT a subquery, and needs no merge. Use it for "rows with (no) matching record in another model":
+  * No matching record (anti-join): `import customers as c; import orders as o; where c.id not in o.customer_id` → customers who never placed an order.
+  * Has a matching record (semi-join): `where c.id in o.customer_id` → customers who have placed an order.
+  Prefer this over an aggregate hack like `sum(o.amount) by c.id is null` — a nullable measure can be null even when a matching row exists, so it silently mis-classifies.
 - Never write the `distinct` keyword. `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count the distinct values of a non-key property.
 - All fields exist in a global namespace; field paths look like `order.product.id`. Always use the full path. NEVER include a from clause.
 - If a field has a grain defined, and that grain is not in the query output, aggregate it to get desired result. 
-- If a field has a 'alias_for' defined, it is shorthand for that calculation. Use the field name instead of the calculation in your query to be concise. 
 - Newly created fields at the output of the select must be aliased with as (e.g. `sum(births) as all_births`). 
 - Aliases cannot happen inside calculations or in the where/having/order clause. Never alias fields with existing names. 'sum(revenue) as total_revenue' is valid, but '(sum(births) as total_revenue) +1 as revenue_plus_one' is not.
-- Implicit grouping: NEVER include a group by clause. Grouping is by non-aggregated fields in the SELECT clause.
-- You can dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
+- Automatic groups. NEVER include the GROUP BY clause for a select. Grouping is automatic by non-aggregated fields in the SELECT clause.
+- You CAN dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens (`by (substring(phone, 1, 2), upper(name))`). Use parens whenever a `by` entry is anything other than a simple identifier — function calls, casts, arithmetic, etc. — e.g. `avg(price) by (substring(phone, 1, 2))`. Without the parens the parser will reject the expression form.
 - Histograms / bucket-of-aggregates (counting entities by a per-entity metric): define the per-key metric with `by`, then SELECT it alongside `count(<other_key>)` — the outer select buckets by the metric and counts how many entities fall into each bucket. Wrap with `coalesce(..., 0)` to include entities whose underlying rows are missing (the left-join equivalent — entities with zero matching child rows stay in the histogram). Example: bucket customers by how many of their orders match a predicate, including customers with zero matches:
       auto orders_per_customer <- count(orders.id ? not orders.comment like '%X%') by customer.id;
@@ -32,13 +36,23 @@ SELECT RULES:
 - Count must specify a field (no `count(*)`) Counts are automatically deduplicated for keys. A count of a property counts the key. Use count_distinct for unique property members; do not use it on keys as it is identical to count.
 - Since there are no underlying tables, sum/count of a constant should always specify a grain field (e.g. `sum(1) by x as count`). 
 - Filtering on aggregates:
+  - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
+  * WHERE conditions are pushed before aggregation calculation for aggregates in the select. Where conditions DO NOT
+    apply to other aggregates in the WHERE CLAUSE. 
   * HAVING filters on an aggregate that IS in the SELECT output. HAVING can ONLY reference fields that appear in the SELECT projection — select the aggregate with an alias, then reference that alias:
-      select customer.state, sum(sales.amount) as total_sales
+      These fields can be hidden for conveience.
+      select customer.state, --sum(sales.amount) as total_sales
       having total_sales > 1000
+  * Nested aggregate — compare a per-entity total to the GROUP AVERAGE of those totals (a common "above 1.2x the group norm" ask). Define each grain with its own `by`, then filter in HAVING. Both derived metrics are selected hidden (`--`) so HAVING can reference them while the output stays just the id:
+      auto cust_store_total <- sum(sales.amount) by sales.customer.id, sales.store.id;
+      auto store_avg <- avg(cust_store_total) by sales.store.id;
+      select sales.customer.id, --cust_store_total, --store_avg
+      having cust_store_total > 1.2 * store_avg
   * To filter rows by an aggregate condition that is NOT in the output, write the aggregate directly in WHERE using inline grouping `agg(x) by grain`:
-      where item.price > 1.2 * avg(item.price) by item.category
+      Remember that other where conditions are not pushed through an aggregate in the where; use an inline condition if you
+      need to filter inside those. 
+      where store=1 and item.price > 1.2 * avg(item.price ? explicit_other_condition) by item.category
       select item.name, item.price
-- Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
 - Condition scoping: WHERE conditions DO NOT filter each other, and they DO NOT scope aggregates inside other conditions. Each aggregate computes over its own input, independent of sibling WHERE clauses. To scope an aggregate's input, push the filter INSIDE the aggregate with `?`:
   * Wrong (the `region = 'EUROPE'` clause does NOT restrict the `min(price)` in the other clause; min is over ALL rows):
       where region = 'EUROPE'
@@ -46,7 +60,11 @@ SELECT RULES:
   * Right (the `?` filter restricts the min's input to EUROPE rows per part):
       where region = 'EUROPE'
         and price = min(price ? region = 'EUROPE') by part_id
-  This applies to aggregates anywhere — WHERE, HAVING, SELECT projections. If an aggregate should see only a subset, that subset goes inside `?`, never as a sibling WHERE condition.
+    Quick rules:
+    - Global filters show in WHERE
+    - Filtering on aggregates post-global filters can be done through the having clause with a hidden aggregate
+    in select
+    - OR in WHERE with `?` inline filter syntax
 - Operator precedence (highest binds first; use `(...)` to override):
   1. Primaries: literal, identifier, function call, parenthetical `(...)`, member access (`.`, `[]`, `::` cast).
   2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).
@@ -56,33 +74,108 @@ SELECT RULES:
   6. Logical `and`.
   7. Logical `or`.
 - Always use a reasonable `LIMIT` for final queries unless the request is for a time series or line chart.
-- Window functions: `rank entity [optional over group] by field desc` (e.g. `rank name over state by sum(births) desc as top_name`) Do not use parentheses for over.
+- Window functions use SQL-style syntax — the canonical form Trilogy parses, renders, and round-trips:
+  * Ranking: `rank(<key>) over (partition by <group> order by <expr> desc)` — e.g. `rank(name) over (partition by state order by sum(births) desc) as top_name`. `partition by` is OPTIONAL (omit for a single global window). `dense_rank`/`row_number` take the same shape.
+  * Multi-key ranking: `rank(a, b) over (...)` — all comma-separated args are equal-status grain keys (used when ranking ROLLUP output where the grain spans multiple columns).
+  * `partition by` accepts arbitrary expressions, not just identifiers: `partition by upper(country), case when region = 'EU' then 1 else 0 end`.
+  * Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate — write `sum(x) by g` directly instead of `sum(x) over (partition by g)`.
+  * lag/lead: `lag(<field>, <offset>) over (partition by <g> order by <expr>)`. Offset is optional and defaults to 1. Example: `lag(amount, 2) over (order by date asc) as prev_amount`.
 - Functions. All function names have parenthese (e.g. `sum(births)`, `date_part('year', dep_time)`). For no arguments, use empty parentheses (e.g. `current_date()`).
-- For lag/lead, offset is first: lag/lead offset field order by expr asc/desc.
-- For lag/lead with a window clause: lag/lead offset field by window_clause order by expr asc/desc.
+- Multi-level grouping (ROLLUP / CUBE / GROUPING SETS) attaches to an aggregate with a `by` clause and computes that aggregate at multiple grain levels in one pass:
+  * `agg(<expr>) by rollup d1, d2` → grouping sets `(d1, d2)`, `(d1)`, `()`. Standard SQL ROLLUP semantics, useful for subtotals + grand total.
+  * `agg(<expr>) by cube d1, d2` → every subset of the grouping keys.
+  * `agg(<expr>) by grouping sets (d1, d2), (d1), ()` → arbitrary, explicit grouping combinations. Parens around each set; `()` is the grand total.
+  * The `by rollup|cube|grouping sets ...` clause attaches to ONE aggregate. When several aggregates need the same expansion, wrap them in a `def` macro so the rollup spec stays consistent:
+        def rollup_avg(metric) -> avg(metric::numeric(12,2)) by rollup item.category, item.class;
+        select item.category, item.class, @rollup_avg(quantity) as agg1, @rollup_avg(price) as agg2;
+  * `grouping(<field>)` returns 1 when the field has been rolled up at that row, 0 otherwise — use it (or its sum, e.g. `grouping(a) + grouping(b)`) to compute the hierarchy level. Detection by output NULL works only when the source has no real NULLs in the rolled columns; when in doubt, prefer `grouping()`.
 - Use `::type` casting, e.g., `"2020-01-01"::date`.
 - Date_parts have no quotes; use `date_part(order_date, year)` instead of `date_part(order_date, 'year')`. Prefer idiomatic function casts (year(order_date) instead of date_part(order_date, year)) when possible.
 - Comments use `#` only, per line.
-- Two example queries: "where year between 1940 and 1950
-  select
+- For complex logic, break down your query into concept declarations that can be resued
+- Three example queries:
+
+Query 1: For names with more than 10 births in vermont ever, find the top 10 names by total births 
+across the US in the 1940s and 1950s for Idaho, along with their Vermont births and ranks within Idaho
+and nationally.
+```
+# break up a query by defining resusable components
+auto all_births <- sum(births);
+
+# can force an aggregate rather than getting the implicit
+# aggregate of the select, so here we get briths by name, no state
+auto births_by_name_usa_wide <- sum(births) by name;
+
+# can push filters into aggregates, especially
+# useful for where filtering.
+auto vermont_births <- sum(births ? state = 'VT');
+
+where year between 1940 and 1950
+and vermont_births>10
+and state = 'ID'
+SELECT
       name,
       state,
-      sum(births) AS all_births,
-      sum(births ? state = 'VT') AS vermont_births,
-      rank name over state by all_births desc AS state_rank,
-      rank name by sum(births) by name desc AS all_rank
+      all_births,
+      vermont_births,
+      rank(name) over (partition by state order by all_births desc) AS state_rank,
+      rank(name) over (order by births_by_name_usa_wide desc) AS all_rank
   having 
       all_rank<11
-      and state = 'ID'
+      
   order by 
     all_rank asc
-    limit 5;", "where dep_time between '2002-01-01'::datetime and '2010-01-31'::datetime
+    limit 5;
+```
+    
+Query 2: for carriers with significant flights between 2000 and 2002, find the 
+carriers with average daily flights >10 between 2002 and january 31 2010
+``
+where dep_time between '2002-01-01'::datetime and '2010-01-31'::datetime
+and count(id2 ? year(dep_time::datetime) between 2000 and 2002) by carrier.name > 1000
   select
       carrier.name,
       count(id2) AS total_flights,
       total_flights / date_diff(min(dep_time.date), max(dep_time.date), DAY) AS average_daily_flights
-  order by 
-    total_flights desc;"""
+ having
+    average_daily_flights > 10
+  order by
+    total_flights desc;"
+
+Query 3: store sales totals by item category and class, with subtotals for each
+category and a grand total. The ROLLUP expands one aggregate into three grain
+levels in one pass; `grouping()` tags which level each row is at so we can sort
+totals above their children.
+```
+where store_sales.date.year = 2001
+select
+    store_sales.item.category,
+    store_sales.item.class,
+    sum(store_sales.net_profit) by rollup store_sales.item.category, store_sales.item.class as profit,
+    grouping(store_sales.item.category) by rollup store_sales.item.category, store_sales.item.class as g_cat,
+    grouping(store_sales.item.class)    by rollup store_sales.item.category, store_sales.item.class as g_class,
+    g_cat + g_class as level  # 0 = leaf, 1 = category subtotal, 2 = grand total
+order by
+    level asc,
+    profit desc
+limit 100;
+```
+
+When several columns have the same calculation factor it into a `def` function
+to keep queries concise.
+```
+def by_geo(metric) -> avg(metric::numeric(12,2))
+    by rollup customer.address.country, customer.address.state, customer.address.county;
+
+select
+    customer.address.country,
+    customer.address.state,
+    customer.address.county,
+    @by_geo(sales.quantity)   as avg_qty,
+    @by_geo(sales.list_price) as avg_price
+limit 100;
+```
+"""
 
 
 def render_function(function_type: FunctionType, example: str | None = None):
@@ -112,16 +205,45 @@ FUNCTION_EXAMPLES = {
     FunctionType.CURRENT_TIMESTAMP: "now()",
 }
 
+# AST-internal / operator-duplicate function types that the agent should never
+# call by name — they are noise in the reference and (e.g. `union`) tempt agents
+# into complex constructs not worth using yet. Arithmetic is written with
+# operators (`a + b`, not `add(a, b)`); member/index access with `.`/`[]`;
+# parentheses/aliases/constants are surface syntax, not callable functions.
+_AGENT_HIDDEN_FUNCTIONS = {
+    FunctionType.NOOP,
+    FunctionType.CUSTOM,
+    FunctionType.UNION,
+    FunctionType.RECURSE_EDGE,
+    FunctionType.ALIAS,
+    FunctionType.PARENTHETICAL,
+    FunctionType.CONSTANT,
+    FunctionType.TYPED_CONSTANT,
+    FunctionType.BOOL,
+    FunctionType.INDEX_ACCESS,
+    FunctionType.MAP_ACCESS,
+    FunctionType.ATTR_ACCESS,
+    FunctionType.GROUP,
+    FunctionType.ADD,
+    FunctionType.SUBTRACT,
+    FunctionType.MULTIPLY,
+    FunctionType.DIVIDE,
+}
+
 FUNCTIONS = "\n".join(
     [
         render_function(v, example=FUNCTION_EXAMPLES.get(v))
         for x, v in FunctionType.__members__.items()
-        if v in FUNCTION_REGISTRY
+        if v in FUNCTION_REGISTRY and v not in _AGENT_HIDDEN_FUNCTIONS
     ]
 )
 
-AGGREGATE_FUNCTIONS = [
-    x
-    for x, info in FunctionType.__members__.items()
-    if x in FunctionClass.AGGREGATE_FUNCTIONS.value
-]
+AGGREGATE_FUNCTIONS = "\n".join(
+    [
+        render_function(v, example=FUNCTION_EXAMPLES.get(v))
+        for _, v in FunctionType.__members__.items()
+        if v in FunctionClass.AGGREGATE_FUNCTIONS.value
+        and v in FUNCTION_REGISTRY
+        and v not in _AGENT_HIDDEN_FUNCTIONS
+    ]
+)

@@ -73,6 +73,35 @@ def test_explore_show_concepts_only(runner, sample_preql: Path):
     assert "Imports" not in result.output
 
 
+@pytest.fixture
+def annotated_import_preql(tmp_path: Path) -> Path:
+    (tmp_path / "dem.preql").write_text(dedent("""
+            key cd_id int;
+            property cd_id.edu string;
+            datasource cd (cd_id, edu) grain(cd_id)
+            query '''select 1 as cd_id, 'College' as edu''';
+            """).strip() + "\n")
+    parent = tmp_path / "sales.preql"
+    parent.write_text("import dem as dem; # demographics recorded at point of sale\n")
+    return parent
+
+
+def test_explore_surfaces_import_description_in_groups(runner, annotated_import_preql):
+    result = runner.invoke(cli, ["explore", str(annotated_import_preql)])
+    assert result.exit_code == 0, result.output
+    assert "demographics recorded at point of sale" in result.output
+
+
+def test_explore_surfaces_import_description_in_imports_table(
+    runner, annotated_import_preql
+):
+    result = runner.invoke(
+        cli, ["explore", str(annotated_import_preql), "--show", "imports"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "demographics recorded at point of sale" in result.output
+
+
 def test_explore_show_datasources_only(runner, sample_preql: Path):
     result = runner.invoke(cli, ["explore", str(sample_preql), "--show", "datasources"])
     assert result.exit_code == 0
@@ -109,22 +138,26 @@ def test_explore_purpose_filter_accepts_multiple(runner, sample_preql: Path):
     assert "distance" in result.output
 
 
-def test_explore_grep_filter(runner, sample_preql: Path):
-    result = runner.invoke(cli, ["explore", str(sample_preql), "--grep", "carrier"])
+def test_explore_regex_filter_substring(runner, sample_preql: Path):
+    """A bare word still works as a substring match under the new ``--regex``
+    flag — same observable behaviour as the old substring-only ``--grep``."""
+    result = runner.invoke(cli, ["explore", str(sample_preql), "--regex", "carrier"])
     assert result.exit_code == 0
     assert "carrier" in result.output
     assert "distance" not in result.output
 
 
-def test_explore_grep_filter_accepts_multiple(runner, sample_preql: Path):
+def test_explore_regex_filter_accepts_multiple(runner, sample_preql: Path):
+    """Multiple ``--regex`` patterns OR together — a concept is kept when ANY
+    pattern matches."""
     result = runner.invoke(
         cli,
         [
             "explore",
             str(sample_preql),
-            "--grep",
+            "--regex",
             "carrier",
-            "--grep",
+            "--regex",
             "distance",
         ],
     )
@@ -132,7 +165,35 @@ def test_explore_grep_filter_accepts_multiple(runner, sample_preql: Path):
     assert "carrier" in result.output
     assert "distance" in result.output
     # `id` is neither — should be filtered out, even though it's a key concept.
-    assert "keys:" not in result.output
+    # In the flat layout, a key surfaces as an indented detail line `    KEY`.
+    assert "    KEY\n" not in result.output
+
+
+def test_explore_regex_filter_supports_metacharacters(runner, tmp_path: Path):
+    """The whole point of the rename: regex syntax actually works. The agent's
+    repeated failure mode on ``date\\.(year|week_seq)`` becomes a real match."""
+    p = tmp_path / "x.preql"
+    p.write_text(
+        "key id int;\n" "import x as sold_date;\n" "property id.weight float;\n",
+        encoding="utf-8",
+    )
+    # Just verify the regex compiles and runs without 67-char-empty-result.
+    # The exact concept addresses in `x.preql` depend on parsing, so look
+    # for the presence of an `Available Concepts` header rather than a
+    # specific concept name.
+    result = runner.invoke(cli, ["explore", str(p), "--regex", r"id|sold_date"])
+    assert result.exit_code == 0, result.output
+    assert "Available Concepts" in result.output
+
+
+def test_explore_regex_filter_rejects_invalid_pattern(runner, sample_preql: Path):
+    """A malformed pattern aborts with exit 2 and a readable ``re.error`` —
+    not a silent empty-result that the agent would interpret as 'no matches'."""
+    result = runner.invoke(
+        cli, ["explore", str(sample_preql), "--regex", "[unbalanced"]
+    )
+    assert result.exit_code == 2
+    assert "Invalid --regex" in result.output
 
 
 def test_explore_missing_file(runner, tmp_path: Path):
@@ -197,6 +258,39 @@ def test_format_import_alias():
     assert _format_import("root/flight.preql:f") == "import root.flight as f;\n"
 
 
+def test_format_import_accepts_dotted_form():
+    """Dotted form matches the in-file `import a.b as c;` syntax exactly. An
+    agent that learns the CLI form should be able to copy it verbatim into a
+    `.preql` file without rewriting separators — this is the whole point of
+    aligning the two surfaces."""
+    assert _format_import("raw.item") == "import raw.item;\n"
+    assert _format_import("raw.item:item") == "import raw.item as item;\n"
+    assert _format_import("raw.unified_sales:s") == "import raw.unified_sales as s;\n"
+
+
+def test_normalize_import_dotted_form_is_idempotent():
+    """Dotted input must round-trip unchanged so a single dotted form is the
+    canonical CLI spelling."""
+    assert _normalize_import("flight") == "flight"
+    assert _normalize_import("raw.item") == "raw.item"
+    assert _normalize_import("raw.unified_sales") == "raw.unified_sales"
+
+
+def test_run_import_dotted_form_works_end_to_end(
+    runner, monkeypatch, tmp_path: Path, sample_preql: Path
+):
+    """End-to-end check that the dotted `--import` form (matching in-file
+    syntax) actually runs — guards against a regression where the path-style
+    parsing path silently rejected pure dotted names."""
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(
+        cli,
+        ["run", "--import", "flight:flight", "select flight.id;", "duckdb"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+
+
 def test_run_import_alias_namespaces(
     runner, monkeypatch, tmp_path: Path, sample_preql: Path
 ):
@@ -238,8 +332,8 @@ def test_compact_datatype_handles_traits_enums_and_lower():
 
 
 def test_explore_metrics_appear_in_group_view(runner, tmp_path: Path):
-    """Hits the ``metrics:`` branch in `_emit_groups` — a metric concept in a
-    group surfaces under ``metrics:`` rather than under keys/props."""
+    """A metric concept shows up as a normal concept line with the role
+    ``METRIC`` on the indented detail line — distinct from KEY/PROP."""
     path = tmp_path / "sales.preql"
     path.write_text(
         "key id int;\n" "property id.amount int;\n" "auto total <- sum(amount);\n",
@@ -247,8 +341,8 @@ def test_explore_metrics_appear_in_group_view(runner, tmp_path: Path):
     )
     result = runner.invoke(cli, ["explore", str(path)])
     assert result.exit_code == 0, result.output
-    assert "metrics:" in result.output
-    assert "total" in result.output
+    assert "total : " in result.output
+    assert "    METRIC" in result.output
 
 
 def test_explore_show_imports_lists_alias_and_path(runner, tmp_path: Path):

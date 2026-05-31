@@ -26,6 +26,7 @@ PROVIDER_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "google": "GOOGLE_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
 }
 
 # OpenRouter multiplexes a model across providers; we only block AtlasCloud
@@ -37,7 +38,19 @@ OPENROUTER_ROUTING = {
     "allow_fallbacks": True,
 }
 
-DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
+# Default to direct DeepSeek — bypasses OpenRouter's routing layer (and the
+# keep-alive comments it injects that mask upstream hangs from httpx's read
+# timeout). Pass --provider openrouter to fall back to the multiplexed route.
+#
+# Model is `deepseek-chat` (non-thinking variant) rather than `deepseek-v4-flash`
+# because the latter runs in thinking mode by default, which rejects ANY explicit
+# `tool_choice` (required, named, or otherwise) with a 400. Our agent loop uses
+# `tool_choice: required` to force tool calls — incompatible with thinking mode.
+# `deepseek-chat` deprecates 2026-07-24; revisit when DeepSeek exposes a way to
+# put `deepseek-v4-flash` into non-thinking mode, or relax the agent's reliance
+# on `tool_choice` so it works against thinking-mode APIs.
+DEFAULT_PROVIDER = "deepseek"
+DEFAULT_MODEL = "deepseek-chat"
 
 
 def _force_utf8_stdio() -> None:
@@ -56,7 +69,7 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model id")
-    parser.add_argument("--provider", default="openrouter", help="LLM provider")
+    parser.add_argument("--provider", default=DEFAULT_PROVIDER, help="LLM provider")
     parser.add_argument(
         "--scale-factor",
         type=float,
@@ -72,13 +85,13 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-iterations",
         type=int,
-        default=50,
+        default=75,
         help="agent tool-loop budget PER QUERY (each query is a fresh agent)",
     )
     parser.add_argument(
         "--timeout",
         type=int,
-        default=600,
+        default=900,
         help="agent subprocess timeout PER QUERY (seconds)",
     )
     parser.add_argument(
@@ -128,6 +141,21 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         help="when --query-ids is set, splice unrun queries from a prior run "
         "so the report headline reflects the full benchmark. Pass a run dir, "
         "'auto' (default) to pick the latest other run, or 'none' to disable.",
+    )
+    parser.add_argument(
+        "--both-modes",
+        action="store_true",
+        help="run BOTH the base (ingest-only) and enriched legs in parallel, "
+        "then render dashboard_compare.png. Each leg writes its own results "
+        "subdir (<ts>_base, <ts>_enriched). Requires either --enriched-model-dir "
+        "or a `default_enriched_dir` configured on the BenchmarkSpec.",
+    )
+    parser.add_argument(
+        "--force-tool-choice",
+        action="store_true",
+        help="force tool_choice=required every turn (no plain-text reasoning). "
+        "Default is tool_choice: auto, which lets the model deliberate before "
+        "acting; pass this to A/B the old forced-tool behavior.",
     )
     return parser
 
@@ -202,9 +230,187 @@ def _splice_prior_results(
     return report
 
 
+_BOTH_MODES_DROP_FLAGS = {"--both-modes"}
+_BOTH_MODES_DROP_FLAGS_WITH_VALUE = {
+    "--enriched-model-dir",
+    "--output-dir",
+    "--monitor",
+}
+
+
+def _argv_has_flag(argv: list[str], flag: str) -> bool:
+    """True iff ``flag`` is set on the command line — either space-separated
+    (``--foo VALUE``) or equals form (``--foo=VALUE``). Used to distinguish
+    'user actually said this' from 'argparse fell back to its default'."""
+    eq = flag + "="
+    return any(a == flag or a.startswith(eq) for a in argv)
+
+
+def _filter_both_modes_argv(argv: list[str]) -> list[str]:
+    """Strip `--both-modes` and any of the per-leg-overridden flags (with their
+    values) from the original CLI args so we can re-invoke the eval as a
+    subprocess for each leg without duplicating those flags."""
+    result: list[str] = []
+    skip_next = False
+    for a in argv:
+        if skip_next:
+            skip_next = False
+            continue
+        if a in _BOTH_MODES_DROP_FLAGS:
+            continue
+        if a in _BOTH_MODES_DROP_FLAGS_WITH_VALUE:
+            skip_next = True
+            continue
+        if any(a.startswith(f + "=") for f in _BOTH_MODES_DROP_FLAGS_WITH_VALUE):
+            continue
+        result.append(a)
+    return result
+
+
+def _extract_enriched_dir_from_argv(argv: list[str]) -> str | None:
+    """Pick up an explicit ``--enriched-model-dir`` value the user passed on
+    the same CLI invocation that requested ``--both-modes``."""
+    for i, a in enumerate(argv):
+        if a == "--enriched-model-dir" and i + 1 < len(argv):
+            return argv[i + 1]
+        if a.startswith("--enriched-model-dir="):
+            return a.split("=", 1)[1]
+    return None
+
+
+def _pump_with_prefix(stream, label: str) -> None:
+    prefix = f"[{label}] "
+    for line in stream:
+        sys.stdout.write(prefix + line)
+        sys.stdout.flush()
+    stream.close()
+
+
+def _run_both_modes(spec: BenchmarkSpec, raw_argv: list[str]) -> int:
+    """Spawn the base (ingest-only) and enriched legs as parallel subprocesses
+    of the same ``run_eval.py``. Each leg gets its own ``--output-dir`` and
+    forced ``--monitor quiet`` so the streamed output stays legible. After both
+    finish, render ``dashboard_compare.png`` from their respective reports."""
+    import subprocess
+
+    user_enriched = _extract_enriched_dir_from_argv(raw_argv)
+    enriched_path = user_enriched or (
+        str(spec.default_enriched_dir) if spec.default_enriched_dir else None
+    )
+    if enriched_path is None:
+        print(
+            "ERROR: --both-modes requires --enriched-model-dir on the command "
+            "line, or `default_enriched_dir` configured on the BenchmarkSpec.",
+            file=sys.stderr,
+        )
+        return 2
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    base_out = spec.results_dir / f"{timestamp}_base"
+    enriched_out = spec.results_dir / f"{timestamp}_enriched"
+
+    script = Path(sys.argv[0]).resolve()
+    common_argv = _filter_both_modes_argv(raw_argv)
+
+    # When the user didn't explicitly set --concurrency, halve the default for
+    # each leg so the parallel legs together don't exceed the single-leg
+    # default (limits OpenRouter rate-limit pressure). If the user passed
+    # --concurrency explicitly, respect it verbatim for both legs.
+    per_leg_concurrency: list[str] = []
+    if not _argv_has_flag(raw_argv, "--concurrency"):
+        default_concurrency = _build_argparser(spec).get_default("concurrency")
+        halved = max(1, default_concurrency // 2)
+        if halved != default_concurrency:
+            print(
+                f"[both-modes] auto-halving concurrency: "
+                f"{default_concurrency} → {halved} per leg "
+                "(pass --concurrency explicitly to override)."
+            )
+        per_leg_concurrency = ["--concurrency", str(halved)]
+
+    base_argv = [
+        *common_argv,
+        *per_leg_concurrency,
+        "--output-dir",
+        str(base_out),
+        "--monitor",
+        "quiet",
+    ]
+    enriched_argv = [
+        *common_argv,
+        *per_leg_concurrency,
+        "--output-dir",
+        str(enriched_out),
+        "--monitor",
+        "quiet",
+        "--enriched-model-dir",
+        enriched_path,
+    ]
+
+    print(
+        f"[both-modes] spawning two parallel runs:\n"
+        f"   base     → {base_out}\n"
+        f"   enriched → {enriched_out}  (model dir: {enriched_path})"
+    )
+
+    procs: list[tuple[str, subprocess.Popen]] = []
+    pumps: list[threading.Thread] = []
+    for label, leg_argv in (("base", base_argv), ("enriched", enriched_argv)):
+        proc = subprocess.Popen(
+            [sys.executable, str(script), *leg_argv],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        procs.append((label, proc))
+        t = threading.Thread(
+            target=_pump_with_prefix, args=(proc.stdout, label), daemon=True
+        )
+        t.start()
+        pumps.append(t)
+
+    exit_codes = [(label, proc.wait()) for label, proc in procs]
+    for t in pumps:
+        t.join(timeout=5)
+
+    for label, rc in exit_codes:
+        print(f"[both-modes] {label} leg exit={rc}")
+
+    base_report = base_out / "report.json"
+    enriched_report = enriched_out / "report.json"
+    if base_report.exists() and enriched_report.exists():
+        report_a, events_a = analyze_run.load_run(base_out)
+        report_b, events_b = analyze_run.load_run(enriched_out)
+        out = analyze_run.render_comparison(
+            report_a,
+            events_a,
+            report_b,
+            events_b,
+            spec.charts_dir / "dashboard_compare.png",
+            label_a="base",
+            label_b="enriched",
+        )
+        print(f"[both-modes] wrote {out}")
+    else:
+        print(
+            "[both-modes] skipping comparison render: "
+            f"base report present={base_report.exists()}, "
+            f"enriched report present={enriched_report.exists()}",
+            file=sys.stderr,
+        )
+
+    return max((rc for _, rc in exit_codes), default=0)
+
+
 def run(spec: BenchmarkSpec) -> int:
     args = _build_argparser(spec).parse_args()
     _force_utf8_stdio()
+
+    if args.both_modes:
+        return _run_both_modes(spec, sys.argv[1:])
 
     load_env(args.env_file)
     if args.provider == "openrouter":
@@ -213,7 +419,15 @@ def run(spec: BenchmarkSpec) -> int:
         # tool-call arguments, producing `&lt;-` instead of `<-`. Decode at the
         # provider level so the agent doesn't have to learn the workaround.
         os.environ.setdefault("OPENROUTER_SANITIZE_HTML_ESCAPES", "true")
-    api_env = PROVIDER_ENV.get(args.provider, "OPENROUTER_API_KEY")
+    api_env = PROVIDER_ENV.get(args.provider)
+    if api_env is None:
+        print(
+            f"ERROR: unknown provider {args.provider!r} — known providers: "
+            f"{sorted(PROVIDER_ENV)}. Add it to PROVIDER_ENV in "
+            "evals/common/main.py and to api_key_env_map in agent_runner.py.",
+            file=sys.stderr,
+        )
+        return 2
     if not os.environ.get(api_env):
         print(
             f"ERROR: {api_env} is not set (looked in env and {args.env_file}).",
@@ -230,7 +444,12 @@ def run(spec: BenchmarkSpec) -> int:
     workspace_db = db.copy_database(cached, workspace / spec.db_filename)
 
     agent_runner.write_trilogy_toml(
-        workspace, spec, args.provider, args.model, args.max_iterations
+        workspace,
+        spec,
+        args.provider,
+        args.model,
+        args.max_iterations,
+        force_tool_choice=args.force_tool_choice,
     )
     if args.query_ids:
         wanted = {int(x.strip()) for x in args.query_ids.split(",") if x.strip()}
@@ -291,6 +510,12 @@ def run(spec: BenchmarkSpec) -> int:
     per_query_scores: list[scoring.QueryResult | None] = [None] * len(active)
     worker_pool: list[Path] = list(worker_dirs)
     pool_lock = threading.Lock()
+    # True wall clock for the agent phase — distinct from the sum-of-per-query
+    # `duration` below. At concurrency=1 they match; at concurrency>1 the wall
+    # clock is shorter because queries run in parallel. We report both: wall
+    # for "how long did this take", sum/N for "how long does an average query
+    # take" (which we want independent of parallelism).
+    agent_phase_t0 = time.perf_counter()
 
     def acquire_worker() -> Path:
         with pool_lock:
@@ -318,6 +543,16 @@ def run(spec: BenchmarkSpec) -> int:
             f"{type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
+    # Reference SQL directory: per-spec folder where each ``query<NN>.sql`` is
+    # the executable SQL the scorer compares the agent's output against, in
+    # place of ``PRAGMA <extension>(<NN>)``. Most files reproduce the PRAGMA
+    # output verbatim; a few override it with filter values that actually
+    # produce non-empty results at our scale factor (e.g. q32/q41/q44 at
+    # SF=0.1). Falls back to PRAGMA when the dir is unset or the file is
+    # missing for a given id.
+    references_dir: Path | None = spec.references_dir
+    if references_dir is not None and not references_dir.exists():
+        references_dir = None
     scoring_lock = threading.Lock()
     render_lock = threading.Lock()
     last_render = [0.0]
@@ -337,6 +572,7 @@ def run(spec: BenchmarkSpec) -> int:
                 "exit_code": 0,
                 "timed_out": any(r.get("timed_out") for r in done_runs),
                 "duration": sum(r["duration"] for r in done_runs),
+                "wall_duration": time.perf_counter() - agent_phase_t0,
                 "output": "",
             }
             metrics_partial = scoring.aggregate_metrics(per_query_metrics)
@@ -389,7 +625,12 @@ def run(spec: BenchmarkSpec) -> int:
                 try:
                     with scoring_lock:
                         per_query_scores[index] = scoring.score_query(
-                            scoring_engine, workspace, qid, spec.duckdb_extension
+                            scoring_engine,
+                            workspace,
+                            qid,
+                            spec.duckdb_extension,
+                            params=entry.get("params"),
+                            custom_refs_dir=references_dir,
                         )
                 except Exception as exc:
                     per_query_scores[index] = scoring.QueryResult(
@@ -399,6 +640,16 @@ def run(spec: BenchmarkSpec) -> int:
                     )
                 per_query_scores[index] = scoring.apply_timeout(
                     per_query_scores[index], result.get("timed_out", False)
+                )
+                per_query_scores[index] = scoring.apply_exhausted(
+                    per_query_scores[index],
+                    result.get("exit_code", 0),
+                    result.get("timed_out", False),
+                )
+                per_query_scores[index] = scoring.apply_crash(
+                    per_query_scores[index],
+                    result.get("exit_code", 0),
+                    result.get("timed_out", False),
                 )
             status = per_query_scores[index].status if per_query_scores[index] else "?"
             print(
@@ -419,11 +670,17 @@ def run(spec: BenchmarkSpec) -> int:
             for fut in as_completed(futures):
                 fut.result()
 
+    agent_phase_wall = time.perf_counter() - agent_phase_t0
     metrics = scoring.aggregate_metrics(per_query_metrics)
     agent_run = {
         "exit_code": 0 if all(r["exit_code"] == 0 for r in per_query_runs) else 1,
         "timed_out": any(r.get("timed_out") for r in per_query_runs),
+        # `duration` is the sum across per-query agent subprocesses — useful
+        # for "avg per query" but NOT the user-facing elapsed time when
+        # concurrency>1. `wall_duration` is the true elapsed wall clock of
+        # the agent phase, which collapses parallel work.
         "duration": sum(r["duration"] for r in per_query_runs),
+        "wall_duration": agent_phase_wall,
         "output": "\n".join(
             f"=== q{r['id']:02d} (exit {r['exit_code']}, {r['duration']:.0f}s) ===\n"
             f"{r['output']}"
@@ -443,6 +700,8 @@ def run(spec: BenchmarkSpec) -> int:
                             workspace,
                             entry["id"],
                             spec.duckdb_extension,
+                            params=entry.get("params"),
+                            custom_refs_dir=references_dir,
                         )
                 except Exception as exc:
                     per_query_scores[i] = scoring.QueryResult(
@@ -452,6 +711,24 @@ def run(spec: BenchmarkSpec) -> int:
                     )
                 per_query_scores[i] = scoring.apply_timeout(
                     per_query_scores[i],
+                    (
+                        per_query_runs[i].get("timed_out", False)
+                        if per_query_runs[i]
+                        else False
+                    ),
+                )
+                per_query_scores[i] = scoring.apply_exhausted(
+                    per_query_scores[i],
+                    (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
+                    (
+                        per_query_runs[i].get("timed_out", False)
+                        if per_query_runs[i]
+                        else False
+                    ),
+                )
+                per_query_scores[i] = scoring.apply_crash(
+                    per_query_scores[i],
+                    (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
                     (
                         per_query_runs[i].get("timed_out", False)
                         if per_query_runs[i]
@@ -471,7 +748,11 @@ def run(spec: BenchmarkSpec) -> int:
     else:
         try:
             query_results = scoring.score_queries(
-                workspace_db, workspace, query_ids, spec.duckdb_extension
+                workspace_db,
+                workspace,
+                query_ids,
+                spec.duckdb_extension,
+                custom_refs_dir=references_dir,
             )
         except Exception as exc:
             print(f"  scoring aborted: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -480,8 +761,24 @@ def run(spec: BenchmarkSpec) -> int:
                 for i in query_ids
             ]
         query_results = [
-            scoring.apply_timeout(
-                qr,
+            scoring.apply_crash(
+                scoring.apply_exhausted(
+                    scoring.apply_timeout(
+                        qr,
+                        (
+                            per_query_runs[i].get("timed_out", False)
+                            if per_query_runs[i]
+                            else False
+                        ),
+                    ),
+                    (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
+                    (
+                        per_query_runs[i].get("timed_out", False)
+                        if per_query_runs[i]
+                        else False
+                    ),
+                ),
+                (per_query_runs[i].get("exit_code", 0) if per_query_runs[i] else 0),
                 (
                     per_query_runs[i].get("timed_out", False)
                     if per_query_runs[i]

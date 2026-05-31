@@ -37,7 +37,12 @@ def parse_tool_arguments(arguments: str | dict[str, Any] | None) -> dict[str, An
         return arguments
     if not arguments.strip():
         return {}
-    parsed = json.loads(arguments)
+    # strict=False permits literal control characters (raw newlines/tabs) inside
+    # strings — and relaxes nothing else. Models routinely emit a multi-line
+    # `--content` file body with real newlines rather than escaped `\n`, which
+    # strict JSON rejects ("Invalid control character"); that otherwise-valid
+    # tool call was getting bounced back as a parse error and wasting a turn.
+    parsed = json.loads(arguments, strict=False)
     if not isinstance(parsed, dict):
         raise ValueError(f"Tool arguments must decode to an object, got {type(parsed)}")
     return parsed

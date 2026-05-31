@@ -16,10 +16,10 @@ GROUP BY
     2),
 questionable as (
 SELECT
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
-    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+    \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
+    \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"physical_sales_date_id\"
 FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
 GROUP BY
     1,
     2),
@@ -42,10 +42,10 @@ FROM
     LEFT OUTER JOIN \"quizzical\" on coalesce(\"yummy\".\"customer_id\", \"questionable\".\"customer_id\") = \"quizzical\".\"customer_id\"
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"yummy\".\"customer_id\", \"questionable\".\"customer_id\", \"quizzical\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"questionable\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"questionable\".\"physical_sales_date_id\" = \"physical_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_YEAR\" = 2002 and \"store_sales_date_date\".\"D_MOY\" in (1,2,3,4) and \"customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( \"web_sales_date_date\".\"D_YEAR\" = 2002 and \"web_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) or ( \"catalog_sales_date_date\".\"D_YEAR\" = 2002 and \"catalog_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) )
+    \"physical_sales_date_date\".\"D_YEAR\" = 2002 and \"physical_sales_date_date\".\"D_MOY\" in (1,2,3,4) and \"customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( \"web_sales_date_date\".\"D_YEAR\" = 2002 and \"web_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) or ( \"catalog_sales_date_date\".\"D_YEAR\" = 2002 and \"catalog_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) )
 
 GROUP BY
     1)

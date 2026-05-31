@@ -6,7 +6,7 @@ auto row_birth_year <- group(cs.bill_customer.birth_year) by cs.order_number, cs
 auto row_dep_count <- group(cs.bill_customer_demographic.dependent_count) by cs.order_number, cs.item.id;
 
 def rollup_avg(metric) -> avg(metric::numeric(12,2))
-    by rollup cs.item.name, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
+    by rollup cs.item.text_id, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
 
 where
     cs.bill_customer_demographic.gender = 'F'
@@ -16,7 +16,7 @@ where
     and cs.date.year = 1998
     and cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
 select
-    cs.item.name,
+    cs.item.text_id,
     cs.bill_customer.address.country,
     cs.bill_customer.address.state,
     cs.bill_customer.address.county,
@@ -31,6 +31,6 @@ order by
     cs.bill_customer.address.country asc nulls first,
     cs.bill_customer.address.state asc nulls first,
     cs.bill_customer.address.county asc nulls first,
-    cs.item.name asc nulls first
+    cs.item.text_id asc nulls first
 limit 100
 ;
