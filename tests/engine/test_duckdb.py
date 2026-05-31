@@ -1938,3 +1938,36 @@ order by store_id asc, customer_id asc;
         (1, 2, 800, 450),
         (2, 2, 100, 75),
     ]
+
+
+_ORDER_BY_CONSTANT_SCHEMA = """key id int;
+property id.sid string;
+property id.iid string;
+property id.v int;
+datasource t (id, sid, iid, v)
+  grain (id)
+  query '''select 1 as id, 's1' as sid, 'i1' as iid, 10 as v
+           union all select 2, 's1', 'i2', 20
+           union all select 3, 's2', 'i1', 5''';
+
+auto by_store <- sum(v) by sid;
+auto by_item  <- sum(v) by iid;
+"""
+
+
+def test_order_by_constant_across_aggregate_ctes():
+    # A constant select column ordered by, in a multi-aggregate-CTE plan, must
+    # reference the materialized CTE column in ORDER BY rather than re-emitting
+    # the bind parameter (which DuckDB rejects: "Parameter not supported in
+    # ORDER BY clause"). The literal is still parameterized where it's defined.
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(_ORDER_BY_CONSTANT_SCHEMA)
+    text = """select 'store' as channel, sid, by_store, by_item
+order by channel asc, sid asc nulls first;"""
+    sql = executor.generate_sql(text)[-1]
+    order_by = sql.split("ORDER BY")[-1]
+    assert "$1" not in order_by and ":channel" not in order_by, sql
+    assert '"channel"' in order_by, sql
+    rows = executor.execute_text(text)[0].fetchall()
+    assert all(r.channel == "store" for r in rows)
+    assert [r.sid for r in rows] == sorted(r.sid for r in rows)

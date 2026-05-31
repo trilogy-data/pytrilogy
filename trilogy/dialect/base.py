@@ -1439,6 +1439,11 @@ class BaseDialect:
                 and self.rendering.parameters is True
                 and e.datatype.data_type != DataType.MAP
                 and e.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+                # only bind the literal where it's first materialized; if it's
+                # already a column in a source CTE (e.g. an ORDER BY term sourced
+                # from a join), reference that column instead of re-emitting the
+                # bind param — a bare param is illegal in ORDER BY.
+                and not (cte and cte.source_map.get(e.address))
             ):
                 return f":{e.safe_address}"
             if (
