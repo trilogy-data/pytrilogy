@@ -27,6 +27,32 @@ def test_basic_query(duckdb_engine: Executor, expected_results):
     assert results[0].total_count == expected_results["total_count"]
 
 
+def test_where_on_aggregate_with_ratio_of_aggregates():
+    """Filtering on a derived aggregate AND selecting a ratio of aggregates at
+    the same grain must not leak the ratio expression into GROUP BY (DuckDB:
+    'GROUP BY clause cannot contain aggregates')."""
+    engine = Dialects.DUCK_DB.default_executor()
+    text = """
+key id int;
+property id.g string;
+property id.v int;
+datasource t (id, g, v)
+  grain (id)
+  query '''select 1 as id, 'a' as g, 10 as v
+           union all select 2, 'a', 20
+           union all select 3, 'b', 5''';
+
+auto a <- sum(v ? v > 5) by g;
+auto b <- sum(v ? v > 0) by g;
+auto r <- a / b;
+
+where a > 0
+select g, r;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert results == [("a", 1.0)]
+
+
 def test_concept_derivation():
     duckdb_engine = Dialects.DUCK_DB.default_executor()
     test_datetime = datetime(hour=12, day=1, month=2, year=2022, second=34)
