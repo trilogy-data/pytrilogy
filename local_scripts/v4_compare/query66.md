@@ -25,14 +25,14 @@ only in ref (showing up to 5 of 4):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 23960 | 243 | 69.97 ms |
-| reference | 20171 | 147 | 33.16 ms |
-| v4 / ref | 1.19x | 1.65x | 2.11x |
+| v4 | 23765 | 238 | 99.92 ms |
+| reference | 20171 | 147 | 38.33 ms |
+| v4 / ref | 1.18x | 1.62x | 2.61x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
 # Per-channel monthly aggregate. Web uses ext_sales_price + net_paid;
 # catalog uses sales_price + net_paid_inc_tax (matches the reference query).
@@ -181,7 +181,7 @@ FROM
 WHERE
     "thoughtful"."sales_sales_channel" in ('WEB','CATALOG')
 ),
-abhorrent as (
+sparkling as (
 SELECT
     "yummy"."sales_warehouse_city" as "w_city",
     "yummy"."sales_warehouse_country" as "w_country",
@@ -251,13 +251,9 @@ GROUP BY
     1,
     2,
     3),
-sparkling as (
-SELECT
-    "juicy"."sales_date_year" as "year_"
-FROM
-    "juicy"),
 young as (
 SELECT
+    "juicy"."sales_date_year" as "sales_date_year",
     "juicy"."sales_warehouse_id" as "sales_warehouse_id",
     ( coalesce("juicy"."_virt_agg_sum_1390508309586151",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8249258081069440",0) / "juicy"."sales_warehouse_square_feet" ) as "oct_sales_per_sq_foot",
     ( coalesce("juicy"."_virt_agg_sum_2677729335671306",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8705688610121203",0) / "juicy"."sales_warehouse_square_feet" ) as "jun_sales_per_sq_foot",
@@ -270,12 +266,7 @@ SELECT
     ( coalesce("juicy"."_virt_agg_sum_6761496736742249",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_2212485246453036",0) / "juicy"."sales_warehouse_square_feet" ) as "jan_sales_per_sq_foot",
     ( coalesce("juicy"."_virt_agg_sum_7452893998515823",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8526672017232138",0) / "juicy"."sales_warehouse_square_feet" ) as "dec_sales_per_sq_foot",
     ( coalesce("juicy"."_virt_agg_sum_7614936436189749",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_6541755364775288",0) / "juicy"."sales_warehouse_square_feet" ) as "jul_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_7927419533353604",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_3341659793105746",0) / "juicy"."sales_warehouse_square_feet" ) as "feb_sales_per_sq_foot"
-FROM
-    "juicy"),
-concerned as (
-SELECT
-    "juicy"."sales_warehouse_id" as "sales_warehouse_id",
+    ( coalesce("juicy"."_virt_agg_sum_7927419533353604",0) / "juicy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_3341659793105746",0) / "juicy"."sales_warehouse_square_feet" ) as "feb_sales_per_sq_foot",
     coalesce("juicy"."_virt_agg_sum_1390508309586151",0) + coalesce("juicy"."_virt_agg_sum_8249258081069440",0) as "oct_sales",
     coalesce("juicy"."_virt_agg_sum_188554763413587",0) + coalesce("juicy"."_virt_agg_sum_8113055632855599",0) as "jun_net",
     coalesce("juicy"."_virt_agg_sum_2061365433549155",0) + coalesce("juicy"."_virt_agg_sum_7961556681450013",0) as "aug_net",
@@ -301,28 +292,33 @@ SELECT
     coalesce("juicy"."_virt_agg_sum_9519241847948353",0) + coalesce("juicy"."_virt_agg_sum_4042597010133309",0) as "jul_net",
     coalesce("juicy"."_virt_agg_sum_9573906931545777",0) + coalesce("juicy"."_virt_agg_sum_2520745984741884",0) as "dec_net"
 FROM
+    "juicy"),
+concerned as (
+SELECT
+    "juicy"."sales_date_year" as "year_"
+FROM
     "juicy")
 SELECT
-    "abhorrent"."w_warehouse_name" as "w_warehouse_name",
-    "abhorrent"."w_warehouse_sq_ft" as "w_warehouse_sq_ft",
-    "abhorrent"."w_city" as "w_city",
-    "abhorrent"."w_county" as "w_county",
-    "abhorrent"."w_state" as "w_state",
-    "abhorrent"."w_country" as "w_country",
+    "sparkling"."w_warehouse_name" as "w_warehouse_name",
+    "sparkling"."w_warehouse_sq_ft" as "w_warehouse_sq_ft",
+    "sparkling"."w_city" as "w_city",
+    "sparkling"."w_county" as "w_county",
+    "sparkling"."w_state" as "w_state",
+    "sparkling"."w_country" as "w_country",
     "quizzical"."ship_carriers" as "ship_carriers",
-    "sparkling"."year_" as "year_",
-    "concerned"."jan_sales" as "jan_sales",
-    "concerned"."feb_sales" as "feb_sales",
-    "concerned"."mar_sales" as "mar_sales",
-    "concerned"."apr_sales" as "apr_sales",
-    "concerned"."may_sales" as "may_sales",
-    "concerned"."jun_sales" as "jun_sales",
-    "concerned"."jul_sales" as "jul_sales",
-    "concerned"."aug_sales" as "aug_sales",
-    "concerned"."sep_sales" as "sep_sales",
-    "concerned"."oct_sales" as "oct_sales",
-    "concerned"."nov_sales" as "nov_sales",
-    "concerned"."dec_sales" as "dec_sales",
+    "concerned"."year_" as "year_",
+    "young"."jan_sales" as "jan_sales",
+    "young"."feb_sales" as "feb_sales",
+    "young"."mar_sales" as "mar_sales",
+    "young"."apr_sales" as "apr_sales",
+    "young"."may_sales" as "may_sales",
+    "young"."jun_sales" as "jun_sales",
+    "young"."jul_sales" as "jul_sales",
+    "young"."aug_sales" as "aug_sales",
+    "young"."sep_sales" as "sep_sales",
+    "young"."oct_sales" as "oct_sales",
+    "young"."nov_sales" as "nov_sales",
+    "young"."dec_sales" as "dec_sales",
     "young"."jan_sales_per_sq_foot" as "jan_sales_per_sq_foot",
     "young"."feb_sales_per_sq_foot" as "feb_sales_per_sq_foot",
     "young"."mar_sales_per_sq_foot" as "mar_sales_per_sq_foot",
@@ -335,27 +331,26 @@ SELECT
     "young"."oct_sales_per_sq_foot" as "oct_sales_per_sq_foot",
     "young"."nov_sales_per_sq_foot" as "nov_sales_per_sq_foot",
     "young"."dec_sales_per_sq_foot" as "dec_sales_per_sq_foot",
-    "concerned"."jan_net" as "jan_net",
-    "concerned"."feb_net" as "feb_net",
-    "concerned"."mar_net" as "mar_net",
-    "concerned"."apr_net" as "apr_net",
-    "concerned"."may_net" as "may_net",
-    "concerned"."jun_net" as "jun_net",
-    "concerned"."jul_net" as "jul_net",
-    "concerned"."aug_net" as "aug_net",
-    "concerned"."sep_net" as "sep_net",
-    "concerned"."oct_net" as "oct_net",
-    "concerned"."nov_net" as "nov_net",
-    "concerned"."dec_net" as "dec_net"
+    "young"."jan_net" as "jan_net",
+    "young"."feb_net" as "feb_net",
+    "young"."mar_net" as "mar_net",
+    "young"."apr_net" as "apr_net",
+    "young"."may_net" as "may_net",
+    "young"."jun_net" as "jun_net",
+    "young"."jul_net" as "jul_net",
+    "young"."aug_net" as "aug_net",
+    "young"."sep_net" as "sep_net",
+    "young"."oct_net" as "oct_net",
+    "young"."nov_net" as "nov_net",
+    "young"."dec_net" as "dec_net"
 FROM
-    "concerned"
-    INNER JOIN "young" on "concerned"."sales_warehouse_id" = "young"."sales_warehouse_id"
-    INNER JOIN "abhorrent" on "concerned"."sales_warehouse_id" = "abhorrent"."sales_warehouse_id"
+    "young"
+    INNER JOIN "concerned" on "young"."sales_date_year" = "concerned"."year_"
+    INNER JOIN "sparkling" on "young"."sales_warehouse_id" = "sparkling"."sales_warehouse_id"
     FULL JOIN "quizzical" on 1=1
-    FULL JOIN "sparkling" on 1=1
 ORDER BY 
-    "abhorrent"."w_warehouse_name" asc nulls first,
-    "sparkling"."year_" asc nulls first
+    "sparkling"."w_warehouse_name" asc nulls first,
+    "concerned"."year_" asc nulls first
 LIMIT (100)
 ```
 

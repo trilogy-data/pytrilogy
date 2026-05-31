@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 7735
+gen_length = 7487
 preql_size = 3218
 comp_size = 3129
 generated_sql = """
@@ -115,7 +115,7 @@ SELECT
 FROM
     \"macho\"
     INNER JOIN \"sparkling\" on \"macho\".\"sr_grouped_sr_store_id\" = \"sparkling\".\"ss_grouped_ss_store_id\"),
-thoughtful as (
+yummy as (
 SELECT
     \"abundant\".\"_virt_agg_sum_6520591768854391\" * cast(\"thoughtful\".\"cr_totals_cr_n_groups\" as numeric(15,2)) as \"_l0_union_u_sales_c\",
     \"abundant\".\"cs_call_center_id\" as \"_l0_union_u_id_c\",
