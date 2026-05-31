@@ -54,7 +54,7 @@ SELECT
     \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"questionable\" on \"thoughtful\".\"store_sales_item_brand_name\" = \"questionable\".\"store_sales_item_brand_name\" AND \"thoughtful\".\"store_sales_item_category\" is not distinct from \"questionable\".\"store_sales_item_category\" AND \"thoughtful\".\"store_sales_store_company_name\" is not distinct from \"questionable\".\"store_sales_store_company_name\" AND \"thoughtful\".\"store_sales_store_name\" is not distinct from \"questionable\".\"store_sales_store_name\"
+    INNER JOIN \"questionable\" on \"thoughtful\".\"physical_sales_item_brand_name\" = \"questionable\".\"physical_sales_item_brand_name\" AND \"thoughtful\".\"physical_sales_item_category\" is not distinct from \"questionable\".\"physical_sales_item_category\" AND \"thoughtful\".\"physical_sales_store_company_name\" is not distinct from \"questionable\".\"physical_sales_store_company_name\" AND \"thoughtful\".\"physical_sales_store_name\" is not distinct from \"questionable\".\"physical_sales_store_name\"
 WHERE
     CASE
 	WHEN \"questionable\".\"avg_monthly_sales\" != 0 THEN abs(\"thoughtful\".\"sum_sales\" - \"questionable\".\"avg_monthly_sales\") / \"questionable\".\"avg_monthly_sales\"

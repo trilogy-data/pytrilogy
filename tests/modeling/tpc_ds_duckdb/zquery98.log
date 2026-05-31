@@ -1,17 +1,14 @@
 query_id = "98"
-gen_length = 4697
-preql_size = 794
+gen_length = 3611
+preql_size = 801
 comp_size = 811
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
-    \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
     \"physical_sales_item_items\".\"I_CLASS\" as \"physical_sales_item_class\",
-    \"physical_sales_item_items\".\"I_CURRENT_PRICE\" as \"physical_sales_item_current_price\",
-    \"physical_sales_item_items\".\"I_ITEM_DESC\" as \"physical_sales_item_desc\",
-    \"physical_sales_item_items\".\"I_ITEM_ID\" as \"physical_sales_item_text_id\",
+    \"physical_sales_item_items\".\"I_ITEM_SK\" as \"physical_sales_item_id\",
     \"physical_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"physical_sales_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"physical_sales_store_sales\"
@@ -20,7 +17,28 @@ FROM
 WHERE
     \"physical_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"physical_sales_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 ),
+questionable as (
+SELECT
+    \"physical_sales_item_items\".\"I_CATEGORY\" as \"physical_sales_item_category\",
+    \"physical_sales_item_items\".\"I_CLASS\" as \"physical_sales_item_class\",
+    \"physical_sales_item_items\".\"I_CURRENT_PRICE\" as \"physical_sales_item_current_price\",
+    \"physical_sales_item_items\".\"I_ITEM_DESC\" as \"physical_sales_item_desc\",
+    \"physical_sales_item_items\".\"I_ITEM_ID\" as \"physical_sales_item_text_id\",
+    \"physical_sales_item_items\".\"I_ITEM_SK\" as \"physical_sales_item_id\"
+FROM
+    \"memory\".\"item\" as \"physical_sales_item_items\"
+WHERE
+    \"physical_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home')
+),
 cooperative as (
+SELECT
+    \"cheerful\".\"physical_sales_item_id\" as \"physical_sales_item_id\",
+    sum(\"cheerful\".\"physical_sales_ext_sales_price\") as \"item_revenue\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1),
+thoughtful as (
 SELECT
     \"cheerful\".\"physical_sales_item_class\" as \"physical_sales_item_class\",
     sum(\"cheerful\".\"physical_sales_ext_sales_price\") as \"_virt_agg_sum_9925573558789696\"
@@ -28,55 +46,31 @@ FROM
     \"cheerful\"
 GROUP BY
     1),
-thoughtful as (
+abundant as (
 SELECT
-    \"cheerful\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
-    \"cheerful\".\"physical_sales_item_class\" as \"physical_sales_item_class\",
-    \"cheerful\".\"physical_sales_item_current_price\" as \"physical_sales_item_current_price\",
-    \"cheerful\".\"physical_sales_item_desc\" as \"physical_sales_item_desc\",
-    \"cheerful\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\",
-    sum(\"cheerful\".\"physical_sales_ext_sales_price\") as \"_virt_agg_sum_6559504439290231\",
-    sum(\"cheerful\".\"physical_sales_ext_sales_price\") as \"item_revenue\"
-FROM
-    \"cheerful\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-questionable as (
-SELECT
-    \"cheerful\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
-    \"cheerful\".\"physical_sales_item_current_price\" as \"physical_sales_item_current_price\",
-    \"cheerful\".\"physical_sales_item_desc\" as \"physical_sales_item_desc\",
-    \"cheerful\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\",
-    \"cooperative\".\"_virt_agg_sum_9925573558789696\" as \"_virt_agg_sum_9925573558789696\",
-    coalesce(\"cheerful\".\"physical_sales_item_class\",\"cooperative\".\"physical_sales_item_class\") as \"physical_sales_item_class\"
-FROM
-    \"cooperative\"
-    FULL JOIN \"cheerful\" on \"cooperative\".\"physical_sales_item_class\" is not distinct from \"cheerful\".\"physical_sales_item_class\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6)
-SELECT
-    coalesce(\"questionable\".\"physical_sales_item_text_id\",\"thoughtful\".\"physical_sales_item_text_id\") as \"physical_sales_item_text_id\",
-    coalesce(\"questionable\".\"physical_sales_item_desc\",\"thoughtful\".\"physical_sales_item_desc\") as \"physical_sales_item_desc\",
-    coalesce(\"questionable\".\"physical_sales_item_category\",\"thoughtful\".\"physical_sales_item_category\") as \"physical_sales_item_category\",
-    coalesce(\"questionable\".\"physical_sales_item_class\",\"thoughtful\".\"physical_sales_item_class\") as \"physical_sales_item_class\",
-    coalesce(\"questionable\".\"physical_sales_item_current_price\",\"thoughtful\".\"physical_sales_item_current_price\") as \"physical_sales_item_current_price\",
-    \"thoughtful\".\"item_revenue\" as \"item_revenue\",
-    ( \"thoughtful\".\"_virt_agg_sum_6559504439290231\" * 100.0 ) / (\"questionable\".\"_virt_agg_sum_9925573558789696\") as \"revenueratio\"
+    \"cooperative\".\"item_revenue\" as \"item_revenue\",
+    \"questionable\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
+    \"questionable\".\"physical_sales_item_class\" as \"physical_sales_item_class\",
+    \"questionable\".\"physical_sales_item_current_price\" as \"physical_sales_item_current_price\",
+    \"questionable\".\"physical_sales_item_desc\" as \"physical_sales_item_desc\",
+    \"questionable\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\"
 FROM
     \"questionable\"
-    INNER JOIN \"thoughtful\" on \"questionable\".\"physical_sales_item_category\" is not distinct from \"thoughtful\".\"physical_sales_item_category\" AND \"questionable\".\"physical_sales_item_class\" is not distinct from \"thoughtful\".\"physical_sales_item_class\" AND \"questionable\".\"physical_sales_item_current_price\" is not distinct from \"thoughtful\".\"physical_sales_item_current_price\" AND \"questionable\".\"physical_sales_item_desc\" is not distinct from \"thoughtful\".\"physical_sales_item_desc\" AND \"questionable\".\"physical_sales_item_text_id\" = \"thoughtful\".\"physical_sales_item_text_id\"
+    INNER JOIN \"cooperative\" on \"questionable\".\"physical_sales_item_id\" = \"cooperative\".\"physical_sales_item_id\")
+SELECT
+    \"abundant\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\",
+    \"abundant\".\"physical_sales_item_desc\" as \"physical_sales_item_desc\",
+    \"abundant\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
+    coalesce(\"abundant\".\"physical_sales_item_class\",\"thoughtful\".\"physical_sales_item_class\") as \"physical_sales_item_class\",
+    \"abundant\".\"physical_sales_item_current_price\" as \"physical_sales_item_current_price\",
+    \"abundant\".\"item_revenue\" as \"item_revenue\",
+    ( \"abundant\".\"item_revenue\" * 100.0 ) / (\"thoughtful\".\"_virt_agg_sum_9925573558789696\") as \"revenueratio\"
+FROM
+    \"abundant\"
+    FULL JOIN \"thoughtful\" on \"abundant\".\"physical_sales_item_class\" is not distinct from \"thoughtful\".\"physical_sales_item_class\"
 ORDER BY 
-    coalesce(\"questionable\".\"physical_sales_item_category\",\"thoughtful\".\"physical_sales_item_category\") asc nulls first,
-    coalesce(\"questionable\".\"physical_sales_item_class\",\"thoughtful\".\"physical_sales_item_class\") asc nulls first,
-    coalesce(\"questionable\".\"physical_sales_item_text_id\",\"thoughtful\".\"physical_sales_item_text_id\") asc nulls first,
-    coalesce(\"questionable\".\"physical_sales_item_desc\",\"thoughtful\".\"physical_sales_item_desc\") asc nulls first,
+    \"abundant\".\"physical_sales_item_category\" asc nulls first,
+    coalesce(\"abundant\".\"physical_sales_item_class\",\"thoughtful\".\"physical_sales_item_class\") asc nulls first,
+    \"abundant\".\"physical_sales_item_text_id\" asc nulls first,
+    \"abundant\".\"physical_sales_item_desc\" asc nulls first,
     \"revenueratio\" asc nulls first"""

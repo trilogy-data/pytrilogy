@@ -67,7 +67,7 @@ SELECT
     \"questionable\".\"sales_billing_customer_last_name\" as \"customer_last_name\"
 FROM
     \"questionable\"
-    INNER JOIN \"uneven\" on \"questionable\".\"sales_customer_id\" = \"uneven\".\"sales_customer_id\"
+    INNER JOIN \"uneven\" on \"questionable\".\"sales_billing_customer_id\" = \"uneven\".\"sales_billing_customer_id\"
 GROUP BY
     1,
     2,

@@ -1,6 +1,6 @@
 query_id = "97.1"
-gen_length = 2947
-preql_size = 1115
+gen_length = 2989
+preql_size = 1150
 comp_size = 1159
 generated_sql = """
 
@@ -35,11 +35,11 @@ SELECT
     coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"questionable\".\"customer_id\",\"quizzical\".\"customer_id\") as \"customer_id\",
     coalesce(\"item_items\".\"I_ITEM_SK\",\"questionable\".\"item_id\",\"quizzical\".\"item_id\") as \"item_id\"
 FROM
-    \"questionable\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"questionable\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"item_items\" on \"questionable\".\"item_id\" = \"item_items\".\"I_ITEM_SK\"
-    FULL JOIN \"quizzical\" on \"questionable\".\"customer_id\" is not distinct from \"quizzical\".\"customer_id\" AND coalesce(\"item_items\".\"I_ITEM_SK\", \"questionable\".\"item_id\") = \"quizzical\".\"item_id\"
-    FULL JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    \"quizzical\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    RIGHT OUTER JOIN \"memory\".\"item\" as \"item_items\" on \"quizzical\".\"item_id\" = \"item_items\".\"I_ITEM_SK\"
+    FULL JOIN \"questionable\" on \"quizzical\".\"customer_id\" is not distinct from \"questionable\".\"customer_id\" AND coalesce(\"item_items\".\"I_ITEM_SK\", \"quizzical\".\"item_id\") = \"questionable\".\"item_id\"
+    FULL JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"questionable\".\"physical_sales_date_id\" = \"physical_sales_date_date\".\"D_DATE_SK\"
     FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"questionable\".\"customer_id\", \"quizzical\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
 GROUP BY
     1,

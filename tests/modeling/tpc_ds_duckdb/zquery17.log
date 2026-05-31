@@ -1,6 +1,6 @@
 query_id = "17"
-gen_length = 8056
-preql_size = 1433
+gen_length = 8095
+preql_size = 1439
 comp_size = 1764
 generated_sql = """
 
@@ -123,7 +123,7 @@ SELECT
     \"concerned\".\"_virt_agg_stddev_2693366057110854\" / \"concerned\".\"_virt_agg_avg_1688371525139287\" as \"catalog_sales_quantitycov\"
 FROM
     \"concerned\"
-    INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_name\" = \"juicy\".\"analysis_item_name\" AND \"concerned\".\"analysis_store_state\" is not distinct from \"juicy\".\"analysis_store_state\"
+    INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_text_id\" = \"juicy\".\"analysis_item_text_id\" AND \"concerned\".\"analysis_store_state\" is not distinct from \"juicy\".\"analysis_store_state\"
 ORDER BY 
     coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") asc nulls first,
     coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") asc nulls first,

@@ -1,6 +1,6 @@
 query_id = "47"
-gen_length = 5739
-preql_size = 2146
+gen_length = 6051
+preql_size = 2281
 comp_size = 2473
 generated_sql = """
 
@@ -77,7 +77,7 @@ SELECT
     \"questionable\".\"nsum\" as \"nsum\"
 FROM
     \"questionable\"
-    RIGHT OUTER JOIN \"abundant\" on \"questionable\".\"store_sales_date_year\" = \"abundant\".\"store_sales_date_year\" AND \"questionable\".\"store_sales_item_brand_name\" = \"abundant\".\"store_sales_item_brand_name\" AND \"questionable\".\"store_sales_item_category\" is not distinct from \"abundant\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_store_company_name\" is not distinct from \"abundant\".\"store_sales_store_company_name\" AND \"questionable\".\"store_sales_store_name\" = \"abundant\".\"store_sales_store_name\"
+    RIGHT OUTER JOIN \"abundant\" on \"questionable\".\"physical_sales_date_year\" = \"abundant\".\"physical_sales_date_year\" AND \"questionable\".\"physical_sales_item_brand_name\" = \"abundant\".\"physical_sales_item_brand_name\" AND \"questionable\".\"physical_sales_item_category\" is not distinct from \"abundant\".\"physical_sales_item_category\" AND \"questionable\".\"physical_sales_store_company_name\" is not distinct from \"abundant\".\"physical_sales_store_company_name\" AND \"questionable\".\"physical_sales_store_name\" = \"abundant\".\"physical_sales_store_name\"
 WHERE
     coalesce(\"abundant\".\"physical_sales_date_year\",\"questionable\".\"physical_sales_date_year\") = 1999 and CASE
 	WHEN \"abundant\".\"avg_monthly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\") / \"abundant\".\"avg_monthly_sales\"

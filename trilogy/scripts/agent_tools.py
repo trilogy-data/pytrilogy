@@ -213,6 +213,13 @@ _LIST_FILES_MAX_ENTRIES = 500
 _LIST_FILES_DESC_LIMIT = preql_description.LIST_FILES_DESC_LIMIT
 _LIST_FILES_DESC_PREFIX = preql_description.LIST_FILES_DESC_PREFIX
 
+# Description-rendering constants live in the shared helper so ``trilogy
+# file list`` and the agent's ``list_files`` use identical truncation. The
+# `_`-prefixed re-exports below preserve the names existing agent tests
+# already reference.
+_LIST_FILES_DESC_LIMIT = preql_description.LIST_FILES_DESC_LIMIT
+_LIST_FILES_DESC_PREFIX = preql_description.LIST_FILES_DESC_PREFIX
+
 
 def _should_skip_entry(name: str) -> bool:
     if name in _LIST_FILES_SKIP_DIRS:

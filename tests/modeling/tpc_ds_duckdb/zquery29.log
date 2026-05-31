@@ -1,6 +1,6 @@
 query_id = "29"
-gen_length = 3735
-preql_size = 1537
+gen_length = 3859
+preql_size = 1626
 comp_size = 1089
 generated_sql = """
 
@@ -17,7 +17,12 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"store_returns\" as \"physical_sales_store_returns\" on \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"physical_sales_store_returns\".\"SR_CUSTOMER_SK\" AND \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"physical_sales_store_returns\".\"SR_ITEM_SK\"
+    INNER JOIN \"memory\".\"store_sales\" as \"physical_sales_store_sales\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"physical_sales_store_sales\".\"SS_ITEM_SK\" AND \"physical_sales_store_returns\".\"SR_TICKET_NUMBER\" = \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_return_date_date\" on \"physical_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"physical_sales_return_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"physical_sales_date_date\".\"D_MOY\" = 9 and \"physical_sales_date_date\".\"D_YEAR\" = 1999 and \"physical_sales_return_date_date\".\"D_MOY\" BETWEEN 9 AND 12 and \"physical_sales_return_date_date\".\"D_YEAR\" = 1999 and \"catalog_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"catalog_sales_catalog_sales\".\"CS_QUANTITY\" > 0 and SR_RETURN_TIME_SK IS NOT NULL and \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\"
 
