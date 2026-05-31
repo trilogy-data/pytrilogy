@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10989 | 234 | 124.92 ms |
-| reference | 10768 | 230 | 119.27 ms |
-| v4 / ref | 1.02x | 1.02x | 1.05x |
+| v4 | 10989 | 234 | 118.03 ms |
+| reference | 10811 | 236 | 145.06 ms |
+| v4 / ref | 1.02x | 0.99x | 0.81x |
 
 ## Preql
 
@@ -553,6 +553,12 @@ SELECT
 FROM
     "divergent"
     FULL JOIN "concerned" on "divergent"."channel" is not distinct from "concerned"."channel" AND "divergent"."id" is not distinct from "concerned"."id"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
 ORDER BY 
     "q5_results_channel" asc nulls first,
     "q5_results_id" asc nulls first

@@ -26,9 +26,9 @@ only in ref (showing up to 5 of 99):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8711 | 192 | 385.74 ms |
-| reference | 7234 | 143 | 244.20 ms |
-| v4 / ref | 1.20x | 1.34x | 1.58x |
+| v4 | 8837 | 194 | 308.80 ms |
+| reference | 7234 | 143 | 182.14 ms |
+| v4 / ref | 1.22x | 1.36x | 1.70x |
 
 ## Preql
 
@@ -191,17 +191,23 @@ FROM
     LEFT OUTER JOIN "abundant" on "cooperative"."ss_date_week_seq" = "abundant"."ss_date_week_seq" AND "cooperative"."ss_store_id" = "abundant"."ss_store_id"),
 sweltering as (
 SELECT
+    "juicy"."wss_in_year1" as "year1_flag"
+FROM
+    "juicy"),
+abhorrent as (
+SELECT
     "juicy"."wss_store_id" as "wss_store_id",
     "juicy"."wss_store_name" as "s_store_name1",
     "juicy"."wss_store_text_id" as "s_store_id1"
 FROM
     "juicy"),
-concerned as (
+vacuous as (
 SELECT
     "juicy"."wss_fri_sales" as "wss_fri_sales",
     "juicy"."wss_mon_sales" as "wss_mon_sales",
     "juicy"."wss_sat_sales" as "wss_sat_sales",
     "juicy"."wss_store_id" as "wss_store_id",
+    "juicy"."wss_store_text_id" as "wss_store_text_id",
     "juicy"."wss_sun_sales" as "wss_sun_sales",
     "juicy"."wss_thu_sales" as "wss_thu_sales",
     "juicy"."wss_tue_sales" as "wss_tue_sales",
@@ -237,48 +243,44 @@ SELECT
 	END) order by "juicy"."wss_in_year2" asc ) as "_virt_window_lead_6511286120906247"
 FROM
     "juicy"),
-vacuous as (
-SELECT
-    "juicy"."wss_in_year1" as "year1_flag"
-FROM
-    "juicy"),
-abhorrent as (
-SELECT
-    "concerned"."wss_fri_sales" / "concerned"."_virt_window_lead_6145286498170393" as "fri_sales_ratio",
-    "concerned"."wss_mon_sales" / "concerned"."_virt_window_lead_4810407976310175" as "mon_sales_ratio",
-    "concerned"."wss_sat_sales" / "concerned"."_virt_window_lead_5231294923035285" as "sat_sales_ratio",
-    "concerned"."wss_store_id" as "wss_store_id",
-    "concerned"."wss_sun_sales" / "concerned"."_virt_window_lead_5413357402804969" as "sun_sales_ratio",
-    "concerned"."wss_thu_sales" / "concerned"."_virt_window_lead_4156631954188575" as "thu_sales_ratio",
-    "concerned"."wss_tue_sales" / "concerned"."_virt_window_lead_6115154150547261" as "tue_sales_ratio",
-    "concerned"."wss_wed_sales" / "concerned"."_virt_window_lead_6511286120906247" as "wed_sales_ratio",
-    "concerned"."wss_week_seq" as "wss_week_seq"
-FROM
-    "concerned"),
 sparkling as (
 SELECT
-    "concerned"."wss_week_seq" as "d_week_seq1"
+    "vacuous"."wss_fri_sales" / "vacuous"."_virt_window_lead_6145286498170393" as "fri_sales_ratio",
+    "vacuous"."wss_mon_sales" / "vacuous"."_virt_window_lead_4810407976310175" as "mon_sales_ratio",
+    "vacuous"."wss_sat_sales" / "vacuous"."_virt_window_lead_5231294923035285" as "sat_sales_ratio",
+    "vacuous"."wss_store_id" as "wss_store_id",
+    "vacuous"."wss_store_text_id" as "wss_store_text_id",
+    "vacuous"."wss_sun_sales" / "vacuous"."_virt_window_lead_5413357402804969" as "sun_sales_ratio",
+    "vacuous"."wss_thu_sales" / "vacuous"."_virt_window_lead_4156631954188575" as "thu_sales_ratio",
+    "vacuous"."wss_tue_sales" / "vacuous"."_virt_window_lead_6115154150547261" as "tue_sales_ratio",
+    "vacuous"."wss_wed_sales" / "vacuous"."_virt_window_lead_6511286120906247" as "wed_sales_ratio",
+    "vacuous"."wss_week_seq" as "wss_week_seq"
 FROM
-    "concerned"),
+    "vacuous"),
+young as (
+SELECT
+    "vacuous"."wss_week_seq" as "d_week_seq1"
+FROM
+    "vacuous"),
 late as (
 SELECT
-    "abhorrent"."fri_sales_ratio" as "fri_sales_ratio",
-    "abhorrent"."mon_sales_ratio" as "mon_sales_ratio",
-    "abhorrent"."sat_sales_ratio" as "sat_sales_ratio",
-    "abhorrent"."sun_sales_ratio" as "sun_sales_ratio",
-    "abhorrent"."thu_sales_ratio" as "thu_sales_ratio",
-    "abhorrent"."tue_sales_ratio" as "tue_sales_ratio",
-    "abhorrent"."wed_sales_ratio" as "wed_sales_ratio",
-    "sparkling"."d_week_seq1" as "d_week_seq1",
-    "sweltering"."s_store_id1" as "s_store_id1",
-    "sweltering"."s_store_name1" as "s_store_name1"
+    "abhorrent"."s_store_id1" as "s_store_id1",
+    "abhorrent"."s_store_name1" as "s_store_name1",
+    "sparkling"."fri_sales_ratio" as "fri_sales_ratio",
+    "sparkling"."mon_sales_ratio" as "mon_sales_ratio",
+    "sparkling"."sat_sales_ratio" as "sat_sales_ratio",
+    "sparkling"."sun_sales_ratio" as "sun_sales_ratio",
+    "sparkling"."thu_sales_ratio" as "thu_sales_ratio",
+    "sparkling"."tue_sales_ratio" as "tue_sales_ratio",
+    "sparkling"."wed_sales_ratio" as "wed_sales_ratio",
+    "young"."d_week_seq1" as "d_week_seq1"
 FROM
-    "sweltering"
-    INNER JOIN "abhorrent" on "sweltering"."wss_store_id" = "abhorrent"."wss_store_id"
-    INNER JOIN "sparkling" on "abhorrent"."wss_week_seq" = "sparkling"."d_week_seq1"
-    INNER JOIN "vacuous" on 1=1
+    "sparkling"
+    INNER JOIN "abhorrent" on "sparkling"."wss_store_id" = "abhorrent"."wss_store_id" AND "sparkling"."wss_store_text_id" = "abhorrent"."s_store_id1"
+    INNER JOIN "young" on "sparkling"."wss_week_seq" = "young"."d_week_seq1"
+    INNER JOIN "sweltering" on 1=1
 WHERE
-    "vacuous"."year1_flag" = 1 and "abhorrent"."sun_sales_ratio" is not null
+    "sweltering"."year1_flag" = 1 and "sparkling"."sun_sales_ratio" is not null
 )
 SELECT
     "late"."s_store_name1" as "s_store_name1",

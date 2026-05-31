@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3966 | 89 | 40.48 ms |
-| reference | 4183 | 91 | 42.79 ms |
-| v4 / ref | 0.95x | 0.98x | 0.95x |
+| v4 | 3966 | 89 | 30.33 ms |
+| reference | 4183 | 91 | 36.57 ms |
+| v4 / ref | 0.95x | 0.98x | 0.83x |
 
 ## Preql
 
@@ -152,8 +152,8 @@ SELECT
     "concerned"."cust_ss_ss_cust_id" as "my_revenue_rev_cust_id",
     "concerned"."cust_ss_ss_revenue" * "sparkling"."stores_cs_scs_count" as "my_revenue_revenue"
 FROM
-    "sparkling"
-    INNER JOIN "concerned" on "sparkling"."stores_cs_scs_county" = "concerned"."cust_ss_ss_cust_county" AND "sparkling"."stores_cs_scs_state" = "concerned"."cust_ss_ss_cust_state"
+    "concerned"
+    INNER JOIN "sparkling" on "concerned"."cust_ss_ss_cust_county" = "sparkling"."stores_cs_scs_county" AND "concerned"."cust_ss_ss_cust_state" = "sparkling"."stores_cs_scs_state"
 GROUP BY
     1,
     2),
@@ -245,8 +245,8 @@ late as (
 SELECT
     "concerned"."cust_ss_ss_cust_id" as "my_revenue_rev_cust_id"
 FROM
-    "sparkling"
-    INNER JOIN "concerned" on "sparkling"."stores_cs_scs_county" = "concerned"."cust_ss_ss_cust_county" AND "sparkling"."stores_cs_scs_state" = "concerned"."cust_ss_ss_cust_state"
+    "concerned"
+    INNER JOIN "sparkling" on "concerned"."cust_ss_ss_cust_county" = "sparkling"."stores_cs_scs_county" AND "concerned"."cust_ss_ss_cust_state" = "sparkling"."stores_cs_scs_state"
 GROUP BY
     1),
 sweltering as (
@@ -254,8 +254,8 @@ SELECT
     cast(round(( "concerned"."cust_ss_ss_revenue" * "sparkling"."stores_cs_scs_count" ) / 50,0) as int) * 50 as "segment_base",
     cast(round(( "concerned"."cust_ss_ss_revenue" * "sparkling"."stores_cs_scs_count" ) / 50,0) as int) as "segment"
 FROM
-    "sparkling"
-    INNER JOIN "concerned" on "sparkling"."stores_cs_scs_county" = "concerned"."cust_ss_ss_cust_county" AND "sparkling"."stores_cs_scs_state" = "concerned"."cust_ss_ss_cust_state"
+    "concerned"
+    INNER JOIN "sparkling" on "concerned"."cust_ss_ss_cust_county" = "sparkling"."stores_cs_scs_county" AND "concerned"."cust_ss_ss_cust_state" = "sparkling"."stores_cs_scs_state"
 GROUP BY
     1,
     2),

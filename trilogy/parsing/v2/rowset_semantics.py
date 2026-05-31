@@ -24,6 +24,7 @@ from trilogy.core.models.author import (
     Metadata,
     RowsetItem,
     RowsetLineage,
+    SelectLineage,
     address_with_namespace,
 )
 from trilogy.core.models.environment import Environment
@@ -183,13 +184,28 @@ def rowset_to_concepts_v2(
             ),
         )
     default_grain = Grain.from_concepts([*pre_output])
+    # The rowset's grain in its own (namespaced) output space — the select
+    # grain remapped through `orig`, exactly as the dimension columns below
+    # are remapped. Grain-less columns (unspecified aggregates like
+    # `max(..) as in_year1`) live at this grain but carry empty grain from the
+    # select output, so they'd otherwise read as scalar downstream. Restricted
+    # to plain-select rowsets: a multiselect's grain is alignment-based and its
+    # per-arm grouping (rollup) / source maps don't fit this single-grain rule.
+    rowset_grain: set[str] = set()
+    if isinstance(select_lineage, SelectLineage):
+        rowset_grain = {
+            orig[c].address for c in select_lineage.grain.components if c in orig
+        }
     for x in pre_output:
         if x.keys:
             if all(k in orig for k in x.keys):
                 x.keys = set([orig[k].address if k in orig else k for k in x.keys])
             else:
                 x.keys = set()
-        if all(c in orig for c in x.grain.components):
+        if not x.grain.components and rowset_grain:
+            x.grain = Grain(components=set(rowset_grain))
+            x.keys = set(rowset_grain)
+        elif all(c in orig for c in x.grain.components):
             x.grain = Grain(components={orig[c].address for c in x.grain.components})
         else:
             x.grain = default_grain

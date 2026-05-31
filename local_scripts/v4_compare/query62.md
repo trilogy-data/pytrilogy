@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2831 | 40 | 42.18 ms |
-| reference | 2194 | 27 | 39.28 ms |
-| v4 / ref | 1.29x | 1.48x | 1.07x |
+| v4 | 2831 | 40 | 33.45 ms |
+| reference | 2162 | 27 | 37.78 ms |
+| v4 / ref | 1.31x | 1.48x | 0.89x |
 
 ## Preql
 
@@ -110,7 +110,7 @@ FROM
     INNER JOIN "memory"."ship_mode" as "ws_ship_mode_ship_mode" on "ws_web_sales"."WS_SHIP_MODE_SK" = "ws_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
     INNER JOIN "memory"."warehouse" as "ws_warehouse_warehouse" on "ws_web_sales"."WS_WAREHOUSE_SK" = "ws_warehouse_warehouse"."w_warehouse_sk"
 WHERE
-    "ws_ship_date_date"."D_MONTH_SEQ" >= 1200 and "ws_ship_date_date"."D_MONTH_SEQ" <= 1211 and "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
+    "ws_ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
 
 GROUP BY
     1,
