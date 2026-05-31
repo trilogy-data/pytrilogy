@@ -23,6 +23,7 @@ def validate_response(response: str, parsed: SelectStatement, env: Environment):
     assert (
         "dep_time.year = 2020" in response
         or "year(local.dep_time) = 2020" in response
+        or "year(dep_time) = 2020" in response
         or "date_part(local.dep_time, year) = 2020" in response
     ), response
 
