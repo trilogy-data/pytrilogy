@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1767 | 26 | 17.18 ms |
-| reference | 3444 | 59 | 48.87 ms |
-| v4 / ref | 0.51x | 0.44x | 0.35x |
+| v4 | 1767 | 26 | 31.40 ms |
+| reference | 3444 | 59 | 76.55 ms |
+| v4 / ref | 0.51x | 0.44x | 0.41x |
 
 ## Preql
 

@@ -242,6 +242,17 @@ def _add_concept(
     grouping_mode = None
     if isinstance(concept.lineage, BuildAggregateWrapper):
         grouping_mode = concept.lineage.grouping.value
+    # Rowset identity: outputs of one PLAIN-select rowset share a row
+    # population, so the rowset grouping rule buckets them together by name.
+    # Multiselect (merge/align) rowsets are excluded — their arms and
+    # cross-arm HAVING need separate groups (unifying them pushes a HAVING
+    # atom past the arms' aggregate barriers), so they fall back to the
+    # default grain rule.
+    rowset_name = None
+    if isinstance(concept.lineage, BuildRowsetItem) and isinstance(
+        concept.lineage.rowset.select, SelectLineage
+    ):
+        rowset_name = concept.lineage.rowset.name
     graph.add_node(
         nid,
         address=concept.address,
@@ -254,6 +265,7 @@ def _add_concept(
             frozenset(concept.grain.components) if concept.grain else frozenset()
         ),
         grouping_mode=grouping_mode,
+        rowset_name=rowset_name,
     )
 
     # Rowset boundary: a ROWSET concept is the outer's "handle" on a

@@ -408,11 +408,57 @@ def partition_filters_by_signature(
     )
 
 
+def partition_rowsets(
+    items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    primary_group: dict[str, str],
+    ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
+) -> list[GroupBucket]:
+    """Rowset outputs share one row population (one select), so they bucket
+    together by rowset identity rather than per-column grain — keeping the
+    whole rowset in a single scan/CTE (like the reference's `juicy`) instead
+    of fragmenting into grain-keyed groups the FINAL node must rejoin on
+    grain keys (degrading to `1=1` for grain-mismatched contributors).
+
+    Keyed by `(label, depth, rowset_name)`: depth keeps a d1 (condition-input)
+    rowset output separate from a d0 one; the bucket grain is the union of its
+    members' grains (they're the same rows, so an over-wide grain only widens
+    ride-through within the one CTE, never splits).
+
+    Outputs without a ``rowset_name`` (multiselect rowsets, deliberately left
+    unmarked) fall back to the default per-grain rule — their arms must stay
+    in separate groups."""
+    plain = [(n, d) for n, d in items if d.get("rowset_name")]
+    multiselect = [(n, d) for n, d in items if not d.get("rowset_name")]
+    buckets: list[GroupBucket] = partition_by_depth_and_grain(
+        multiselect, concept_graph, primary_group, ensure_assigned, output_addresses
+    )
+    by_key: dict[tuple[str, str, str], GroupBucket] = {}
+    for node, data in plain:
+        label = data.get("label", "")
+        depth_label = data.get("depth_label", "d0")
+        rowset_name = data["rowset_name"]
+        key = (label, depth_label, rowset_name)
+        bucket = by_key.get(key)
+        if bucket is None:
+            bucket = _bucket_for(
+                depth_label, Derivation.ROWSET.value, frozenset(), label=label
+            )
+            if rowset_name:
+                bucket.discriminator = f"rowset:{rowset_name}"
+            by_key[key] = bucket
+        bucket.grain_components |= frozenset(data.get("grain_components", ()))
+        _add_member(bucket, node, data)
+    return buckets + list(by_key.values())
+
+
 # Per-derivation registry. Any derivation not in here uses the default rule.
 GROUPING_RULES: dict[str, PartitionFn] = {
     Derivation.ROOT.value: partition_roots,
     Derivation.BASIC.value: partition_basics_by_signature,
     Derivation.FILTER.value: partition_filters_by_signature,
+    Derivation.ROWSET.value: partition_rowsets,
 }
 
 DEFAULT_RULE: PartitionFn = partition_by_depth_and_grain
