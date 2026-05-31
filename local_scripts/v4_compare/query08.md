@@ -1,24 +1,26 @@
 # Query 08
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (5 rows) |
 | reference execution | OK (5 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 5 (5 distinct)
+ref rows: 5 (5 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2405 | 45 | — |
-| reference | 2419 | 61 | 2.236 s |
-| v4 / ref | 0.99x | 0.74x | — |
+| v4 | 2667 | 63 | 42.38 ms |
+| reference | 2419 | 61 | 50.11 ms |
+| v4 / ref | 1.10x | 1.03x | 0.85x |
 
 ## Preql
 
@@ -452,49 +454,67 @@ limit 100
 
 ```sql
 WITH 
-wakeful as (
+quizzical as (
 SELECT
-    "customer_address_customer_address"."CA_ZIP" as "customer_address_zip"
+    unnest(:_virt_7180871482901048) as "zips_pre"
+),
+thoughtful as (
+SELECT
+    "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
+    "customer_customers"."C_CUSTOMER_SK" as "customer_id",
+    "customer_customers"."C_PREFERRED_CUST_FLAG" as "customer_preferred_cust_flag"
 FROM
     "memory"."customer" as "customer_customers"
     INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"),
-cheerful as (
+highfalutin as (
 SELECT
-    "wakeful"."customer_address_zip" as "customer_address_zip"
+    SUBSTRING(cast("quizzical"."zips_pre" as string),1,5) as "zips"
 FROM
-    "wakeful"
-GROUP BY
-    1),
+    "quizzical"),
 cooperative as (
 SELECT
-    SUBSTRING(CASE WHEN SUBSTRING(cast(unnest(:_virt_7180871482901048) as string),1,5) in (select INVALID_REFERENCE_BUG_<Missing source reference to local._virt_func_substring_4293448550966409>."_virt_func_substring_4293448550966409" from INVALID_REFERENCE_BUG_<Missing source reference to local._virt_func_substring_4293448550966409> where INVALID_REFERENCE_BUG_<Missing source reference to local._virt_func_substring_4293448550966409>."_virt_func_substring_4293448550966409" is not null) THEN SUBSTRING(cast(unnest(:_virt_7180871482901048) as string),1,5) ELSE NULL END,1,2) as "final_zips"
+    "thoughtful"."customer_address_zip" as "customer_address_zip",
+    count(CASE WHEN "thoughtful"."customer_preferred_cust_flag" = 'Y' THEN "thoughtful"."customer_id" ELSE NULL END) as "zip_p_count"
 FROM
-    "cheerful"
-    INNER JOIN "wakeful" on "cheerful"."customer_address_zip" = "wakeful"."customer_address_zip"),
-young as (
+    "thoughtful"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    SUBSTRING(CASE WHEN "cooperative"."zip_p_count" > 10 THEN "thoughtful"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
+FROM
+    "cooperative"
+    INNER JOIN "thoughtful" on "cooperative"."customer_address_zip" = "thoughtful"."customer_address_zip"),
+juicy as (
+SELECT
+    CASE WHEN "highfalutin"."zips" in (select abundant."_virt_func_substring_4293448550966409" from abundant where abundant."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END as "_virt_filter_zips_2159288073185462"
+FROM
+    "highfalutin"),
+vacuous as (
+SELECT
+    SUBSTRING("juicy"."_virt_filter_zips_2159288073185462",1,2) as "final_zips"
+FROM
+    "juicy"),
+abhorrent as (
 SELECT
     "store_sales_store_sales"."SS_NET_PROFIT" as "store_sales_net_profit",
-    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
-    "store_sales_store_store"."S_ZIP" as "store_sales_store_zip"
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
 FROM
     "memory"."store_sales" as "store_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
 WHERE
-    "store_sales_date_date"."D_QOY" = 2 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select cooperative."final_zips" from cooperative where cooperative."final_zips" is not null)
+    "store_sales_date_date"."D_QOY" = 2 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select vacuous."final_zips" from vacuous where vacuous."final_zips" is not null)
 )
 SELECT
-    sum("young"."store_sales_net_profit") as "store_net_profit",
-    "young"."store_sales_store_name" as "store_sales_store_name"
+    sum("abhorrent"."store_sales_net_profit") as "store_net_profit",
+    "abhorrent"."store_sales_store_name" as "store_sales_store_name"
 FROM
-    "young"
-WHERE
-    SUBSTRING("young"."store_sales_store_zip",1,2) in (select cooperative."final_zips" from cooperative where cooperative."final_zips" is not null)
-
+    "abhorrent"
 GROUP BY
     2
 ORDER BY 
-    "young"."store_sales_store_name" asc
+    "abhorrent"."store_sales_store_name" asc
 LIMIT (100)
 ```
 
@@ -562,27 +582,4 @@ GROUP BY
 ORDER BY 
     "abhorrent"."store_sales_store_name" asc
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 277, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 197, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-             ~~~~~~~~~~~^^^^^^^^^^^^^
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
-
-LINE 17: ...) as string),1,5) in (select INVALID_REFERENCE_BUG_<Missing source reference to local._virt_func_substring_429344855096...
-                                                                        ^
 ```

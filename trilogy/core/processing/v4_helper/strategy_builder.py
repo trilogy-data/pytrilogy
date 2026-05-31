@@ -15,6 +15,7 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
+    BuildFilterItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -57,39 +58,71 @@ def _atoms_at(attrs: dict[str, GroupAttrs], gid: str) -> list[BoolExpr]:
     return list(attrs[gid].condition_atoms)
 
 
+def _group_existence_concepts(
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    gid: str,
+) -> list[BuildConcept]:
+    """The SubselectComparison RHS concepts this group filters against —
+    sourced from both the WHERE atoms injected here AND the intrinsic where of
+    any FILTER concept the group computes (q08's `zips in substring(...)` lives
+    in `final_zips`'s lineage, not an injected atom)."""
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+
+    def _add(concepts: tuple[BuildConcept, ...]) -> None:
+        for concept in concepts:
+            if concept.address not in seen:
+                seen.add(concept.address)
+                out.append(concept)
+
+    for atom in _atoms_at(attrs, gid):
+        for arg_group in atom.existence_arguments:
+            _add(arg_group)
+    # Walk each primary member's lineage: a FILTER with a semijoin where
+    # (q08 `_virt_filter_zips`) is often inlined into the BASIC concept that
+    # wraps it (`final_zips = substring(filter, 1, 2)`) rather than built as
+    # its own node, so the existence arg lives a few lineage hops down.
+    visited: set[str] = set()
+    stack = [environment.concepts.get(a) for a in attrs[gid].primary_members]
+    while stack:
+        concept = stack.pop()
+        if concept is None or concept.address in visited:
+            continue
+        visited.add(concept.address)
+        if isinstance(concept.lineage, BuildFilterItem):
+            for arg_group in concept.lineage.where.existence_arguments or ():
+                _add(tuple(arg_group))
+        if concept.lineage is not None:
+            stack.extend(concept.lineage.concept_arguments)
+    return out
+
+
 def _existence_for_group(
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
+    environment: BuildEnvironment,
     gid: str,
 ) -> tuple[list[BuildConcept], list[StrategyNode]]:
-    """For each atom at `gid`, gather its existence_arguments (right-side
-    concepts of a SubselectComparison) and the built groups that supply
-    them. These become the host node's `existence_concepts` plus extra
-    parents — the SQL renderer emits the right side as a subselect lookup
-    against the parent CTE rather than joining it into the row stream."""
+    """Gather the group's existence_arguments (right-side concepts of a
+    SubselectComparison) and the built groups that supply them. These become
+    the host node's `existence_concepts` plus extra parents — the SQL renderer
+    emits the right side as a subselect lookup against the parent CTE rather
+    than joining it into the row stream."""
     existence_concepts: list[BuildConcept] = []
     existence_parents: list[StrategyNode] = []
-    seen_concepts: set[str] = set()
     seen_parents: set[int] = set()
-    for atom in _atoms_at(attrs, gid):
-        for arg_group in atom.existence_arguments:
-            for concept in arg_group:
-                if concept.address in seen_concepts:
-                    continue
-                seen_concepts.add(concept.address)
-                existence_concepts.append(concept)
-                # Find the built group that supplies this concept.
-                for source_gid, source_node in built.items():
-                    if source_gid == gid:
-                        continue
-                    if any(
-                        o.address == concept.address
-                        for o in source_node.output_concepts
-                    ):
-                        if id(source_node) not in seen_parents:
-                            seen_parents.add(id(source_node))
-                            existence_parents.append(source_node.copy())
-                        break
+    for concept in _group_existence_concepts(attrs, environment, gid):
+        existence_concepts.append(concept)
+        # Find the built group that supplies this concept.
+        for source_gid, source_node in built.items():
+            if source_gid == gid:
+                continue
+            if any(o.address == concept.address for o in source_node.output_concepts):
+                if id(source_node) not in seen_parents:
+                    seen_parents.add(id(source_node))
+                    existence_parents.append(source_node.copy())
+                break
     return existence_concepts, existence_parents
 
 
@@ -266,10 +299,18 @@ def _arg_satisfiable(
         cache[concept.address] = False
         return False
     cache[concept.address] = False
-    result = all(
-        _arg_satisfiable(a, available, keep_addrs, cache)
-        for a in concept.lineage.concept_arguments
-    )
+    # A filter's semijoin RHS (existence arg) is reached via a side-channel
+    # subselect, not the row stream, so it doesn't have to be a row input for
+    # the filter to render (q08 `zips in substring(p_cust_zip,1,5)`).
+    args = list(concept.lineage.concept_arguments)
+    if isinstance(concept.lineage, BuildFilterItem):
+        existence = {
+            ec.address
+            for grp in (concept.lineage.where.existence_arguments or ())
+            for ec in grp
+        } - {r.address for r in concept.lineage.where.row_arguments}
+        args = [a for a in args if a.address not in existence]
+    result = all(_arg_satisfiable(a, available, keep_addrs, cache) for a in args)
     cache[concept.address] = result
     return result
 
@@ -496,12 +537,33 @@ def _assemble_final_node(
     instead of one row per store_return)."""
     if not built:
         return None
+    # A cross-arm post-merge filter (e.g. `cnt_00 <= cnt_99`) that no pre-final
+    # group could host was deferred onto FINAL by `_inject_conditions`; apply it
+    # as a WHERE over the assembled merge, where both columns coexist.
+    final_conditions = _wrap_atoms(attrs[FINAL_NODE_ID].condition_atoms)
+    mandatory_addresses = {c.address for c in mandatory_list}
+
+    def _apply_final_conditions(node: StrategyNode) -> StrategyNode:
+        if final_conditions is None:
+            return node
+        # Project only the user-requested columns. The merge below may expose
+        # extra align inputs (item_sk_99/item_sk_00 folded into the align key)
+        # that aren't mandatory and don't render at this layer.
+        keep = [o for o in node.output_concepts if o.address in mandatory_addresses]
+        wrapped = SelectNode(
+            input_concepts=list(node.output_concepts),
+            output_concepts=keep,
+            environment=environment,
+            parents=[node],
+            conditions=final_conditions.conditional,
+        )
+        return wrapped
+
     per_group = _cover_groups_for_mandatory(group_graph, built, mandatory_list)
     if not per_group:
-        return next(iter(built.values()))
+        return _apply_final_conditions(next(iter(built.values())))
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
     contributing = list(per_group.keys())
-    mandatory_addresses = {c.address for c in mandatory_list}
     if len(contributing) == 1:
         gid = contributing[0]
         sole_node = built[gid]
@@ -520,7 +582,7 @@ def _assemble_final_node(
             existing = set(sole_node.hidden_concepts or set())
             sole_node.hidden_concepts = existing | hide
             sole_node.rebuild_cache()
-        return sole_node
+        return _apply_final_conditions(sole_node)
 
     # Only root scans get the grain projection: their grain is the row-level
     # source-table grain (often much wider than what a downstream merge
@@ -549,6 +611,7 @@ def _assemble_final_node(
         output_concepts=outputs,
         environment=environment,
         parents=parents,
+        conditions=final_conditions.conditional if final_conditions else None,
     )
 
 
@@ -682,7 +745,9 @@ def build_strategy_node(
             # derivations we peeled the conditions off onto a SelectNode
             # wrapper (above); that wrapper is the condition host, not the
             # outer GroupNode whose `conditions=None`.
-            ex_concepts, ex_parents = _existence_for_group(attrs, built, gid)
+            ex_concepts, ex_parents = _existence_for_group(
+                attrs, built, environment, gid
+            )
             if ex_concepts:
                 host = condition_host_node if condition_host_node is not None else node
                 host.parents = list(host.parents) + ex_parents

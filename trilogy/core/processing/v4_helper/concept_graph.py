@@ -117,13 +117,32 @@ def _upstream_aggregate(
     return base
 
 
+def _filter_existence_only(concept: BuildConcept) -> set[str]:
+    """Addresses that appear ONLY as existence args in a filter's where (a
+    semijoin RHS like `zips in substring(p_cust_zip,1,5)`). These feed a
+    side-channel subselect, not the filter's row stream."""
+    if not isinstance(concept.lineage, BuildFilterItem):
+        return set()
+    where = concept.lineage.where
+    existence = {ec.address for grp in (where.existence_arguments or []) for ec in grp}
+    return existence - {r.address for r in where.row_arguments}
+
+
 def _upstream_filter(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> List[BuildConcept]:
     """FILTER: lineage args plus property keys of the filtered concept
     (matches `resolve_filter_parent_concepts`). A filter over a property
-    needs the property's keys to keep the row stream identifiable."""
-    base = list(_lineage_args(concept, environment))
+    needs the property's keys to keep the row stream identifiable.
+
+    Existence-only args (semijoin RHS) are dropped from the row lineage — they
+    get a side-channel `existence` edge instead (see `build_concept_graph`)."""
+    existence_only = _filter_existence_only(concept)
+    base = [
+        c
+        for c in _lineage_args(concept, environment)
+        if c.address not in existence_only
+    ]
     if isinstance(concept.lineage, BuildFilterItem):
         direct_parent = concept.lineage.content
         if (
@@ -396,6 +415,31 @@ def build_concept_graph(
             inner_nid = node_id(rowset_name, inner_addr)
             if inner_nid in graph and outer_nid in graph:
                 graph.add_edge(inner_nid, outer_nid, kind="lineage")
+
+    # Filter-nested existence: a semijoin inside a derived FILTER concept
+    # (q08 `final_zips <- substring(zips ? zips in substring(p_cust_zip,1,5),
+    # 1, 2)`) needs its existence source built as a side-channel subselect, not
+    # merged into the filter's row stream. `_upstream_filter` already dropped
+    # the existence-only args from the filter's lineage; here we walk each
+    # source under the filter node's label and wire an `existence` edge to the
+    # filter so it lands in its own group and renders as `... IN (SELECT src
+    # FROM <cte>)`.
+    for nid, data in list(graph.nodes(data=True)):
+        fconcept = environment.concepts.get(data.get("address", nid))
+        if fconcept is None:
+            continue
+        existence_only = _filter_existence_only(fconcept)
+        if not existence_only:
+            continue
+        flabel = data.get("label", "")
+        for addr in existence_only:
+            source = environment.concepts.get(addr)
+            if source is None:
+                continue
+            _add_concept(source, environment, graph, label=flabel)
+            src_nid = node_id(_effective_label(source, flabel), source.address)
+            if src_nid in graph and src_nid != nid and not graph.has_edge(src_nid, nid):
+                graph.add_edge(src_nid, nid, kind="existence")
 
     # Classify how each atom uses its concept arguments. A row-argument
     # gets joined into the consumer's row stream; an existence-argument

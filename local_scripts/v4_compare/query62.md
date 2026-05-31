@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2863 | 40 | 45.92 ms |
-| reference | 2194 | 27 | 48.52 ms |
-| v4 / ref | 1.30x | 1.48x | 0.95x |
+| v4 | 2831 | 40 | 36.85 ms |
+| reference | 2194 | 27 | 36.45 ms |
+| v4 / ref | 1.29x | 1.48x | 1.01x |
 
 ## Preql
 
@@ -28,7 +28,7 @@ ref rows: 100 (100 distinct)
 import web_sales as ws;
 property days_to_ship <- ws.ship_date.id - ws.date.id;
 WHERE
-    ws.ship_date.month_seq >= 1200 and ws.ship_date.month_seq <= 1211 and ws.warehouse.id is not null and ws.ship_mode.id is not null and ws.web_site.id is not null
+    ws.ship_date.month_seq between 1200 and  1211 and ws.warehouse.id is not null and ws.ship_mode.id is not null and ws.web_site.id is not null
 SELECT
     substring(ws.warehouse.name,1,20) -> w_substr,
     ws.ship_mode.type,
@@ -67,7 +67,7 @@ FROM
     INNER JOIN "memory"."ship_mode" as "ws_ship_mode_ship_mode" on "ws_web_sales"."WS_SHIP_MODE_SK" = "ws_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
     INNER JOIN "memory"."warehouse" as "ws_warehouse_warehouse" on "ws_web_sales"."WS_WAREHOUSE_SK" = "ws_warehouse_warehouse"."w_warehouse_sk"
 WHERE
-    "ws_ship_date_date"."D_MONTH_SEQ" >= 1200 and "ws_ship_date_date"."D_MONTH_SEQ" <= 1211 and "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
+    "ws_ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
 
 GROUP BY
     1,

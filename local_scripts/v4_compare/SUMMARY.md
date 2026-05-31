@@ -1,8 +1,7 @@
 # v4 vs reference — TPC-DS comparison
 
-**Total:** 71 queries
-- match: 70
-- exec_fail: 1
+**Total:** 72 queries
+- match: 72
 
 | Query | Status | v4 rows | ref rows |
 | --- | --- | --- | --- |
@@ -13,7 +12,7 @@
 | [05](query05.md) | match | 100 | 100 |
 | [06](query06.md) | match | 46 | 46 |
 | [07](query07.md) | match | 100 | 100 |
-| [08](query08.md) | exec_fail | - | 5 |
+| [08](query08.md) | match | 5 | 5 |
 | [09](query09.md) | match | 1 | 1 |
 | [10](query10.md) | match | 6 | 6 |
 | [11](query11.md) | match | 90 | 90 |
@@ -66,6 +65,7 @@
 | [61](query61.md) | match | 1 | 1 |
 | [62](query62.md) | match | 100 | 100 |
 | [63](query63.md) | match | 100 | 100 |
+| [64](query64.md) | match | 2 | 2 |
 | [65](query65.md) | match | 100 | 100 |
 | [67](query67.md) | match | 100 | 100 |
 | [69](query69.md) | match | 100 | 100 |

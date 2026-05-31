@@ -414,6 +414,39 @@ def _inject_conditions(
                     f"Could not place condition atom {atom}: row inputs "
                     f"{sorted(row_inputs)} not reachable from any group."
                 )
+            # An input that is the primary OUTPUT of a d0 group (an aggregate /
+            # row-shape barrier produces it) only exists as a column at that
+            # group and below. Keep only candidates at-or-downstream of every
+            # such producer (the producer itself hosts a plain HAVING against
+            # its own aggregate; consumers host post-aggregate filters). When
+            # the atom's inputs come from *separate* producers that never
+            # re-converge before the sink (a cross-arm HAVING like
+            # `cnt_00 <= cnt_99`, whose two counts are computed in distinct
+            # multiselect arms), this empties the candidate set — the atom is a
+            # post-merge filter and lands on FINAL, where both columns coexist.
+            producer_closures: list[set[str]] = []
+            for addr in row_inputs:
+                producers = [
+                    gid
+                    for gid, b in buckets.items()
+                    if b.depth_label == "d0" and addr in set(b.primary_members)
+                ]
+                if producers:
+                    reach: set[str] = set(producers)
+                    for p in producers:
+                        reach |= nx.descendants(group_graph, p)
+                    producer_closures.append(reach)
+            restricted = [
+                gid
+                for gid in candidates
+                if all(gid in reach for reach in producer_closures)
+            ]
+            if not restricted:
+                attrs[FINAL_NODE_ID].condition_atoms.append(atom)
+                attrs[FINAL_NODE_ID].conditions.append(str(atom))
+                condition_group_ids.add(FINAL_NODE_ID)
+                continue
+            candidates = restricted
             cand_set = set(candidates)
             upstream_most = [
                 gid
@@ -474,10 +507,11 @@ def _add_final_node(
     concept_graph: nx.DiGraph,
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
-    downstream: set[str],
 ) -> None:
     """Attach a single FINAL sink that collects every non-d1 concept, with a
-    merge edge from every group, phase-colored to match the rest of the graph."""
+    merge edge from every group. Added before `_inject_conditions` so a
+    cross-arm post-merge filter (which no pre-final group can host) can land on
+    it; `_color_phases` colors the merge edges afterward like the rest."""
     non_condition_members = tuple(
         n for n, d in concept_graph.nodes(data=True) if d.get("depth_label") != "d1"
     )
@@ -489,8 +523,7 @@ def _add_final_node(
         conditions=[str(c) for c in conditions],
     )
     for gid in buckets:
-        phase = "post_condition" if gid in downstream else "pre_condition"
-        group_graph.add_edge(gid, FINAL_NODE_ID, kind="merge", phase=phase)
+        group_graph.add_edge(gid, FINAL_NODE_ID, kind="merge")
 
 
 def _compute_concept_sets(
@@ -660,6 +693,13 @@ def _compute_concept_sets(
                     if source_gid is None or source_gid == gid:
                         continue
                     existence_demand[source_gid].add(arg.address)
+    # A filter-nested semijoin (q08 `zips in substring(p_cust_zip,1,5)`) wires
+    # its source via an `existence` group edge rather than a condition atom.
+    # The source is a dedicated side-channel group; demand its own outputs so
+    # it gets built and can back the `... IN (SELECT src FROM cte)` subselect.
+    for src_gid, _, edata in group_graph.edges(data=True):
+        if edata.get("kind") == "existence":
+            existence_demand[src_gid].update(attrs[src_gid].primary_members)
 
     for gid in reversed(topo):
         if gid == FINAL_NODE_ID:
@@ -802,11 +842,14 @@ def build_group_graph(
         d1_calc_roots=d1_calc_roots,
         d1_subgraph=d1_subgraph,
     )
+    # FINAL must exist before injection so a cross-arm post-merge filter can
+    # land on it (no pre-final group can host one); `_color_phases` then colors
+    # its merge edges along with the rest.
+    _add_final_node(group_graph, attrs, concept_graph, buckets, conditions)
     condition_group_ids = _inject_conditions(
         group_graph, attrs, buckets, conditions, mandatory_list
     )
-    downstream = _color_phases(group_graph, condition_group_ids)
-    _add_final_node(group_graph, attrs, concept_graph, buckets, conditions, downstream)
+    _color_phases(group_graph, condition_group_ids)
     if mandatory_list is not None:
         _compute_concept_sets(
             group_graph, attrs, concept_graph, buckets, mandatory_list
