@@ -1,24 +1,26 @@
 # Query 51
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4083 | 96 | — |
-| reference | 3934 | 107 | 368.46 ms |
-| v4 / ref | 1.04x | 0.90x | — |
+| v4 | 3925 | 104 | 503.89 ms |
+| reference | 3934 | 107 | 432.27 ms |
+| v4 / ref | 1.00x | 0.97x | 1.17x |
 
 ## Preql
 
@@ -121,6 +123,14 @@ cooperative as (
 SELECT
     "cheerful"."sales_item_id" as "sales_item_id",
     cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
+    max(CASE
+	WHEN "cheerful"."sales_sales_channel" = 'STORE' THEN 1
+	ELSE 0
+	END) as "store_has_row",
+    max(CASE
+	WHEN "cheerful"."sales_sales_channel" = 'WEB' THEN 1
+	ELSE 0
+	END) as "web_has_row",
     sum(CASE WHEN "cheerful"."sales_sales_channel" = 'STORE' THEN "cheerful"."sales_sales_price" ELSE NULL END) as "store_daily",
     sum(CASE WHEN "cheerful"."sales_sales_channel" = 'WEB' THEN "cheerful"."sales_sales_price" ELSE NULL END) as "web_daily"
 FROM
@@ -133,6 +143,8 @@ uneven as (
 SELECT
     "cooperative"."sales_date_date" as "sales_date_date",
     "cooperative"."sales_item_id" as "sales_item_id",
+    "cooperative"."store_has_row" as "store_has_row",
+    "cooperative"."web_has_row" as "web_has_row",
     sum("cooperative"."store_daily") over (partition by "cooperative"."sales_item_id" order by "cooperative"."sales_date_date" asc ) as "store_cume",
     sum("cooperative"."web_daily") over (partition by "cooperative"."sales_item_id" order by "cooperative"."sales_date_date" asc ) as "web_cume"
 FROM
@@ -142,7 +154,15 @@ SELECT
     "uneven"."sales_date_date" as "sales_date_date",
     "uneven"."sales_item_id" as "sales_item_id",
     "uneven"."store_cume" as "store_cumulative",
-    "uneven"."web_cume" as "web_cumulative"
+    "uneven"."web_cume" as "web_cumulative",
+    CASE
+	WHEN "uneven"."store_has_row" = 1 THEN "uneven"."store_cume"
+	ELSE null
+	END as "store_sales",
+    CASE
+	WHEN "uneven"."web_has_row" = 1 THEN "uneven"."web_cume"
+	ELSE null
+	END as "web_sales"
 FROM
     "uneven"),
 yummy as (
@@ -154,7 +174,9 @@ FROM
 vacuous as (
 SELECT
     "juicy"."store_cumulative" as "store_cumulative",
+    "juicy"."store_sales" as "store_sales",
     "juicy"."web_cumulative" as "web_cumulative",
+    "juicy"."web_sales" as "web_sales",
     "yummy"."d_date" as "d_date",
     "yummy"."item_sk" as "item_sk"
 FROM
@@ -166,20 +188,8 @@ WHERE
 SELECT
     "vacuous"."item_sk" as "item_sk",
     "vacuous"."d_date" as "d_date",
-    CASE
-	WHEN CASE
-	WHEN  'STORE'  = 'WEB' THEN 1
-	ELSE 0
-	END = 1 THEN sum(CASE WHEN  'STORE'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END) over (partition by INVALID_REFERENCE_BUG_<Missing source reference to sales.item.id> order by cast(INVALID_REFERENCE_BUG_<Missing source reference to sales.date._date_string> as date) asc )
-	ELSE null
-	END as "web_sales",
-    CASE
-	WHEN CASE
-	WHEN  'STORE'  = 'STORE' THEN 1
-	ELSE 0
-	END = 1 THEN sum(CASE WHEN  'STORE'  = 'STORE' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END) over (partition by INVALID_REFERENCE_BUG_<Missing source reference to sales.item.id> order by cast(INVALID_REFERENCE_BUG_<Missing source reference to sales.date._date_string> as date) asc )
-	ELSE null
-	END as "store_sales",
+    "vacuous"."web_sales" as "web_sales",
+    "vacuous"."store_sales" as "store_sales",
     "vacuous"."web_cumulative" as "web_cumulative",
     "vacuous"."store_cumulative" as "store_cumulative"
 FROM
@@ -300,27 +310,4 @@ ORDER BY
     "vacuous"."item_sk" asc nulls first,
     "vacuous"."d_date" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 277, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 197, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
-
-LINE 79: ... WHEN  'STORE'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END) over...
-                                                                        ^
 ```

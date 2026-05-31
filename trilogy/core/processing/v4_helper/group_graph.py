@@ -683,7 +683,14 @@ def _compute_concept_sets(
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:
                             continue
-                        if grain_of.get(sibling, frozenset()) & my_grain:
+                        # Only an EQUAL-grain sibling is a real merge partner to
+                        # join on this key. A merely-overlapping (finer-grained)
+                        # sibling — e.g. a d1 filter feeder sharing one key —
+                        # isn't; exposing our grain there pins us to a key the
+                        # actual partner lacks and blocks routing onto it (q58:
+                        # item_id shares item.id with a filter, which kept it
+                        # off the item.name aggregate and fanned out).
+                        if grain_of.get(sibling, frozenset()) == my_grain:
                             outs |= my_grain & cap_gid
                             break
                 continue
