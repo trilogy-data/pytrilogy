@@ -4,13 +4,14 @@ where
     physical_sales.item.category in ('Sports', 'Books', 'Home')
     and physical_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
 select
+    --physical_sales.item.id,
     physical_sales.item.text_id,
     physical_sales.item.desc,
     physical_sales.item.category,
     physical_sales.item.class,
     physical_sales.item.current_price,
     sum(physical_sales.ext_sales_price) as item_revenue,
-    sum(physical_sales.ext_sales_price) * 100.0 / (sum(physical_sales.ext_sales_price) by physical_sales.item.class) as revenueratio,
+    item_revenue * 100.0 / (sum(physical_sales.ext_sales_price) by physical_sales.item.class) as revenueratio,
 order by
     physical_sales.item.category asc nulls first,
     physical_sales.item.class asc nulls first,
