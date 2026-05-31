@@ -457,12 +457,12 @@
   {
     "id": 90,
     "grade": "medium",
-    "prompt": "Count web sales by households with dependent count of 6, on web pages whose character count is between 5000 and 5200, for sales whose sold time falls in the morning hours 8 through 9. Count the same population for sales whose sold time falls in the evening hours 19 through 20. Report the morning count divided by the evening count as a decimal ratio (null when the evening count is zero). Order by the ratio; limit 1 row (limit 100 in the spec)."
+    "prompt": "Count web sale lines for ship-to households (the household demographics recorded on the web sale) with a dependent count of 6, on web pages whose character count is between 5000 and 5200, where the sale's sold time falls in the morning hours 8 through 9. Count the same population where the sold time falls in the evening hours 19 through 20. Report a single value: the morning count divided by the evening count as a decimal ratio (null when the evening count is zero). Order by the ratio; limit 100 rows."
   },
   {
     "id": 91,
     "grade": "medium",
-    "prompt": "For catalog returns in the 11th month of year 1998, report total net loss by call center, grouped by call center code (the stable business identifier), name, and manager. Restrict to returns by customers whose current home address has a GMT offset of -7, whose household buy potential begins with 'Unknown', and whose marital-status and education combination is either married with 'Unknown' education or widowed with 'Advanced Degree' education. Use the customer's own current customer-demographics, household-demographics, and address records. Report call center code, name, and manager with the total net loss, ordered by total net loss descending."
+    "prompt": "For catalog returns in the 11th month of year 1998, report total net loss by call center, identified by call center code (the stable business identifier), name, and manager. Compute the net loss separately for each combination of the customer's marital status and education, so a call center with returns in more than one such combination appears on more than one row (report only the call center code, name, and manager columns alongside the loss). Restrict to returns by the returning customer whose current home address has a GMT offset of -7, whose household buy potential begins with 'Unknown', and whose marital-status and education combination is either married with 'Unknown' education or widowed with 'Advanced Degree' education. Use the returning customer's own current customer-demographics, household-demographics, and address records. Order by total net loss descending."
   },
   {
     "id": 92,
@@ -472,39 +472,39 @@
   {
     "id": 93,
     "grade": "easy",
-    "prompt": "For each customer, sum an adjusted store-sale amount across all their store-sale lines: when the line has a matching store return (matched by ticket and item), the adjusted amount is (sold quantity minus return quantity) times sales price; otherwise it is sold quantity times sales price. Restrict to lines whose matched return reason description is 'reason 28'. Report customer and the summed adjusted amount. Order by the sum then by customer, both with nulls first; limit 100 rows."
+    "prompt": "For each customer, considering only store-sale lines that have a matching store return (matched by ticket and item) whose return reason description is 'reason 28', the adjusted amount for each such line is (sold quantity minus return quantity) times sales price. Sum the adjusted amount per customer. Report the customer id and the summed adjusted amount. Order by the sum then by the customer id, both with nulls first; limit 100 rows."
   },
   {
     "id": 94,
-    "grade": "impossible",
-    "comment": "Filters on web_site.web_company_name='pri'. At scale factor 0.01 the company-name enum sampled by Trilogy typically does not include 'pri', so the filter cannot match and the spec-faithful query returns nothing.",
+    "grade": "hard",
+    "comment": "Requires a same-order correlated existence check (order spans more than one warehouse) plus an anti-join to web_returns (no line of the order returned). Gradeable at scale factor >= 1 (the eval default), where web_site company name 'pri' is present; absent at sf=0.01.",
     "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where at least one other line on the same order ships from a different warehouse and no line of that order has a web return, report the count of unique orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
   },
   {
     "id": 95,
-    "grade": "impossible",
-    "comment": "Same as query 94: filters on web_site.web_company_name='pri', which is typically absent at scale factor 0.01, so the spec-faithful filter produces no rows.",
+    "grade": "hard",
+    "comment": "Like query 94 but with a semi-join to web_returns (the order has at least one return). Gradeable at scale factor >= 1 (the eval default), where web_site company name 'pri' is present; absent at sf=0.01.",
     "prompt": "For web sales whose ship date is between 1999-02-01 and 1999-04-02, shipped to an address in IL, sold through a web site whose company name is 'pri', where the order has at least one other line shipping from a different warehouse and at least one web return exists for the order, report the count of unique orders, the total extended shipping cost, and the total net profit. Order by the order count; limit 100 rows."
   },
   {
     "id": 96,
-    "grade": "impossible",
-    "comment": "Filters on store name 'ese'. Trilogy infers a closed enum for store_name from the values present in the sampled data; below full scale 'ese' is usually absent, so the spec-faithful filter cannot parse. Not gradeable below full scale factor â€” kept for the record, excluded from runs.",
-    "prompt": "Count the store sale line items that were sold in the 8 PM hour at or after minute 30, at the store named 'ese', to customers whose household has a dependent count of 7. Order by the count; limit 100 rows."
+    "grade": "easy",
+    "comment": "Plain filtered line-item count (sold in the 8 PM hour at/after minute 30, store named 'ese', household dependent count 7). Gradeable at scale factor >= 1 (the eval default), where store name 'ese' is present; absent at sf=0.01.",
+    "prompt": "Count the store-sale line items that were sold in the 8 PM hour (hour 20 on a 24-hour clock) at or after minute 30, at the store named 'ese', for sales whose recorded household demographics have a dependent count of 7. Order by the count; limit 100 rows."
   },
   {
     "id": 97,
     "grade": "medium",
-    "prompt": "For sales whose sold date falls in the year 2000, take each unique (customer, item) combination from store sales and each unique (billing customer, item) combination from catalog sales, then combine the two sets by customer and item keeping rows that exist on either side. Report three counts: combinations present only in the store set, combinations present only in the catalog set, and combinations present in both. Output a single row with those three counts; limit 100 rows."
+    "prompt": "For sales whose sold date falls in the year 2000 and for which the customer is identified, take each unique (customer, item) combination from store sales and each unique (billing customer, item) combination from catalog sales, then combine the two sets by customer and item keeping rows that exist on either side. Report three counts: combinations present only in the store set, combinations present only in the catalog set, and combinations present in both. Output a single row with those three counts; limit 100 rows."
   },
   {
     "id": 98,
     "grade": "medium",
-    "prompt": "For store sales of items in the 'Sports', 'Books', or 'Home' categories sold between 1999-02-22 and 1999-03-24, report for each item its business code, description, category, class, and current price, along with the total extended store sales price for that item, and that item's extended sales price as a percentage of the total extended sales price of all items in its class (the ratio multiplied by 100, between 0 and 100). Report one row per (item code, description, category, class, current price). Order by category, class, item code, description, then the percentage, all with nulls first."
+    "prompt": "For store sales of items in the 'Sports', 'Books', or 'Home' categories sold between 1999-02-22 and 1999-03-24, report for each item its business code, description, category, class, and current price, along with the total extended store sales price for that item, and that item's extended sales price as a percentage of the total extended sales price of all items in its class (the ratio multiplied by 100, between 0 and 100). Report one row per (item code, description, category, class, current price); return every qualifying item and do not cap or limit the number of rows. Order by category, class, item code, description, then the percentage, all with nulls first."
   },
   {
     "id": 99,
     "grade": "medium",
-    "prompt": "For catalog sales whose ship date falls in the year 2000, report the count of orders bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. For each combination of the first 20 characters of the warehouse name, the shipping-mode type, and the lowercased call center name, report the five bucketed counts. Order by the 20-character warehouse name, the shipping-mode type, then the lowercased call center name, all with nulls first; limit 100 rows."
+    "prompt": "For catalog sales whose ship date falls in the year 2000, and only for sales where the warehouse, shipping mode, and call center are all recorded, report the count of catalog-sale line items bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. For each combination of the first 20 characters of the warehouse name, the shipping-mode type, and the lowercased call center name, report the five bucketed counts. Order by the 20-character warehouse name, the shipping-mode type, then the lowercased call center name, all with nulls first; limit 100 rows."
   }
 ]

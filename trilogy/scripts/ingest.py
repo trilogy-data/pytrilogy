@@ -24,6 +24,7 @@ from trilogy.core.models.author import Concept, Grain, Metadata
 from trilogy.core.models.core import EnumType, TraitDataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.duckdb import DUCKDB_SAMPLE_SEED
 from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
 from trilogy.parsing.render import Renderer
@@ -42,6 +43,8 @@ from trilogy.scripts.display_ingest import (
 )
 from trilogy.scripts.ingest_helpers.fk_inference import (
     InferredFK,
+    _fk_stem,
+    _stem_related,
     build_table_fk_info,
     enrich_explicit_fks_partial,
     infer_foreign_keys,
@@ -179,42 +182,184 @@ def _check_column_combination_uniqueness(
     return len(values) == len(sample_rows)
 
 
+# Decimal/float types: amounts and ratios. A column of these is a measure, so
+# its sample uniqueness is a floating-point coincidence — almost never a grain.
+_MEASURE_TYPES = frozenset({DataType.FLOAT, DataType.NUMERIC, DataType.NUMBER})
+# Temporal types and the surrogate-key names that reference a date/time
+# dimension: a fact's natural grain is its entity + transaction number, not the
+# day or second it happened, so these lose to a non-temporal partner.
+_TEMPORAL_TYPES = frozenset({DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP})
+_TEMPORAL_FK_SUFFIXES = ("date_sk", "time_sk")
+
+# Per-column grain penalties, summed over a candidate combination (lower wins).
+# Tiered, not flat: a measure must never beat a real key, a date/time stamp
+# should lose only to a non-temporal alternative, and a foreign key loses only
+# when a natural key is available — so the gaps between tiers must exceed the
+# largest plausible count of the next tier down within one key.
+_PENALTY_MEASURE = 100
+_PENALTY_TEMPORAL = 10
+_PENALTY_FK = 1
+# Boost (negative cost) for a column whose name *is* a bare key token — what a
+# narrow table's columns collapse to once their shared prefix is stripped
+# (``r_reason_sk`` -> ``sk``, ``r_reason_id`` -> ``id``), erasing the stem that
+# would otherwise mark them the table's identity. Plus qualified ``*_id``
+# business keys. All boosted equally, so an `sk`/`id` tie falls to column order
+# (the surrogate, listed first, wins). Deliberately excludes qualified ``*_sk``
+# / ``*_date_sk``: those are real foreign keys and must keep their tier, or the
+# fact-table grain fix unravels.
+_IDENTIFIER_TOKENS = ("id", "sk", "key", "fk")
+_BOOST_IDENTIFIER_NAME = -1
+
+
+def _column_grain_penalty(
+    canonical: str, datatype: DataType, table_canonical: str
+) -> int:
+    """Cost of using one column in a grain (lower is a better key column).
+
+    The table's own identity column — the surrogate/natural key whose name stem
+    is the table's entity (``call_center_sk`` in ``call_center``) — is its best
+    grain and never penalized, even though it looks like a foreign key.
+    """
+    stem = _fk_stem(canonical)
+    if stem and _stem_related(stem, table_canonical):
+        return 0
+    if canonical in _IDENTIFIER_TOKENS or canonical.endswith("_id"):
+        return _BOOST_IDENTIFIER_NAME
+    if datatype in _MEASURE_TYPES:
+        return _PENALTY_MEASURE
+    if datatype in _TEMPORAL_TYPES or canonical.endswith(_TEMPORAL_FK_SUFFIXES):
+        return _PENALTY_TEMPORAL
+    return _PENALTY_FK if stem is not None else 0
+
+
+def _rank_key_candidates(
+    candidates: list[list[str]],
+    column_order: dict[str, int],
+    penalties: dict[str, int],
+) -> list[list[str]]:
+    """Order equal-size unique keys best-first by summed column penalty, then a
+    stable tie-break on original column position for determinism."""
+
+    def sort_key(combo: list[str]) -> tuple[int, tuple[int, ...]]:
+        total = sum(penalties.get(c, 0) for c in combo)
+        return (total, tuple(sorted(column_order[c] for c in combo)))
+
+    return sorted(candidates, key=sort_key)
+
+
 def detect_unique_key_combinations(
-    column_names: list[str], sample_rows: list[tuple], max_key_size: int = 3
+    column_names: list[str],
+    sample_rows: list[tuple],
+    max_key_size: int = 3,
+    penalties: dict[str, int] | None = None,
 ) -> list[list[str]]:
     """Detect unique key combinations from sample data.
 
-    Returns a list of column combinations that uniquely identify rows,
-    ordered by size (smallest first).
+    Returns column combinations that uniquely identify rows in the sample,
+    smallest size first. Within a size, ``penalties`` (raw column name → cost,
+    from ``_grain_penalties``) ranks candidates so a natural key beats an
+    equally-unique combination of measures/foreign keys; absent it, column order.
     """
     if not sample_rows or not column_names:
         return []
 
-    unique_combinations = []
+    column_order = {name: i for i, name in enumerate(column_names)}
+    penalties = penalties or {}
 
-    # Try single columns first
-    for i, col_name in enumerate(column_names):
-        if _check_column_combination_uniqueness([i], sample_rows):
-            unique_combinations.append([col_name])
+    single = [
+        [name]
+        for i, name in enumerate(column_names)
+        if _check_column_combination_uniqueness([i], sample_rows)
+    ]
+    if single:
+        return _rank_key_candidates(single, column_order, penalties)
 
-    # If we found single-column keys, prefer those
-    if unique_combinations:
-        return unique_combinations
-
-    # Try combinations of 2+ columns
     for size in range(2, max_key_size + 1):
+        sized: list[list[str]] = []
         for col_combination in combinations(enumerate(column_names), size):
             indices = [idx for idx, _ in col_combination]
             col_names = [name for _, name in col_combination]
-
             if _check_column_combination_uniqueness(indices, sample_rows):
-                unique_combinations.append(col_names)
+                sized.append(col_names)
+        if sized:
+            return _rank_key_candidates(sized, column_order, penalties)
 
-        # If we found keys of this size, return them (prefer smaller keys)
-        if unique_combinations:
-            return unique_combinations
+    return []
 
-    return unique_combinations
+
+def _grain_penalties(
+    table_name: str,
+    columns: list[tuple],
+    canonical: dict[str, str],
+    dialect: BaseDialect,
+) -> dict[str, int]:
+    """Map each raw column name to its grain penalty (see ``_column_grain_penalty``)."""
+    table_canonical = canonicolize_name(table_name)
+    return {
+        col[0]: _column_grain_penalty(
+            canonical.get(col[0]) or canonicolize_name(col[0]),
+            _base_datatype(dialect, col[1]),
+            table_canonical,
+        )
+        for col in columns
+    }
+
+
+# Cap on full-table uniqueness checks per source: sample ranking puts the real
+# key near the front, so we rarely need many — this just bounds a pathological
+# wide table whose smallest sample-unique size yields a long candidate list.
+_MAX_GRAIN_VERIFICATIONS = 16
+
+
+def _is_unique_key(
+    exec: Executor, relation: str, raw_columns: list[str], dialect: BaseDialect
+) -> bool:
+    """True if `raw_columns` uniquely identifies every row of the full relation.
+
+    Sample uniqueness is necessary but not sufficient (a clustered table can
+    fake it); a GROUP BY over the whole relation is the ground truth. NULLs in
+    a key column collapse into one group, so a nullable key reads as non-unique
+    — correctly, since it can't stand in as the grain.
+    """
+    cols = ", ".join(dialect.safe_quote(c) for c in raw_columns)
+    sql = (
+        f"SELECT MAX(_n) FROM "
+        f"(SELECT COUNT(*) AS _n FROM {relation} GROUP BY {cols}) _g"
+    )
+    rows = exec.execute_raw_sql(sql).fetchall()
+    return bool(rows) and rows[0][0] == 1
+
+
+def _select_verified_grain(
+    exec: Executor,
+    relation: str,
+    candidates: list[list[str]],
+    dialect: BaseDialect,
+) -> list[str] | None:
+    """First ranked candidate that is unique over the full relation.
+
+    Returns None if every checked candidate fails uniqueness (caller should then
+    fall back to no grain). If a verification query errors — odd types, an
+    unreadable relation — we can't prove the best candidate wrong, so we accept
+    it unverified rather than silently drop a usable grain.
+    """
+    for candidate in candidates[:_MAX_GRAIN_VERIFICATIONS]:
+        try:
+            unique = _is_unique_key(exec, relation, candidate, dialect)
+        except Exception as e:
+            try:
+                exec.connection.rollback()
+            except Exception:
+                pass
+            print_warning(
+                f"Grain verification failed ({e}); using best sample candidate "
+                f"{candidates[0]} unverified"
+            )
+            return candidates[0]
+        if unique:
+            return candidate
+        print_info(f"Rejected grain candidate {candidate}: not unique on full table")
+    return None
 
 
 def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) -> bool:
@@ -372,15 +517,37 @@ def create_datasource_from_file(
     ]
     column_names = [c[0] for c in columns]
 
+    # Reservoir-sample (not a head LIMIT) so a file clustered on a leading key
+    # doesn't hide grain columns / fake uniqueness; fixed seed keeps it stable.
     sample_rows = exec.execute_raw_sql(
-        f"SELECT * FROM {source_expr} LIMIT 10000"
+        f"SELECT * FROM {source_expr} USING SAMPLE 10000 ROWS "
+        f"(reservoir, {DUCKDB_SAMPLE_SEED})"
     ).fetchall()
 
     column_concept_mapping = canonicalize_names(column_names)
-    suggested_keys = detect_unique_key_combinations(column_names, sample_rows)
+    suggested_keys = detect_unique_key_combinations(
+        column_names,
+        sample_rows,
+        penalties=_grain_penalties(
+            name_override or _datasource_name_from_path(arg),
+            columns,
+            column_concept_mapping,
+            exec.generator,
+        ),
+    )
     if suggested_keys:
         print_info(f"Detected potential unique key combinations: {suggested_keys}")
-        keys = suggested_keys[0]
+        verified = _select_verified_grain(
+            exec, source_expr, suggested_keys, exec.generator
+        )
+        if verified is not None:
+            keys = verified
+            print_info(f"Using verified unique grain: {verified}")
+        else:
+            keys = []
+            print_warning(
+                "No candidate is unique on the full file; defaulting to no grain"
+            )
     else:
         keys = []
         print_info("No primary key or unique grain detected; defaulting to no grain")
@@ -468,11 +635,26 @@ def create_datasource_from_table(
         print_info(
             f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
         )
-        suggested_keys = detect_unique_key_combinations(column_names, sample_rows)
+        suggested_keys = detect_unique_key_combinations(
+            column_names,
+            sample_rows,
+            penalties=_grain_penalties(
+                table_name, columns, column_concept_mapping, dialect
+            ),
+        )
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
-            print_info(f"Using detected unique key as grain: {suggested_keys[0]}")
-            keys = suggested_keys[0]
+            verified = _select_verified_grain(
+                exec, dialect.safe_quote(qualified_name), suggested_keys, dialect
+            )
+            if verified is not None:
+                keys = verified
+                print_info(f"Using verified unique grain: {verified}")
+            else:
+                keys = []
+                print_warning(
+                    "No candidate is unique on the full table; defaulting to no grain"
+                )
         else:
             keys = []
             print_info(

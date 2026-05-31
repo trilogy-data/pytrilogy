@@ -10,7 +10,11 @@ from trilogy.core.models.core import EnumType, TraitDataType
 from trilogy.dialect.base import BaseDialect
 from trilogy.scripts.ingest import (
     _check_column_combination_uniqueness,
+    _column_grain_penalty,
+    _grain_penalties,
+    _is_unique_key,
     _process_column,
+    _select_verified_grain,
     canonicalize_names,
     detect_nullability_from_sample,
     detect_rich_type,
@@ -846,6 +850,120 @@ class TestDetectUniqueKeyCombinations:
         ]
         result = detect_unique_key_combinations(column_names, sample_rows)
         assert result == []
+
+
+class TestGrainCandidateRanking:
+    """Penalty-based ranking of equally-unique grain candidates."""
+
+    def test_natural_key_beats_temporal_fk(self):
+        # catalog_returns: (item_sk, order_number) and (time_sk, order_number)
+        # are both unique in-sample; the temporal surrogate must lose.
+        column_names = ["returned_time_sk", "item_sk", "order_number"]
+        sample_rows = [(10, 1, 100), (10, 2, 100), (11, 1, 101)]
+        penalties = _grain_penalties(
+            "catalog_returns",
+            [
+                ("returned_time_sk", "INTEGER"),
+                ("item_sk", "INTEGER"),
+                ("order_number", "BIGINT"),
+            ],
+            canonicalize_names(column_names),
+            _DIALECT,
+        )
+        result = detect_unique_key_combinations(
+            column_names, sample_rows, penalties=penalties
+        )
+        assert result[0] == ["item_sk", "order_number"]
+
+    def test_natural_key_beats_decimal_measure(self):
+        # A coincidentally-unique decimal measure must never win the grain.
+        column_names = ["net_paid", "item_sk", "order_number"]
+        sample_rows = [(1.50, 1, 100), (1.50, 2, 100), (2.25, 1, 101)]
+        penalties = _grain_penalties(
+            "catalog_sales",
+            [
+                ("net_paid", "DECIMAL(7,2)"),
+                ("item_sk", "INTEGER"),
+                ("order_number", "BIGINT"),
+            ],
+            canonicalize_names(column_names),
+            _DIALECT,
+        )
+        result = detect_unique_key_combinations(
+            column_names, sample_rows, penalties=penalties
+        )
+        assert result[0] == ["item_sk", "order_number"]
+
+    def test_table_identity_key_not_penalized(self):
+        # call_center_sk is the table's own identity, not a foreign key, so it
+        # outranks an unrelated unique column despite the `_sk` suffix.
+        column_names = ["call_center_sk", "sq_ft"]
+        sample_rows = [(1, 5000), (2, 6000)]
+        penalties = _grain_penalties(
+            "call_center",
+            [("call_center_sk", "INTEGER"), ("sq_ft", "INTEGER")],
+            canonicalize_names(column_names),
+            _DIALECT,
+        )
+        result = detect_unique_key_combinations(
+            column_names, sample_rows, penalties=penalties
+        )
+        assert result[0] == ["call_center_sk"]
+
+    def test_penalty_tiers(self):
+        assert _column_grain_penalty("item_sk", DataType.INTEGER, "catalog_returns") > 0
+        assert _column_grain_penalty(
+            "returned_time_sk", DataType.INTEGER, "catalog_returns"
+        ) > _column_grain_penalty("item_sk", DataType.INTEGER, "catalog_returns")
+        assert _column_grain_penalty(
+            "net_paid", DataType.NUMERIC, "catalog_sales"
+        ) > _column_grain_penalty("returned_time_sk", DataType.INTEGER, "catalog_sales")
+        # Table's own identity and an id-named column are both non-positive.
+        assert _column_grain_penalty("item_sk", DataType.INTEGER, "item") == 0
+        assert _column_grain_penalty("id", DataType.STRING, "reason") < 0
+        # Bare key tokens (prefix-stripped) boost equally, so the tie falls to
+        # column order — `reason` stays on `sk`, not `id`.
+        assert _column_grain_penalty(
+            "sk", DataType.INTEGER, "reason"
+        ) == _column_grain_penalty("id", DataType.INTEGER, "reason")
+
+
+class TestGrainVerification:
+    """Full-table uniqueness check that rejects sample-only grain candidates."""
+
+    def _executor(self):
+        from trilogy import Dialects
+        from trilogy.core.models.environment import Environment
+        from trilogy.dialect.config import DuckDBConfig
+
+        return Dialects.DUCK_DB.default_executor(
+            environment=Environment(working_path=Path(".")),
+            conf=DuckDBConfig(path=":memory:"),
+        )
+
+    def test_rejects_sample_only_key_and_picks_real_key(self):
+        eng = self._executor()
+        # (a, b) repeats; only (a, b, c) is unique — the inventory shape.
+        eng.execute_raw_sql(
+            "CREATE TABLE t AS SELECT * FROM "
+            "(VALUES (1, 10, 100), (1, 10, 200), (2, 20, 100)) v(a, b, c)"
+        )
+        assert _is_unique_key(eng, '"t"', ["a", "b"], eng.generator) is False
+        assert _is_unique_key(eng, '"t"', ["a", "b", "c"], eng.generator) is True
+        picked = _select_verified_grain(
+            eng, '"t"', [["a", "b"], ["a", "b", "c"]], eng.generator
+        )
+        assert picked == ["a", "b", "c"]
+
+    def test_all_candidates_fail_returns_none(self):
+        eng = self._executor()
+        eng.execute_raw_sql(
+            "CREATE TABLE t2 AS SELECT * FROM (VALUES (1, 1), (1, 1)) v(a, b)"
+        )
+        picked = _select_verified_grain(
+            eng, '"t2"', [["a"], ["b"], ["a", "b"]], eng.generator
+        )
+        assert picked is None
 
 
 class TestEnumFromValues:
