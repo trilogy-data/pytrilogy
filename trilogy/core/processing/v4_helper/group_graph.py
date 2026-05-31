@@ -725,19 +725,33 @@ def _compute_concept_sets(
         is_grouping = derivation_of[gid] in GROUPING_DERIVATIONS
         for c in outs:
             if c in primaries:
-                for p in lineage_parents.get(c, set()):
-                    if p not in primaries:
-                        ins.add(p)
-                        # Aggregating derivations sit above a row-level
-                        # source: also demand the row-grain of each lineage
-                        # arg so the source scan stays at row grain. Without
-                        # this the source would project only the requested
-                        # value columns and v3 inserts an implicit GROUP BY
-                        # to dedupe (q09: AVG/SUM over deduped tuples).
-                        if is_grouping:
-                            for gc in source_grain_of.get(p, frozenset()):
-                                if gc not in primaries:
-                                    ins.add(gc)
+                # Walk lineage through primaries computed *inside* this group,
+                # demanding the first non-primary ancestor of each chain. A
+                # primary whose lineage arg is itself another primary (q49:
+                # channel -> channel_label -> sales_channel) would otherwise
+                # stop at the intermediate and never demand the real input —
+                # the renderer then has no row value and constant-folds it.
+                stack = list(lineage_parents.get(c, set()))
+                seen_chain: set[str] = set()
+                while stack:
+                    p = stack.pop()
+                    if p in seen_chain:
+                        continue
+                    seen_chain.add(p)
+                    if p in primaries:
+                        stack.extend(lineage_parents.get(p, set()))
+                        continue
+                    ins.add(p)
+                    # Aggregating derivations sit above a row-level source:
+                    # also demand the row-grain of each lineage arg so the
+                    # source scan stays at row grain. Without this the source
+                    # would project only the requested value columns and v3
+                    # inserts an implicit GROUP BY to dedupe (q09: AVG/SUM
+                    # over deduped tuples).
+                    if is_grouping:
+                        for gc in source_grain_of.get(p, frozenset()):
+                            if gc not in primaries:
+                                ins.add(gc)
             else:
                 ins.add(c)
         for atom in attrs[gid].condition_atoms:

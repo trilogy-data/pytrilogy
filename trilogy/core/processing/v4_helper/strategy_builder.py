@@ -194,6 +194,28 @@ def _pre_merge_parents(
     return [merged]
 
 
+def _arg_satisfiable(
+    concept: BuildConcept,
+    available: set[str],
+    keep_addrs: set[str],
+    seen: set[str],
+) -> bool:
+    """A concept renders if it's directly available, a kept sibling, or every
+    lineage arg is itself satisfiable. Recurses through *intermediate* derived
+    concepts that aren't group outputs (q49: `channel <- channel_label <-
+    sales_channel`; only `channel` and `sales_channel` exist as group/parent
+    concepts, but the SelectNode inlines `channel_label` from `sales_channel`)."""
+    if concept.address in available or concept.address in keep_addrs:
+        return True
+    if concept.address in seen or concept.lineage is None:
+        return False
+    seen.add(concept.address)
+    return all(
+        _arg_satisfiable(a, available, keep_addrs, seen)
+        for a in concept.lineage.concept_arguments
+    )
+
+
 def _satisfiable_outputs(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -206,12 +228,12 @@ def _satisfiable_outputs(
     `output_concepts` with no source map entry, producing
     `INVALID_REFERENCE_BUG_<...>` markers in the rendered SQL.
 
-    A group computes all its outputs together, so an output's lineage args
-    can be satisfied by a *sibling* output of this same group, not just a
-    parent's. Basic chains do exactly this (q28: `filtered_lp` derives from
-    `bucket_id`, both in one basic group). Resolve with a fixpoint — keep an
-    output once every arg is parent-available or a sibling already kept —
-    so a multi-level chain settles regardless of iteration order."""
+    An output is keepable when its lineage bottoms out at parent-available
+    concepts or already-kept siblings — following the chain through
+    intermediate derived concepts the SelectNode will inline (q28
+    `filtered_lp <- bucket_id <- quantity`, q49 `channel <- channel_label <-
+    sales_channel`). Run to a fixpoint so a kept sibling unlocks others
+    regardless of iteration order."""
     if not parents:
         return outputs
     available: set[str] = set()
@@ -225,15 +247,9 @@ def _satisfiable_outputs(
         for concept in outputs:
             if concept.address in keep_addrs:
                 continue
-            if concept.address in available:
+            if _arg_satisfiable(concept, available, keep_addrs, set()):
                 keep_addrs.add(concept.address)
                 changed = True
-                continue
-            if concept.lineage is not None:
-                args = {a.address for a in concept.lineage.concept_arguments}
-                if all(a in available or a in keep_addrs for a in args):
-                    keep_addrs.add(concept.address)
-                    changed = True
     return [c for c in outputs if c.address in keep_addrs]
 
 

@@ -1,38 +1,26 @@
 # Query 49
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (34 rows) |
 | reference execution | OK (34 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 34 (34 distinct)
 ref rows: 34 (34 distinct)
-only in v4 (showing up to 5 of 22):
-  1x  ('catalog', 1, 5721, 1, 0.81)
-  1x  ('catalog', 1, 15179, 1, 0.6)
-  1x  ('catalog', 2, 103, 2, 0.6129032258064516)
-  1x  ('catalog', 2, 14487, 2, 0.8369565217391305)
-  1x  ('catalog', 3, 31, 3, 0.8607594936708861)
-only in ref (showing up to 5 of 22):
-  1x  ('store', 1, 5721, 1, 0.81)
-  1x  ('store', 2, 14487, 2, 0.8369565217391305)
-  1x  ('store', 3, 31, 3, 0.8607594936708861)
-  1x  ('store', 4, 5283, 4, 0.8829787234042553)
-  1x  ('store', 5, 9191, 5, 0.9111111111111111)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5820 | 131 | 28.16 ms |
-| reference | 5628 | 128 | 31.92 ms |
-| v4 / ref | 1.03x | 1.02x | 0.88x |
+| v4 | 5732 | 124 | 42.72 ms |
+| reference | 5628 | 128 | 40.79 ms |
+| v4 / ref | 1.02x | 0.97x | 1.05x |
 
 ## Preql
 
@@ -182,40 +170,33 @@ GROUP BY
 vacuous as (
 SELECT
     "yummy"."sales_item_id" as "sales_item_id",
+    "yummy"."sales_sales_channel" as "sales_sales_channel",
     cast("yummy"."return_qty" as numeric(15,4)) / cast("yummy"."sale_qty" as numeric(15,4)) as "return_ratio",
     rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_amt" as numeric(15,4)) / cast("yummy"."sale_paid" as numeric(15,4)) asc ) as "currency_rank",
     rank() over (partition by "yummy"."sales_sales_channel" order by cast("yummy"."return_qty" as numeric(15,4)) / cast("yummy"."sale_qty" as numeric(15,4)) asc ) as "return_rank"
 FROM
-    "yummy"),
-young as (
+    "yummy")
 SELECT
-    "vacuous"."currency_rank" as "currency_rank",
-    "vacuous"."return_rank" as "return_rank",
+    CASE
+	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN 'web'
+	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
+	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN 'store'
+	ELSE null
+	END as "channel",
+    "vacuous"."sales_item_id" as "item",
     "vacuous"."return_ratio" as "return_ratio",
-    "vacuous"."sales_item_id" as "item"
+    "vacuous"."return_rank" as "return_rank",
+    "vacuous"."currency_rank" as "currency_rank"
 FROM
     "vacuous"
 WHERE
     "vacuous"."return_rank" <= 10 or "vacuous"."currency_rank" <= 10
-)
-SELECT
-    CASE
-	WHEN  'CATALOG'  = 'WEB' THEN 'web'
-	WHEN  'CATALOG'  = 'CATALOG' THEN 'catalog'
-	WHEN  'CATALOG'  = 'STORE' THEN 'store'
-	ELSE null
-	END as "channel",
-    "young"."item" as "item",
-    "young"."return_ratio" as "return_ratio",
-    "young"."return_rank" as "return_rank",
-    "young"."currency_rank" as "currency_rank"
-FROM
-    "young"
+
 ORDER BY 
     "channel" asc nulls first,
-    "young"."return_rank" asc nulls first,
-    "young"."currency_rank" asc nulls first,
-    "young"."item" asc nulls first
+    "vacuous"."return_rank" asc nulls first,
+    "vacuous"."currency_rank" asc nulls first,
+    "item" asc nulls first
 LIMIT (100)
 ```
 
