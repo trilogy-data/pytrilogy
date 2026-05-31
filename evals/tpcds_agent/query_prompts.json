@@ -406,7 +406,7 @@
   {
     "id": 80,
     "grade": "hard",
-    "prompt": "For the period 2000-08-23 through 2000-09-22, restricted to items whose current price is greater than 50 and to promotions whose TV channel flag is 'N', report sales, returns, and profit rolled up by channel and outlet. For the store channel the outlet identifier is the store's business code prefixed with 'store'; for the catalog channel it is the catalog page's business code prefixed with 'catalog_page'; for the web channel it is the web site's business code prefixed with 'web_site'. In each channel, profit is the channel's net profit minus matched return net loss (returns matched by order/ticket and item), and returns is the channel's return amount with missing treated as zero. Sum sales, returns, and profit at each subtotal level so we get per-outlet rows, per-channel subtotals, and a grand total. Order by channel and outlet identifier, both with nulls first; limit 100 rows."
+    "prompt": "For the period 2000-08-23 through 2000-09-22, restricted to items whose current price is greater than 50 and to promotions whose TV channel flag is 'N', report sales, returns, and profit rolled up by channel and outlet. For the store channel the outlet identifier is the store's business code prefixed with 'store'; for the catalog channel it is the catalog page's business code prefixed with 'catalog_page'; for the web channel it is the web site's business code prefixed with 'web_site'. In each channel, profit is the channel's net profit minus matched return net loss (returns matched by order/ticket and item), and returns is the channel's return amount with missing treated as zero. Sum sales, returns, and profit at each subtotal level so we get per-outlet rows, per-channel subtotals, and a grand total. Label the channel as 'store channel', 'catalog channel', or 'web channel'. Include only sales whose outlet (store, catalog page, or web site) is recorded. Order by channel and outlet identifier, both with nulls first; limit 100 rows."
   },
   {
     "id": 81,
@@ -421,7 +421,7 @@
   {
     "id": 83,
     "grade": "medium",
-    "prompt": "For each item, compute three return quantities â€” total store-return quantity, total catalog-return quantity, and total web-return quantity â€” restricted to returns whose returned date falls in any of the calendar weeks that contain 2000-06-30, 2000-09-27, or 2000-11-17. Keep only items that have at least one return in all three channels. For each such item, report the item code, the store-return quantity, the store-return quantity as a percentage of the three-channel total averaged across channels (the formula is store qty divided by the three-channel sum, divided by 3, times 100), the catalog-return quantity with its analogous percentage, the web-return quantity with its analogous percentage, and the three-channel average (sum divided by 3). Order by item code then store-return quantity, both with nulls first; limit 100 rows."
+    "prompt": "For each item, compute three return quantities â€” total store-return quantity, total catalog-return quantity, and total web-return quantity â€” restricted to returns whose returned date falls in any of the calendar weeks that contain 2000-06-30, 2000-09-27, or 2000-11-17. Keep only items that have at least one return record (a return row, regardless of quantity) in each of the three channels. For each such item, report the item code, the store-return quantity, the store-return quantity as a percentage of the three-channel total averaged across channels (the formula is store qty divided by the three-channel sum, divided by 3, times 100), the catalog-return quantity with its analogous percentage, the web-return quantity with its analogous percentage, and the three-channel average (sum divided by 3). Order by item code then store-return quantity, both with nulls first; limit 100 rows."
   },
   {
     "id": 84,
@@ -431,7 +431,7 @@
   {
     "id": 85,
     "grade": "hard",
-    "prompt": "For web sales sold in year 2000 that were returned, for each return reason description report the first 20 characters of that description, the average sold quantity, the average refunded cash on the matching return, and the average return fee. Match the web return to the web sale by item and order number. Restrict to records that satisfy one of three combined conditions linking the refunded customer-demographic profile, the returning customer-demographic profile (which must agree on marital status and education with the refunded profile), the sale's sales price, the refunded-address state and country, and the sale's net profit: (a) both demographics are married with 'Advanced Degree', the sales price is between 100 and 150, and the refunded address is in the United States in IN, OH, or NJ with net profit between 100 and 200; or (b) both single with 'College', sales price between 50 and 100, US in WI, CT, or KY with net profit between 150 and 300; or (c) both widowed with '2 yr Degree', sales price between 150 and 200, US in LA, IA, or AR with net profit between 50 and 250. Order by the 20-character reason description, then the three averages; limit 100 rows."
+    "prompt": "For web sales sold in year 2000 that were returned, for each return reason description report the first 20 characters of that description, the average sold quantity, the average refunded cash on the matching return, and the average return fee. Match the web return to the web sale by item and order number. Restrict to records satisfying BOTH of these independent conditions. Condition 1 (demographics + sales price) — one of: (a) both the refunded and returning customer-demographic profiles are married with 'Advanced Degree' and the sales price is between 100 and 150; (b) both single with 'College' and sales price between 50 and 100; (c) both widowed with '2 yr Degree' and sales price between 150 and 200. Condition 2 (refunded address + net profit) — one of: (a) United States in IN, OH, or NJ with net profit between 100 and 200; (b) US in WI, CT, or KY with net profit between 150 and 300; (c) US in LA, IA, or AR with net profit between 50 and 250. The returning and refunded demographics must agree on marital status and education. Order by the 20-character reason description, then the three averages; limit 100 rows."
   },
   {
     "id": 86,
@@ -441,18 +441,18 @@
   {
     "id": 87,
     "grade": "medium",
-    "prompt": "Count the unique (last name, first name, sale date) combinations of customers who made at least one store sale in the year 2000, but made no catalog sale and no web sale on that same date in the same year (catalog match uses billing customer; web match uses billing customer). Report a single count."
+    "prompt": "Count the unique (last name, first name, sale date) combinations from store sales in the year 2000 whose (last name, first name, sale date) does not appear among catalog sales in 2000 and does not appear among web sales in 2000. Derive the name from each sale's billing customer, and match purely on the (last name, first name, date) combination — not on customer id. Report a single count."
   },
   {
     "id": 88,
-    "grade": "impossible",
-    "comment": "Filters on store name 'ese'. At scale factor 0.01 this specific store name is typically absent from the sampled stores, so the filter returns no rows for every half-hour bucket. Same issue as query 96.",
+    "grade": "hard",
+    "comment": "Eight half-hour-bucket counts with three dependent/vehicle-count demographic combinations at store 'ese'. Gradeable at scale factor >= 1 (the eval default), where store name 'ese' is present; absent at sf=0.01. Same scale artifact as query 96.",
     "prompt": "For store sales at the store named 'ese', to households where the dependent count and vehicle count satisfy one of these three combinations â€” dependent count of 4 with vehicle count no more than 6, dependent count of 2 with vehicle count no more than 4, or dependent count of 0 with vehicle count no more than 2 â€” produce eight separate counts of qualifying sales bucketed by the half-hour of the sold time: 8:30-9:00, 9:00-9:30, 9:30-10:00, 10:00-10:30, 10:30-11:00, 11:00-11:30, 11:30-12:00, and 12:00-12:30. Output one row with the eight counts as separate columns."
   },
   {
     "id": 89,
     "grade": "hard",
-    "prompt": "For store sales in year 1999, restricted to items in either ('Books','Electronics','Sports') with class in ('computers','stereo','football') or in ('Men','Jewelry','Women') with class in ('shirts','birdal','dresses'), report total sales price grouped by item category, class, brand, store name, store company name, and month of year. Alongside each row include the average of that monthly total computed across all months of the year for the same (category, brand, store name, store company name). Keep only rows where, when that average is non-zero, the absolute difference between the row's monthly sales and the average, divided by the average, is greater than 0.1. Order by (monthly total minus average), then store name, then category, class, brand, store company name, month of year, total, and average; limit 100 rows."
+    "prompt": "For store sales in year 1999, restricted to items in either ('Books','Electronics','Sports') with class in ('computers','stereo','football') or in ('Men','Jewelry','Women') with class in ('shirts','birdal','dresses'), report the total of the per-unit sales price (not the line-extended amount) grouped by item category, class, brand, store name, store company name, and month of year. Alongside each row include the average of that monthly total computed across all months of the year for the same (category, brand, store name, store company name). Keep only rows where, when that average is non-zero, the absolute difference between the row's monthly sales and the average, divided by the average, is greater than 0.1. Order by (monthly total minus average), then store name, then category, class, brand, store company name, month of year, total, and average; limit 100 rows."
   },
   {
     "id": 90,
@@ -472,7 +472,7 @@
   {
     "id": 93,
     "grade": "easy",
-    "prompt": "For each customer, considering only store-sale lines that have a matching store return (matched by ticket and item) whose return reason description is 'reason 28', the adjusted amount for each such line is (sold quantity minus return quantity) times sales price. Sum the adjusted amount per customer. Report the customer id and the summed adjusted amount. Order by the sum then by the customer id, both with nulls first; limit 100 rows."
+    "prompt": "For each customer, sum an adjusted amount over their store-sale lines that have a matching store return whose reason is 'reason 28'. For each such line: if the return recorded a return quantity, the adjusted amount is (sold quantity minus return quantity) times sales price; otherwise the adjusted amount is sold quantity times sales price. Report the customer id and the summed adjusted amount per customer. Order by the sum then by the customer id, both with nulls first; limit 100 rows."
   },
   {
     "id": 94,
@@ -505,6 +505,6 @@
   {
     "id": 99,
     "grade": "medium",
-    "prompt": "For catalog sales whose ship date falls in the year 2000, and only for sales where the warehouse, shipping mode, and call center are all recorded, report the count of catalog-sale line items bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. For each combination of the first 20 characters of the warehouse name, the shipping-mode type, and the lowercased call center name, report the five bucketed counts. Order by the 20-character warehouse name, the shipping-mode type, then the lowercased call center name, all with nulls first; limit 100 rows."
+    "prompt": "For catalog sales whose ship date falls in the year 2000, and only for sales where the warehouse, shipping mode, and call center are all recorded, report the count of catalog-sale line items (each line item is a unique order + item combination) bucketed by shipping lag (ship date minus sold date, in days) into five columns: 30 days or fewer, 31 to 60 days, 61 to 90 days, 91 to 120 days, and more than 120 days. Report 0 (not null) for any bucket with no matching line items. For each combination of the first 20 characters of the warehouse name, the shipping-mode type, and the lowercased call center name, report the five bucketed counts. Order by the 20-character warehouse name, the shipping-mode type, then the lowercased call center name, all with nulls first; limit 100 rows."
   }
 ]

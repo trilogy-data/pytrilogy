@@ -16,6 +16,7 @@ from trilogy.scripts.ingest import (
     _process_column,
     _select_verified_grain,
     canonicalize_names,
+    create_datasource_from_table,
     detect_nullability_from_sample,
     detect_rich_type,
     detect_unique_key_combinations,
@@ -964,6 +965,127 @@ class TestGrainVerification:
             eng, '"t2"', [["a"], ["b"], ["a", "b"]], eng.generator
         )
         assert picked is None
+
+
+def _duckdb_executor():
+    from trilogy import Dialects
+    from trilogy.core.models.environment import Environment
+    from trilogy.dialect.config import DuckDBConfig
+
+    return Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(".")),
+        conf=DuckDBConfig(path=":memory:"),
+    )
+
+
+def _ingest_grain(setup_sql: str, table: str) -> list[str]:
+    """Build `table` from setup SQL and return its detected grain (sorted)."""
+    eng = _duckdb_executor()
+    eng.execute_raw_sql(setup_sql)
+    datasource, _concepts, _imports = create_datasource_from_table(
+        eng, table, None, root=True
+    )
+    return sorted(datasource.grain.components)
+
+
+class TestGrainSniffingEndToEnd:
+    """Whole-pipeline grain assignment over synthetic tables shaped like the
+    TPC-DS cases that previously misfired. Guards against assignment regressions
+    across sampling, penalty ranking, and full-table verification together."""
+
+    def test_natural_key_beats_temporal_fk(self):
+        # cat_returns: both (item_sk, time_sk) and (item_sk, order_number) are
+        # truly unique; the temporal surrogate must lose to the order number.
+        grain = _ingest_grain(
+            """CREATE TABLE cat_returns (
+                cr_item_sk INTEGER,
+                cr_returned_time_sk INTEGER,
+                cr_order_number BIGINT
+            );
+            INSERT INTO cat_returns VALUES
+                (1, 10, 100), (1, 20, 101), (2, 10, 100), (2, 20, 101);""",
+            "cat_returns",
+        )
+        assert grain == ["item_sk", "order_number"]
+
+    def test_decimal_measure_never_grain(self):
+        # A unique (order_number, net_paid) combo must lose to (item, order).
+        grain = _ingest_grain(
+            """CREATE TABLE cat_sales (
+                cs_item_sk INTEGER,
+                cs_order_number BIGINT,
+                cs_net_paid DECIMAL(7, 2)
+            );
+            INSERT INTO cat_sales VALUES
+                (1, 100, 5.50), (1, 101, 5.50), (2, 100, 7.25), (2, 101, 9.00);""",
+            "cat_sales",
+        )
+        assert grain == ["item_sk", "order_number"]
+
+    def test_periodic_snapshot_composite_grain(self):
+        # inventory: only (date, item, warehouse) is unique; the low-cardinality
+        # quantity measure must stay out of the grain even though it could pad a
+        # spuriously-unique combo in a small sample.
+        grain = _ingest_grain(
+            """CREATE TABLE inventory AS
+            SELECT d AS inv_date_sk, it AS inv_item_sk, w AS inv_warehouse_sk,
+                   (d * it) % 5 AS inv_quantity_on_hand
+            FROM generate_series(1, 10) t1(d),
+                 generate_series(1, 10) t2(it),
+                 generate_series(1, 3) t3(w);""",
+            "inventory",
+        )
+        assert grain == ["date_sk", "item_sk", "warehouse_sk"]
+
+    def test_dimension_identity_key_over_measure(self):
+        # call_center_sk is the table's own identity; an equally-unique measure
+        # column must not displace it.
+        grain = _ingest_grain(
+            """CREATE TABLE call_center (
+                cc_call_center_sk INTEGER,
+                cc_sq_ft INTEGER
+            );
+            INSERT INTO call_center VALUES (1, 5000), (2, 6000), (3, 7000);""",
+            "call_center",
+        )
+        assert grain == ["call_center_sk"]
+
+    def test_prefix_stripped_identity_token(self):
+        # Every column shares the `r_reason_` prefix, so canonical names collapse
+        # to bare `sk`/`id`/`desc`; the surrogate token still wins the grain.
+        grain = _ingest_grain(
+            """CREATE TABLE reason (
+                r_reason_sk INTEGER,
+                r_reason_id VARCHAR,
+                r_reason_desc VARCHAR
+            );
+            INSERT INTO reason VALUES (1, 'A', 'x'), (2, 'B', 'x'), (3, 'C', 'x');""",
+            "reason",
+        )
+        assert grain == ["sk"]
+
+    def test_heap_table_no_unique_grain(self):
+        grain = _ingest_grain(
+            """CREATE TABLE heap (a INTEGER, b INTEGER);
+            INSERT INTO heap VALUES (1, 1), (1, 1), (2, 2), (2, 2);""",
+            "heap",
+        )
+        assert grain == []
+
+
+class TestReservoirSampling:
+    """`get_table_sample` must span a physically clustered table, not return a
+    head slice (which hides leading grain columns / fakes uniqueness)."""
+
+    def test_sample_spans_clustered_table(self):
+        eng = _duckdb_executor()
+        # First 10k rows are grp=0, next 10k grp=1; a head LIMIT would see only 0.
+        eng.execute_raw_sql("""CREATE TABLE clustered AS
+            SELECT CASE WHEN x < 10000 THEN 0 ELSE 1 END AS grp, x AS id
+            FROM generate_series(0, 19999) t(x);""")
+        sample = eng.generator.get_table_sample(eng, "clustered")
+        assert len(sample) == 10000
+        assert {row[0] for row in sample} == {0, 1}
 
 
 class TestEnumFromValues:

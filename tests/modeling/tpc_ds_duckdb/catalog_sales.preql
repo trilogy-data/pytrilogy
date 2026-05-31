@@ -44,9 +44,10 @@ properties <order_number, item.id> (
     coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
     return_amount numeric::usd?, # Refund amount if the line was returned.
     return_quantity int?, # Units returned for this line.
-    row_counter int, # Constant 1, used for unconditional row counts.
+    row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.id combination).
 );
 
+auto line_item_count <- sum(row_counter); # Count of catalog-sale line items (unique order_number + item.id combinations); use this to count lines, not count(order_number).
 auto profit <- list_price - wholesale_cost - discount_amount + ext_sales_price; # Derived per-line profit.
 
 datasource catalog_sales (
