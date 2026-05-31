@@ -27,7 +27,7 @@
   {
     "id": 6,
     "grade": "medium",
-    "prompt": "Find the states in which at least 10 customers bought items whose current price is more than 1.2 times the average current price of items in the same category. Restrict to store sales in January 2001. Use the state from the customer's own current home address. Report state and customer count, ordered by count ascending with nulls first, then state with nulls first; limit 100 rows."
+    "prompt": "Find the states in which at least 10 customers bought items whose current price is more than 1.2 times the average current price of the distinct items in the same category. Restrict to store sales in January 2001. Use the state from the customer's own current home address. Report state and customer count, ordered by count ascending with nulls first, then state with nulls first; limit 100 rows."
   },
   {
     "id": 7,
@@ -50,7 +50,7 @@
   {
     "id": 9,
     "grade": "medium",
-    "prompt": "A single output row with five numeric columns, one per ticket-quantity bucket: 1-20, 21-40, 41-60, 61-80, 81-100. Each column's value comes from the store-channel sales whose ticket quantity falls in that bucket: if the line-item count in the bucket exceeds the bucket's threshold (74129, 122840, 56580, 10097, 165306 respectively), the column shows the average extended discount amount in that bucket; otherwise it shows the average net paid in that bucket. The reason table is not used for any computation or filter -- the result is just a single row, not a grouping."
+    "prompt": "A single output row with five numeric columns, one per quantity bucket: 1-20, 21-40, 41-60, 61-80, 81-100. Each column's value comes from the store-channel sale lines whose quantity sold falls in that bucket: if the number of sale lines in the bucket exceeds the bucket's threshold (74129, 122840, 56580, 10097, 165306 respectively), the column shows the average extended discount amount across those lines; otherwise it shows the average net paid across those lines. The reason table is not used for any computation or filter -- the result is just a single row, not a grouping."
   },
   {
     "id": 10,
@@ -65,7 +65,7 @@
   {
     "id": 12,
     "grade": "medium",
-    "prompt": "For web sales of items in the 'Sports', 'Books', or 'Home' categories sold between 1999-02-22 and 1999-03-24, report for each item its business code, description, category, class, and current price, along with the total extended web sales price for that item, and that item's extended sales price as a percentage of the total extended sales price of all items in its class. The percentage is the ratio multiplied by 100 (a value between 0 and 100), not a 0-1 fraction. Report one row per (item code, description, category, class, current price). Order by category, class, item code, description, then the percentage; limit 100 rows."
+    "prompt": "For web sales of items in the 'Sports', 'Books', or 'Home' categories sold between 1999-02-22 and 1999-03-24, report for each item its business code, description, category, class, and current price, along with the total extended web sales price for that item, and that item's extended sales price as a percentage of the combined extended sales price of all qualifying items in its class (i.e., within the same category and date filters). The percentage is the ratio multiplied by 100 (a value between 0 and 100), not a 0-1 fraction. Report one row per (item code, description, category, class, current price). Order by category, class, item code, description, then the percentage; limit 100 rows."
   },
   {
     "id": 13,

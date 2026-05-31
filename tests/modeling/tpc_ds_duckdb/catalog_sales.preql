@@ -10,13 +10,13 @@ import date as date;
 import date as ship_date;
 import date as sold_date;
 import time as time;
-import customer as billing_customer;
-import customer as bill_customer;
+import customer as billing_customer; # the bill-to customer's latest/current records
+import customer as bill_customer; # the bill-to customer's latest/current records
 import call_center as call_center;
 import catalog_page as catalog_page;
 import warehouse as warehouse;
-import customer_demographic as bill_customer_demographic;
-import household_demographic as bill_household_demographic;
+import customer_demographic as bill_customer_demographic; # customer demographics recorded on the sale at point of sale (NOT the customer's current profile, which is bill_customer.demographics)
+import household_demographic as bill_household_demographic; # household demographics recorded on the sale at point of sale
 import promotion as promotion;
 import ship_mode as ship_mode;
 import address as customer_address;

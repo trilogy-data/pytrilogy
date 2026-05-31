@@ -222,7 +222,20 @@ def _cte_at_aggregate_grain(cte: CTE | UnionCTE, agg: BuildAggregateWrapper) -> 
     in `cte` represents exactly one aggregate group and `agg(x)` collapses to
     `x` safely (the FUNCTION_GRAIN_MATCH_MAP optimization)."""
     agg_addrs = {p.address for p in agg.by}
-    return cte.grain.components == agg_addrs
+    grain = cte.grain.components
+    if grain == agg_addrs:
+        return True
+    # a rowset projection renames its source concept (my_rowset.x <- local.x);
+    # resolve grain components back to the underlying address before comparing
+    # so a rowset-grained CTE still matches an aggregate by the base concept.
+    return {_resolve_rowset_grain_source(addr, cte) for addr in grain} == agg_addrs
+
+
+def _resolve_rowset_grain_source(address: str, cte: CTE | UnionCTE) -> str:
+    concept = cte.get_concept(address)
+    if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
+        return concept.lineage.content.address
+    return address
 
 
 def _window_over_clause(window: str, sort: str) -> str:

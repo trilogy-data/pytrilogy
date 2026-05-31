@@ -12,10 +12,10 @@ import date as ship_date;
 import date as return_date;
 import time as time;
 import time as return_time;
-import customer as billing_customer;
-import customer as ship_customer;
-import customer as return_customer;
-import customer as return_refund_customer;
+import customer as billing_customer; # the bill-to customer's latest/current records
+import customer as ship_customer; # the ship-to customer's latest/current records
+import customer as return_customer; # the customer tied to the return
+import customer as return_refund_customer; # the customer refunded for the return
 import web_site as web_site;
 import web_page as web_page;
 import promotion as promotion;
@@ -23,8 +23,8 @@ import warehouse as warehouse;
 import ship_mode as ship_mode;
 import address as ship_address;
 import address as bill_address;
-import household_demographic as ship_household_demographic;
-import household_demographic as bill_household_demographic;
+import household_demographic as ship_household_demographic; # household demographics recorded on the sale at point of sale (ship-to)
+import household_demographic as bill_household_demographic; # household demographics recorded on the sale at point of sale (bill-to)
 
 key order_number int; # Web order number identifying a single web sales transaction.
 key return_order_number int; # Web order number on the returns side, for return-only queries.
