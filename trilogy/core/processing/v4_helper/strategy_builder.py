@@ -293,6 +293,54 @@ def _cover_groups_for_mandatory(
     return per_group
 
 
+def _fold_descendant_contributors(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    per_group: dict[str, list[BuildConcept]],
+) -> None:
+    """Reroute FINAL to read a contributor's columns *through* a basic
+    descendant instead of merging the two.
+
+    A basic group B preserves the row set of the contributor S it was grafted
+    onto (by `_route_basics_through_richer_siblings`), so B can pass S's
+    columns straight through. Move S's coverage onto B as a passthrough and
+    drop S as a separate contributor — otherwise the FINAL merge re-joins B to
+    S on whatever column they happen to share, which for a rename of a
+    grouping key is the value itself and fans out (q46 `bought_city`). Works
+    for any basic, not just renames: B already resolved against S, we only
+    widen its projection. Edits `per_group` in place.
+
+    Passthrough = add S's concepts to B's input AND output: `resolve_concept_
+    map` sources an output from a parent only when it's also an input
+    (`inherited`); an output that isn't an input is re-derived in B's own CTE
+    (which would recompute S's aggregates from their source columns). The
+    `available` guard ensures the columns actually come off B's own parents."""
+    for b_gid in list(per_group.keys()):
+        if b_gid not in per_group or attrs[b_gid].derivation != Derivation.BASIC.value:
+            continue
+        b_node = built[b_gid]
+        b_ancestors = nx.ancestors(group_graph, b_gid)
+        available = {o.address for p in b_node.parents for o in p.output_concepts}
+        for s_gid in b_ancestors:
+            if s_gid not in per_group or s_gid == b_gid:
+                continue
+            s_concepts = per_group[s_gid]
+            if not all(c.address in available for c in s_concepts):
+                continue
+            in_addrs = {c.address for c in b_node.input_concepts}
+            out_addrs = {c.address for c in b_node.output_concepts}
+            for c in s_concepts:
+                if c.address not in in_addrs:
+                    b_node.input_concepts.append(c)
+                if c.address not in out_addrs:
+                    b_node.output_concepts.append(c)
+            b_node.rebuild_cache()
+            per_group[b_gid].extend(s_concepts)
+            del per_group[s_gid]
+            break
+
+
 def _wrap_for_grain(
     parent_node: StrategyNode,
     needed_concepts: list[BuildConcept],
@@ -377,6 +425,7 @@ def _assemble_final_node(
     per_group = _cover_groups_for_mandatory(group_graph, built, mandatory_list)
     if not per_group:
         return next(iter(built.values()))
+    _fold_descendant_contributors(group_graph, attrs, built, per_group)
     contributing = list(per_group.keys())
     mandatory_addresses = {c.address for c in mandatory_list}
     if len(contributing) == 1:

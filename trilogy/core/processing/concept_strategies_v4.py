@@ -18,15 +18,26 @@ API and the History cache wiring.
 from dataclasses import dataclass, field
 from typing import List
 
+import networkx as nx
+
 from trilogy.constants import logger
+from trilogy.core.enums import BooleanOperator
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConditional,
+    BuildMultiSelectLineage,
+    BuildWhereClause,
+    Factory,
+    get_canonical_pseudonyms,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
 )
-from trilogy.core.processing.nodes import History
+from trilogy.core.processing.node_generators.multiselect_node import extra_align_joins
+from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
     ROW_SHAPE_BARRIER_DERIVATIONS,
@@ -85,15 +96,139 @@ class V4History(History):
         self.build_history[self._v4_key(search, accept_partial, conditions)] = output
 
 
+def _resolve_multiselect(
+    ms_concept: BuildConcept,
+    mandatory_list: List[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+    g: ReferenceGraph,
+    history: "V4History",
+    conditions: list[BuildWhereClause],
+) -> BuildInfo:
+    """Plan a top-level multiselect (merge/align).
+
+    Each arm is recursively planned by the v4 searcher (mirroring how rowsets
+    recurse per branch), then the arms are stitched together with one FULL
+    join per extra arm on the alignment concepts. The outer WHERE is a
+    post-join filter. Same shape as the v3 multiselect generator, but the
+    per-arm recursion goes through v4 rather than v3's `get_query_node`."""
+    lineage = ms_concept.lineage
+    assert isinstance(lineage, BuildMultiSelectLineage)
+
+    # Arms are stored as AUTHOR SelectLineage (built lazily during discovery);
+    # build each one against the author environment to recover its outputs and
+    # WHERE, then plan those through v4.
+    author_env = history.base_environment
+    caches = history.build_caches
+    if caches.pseudonym_map is None:
+        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
+    factory = Factory(
+        environment=author_env,
+        build_cache=caches.build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        grain_build_cache=caches.grain_build_cache,
+        pseudonym_map=caches.pseudonym_map,
+    )
+
+    def _empty() -> BuildInfo:
+        return BuildInfo(
+            concept_graph=nx.DiGraph(),
+            group_graph=nx.DiGraph(),
+            group_attrs={},
+            strategy_node=None,
+        )
+
+    arm_nodes: list[StrategyNode] = []
+    for arm in lineage.selects:
+        built_arm = factory.build(arm)
+        arm_conditions = [built_arm.where_clause] if built_arm.where_clause else []
+        arm_info = search_concepts(
+            mandatory_list=list(built_arm.output_components),
+            history=history,
+            environment=environment,
+            depth=depth + 1,
+            g=g,
+            conditions=arm_conditions,
+        )
+        arm_node = arm_info.strategy_node
+        if arm_node is None:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} multiselect arm "
+                f"{[c.address for c in built_arm.output_components]} did not resolve"
+            )
+            return _empty()
+        # Expose each arm's alignment key under the merge concept's address so
+        # `extra_align_joins` can bind the arms together on it.
+        for out in list(arm_node.output_concepts):
+            merge_name = lineage.get_merge_concept(out)
+            if merge_name:
+                arm_node.output_concepts.append(environment.concepts[merge_name])
+        arm_node.rebuild_cache()
+        arm_nodes.append(arm_node)
+
+    node_joins = extra_align_joins(lineage, environment, arm_nodes)
+    merged_outputs = [
+        c
+        for arm in arm_nodes
+        for c in arm.output_concepts
+        if c.address not in (arm.hidden_concepts or set())
+    ]
+    node: StrategyNode = MergeNode(
+        input_concepts=merged_outputs,
+        output_concepts=merged_outputs,
+        environment=environment,
+        depth=depth,
+        parents=arm_nodes,
+        node_joins=node_joins,
+    )
+
+    # Outer WHERE (e.g. q46 `customer.address.city != bought_city`) references
+    # concepts from both arms, so it can only be applied above the merge.
+    if conditions:
+        combined = conditions[0].conditional
+        for extra in conditions[1:]:
+            combined = BuildConditional(
+                left=combined, right=extra.conditional, operator=BooleanOperator.AND
+            )
+        node = SelectNode(
+            output_concepts=list(mandatory_list),
+            input_concepts=list(node.usable_outputs),
+            parents=[node],
+            environment=environment,
+            conditions=combined,
+        )
+
+    node.set_output_concepts(list(mandatory_list))
+    node.rebuild_cache()
+    return BuildInfo(
+        concept_graph=nx.DiGraph(),
+        group_graph=nx.DiGraph(),
+        group_attrs={},
+        strategy_node=node,
+    )
+
+
 def _search_concepts(
     mandatory_list: List[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
-    history: History,
+    history: "V4History",
     conditions: list[BuildWhereClause],
     accept_partial: bool = False,
 ) -> BuildInfo:
+    # A top-level multiselect (merge/align) isn't a single source graph — its
+    # arms are independent sub-plans joined on the alignment concept. Resolve
+    # each arm through v4 and stitch them, rather than trying to source both
+    # arms' columns from one (unjoinable) root scan.
+    ms_concept = next(
+        (c for c in mandatory_list if isinstance(c.lineage, BuildMultiSelectLineage)),
+        None,
+    )
+    if ms_concept is not None:
+        return _resolve_multiselect(
+            ms_concept, mandatory_list, environment, depth, g, history, conditions
+        )
     concept_graph = build_concept_graph(mandatory_list, environment, conditions)
     group_graph, group_attrs = build_group_graph(
         concept_graph, conditions, mandatory_list

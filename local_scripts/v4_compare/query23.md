@@ -18,9 +18,9 @@ ref rows: 4 (4 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9382 | 214 | 533.26 ms |
-| reference | 7657 | 178 | 593.90 ms |
-| v4 / ref | 1.23x | 1.20x | 0.90x |
+| v4 | 8808 | 197 | 597.04 ms |
+| reference | 7657 | 178 | 572.40 ms |
+| v4 / ref | 1.15x | 1.11x | 1.04x |
 
 ## Preql
 
@@ -272,37 +272,20 @@ FROM
     FULL JOIN "scrawny" on "friendly"."sales_item_id" = "scrawny"."sales_item_id" AND "friendly"."sales_order_id" = "scrawny"."sales_order_id" AND "friendly"."sales_sales_channel" = "scrawny"."sales_sales_channel"
 GROUP BY
     1,
-    2),
-charming as (
+    2)
 SELECT
+    "divergent"."sales_customer_last_name" as "c_last_name",
     "divergent"."sales_customer_first_name" as "c_first_name",
-    "divergent"."sales_customer_last_name" as "c_last_name"
-FROM
-    "divergent"
-WHERE
-    "divergent"."sales_total" > 0
-),
-protective as (
-SELECT
-    "charming"."c_first_name" as "c_first_name",
-    "charming"."c_last_name" as "c_last_name",
     "divergent"."sales_total" as "sales_total"
 FROM
     "divergent"
-    LEFT OUTER JOIN "charming" on "divergent"."sales_customer_first_name" = "charming"."c_first_name" AND "divergent"."sales_customer_last_name" = "charming"."c_last_name"
 WHERE
     "divergent"."sales_total" > 0
-)
-SELECT
-    "protective"."c_last_name" as "c_last_name",
-    "protective"."c_first_name" as "c_first_name",
-    "protective"."sales_total" as "sales_total"
-FROM
-    "protective"
+
 ORDER BY 
-    "protective"."c_last_name" asc nulls first,
-    "protective"."c_first_name" asc nulls first,
-    "protective"."sales_total" asc nulls first
+    "c_last_name" asc nulls first,
+    "c_first_name" asc nulls first,
+    "divergent"."sales_total" asc nulls first
 LIMIT (100)
 ```
 
