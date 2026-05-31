@@ -205,6 +205,30 @@ def initialize_loop_context(
     )
 
 
+def _condition_input_unsourceable(
+    priority_concept: BuildConcept, context: LoopContext, node_found: bool
+) -> bool:
+    """True if the priority is a concept that appears only in the WHERE clause
+    (not in this level's outputs) and could not be sourced.
+
+    Such a concept must be materialized for its filter to be applied; if it
+    can't be sourced here it can't be sourced anywhere (generate_node already
+    exhausts derivation handlers, merge expansion and synonyms), so the filter
+    can never be applied at or above this level. Failing the search lets the
+    normal fall-through raise the same clean UnresolvableQueryException a
+    SELECT-only version of the query would — rather than completing on outputs
+    alone and tripping the INCOMPLETE_CONDITION guardrail downstream.
+    """
+    if node_found or not context.conditions:
+        return False
+    if priority_concept.address in {c.address for c in context.original_mandatory}:
+        return False
+    return any(
+        c.address == priority_concept.address
+        for c in context.conditions.row_arguments
+    )
+
+
 def check_for_early_exit(
     complete: ValidationResult,
     found: set[str],
@@ -440,6 +464,12 @@ def _search_concepts(
             if priority_concept.derivation in SKIPPED_DERIVATIONS:
                 context.skip.add(priority_concept.address)
         context.attempted.add(priority_concept.address)
+        if _condition_input_unsourceable(priority_concept, context, bool(node)):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} WHERE input {priority_concept.address} could not be sourced; "
+                "abandoning level so the query fails cleanly rather than completing without its filter"
+            )
+            break
         complete, found_c, missing_c, partial, virtual = validate_stack(
             environment,
             context.stack,

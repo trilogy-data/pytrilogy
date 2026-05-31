@@ -1,6 +1,6 @@
 query_id = "25"
-gen_length = 6850
-preql_size = 812
+gen_length = 6889
+preql_size = 818
 comp_size = 1067
 generated_sql = """
 
@@ -111,7 +111,7 @@ SELECT
     \"concerned\".\"catalog_sales_profit\" as \"catalog_sales_profit\"
 FROM
     \"concerned\"
-    INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_name\" = \"juicy\".\"analysis_item_name\" AND \"concerned\".\"analysis_store_name\" is not distinct from \"juicy\".\"analysis_store_name\" AND \"concerned\".\"analysis_store_text_id\" is not distinct from \"juicy\".\"analysis_store_text_id\"
+    INNER JOIN \"juicy\" on \"concerned\".\"analysis_item_desc\" is not distinct from \"juicy\".\"analysis_item_desc\" AND \"concerned\".\"analysis_item_text_id\" = \"juicy\".\"analysis_item_text_id\" AND \"concerned\".\"analysis_store_name\" is not distinct from \"juicy\".\"analysis_store_name\" AND \"concerned\".\"analysis_store_text_id\" is not distinct from \"juicy\".\"analysis_store_text_id\"
 ORDER BY 
     coalesce(\"concerned\".\"analysis_item_text_id\",\"juicy\".\"analysis_item_text_id\") asc,
     coalesce(\"concerned\".\"analysis_item_desc\",\"juicy\".\"analysis_item_desc\") asc,
