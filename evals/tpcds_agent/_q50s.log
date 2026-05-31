@@ -1,0 +1,11 @@
+[both-modes] spawning two parallel runs:
+   base     → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260531-185714_base
+   enriched → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260531-185714_enriched  (model dir: C:\Users\ethan\coding_projects\pytrilogy_two\tests\modeling\tpc_ds_duckdb)
+[enriched] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[enriched] [2/5] Seeding raw/ from enriched model dir C:\Users\ethan\coding_projects\pytrilogy_two\tests\modeling\tpc_ds_duckdb ...
+[enriched] [3/5] Running agent per query (10 queries, fresh context each, concurrency=5) — deepseek/deepseek-chat ...
+[enriched]   [q50] starting (worker _worker_4)
+[enriched]   [q52] starting (worker _worker_2)
+[enriched]   [q51] starting (worker _worker_3)
+[enriched]   [q53] starting (worker _worker_1)
+[enriched]   [q54] starting (worker _worker_0)

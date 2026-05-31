@@ -1,148 +1,354 @@
-# Trilogy failure analysis — 20260531-175940
+# Trilogy failure analysis — 20260531-185715
 
-- Run `20260531-175939_enriched` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 192 | failed: 18 (9%)
+- Run `20260531-185714_enriched` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 200 | failed: 28 (14%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `syntax-parse` | 6 | 33% |
-| `other` | 4 | 22% |
-| `join-resolution` | 3 | 17% |
-| `undefined-concept` | 2 | 11% |
-| `syntax-missing-alias` | 2 | 11% |
-| `file-not-found` | 1 | 6% |
+| `join-resolution` | 10 | 36% |
+| `other` | 9 | 32% |
+| `syntax-parse` | 6 | 21% |
+| `undefined-concept` | 2 | 7% |
+| `cli-misuse` | 1 | 4% |
 
 ## Detail
 
+### `join-resolution`
+
+- `trilogy run query54.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.segment<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.segment_times_50<Purpose.PROPERTY>Derivation.BASIC>'] from current
+  model.
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.segment<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.segment_times_50<Purpose.PROPERTY>Derivation.BASIC>'] from current
+  model.
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.segment<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.segment_times_50<Purpose.PROPERTY>Derivation.BASIC>'] from current
+  model.
+  ```
+- `trilogy run test_simple.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['ps.billing_customer.id<Purpose.KEY>Derivation.ROOT>',
+  'local.sale_count<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.segment<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.segment_times_50<Purpose.PROPERTY>Derivation.BASIC>'] from current
+  model.
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['local.segment<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.segment_times_50<Purpose.PROPERTY>Derivation.BASIC>'] from current
+  model.
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['ps.billing_customer.id<Purpose.KEY>Derivation.ROOT>',
+  'local.segment<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.segment_times_50<Purpose.PROPERTY>Derivation.BASIC>'] from current
+  model.
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['ps.billing_customer.id<Purpose.KEY>Derivation.ROOT>',
+  'local.segment<Purpose.PROPERTY>Derivation.BASIC>',
+  'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
+  'local.segment_times_50<Purpose.PROPERTY>Derivation.BASIC>'] from current
+  model.
+  ```
+- `trilogy run test_simple.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['ps.billing_customer.id<Purpose.KEY>Derivation.ROOT>',
+  'local.cust_total<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  ```
+- `trilogy run test_simple.preql`
+
+  ```text
+  Could not resolve connections for query with output
+  ['ps.billing_customer.id<Purpose.KEY>Derivation.ROOT>',
+  'local.cust_total<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  ```
+
+### `other`
+
+- `trilogy run query51.preql duckdb`
+
+  ```text
+  maximum recursion depth exceeded
+  ```
+- `trilogy run query51.preql duckdb`
+
+  ```text
+  (AmbiguousRelationshipResolutionException(...), "Multiple
+  possible concept additions (intermediate join keys) found to resolve
+  ['ps.date.date', 'ps.item.id', 'ws.date.date', 'ws.item.id'], have
+  {'local.ws_rt_max', 'local.ps_rt_max', 'local.combined_date'} or
+  {'local.ws_rt_max', 'local.ps_rt_max', 'local.combined_item'} or
+  {'local.ws_rt_max', 'local.ps_rt_max', 'local.combined_item'} or
+  {'local.ws_rt_max', 'local.ps_rt_max', 'local.combined_item'} or
+  {'local.ws_rt_max', 'local.ps_rt_max', 'local.combined_item'} or
+  {'local.ws_rt_max', 'local.ps_rt_max', 'local.combined_item'} or
+  {'loca
+  …
+  cal.ps_rt_max', 'local.combined_item'}. Different paths
+  are is: [{'local.combined_date'}, {'local.combined_item'},
+  {'local.combined_item'}, {'local.combined_item'}, {'local.combined_item'},
+  {'local.combined_item'}, {'local.combined_item'}, {'local.combined_item'},
+  {'local.combined_item'}, {'local.combined_item'}, {'local.combined_item'},
+  {'local.combined_item'}, {'local.combined_item'}, {'local.combined_item'},
+  {'local.combined_item'}, {'local.combined_item'}, {'local.combined_item'},
+  {'local.combined_item'}, {'local.combined_item'}, {'local.combined_item'},
+  {'local.combined_item'}]")
+  ```
+- `trilogy run query53.preql`
+
+  ```text
+  (_duckdb.BinderException) Binder Error: Table
+  "store_sales_store_store" does not have a column named "S_CLOSED_DATE"
+
+  Candidate bindings: : "s_closed_date_sk"
+
+  LINE 12: ...    INNER JOIN "date_dim" as "store_sales_store_date_date" on
+  "store_sales_store_store"."S_CLOSED_DATE" = "store_sales_st...
+                                                                            ^
+  [SQL:
+  WITH
+  thoughtful as (
+  SELECT
+      "store_sales_item_items"."I_MANUFACT_ID" as
+  "store_sales_item_manufacturer_id",
+      "store_sales_store_date_date"."D_QOY" as "store_sales_store_date_quarter",
+      sum("store_sales_sto
+  …
+  e_sales_store_date_quarter",
+      "thoughtful"."quarterly_total" as "quarterly_total"
+  FROM
+      "thoughtful"
+      INNER JOIN "questionable" on
+  "thoughtful"."store_sales_item_manufacturer_id" =
+  "questionable"."store_sales_item_manufacturer_id"
+  WHERE
+      abs("thoughtful"."quarterly_total" - "questionable"."avg_quarterly_sales")
+  / "questionable"."avg_quarterly_sales" > 0.1
+
+  ORDER BY
+      "questionable"."avg_quarterly_sales" asc,
+      "thoughtful"."quarterly_total" asc,
+      "thoughtful"."store_sales_item_manufacturer_id" asc
+  LIMIT (100)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 35 column 12 (char 1475). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.base_ms', 'local.cat_flag'} out of  with found
+  {'cs.billing_customer.id', 'ps.billing_customer.address.state',
+  'ps.billing_customer.address.county', 'ps.store.county', 'ps.ticket_number',
+  'local.web_flag', 'ps.ext_sales_price', 'ps.store.state',
+  'ws.billing_customer.id', 'ps.date.month_seq', 'ps.billing_customer.id',
+  'ps.item.id', 'local.cat_flag'}
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.base_ms', 'local.qual_flag'} out of  with found
+  {'ps.date.month_seq', 'local.qual_flag', 'ws.billing_customer.id',
+  'ps.ticket_number', 'ps.store.county', 'ps.ext_sales_price',
+  'ps.billing_customer.address.county', 'ps.billing_customer.id',
+  'ps.billing_customer.address.state', 'ps.store.state',
+  'cs.billing_customer.id', 'ps.item.id'}
+  ```
+- `trilogy run query54.preql`
+
+  ```text
+  Cannot resolve query. No remaining priority concepts, have
+  attempted {'local.base_ms', 'local.qual_flag'} out of  with found
+  {'ps.store.state', 'ps.item.id', 'ps.date.month_seq', 'ps.billing_customer.id',
+  'ps.billing_customer.address.state', 'ps.store.county', 'ps.ext_sales_price',
+  'ps.ticket_number', 'cs.billing_customer.id', 'local.qual_flag',
+  'ps.billing_customer.address.county'}
+  ```
+- `trilogy run query56.preql`
+
+  ```text
+  Unable to import '.\physical_sales.preql': [Errno 2] No such
+  file or directory: '.\\physical_sales.preql'. Did you mean: raw.physical_sales?
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 41 column 12 (char 1836). Re-issue the call with valid JSON arguments.
+  ```
+
 ### `syntax-parse`
 
-- `trilogy file write query60.preql -c import raw.physical_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sales;
-i…,
-    coalesce(store_total, 0) + coalesce(catalog_total, 0) + coalesce(web_total, 0) as combined_total
-order by item_code, combined_total
+- `trilogy file write query50.preql --content import raw.catalog_store_returns as csr;
+
+# Filter: return in August 2001
+where csr.store_return_date.year = 2001
+…e,
+    csr.store.street_type,
+    csr.store.suite_number,
+    csr.store.city,
+    csr.store.county,
+    csr.store.state,
+    csr.store.zip
+limit 100;`
+
+  ```text
+  refused to write 'query50.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('IDENTIFIER', 'auto') at line 8, column 1.
+  Expected one of:
+          * SELECT
+
+  Location:
+  ...le and return (positive only) ??? auto elapsed_days <- date_diff...
+
+  Write stats: received 1595 chars / 1595 bytes; tail: …'re.county,\\n
+  csr.store.state,\\n    csr.store.zip\\nlimit 100;'.
+  ```
+- `trilogy file write query51.preql -e -c import raw.all_sales as s;
+
+# Year 2000 only
+where s.date.year = 2000
+
+# Daily totals per item per date, split by chan…unning_max,
+    ps_rt_max as store_running_max
+having web_running_max > store_running_max
+order by item_id asc, sale_date asc nulls first
 limit 100;
 `
 
   ```text
-  refused to write 'query60.preql': not syntactically valid Trilogy.
+  refused to write 'query51.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 18, column 1.
-  Expected one of:
-          * SELECT
-  Previous tokens: [Token('IDENTIFIER', 'music_class_ids')]
-
-  Location:
-  ...ress, Sep 1998, GMT offset -5 ??? auto store_total <- sum(store_...
-
-  Write stats: received 1498 chars / 1498 bytes; tail: …'ombined_total\\norder by
-  item_code, combined_total\\nlimit 100;\\n'.
-  ```
-- `trilogy file write query61.preql --content import raw.physical_sales as store_sales;
-
-# Filter: November 1998, Jewelry category, store GMT offset -5, custome…l,
-  total_sales as overall_total,
-  (promo_sales / nullif(total_sales, 0)) * 100 as promo_pct
-order by promo_channel_total, overall_total
-limit 100;`
-
-  ```text
-  refused to write 'query61.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('IDENTIFIER', 'auto') at line 11, column 1.
+  Unexpected token Token('IDENTIFIER', 'auto') at line 7, column 1.
   Expected one of:
           * SELECT
 
   Location:
-  ...ll total extended sales price ??? auto total_sales <- sum(ext_sa...
+  ...em per date, split by channel ??? auto ws_daily <- sum(s.sales_p...
 
-  Write stats: received 805 chars / 805 bytes; tail: …'o_pct\\norder by
-  promo_channel_total, overall_total\\nlimit 100;'.
+  Write stats: received 1014 chars / 1014 bytes; tail: …'\\norder by item_id asc,
+  sale_date asc nulls first\\nlimit 100;\\n'.
   ```
-- `trilogy file write query63.preql --content import raw.physical_sales as physical_sales;
+- `trilogy file write query51.preql -e -c import raw.all_sales as s;
 
-# Filter: year 2000, store must have recorded store id, and items ma…month_total - avg_monthly_sales) / avg_monthly_sales > 0.1
-order by
-    manager_id asc,
-    avg_monthly_sales asc,
-    per_month_total asc
+# Year 2000 only
+where s.date.year = 2000
+
+# Daily totals per item per date, split by chan…unning_max,
+    ps_rt_max as store_running_max
+having web_running_max > store_running_max
+order by item_id asc, sale_date asc nulls first
+limit 100;
+`
+
+  ```text
+  refused to write 'query51.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('IDENTIFIER', 'auto') at line 7, column 1.
+  Expected one of:
+          * SELECT
+
+  Location:
+  ...em per date, split by channel ??? auto ws_daily <- sum(s.sales_p...
+
+  Write stats: received 1014 chars / 1014 bytes; tail: …'\\norder by item_id asc,
+  sale_date asc nulls first\\nlimit 100;\\n'.
+  ```
+- `trilogy file write query53.preql --content import raw.physical_sales as store_sales;
+
+# Filter: store sales in year 2000
+where store_sales.store.date.year = …g_quarterly_sales) / avg_quarterly_sales > 0.1
+order by avg_quarterly_sales asc, quarterly_total asc, store_sales.item.manufacturer_id asc
 limit 100;`
 
   ```text
-  refused to write 'query63.preql': not syntactically valid Trilogy.
+  refused to write 'query53.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 17, column 1.
+  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 22, column 1.
   Expected one of:
           * SELECT
   Previous tokens: [Token('RPAR', ')')]
 
   Location:
-  ..._price (per-unit sales price) ??? auto per_month_total <- sum(ph...
+  ...y manufacturer_id and quarter ??? auto quarterly_total <- sum(st...
 
-  Write stats: received 1442 chars / 1442 bytes; tail: …'   avg_monthly_sales
-  asc,\\n    per_month_total asc\\nlimit 100;'.
+  Write stats: received 1548 chars / 1548 bytes; tail: …'y_total asc,
+  store_sales.item.manufacturer_id asc\\nlimit 100;'.
   ```
-- `trilogy file write query63.preql --content import raw.physical_sales as physical_sales;
-where physical_sales.date.year = 2000
-  and physical_sales.store.id i…month_total - avg_monthly_sales) / avg_monthly_sales > 0.1
-order by
-    manager_id asc,
-    avg_monthly_sales asc,
-    per_month_total asc
+- `trilogy file write query58.preql --content import raw.all_sales as all;
+import raw.item as item;
+
+# Date filter for the week containing 2000-01-03
+where all.…eb_total
+    and catalog_total >= 0.9 * web_total and catalog_total <= 1.1 * web_total
+order by item_code asc, store_total asc nulls first
 limit 100;`
 
   ```text
-  refused to write 'query63.preql': not syntactically valid Trilogy.
+  refused to write 'query58.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 13, column 1.
+  Unexpected token Token('IDENTIFIER', 'auto') at line 8, column 1.
   Expected one of:
           * SELECT
-  Previous tokens: [Token('RPAR', ')')]
 
   Location:
-   #1', 'importoamalg #1'))   ) ??? auto per_month_total <- sum(ph...
+  ...hannel totals by item text_id ??? auto store_total <- sum(all.ex...
 
-  Write stats: received 1233 chars / 1233 bytes; tail: …'   avg_monthly_sales
-  asc,\\n    per_month_total asc\\nlimit 100;'.
+  Write stats: received 1206 chars / 1206 bytes; tail: …'der by item_code asc,
+  store_total asc nulls first\\nlimit 100;'.
   ```
-- `trilogy file write query64.preql --content import raw.physical_sales as ss;
-import raw.catalog_returns as cr;
-
-# Merge catalog_returns' sales.item.id to item…
-  and yr_2000.cnt <= yr_1999.cnt
-order by
-    yr_1999.pn,
-    yr_1999.sn,
-    yr_2000.cnt desc,
-    yr_1999.wc desc,
-    yr_2000.wc desc
-limit 100;
-`
-
-  ```text
-  refused to write 'query64.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('ORDER_IDENTIFIER', 'ss.item.product_name ') at line 21,
-  column 9.
-  Expected one of:
-          * _TERMINATOR
-  Previous tokens: [Token('IDENTIFIER', 'select')]
-
-  Location:
-  ..._sales <-      select         ??? ss.item.product_name as pn,
-
-  Write stats: received 3889 chars / 3889 bytes; tail: …'t desc,\\n    yr_1999.wc
-  desc,\\n    yr_2000.wc desc\\nlimit 100;\\n'.
-  ```
-- `trilogy run --import raw.physical_sales:store_sales select store_sales.item.category, count(store_sales.row_counter) group by store_sales.item.category limit 20;`
+- `trilogy run --import raw/physical_sales:ss select ss.date.year, ss.date.week_seq, sum(ss.sales_price) as total_sales where ss.date.year in (2001,2002) group by ss.date.year, ss.date.week_seq order by ss.date.year, ss.date.week_seq limit 20;`
 
   ```text
   Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP
@@ -150,192 +356,29 @@ limit 100;
   SELECT. To aggregate at a different grain than the select, write `agg(x) by
   dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...ount(store_sales.row_counter) ??? group by store_sales.item.cate...
-  ```
-
-### `other`
-
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 30 column 12 (char 1821). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run query65.preql`
-
-  ```text
-  ORDER BY references 'physical_sales.store.id', which is not
-  in the SELECT projection (line 10). Add it to SELECT to sort by it — prefix
-  with `--` to keep it out of the output rows, e.g. `select ...,
-  --physical_sales.store.id order by physical_sales.store.id asc`.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 134 column 12 (char 14712). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run query69.preql`
-
-  ```text
-  Unable to import '.\physical_sales.preql': [Errno 2] No such
-  file or directory: '.\\physical_sales.preql'. Did you mean: raw.physical_sales?
-  ```
-
-### `join-resolution`
-
-- `trilogy run query64.preql duckdb`
-
-  ```text
-  Could not resolve connections for query with output
-  ['ss.item.product_name<Purpose.PROPERTY>Derivation.ROOT>',
-  'local.item_id<Purpose.KEY>Derivation.BASIC>',
-  'ss.store.name<Purpose.PROPERTY>Derivation.ROOT>',
-  'local.store_zip<Purpose.PROPERTY>Derivation.BASIC>',
-  'ss.sale_address.street_number<Purpose.PROPERTY>Derivation.ROOT>',
-  'ss.sale_address.street_name<Purpose.PROPERTY>Derivation.ROOT>',
-  'ss.sale_address.city<Purpose.PROPERTY>Derivation.ROOT>',
-  'local.sale_zip<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.cust_street_number<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.cust_street_n
-  …
-  PROPERTY>Derivation.BASIC>',
-  'local.cust_city<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.cust_zip<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.sale_year<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.cust_first_sales_year<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.cust_first_ship_year<Purpose.PROPERTY>Derivation.BASIC>',
-  'local.sale_line_count<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.wholesale_cost_sum<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.list_price_sum<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.coupon_amt_sum<Purpose.METRIC>Derivation.AGGREGATE>'] from current
-  model.
-  ```
-- `trilogy run query69.preql`
-
-  ```text
-  Could not resolve connections for query with output
-  ['store_sales.billing_customer.demographics.gender<Purpose.PROPERTY>Derivation.
-  ROOT>',
-  'store_sales.billing_customer.demographics.marital_status<Purpose.PROPERTY>Deri
-  vation.ROOT>',
-  'store_sales.billing_customer.demographics.education_status<Purpose.PROPERTY>De
-  rivation.ROOT>',
-  'store_sales.billing_customer.demographics.purchase_estimate<Purpose.PROPERTY>D
-  erivation.ROOT>',
-  'store_sales.billing_customer.demographics.credit_rating<Purpose.PROPERTY>Deriv
-  ation.ROOT>', 'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.customer_count2<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.customer_count3<Purpose.METRIC>Derivation.AGGREGATE>'] from current
-  model.
-  ```
-- `trilogy run query69.preql`
-
-  ```text
-  Could not resolve connections for query with output
-  ['store_sales.billing_customer.demographics.gender<Purpose.PROPERTY>Derivation.
-  ROOT>',
-  'store_sales.billing_customer.demographics.marital_status<Purpose.PROPERTY>Deri
-  vation.ROOT>',
-  'store_sales.billing_customer.demographics.education_status<Purpose.PROPERTY>De
-  rivation.ROOT>',
-  'store_sales.billing_customer.demographics.purchase_estimate<Purpose.PROPERTY>D
-  erivation.ROOT>',
-  'store_sales.billing_customer.demographics.credit_rating<Purpose.PROPERTY>Deriv
-  ation.ROOT>', 'local.customer_count<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.customer_count2<Purpose.METRIC>Derivation.AGGREGATE>',
-  'local.customer_count3<Purpose.METRIC>Derivation.AGGREGATE>'] from current
-  model.
+  ...e ss.date.year in (2001,2002) ??? group by ss.date.year, ss.date...
   ```
 
 ### `undefined-concept`
 
-- `trilogy run query61.preql`
+- `trilogy run query50.preql`
 
   ```text
   (UndefinedConceptException(...), "Undefined concept:
-  ext_sales_price. Suggestions: ['store_sales.ext_sales_price',
-  'store_sales.list_price', 'store_sales.sales_price']")
+  ticket_number. Suggestions: ['csr.ticket_number']")
   ```
-- `trilogy run query64.preql duckdb`
+- `trilogy run query54.preql`
 
   ```text
   (UndefinedConceptException(...), "Undefined concept:
-  cr.ext_list_price. Suggestions: ['cs.ext_list_price', 'ss.ext_list_price',
-  'cr.sales.ext_list_price']")
+  ws.sold_date.year. Suggestions: ['cs.sold_date.year', 'ws.date.year',
+  'ws.ship_date.year']")
   ```
 
-### `syntax-missing-alias`
+### `cli-misuse`
 
-- `trilogy file write query67.preql --content import raw.physical_sales as store_sales;
-
-# Sum of (sales_price * quantity) treating null as 0
-auto total_sales <…,
-    month_of_year asc nulls first,
-    store_code asc nulls first,
-    summed_sales asc nulls first,
-    within_cat_rank asc nulls first
-limit 100;`
+- `trilogy explore raw/as catalog_store_returns.preql`
 
   ```text
-  refused to write 'query67.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT
-  x+1 AS y` Here: `total_sales by rollup store_sales.item.category as
-  total_sales_by_rollup_store_sales_item_c`
-  Location:
-  ...store_code,     total_sales by ??? rollup store_sales.item.categ...
-
-  Write stats: received 1447 chars / 1447 bytes; tail: …' nulls first,\\n
-  within_cat_rank asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy run --import raw.physical_sales:store_sales select distinct store_sales.item.category limit 20;`
-
-  ```text
-  Syntax [201]: Missing alias? Alias must be specified with
-  "AS" - e.g. `SELECT x+1 AS y` Here: `distinct store_sales.item.category as
-  distinct_store_sales_item_category`
-  Location:
-   store_sales; select distinct ??? store_sales.item.category limi...
-  ```
-
-### `file-not-found`
-
-- `trilogy run query69.preql`
-
-  ```text
-  (_duckdb.CatalogException) Catalog Error: Table with name
-  web_sales_billing_customer_customers does not exist!
-  Did you mean "web_sales"?
-
-  LINE 10: ...ng_customer_customers."web_sales_billing_customer_id" from
-  web_sales_billing_customer_customers where web_sales_billin...
-                                                                         ^
-  [SQL:
-  WITH
-  cooperative as (
-  SELECT
-      "store_sales_store_sales"."SS_CUSTOMER_SK" as
-  "store_sales_billing_customer_id",
-      "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id"
-  FROM
-      "store_sales" as "store_sales_store_sales"
-  WHER
-  …
-      count("uneven"."store_sales_billing_customer_id") as "customer_count3"
-  FROM
-      "uneven"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5
-  ORDER BY
-      "uneven"."store_sales_billing_customer_demographics_gender" asc,
-      "uneven"."store_sales_billing_customer_demographics_marital_status" asc,
-      "uneven"."store_sales_billing_customer_demographics_education_status" asc,
-      "uneven"."store_sales_billing_customer_demographics_purchase_estimate" asc,
-      "uneven"."store_sales_billing_customer_demographics_credit_rating" asc
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
+  Invalid value for 'PATH': File 'raw/as catalog_store_returns.preql' does not exist.
   ```

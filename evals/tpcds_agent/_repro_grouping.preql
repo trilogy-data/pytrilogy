@@ -1,0 +1,18 @@
+key id int;
+property id.g1 string;
+property id.g2 string;
+property id.v int;
+datasource t (id, g1, g2, v)
+  grain (id)
+  query '''select 1 as id,'a' as g1,'x' as g2,10 as v
+           union all select 2,'a','y',20
+           union all select 3,'b','x',5''';
+
+auto total <- sum(v) by rollup g1, g2;
+auto gg1 <- grouping(g1) by rollup g1, g2;
+auto gg2 <- grouping(g2) by rollup g1, g2;
+auto level <- gg1 + gg2;
+auto rnk <- rank(g1) over (partition by level order by total desc);
+
+select g1 as r_g1, g2 as r_g2, total, level, rnk
+order by level desc nulls first, total desc nulls first;
