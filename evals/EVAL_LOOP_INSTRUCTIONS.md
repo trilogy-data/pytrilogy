@@ -108,9 +108,25 @@ Overall goals:
 - **Presence = a return ROW exists, not `sum(quantity) > 0`.** "Items with at least one return in
   each channel" should test row existence, not positive summed quantity (a return with qty 0/null
   is dropped by `sum > 0`). Say "at least one return record, regardless of quantity". (q83.)
-- **Per-unit vs extended price.** Some references sum the per-unit `sales_price` (not
-  `ext_sales_price`). If the reference is per-unit, say "per-unit sales price (not the extended
-  amount)". (q89.)
+- **Per-unit vs extended price — RECURRING.** Many references sum the per-unit `sales_price`, but the
+  phrase "per-line sales price" lures the agent to `ext_sales_price` (line-extended). Say "the per-unit
+  sales price (not the line-extended amount)". (q63, q65, q66, q89.)
+- **q62 is the web-sales twin of q99** (shipping-lag buckets): same fix — count line items via the
+  `line_item_count`/`row_counter` measure (not `count(order_number)`) + "report 0 for empty buckets".
+  Added `line_item_count` to web_sales.preql to match catalog_sales/physical_sales.
+- **Grain-inheritance idiom (agent thrash → timeout).** A derived concept combining two grained
+  aggregates INHERITS their grain — do NOT append `by (...)` to it (e.g. `coalesce(a,0)+coalesce(b,0)
+  by (...)` is a parse error). q66 timed out partly relitigating this. Also: a `where` is a clause that
+  must immediately precede `select` — a standalone `where ... ;` is a parse error.
+- **`date_diff(a, b, unit) = b - a` in Trilogy.** Agents reliably get the arg order backwards for a
+  "ship date minus sold date" lag (`date_diff(ship, sold)` gives NEGATIVE). When a sibling fact has a
+  precomputed lag field (catalog_sales `days_to_ship`), provide the SAME field on the others —
+  I added `days_to_ship <- date_diff(date.date, ship_date.date, day)` to web_sales for q62. With a
+  negated lag, every row falls in the `<=30` bucket → wrong distribution, same row count.
+- **When porting a fix from a sibling query, copy ALL its guards.** q62 is q99's twin; I copied the
+  count-lines + empty-bucket=0 fixes but FORGOT q99's null-FK guard ("only where warehouse/ship-mode/
+  web-site are recorded"). q62 only passed once BOTH the lag sign AND the null-FK guard were added
+  (10x: 90%). Re-investigate empirically (score the candidate, diff rows) when a "should-pass" fix doesn't.
 
 ### Open / harder than a question fix
 - **Anti-join on a DERIVED concat key undercounts (~3%).** q87 (set-difference: store names+dates
@@ -126,6 +142,23 @@ Overall goals:
   recorded ON the store return (`customer_demographic.*` namespace), but grabs
   `billing_customer.demographics` (trivially self-equal). Question is already clear; needs a model/
   explore-description nudge toward the return-recorded demographic.
+- **"never returned" = `is_returned is null`, NOT `not is_returned`.** On a nullable `is_returned`
+  flag (true only when a return matched, else NULL), `not is_returned` evaluates NULL→filtered, so it
+  DROPS the never-returned rows you want. The anti-join idiom is `where sales.is_returned is null`.
+  (q78.) Same family as the existence/anti-join idiom.
+- **The QUESTION can be wrong about sale-vs-current.** q72 literally said "current customer-demographic
+  marital status" but the reference uses the SALE-recorded demographic (`cs_bill_cdemo_sk`). Fix the
+  QUESTION text to say "recorded on the sale", not just trust it. Don't assume the prompt is right.
+- **Rollup family (q70/q77/q80) is the hard cluster.** `grouping()`+`sum()` over a ROLLUP mis-plans
+  (trilogy splits it into separate CTEs → malformed NULL-level rows); the canonical `.preql` derives the
+  level from the rollup output's NULL pattern instead. Plus channel relabel + null-outlet drop +
+  return-date-vs-sale-date scoping. These need a framework rollup fix, not just wording.
+- **UNION DISTINCT dedup before aggregating.** q75's reference dedups identical N-tuples across channels
+  (`UNION`) BEFORE summing; the agent sums raw lines (double-counts). Needs a `rowset deduped <- select
+  <distinct cols>` then aggregate. The model's `row_one`/`row_counter` is constant-1, NOT a dedup.
+- **null-FK selection needs the per-channel base model.** q76 (count rows WHERE an fk IS null per
+  channel): routing through the unified `all_sales` can inner-join the null-FK rows away; query each
+  channel on its own single-channel model where the null-FK row is a plain base row.
 
 ### Question-fix philosophy
 - Phrase as business intent; never leak implementation (no "is not null", no "inner join",

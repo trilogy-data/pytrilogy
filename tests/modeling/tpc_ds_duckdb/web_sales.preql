@@ -41,8 +41,11 @@ properties <order_number, item.id> (
     return_amount numeric::usd, # Refund amount if the line was returned (USD, joined from web_returns).
     return_quantity int?, # Units returned for this line (joined from web_returns).
     is_returned bool, # Flag indicating whether a return row exists for this line.
-    row_counter int, # Constant 1, used for unconditional row counts.
+    row_counter int, # Constant 1, one per web line item (a unique order_number + item.id combination).
 );
+
+auto line_item_count <- sum(row_counter); # Count of web-sale line items (unique order_number + item.id combinations); use this to count lines, not count(order_number).
+auto days_to_ship <- date_diff(date.date, ship_date.date, day); # Shipping lag in days (ship date minus sold date); positive when shipped after sold.
 
 datasource web_sales (
     raw('''1'''): row_counter,
