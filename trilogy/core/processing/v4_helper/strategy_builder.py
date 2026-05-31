@@ -188,7 +188,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             if a is b or id(a) in dropped or not a.output_concepts:
                 continue
             if not all(
-                _arg_satisfiable(o, available, set(), set()) for o in a.output_concepts
+                _arg_satisfiable(o, available, set(), {}) for o in a.output_concepts
             ):
                 continue
             in_addrs = {c.address for c in b.input_concepts}
@@ -245,22 +245,33 @@ def _arg_satisfiable(
     concept: BuildConcept,
     available: set[str],
     keep_addrs: set[str],
-    seen: set[str],
+    cache: dict[str, bool],
 ) -> bool:
     """A concept renders if it's directly available, a kept sibling, or every
     lineage arg is itself satisfiable. Recurses through *intermediate* derived
     concepts that aren't group outputs (q49: `channel <- channel_label <-
     sales_channel`; only `channel` and `sales_channel` exist as group/parent
-    concepts, but the SelectNode inlines `channel_label` from `sales_channel`)."""
+    concepts, but the SelectNode inlines `channel_label` from `sales_channel`).
+
+    `cache` memoizes results per traversal: a concept referenced more than
+    once in a lineage (q62: `days_to_ship > 30 and days_to_ship <= 60`) must
+    be evaluated on its merits each time, not rejected as already-seen. The
+    tentative `False` written before recursing also breaks any lineage cycle
+    conservatively."""
     if concept.address in available or concept.address in keep_addrs:
         return True
-    if concept.address in seen or concept.lineage is None:
+    if concept.address in cache:
+        return cache[concept.address]
+    if concept.lineage is None:
+        cache[concept.address] = False
         return False
-    seen.add(concept.address)
-    return all(
-        _arg_satisfiable(a, available, keep_addrs, seen)
+    cache[concept.address] = False
+    result = all(
+        _arg_satisfiable(a, available, keep_addrs, cache)
         for a in concept.lineage.concept_arguments
     )
+    cache[concept.address] = result
+    return result
 
 
 def _satisfiable_outputs(
@@ -294,7 +305,7 @@ def _satisfiable_outputs(
         for concept in outputs:
             if concept.address in keep_addrs:
                 continue
-            if _arg_satisfiable(concept, available, keep_addrs, set()):
+            if _arg_satisfiable(concept, available, keep_addrs, {}):
                 keep_addrs.add(concept.address)
                 changed = True
     return [c for c in outputs if c.address in keep_addrs]

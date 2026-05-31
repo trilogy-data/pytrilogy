@@ -1,49 +1,19 @@
 import web_sales as ws;
-
-auto days_to_ship <- ws.ship_date.id - ws.date.id;
-
-where
-    ws.ship_date.month_seq between 1200 and 1211
-    and ws.warehouse.id is not null
-    and ws.ship_mode.id is not null
-    and ws.web_site.id is not null
-select
-    substring(ws.warehouse.name, 1, 20) as w_substr,
+property days_to_ship <- ws.ship_date.id - ws.date.id;
+WHERE
+    ws.ship_date.month_seq between 1200 and  1211 and ws.warehouse.id is not null and ws.ship_mode.id is not null and ws.web_site.id is not null
+SELECT
+    substring(ws.warehouse.name,1,20) -> w_substr,
     ws.ship_mode.type,
     ws.web_site.name,
-    sum(
-            case
-                when days_to_ship <= 30 then 1
-                else 0
-            end
-        ) as days_30,
-    sum(
-            case
-                when days_to_ship > 30 and days_to_ship <= 60 then 1
-                else 0
-            end
-        ) as days_31_60,
-    sum(
-            case
-                when days_to_ship > 60 and days_to_ship <= 90 then 1
-                else 0
-            end
-        ) as days_61_90,
-    sum(
-            case
-                when days_to_ship > 90 and days_to_ship <= 120 then 1
-                else 0
-            end
-        ) as days_91_120,
-    sum(
-            case
-                when days_to_ship > 120 then 1
-                else 0
-            end
-        ) as days_120_plus,
-order by
+    coalesce(sum(filter ws.row_counter where days_to_ship <= 30),0) -> days_30,
+    coalesce(sum(filter ws.row_counter where days_to_ship > 30 and days_to_ship <= 60),0) -> days_31_60,
+    coalesce(sum(filter ws.row_counter where days_to_ship > 60 and days_to_ship <= 90),0) -> days_61_90,
+    coalesce(sum(filter ws.row_counter where days_to_ship > 90 and days_to_ship <= 120),0) -> days_91_120,
+    coalesce(sum(filter ws.row_counter where days_to_ship > 120),0) -> days_120_plus,
+ORDER BY
     w_substr asc nulls first,
     ws.ship_mode.type asc nulls first,
     ws.web_site.name asc nulls first
-limit 100
+LIMIT 100
 ;
