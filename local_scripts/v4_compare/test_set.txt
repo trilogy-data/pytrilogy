@@ -3,8 +3,8 @@
 # active investigation targets. Excludes queries with plans that spin or
 # blow up CPU under the current planner. One id per line; '#' comments
 # and blank lines are ignored.
-02
 01
+02
 03
 04
 05
@@ -15,10 +15,10 @@
 10
 11
 12
-14
-16
 13
+14
 15
+16
 17
 18
 19
@@ -46,6 +46,7 @@
 41
 42
 43
+44
 45
 46
 47
@@ -55,10 +56,12 @@
 51
 52
 53
+54
 55
 56
 57
 58
+59
 60
 61
 62

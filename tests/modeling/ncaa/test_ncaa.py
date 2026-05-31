@@ -151,7 +151,7 @@ def test_adhoc07():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     env, queries = env.parse(text)
     assert env.concepts["scoring_criteria"].grain.components == {
-        "player.id"
+        "player.full_name"
     }, env.concepts["scoring_criteria"].grain.components
     generated = engine.generate_sql(text)[0]
 

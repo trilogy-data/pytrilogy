@@ -404,7 +404,7 @@ def test_two_merge_aggregate_compacts_inline_window_query():
         off_env = Environment(working_path=working_path)
         _, off_statements = parse_text(query, off_env)
         off_processed = process_query(off_env, off_statements[-1])
-
+        off_generated = Dialects.DUCK_DB.default_executor(environment=off_env).generate_sql(query)[-1]
         CONFIG.optimizations.merge_aggregate = True
         on_env = Environment(working_path=working_path)
         _, on_statements = parse_text(query, on_env)
@@ -412,7 +412,7 @@ def test_two_merge_aggregate_compacts_inline_window_query():
     finally:
         CONFIG.optimizations.merge_aggregate = original
 
-    assert len(off_processed.ctes) == 9
+    assert len(off_processed.ctes) == 9, off_generated
     assert len(on_processed.ctes) == 5
 
 
