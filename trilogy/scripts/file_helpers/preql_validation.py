@@ -73,10 +73,6 @@ def validate_preql_content(path: str, content: str) -> str | None:
         return (
             f"refused to write '{path}': not syntactically valid Trilogy.\n"
             f"\nParse error:\n{syntax_error}\n"
-            f"\nWrite stats: {_size_hint(content)}.\n"
-            "If the tail looks cut off (mid-identifier, mid-statement) your "
-            "response was likely truncated by max_tokens — re-issue with the "
-            "COMPLETE file body, do not resend the same bytes. Pass --force to "
-            "bypass validation only when you intend a partial draft."
+            f"\nWrite stats: {_size_hint(content)}."
         )
     return None

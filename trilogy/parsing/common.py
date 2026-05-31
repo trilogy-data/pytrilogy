@@ -1309,6 +1309,16 @@ def parenthetical_to_concept(
     environment: Environment,
     metadata: Metadata | None = None,
 ) -> Concept:
+    if isinstance(parent.content, ConceptRef):
+        # a parenthetical wrapping a bare concept reference is a no-op; treat it
+        # exactly like the reference itself (aliased to `name` if one was given)
+        return arbitrary_to_concept(
+            unwrap_transformation(parent.content, environment),
+            environment,
+            namespace,
+            name,
+            metadata,
+        )
     if isinstance(
         parent.content,
         ARBITRARY_INPUTS,

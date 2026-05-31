@@ -2,7 +2,12 @@ from pytest import raises
 
 from trilogy import Dialects
 from trilogy.constants import MagicConstants
-from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    Purpose,
+)
 from trilogy.core.exceptions import MissingParameterException
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
 from trilogy.core.models.author import (
@@ -67,6 +72,14 @@ def test_not_in():
     assert right[0] == 1
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "(1,2,3)".strip()
+
+
+def test_parenthetical_bare_concept_alias():
+    env, parsed = parse_text("const order_id <- 3; SELECT (order_id) as wk;")
+    assert isinstance(parsed[-1], SelectStatement)
+    concept = env.concepts["local.wk"]
+    assert concept.lineage.operator == FunctionType.ALIAS
+    assert concept.lineage.arguments[0].address == "local.order_id"
 
 
 def test_datetime_lit_rendering():
