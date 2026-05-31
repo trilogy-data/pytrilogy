@@ -10,7 +10,7 @@ where
     and cs.order_number not in cr.order_number
     and cs.order_number in multi_warehouse_sales
 select
-    count_distinct(cs.order_number) as order_count,
+    count(cs.order_number) as order_count,
     sum(cs.ext_ship_cost) as total_shipping_cost,
     sum(cs.net_profit) as total_net_profit,
 order by

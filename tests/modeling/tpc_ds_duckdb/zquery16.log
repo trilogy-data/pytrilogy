@@ -1,6 +1,6 @@
 query_id = "16"
-gen_length = 3709
-preql_size = 614
+gen_length = 3724
+preql_size = 605
 comp_size = 821
 generated_sql = """
 
@@ -68,7 +68,7 @@ GROUP BY
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\"),
 vacuous as (
 SELECT
-    count(distinct \"thoughtful\".\"cs_order_number\") as \"order_count\"
+    count(\"thoughtful\".\"cs_order_number\") as \"order_count\"
 FROM
     \"thoughtful\"),
 young as (
@@ -78,12 +78,12 @@ SELECT
 FROM
     \"concerned\")
 SELECT
-    \"vacuous\".\"order_count\" as \"order_count\",
+    coalesce(\"vacuous\".\"order_count\",0) as \"order_count\",
     \"young\".\"total_shipping_cost\" as \"total_shipping_cost\",
     \"young\".\"total_net_profit\" as \"total_net_profit\"
 FROM
     \"vacuous\"
     FULL JOIN \"young\" on 1=1
 ORDER BY 
-    \"vacuous\".\"order_count\" desc
+    coalesce(\"vacuous\".\"order_count\",0) desc
 LIMIT (100)"""
