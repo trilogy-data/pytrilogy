@@ -39,8 +39,8 @@ SELECT
     \"cr_billing_customer_customers\".\"C_LAST_NAME\" as \"cr_billing_customer_last_name\",
     \"cr_billing_customer_customers\".\"C_SALUTATION\" as \"cr_billing_customer_salutation\"
 FROM
-    \"memory\".\"customer\" as \"cr_customer_customers\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cr_customer_address_customer_address\" on \"cr_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cr_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"memory\".\"customer\" as \"cr_billing_customer_customers\"
+    INNER JOIN \"memory\".\"customer_address\" as \"cr_billing_customer_address_customer_address\" on \"cr_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cr_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"cr_billing_customer_address_customer_address\".\"CA_STATE\" = 'GA'
 ),

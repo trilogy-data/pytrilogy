@@ -208,24 +208,28 @@ def initialize_loop_context(
 def _condition_input_unsourceable(
     priority_concept: BuildConcept, context: LoopContext, node_found: bool
 ) -> bool:
-    """True if the priority is a concept that appears only in the WHERE clause
-    (not in this level's outputs) and could not be sourced.
+    """True if the priority is a derived concept that appears only in the WHERE
+    clause (not in this level's outputs) and could not be sourced.
 
-    Such a concept must be materialized for its filter to be applied; if it
-    can't be sourced here it can't be sourced anywhere (generate_node already
-    exhausts derivation handlers, merge expansion and synonyms), so the filter
-    can never be applied at or above this level. Failing the search lets the
-    normal fall-through raise the same clean UnresolvableQueryException a
-    SELECT-only version of the query would — rather than completing on outputs
-    alone and tripping the INCOMPLETE_CONDITION guardrail downstream.
+    Restricted to SKIPPED_DERIVATIONS: those concepts get a single sourcing
+    attempt as their own node (the loop never reattempts them, see `skip`), so
+    they can't be picked up later as a free optional of another node. A pure
+    WHERE input of that class that generate_node can't produce is therefore
+    genuinely unsourceable — its filter can never be applied at or above this
+    level. Failing the search lets the normal fall-through raise the same clean
+    UnresolvableQueryException a SELECT-only version of the query would, rather
+    than completing on outputs alone and tripping the INCOMPLETE_CONDITION
+    guardrail downstream. ROOT/CONSTANT inputs are excluded — they can still be
+    sourced as an optional when a different concept is the priority.
     """
     if node_found or not context.conditions:
+        return False
+    if priority_concept.derivation not in SKIPPED_DERIVATIONS:
         return False
     if priority_concept.address in {c.address for c in context.original_mandatory}:
         return False
     return any(
-        c.address == priority_concept.address
-        for c in context.conditions.row_arguments
+        c.address == priority_concept.address for c in context.conditions.row_arguments
     )
 
 

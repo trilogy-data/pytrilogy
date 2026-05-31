@@ -36,8 +36,8 @@ SELECT
     \"web_returns_billing_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"web_returns_billing_customer_preferred_cust_flag\",
     \"web_returns_billing_customer_customers\".\"C_SALUTATION\" as \"web_returns_billing_customer_salutation\"
 FROM
-    \"memory\".\"customer\" as \"web_returns_customer_customers\"
-    INNER JOIN \"memory\".\"customer_address\" as \"web_returns_customer_address_customer_address\" on \"web_returns_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"web_returns_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"memory\".\"customer\" as \"web_returns_billing_customer_customers\"
+    INNER JOIN \"memory\".\"customer_address\" as \"web_returns_billing_customer_address_customer_address\" on \"web_returns_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"web_returns_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"web_returns_billing_customer_address_customer_address\".\"CA_STATE\" = 'GA'
 ),

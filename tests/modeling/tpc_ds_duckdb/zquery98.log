@@ -54,8 +54,8 @@ SELECT
     \"cooperative\".\"_virt_agg_sum_9925573558789696\" as \"_virt_agg_sum_9925573558789696\",
     coalesce(\"cheerful\".\"physical_sales_item_class\",\"cooperative\".\"physical_sales_item_class\") as \"physical_sales_item_class\"
 FROM
-    \"cooperative\"
-    FULL JOIN \"cheerful\" on \"cooperative\".\"physical_sales_item_class\" is not distinct from \"cheerful\".\"physical_sales_item_class\"
+    \"cheerful\"
+    FULL JOIN \"cooperative\" on \"cheerful\".\"physical_sales_item_class\" is not distinct from \"cooperative\".\"physical_sales_item_class\"
 GROUP BY
     1,
     2,
