@@ -1801,65 +1801,70 @@ limit 5;`
 
 ### `syntax-parse`
 
-- `trilogy file write query02.preql --content import raw.web_sales as web_sales;
-import raw.catalog_sales as catalog_sales;
+- `trilogy file write query02.preql --content import raw.web_sales as ws;
+import raw.catalog_sales as cs;
 
-# Combine web and catalog sales: da… nullif(sum(sales_2001.value ? sales_2001.week_seq + 53 = sales_2002.week_seq and dow = 6), 0) as sat_ratio
-order by wk_seq asc nulls first
-limit 55;`
-
-  ```text
-  refused to write 'query02.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('__ANON_7', 'by') at line 8, column 34.
-  Expected one of:
-          * _TERMINATOR
-
-  Location:
-  ...o sales_by_day <- daily_sales ??? by web_sales.sold_date.year, w...
-
-  Write stats: received 1773 chars / 1773 bytes; tail: …'), 0) as
-  sat_ratio\\norder by wk_seq asc nulls first\\nlimit 55;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query02.preql --content import raw.web_sales as web_sales;
-import raw.catalog_sales as catalog_sales;
-
-merge web_sales.sold_date.date_sk i…ow = 6) / nullif(sum(s2002.value ? s2002.week_seq = s2001.week_seq + 53 and s2002.dow = 6), 0) as sat_ratio
-order by wk_seq asc nulls first
-limit 55;`
-
-  ```text
-  refused to write 'query02.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('__ANON_7', 'by') at line 10, column 34.
-  Expected one of:
-          * _TERMINATOR
-
-  Location:
-  ...o sales_by_day <- daily_sales ??? by catalog_sales.sold_date.yea...
-
-  Write stats: received 1697 chars / 1697 bytes; tail: …'), 0) as
-  sat_ratio\\norder by wk_seq asc nulls first\\nlimit 55;'.
-  If the tail looks cut off (mid-identifier, mid-statement) your response was
-  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
-  resend the same bytes. Pass --force to bypass validation only when you intend a
-  partial draft.
-  ```
-- `trilogy file write query04.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales as web_sale….customer.first_name nulls first,
-    store_sales.customer.last_name nulls first,
-    store_sales.customer.preferred_cust_flag nulls first
+# Merge sold_date dimension between web_sales and cat…_sales,
+    coalesce(fri_sales, 0) as fri_sales,
+    coalesce(sat_sales, 0) as sat_sales
+order by ws.sold_date.year, ws.sold_date.week_seq
 limit 100;`
 
   ```text
-  refused to write 'query04.preql': not syntactically valid Trilogy.
+  refused to write 'query02.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('AS', 'as') at line 9, column 71.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ...alesce(cs.ext_sales_price, 0) ??? as combined_ext_sales_price;
+
+  Write stats: received 1732 chars / 1732 bytes; tail: …'order by
+  ws.sold_date.year, ws.sold_date.week_seq\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query02.preql --content import raw.web_sales as ws;
+import raw.catalog_sales as cs;
+
+# Merge sold_date dimension between web_sales and cat…_sales,
+    coalesce(fri_sales, 0) as fri_sales,
+    coalesce(sat_sales, 0) as sat_sales
+order by ws.sold_date.year, ws.sold_date.week_seq
+limit 100;`
+
+  ```text
+  refused to write 'query02.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('COMMA', ',') at line 11, column 79.
+  Expected one of:
+          * _TERMINATOR
+
+  Location:
+  ...te.week_seq, ws.sold_date.year ??? , (ws.sold_date.dow = 0); auto...
+
+  Write stats: received 1543 chars / 1543 bytes; tail: …'order by
+  ws.sold_date.year, ws.sold_date.week_seq\\nlimit 100;'.
+  If the tail looks cut off (mid-identifier, mid-statement) your response was
+  likely truncated by max_tokens — re-issue with the COMPLETE file body, do not
+  resend the same bytes. Pass --force to bypass validation only when you intend a
+  partial draft.
+  ```
+- `trilogy file write query02.preql --content import raw.web_sales as ws;
+import raw.catalog_sales as cs;
+import raw.date_dim as dd;
+
+merge ws.sold_date.date_sk…_fri, 0) / nullif(coalesce(s01_fri, 0), 0) as fri_ratio,
+    coalesce(s02_sat, 0) / nullif(coalesce(s01_sat, 0), 0) as sat_ratio
+order by aligned_ws;`
+
+  ```text
+  refused to write 'query02.preql': not syntactically valid Trilogy.
 
   Parse error:
   Unexpected token Token('__ANON_7', 'by') at line 14, column 149.
