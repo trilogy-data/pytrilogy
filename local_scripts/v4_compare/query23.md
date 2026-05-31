@@ -18,9 +18,9 @@ ref rows: 4 (4 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8808 | 197 | 731.29 ms |
-| reference | 7657 | 178 | 713.05 ms |
-| v4 / ref | 1.15x | 1.11x | 1.03x |
+| v4 | 7310 | 169 | 634.00 ms |
+| reference | 7657 | 178 | 642.58 ms |
+| v4 / ref | 0.95x | 0.95x | 0.99x |
 
 ## Preql
 
@@ -189,9 +189,7 @@ FROM
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_LIST_PRICE" as "sales_list_price",
-    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
     "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
      'CATALOG'  as "sales_sales_channel"
 FROM
@@ -204,9 +202,7 @@ WHERE
 UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
-    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_LIST_PRICE" as "sales_list_price",
-    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
     "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
      'STORE'  as "sales_sales_channel"
 FROM
@@ -219,9 +215,7 @@ WHERE
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
-    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_LIST_PRICE" as "sales_list_price",
-    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
     "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
      'WEB'  as "sales_sales_channel"
 FROM
@@ -233,9 +227,7 @@ WHERE
 ),
 questionable as (
 SELECT
-    "cheerful"."sales_item_id" as "sales_item_id",
     "cheerful"."sales_list_price" as "sales_list_price",
-    "cheerful"."sales_order_id" as "sales_order_id",
     "cheerful"."sales_quantity" as "sales_quantity",
     "cheerful"."sales_sales_channel" as "sales_sales_channel",
     "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
@@ -247,45 +239,25 @@ scrawny as (
 SELECT
     "questionable"."sales_customer_first_name" as "sales_customer_first_name",
     "questionable"."sales_customer_last_name" as "sales_customer_last_name",
-    "questionable"."sales_item_id" as "sales_item_id",
-    "questionable"."sales_list_price" as "sales_list_price",
-    "questionable"."sales_order_id" as "sales_order_id",
-    "questionable"."sales_quantity" as "sales_quantity",
-    "questionable"."sales_sales_channel" as "sales_sales_channel"
+    sum(CASE WHEN "questionable"."sales_sales_channel" in ('WEB','CATALOG') THEN "questionable"."sales_quantity" * "questionable"."sales_list_price" ELSE NULL END) as "sales_total"
 FROM
-    "questionable"),
-friendly as (
-SELECT
-    "scrawny"."sales_item_id" as "sales_item_id",
-    "scrawny"."sales_order_id" as "sales_order_id",
-    "scrawny"."sales_sales_channel" as "sales_sales_channel",
-    CASE WHEN "scrawny"."sales_sales_channel" in ('WEB','CATALOG') THEN "scrawny"."sales_quantity" * "scrawny"."sales_list_price" ELSE NULL END as "_virt_filter_7664750597049030"
-FROM
-    "scrawny"),
-divergent as (
-SELECT
-    "scrawny"."sales_customer_first_name" as "sales_customer_first_name",
-    "scrawny"."sales_customer_last_name" as "sales_customer_last_name",
-    sum("friendly"."_virt_filter_7664750597049030") as "sales_total"
-FROM
-    "friendly"
-    FULL JOIN "scrawny" on "friendly"."sales_item_id" = "scrawny"."sales_item_id" AND "friendly"."sales_order_id" = "scrawny"."sales_order_id" AND "friendly"."sales_sales_channel" = "scrawny"."sales_sales_channel"
+    "questionable"
 GROUP BY
     1,
     2)
 SELECT
-    "divergent"."sales_customer_last_name" as "c_last_name",
-    "divergent"."sales_customer_first_name" as "c_first_name",
-    "divergent"."sales_total" as "sales_total"
+    "scrawny"."sales_customer_last_name" as "c_last_name",
+    "scrawny"."sales_customer_first_name" as "c_first_name",
+    "scrawny"."sales_total" as "sales_total"
 FROM
-    "divergent"
+    "scrawny"
 WHERE
-    "divergent"."sales_total" > 0
+    "scrawny"."sales_total" > 0
 
 ORDER BY 
     "c_last_name" asc nulls first,
     "c_first_name" asc nulls first,
-    "divergent"."sales_total" asc nulls first
+    "scrawny"."sales_total" asc nulls first
 LIMIT (100)
 ```
 

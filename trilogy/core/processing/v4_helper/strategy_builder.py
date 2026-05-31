@@ -166,17 +166,19 @@ def _parent_nodes_for(
 
 
 def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
-    """Absorb a parent into a row-preserving sibling that already reaches it.
+    """Absorb a parent into a row-preserving sibling that can render it.
 
-    When a plain projection B (a non-grouping SelectNode) can reach another
-    parent A's columns from B's own source (A's outputs are all available off
-    B's parents), B carries A's columns as a passthrough and A is dropped —
-    instead of cross-joining two views of the same scan (q50: a
-    `days_to_return` projection of the base scan exposed only itself, so
-    merging it back with the base degraded to `1=1`).
+    When a plain projection B (a non-grouping SelectNode) can render every one
+    of another parent A's outputs from B's own source — each output is either
+    directly available off B's parents or derivable from columns that are — B
+    takes A's columns and A is dropped, instead of cross-joining two views of
+    the same scan (q50: a `days_to_return` projection of the base merged back
+    with the base on `1=1`; q62: two projections of one scan, one computing
+    `days_to_ship`, the other `substring(warehouse.name)`, cross-joined).
 
-    Passthrough = widen B's input AND output: `resolve_concept_map` sources an
-    output from a parent only when it's also an input."""
+    Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
+    columns A consumed). `resolve_concept_map` then sources a passthrough from
+    the parent (it's an input) and derives the rest inline from those inputs."""
     dropped: set[int] = set()
     for b in parents:
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
@@ -185,15 +187,23 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
                 continue
-            if not all(o.address in available for o in a.output_concepts):
+            if not all(
+                _arg_satisfiable(o, available, set(), set()) for o in a.output_concepts
+            ):
                 continue
             in_addrs = {c.address for c in b.input_concepts}
             out_addrs = {c.address for c in b.output_concepts}
+            # Source columns to read from B's parent: A's own inputs plus any
+            # of A's outputs that pass straight through. Restricted to what B's
+            # parent actually has so the projection renders.
+            for c in [*a.input_concepts, *a.output_concepts]:
+                if c.address in available and c.address not in in_addrs:
+                    b.input_concepts.append(c)
+                    in_addrs.add(c.address)
             for o in a.output_concepts:
-                if o.address not in in_addrs:
-                    b.input_concepts.append(o)
                 if o.address not in out_addrs:
                     b.output_concepts.append(o)
+                    out_addrs.add(o.address)
             b.rebuild_cache()
             dropped.add(id(a))
     return [p for p in parents if id(p) not in dropped]
