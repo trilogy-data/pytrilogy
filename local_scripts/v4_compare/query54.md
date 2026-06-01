@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4046 | 89 | 36.51 ms |
-| reference | 4263 | 91 | 39.11 ms |
-| v4 / ref | 0.95x | 0.98x | 0.93x |
+| v4 | 4204 | 96 | 61.57 ms |
+| reference | 4263 | 91 | 62.07 ms |
+| v4 / ref | 0.99x | 1.05x | 0.99x |
 
 ## Preql
 
@@ -159,25 +159,32 @@ GROUP BY
     2),
 macho as (
 SELECT
-    count("sweltering"."my_revenue_rev_cust_id") as "num_customers"
+    "sweltering"."my_revenue_rev_cust_id" as "my_revenue_rev_cust_id"
 FROM
-    "sweltering"),
+    "sweltering"
+GROUP BY
+    1),
 late as (
 SELECT
     cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) * 50 as "segment_base",
     cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) as "segment"
 FROM
-    "sweltering")
+    "sweltering"),
+scrawny as (
+SELECT
+    CASE WHEN "macho"."my_revenue_rev_cust_id" IS NOT NULL THEN 1 ELSE 0 END as "num_customers"
+FROM
+    "macho")
 SELECT
     "late"."segment" as "segment",
-    coalesce("macho"."num_customers",0) as "num_customers",
+    coalesce("scrawny"."num_customers",0) as "num_customers",
     "late"."segment_base" as "segment_base"
 FROM
-    "macho"
+    "scrawny"
     FULL JOIN "late" on 1=1
 ORDER BY 
     "late"."segment" asc nulls first,
-    coalesce("macho"."num_customers",0) asc nulls first,
+    coalesce("scrawny"."num_customers",0) asc nulls first,
     "late"."segment_base" asc nulls first
 LIMIT (100)
 ```

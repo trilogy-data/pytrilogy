@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6439 | 116 | 168.39 ms |
-| reference | 4875 | 84 | 109.22 ms |
-| v4 / ref | 1.32x | 1.38x | 1.54x |
+| v4 | 7418 | 139 | 211.06 ms |
+| reference | 4875 | 84 | 121.65 ms |
+| v4 / ref | 1.52x | 1.65x | 1.74x |
 
 ## Preql
 
@@ -155,7 +155,8 @@ FROM
     INNER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
     "customer_demographics_customer_demographics"."CD_GENDER" is not null and "customer_customers"."C_CUSTOMER_SK" in (select concerned."relevant_customers" from concerned where concerned."relevant_customers" is not null)
-)
+),
+abhorrent as (
 SELECT
     "sparkling"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
     "sparkling"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
@@ -165,12 +166,7 @@ SELECT
     "sparkling"."customer_demographics_gender" as "customer_demographics_gender",
     "sparkling"."customer_demographics_marital_status" as "customer_demographics_marital_status",
     "sparkling"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
-    count("sparkling"."customer_id") as "cnt1",
-    count("sparkling"."customer_id") as "cnt2",
-    count("sparkling"."customer_id") as "cnt3",
-    count("sparkling"."customer_id") as "cnt4",
-    count("sparkling"."customer_id") as "cnt5",
-    count("sparkling"."customer_id") as "cnt6"
+    "sparkling"."customer_id" as "customer_id"
 FROM
     "sparkling"
 WHERE
@@ -184,16 +180,43 @@ GROUP BY
     5,
     6,
     7,
+    8,
+    9)
+SELECT
+    "abhorrent"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    "abhorrent"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
+    "abhorrent"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    "abhorrent"."customer_demographics_education_status" as "customer_demographics_education_status",
+    "abhorrent"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
+    "abhorrent"."customer_demographics_gender" as "customer_demographics_gender",
+    "abhorrent"."customer_demographics_marital_status" as "customer_demographics_marital_status",
+    "abhorrent"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
+    count("abhorrent"."customer_id") as "cnt1",
+    count("abhorrent"."customer_id") as "cnt2",
+    count("abhorrent"."customer_id") as "cnt3",
+    count("abhorrent"."customer_id") as "cnt4",
+    count("abhorrent"."customer_id") as "cnt5",
+    count("abhorrent"."customer_id") as "cnt6"
+FROM
+    "abhorrent"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
     8
 ORDER BY 
-    "sparkling"."customer_demographics_gender" asc,
-    "sparkling"."customer_demographics_marital_status" asc,
-    "sparkling"."customer_demographics_education_status" asc,
-    "sparkling"."customer_demographics_purchase_estimate" asc,
-    "sparkling"."customer_demographics_credit_rating" asc,
-    "sparkling"."customer_demographics_dependent_count" asc,
-    "sparkling"."customer_demographics_employed_dependent_count" asc,
-    "sparkling"."customer_demographics_college_dependent_count" asc
+    "abhorrent"."customer_demographics_gender" asc,
+    "abhorrent"."customer_demographics_marital_status" asc,
+    "abhorrent"."customer_demographics_education_status" asc,
+    "abhorrent"."customer_demographics_purchase_estimate" asc,
+    "abhorrent"."customer_demographics_credit_rating" asc,
+    "abhorrent"."customer_demographics_dependent_count" asc,
+    "abhorrent"."customer_demographics_employed_dependent_count" asc,
+    "abhorrent"."customer_demographics_college_dependent_count" asc
 ```
 
 ## Reference SQL (zquery log)

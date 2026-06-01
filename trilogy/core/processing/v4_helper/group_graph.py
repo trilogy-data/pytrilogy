@@ -36,7 +36,6 @@ from .models import GroupAttrs, GroupBucket
 ROOT_D1_DEPTH = "root_d1"
 
 
-
 def _leaf_inputs(primaries: set[str], lineage_parents: dict[str, set[str]]) -> set[str]:
     """The first non-primary lineage ancestor of each primary — the columns a
     group actually consumes. Walks *through* primaries computed inside the
@@ -78,9 +77,6 @@ def _group_id_for(bucket: GroupBucket) -> str:
         f"grp:{label_prefix}{bucket.derivation}:{bucket.depth_label}:"
         f"{grain_key}{suffix}"
     )
-
-
-
 
 
 def _d1_calc_subgraph(concept_graph: nx.DiGraph) -> tuple[set[str], set[str]]:
@@ -240,6 +236,7 @@ def _materialize_group_graph(
             primary_members=tuple(bucket.primary_members),
             secondary_members=tuple(bucket.secondary_members),
             member_depths=dict(bucket.member_depths),
+            dedup_grain=bucket.dedup_grain,
         )
         group_graph.add_node(gid)
 

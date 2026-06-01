@@ -100,6 +100,51 @@ def partition_by_depth_and_grain(
     return list(by_key.values())
 
 
+def partition_aggregates(
+    items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    primary_group: dict[str, str],
+    ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
+) -> list[GroupBucket]:
+    """Like the default rule, but also splits on a count's dedup grain.
+
+    A `count(<key>)` must count over rows reduced to the key's grain (see
+    `_count_dedup_grain`). Two aggregates at the same output grain that need
+    DIFFERENT input grains — e.g. `count(order_number)` (dedup to {order}) and
+    `sum(ext_ship_cost)` (over line grain) — can't share one input scan, so we
+    bucket them separately. Each then sources its own scan at its own grain;
+    the count's collapses to one row per key and counts entities, the sum's
+    stays at line grain (q16). Additive aggregates carry an empty dedup grain
+    and collapse to the default keying."""
+    by_key: dict[
+        tuple[str, str, frozenset[str], str | None, frozenset[str]],
+        GroupBucket,
+    ] = {}
+    for node, data in items:
+        depth_label = data.get("depth_label", "d*")
+        derivation = data.get("derivation", "")
+        grain = frozenset(data.get("grain_components", ()))
+        label = data.get("label", "")
+        grouping_mode = data.get("grouping_mode")
+        dedup = frozenset(data.get("agg_dedup_grain", ()))
+        key = (label, depth_label, grain, grouping_mode, dedup)
+        bucket = by_key.get(key)
+        if bucket is None:
+            bucket = _bucket_for(depth_label, derivation, grain, label=label)
+            disc: list[str] = []
+            if grouping_mode and grouping_mode != "standard":
+                disc.append(f"grp:{grouping_mode}")
+            if dedup and dedup != grain:
+                disc.append("dedup:" + "|".join(sorted(dedup)))
+                bucket.dedup_grain = dedup
+            if disc:
+                bucket.discriminator = ":".join(disc)
+            by_key[key] = bucket
+        _add_member(bucket, node, data)
+    return list(by_key.values())
+
+
 def partition_roots(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -459,6 +504,7 @@ GROUPING_RULES: dict[str, PartitionFn] = {
     Derivation.BASIC.value: partition_basics_by_signature,
     Derivation.FILTER.value: partition_filters_by_signature,
     Derivation.ROWSET.value: partition_rowsets,
+    Derivation.AGGREGATE.value: partition_aggregates,
 }
 
 DEFAULT_RULE: PartitionFn = partition_by_depth_and_grain

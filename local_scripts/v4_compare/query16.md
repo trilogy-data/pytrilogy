@@ -1,30 +1,26 @@
 # Query 16
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (850, Decimal('-143869.23'), Decimal('1095837.99'))
-only in ref (showing up to 5 of 1):
-  1x  (233, Decimal('-143869.23'), Decimal('1095837.99'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2575 | 55 | 63.31 ms |
-| reference | 3728 | 83 | 75.37 ms |
-| v4 / ref | 0.69x | 0.66x | 0.84x |
+| v4 | 3203 | 81 | 102.22 ms |
+| reference | 3728 | 83 | 97.77 ms |
+| v4 / ref | 0.86x | 0.98x | 1.05x |
 
 ## Preql
 
@@ -78,7 +74,7 @@ FROM
     "abundant"
 GROUP BY
     1),
-yummy as (
+juicy as (
 SELECT
     CASE WHEN "uneven"."_virt_agg_count_7777088585630721" > 1 THEN "uneven"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
 FROM
@@ -94,19 +90,45 @@ FROM
     INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
     INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select yummy."multi_warehouse_sales" from yummy where yummy."multi_warehouse_sales" is not null)
-)
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
+),
+vacuous as (
 SELECT
-    count("questionable"."cs_order_number") as "order_count",
-    sum("questionable"."cs_net_profit") as "total_net_profit",
-    sum("questionable"."cs_ext_ship_cost") as "total_shipping_cost"
+    "questionable"."cs_ext_ship_cost" as "cs_ext_ship_cost",
+    "questionable"."cs_net_profit" as "cs_net_profit",
+    "questionable"."cs_order_number" as "cs_order_number"
 FROM
     "questionable"
 WHERE
-    "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select yummy."multi_warehouse_sales" from yummy where yummy."multi_warehouse_sales" is not null)
-
+    "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
+),
+young as (
+SELECT
+    "vacuous"."cs_order_number" as "cs_order_number"
+FROM
+    "vacuous"
+GROUP BY
+    1),
+concerned as (
+SELECT
+    sum("vacuous"."cs_ext_ship_cost") as "total_shipping_cost",
+    sum("vacuous"."cs_net_profit") as "total_net_profit"
+FROM
+    "vacuous"),
+sparkling as (
+SELECT
+    count("young"."cs_order_number") as "order_count"
+FROM
+    "young")
+SELECT
+    coalesce("sparkling"."order_count",0) as "order_count",
+    "concerned"."total_shipping_cost" as "total_shipping_cost",
+    "concerned"."total_net_profit" as "total_net_profit"
+FROM
+    "concerned"
+    FULL JOIN "sparkling" on 1=1
 ORDER BY 
-    "order_count" desc
+    coalesce("sparkling"."order_count",0) desc
 LIMIT (100)
 ```
 

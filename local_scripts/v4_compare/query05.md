@@ -17,7 +17,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 13665 | 309 | — |
-| reference | 10731 | 230 | 108.07 ms |
+| reference | 10731 | 230 | 161.65 ms |
 | v4 / ref | 1.27x | 1.34x | — |
 
 ## Preql
@@ -375,11 +375,11 @@ FROM
     "sparkling"
     FULL JOIN "young" on "sparkling"."channel_label" is not distinct from "young"."channel_label" AND "sparkling"."r_id" is not distinct from "young"."return_id_label")
 SELECT
-    coalesce("abhorrent"."channel","waggish"."channel") as "channel",
-    coalesce("abhorrent"."returns_total_b",0.0) as "returns_metric",
-    coalesce("waggish"."sales_total_a",0.0) as "sales_metric",
     coalesce("waggish"."profit_only_a",0.0) - coalesce("abhorrent"."loss_only_b",0.0) as "profit_metric",
-    coalesce("abhorrent"."id","waggish"."id") as "id"
+    coalesce("abhorrent"."channel","waggish"."channel") as "channel",
+    coalesce("abhorrent"."id","waggish"."id") as "id",
+    coalesce("waggish"."sales_total_a",0.0) as "sales_metric",
+    coalesce("abhorrent"."returns_total_b",0.0) as "returns_metric"
 FROM
     "waggish"
     FULL JOIN "abhorrent" on "waggish"."channel" is not distinct from "abhorrent"."channel" AND "waggish"."id" is not distinct from "abhorrent"."id"

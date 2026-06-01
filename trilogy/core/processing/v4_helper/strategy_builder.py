@@ -717,6 +717,33 @@ def build_strategy_node(
             parents = [wrapper]
             condition_for_generator = None
             condition_host_node = wrapper
+        # A count of distinct entities (`count(order_number)`) must count over
+        # rows reduced to the entity's grain, not the (filtered) source row
+        # grain. Insert a dedup GroupNode at `dedup_grain` between the filtered
+        # input and the count, so the count collapses one row per entity (q16).
+        # Done after the condition wrapper so the WHERE applies before the
+        # dedup, and only when the reduction grain differs from this group's
+        # own (output) grain.
+        if (
+            derivation == Derivation.AGGREGATE.value
+            and a.dedup_grain
+            and a.dedup_grain != a.grain_components
+            and parents
+        ):
+            dedup_concepts = [
+                environment.concepts[addr]
+                for addr in a.dedup_grain
+                if addr in environment.concepts
+            ]
+            if dedup_concepts:
+                parents = [
+                    GroupNode(
+                        output_concepts=dedup_concepts,
+                        input_concepts=dedup_concepts,
+                        environment=environment,
+                        parents=parents,
+                    )
+                ]
         node = build_node(
             derivation=derivation,
             outputs=outputs,

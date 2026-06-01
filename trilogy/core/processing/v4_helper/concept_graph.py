@@ -20,7 +20,7 @@ from typing import Callable, List
 
 import networkx as nx
 
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -216,6 +216,36 @@ def node_id(label: str, address: str) -> str:
     return f"[{label}]{address}" if label else address
 
 
+def _count_dedup_grain(
+    concept: BuildConcept, out_grain: frozenset[str]
+) -> frozenset[str]:
+    """The grain a COUNT must dedup its input to before counting.
+
+    `count(<key>)` means "how many distinct entities" — it has to count over
+    rows reduced to that key's grain, not the (finer) source row grain, or it
+    counts source rows instead of entities (q16: `count(cs.order_number)` over
+    catalog_sales lines = line count, not order count). Returns `out_grain ∪
+    {arg key grains not already in out_grain}` when the count is over a key
+    whose grain the output grain doesn't already pin; empty otherwise (no dedup
+    needed — additive aggregates, or a count already at its key's grain).
+
+    Drives a partition discriminator so such a count lands in its own bucket
+    with its own (deduppable) input scan, instead of sharing the line-grain
+    scan that the additive sums need."""
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return frozenset()
+    fn = concept.lineage.function
+    if fn.operator not in (FunctionType.COUNT, FunctionType.COUNT_DISTINCT):
+        return frozenset()
+    extra: set[str] = set()
+    for arg in fn.arguments:
+        if isinstance(arg, BuildConcept) and arg.purpose == Purpose.KEY and arg.grain:
+            arg_grain = set(arg.grain.components)
+            if not arg_grain <= out_grain:
+                extra |= arg_grain
+    return frozenset(out_grain | extra) if extra else frozenset()
+
+
 def _add_concept(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -253,6 +283,7 @@ def _add_concept(
         concept.lineage.rowset.select, SelectLineage
     ):
         rowset_name = concept.lineage.rowset.name
+    out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
     graph.add_node(
         nid,
         address=concept.address,
@@ -261,11 +292,10 @@ def _add_concept(
         purpose=concept.purpose.value,
         granularity=concept.granularity.value,
         depth_label=classify_depth(concept, eff_label),
-        grain_components=(
-            frozenset(concept.grain.components) if concept.grain else frozenset()
-        ),
+        grain_components=out_grain,
         grouping_mode=grouping_mode,
         rowset_name=rowset_name,
+        agg_dedup_grain=_count_dedup_grain(concept, out_grain),
     )
 
     # Rowset boundary: a ROWSET concept is the outer's "handle" on a

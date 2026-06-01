@@ -22,6 +22,11 @@ class GroupAttrs:
     primary_members: tuple[str, ...] = ()
     secondary_members: tuple[str, ...] = ()
     member_depths: dict[str, str] = field(default_factory=dict)
+    # For an aggregate group whose count(s) must count distinct entities, the
+    # grain its input is reduced to before aggregating (e.g. {order_number} for
+    # `count(order_number)`). Empty when no reduction is needed. Drives an
+    # intermediate dedup GroupNode in the strategy builder.
+    dedup_grain: frozenset[str] = frozenset()
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently — so a single clause may live at
@@ -70,6 +75,7 @@ def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
         output_concepts=a.output_concepts,
         hidden_concepts=a.hidden_concepts,
         input_concepts=a.input_concepts,
+        dedup_grain=a.dedup_grain,
     )
 
 
@@ -102,3 +108,6 @@ class GroupBucket:
     # split, which can land two co-grain buckets with disjoint upstream
     # sources. Empty string for rules that don't need it.
     discriminator: str = ""
+    # Grain to reduce this aggregate's input to before aggregating (a count of
+    # distinct entities); empty when no reduction is needed. See GroupAttrs.
+    dedup_grain: frozenset[str] = frozenset()
