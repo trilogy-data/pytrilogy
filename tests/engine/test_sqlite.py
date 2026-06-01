@@ -247,14 +247,14 @@ def test_get_table_schema():
     )
     schema = executor.generator.get_table_schema(executor, "schema_test")
     assert len(schema) == 3
-    names = [row[0] for row in schema]
+    names = [row.column_name for row in schema]
     assert "id" in names
     assert "name" in names
     assert "value" in names
-    id_row = next(r for r in schema if r[0] == "id")
-    assert id_row[2] == "NO"
-    name_row = next(r for r in schema if r[0] == "name")
-    assert name_row[2] == "YES"
+    id_row = next(r for r in schema if r.column_name == "id")
+    assert id_row.is_nullable == "NO"
+    name_row = next(r for r in schema if r.column_name == "name")
+    assert name_row.is_nullable == "YES"
 
 
 def test_get_table_primary_keys():

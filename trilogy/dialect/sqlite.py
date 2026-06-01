@@ -2,7 +2,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import ComparisonOperator, FunctionType
 from trilogy.core.models.core import DataType
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, TableColumn
 
 MONTH_NAME_CASE = (
     "CASE CAST(strftime('%m', {expr}) AS INTEGER) "
@@ -288,16 +288,15 @@ class SQLiteDialect(BaseDialect):
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
-    ) -> list[tuple]:
+    ) -> list[TableColumn]:
         schema_name = schema or "main"
         rows = executor.execute_raw_sql(
             f"PRAGMA {schema_name}.table_info('{table_name}')"
         ).fetchall()
-        output: list[tuple] = []
-        for row in rows:
-            # cid, name, type, notnull, dflt_value, pk
-            output.append((row[1], row[2], "NO" if row[3] else "YES", ""))
-        return output
+        # cid, name, type, notnull, dflt_value, pk
+        return [
+            TableColumn(row[1], row[2], "NO" if row[3] else "YES", "") for row in rows
+        ]
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

@@ -12,7 +12,7 @@ def test_get_table_schema(snowflake_engine):
     schema = dialect.get_table_schema(snowflake_engine, "test_table")
 
     assert len(schema) >= 2
-    column_names = [col[0].upper() for col in schema]
+    column_names = [col.column_name.upper() for col in schema]
     assert "ID" in column_names
     assert "NAME" in column_names
 
@@ -44,7 +44,7 @@ def test_get_table_schema_with_schema(snowflake_engine):
     )
 
     assert len(schema) >= 2
-    column_names = [col[0].upper() for col in schema]
+    column_names = [col.column_name.upper() for col in schema]
     assert "ID" in column_names
     assert "NAME" in column_names
 

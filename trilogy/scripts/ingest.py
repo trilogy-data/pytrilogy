@@ -23,7 +23,7 @@ from trilogy.core.enums import AddressType, Modifier, Purpose
 from trilogy.core.models.author import Concept, Grain, Metadata
 from trilogy.core.models.core import EnumType, TraitDataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, TableColumn
 from trilogy.dialect.duckdb import DUCKDB_SAMPLE_SEED
 from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
@@ -182,31 +182,25 @@ def _check_column_combination_uniqueness(
     return len(values) == len(sample_rows)
 
 
-# Decimal/float types: amounts and ratios. A column of these is a measure, so
-# its sample uniqueness is a floating-point coincidence — almost never a grain.
+# Decimal/float types are measures; their sample uniqueness is a coincidence.
 _MEASURE_TYPES = frozenset({DataType.FLOAT, DataType.NUMERIC, DataType.NUMBER})
-# Temporal types and the surrogate-key names that reference a date/time
-# dimension: a fact's natural grain is its entity + transaction number, not the
-# day or second it happened, so these lose to a non-temporal partner.
+# Temporal columns lose to a non-temporal partner: a fact's grain is its entity
+# + transaction number, not when it happened. Caught by type, or by name for a
+# surrogate key whose stem carries a date/time token (``returned_date_sk``).
 _TEMPORAL_TYPES = frozenset({DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP})
-_TEMPORAL_FK_SUFFIXES = ("date_sk", "time_sk")
+_TEMPORAL_NAME_TOKENS = ("date", "time")
 
-# Per-column grain penalties, summed over a candidate combination (lower wins).
-# Tiered, not flat: a measure must never beat a real key, a date/time stamp
-# should lose only to a non-temporal alternative, and a foreign key loses only
-# when a natural key is available — so the gaps between tiers must exceed the
-# largest plausible count of the next tier down within one key.
+# Per-column grain penalties, summed over a candidate (lower wins). Tiered so a
+# measure never beats a key, a temporal column loses only to a non-temporal one,
+# and a foreign key loses only when a natural key exists; gaps exceed the largest
+# plausible per-key count of the tier below.
 _PENALTY_MEASURE = 100
 _PENALTY_TEMPORAL = 10
 _PENALTY_FK = 1
-# Boost (negative cost) for a column whose name *is* a bare key token — what a
-# narrow table's columns collapse to once their shared prefix is stripped
-# (``r_reason_sk`` -> ``sk``, ``r_reason_id`` -> ``id``), erasing the stem that
-# would otherwise mark them the table's identity. Plus qualified ``*_id``
-# business keys. All boosted equally, so an `sk`/`id` tie falls to column order
-# (the surrogate, listed first, wins). Deliberately excludes qualified ``*_sk``
-# / ``*_date_sk``: those are real foreign keys and must keep their tier, or the
-# fact-table grain fix unravels.
+# Boost a column whose name *is* a bare key token (``r_reason_sk`` -> ``sk`` once
+# the shared prefix is stripped) or a qualified ``*_id`` business key. Equal
+# boost, so an sk/id tie falls to column order. Excludes qualified ``*_sk``:
+# those are foreign keys and keep their tier.
 _IDENTIFIER_TOKENS = ("id", "sk", "key", "fk")
 _BOOST_IDENTIFIER_NAME = -1
 
@@ -227,7 +221,9 @@ def _column_grain_penalty(
         return _BOOST_IDENTIFIER_NAME
     if datatype in _MEASURE_TYPES:
         return _PENALTY_MEASURE
-    if datatype in _TEMPORAL_TYPES or canonical.endswith(_TEMPORAL_FK_SUFFIXES):
+    if datatype in _TEMPORAL_TYPES or (
+        stem and any(t in stem.split("_") for t in _TEMPORAL_NAME_TOKENS)
+    ):
         return _PENALTY_TEMPORAL
     return _PENALTY_FK if stem is not None else 0
 
@@ -289,25 +285,24 @@ def detect_unique_key_combinations(
 
 def _grain_penalties(
     table_name: str,
-    columns: list[tuple],
+    columns: list[TableColumn],
     canonical: dict[str, str],
     dialect: BaseDialect,
 ) -> dict[str, int]:
     """Map each raw column name to its grain penalty (see ``_column_grain_penalty``)."""
     table_canonical = canonicolize_name(table_name)
     return {
-        col[0]: _column_grain_penalty(
-            canonical.get(col[0]) or canonicolize_name(col[0]),
-            _base_datatype(dialect, col[1]),
+        col.column_name: _column_grain_penalty(
+            canonical.get(col.column_name) or canonicolize_name(col.column_name),
+            _base_datatype(dialect, col.data_type),
             table_canonical,
         )
         for col in columns
     }
 
 
-# Cap on full-table uniqueness checks per source: sample ranking puts the real
-# key near the front, so we rarely need many — this just bounds a pathological
-# wide table whose smallest sample-unique size yields a long candidate list.
+# Cap on full-table uniqueness checks per source: ranking puts the real key near
+# the front, so this only bounds a pathologically wide table's candidate list.
 _MAX_GRAIN_VERIFICATIONS = 16
 
 
@@ -336,27 +331,15 @@ def _select_verified_grain(
     candidates: list[list[str]],
     dialect: BaseDialect,
 ) -> list[str] | None:
-    """First ranked candidate that is unique over the full relation.
+    """First ranked candidate that is unique over the full relation, or None if
+    none qualify (caller then falls back to no grain).
 
-    Returns None if every checked candidate fails uniqueness (caller should then
-    fall back to no grain). If a verification query errors — odd types, an
-    unreadable relation — we can't prove the best candidate wrong, so we accept
-    it unverified rather than silently drop a usable grain.
+    A verification query that errors propagates: grain detection is part of the
+    ingest request, so a failure surfaces for investigation rather than silently
+    degrading to an unverified guess.
     """
     for candidate in candidates[:_MAX_GRAIN_VERIFICATIONS]:
-        try:
-            unique = _is_unique_key(exec, relation, candidate, dialect)
-        except Exception as e:
-            try:
-                exec.connection.rollback()
-            except Exception:
-                pass
-            print_warning(
-                f"Grain verification failed ({e}); using best sample candidate "
-                f"{candidates[0]} unverified"
-            )
-            return candidates[0]
-        if unique:
+        if _is_unique_key(exec, relation, candidate, dialect):
             return candidate
         print_info(f"Rejected grain candidate {candidate}: not unique on full table")
     return None
@@ -377,7 +360,7 @@ def _base_datatype(dialect: BaseDialect, sql_type: str) -> DataType:
 
 def _process_column(
     idx: int,
-    col: tuple[str, str, str | None, str | None],
+    col: TableColumn,
     grain_components: list[str],
     sample_rows: list[tuple],
     concept_mapping: dict[str, str],
@@ -385,10 +368,10 @@ def _process_column(
     enum_type: EnumType | None = None,
 ) -> tuple[Concept, ColumnAssignment, str | None]:
 
-    column_name = col[0]
-    data_type_str = col[1]
-    schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 and col[2] else True
-    column_comment = col[3] if len(col) > 3 else None
+    column_name = col.column_name
+    data_type_str = col.data_type
+    schema_is_nullable = col.is_nullable.upper() == "YES" if col.is_nullable else True
+    column_comment = col.comment
     # Apply prefix stripping if mapping provided
     concept_name = concept_mapping[column_name]
 
@@ -396,12 +379,10 @@ def _process_column(
     # mapping datasource validation's schema-drift check uses (normalize_db_type).
     trilogy_type = _base_datatype(dialect, data_type_str)
 
-    # A column can be both an enum (a constrained domain, detected from the
-    # source's true distinct values) and a rich type (a name-based trait). When
-    # both apply, the trait wraps the enum — e.g. enum<string>['x@y.com']::email_address.
-    # Rich types are validated against the column's actual values so a column
-    # merely named like one (a Y/N "channel_email" flag) isn't misclassified;
-    # an enum already carries its full distinct value set.
+    # A column can be both an enum (constrained domain) and a rich type
+    # (name-based trait); when both apply the trait wraps the enum. Rich types
+    # are validated against actual values, so a Y/N "channel_email" flag named
+    # like one isn't misclassified.
     if enum_type is not None:
         rich_values: list = list(enum_type.values)
     else:
@@ -511,11 +492,11 @@ def create_datasource_from_file(
         raise Exit(1)
 
     # DuckDB DESCRIBE: (column_name, column_type, null, key, default, extra)
-    columns: list[tuple[str, str, str | None, str | None]] = [
-        (row[0], row[1], row[2] if len(row) > 2 else "YES", None)
+    columns: list[TableColumn] = [
+        TableColumn(row[0], row[1], row[2] if len(row) > 2 else "YES", None)
         for row in describe_rows
     ]
-    column_names = [c[0] for c in columns]
+    column_names = [c.column_name for c in columns]
 
     # Reservoir-sample (not a head LIMIT) so a file clustered on a leading key
     # doesn't hide grain columns / fake uniqueness; fixed seed keeps it stable.
@@ -556,7 +537,7 @@ def create_datasource_from_file(
     enum_map = detect_enum_types(
         exec,
         source_expr,
-        [(c[0], _base_datatype(exec.generator, c[1])) for c in columns],
+        [(c.column_name, _base_datatype(exec.generator, c.data_type)) for c in columns],
     )
 
     required_imports: set[str] = set()
@@ -570,7 +551,7 @@ def create_datasource_from_file(
             sample_rows,
             column_concept_mapping,
             exec.generator,
-            enum_map.get(col[0]),
+            enum_map.get(col.column_name),
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)
@@ -614,7 +595,7 @@ def create_datasource_from_table(
         qualified_name = table_name
 
     # Extract column names for grain detection
-    column_names = [col[0] for col in columns]
+    column_names = [col.column_name for col in columns]
 
     # Detect and strip common prefix from all column names BEFORE grain detection
 
@@ -668,7 +649,7 @@ def create_datasource_from_table(
     enum_map = detect_enum_types(
         exec,
         dialect.safe_quote(qualified_name),
-        [(c[0], _base_datatype(dialect, c[1])) for c in columns],
+        [(c.column_name, _base_datatype(dialect, c.data_type)) for c in columns],
     )
 
     # Track required imports for rich types
@@ -685,7 +666,7 @@ def create_datasource_from_table(
             sample_rows,
             column_concept_mapping,
             exec.generator,
-            enum_map.get(col[0]),
+            enum_map.get(col.column_name),
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)

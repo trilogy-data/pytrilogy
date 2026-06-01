@@ -1,4 +1,5 @@
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
@@ -143,6 +144,16 @@ from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import safe_open
+
+
+@dataclass
+class TableColumn:
+    """A single column from a table schema, as returned by ``get_table_schema``."""
+
+    column_name: str
+    data_type: str
+    is_nullable: str
+    comment: str | None = None
 
 
 def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
@@ -723,8 +734,8 @@ class BaseDialect:
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
-    ) -> list[tuple]:
-        """Return (column_name, data_type, is_nullable, comment) rows via information_schema."""
+    ) -> list[TableColumn]:
+        """Return per-column schema info via information_schema."""
         query = f"""
         SELECT
             column_name,
@@ -737,7 +748,10 @@ class BaseDialect:
         if schema:
             query += f" AND table_schema = '{schema}'"
         query += " ORDER BY ordinal_position"
-        return executor.execute_raw_sql(query).fetchall()
+        return [
+            TableColumn(row[0], row[1], row[2], row[3])
+            for row in executor.execute_raw_sql(query).fetchall()
+        ]
 
     def normalize_db_type(self, db_type: str) -> DataType:
         """Map a database type string (from information_schema) to a DataType enum."""
@@ -755,7 +769,10 @@ class BaseDialect:
         rows = self.get_table_schema(executor, table_name, schema)
         if not rows:
             return None
-        return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
+        return {
+            row.column_name.lower(): self.normalize_db_type(row.data_type)
+            for row in rows
+        }
 
     def list_tables(self, executor, schema: str | None = None) -> list[tuple[str, str]]:
         """Return (table_name, table_type) for tables and views via
