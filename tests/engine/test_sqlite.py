@@ -252,9 +252,9 @@ def test_get_table_schema():
     assert "name" in names
     assert "value" in names
     id_row = next(r for r in schema if r.column_name == "id")
-    assert id_row.is_nullable == "NO"
+    assert id_row.is_nullable is False
     name_row = next(r for r in schema if r.column_name == "name")
-    assert name_row.is_nullable == "YES"
+    assert name_row.is_nullable is True
 
 
 def test_get_table_primary_keys():

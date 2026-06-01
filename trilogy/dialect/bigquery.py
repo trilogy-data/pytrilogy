@@ -268,7 +268,7 @@ class BigqueryDialect(BaseDialect):
         """
 
         rows = executor.execute_raw_sql(column_query).fetchall()
-        return [TableColumn(row[0], row[1], row[2], row[3]) for row in rows]
+        return self._columns_from_info_schema_rows(rows)
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

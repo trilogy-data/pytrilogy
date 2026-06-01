@@ -115,7 +115,7 @@ class SnowflakeDialect(BaseDialect):
         column_query += " ORDER BY ordinal_position"
 
         rows = executor.execute_raw_sql(column_query).fetchall()
-        return [TableColumn(row[0], row[1], row[2], row[3]) for row in rows]
+        return self._columns_from_info_schema_rows(rows)
 
     # Snowflake information_schema reports internal type names that differ from DDL tokens.
     # e.g. INTEGER/NUMBER → "NUMBER", VARCHAR/TEXT → "TEXT", TIMESTAMP_NTZ → "TIMESTAMP_NTZ".

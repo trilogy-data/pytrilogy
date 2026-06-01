@@ -294,9 +294,7 @@ class SQLiteDialect(BaseDialect):
             f"PRAGMA {schema_name}.table_info('{table_name}')"
         ).fetchall()
         # cid, name, type, notnull, dflt_value, pk
-        return [
-            TableColumn(row[1], row[2], "NO" if row[3] else "YES", "") for row in rows
-        ]
+        return [self.make_table_column(row[1], row[2], not row[3], "") for row in rows]
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

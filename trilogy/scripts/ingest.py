@@ -23,7 +23,7 @@ from trilogy.core.enums import AddressType, Modifier, Purpose
 from trilogy.core.models.author import Concept, Grain, Metadata
 from trilogy.core.models.core import EnumType, TraitDataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
-from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.base import BaseDialect, TableColumn, nullable_from_str
 from trilogy.dialect.duckdb import DUCKDB_SAMPLE_SEED
 from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
@@ -287,14 +287,13 @@ def _grain_penalties(
     table_name: str,
     columns: list[TableColumn],
     canonical: dict[str, str],
-    dialect: BaseDialect,
 ) -> dict[str, int]:
     """Map each raw column name to its grain penalty (see ``_column_grain_penalty``)."""
     table_canonical = canonicolize_name(table_name)
     return {
         col.column_name: _column_grain_penalty(
             canonical.get(col.column_name) or canonicolize_name(col.column_name),
-            _base_datatype(dialect, col.data_type),
+            col.trilogy_type,
             table_canonical,
         )
         for col in columns
@@ -352,10 +351,9 @@ def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) 
     return False
 
 
-def _base_datatype(dialect: BaseDialect, sql_type: str) -> DataType:
-    """Resolve a DB type string to a Trilogy DataType, defaulting unknowns to STRING."""
-    resolved = dialect.normalize_db_type(sql_type)
-    return DataType.STRING if resolved == DataType.UNKNOWN else resolved
+def _concrete_datatype(dt: DataType) -> DataType:
+    """A writable concrete type for ingest output, mapping UNKNOWN to STRING."""
+    return DataType.STRING if dt == DataType.UNKNOWN else dt
 
 
 def _process_column(
@@ -364,20 +362,16 @@ def _process_column(
     grain_components: list[str],
     sample_rows: list[tuple],
     concept_mapping: dict[str, str],
-    dialect: BaseDialect,
     enum_type: EnumType | None = None,
 ) -> tuple[Concept, ColumnAssignment, str | None]:
 
     column_name = col.column_name
-    data_type_str = col.data_type
-    schema_is_nullable = col.is_nullable.upper() == "YES" if col.is_nullable else True
+    schema_is_nullable = col.is_nullable
     column_comment = col.comment
     # Apply prefix stripping if mapping provided
     concept_name = concept_mapping[column_name]
 
-    # Infer the base Trilogy datatype via the dialect's type map — the same
-    # mapping datasource validation's schema-drift check uses (normalize_db_type).
-    trilogy_type = _base_datatype(dialect, data_type_str)
+    trilogy_type = _concrete_datatype(col.trilogy_type)
 
     # A column can be both an enum (constrained domain) and a rich type
     # (name-based trait); when both apply the trait wraps the enum. Rich types
@@ -493,7 +487,9 @@ def create_datasource_from_file(
 
     # DuckDB DESCRIBE: (column_name, column_type, null, key, default, extra)
     columns: list[TableColumn] = [
-        TableColumn(row[0], row[1], row[2] if len(row) > 2 else "YES", None)
+        exec.generator.make_table_column(
+            row[0], row[1], nullable_from_str(row[2]) if len(row) > 2 else True
+        )
         for row in describe_rows
     ]
     column_names = [c.column_name for c in columns]
@@ -513,7 +509,6 @@ def create_datasource_from_file(
             name_override or _datasource_name_from_path(arg),
             columns,
             column_concept_mapping,
-            exec.generator,
         ),
     )
     if suggested_keys:
@@ -537,7 +532,7 @@ def create_datasource_from_file(
     enum_map = detect_enum_types(
         exec,
         source_expr,
-        [(c.column_name, _base_datatype(exec.generator, c.data_type)) for c in columns],
+        [(c.column_name, _concrete_datatype(c.trilogy_type)) for c in columns],
     )
 
     required_imports: set[str] = set()
@@ -550,7 +545,6 @@ def create_datasource_from_file(
             grain_components,
             sample_rows,
             column_concept_mapping,
-            exec.generator,
             enum_map.get(col.column_name),
         )
         concepts.append(concept)
@@ -619,9 +613,7 @@ def create_datasource_from_table(
         suggested_keys = detect_unique_key_combinations(
             column_names,
             sample_rows,
-            penalties=_grain_penalties(
-                table_name, columns, column_concept_mapping, dialect
-            ),
+            penalties=_grain_penalties(table_name, columns, column_concept_mapping),
         )
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
@@ -649,7 +641,7 @@ def create_datasource_from_table(
     enum_map = detect_enum_types(
         exec,
         dialect.safe_quote(qualified_name),
-        [(c.column_name, _base_datatype(dialect, c.data_type)) for c in columns],
+        [(c.column_name, _concrete_datatype(c.trilogy_type)) for c in columns],
     )
 
     # Track required imports for rich types
@@ -665,7 +657,6 @@ def create_datasource_from_table(
             grain_components,
             sample_rows,
             column_concept_mapping,
-            exec.generator,
             enum_map.get(col.column_name),
         )
         concepts.append(concept)

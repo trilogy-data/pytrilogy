@@ -80,6 +80,6 @@ def describe_cmd(ctx: click.Context, table: str, schema: str | None) -> None:
         raise click.exceptions.Exit(1)
     for col in columns:
         name = str(col.column_name)
-        dtype = str(col.data_type)
-        nullable = str(col.is_nullable) if col.is_nullable else ""
+        dtype = str(col.raw_db_type)
+        nullable = "YES" if col.is_nullable else "NO"
         click.echo(f"{name}\t{dtype}\t{nullable}")

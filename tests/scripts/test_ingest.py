@@ -864,12 +864,11 @@ class TestGrainCandidateRanking:
         penalties = _grain_penalties(
             "catalog_returns",
             [
-                ("returned_time_sk", "INTEGER"),
-                ("item_sk", "INTEGER"),
-                ("order_number", "BIGINT"),
+                _DIALECT.make_table_column("returned_time_sk", "INTEGER"),
+                _DIALECT.make_table_column("item_sk", "INTEGER"),
+                _DIALECT.make_table_column("order_number", "BIGINT"),
             ],
             canonicalize_names(column_names),
-            _DIALECT,
         )
         result = detect_unique_key_combinations(
             column_names, sample_rows, penalties=penalties
@@ -883,12 +882,11 @@ class TestGrainCandidateRanking:
         penalties = _grain_penalties(
             "catalog_sales",
             [
-                ("net_paid", "DECIMAL(7,2)"),
-                ("item_sk", "INTEGER"),
-                ("order_number", "BIGINT"),
+                _DIALECT.make_table_column("net_paid", "DECIMAL(7,2)"),
+                _DIALECT.make_table_column("item_sk", "INTEGER"),
+                _DIALECT.make_table_column("order_number", "BIGINT"),
             ],
             canonicalize_names(column_names),
-            _DIALECT,
         )
         result = detect_unique_key_combinations(
             column_names, sample_rows, penalties=penalties
@@ -902,9 +900,11 @@ class TestGrainCandidateRanking:
         sample_rows = [(1, 5000), (2, 6000)]
         penalties = _grain_penalties(
             "call_center",
-            [("call_center_sk", "INTEGER"), ("sq_ft", "INTEGER")],
+            [
+                _DIALECT.make_table_column("call_center_sk", "INTEGER"),
+                _DIALECT.make_table_column("sq_ft", "INTEGER"),
+            ],
             canonicalize_names(column_names),
-            _DIALECT,
         )
         result = detect_unique_key_combinations(
             column_names, sample_rows, penalties=penalties
@@ -1213,13 +1213,13 @@ class TestProcessColumn:
 
     def test_basic_column_processing(self):
         """Test basic column processing with simple types."""
-        col = ("user_id", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("user_id", "INTEGER", False)
         grain_components = ["user_id"]
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Check concept
@@ -1239,13 +1239,13 @@ class TestProcessColumn:
 
     def test_property_column(self):
         """Test column that is not in grain (property)."""
-        col = ("first_name", "VARCHAR(100)", "YES", None)
+        col = _DIALECT.make_table_column("first_name", "VARCHAR(100)", True)
         grain_components = ["user_id"]
         sample_rows = []
         concept_mapping = _make_concept_mapping(["first_name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be a property, not a key
@@ -1254,13 +1254,13 @@ class TestProcessColumn:
 
     def test_nullable_column_from_schema(self):
         """Test nullable column detection from schema."""
-        col = ("email", "VARCHAR(255)", "YES", None)
+        col = _DIALECT.make_table_column("email", "VARCHAR(255)", True)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be nullable based on schema
@@ -1269,13 +1269,13 @@ class TestProcessColumn:
 
     def test_non_nullable_column_from_schema(self):
         """Test non-nullable column detection from schema."""
-        col = ("id", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("id", "INTEGER", False)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not be nullable
@@ -1284,13 +1284,13 @@ class TestProcessColumn:
 
     def test_nullable_from_sample_data(self):
         """Test nullable detection from sample data."""
-        col = ("name", "VARCHAR(100)", "NO", None)
+        col = _DIALECT.make_table_column("name", "VARCHAR(100)", False)
         grain_components = []
         sample_rows = [("Alice",), (None,), ("Bob",)]
         concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be nullable based on sample data, overriding schema
@@ -1298,13 +1298,13 @@ class TestProcessColumn:
 
     def test_non_nullable_from_sample_data(self):
         """Test non-nullable detection from sample data."""
-        col = ("name", "VARCHAR(100)", "YES", None)
+        col = _DIALECT.make_table_column("name", "VARCHAR(100)", True)
         grain_components = []
         sample_rows = [("Alice",), ("Bob",), ("Charlie",)]
         concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not be nullable based on sample data, overriding schema
@@ -1312,13 +1312,15 @@ class TestProcessColumn:
 
     def test_column_with_comment(self):
         """Test column with a comment creates metadata."""
-        col = ("user_id", "INTEGER", "NO", "Unique identifier for the user")
+        col = _DIALECT.make_table_column(
+            "user_id", "INTEGER", False, "Unique identifier for the user"
+        )
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should have metadata with description
@@ -1327,13 +1329,13 @@ class TestProcessColumn:
 
     def test_column_with_empty_comment(self):
         """Test column with empty/whitespace comment doesn't create metadata description."""
-        col = ("user_id", "INTEGER", "NO", "   ")
+        col = _DIALECT.make_table_column("user_id", "INTEGER", False, "   ")
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not have description for whitespace comment
@@ -1341,13 +1343,13 @@ class TestProcessColumn:
 
     def test_rich_type_detection_email(self):
         """Test rich type detection for email."""
-        col = ("user_email", "VARCHAR(255)", "YES", None)
+        col = _DIALECT.make_table_column("user_email", "VARCHAR(255)", True)
         grain_components = []
         sample_rows = [("a@x.com",), ("b@y.org",)]
         concept_mapping = _make_concept_mapping(["user_email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should detect email rich type
@@ -1357,13 +1359,13 @@ class TestProcessColumn:
 
     def test_rich_type_detection_latitude(self):
         """Test rich type detection for latitude."""
-        col = ("location_lat", "FLOAT", "YES", None)
+        col = _DIALECT.make_table_column("location_lat", "FLOAT", True)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["location_lat"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should detect latitude rich type
@@ -1373,13 +1375,13 @@ class TestProcessColumn:
 
     def test_snake_case_normalization(self):
         """Test that column names are normalized to snake_case."""
-        col = ("UserFirstName", "VARCHAR(100)", "YES", None)
+        col = _DIALECT.make_table_column("UserFirstName", "VARCHAR(100)", True)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["UserFirstName"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name should be snake_case
@@ -1389,13 +1391,13 @@ class TestProcessColumn:
 
     def test_column_alias_preserves_original_name(self):
         """Test that column assignment alias preserves original column name."""
-        col = ("User-ID", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("User-ID", "INTEGER", False)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["User-ID"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name is normalized
@@ -1405,13 +1407,13 @@ class TestProcessColumn:
 
     def test_minimal_column_tuple(self):
         """Test processing column with minimal information (no nullable/comment)."""
-        col = ("id", "INT")
+        col = _DIALECT.make_table_column("id", "INT")
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should default to nullable when not specified
@@ -1420,13 +1422,11 @@ class TestProcessColumn:
 
     def test_enum_type_applied(self):
         """A precomputed enum is applied as the column datatype."""
-        col = ("status", "VARCHAR", "NO", None)
+        col = _DIALECT.make_table_column("status", "VARCHAR", False)
         concept_mapping = _make_concept_mapping(["status"])
         enum = EnumType(type=DataType.STRING, values=["closed", "open"])
 
-        concept, _, rich_import = _process_column(
-            0, col, [], [], concept_mapping, _DIALECT, enum
-        )
+        concept, _, rich_import = _process_column(0, col, [], [], concept_mapping, enum)
 
         assert concept.datatype is enum
         assert rich_import is None
@@ -1434,13 +1434,11 @@ class TestProcessColumn:
     def test_enum_combined_with_rich_type(self):
         """A column that is both enum-constrained and a rich type whose values
         confirm it gets a trait wrapping the enum, plus the trait's import."""
-        col = ("user_email", "VARCHAR", "NO", None)
+        col = _DIALECT.make_table_column("user_email", "VARCHAR", False)
         concept_mapping = _make_concept_mapping(["user_email"])
         enum = EnumType(type=DataType.STRING, values=["a@x.com", "b@y.com"])
 
-        concept, _, rich_import = _process_column(
-            0, col, [], [], concept_mapping, _DIALECT, enum
-        )
+        concept, _, rich_import = _process_column(0, col, [], [], concept_mapping, enum)
 
         assert isinstance(concept.datatype, TraitDataType)
         assert isinstance(concept.datatype.type, EnumType)
@@ -1451,13 +1449,11 @@ class TestProcessColumn:
     def test_enum_named_like_rich_type_but_values_dont_match(self):
         """A Y/N flag named 'channel_email' is an enum only — the value gate
         keeps it from being misclassified as an email address."""
-        col = ("channel_email", "VARCHAR", "NO", None)
+        col = _DIALECT.make_table_column("channel_email", "VARCHAR", False)
         concept_mapping = _make_concept_mapping(["channel_email"])
         enum = EnumType(type=DataType.STRING, values=["N", "Y"])
 
-        concept, _, rich_import = _process_column(
-            0, col, [], [], concept_mapping, _DIALECT, enum
-        )
+        concept, _, rich_import = _process_column(0, col, [], [], concept_mapping, enum)
 
         assert concept.datatype is enum
         assert rich_import is None
@@ -1576,13 +1572,13 @@ class TestProcessColumnWithPrefixStripping:
 
     def test_column_with_prefix_mapping(self):
         """Test that prefix mapping is applied to concept names."""
-        col = ("ss_sold_date_sk", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("ss_sold_date_sk", "INTEGER", False)
         grain_components = []
         sample_rows = []
         prefix_mapping = {"ss_sold_date_sk": "sold_date_sk"}
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, prefix_mapping, _DIALECT
+            0, col, grain_components, sample_rows, prefix_mapping
         )
 
         # Concept name should have prefix stripped
@@ -1592,13 +1588,13 @@ class TestProcessColumnWithPrefixStripping:
 
     def test_column_without_prefix_mapping(self):
         """Test that columns work without prefix mapping."""
-        col = ("user_id", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("user_id", "INTEGER", False)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name should be normalized without stripping
@@ -1607,13 +1603,13 @@ class TestProcessColumnWithPrefixStripping:
 
     def test_column_with_empty_prefix_mapping(self):
         """Test column with empty prefix mapping dict."""
-        col = ("user_id", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("user_id", "INTEGER", False)
         grain_components = []
         sample_rows = []
         prefix_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, prefix_mapping, _DIALECT
+            0, col, grain_components, sample_rows, prefix_mapping
         )
 
         # Should work normally
