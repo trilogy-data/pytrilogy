@@ -7,8 +7,15 @@ from trilogy import Environment
 from trilogy.ai import Provider, text_to_query
 from trilogy.authoring import (
     AggregateWrapper,
+    Comparison,
+    ComparisonOperator,
+    ConceptRef,
+    Conditional,
+    Function,
     FunctionType,
+    Parenthetical,
     SelectStatement,
+    WhereClause,
 )
 
 env_path = Path(__file__).parent.parent / "modeling" / "faa"
@@ -19,17 +26,63 @@ ANTHROPIC_LATEST_MODEL = "claude-sonnet-4-6"
 OPENROUTER_LATEST_MODEL = "anthropic/claude-sonnet-4-6"
 
 
+def _iter_comparisons(node):
+    if isinstance(node, WhereClause):
+        yield from _iter_comparisons(node.conditional)
+    elif isinstance(node, Comparison):
+        yield node
+        yield from _iter_comparisons(node.left)
+        yield from _iter_comparisons(node.right)
+    elif isinstance(node, Conditional):
+        yield from _iter_comparisons(node.left)
+        yield from _iter_comparisons(node.right)
+    elif isinstance(node, Parenthetical):
+        yield from _iter_comparisons(node.content)
+
+
+def _extracts_year_of(node, env: Environment, address: str) -> bool:
+    """True if node computes year(address), inline or via an auto-derived concept."""
+    if isinstance(node, ConceptRef):
+        concept = env.concepts.get(node.address)
+        if concept is not None and concept.lineage is not None:
+            return _extracts_year_of(concept.lineage, env, address)
+        return False
+    if isinstance(node, Function):
+        if node.operator == FunctionType.YEAR:
+            return node.arguments[0] == address
+        if node.operator == FunctionType.DATE_PART and len(node.arguments) >= 2:
+            part = getattr(node.arguments[1], "value", str(node.arguments[1])).lower()
+            return part == "year" and node.arguments[0] == address
+    return False
+
+
+def _has_year_equals(
+    where: WhereClause, env: Environment, address: str, value: int
+) -> bool:
+    """Logical-equivalence check: a `year(address) = value` comparison exists."""
+    for comp in _iter_comparisons(where):
+        if comp.operator != ComparisonOperator.EQ:
+            continue
+        for operand, other in ((comp.left, comp.right), (comp.right, comp.left)):
+            if (
+                isinstance(other, int)
+                and not isinstance(other, bool)
+                and other == value
+                and _extracts_year_of(operand, env, address)
+            ):
+                return True
+    return False
+
+
 def validate_response(response: str, parsed: SelectStatement, env: Environment):
-    assert (
-        "dep_time.year = 2020" in response
-        or "year(local.dep_time) = 2020" in response
-        or "year(dep_time) = 2020" in response
-        or "date_part(local.dep_time, year) = 2020" in response
-    ), response
+    assert parsed.where_clause is not None, f"Expected a where clause, got {response}"
+    assert _has_year_equals(
+        parsed.where_clause, env, env.concepts["local.dep_time"].address, 2020
+    ), f"Expected a year(local.dep_time) = 2020 filter, got {response}"
 
     found_count = False
     for x in parsed.output_components:
-        full = env.concepts[x]
+        full = env.concepts[x.address]
         if not isinstance(full.lineage, AggregateWrapper):
             continue
         flin = full.lineage.function
