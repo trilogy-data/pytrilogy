@@ -173,10 +173,11 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         "acting; pass this to A/B the old forced-tool behavior.",
     )
     parser.add_argument(
-        "--disable-todo",
+        "--enable-todo",
         action="store_true",
-        help="drop the todo tool from the Trilogy agent's toolbox (no effect on "
-        "the SQL toolset, which has no todo). A/B knob for short tasks.",
+        help="re-enable the todo tool for the Trilogy agent. The eval defaults "
+        "todo OFF (fewer tools/less context for short single-query tasks; no "
+        "effect on the SQL toolset, which has no todo). Pass this to A/B it.",
     )
     return parser
 
@@ -453,7 +454,7 @@ def run(spec: BenchmarkSpec) -> int:
         # agent should explore the model, not list raw DB tables. (No effect on
         # the SQL legs, which don't use the trilogy tool.)
         allow_database_introspection=False,
-        disable_todo=args.disable_todo,
+        disable_todo=not args.enable_todo,
     )
     if args.query_ids:
         wanted = {int(x.strip()) for x in args.query_ids.split(",") if x.strip()}

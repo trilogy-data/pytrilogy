@@ -47,7 +47,8 @@ properties <order_number, item.id> (
     row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.id combination).
 );
 
-auto line_item_count <- sum(row_counter); # Count of catalog-sale line items (unique order_number + item.id combinations); use this to count lines, not count(order_number).
+auto line_item <- concat(order_number::string, '-', item.id::string); # Unique line-item identifier (one catalog order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
+auto line_item_count <- sum(row_counter); # Number of catalog-sale line items (= count(line_item)); kept for queries that reference it.
 auto profit <- list_price - wholesale_cost - discount_amount + ext_sales_price; # Derived per-line profit.
 
 datasource catalog_sales (

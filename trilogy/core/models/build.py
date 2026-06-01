@@ -633,9 +633,9 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
 
     @property
     def row_arguments(self) -> Sequence[BuildConcept]:
-        if isinstance(self.content, BuildConceptArgs):
-            return self.content.row_arguments
-        return self.concept_arguments
+        # a BuildConcept content is itself a row argument, not its expanded
+        # lineage (mirrors concept_arguments)
+        return get_concept_row_arguments(self.content)
 
     @property
     def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:

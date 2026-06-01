@@ -46,7 +46,8 @@ properties <ticket_number, item.id> (
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line profit.
 
-auto line_item_count<- sum(row_counter); # Measure for unique ticket/item.id combos sold
+auto line_item <- concat(ticket_number::string, '-', item.id::string); # Unique line-item identifier (one ticket + item). Count line items with count(line_item); do NOT use count(ticket_number), a receipt key that dedups and undercounts multi-item tickets.
+auto line_item_count<- sum(row_counter); # Number of line items (= count(line_item)); kept for queries that reference it.
 
 datasource store_sales (
     raw('''1'''): row_counter,
