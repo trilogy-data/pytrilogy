@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildFilterItem,
+    BuildGrain,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -615,11 +616,28 @@ def _assemble_final_node(
         for o in p.output_concepts:
             available.add(o.address)
     outputs = [c for c in mandatory_list if c.address in available]
+    # The merge grain is defined by its grouping (aggregate/window) contributors.
+    # A non-grouping dimension contributor only supplies FD attributes; if it
+    # sits at a finer (row-level) grain it must not widen the merge grain, or it
+    # fans the aggregate out (e.g. q81: customer-dims joined through
+    # catalog_returns lands at returns grain). Pinning the grain lets the merge's
+    # force_group collapse back to the aggregate grain. Left None when there is
+    # no grouping contributor, so plain row merges keep their current behavior.
+    grouping_grain_components: set[str] = set()
+    for gid in contributing:
+        if attrs[gid].derivation in GROUPING_DERIVATIONS:
+            grouping_grain_components |= set(attrs[gid].grain_components)
+    merge_grain = (
+        BuildGrain.from_concepts(grouping_grain_components, environment=environment)
+        if grouping_grain_components
+        else None
+    )
     return MergeNode(
         input_concepts=outputs,
         output_concepts=outputs,
         environment=environment,
         parents=parents,
+        grain=merge_grain,
         conditions=final_conditions.conditional if final_conditions else None,
     )
 

@@ -12,7 +12,26 @@ queries still mismatching are **q81** and **q77** (deliberately left OUT of
 Inspect either: `python local_scripts/discovery_v4_compare.py --query 81`
 then read `local_scripts/v4_compare/query81.md` (v4 SQL vs reference SQL + diff).
 
-## q81 — STATUS: join-type half FIXED; grain fan-out remains
+## q81 — STATUS: FIXED (100/100, added to test_set.txt)
+
+**Done (grain fan-out):** The FINAL `MergeNode` was built with no `grain`, so it
+defaulted to `raw_pregrain` (union of contributor grains) and adopted the dims
+contributor's `catalog_returns` row grain — never force-grouping, so the
+returns-grain dims fanned the aggregate out (3 dupes). The address-dims
+contributor is `filter`-derived at `(item.id, order_number)`; `_wrap_for_grain`
+only projects `root` contributors, and even if widened it buckets by each
+concept's *declared* grain (`{address.id}`) which can't dedup (address is
+FK-determined by customer, not vice-versa). Fix: `_assemble_final_node` now pins
+the merge `grain` to the union of its **grouping** (aggregate/window)
+contributors' grain (`(customer.id, return_state)` here); the non-grouping dims
+contributor no longer widens it, and the merge's existing `force_group` collapses
+the fan-out. `grain=None` when there is no grouping contributor, so plain row
+merges are unchanged.
+  - `trilogy/core/processing/v4_helper/strategy_builder.py::_assemble_final_node`.
+  - Validated: v4 `--test-set` 98/98 (q81 added to `test_set.txt`); v3
+    `test_queries.py` + `core/processing` 326 passed; ruff/mypy/black clean.
+
+### Earlier this session — join-type half (committed `4a982d45`)
 
 **Done (join type):** The FINAL merge now resolves all-INNER (was FULL). Root
 cause was NOT `billing_customer.id` — it was `cr.return_address.state` (intrinsic
