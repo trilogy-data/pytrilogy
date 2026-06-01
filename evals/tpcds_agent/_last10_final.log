@@ -1,0 +1,357 @@
+[both-modes] spawning two parallel runs:
+   base     → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260531-151859_base
+   enriched → C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260531-151859_enriched  (model dir: C:\Users\ethan\coding_projects\pytrilogy_two\tests\modeling\tpc_ds_duckdb)
+[enriched] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[enriched] [2/5] Seeding raw/ from enriched model dir C:\Users\ethan\coding_projects\pytrilogy_two\tests\modeling\tpc_ds_duckdb ...
+[enriched] [3/5] Running agent per query (10 queries, fresh context each, concurrency=5) — deepseek/deepseek-chat ...
+[enriched]   [q90] starting (worker _worker_4)
+[enriched]   [q91] starting (worker _worker_3)
+[enriched]   [q92] starting (worker _worker_2)
+[enriched]   [q93] starting (worker _worker_1)
+[enriched]   [q94] starting (worker _worker_0)
+[base] [1/5] Building TPC-DS DuckDB (sf=1) ...
+[base] [2/5] Pre-ingesting model with `trilogy ingest --all` ...
+[base] [3/5] Running agent per query (10 queries, fresh context each, concurrency=5) — deepseek/deepseek-chat ...
+[base]   [q90] starting (worker _worker_4)
+[base]   [q91] starting (worker _worker_3)
+[base]   [q92] starting (worker _worker_2)
+[base]   [q93] starting (worker _worker_1)
+[base]   [q94] starting (worker _worker_0)
+[enriched]   [q90] done in 25s (exit 0, score=fail)
+[enriched]   [q95] starting (worker _worker_4)
+[base]   [q92] done in 35s (exit 0, score=pass)
+[base]   [q95] starting (worker _worker_2)
+[base]   [q94] done in 38s (exit 0, score=pass)
+[base]   [q96] starting (worker _worker_0)
+[enriched]   [q92] done in 59s (exit 0, score=pass)
+[enriched]   [q96] starting (worker _worker_2)
+[enriched]   [q91] done in 62s (exit 0, score=pass)
+[enriched]   [q97] starting (worker _worker_3)
+[base]   [q91] done in 49s (exit 0, score=pass)
+[base]   [q97] starting (worker _worker_3)
+[base]   [q90] done in 54s (exit 0, score=fail)
+[base]   [q98] starting (worker _worker_4)
+[enriched]   [q95] done in 56s (exit 0, score=fail)
+[enriched]   [q98] starting (worker _worker_4)
+[base]   [q96] done in 30s (exit 0, score=fail)
+[base]   [q99] starting (worker _worker_0)
+[enriched]   [q96] done in 30s (exit 0, score=fail)
+[enriched]   [q99] starting (worker _worker_2)
+[base]   [q95] done in 45s (exit 0, score=pass)
+[enriched]   [q93] done in 108s (exit 0, score=fail)
+[base]   [q98] done in 39s (exit 0, score=fail)
+[base]   [q99] done in 39s (exit 0, score=fail)
+[enriched]   [q98] done in 44s (exit 0, score=fail)
+[enriched]   [q99] done in 45s (exit 0, score=pass)
+[base]   [q93] done in 123s (exit 0, score=fail)
+[base]   [q97] done in 107s (exit 0, score=pass)
+[base] [4/5] Finalising scores for 10 queries ...
+[base]   spliced 87 prior results from 20260531-150714_enriched
+[base]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard.png  (8 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures.md)
+[base] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260531-151859_base
+[base] 
+[base] # TPC-DS Agent Eval — 20260531-151900
+[base] 
+[base] - Model: `deepseek/deepseek-chat`
+[base] - Scale factor: 1  |  Queries: 97  |  Trilogy: 0.3.275
+[base] 
+[base] ## Result
+[base] 
+[base] - **Pass rate: 31/97** (32%)
+[base] - Status breakdown: {'pass': 31, 'fail': 62, 'exhausted': 2, 'timeout': 2}
+[base] - Wall time: 158.1s  |  Agent time: 559.3s  |  Avg/query: 55.9s
+[base] - Agent exit code: 0
+[base] 
+[base] ## Agent harness metrics
+[base] 
+[base] - LLM iterations: 127
+[base] - Tool calls: 153  →  {'trilogy': 127, 'list_files': 10, 'return_control_to_user': 10, 'todo': 6}
+[base] - `trilogy` subcommands: {'agent-info': 10, 'explore': 48, 'file': 35, 'run': 33, 'database': 1}
+[base] - Tool success rate: 95% (145/153 ok)
+[base] - Tokens: 2690345 total (2661548 prompt + 28797 completion)
+[base] 
+[base] ## Tool-output sizes
+[base] 
+[base] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[base] |---|---:|---:|---:|---:|---:|
+[base] | `trilogy` | 127 | 5027 | 32812 | 16 | 13% |
+[base] | `list_files` | 10 | 1555 | 1576 | 0 | 0% |
+[base] | `return_control_to_user` | 10 | 26 | 26 | 0 | 0% |
+[base] | `todo` | 6 | 126 | 169 | 0 | 0% |
+[base] 
+[base] - Repeated calls (same args seen earlier in same query): {'trilogy': 16} — total 16
+[base] 
+[base] ## Per-query
+[base] 
+[base] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[base] |------:|:-------|---------:|----------:|--------:|:-------|
+[base] | 01 | pass | 100 | 100 | 2052 |  |
+[base] | 02 | fail | 53 | 53 | 5190 | result set differs from reference |
+[base] | 03 | pass | 89 | 89 | 894 |  |
+[base] | 04 | pass | 6 | 6 | 8338 |  |
+[base] | 05 | fail | 100 | 100 | 5569 | result set differs from reference |
+[base] | 06 | fail | 46 | 45 | 2246 | result set differs from reference |
+[base] | 07 | pass | 100 | 100 | 1322 |  |
+[base] | 08 | exhausted | 0 | 0 | 0 | agent exhausted iterations (was: error) — generate_sql: InvalidSyntaxException:  |
+[base] | 09 | fail | 1 | 1 | 4444 | result set differs from reference |
+[base] | 10 | fail | 6 | 34 | 5658 | result set differs from reference |
+[base] | 11 | pass | 90 | 90 | 3386 |  |
+[base] | 12 | fail | 100 | 100 | 2756 | result set differs from reference |
+[base] | 13 | fail | 1 | 1 | 3192 | result set differs from reference |
+[base] | 14 | fail | 100 | 100 | 6375 | result set differs from reference |
+[base] | 15 | pass | 100 | 100 | 1284 |  |
+[base] | 16 | pass | 1 | 1 | 4631 |  |
+[base] | 17 | fail | 0 | 5 | 6723 | result set differs from reference |
+[base] | 18 | fail | 100 | 100 | 4249 | result set differs from reference |
+[base] | 19 | pass | 100 | 100 | 1693 |  |
+[base] | 20 | fail | 100 | 100 | 3450 | result set differs from reference |
+[base] | 21 | fail | 100 | 100 | 1361 | result set differs from reference |
+[base] | 22 | pass | 100 | 100 | 1482 |  |
+[base] | 23 | fail | 4 | 100 | 8492 | result set differs from reference |
+[base] | 25 | pass | 1 | 1 | 5758 |  |
+[base] | 26 | pass | 100 | 100 | 1667 |  |
+[base] | 27 | fail | 100 | 100 | 2246 | result set differs from reference |
+[base] | 28 | pass | 1 | 1 | 6072 |  |
+[base] | 29 | fail | 1 | 1 | 5072 | result set differs from reference |
+[base] | 30 | fail | 100 | 100 | 7112 | result set differs from reference |
+[base] | 31 | pass | 44 | 44 | 7067 |  |
+[base] | 32 | pass | 1 | 1 | 1608 |  |
+[base] | 33 | pass | 100 | 100 | 3316 |  |
+[base] | 34 | fail | 455 | 200 | 3670 | result set differs from reference |
+[base] | 35 | fail | 100 | 100 | 10048 | result set differs from reference |
+[base] | 36 | fail | 100 | 100 | 4098 | result set differs from reference |
+[base] | 37 | pass | 1 | 1 | 2914 |  |
+[base] | 38 | fail | 1 | 1 | 3014 | result set differs from reference |
+[base] | 39 | fail | 243 | 100 | 2676 | result set differs from reference |
+[base] | 40 | fail | 100 | 100 | 1430 | result set differs from reference |
+[base] | 41 | pass | 100 | 100 | 1779 |  |
+[base] | 42 | pass | 10 | 10 | 780 |  |
+[base] | 43 | pass | 6 | 6 | 1819 |  |
+[base] | 44 | exhausted | 10 | 0 | 4631 | agent exhausted iterations (was: fail) — result set differs from reference |
+[base] | 45 | fail | 19 | 19 | 1888 | result set differs from reference |
+[base] | 46 | pass | 100 | 100 | 2568 |  |
+[base] | 47 | fail | 100 | 100 | 5633 | result set differs from reference |
+[base] | 48 | fail | 1 | 1 | 2156 | result set differs from reference |
+[base] | 49 | pass | 34 | 34 | 5375 |  |
+[base] | 50 | fail | 6 | 100 | 31429 | result set differs from reference |
+[base] | 51 | fail | 100 | 100 | 2998 | result set differs from reference |
+[base] | 52 | pass | 100 | 100 | 878 |  |
+[base] | 53 | fail | 100 | 100 | 1929 | result set differs from reference |
+[base] | 54 | fail | 1 | 1 | 5057 | result set differs from reference |
+[base] | 55 | pass | 100 | 100 | 832 |  |
+[base] | 56 | fail | 100 | 100 | 4160 | result set differs from reference |
+[base] | 57 | fail | 100 | 100 | 4512 | result set differs from reference |
+[base] | 58 | fail | 5 | 5 | 4303 | result set differs from reference |
+[base] | 59 | fail | 100 | 100 | 10714 | result set differs from reference |
+[base] | 60 | fail | 100 | 100 | 4927 | result set differs from reference |
+[base] | 61 | pass | 1 | 1 | 4013 |  |
+[base] | 62 | fail | 100 | 100 | 5790 | result set differs from reference |
+[base] | 63 | fail | 100 | 100 | 1842 | result set differs from reference |
+[base] | 64 | fail | 2 | 8 | 15666 | result set differs from reference |
+[base] | 65 | fail | 100 | 100 | 2502 | result set differs from reference |
+[base] | 66 | timeout | 5 | 5 | 21336 | agent timed out (was: fail) — result set differs from reference |
+[base] | 67 | fail | 100 | 100 | 7029 | result set differs from reference |
+[base] | 68 | fail | 100 | 100 | 5915 | result set differs from reference |
+[base] | 69 | fail | 100 | 100 | 5625 | result set differs from reference |
+[base] | 70 | fail | 3 | 6 | 4434 | result set differs from reference |
+[base] | 71 | fail | 1031 | 100 | 3638 | result set differs from reference |
+[base] | 72 | fail | 100 | 100 | 3704 | result set differs from reference |
+[base] | 73 | fail | 1 | 9 | 4911 | result set differs from reference |
+[base] | 74 | pass | 92 | 92 | 2430 |  |
+[base] | 75 | fail | 100 | 100 | 6426 | result set differs from reference |
+[base] | 76 | timeout | 100 | 100 | 4320 | agent timed out (was: fail) — result set differs from reference |
+[base] | 77 | fail | 44 | 100 | 4945 | result set differs from reference |
+[base] | 78 | fail | 100 | 100 | 5566 | result set differs from reference |
+[base] | 79 | fail | 100 | 100 | 1764 | result set differs from reference |
+[base] | 80 | fail | 100 | 100 | 7398 | result set differs from reference |
+[base] | 81 | fail | 100 | 100 | 10925 | result set differs from reference |
+[base] | 82 | pass | 2 | 2 | 1236 |  |
+[base] | 83 | fail | 24 | 23 | 5172 | result set differs from reference |
+[base] | 84 | fail | 16 | 100 | 1482 | result set differs from reference |
+[base] | 85 | fail | 1 | 0 | 3867 | result set differs from reference |
+[base] | 86 | fail | 100 | 100 | 3337 | result set differs from reference |
+[base] | 87 | fail | 1 | 1 | 3489 | result set differs from reference |
+[base] | 89 | fail | 100 | 100 | 3599 | result set differs from reference |
+[base] | 90 | fail | 1 | 1 | 1998 | result set differs from reference |
+[base] | 91 | pass | 2 | 2 | 3963 |  |
+[base] | 92 | pass | 1 | 1 | 1245 |  |
+[base] | 93 | fail | 100 | 100 | 1055 | result set differs from reference |
+[base] | 94 | pass | 1 | 1 | 5120 |  |
+[base] | 95 | pass | 1 | 1 | 4317 |  |
+[base] | 96 | fail | 1 | 1 | 1687 | result set differs from reference |
+[base] | 97 | pass | 1 | 1 | 4305 |  |
+[base] | 98 | fail | 2521 | 2521 | 2739 | result set differs from reference |
+[base] | 99 | fail | 90 | 90 | 4799 | result set differs from reference |
+[base] 
+[base] ## Agent final message
+[base] 
+[base] > Query written to `query99.preql` and validated successfully. The query:
+[base] > 
+[base] > 1. **Imports** `raw.catalog_sales` as the main fact.
+[base] > 2. **Filters** for ship_date year = 2000, plus requiring all three `warehouse`, `ship_mode`, and `call_center` foreign keys to be non-null.
+[base] > 3. **Computes shipping lag** as `date_diff(ship_date.date, sold_date.date, day)`.
+[base] > 4. **Buckets** the count of line items (`order_number` is the key grain along with `item.item_sk`) into 5 conditional count columns using the `?` inline filter syntax.
+[base] > 5. **Groups by** `substring(warehouse_name, 1, 20)`, `ship_mode.type`, and `lower(call_center.name)`.
+[base] > 6. **Orders** by those three grouping columns with nulls first.
+[base] > 7. **Limits** to 100 rows.
+[base] > 
+[base] > All 90 rows executed successfully (280ms). The data shows all lag falling in the ≤30 days bucket, which is typical for TPC-DS sampled data.
+[base] 
+[enriched]   [q94] done in 217s (exit 0, score=pass)
+[enriched]   [q97] done in 158s (exit 0, score=fail)
+[enriched] [4/5] Finalising scores for 10 queries ...
+[enriched]   spliced 87 prior results from 20260531-151859_base
+[enriched]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched.png  (25 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[enriched] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260531-151859_enriched
+[enriched] 
+[enriched] # TPC-DS Agent Eval — 20260531-151900
+[enriched] 
+[enriched] - Model: `deepseek/deepseek-chat`
+[enriched] - Scale factor: 1  |  Queries: 97  |  Trilogy: 0.3.275
+[enriched] 
+[enriched] ## Result
+[enriched] 
+[enriched] - **Pass rate: 30/97** (31%)
+[enriched] - Status breakdown: {'pass': 30, 'fail': 63, 'exhausted': 2, 'timeout': 2}
+[enriched] - Wall time: 221.2s  |  Agent time: 802.5s  |  Avg/query: 80.3s
+[enriched] - Agent exit code: 0
+[enriched] 
+[enriched] ## Agent harness metrics
+[enriched] 
+[enriched] - LLM iterations: 175
+[enriched] - Tool calls: 206  →  {'trilogy': 181, 'list_files': 11, 'return_control_to_user': 12, 'todo': 2}
+[enriched] - `trilogy` subcommands: {'agent-info': 10, 'explore': 50, 'file': 75, 'run': 44, 'database': 2}
+[enriched] - Tool success rate: 88% (181/206 ok)
+[enriched] - Tokens: 5931024 total (5889971 prompt + 41053 completion)
+[enriched] 
+[enriched] ## Tool-output sizes
+[enriched] 
+[enriched] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[enriched] |---|---:|---:|---:|---:|---:|
+[enriched] | `trilogy` | 181 | 5034 | 32812 | 19 | 10% |
+[enriched] | `return_control_to_user` | 12 | 26 | 26 | 0 | 0% |
+[enriched] | `list_files` | 11 | 5130 | 5697 | 0 | 0% |
+[enriched] | `todo` | 2 | 95 | 97 | 0 | 0% |
+[enriched] 
+[enriched] - Repeated calls (same args seen earlier in same query): {'trilogy': 34} — total 34
+[enriched] 
+[enriched] ## Per-query
+[enriched] 
+[enriched] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[enriched] |------:|:-------|---------:|----------:|--------:|:-------|
+[enriched] | 01 | pass | 100 | 100 | 2052 |  |
+[enriched] | 02 | fail | 53 | 53 | 5190 | result set differs from reference |
+[enriched] | 03 | pass | 89 | 89 | 894 |  |
+[enriched] | 04 | pass | 6 | 6 | 8338 |  |
+[enriched] | 05 | fail | 100 | 100 | 5569 | result set differs from reference |
+[enriched] | 06 | fail | 46 | 45 | 2246 | result set differs from reference |
+[enriched] | 07 | pass | 100 | 100 | 1322 |  |
+[enriched] | 08 | exhausted | 0 | 0 | 0 | agent exhausted iterations (was: error) — generate_sql: InvalidSyntaxException:  |
+[enriched] | 09 | fail | 1 | 1 | 4444 | result set differs from reference |
+[enriched] | 10 | fail | 6 | 34 | 5658 | result set differs from reference |
+[enriched] | 11 | pass | 90 | 90 | 3386 |  |
+[enriched] | 12 | fail | 100 | 100 | 2756 | result set differs from reference |
+[enriched] | 13 | fail | 1 | 1 | 3192 | result set differs from reference |
+[enriched] | 14 | fail | 100 | 100 | 6375 | result set differs from reference |
+[enriched] | 15 | pass | 100 | 100 | 1284 |  |
+[enriched] | 16 | pass | 1 | 1 | 4631 |  |
+[enriched] | 17 | fail | 0 | 5 | 6723 | result set differs from reference |
+[enriched] | 18 | fail | 100 | 100 | 4249 | result set differs from reference |
+[enriched] | 19 | pass | 100 | 100 | 1693 |  |
+[enriched] | 20 | fail | 100 | 100 | 3450 | result set differs from reference |
+[enriched] | 21 | fail | 100 | 100 | 1361 | result set differs from reference |
+[enriched] | 22 | pass | 100 | 100 | 1482 |  |
+[enriched] | 23 | fail | 4 | 100 | 8492 | result set differs from reference |
+[enriched] | 25 | pass | 1 | 1 | 5758 |  |
+[enriched] | 26 | pass | 100 | 100 | 1667 |  |
+[enriched] | 27 | fail | 100 | 100 | 2246 | result set differs from reference |
+[enriched] | 28 | pass | 1 | 1 | 6072 |  |
+[enriched] | 29 | fail | 1 | 1 | 5072 | result set differs from reference |
+[enriched] | 30 | fail | 100 | 100 | 7112 | result set differs from reference |
+[enriched] | 31 | pass | 44 | 44 | 7067 |  |
+[enriched] | 32 | pass | 1 | 1 | 1608 |  |
+[enriched] | 33 | pass | 100 | 100 | 3316 |  |
+[enriched] | 34 | fail | 455 | 200 | 3670 | result set differs from reference |
+[enriched] | 35 | fail | 100 | 100 | 10048 | result set differs from reference |
+[enriched] | 36 | fail | 100 | 100 | 4098 | result set differs from reference |
+[enriched] | 37 | pass | 1 | 1 | 2914 |  |
+[enriched] | 38 | fail | 1 | 1 | 3014 | result set differs from reference |
+[enriched] | 39 | fail | 243 | 100 | 2676 | result set differs from reference |
+[enriched] | 40 | fail | 100 | 100 | 1430 | result set differs from reference |
+[enriched] | 41 | pass | 100 | 100 | 1779 |  |
+[enriched] | 42 | pass | 10 | 10 | 780 |  |
+[enriched] | 43 | pass | 6 | 6 | 1819 |  |
+[enriched] | 44 | exhausted | 10 | 0 | 4631 | agent exhausted iterations (was: fail) — result set differs from reference |
+[enriched] | 45 | fail | 19 | 19 | 1888 | result set differs from reference |
+[enriched] | 46 | pass | 100 | 100 | 2568 |  |
+[enriched] | 47 | fail | 100 | 100 | 5633 | result set differs from reference |
+[enriched] | 48 | fail | 1 | 1 | 2156 | result set differs from reference |
+[enriched] | 49 | pass | 34 | 34 | 5375 |  |
+[enriched] | 50 | fail | 6 | 100 | 31429 | result set differs from reference |
+[enriched] | 51 | fail | 100 | 100 | 2998 | result set differs from reference |
+[enriched] | 52 | pass | 100 | 100 | 878 |  |
+[enriched] | 53 | fail | 100 | 100 | 1929 | result set differs from reference |
+[enriched] | 54 | fail | 1 | 1 | 5057 | result set differs from reference |
+[enriched] | 55 | pass | 100 | 100 | 832 |  |
+[enriched] | 56 | fail | 100 | 100 | 4160 | result set differs from reference |
+[enriched] | 57 | fail | 100 | 100 | 4512 | result set differs from reference |
+[enriched] | 58 | fail | 5 | 5 | 4303 | result set differs from reference |
+[enriched] | 59 | fail | 100 | 100 | 10714 | result set differs from reference |
+[enriched] | 60 | fail | 100 | 100 | 4927 | result set differs from reference |
+[enriched] | 61 | pass | 1 | 1 | 4013 |  |
+[enriched] | 62 | fail | 100 | 100 | 5790 | result set differs from reference |
+[enriched] | 63 | fail | 100 | 100 | 1842 | result set differs from reference |
+[enriched] | 64 | fail | 2 | 8 | 15666 | result set differs from reference |
+[enriched] | 65 | fail | 100 | 100 | 2502 | result set differs from reference |
+[enriched] | 66 | timeout | 5 | 5 | 21336 | agent timed out (was: fail) — result set differs from reference |
+[enriched] | 67 | fail | 100 | 100 | 7029 | result set differs from reference |
+[enriched] | 68 | fail | 100 | 100 | 5915 | result set differs from reference |
+[enriched] | 69 | fail | 100 | 100 | 5625 | result set differs from reference |
+[enriched] | 70 | fail | 3 | 6 | 4434 | result set differs from reference |
+[enriched] | 71 | fail | 1031 | 100 | 3638 | result set differs from reference |
+[enriched] | 72 | fail | 100 | 100 | 3704 | result set differs from reference |
+[enriched] | 73 | fail | 1 | 9 | 4911 | result set differs from reference |
+[enriched] | 74 | pass | 92 | 92 | 2430 |  |
+[enriched] | 75 | fail | 100 | 100 | 6426 | result set differs from reference |
+[enriched] | 76 | timeout | 100 | 100 | 4320 | agent timed out (was: fail) — result set differs from reference |
+[enriched] | 77 | fail | 44 | 100 | 4945 | result set differs from reference |
+[enriched] | 78 | fail | 100 | 100 | 5566 | result set differs from reference |
+[enriched] | 79 | fail | 100 | 100 | 1764 | result set differs from reference |
+[enriched] | 80 | fail | 100 | 100 | 7398 | result set differs from reference |
+[enriched] | 81 | fail | 100 | 100 | 10925 | result set differs from reference |
+[enriched] | 82 | pass | 2 | 2 | 1236 |  |
+[enriched] | 83 | fail | 24 | 23 | 5172 | result set differs from reference |
+[enriched] | 84 | fail | 16 | 100 | 1482 | result set differs from reference |
+[enriched] | 85 | fail | 1 | 0 | 3867 | result set differs from reference |
+[enriched] | 86 | fail | 100 | 100 | 3337 | result set differs from reference |
+[enriched] | 87 | fail | 1 | 1 | 3489 | result set differs from reference |
+[enriched] | 89 | fail | 100 | 100 | 3599 | result set differs from reference |
+[enriched] | 90 | fail | 1 | 1 | 2083 | result set differs from reference |
+[enriched] | 91 | pass | 2 | 2 | 2328 |  |
+[enriched] | 92 | pass | 1 | 1 | 1525 |  |
+[enriched] | 93 | fail | 100 | 100 | 1237 | result set differs from reference |
+[enriched] | 94 | pass | 1 | 1 | 5205 |  |
+[enriched] | 95 | fail | 1 | 1 | 4334 | result set differs from reference |
+[enriched] | 96 | fail | 1 | 1 | 905 | result set differs from reference |
+[enriched] | 97 | fail | 1 | 1 | 4546 | result set differs from reference |
+[enriched] | 98 | fail | 2521 | 2521 | 3107 | result set differs from reference |
+[enriched] | 99 | pass | 90 | 90 | 2596 |  |
+[enriched] 
+[enriched] ## Agent final message
+[enriched] 
+[enriched] > Created `query99.preql` and validated it with `trilogy run query99.preql` — the query executed successfully (0 exit code, 86ms, 90 rows returned).
+[enriched] > 
+[enriched] > **Query summary:**
+[enriched] > - **Model used:** `raw.catalog_sales` (catalog channel fact at item × order_number grain)
+[enriched] > - **Filter:** `ship_date.year = 2000` AND all three FK-related dimensions must be non-null (`warehouse.id`, `ship_mode.id`, `call_center.id` are all `is not null`)
+[enriched] > - **Derived columns:**
+[enriched] >   - `wh_name_20` — first 20 characters of `warehouse.name`
+[enriched] >   - `ship_mode_type` — the `ship_mode.type` enum (EXPRESS, LIBRARY, NEXT DAY, OVERNIGHT, REGULAR, TWO DAY)
+[enriched] >   - `cc_name_lower` — `lower(call_center.name)`
+[enriched] > - **Five bucket columns** using inline filters: `count(row_counter ? days_to_ship <= 30)`, `between 31 and 60`, `between 61 and 90`, `between 91 and 120`, and `> 120`
+[enriched] > - **Order:** warehouse_name20 → ship_mode_type → call_center_name_lower, all nulls first
+[enriched] > - **Limit:** 100 rows
+[enriched] 
+[both-modes] base leg exit=0
+[both-modes] enriched leg exit=0
+[both-modes] wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_compare.png

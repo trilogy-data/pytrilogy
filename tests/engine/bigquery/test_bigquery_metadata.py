@@ -11,7 +11,7 @@ def test_get_table_schema(bigquery_executor):
     )
 
     assert len(schema) > 0
-    column_names = [col[0] for col in schema]
+    column_names = [col.column_name for col in schema]
     assert "state" in column_names or "name" in column_names
 
 

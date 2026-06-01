@@ -79,7 +79,7 @@ def describe_cmd(ctx: click.Context, table: str, schema: str | None) -> None:
         print_error(f"Table '{table}' not found, or it has no columns.")
         raise click.exceptions.Exit(1)
     for col in columns:
-        name = str(col[0])
-        dtype = str(col[1]) if len(col) > 1 else "?"
-        nullable = str(col[2]) if len(col) > 2 and col[2] else ""
+        name = str(col.column_name)
+        dtype = str(col.raw_db_type)
+        nullable = "YES" if col.is_nullable else "NO"
         click.echo(f"{name}\t{dtype}\t{nullable}")

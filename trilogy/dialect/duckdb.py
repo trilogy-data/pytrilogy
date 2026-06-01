@@ -341,6 +341,10 @@ ORDER BY {% for order in order_by %}
 LIMIT ({{ limit }}){% endif %}{% endif %}
 """)
 
+# Fixed seed for reservoir sampling during ingest introspection, so detected
+# grain (and the generated .preql) is reproducible across runs.
+DUCKDB_SAMPLE_SEED = 42
+
 
 class DuckDBDialect(BaseDialect):
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
@@ -516,3 +520,25 @@ class DuckDBDialect(BaseDialect):
             return [row[0] for row in rows]
 
         return []
+
+    def get_table_sample(
+        self,
+        executor,
+        table_name: str,
+        schema: str | None = None,
+        sample_size: int = 10000,
+    ) -> list[tuple]:
+        """Reservoir-sample rows for introspection instead of a plain LIMIT.
+
+        A ``LIMIT`` returns the first physical rows, which in a clustered table
+        share a leading key value (e.g. all one ``date_sk``) — that hides true
+        grain columns and fakes uniqueness on the rest, so grain detection picks
+        a spurious key. Reservoir sampling spans the whole table; the fixed seed
+        keeps the sample — and thus generated .preql — reproducible across runs.
+        """
+        qualified_name = f"{schema}.{table_name}" if schema else table_name
+        query = (
+            f"SELECT * FROM {self.safe_quote(qualified_name)} "
+            f"USING SAMPLE {sample_size} ROWS (reservoir, {DUCKDB_SAMPLE_SEED})"
+        )
+        return executor.execute_raw_sql(query).fetchall()

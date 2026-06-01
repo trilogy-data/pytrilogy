@@ -1,6 +1,6 @@
 query_id = "86"
-gen_length = 2337
-preql_size = 1273
+gen_length = 2136
+preql_size = 1039
 comp_size = 847
 generated_sql = """
 
@@ -19,45 +19,39 @@ WHERE
 ),
 thoughtful as (
 SELECT
-    \"cheerful\".\"web_sales_item_category\" as \"q86_rolled_r_category\",
-    \"cheerful\".\"web_sales_item_class\" as \"q86_rolled_r_class\",
+    \"cheerful\".\"web_sales_item_category\" as \"web_sales_item_category\",
+    \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
     CASE
 	WHEN grouping(\"cheerful\".\"web_sales_item_class\") = 0 THEN \"cheerful\".\"web_sales_item_category\"
 	ELSE null
-	END as \"q86_rolled_partition_cat\",
-    grouping(\"cheerful\".\"web_sales_item_category\") + grouping(\"cheerful\".\"web_sales_item_class\") as \"q86_rolled_lochierarchy\",
-    sum(\"cheerful\".\"web_sales_net_paid\") as \"q86_rolled_total_sum\"
+	END as \"partition_cat\",
+    grouping(\"cheerful\".\"web_sales_item_category\") + grouping(\"cheerful\".\"web_sales_item_class\") as \"lochierarchy\",
+    sum(\"cheerful\".\"web_sales_net_paid\") as \"total_sum\"
 FROM
     \"cheerful\"
 GROUP BY
     ROLLUP (1, 2)),
 cooperative as (
 SELECT
-    \"thoughtful\".\"q86_rolled_lochierarchy\" as \"q86_rolled_lochierarchy\",
-    \"thoughtful\".\"q86_rolled_r_category\" as \"q86_rolled_r_category\",
-    \"thoughtful\".\"q86_rolled_r_class\" as \"q86_rolled_r_class\",
-    \"thoughtful\".\"q86_rolled_total_sum\" as \"q86_rolled_total_sum\",
-    rank() over (partition by \"thoughtful\".\"q86_rolled_lochierarchy\",\"thoughtful\".\"q86_rolled_partition_cat\" order by \"thoughtful\".\"q86_rolled_total_sum\" desc ) as \"rank_within_parent\"
+    \"thoughtful\".\"lochierarchy\" as \"lochierarchy\",
+    \"thoughtful\".\"total_sum\" as \"total_sum\",
+    \"thoughtful\".\"web_sales_item_category\" as \"web_sales_item_category\",
+    \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
+    rank() over (partition by \"thoughtful\".\"lochierarchy\",\"thoughtful\".\"partition_cat\" order by \"thoughtful\".\"total_sum\" desc ) as \"rank_within_parent\"
 FROM
     \"thoughtful\")
 SELECT
-    \"cooperative\".\"q86_rolled_total_sum\" as \"q86_rolled_total_sum\",
-    \"cooperative\".\"q86_rolled_r_category\" as \"i_category\",
-    \"cooperative\".\"q86_rolled_r_class\" as \"i_class\",
-    \"cooperative\".\"q86_rolled_lochierarchy\" as \"q86_rolled_lochierarchy\",
+    \"cooperative\".\"total_sum\" as \"total_sum\",
+    \"cooperative\".\"web_sales_item_category\" as \"i_category\",
+    \"cooperative\".\"web_sales_item_class\" as \"i_class\",
+    \"cooperative\".\"lochierarchy\" as \"lochierarchy\",
     \"cooperative\".\"rank_within_parent\" as \"rank_within_parent\"
 FROM
     \"cooperative\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5
 ORDER BY 
-    \"cooperative\".\"q86_rolled_lochierarchy\" desc nulls first,
+    \"cooperative\".\"lochierarchy\" desc nulls first,
     CASE
-	WHEN \"cooperative\".\"q86_rolled_lochierarchy\" = 0 THEN \"cooperative\".\"q86_rolled_r_category\"
+	WHEN \"cooperative\".\"lochierarchy\" = 0 THEN \"cooperative\".\"web_sales_item_category\"
 	ELSE null
 	END asc nulls first,
     \"cooperative\".\"rank_within_parent\" asc nulls first

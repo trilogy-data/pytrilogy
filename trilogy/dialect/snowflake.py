@@ -2,7 +2,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, TableColumn
 
 ENV_SNOWFLAKE_PW = "PREQL_SNOWFLAKE_PW"
 ENV_SNOWFLAKE_USER = "PREQL_SNOWFLAKE_USER"
@@ -94,7 +94,7 @@ class SnowflakeDialect(BaseDialect):
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
-    ) -> list[tuple]:
+    ) -> list[TableColumn]:
         """Snowflake stores unquoted identifiers as UPPER and quoted as lowercase.
         Use UPPER() comparison to find tables regardless of how they were created.
         """
@@ -115,7 +115,7 @@ class SnowflakeDialect(BaseDialect):
         column_query += " ORDER BY ordinal_position"
 
         rows = executor.execute_raw_sql(column_query).fetchall()
-        return rows
+        return self._columns_from_info_schema_rows(rows)
 
     # Snowflake information_schema reports internal type names that differ from DDL tokens.
     # e.g. INTEGER/NUMBER → "NUMBER", VARCHAR/TEXT → "TEXT", TIMESTAMP_NTZ → "TIMESTAMP_NTZ".

@@ -10,8 +10,13 @@ from trilogy.core.models.core import EnumType, TraitDataType
 from trilogy.dialect.base import BaseDialect
 from trilogy.scripts.ingest import (
     _check_column_combination_uniqueness,
+    _column_grain_penalty,
+    _grain_penalties,
+    _is_unique_key,
     _process_column,
+    _select_verified_grain,
     canonicalize_names,
+    create_datasource_from_table,
     detect_nullability_from_sample,
     detect_rich_type,
     detect_unique_key_combinations,
@@ -848,6 +853,241 @@ class TestDetectUniqueKeyCombinations:
         assert result == []
 
 
+class TestGrainCandidateRanking:
+    """Penalty-based ranking of equally-unique grain candidates."""
+
+    def test_natural_key_beats_temporal_fk(self):
+        # catalog_returns: (item_sk, order_number) and (time_sk, order_number)
+        # are both unique in-sample; the temporal surrogate must lose.
+        column_names = ["returned_time_sk", "item_sk", "order_number"]
+        sample_rows = [(10, 1, 100), (10, 2, 100), (11, 1, 101)]
+        penalties = _grain_penalties(
+            "catalog_returns",
+            [
+                _DIALECT.make_table_column("returned_time_sk", "INTEGER"),
+                _DIALECT.make_table_column("item_sk", "INTEGER"),
+                _DIALECT.make_table_column("order_number", "BIGINT"),
+            ],
+            canonicalize_names(column_names),
+        )
+        result = detect_unique_key_combinations(
+            column_names, sample_rows, penalties=penalties
+        )
+        assert result[0] == ["item_sk", "order_number"]
+
+    def test_natural_key_beats_decimal_measure(self):
+        # A coincidentally-unique decimal measure must never win the grain.
+        column_names = ["net_paid", "item_sk", "order_number"]
+        sample_rows = [(1.50, 1, 100), (1.50, 2, 100), (2.25, 1, 101)]
+        penalties = _grain_penalties(
+            "catalog_sales",
+            [
+                _DIALECT.make_table_column("net_paid", "DECIMAL(7,2)"),
+                _DIALECT.make_table_column("item_sk", "INTEGER"),
+                _DIALECT.make_table_column("order_number", "BIGINT"),
+            ],
+            canonicalize_names(column_names),
+        )
+        result = detect_unique_key_combinations(
+            column_names, sample_rows, penalties=penalties
+        )
+        assert result[0] == ["item_sk", "order_number"]
+
+    def test_table_identity_key_not_penalized(self):
+        # call_center_sk is the table's own identity, not a foreign key, so it
+        # outranks an unrelated unique column despite the `_sk` suffix.
+        column_names = ["call_center_sk", "sq_ft"]
+        sample_rows = [(1, 5000), (2, 6000)]
+        penalties = _grain_penalties(
+            "call_center",
+            [
+                _DIALECT.make_table_column("call_center_sk", "INTEGER"),
+                _DIALECT.make_table_column("sq_ft", "INTEGER"),
+            ],
+            canonicalize_names(column_names),
+        )
+        result = detect_unique_key_combinations(
+            column_names, sample_rows, penalties=penalties
+        )
+        assert result[0] == ["call_center_sk"]
+
+    def test_penalty_tiers(self):
+        assert _column_grain_penalty("item_sk", DataType.INTEGER, "catalog_returns") > 0
+        assert _column_grain_penalty(
+            "returned_time_sk", DataType.INTEGER, "catalog_returns"
+        ) > _column_grain_penalty("item_sk", DataType.INTEGER, "catalog_returns")
+        assert _column_grain_penalty(
+            "net_paid", DataType.NUMERIC, "catalog_sales"
+        ) > _column_grain_penalty("returned_time_sk", DataType.INTEGER, "catalog_sales")
+        # Table's own identity and an id-named column are both non-positive.
+        assert _column_grain_penalty("item_sk", DataType.INTEGER, "item") == 0
+        assert _column_grain_penalty("id", DataType.STRING, "reason") < 0
+        # Bare key tokens (prefix-stripped) boost equally, so the tie falls to
+        # column order — `reason` stays on `sk`, not `id`.
+        assert _column_grain_penalty(
+            "sk", DataType.INTEGER, "reason"
+        ) == _column_grain_penalty("id", DataType.INTEGER, "reason")
+
+
+class TestGrainVerification:
+    """Full-table uniqueness check that rejects sample-only grain candidates."""
+
+    def _executor(self):
+        from trilogy import Dialects
+        from trilogy.core.models.environment import Environment
+        from trilogy.dialect.config import DuckDBConfig
+
+        return Dialects.DUCK_DB.default_executor(
+            environment=Environment(working_path=Path(".")),
+            conf=DuckDBConfig(path=":memory:"),
+        )
+
+    def test_rejects_sample_only_key_and_picks_real_key(self):
+        eng = self._executor()
+        # (a, b) repeats; only (a, b, c) is unique — the inventory shape.
+        eng.execute_raw_sql(
+            "CREATE TABLE t AS SELECT * FROM "
+            "(VALUES (1, 10, 100), (1, 10, 200), (2, 20, 100)) v(a, b, c)"
+        )
+        assert _is_unique_key(eng, '"t"', ["a", "b"], eng.generator) is False
+        assert _is_unique_key(eng, '"t"', ["a", "b", "c"], eng.generator) is True
+        picked = _select_verified_grain(
+            eng, '"t"', [["a", "b"], ["a", "b", "c"]], eng.generator
+        )
+        assert picked == ["a", "b", "c"]
+
+    def test_all_candidates_fail_returns_none(self):
+        eng = self._executor()
+        eng.execute_raw_sql(
+            "CREATE TABLE t2 AS SELECT * FROM (VALUES (1, 1), (1, 1)) v(a, b)"
+        )
+        picked = _select_verified_grain(
+            eng, '"t2"', [["a"], ["b"], ["a", "b"]], eng.generator
+        )
+        assert picked is None
+
+
+def _duckdb_executor():
+    from trilogy import Dialects
+    from trilogy.core.models.environment import Environment
+    from trilogy.dialect.config import DuckDBConfig
+
+    return Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(".")),
+        conf=DuckDBConfig(path=":memory:"),
+    )
+
+
+def _ingest_grain(setup_sql: str, table: str) -> list[str]:
+    """Build `table` from setup SQL and return its detected grain (sorted)."""
+    eng = _duckdb_executor()
+    eng.execute_raw_sql(setup_sql)
+    datasource, _concepts, _imports = create_datasource_from_table(
+        eng, table, None, root=True
+    )
+    return sorted(datasource.grain.components)
+
+
+class TestGrainSniffingEndToEnd:
+    """Whole-pipeline grain assignment over synthetic tables shaped like the
+    TPC-DS cases that previously misfired. Guards against assignment regressions
+    across sampling, penalty ranking, and full-table verification together."""
+
+    def test_natural_key_beats_temporal_fk(self):
+        # cat_returns: both (item_sk, time_sk) and (item_sk, order_number) are
+        # truly unique; the temporal surrogate must lose to the order number.
+        grain = _ingest_grain(
+            """CREATE TABLE cat_returns (
+                cr_item_sk INTEGER,
+                cr_returned_time_sk INTEGER,
+                cr_order_number BIGINT
+            );
+            INSERT INTO cat_returns VALUES
+                (1, 10, 100), (1, 20, 101), (2, 10, 100), (2, 20, 101);""",
+            "cat_returns",
+        )
+        assert grain == ["item_sk", "order_number"]
+
+    def test_decimal_measure_never_grain(self):
+        # A unique (order_number, net_paid) combo must lose to (item, order).
+        grain = _ingest_grain(
+            """CREATE TABLE cat_sales (
+                cs_item_sk INTEGER,
+                cs_order_number BIGINT,
+                cs_net_paid DECIMAL(7, 2)
+            );
+            INSERT INTO cat_sales VALUES
+                (1, 100, 5.50), (1, 101, 5.50), (2, 100, 7.25), (2, 101, 9.00);""",
+            "cat_sales",
+        )
+        assert grain == ["item_sk", "order_number"]
+
+    def test_periodic_snapshot_composite_grain(self):
+        # inventory: only (date, item, warehouse) is unique; the low-cardinality
+        # quantity measure must stay out of the grain even though it could pad a
+        # spuriously-unique combo in a small sample.
+        grain = _ingest_grain(
+            """CREATE TABLE inventory AS
+            SELECT d AS inv_date_sk, it AS inv_item_sk, w AS inv_warehouse_sk,
+                   (d * it) % 5 AS inv_quantity_on_hand
+            FROM generate_series(1, 10) t1(d),
+                 generate_series(1, 10) t2(it),
+                 generate_series(1, 3) t3(w);""",
+            "inventory",
+        )
+        assert grain == ["date_sk", "item_sk", "warehouse_sk"]
+
+    def test_dimension_identity_key_over_measure(self):
+        # call_center_sk is the table's own identity; an equally-unique measure
+        # column must not displace it.
+        grain = _ingest_grain(
+            """CREATE TABLE call_center (
+                cc_call_center_sk INTEGER,
+                cc_sq_ft INTEGER
+            );
+            INSERT INTO call_center VALUES (1, 5000), (2, 6000), (3, 7000);""",
+            "call_center",
+        )
+        assert grain == ["call_center_sk"]
+
+    def test_prefix_stripped_identity_token(self):
+        # Every column shares the `r_reason_` prefix, so canonical names collapse
+        # to bare `sk`/`id`/`desc`; the surrogate token still wins the grain.
+        grain = _ingest_grain(
+            """CREATE TABLE reason (
+                r_reason_sk INTEGER,
+                r_reason_id VARCHAR,
+                r_reason_desc VARCHAR
+            );
+            INSERT INTO reason VALUES (1, 'A', 'x'), (2, 'B', 'x'), (3, 'C', 'x');""",
+            "reason",
+        )
+        assert grain == ["sk"]
+
+    def test_heap_table_no_unique_grain(self):
+        grain = _ingest_grain(
+            """CREATE TABLE heap (a INTEGER, b INTEGER);
+            INSERT INTO heap VALUES (1, 1), (1, 1), (2, 2), (2, 2);""",
+            "heap",
+        )
+        assert grain == []
+
+
+class TestReservoirSampling:
+    """`get_table_sample` must span a physically clustered table, not return a
+    head slice (which hides leading grain columns / fakes uniqueness)."""
+
+    def test_sample_spans_clustered_table(self):
+        eng = _duckdb_executor()
+        # First 10k rows are grp=0, next 10k grp=1; a head LIMIT would see only 0.
+        eng.execute_raw_sql("""CREATE TABLE clustered AS
+            SELECT CASE WHEN x < 10000 THEN 0 ELSE 1 END AS grp, x AS id
+            FROM generate_series(0, 19999) t(x);""")
+        sample = eng.generator.get_table_sample(eng, "clustered")
+        assert len(sample) == 10000
+        assert {row[0] for row in sample} == {0, 1}
+
+
 class TestEnumFromValues:
     """Test the enum decision logic over a column's distinct values."""
 
@@ -973,13 +1213,13 @@ class TestProcessColumn:
 
     def test_basic_column_processing(self):
         """Test basic column processing with simple types."""
-        col = ("user_id", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("user_id", "INTEGER", False)
         grain_components = ["user_id"]
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Check concept
@@ -999,13 +1239,13 @@ class TestProcessColumn:
 
     def test_property_column(self):
         """Test column that is not in grain (property)."""
-        col = ("first_name", "VARCHAR(100)", "YES", None)
+        col = _DIALECT.make_table_column("first_name", "VARCHAR(100)", True)
         grain_components = ["user_id"]
         sample_rows = []
         concept_mapping = _make_concept_mapping(["first_name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be a property, not a key
@@ -1014,13 +1254,13 @@ class TestProcessColumn:
 
     def test_nullable_column_from_schema(self):
         """Test nullable column detection from schema."""
-        col = ("email", "VARCHAR(255)", "YES", None)
+        col = _DIALECT.make_table_column("email", "VARCHAR(255)", True)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be nullable based on schema
@@ -1029,13 +1269,13 @@ class TestProcessColumn:
 
     def test_non_nullable_column_from_schema(self):
         """Test non-nullable column detection from schema."""
-        col = ("id", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("id", "INTEGER", False)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not be nullable
@@ -1044,13 +1284,13 @@ class TestProcessColumn:
 
     def test_nullable_from_sample_data(self):
         """Test nullable detection from sample data."""
-        col = ("name", "VARCHAR(100)", "NO", None)
+        col = _DIALECT.make_table_column("name", "VARCHAR(100)", False)
         grain_components = []
         sample_rows = [("Alice",), (None,), ("Bob",)]
         concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be nullable based on sample data, overriding schema
@@ -1058,13 +1298,13 @@ class TestProcessColumn:
 
     def test_non_nullable_from_sample_data(self):
         """Test non-nullable detection from sample data."""
-        col = ("name", "VARCHAR(100)", "YES", None)
+        col = _DIALECT.make_table_column("name", "VARCHAR(100)", True)
         grain_components = []
         sample_rows = [("Alice",), ("Bob",), ("Charlie",)]
         concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not be nullable based on sample data, overriding schema
@@ -1072,13 +1312,15 @@ class TestProcessColumn:
 
     def test_column_with_comment(self):
         """Test column with a comment creates metadata."""
-        col = ("user_id", "INTEGER", "NO", "Unique identifier for the user")
+        col = _DIALECT.make_table_column(
+            "user_id", "INTEGER", False, "Unique identifier for the user"
+        )
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should have metadata with description
@@ -1087,13 +1329,13 @@ class TestProcessColumn:
 
     def test_column_with_empty_comment(self):
         """Test column with empty/whitespace comment doesn't create metadata description."""
-        col = ("user_id", "INTEGER", "NO", "   ")
+        col = _DIALECT.make_table_column("user_id", "INTEGER", False, "   ")
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not have description for whitespace comment
@@ -1101,13 +1343,13 @@ class TestProcessColumn:
 
     def test_rich_type_detection_email(self):
         """Test rich type detection for email."""
-        col = ("user_email", "VARCHAR(255)", "YES", None)
+        col = _DIALECT.make_table_column("user_email", "VARCHAR(255)", True)
         grain_components = []
         sample_rows = [("a@x.com",), ("b@y.org",)]
         concept_mapping = _make_concept_mapping(["user_email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should detect email rich type
@@ -1117,13 +1359,13 @@ class TestProcessColumn:
 
     def test_rich_type_detection_latitude(self):
         """Test rich type detection for latitude."""
-        col = ("location_lat", "FLOAT", "YES", None)
+        col = _DIALECT.make_table_column("location_lat", "FLOAT", True)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["location_lat"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should detect latitude rich type
@@ -1133,13 +1375,13 @@ class TestProcessColumn:
 
     def test_snake_case_normalization(self):
         """Test that column names are normalized to snake_case."""
-        col = ("UserFirstName", "VARCHAR(100)", "YES", None)
+        col = _DIALECT.make_table_column("UserFirstName", "VARCHAR(100)", True)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["UserFirstName"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name should be snake_case
@@ -1149,13 +1391,13 @@ class TestProcessColumn:
 
     def test_column_alias_preserves_original_name(self):
         """Test that column assignment alias preserves original column name."""
-        col = ("User-ID", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("User-ID", "INTEGER", False)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["User-ID"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name is normalized
@@ -1165,13 +1407,13 @@ class TestProcessColumn:
 
     def test_minimal_column_tuple(self):
         """Test processing column with minimal information (no nullable/comment)."""
-        col = ("id", "INT")
+        col = _DIALECT.make_table_column("id", "INT")
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should default to nullable when not specified
@@ -1180,13 +1422,11 @@ class TestProcessColumn:
 
     def test_enum_type_applied(self):
         """A precomputed enum is applied as the column datatype."""
-        col = ("status", "VARCHAR", "NO", None)
+        col = _DIALECT.make_table_column("status", "VARCHAR", False)
         concept_mapping = _make_concept_mapping(["status"])
         enum = EnumType(type=DataType.STRING, values=["closed", "open"])
 
-        concept, _, rich_import = _process_column(
-            0, col, [], [], concept_mapping, _DIALECT, enum
-        )
+        concept, _, rich_import = _process_column(0, col, [], [], concept_mapping, enum)
 
         assert concept.datatype is enum
         assert rich_import is None
@@ -1194,13 +1434,11 @@ class TestProcessColumn:
     def test_enum_combined_with_rich_type(self):
         """A column that is both enum-constrained and a rich type whose values
         confirm it gets a trait wrapping the enum, plus the trait's import."""
-        col = ("user_email", "VARCHAR", "NO", None)
+        col = _DIALECT.make_table_column("user_email", "VARCHAR", False)
         concept_mapping = _make_concept_mapping(["user_email"])
         enum = EnumType(type=DataType.STRING, values=["a@x.com", "b@y.com"])
 
-        concept, _, rich_import = _process_column(
-            0, col, [], [], concept_mapping, _DIALECT, enum
-        )
+        concept, _, rich_import = _process_column(0, col, [], [], concept_mapping, enum)
 
         assert isinstance(concept.datatype, TraitDataType)
         assert isinstance(concept.datatype.type, EnumType)
@@ -1211,13 +1449,11 @@ class TestProcessColumn:
     def test_enum_named_like_rich_type_but_values_dont_match(self):
         """A Y/N flag named 'channel_email' is an enum only — the value gate
         keeps it from being misclassified as an email address."""
-        col = ("channel_email", "VARCHAR", "NO", None)
+        col = _DIALECT.make_table_column("channel_email", "VARCHAR", False)
         concept_mapping = _make_concept_mapping(["channel_email"])
         enum = EnumType(type=DataType.STRING, values=["N", "Y"])
 
-        concept, _, rich_import = _process_column(
-            0, col, [], [], concept_mapping, _DIALECT, enum
-        )
+        concept, _, rich_import = _process_column(0, col, [], [], concept_mapping, enum)
 
         assert concept.datatype is enum
         assert rich_import is None
@@ -1336,13 +1572,13 @@ class TestProcessColumnWithPrefixStripping:
 
     def test_column_with_prefix_mapping(self):
         """Test that prefix mapping is applied to concept names."""
-        col = ("ss_sold_date_sk", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("ss_sold_date_sk", "INTEGER", False)
         grain_components = []
         sample_rows = []
         prefix_mapping = {"ss_sold_date_sk": "sold_date_sk"}
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, prefix_mapping, _DIALECT
+            0, col, grain_components, sample_rows, prefix_mapping
         )
 
         # Concept name should have prefix stripped
@@ -1352,13 +1588,13 @@ class TestProcessColumnWithPrefixStripping:
 
     def test_column_without_prefix_mapping(self):
         """Test that columns work without prefix mapping."""
-        col = ("user_id", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("user_id", "INTEGER", False)
         grain_components = []
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, concept_mapping, _DIALECT
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name should be normalized without stripping
@@ -1367,13 +1603,13 @@ class TestProcessColumnWithPrefixStripping:
 
     def test_column_with_empty_prefix_mapping(self):
         """Test column with empty prefix mapping dict."""
-        col = ("user_id", "INTEGER", "NO", None)
+        col = _DIALECT.make_table_column("user_id", "INTEGER", False)
         grain_components = []
         sample_rows = []
         prefix_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows, prefix_mapping, _DIALECT
+            0, col, grain_components, sample_rows, prefix_mapping
         )
 
         # Should work normally

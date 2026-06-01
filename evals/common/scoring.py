@@ -214,13 +214,30 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
     return agg
 
 
+def _round_cell(v: object) -> object:
+    """Round floating-point cells to absorb last-ULP noise from differing
+    arithmetic order (e.g. a computed percentage `a*100/b` vs `100*a/b`). The
+    reference SQL and the Trilogy-generated SQL can produce values that agree to
+    ~15 significant digits but differ in the final ULP, which an exact `repr`
+    comparison wrongly flags as a mismatch. Rounding to 9 decimals is far finer
+    than any genuine difference, so it cannot introduce false passes. Decimals
+    (money/quantity) are exact and left untouched."""
+    if isinstance(v, float):
+        if v != v or v in (float("inf"), float("-inf")):
+            return v
+        return round(v, 9)
+    return v
+
+
 def _multiset(rows: list) -> Counter[str]:
     """Order-independent representation of a result set, for comparison.
 
     Both row order and column order are ignored: the prompts ask for a set of
     values, not a fixed column layout, so each row's cells are sorted before
     hashing. Only whether the right data was computed is graded."""
-    return Counter(repr(tuple(sorted(r, key=repr))) for r in rows)
+    return Counter(
+        repr(tuple(sorted((_round_cell(c) for c in r), key=repr))) for r in rows
+    )
 
 
 def _find_query_file(workspace: Path, idx: int) -> Path | None:

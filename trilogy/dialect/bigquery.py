@@ -13,7 +13,7 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
 from trilogy.core.statements.execute import ProcessedQueryPersist
-from trilogy.dialect.base import BaseDialect, safe_quote
+from trilogy.dialect.base import BaseDialect, TableColumn, safe_quote
 
 
 def transform_date_part(part: str) -> str:
@@ -252,7 +252,7 @@ class BigqueryDialect(BaseDialect):
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
-    ) -> list[tuple]:
+    ) -> list[TableColumn]:
         """BigQuery uses dataset instead of schema and supports project.dataset.table format."""
         table_name, schema = parse_bigquery_table_name(table_name, schema)
 
@@ -268,7 +268,7 @@ class BigqueryDialect(BaseDialect):
         """
 
         rows = executor.execute_raw_sql(column_query).fetchall()
-        return rows
+        return self._columns_from_info_schema_rows(rows)
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, TableColumn
 
 
 class FaultDialect(BaseDialect):
@@ -41,7 +41,7 @@ class FaultDialect(BaseDialect):
 
     def get_table_schema(
         self, executor: Any, table_name: str, schema: str | None = None
-    ) -> list[tuple]:
+    ) -> list[TableColumn]:
         if self._get_table_schema_error is not None:
             raise self._get_table_schema_error
         return super().get_table_schema(executor, table_name, schema)

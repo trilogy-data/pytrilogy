@@ -53,6 +53,115 @@ select g, r;
     assert results == [("a", 1.0)]
 
 
+def test_predicate_not_pushed_past_window_order_key():
+    """A filter on a window's ORDER BY key (an aggregate also materialized in
+    the upstream group) must not be pushed below/into the window — SQL WHERE
+    precedes window evaluation, so dropping those rows changes the lead/lag.
+    The q59 family: a cross-year `lead` needs both years' rows present; filtering
+    `flag = 1` early would strip the year-2 rows and yield 0 results."""
+    engine = Dialects.DUCK_DB.default_executor()
+    text = """
+key rid int;
+property rid.store int;
+property rid.wk int;
+property rid.yr int;
+property rid.sales int;
+datasource t (rid, store, wk, yr, sales)
+  grain (rid)
+  query '''select 1 as rid, 1 as store, 10 as wk, 1 as yr, 100 as sales
+           union all select 2, 1, 62, 2, 50''';
+
+auto flag <- max(yr) by store, wk;
+auto sales_sum <- sum(sales) by store, wk;
+auto nwk <- wk - (case when flag = 2 then 52 else 0 end);
+auto ratio <- sales_sum / lead(sales_sum, 1) over (partition by store, nwk order by flag asc);
+
+select store as s, wk as w, ratio as r, --flag,
+having flag = 1 and ratio is not null
+order by w asc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r.s, r.w, r.r) for r in results] == [(1, 10, 2.0)]
+
+
+def test_window_over_rollup_preserves_grouping_rows():
+    """A window with `partition by` over a `sum() by rollup` must run on the
+    materialised rollup output, not be re-planned via a join-back on
+    (partition_key, aggregate_value). That join is non-unique and NULL-bearing,
+    so ROLLUP subtotal/grand-total rows get dropped or duplicated."""
+    engine = Dialects.DUCK_DB.default_executor()
+    text = """
+key id int;
+property id.g1 string;
+property id.g2 string;
+property id.v int;
+datasource t (id, g1, g2, v)
+  grain (id)
+  query '''select 1 as id,'a' as g1,'x' as g2,10 as v
+           union all select 2,'a','y',20
+           union all select 3,'b','x',5''';
+
+auto total <- sum(v) by rollup g1, g2;
+auto rnk   <- rank(g1) over (partition by g1 order by total desc);
+
+select g1 as r_g1, g2 as r_g2, total, rnk
+order by total desc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+
+    def key(r):
+        return (r[0] or "", r[1] or "", r[2], r[3])
+
+    actual = sorted(((r.r_g1, r.r_g2, r.total, r.rnk) for r in results), key=key)
+    assert actual == sorted(
+        [
+            (None, None, 35, 1),
+            ("a", None, 30, 1),
+            ("a", "y", 20, 2),
+            ("a", "x", 10, 3),
+            ("b", "x", 5, 1),
+            ("b", None, 5, 1),
+        ],
+        key=key,
+    )
+
+
+def test_window_partition_by_grouping_level_over_rollup():
+    """The q70 family: `grouping()` columns and the `sum()` rollup must share a
+    single ROLLUP CTE so the window can partition by a derived hierarchy level
+    without cross-joining two misaligned rollup CTEs on the NULL-keyed rows."""
+    engine = Dialects.DUCK_DB.default_executor()
+    text = """
+key id int;
+property id.g1 string;
+property id.g2 string;
+property id.v int;
+datasource t (id, g1, g2, v)
+  grain (id)
+  query '''select 1 as id,'a' as g1,'x' as g2,10 as v
+           union all select 2,'a','y',20
+           union all select 3,'b','x',5''';
+
+auto total <- sum(v) by rollup g1, g2;
+auto gg1 <- grouping(g1) by rollup g1, g2;
+auto gg2 <- grouping(g2) by rollup g1, g2;
+auto level <- gg1 + gg2;
+auto rnk <- rank(g1) over (partition by level order by total desc);
+
+select g1 as r_g1, g2 as r_g2, total, level, rnk
+order by level desc nulls first, total desc nulls first;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r.r_g1, r.r_g2, r.total, r.level, r.rnk) for r in results] == [
+        (None, None, 35, 2, 1),
+        ("a", None, 30, 1, 1),
+        ("b", None, 5, 1, 2),
+        ("a", "y", 20, 0, 1),
+        ("a", "x", 10, 0, 2),
+        ("b", "x", 5, 0, 3),
+    ]
+
+
 def test_concept_derivation():
     duckdb_engine = Dialects.DUCK_DB.default_executor()
     test_datetime = datetime(hour=12, day=1, month=2, year=2022, second=34)

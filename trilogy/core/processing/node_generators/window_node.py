@@ -1,6 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
@@ -33,6 +34,16 @@ def resolve_window_parent_concepts(
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
     base = list(concept.lineage.concept_arguments)
+    # An aggregate argument (e.g. `order by sum(x) by a, b`) lives at its own
+    # group grain. A window preserves that grain row-for-row, so we must carry
+    # every grain key through as a window parent. Otherwise a dropped grain key
+    # has to be recovered with a join-back whose key degrades to (kept_key,
+    # aggregate_value) — non-unique and NULL-bearing for ROLLUP subtotal/total
+    # rows, which then get dropped or duplicated. See rollup_window_bug_handoff.
+    for arg in list(base):
+        if arg.derivation == Derivation.AGGREGATE:
+            for gkey in arg.grain.components:
+                base.append(environment.concepts[gkey])
     # A window concept's own address is often present in its grain/keys
     # (row_number() etc. are keyed by themselves). Skip self-references so
     # we don't feed the concept back as its own parent, which sends

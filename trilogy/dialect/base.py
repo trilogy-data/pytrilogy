@@ -1,4 +1,5 @@
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
@@ -143,6 +144,29 @@ from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import safe_open
+
+
+@dataclass
+class TableColumn:
+    """A single column from a table schema, as returned by ``get_table_schema``.
+
+    ``raw_db_type`` is the dialect's own type string; ``trilogy_type`` is that
+    string mapped through the dialect's type map (``normalize_db_type``), so
+    callers never have to re-run the mapping themselves.
+    """
+
+    column_name: str
+    raw_db_type: str
+    trilogy_type: DataType
+    is_nullable: bool = True
+    comment: str | None = None
+
+
+def nullable_from_str(value: object) -> bool:
+    """Interpret an information_schema ``is_nullable`` value as a bool.
+
+    Nullable unless the value is explicitly ``NO`` (case-insensitive)."""
+    return str(value).strip().upper() != "NO"
 
 
 def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
@@ -721,10 +745,33 @@ class BaseDialect:
             return f"'{address.location}'"
         return self.safe_quote(address.location)
 
+    def make_table_column(
+        self,
+        column_name: str,
+        raw_db_type: str,
+        is_nullable: bool = True,
+        comment: str | None = None,
+    ) -> TableColumn:
+        """Build a TableColumn, resolving ``trilogy_type`` via the dialect map."""
+        return TableColumn(
+            column_name=column_name,
+            raw_db_type=raw_db_type,
+            trilogy_type=self.normalize_db_type(raw_db_type),
+            is_nullable=is_nullable,
+            comment=comment,
+        )
+
+    def _columns_from_info_schema_rows(self, rows) -> list[TableColumn]:
+        """Map (column_name, data_type, is_nullable, comment) rows to TableColumns."""
+        return [
+            self.make_table_column(r[0], r[1], nullable_from_str(r[2]), r[3])
+            for r in rows
+        ]
+
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
-    ) -> list[tuple]:
-        """Return (column_name, data_type, is_nullable, comment) rows via information_schema."""
+    ) -> list[TableColumn]:
+        """Return per-column schema info via information_schema."""
         query = f"""
         SELECT
             column_name,
@@ -737,7 +784,9 @@ class BaseDialect:
         if schema:
             query += f" AND table_schema = '{schema}'"
         query += " ORDER BY ordinal_position"
-        return executor.execute_raw_sql(query).fetchall()
+        return self._columns_from_info_schema_rows(
+            executor.execute_raw_sql(query).fetchall()
+        )
 
     def normalize_db_type(self, db_type: str) -> DataType:
         """Map a database type string (from information_schema) to a DataType enum."""
@@ -755,7 +804,7 @@ class BaseDialect:
         rows = self.get_table_schema(executor, table_name, schema)
         if not rows:
             return None
-        return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
+        return {row.column_name.lower(): row.trilogy_type for row in rows}
 
     def list_tables(self, executor, schema: str | None = None) -> list[tuple[str, str]]:
         """Return (table_name, table_type) for tables and views via

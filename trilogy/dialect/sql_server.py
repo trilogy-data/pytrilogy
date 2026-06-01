@@ -6,7 +6,7 @@ from trilogy.core.statements.execute import (
     ProcessedQuery,
     ProcessedQueryPersist,
 )
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, TableColumn
 from trilogy.utility import string_to_hash
 
 FUNCTION_MAP = {
@@ -75,7 +75,7 @@ class SqlServerDialect(BaseDialect):
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
-    ) -> list[tuple]:
+    ) -> list[TableColumn]:
         """Defaults to 'dbo' schema if none specified."""
         if not schema:
             schema = "dbo"
@@ -93,7 +93,7 @@ class SqlServerDialect(BaseDialect):
         """
 
         rows = executor.execute_raw_sql(column_query).fetchall()
-        return rows
+        return self._columns_from_info_schema_rows(rows)
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

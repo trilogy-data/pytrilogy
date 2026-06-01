@@ -5,7 +5,7 @@ def test_get_table_schema(duckdb_engine):
     schema = dialect.get_table_schema(duckdb_engine, "items")
 
     assert len(schema) == 4
-    column_names = [col[0] for col in schema]
+    column_names = [col.column_name for col in schema]
     assert "item" in column_names
     assert "value" in column_names
     assert "count" in column_names

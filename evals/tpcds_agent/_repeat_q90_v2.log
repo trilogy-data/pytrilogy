@@ -1,0 +1,51 @@
+[1/3] Building TPC-DS DuckDB (sf=1) ...
+[2/3] Seeding enriched model ...
+[3/3] Running q90 x10 (concurrency=5) ...
+  [r01] fail      iters=9   prompt_tok=135655   explore=4   wrote=True (35s)
+  [r00] fail      iters=8   prompt_tok=118157   explore=3   wrote=True (35s)
+  [r04] pass      iters=10  prompt_tok=152338   explore=7   wrote=True (40s)
+  [r03] pass      iters=11  prompt_tok=176720   explore=4   wrote=True (46s)
+  [r05] pass      iters=8   prompt_tok=111676   explore=3   wrote=True (32s)
+  [r02] pass      iters=18  prompt_tok=318998   explore=7   wrote=True (69s)
+  [r06] fail      iters=9   prompt_tok=127464   explore=5   wrote=True (36s)
+  [r07] fail      iters=7   prompt_tok=100154   explore=4   wrote=True (32s)
+  [r08] fail      iters=9   prompt_tok=135436   explore=5   wrote=True (36s)
+  [r09] fail      iters=6   prompt_tok=83363    explore=4   wrote=True (32s)
+
+=== SUMMARY ===
+{
+  "repeats": 10,
+  "status_breakdown": {
+    "fail": 6,
+    "pass": 4
+  },
+  "pass_rate": 0.4,
+  "exhausted_rate": 0.0,
+  "wrote_query_rate": 1.0,
+  "iterations": {
+    "mean": 9.5,
+    "median": 9.0,
+    "min": 6,
+    "max": 18
+  },
+  "prompt_tokens": {
+    "mean": 145996.1,
+    "median": 131450.0,
+    "min": 83363,
+    "max": 318998
+  },
+  "explore_calls": {
+    "mean": 4.6,
+    "median": 4.0,
+    "min": 3,
+    "max": 7
+  },
+  "duration_seconds": {
+    "mean": 39.4,
+    "median": 35.7,
+    "min": 31.8,
+    "max": 69.4
+  }
+}
+
+Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\_repeat_q90_v2

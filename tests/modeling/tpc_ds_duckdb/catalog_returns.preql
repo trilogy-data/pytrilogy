@@ -9,10 +9,10 @@ import catalog_sales as sales;
 import item as item;
 import date as date;
 import time as time;
-import customer as billing_customer;
-import customer as refunded_customer;
-import address as return_address;
-import address as refunded_address;
+import customer as billing_customer; # the RETURNING customer who returned the item — use this for "returning customer"
+import customer as refunded_customer; # the customer who received the refund; may differ from the returning customer)
+import address as return_address; # the address the return originated from (the returning side) — use this for "returning-address"
+import address as refunded_address; # the address the refund was issued to
 import call_center as call_center;
 import reason as reason;
 

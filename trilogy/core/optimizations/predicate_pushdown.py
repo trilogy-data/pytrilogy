@@ -133,6 +133,37 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
     return False
 
 
+def _predicate_safe_past_windows(candidate, cte: CTE | UnionCTE) -> bool:
+    """True if ``candidate`` can be pushed into/below ``cte`` without changing
+    the result of any window function ``cte`` computes.
+
+    A row predicate may only cross a window when it references *only* that
+    window's PARTITION BY keys: dropping whole partitions leaves every surviving
+    row's window value unchanged. A predicate on an ORDER BY key or any other
+    input (e.g. q59's ``year_flag``, which is the lead's order key and feeds the
+    partition expression but is not itself a partition key) changes
+    lead/lag/rank results, so it must stay above the window. Window virt-concepts
+    aren't in ``source_map``, so detection keys off output-column lineage.
+    """
+    window_lineages: list[BuildWindowItem] = []
+    for col in cte.output_columns:
+        lineage = col.lineage
+        if isinstance(lineage, BuildWindowItem):
+            window_lineages.append(lineage)
+    if not window_lineages:
+        return True
+    if not isinstance(candidate, BuildConceptArgs):
+        return False
+    row_args = {x.address for x in candidate.row_arguments}
+    if not row_args:
+        return False
+    for lineage in window_lineages:
+        partition = {p.address for p in lineage.over}
+        if not row_args.issubset(partition):
+            return False
+    return True
+
+
 class PredicatePushdown(OptimizationRule):
     def __init__(self, having_alias: bool = False) -> None:
         super().__init__()
@@ -371,13 +402,10 @@ class PredicatePushdown(OptimizationRule):
         all_inputs = {x.address for x in candidate.concept_arguments}
         if is_child_of(candidate, parent_cte.condition):
             return False
-        non_materialized = [k for k, v in parent_cte.source_map.items() if v == []]
-        concrete = [
-            x for x in parent_cte.output_columns if x.address in non_materialized
-        ]
-        if any(isinstance(x.lineage, BuildWindowItem) for x in concrete):
+        if not _predicate_safe_past_windows(candidate, parent_cte):
             self.debug(
-                f"CTE {parent_cte.name} has window clause calculation, cannot push up to this without changing results"
+                f"CTE {parent_cte.name} computes a window whose result a pushed "
+                f"{candidate} would change (predicate not on partition keys); not pushing"
             )
             return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}
@@ -496,6 +524,13 @@ class PredicatePushdown(OptimizationRule):
             if not is_child_of(candidate, child.condition):
                 return False
             if _parent_nullable_in_cte(child, parent_cte.name):
+                return False
+            # Relocating the predicate into the group parent applies it *before*
+            # any window the consumer computes over the parent's rows (SQL WHERE
+            # precedes window evaluation), changing lead/lag/rank results unless
+            # it only drops whole partitions. See q59: filtering `year_flag` here
+            # strips the year-2 rows the cross-year lead needs.
+            if not _predicate_safe_past_windows(candidate, child):
                 return False
             for addr in row_conditions:
                 if parent_cte.name not in (child.source_map.get(addr) or []):

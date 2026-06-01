@@ -1,6 +1,6 @@
 query_id = "36"
-gen_length = 2551
-preql_size = 1318
+gen_length = 2330
+preql_size = 1101
 comp_size = 1844
 generated_sql = """
 
@@ -21,32 +21,32 @@ WHERE
 ),
 cooperative as (
 SELECT
-    \"thoughtful\".\"ss_item_category\" as \"q36_rolled_r_category\",
-    \"thoughtful\".\"ss_item_class\" as \"q36_rolled_r_class\",
+    \"thoughtful\".\"ss_item_category\" as \"ss_item_category\",
+    \"thoughtful\".\"ss_item_class\" as \"ss_item_class\",
     CASE
 	WHEN grouping(\"thoughtful\".\"ss_item_class\") = 0 THEN \"thoughtful\".\"ss_item_category\"
 	ELSE null
-	END as \"q36_rolled_partition_cat\",
-    cast(sum(\"thoughtful\".\"ss_net_profit\") as numeric(15,4)) / cast(sum(\"thoughtful\".\"ss_ext_sales_price\") as numeric(15,4)) as \"q36_rolled_gross_margin\",
-    grouping(\"thoughtful\".\"ss_item_category\") + grouping(\"thoughtful\".\"ss_item_class\") as \"q36_rolled_lochierarchy\"
+	END as \"partition_cat\",
+    cast(sum(\"thoughtful\".\"ss_net_profit\") as numeric(15,4)) / cast(sum(\"thoughtful\".\"ss_ext_sales_price\") as numeric(15,4)) as \"gross_margin\",
+    grouping(\"thoughtful\".\"ss_item_category\") + grouping(\"thoughtful\".\"ss_item_class\") as \"lochierarchy\"
 FROM
     \"thoughtful\"
 GROUP BY
     ROLLUP (1, 2)),
 questionable as (
 SELECT
-    \"cooperative\".\"q36_rolled_gross_margin\" as \"q36_rolled_gross_margin\",
-    \"cooperative\".\"q36_rolled_lochierarchy\" as \"q36_rolled_lochierarchy\",
-    \"cooperative\".\"q36_rolled_r_category\" as \"q36_rolled_r_category\",
-    \"cooperative\".\"q36_rolled_r_class\" as \"q36_rolled_r_class\",
-    rank() over (partition by \"cooperative\".\"q36_rolled_lochierarchy\",\"cooperative\".\"q36_rolled_partition_cat\" order by \"cooperative\".\"q36_rolled_gross_margin\" asc ) as \"rank_within_parent\"
+    \"cooperative\".\"gross_margin\" as \"gross_margin\",
+    \"cooperative\".\"lochierarchy\" as \"lochierarchy\",
+    \"cooperative\".\"ss_item_category\" as \"ss_item_category\",
+    \"cooperative\".\"ss_item_class\" as \"ss_item_class\",
+    rank() over (partition by \"cooperative\".\"lochierarchy\",\"cooperative\".\"partition_cat\" order by \"cooperative\".\"gross_margin\" asc ) as \"rank_within_parent\"
 FROM
     \"cooperative\")
 SELECT
-    \"questionable\".\"q36_rolled_gross_margin\" as \"q36_rolled_gross_margin\",
-    \"questionable\".\"q36_rolled_r_category\" as \"i_category\",
-    \"questionable\".\"q36_rolled_r_class\" as \"i_class\",
-    \"questionable\".\"q36_rolled_lochierarchy\" as \"q36_rolled_lochierarchy\",
+    \"questionable\".\"gross_margin\" as \"gross_margin\",
+    \"questionable\".\"ss_item_category\" as \"i_category\",
+    \"questionable\".\"ss_item_class\" as \"i_class\",
+    \"questionable\".\"lochierarchy\" as \"lochierarchy\",
     \"questionable\".\"rank_within_parent\" as \"rank_within_parent\"
 FROM
     \"questionable\"
@@ -57,9 +57,9 @@ GROUP BY
     4,
     5
 ORDER BY 
-    \"questionable\".\"q36_rolled_lochierarchy\" desc nulls first,
+    \"questionable\".\"lochierarchy\" desc nulls first,
     CASE
-	WHEN \"questionable\".\"q36_rolled_lochierarchy\" = 0 THEN \"questionable\".\"q36_rolled_r_category\"
+	WHEN \"questionable\".\"lochierarchy\" = 0 THEN \"questionable\".\"ss_item_category\"
 	ELSE null
 	END asc nulls first,
     \"questionable\".\"rank_within_parent\" asc nulls first
