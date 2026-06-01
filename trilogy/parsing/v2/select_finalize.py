@@ -549,6 +549,25 @@ def finalize_select_statement(
                         _raise_undefined(context, arg.address, line_no)
             if isinstance(x.content.output, UndefinedConcept):
                 continue
+            # A SELECT output whose expression references its own alias address
+            # (`select <expr> as foo` where `<expr>` reads `foo`, e.g. an
+            # existing `auto foo <- ...`) is a recursive binding: the name `foo`
+            # would mean both the original concept (inside the expression) and
+            # the new output. The planner keys concepts by address and cannot
+            # represent both, so it would silently emit the original. Raise
+            # instead — renaming the output is the fix (the alias stays visible
+            # to sibling calculations, so renaming the input is not an option).
+            out_addr = x.concept.address
+            if any(
+                arg.address == out_addr for arg in x.content.function.concept_arguments
+            ):
+                raise InvalidSyntaxException(
+                    f"SELECT output '{out_addr}' is defined by an expression that "
+                    f"references '{out_addr}' itself (line {line_no or 'unknown'}). "
+                    f"This is a recursive self-reference: an alias cannot redefine "
+                    f"a name its own calculation reads. Rename the output to a "
+                    f"distinct name (e.g. `... as {x.content.output.name}_out`)."
+                )
             if CONFIG.parsing.select_as_definition and not context.environment.frozen:
                 existing = context.concepts.get(x.concept.address)
                 meta: Any = x.content.output.metadata

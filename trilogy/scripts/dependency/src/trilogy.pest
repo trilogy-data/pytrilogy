@@ -59,13 +59,13 @@ concept = {
 
 parameter_default      = { ^"default" ~ literal }
 parameter_declaration  = { (^"parameter" | ^"param") ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ parameter_default? ~ metadata? }
-concept_declaration    = { PURPOSE ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
-concept_property_declaration = { UNIQUE? ~ PROPERTY ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ data_type ~ concept_nullable_modifier? ~ metadata? }
-concept_derivation     = { (PURPOSE | AUTO | PROPERTY) ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ "<-" ~ expr }
+concept_declaration    = { select_hide_modifier? ~ PURPOSE ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+concept_property_declaration = { select_hide_modifier? ~ UNIQUE? ~ PROPERTY ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+concept_derivation     = { select_hide_modifier? ~ (PURPOSE | AUTO | PROPERTY) ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ "<-" ~ expr }
 
 concept_nullable_modifier = { "?" }
 
-inline_property        = { IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+inline_property        = { select_hide_modifier? ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
 inline_property_list   = { inline_property ~ ("," ~ inline_property)* ~ ","? }
 properties_declaration = { ^"properties" ~ (prop_ident_list | IDENTIFIER) ~ "(" ~ inline_property_list ~ ")" }
 prop_ident_list        = { "<" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? ~ ">" }

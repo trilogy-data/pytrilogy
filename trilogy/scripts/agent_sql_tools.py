@@ -11,6 +11,7 @@ signal. Tool results use the same ``exit_code/stdout/stderr`` envelope as the
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from trilogy.ai.models import LLMToolDefinition
@@ -65,14 +66,28 @@ def _get_engine():
     return _ENGINE
 
 
+# Leading SQL comments (`-- line` or `/* block */`) — stripped before the
+# read-only keyword check so a commented query isn't misread as starting with
+# `--`. Does not alter what gets executed (DuckDB handles leading comments).
+_LEADING_COMMENT = re.compile(r"^\s*(--[^\n]*\n?|/\*.*?\*/\s*)", re.DOTALL)
+
+
+def _strip_leading_comments(sql: str) -> str:
+    prev = None
+    while prev != sql:
+        prev, sql = sql, _LEADING_COMMENT.sub("", sql, count=1)
+    return sql.lstrip()
+
+
 def _last_statement(sql: str) -> str:
     parts = [s.strip() for s in sql.split(";")]
-    nonempty = [s for s in parts if s]
+    # Skip comment-only / empty segments (e.g. a trailing `-- note`).
+    nonempty = [s for s in parts if _strip_leading_comments(s)]
     return nonempty[-1] if nonempty else ""
 
 
 def _readonly_violation(sql: str) -> str | None:
-    leading = sql.lstrip().split(None, 1)
+    leading = _strip_leading_comments(sql).split(None, 1)
     if not leading:
         return "empty SQL."
     kw = leading[0].lower()
@@ -183,10 +198,24 @@ RUN_QUERY_TOOL = LLMToolDefinition(
 
 RETURN_CONTROL_TOOL = LLMToolDefinition(
     name="return_control_to_user",
-    description="Indicate you are done with the task, with an optional message.",
+    description=(
+        "Indicate you are done with the task, with an optional message. A "
+        "reviewer pass runs on submit and may kick you back. If you ARE done and "
+        "the kickback is mistaken (e.g. a cosmetic row-display/truncation note), "
+        "call again with force=true and one line explaining why to bypass it."
+    ),
     input_schema={
         "type": "object",
-        "properties": {"message": {"type": "string"}},
+        "properties": {
+            "message": {"type": "string"},
+            "force": {
+                "type": "boolean",
+                "description": (
+                    "Skip the reviewer and finish now; use only to override a "
+                    "kickback you believe is wrong, and say why in `message`."
+                ),
+            },
+        },
         "required": ["message"],
     },
 )
@@ -243,6 +272,7 @@ def handle_return_control(state: AgentState, args: dict) -> str:
     state.todos = []
     state.done = True
     state.farewell = message
+    state.force_return = bool(args.get("force"))
     return "return_control_to_user: ok"
 
 

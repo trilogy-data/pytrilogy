@@ -779,6 +779,8 @@ class Renderer:
             # — round-trips, and reads clearer for literal/constant defs.
             kw = "const" if concept.purpose == Purpose.CONSTANT else "auto"
             output = f"{kw} {ns_for_emit}{concept.name} <- {self.to_string(concept.lineage)};"
+        if concept.metadata and concept.metadata.hidden:
+            output = f"--{output}"
         if base_description:
             lines = "\n#".join(base_description.split("\n"))
             output += f" #{lines}"
@@ -820,8 +822,9 @@ class Renderer:
             prop_lines = []
             for c in concepts:
                 nullable = "?" if Modifier.NULLABLE in c.modifiers else ""
+                hide = "--" if c.metadata and c.metadata.hidden else ""
                 line = (
-                    f"{namespace_prefix}{c.name} "
+                    f"{hide}{namespace_prefix}{c.name} "
                     f"{self.to_string(c.datatype)}{nullable},"
                 )
                 # Descriptions ride as a trailing comment — the grammar captures

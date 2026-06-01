@@ -30,20 +30,20 @@
     // property display_name string
     parameter_default: "default"i literal
     parameter_declaration: ("parameter"i | "param"i) IDENTIFIER data_type concept_nullable_modifier? parameter_default? metadata?
-    concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
+    concept_declaration: select_hide_modifier? PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
     //customer_id.property first_name STRING;
     //<customer_id,country>.property local_alias STRING
     UNIQUE: "UNIQUE"i
-    concept_property_declaration: UNIQUE? PROPERTY (prop_ident | prop_ident_wildcard | IDENTIFIER) data_type concept_nullable_modifier? metadata?
+    concept_property_declaration: select_hide_modifier? UNIQUE? PROPERTY (prop_ident | prop_ident_wildcard | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" expr
+    concept_derivation:  select_hide_modifier? (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" expr
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
     concept_nullable_modifier: "?"
 
     // properties <key> (...) or properties <key1, key2> (...)
-    inline_property: IDENTIFIER data_type concept_nullable_modifier? metadata?
+    inline_property: select_hide_modifier? IDENTIFIER data_type concept_nullable_modifier? metadata?
     inline_property_list: inline_property ("," PARSE_COMMENT? inline_property)* ("," PARSE_COMMENT?)?
     properties_declaration: _PROPERTIES (prop_ident_list | IDENTIFIER) "(" inline_property_list ")"
     prop_ident_list: "<" IDENTIFIER ("," IDENTIFIER)* ","? ">"
@@ -683,7 +683,7 @@
 
     !data_type:  ("string"i | "bytes"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
     
-    PURPOSE:  "key"i | "metric"i | CONST
+    PURPOSE.2:  "key"i | "metric"i | CONST
     _PROPERTIES: "properties"i
     PROPERTY: "property"i
     CONST: "const"i | "constant"i

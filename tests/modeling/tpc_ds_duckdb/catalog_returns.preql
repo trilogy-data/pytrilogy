@@ -26,7 +26,7 @@ properties <order_number, item.id> (
     return_amount numeric::usd?, # Total amount refunded to the customer (USD).
     return_amt_inc_tax numeric::usd?, # Total amount refunded including sales tax (USD).
     return_quantity int?, # Number of units returned on this line.
-    had_return bool, # True if a return row exists for the line.
+    --had_return bool, # True if a return row exists for the line.
 );
 
 datasource catalog_returns (

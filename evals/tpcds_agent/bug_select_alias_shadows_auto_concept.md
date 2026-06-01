@@ -1,5 +1,37 @@
 # Engine bug handoff: a SELECT `as <name>` that reuses an existing `auto`/derived concept name silently discards the SELECT expression and emits the old concept's lineage
 
+## RESOLVED (2026-06-01)
+
+Fixed by raising a clear **recursive self-reference** error at finalize time
+(`trilogy/parsing/v2/select_finalize.py`, in the `ConceptTransform` branch of
+`finalize_select_statement`): a `select <expr> as foo` whose `<expr>` references
+`foo` itself now raises `InvalidSyntaxException` instead of silently emitting the
+original `foo`. Renaming the output is the fix (the alias must stay visible to
+sibling calculations, so renaming the *input* is not an option — cf. `a+1 -> a,
+a+2 -> b`: which `a`?).
+
+Regression tests in `tests/test_parse_engine_v2.py`:
+`test_parse_text_v2_select_transform_self_reference_raises`,
+`test_parse_text_v2_select_self_referential_shadow_of_auto_raises`,
+`test_parse_text_v2_select_non_self_referential_shadow_commits`.
+
+**Corrections to the original diagnosis below:** the two suggested fixes
+(`select_finalize.py` MANUAL replace; `author.py` `as_lineage` prefer
+`local_concepts`) were both implemented and verified to be **no-ops
+end-to-end**. The built `SelectLineage`/`BuildSelectLineage` *does* correctly
+carry the case-when in `local_concepts`, but the planner
+(`source_query_concepts` / the concept graph) keys concepts by **address**, so
+the output `local.b1` (case-when) and the inner reference `local.b1` (the
+`count`) collapse to one node and the datasource-resolvable `count` wins. The
+working `out_b1` variant works *only* because its output address differs from
+the inner reference. Also note: a **non**-self-referential shadow (`auto b1 <-
+count(...); select avg(x) as b1`) already resolved correctly (the `avg` wins) —
+only the self-referential form was broken. Making the self-referential form
+actually *compute* would require giving the output a distinct internal address,
+which breaks the sibling-visibility contract; raising is the correct behavior.
+
+---
+
 ## Summary
 
 When a query declares a concept (e.g. with `auto foo <- ...`) and then a later

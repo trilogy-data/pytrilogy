@@ -46,7 +46,7 @@ STATUS_COLORS_ALT = {
 STATUS_ORDER = ["pass", "fail", "error", "missing", "timeout", "exhausted", "crashed"]
 OK_COLOR = "#2e7d32"
 ERR_COLOR = "#c62828"
-_RUN_FILE = re.compile(r"query(\d+)\.preql")
+_RUN_FILE = re.compile(r"query(\d+)\.(?:preql|sql)")
 
 
 def latest_run_dir(results_dir: Path) -> Path:
@@ -106,17 +106,31 @@ def tool_outcomes(events: list[dict]) -> dict[str, list[int]]:
 
 
 def query_run_attempts(events: list[dict]) -> Counter[int]:
-    """query id -> count of `trilogy run query<id>.preql` invocations."""
+    """query id -> count of answer-file run invocations. Covers both the Trilogy
+    toolset (`trilogy run query<id>.preql`) and the no-Trilogy SQL toolset
+    (`run_file query<id>.sql`), so per-query attempt counts are comparable across
+    categories. Ad-hoc `run_query` SQL is exploration (no query id) and is not
+    counted, mirroring how non-`run` trilogy subcommands aren't counted."""
     attempts: Counter[int] = Counter()
     for e in events:
-        if e.get("type") == "tool_call" and e.get("name") == "trilogy":
-            args = (e.get("arguments") or {}).get("args") or []
-            if isinstance(args, list) and len(args) >= 2 and args[0] == "run":
-                for a in args[1:]:
-                    m = _RUN_FILE.search(str(a))
-                    if m:
-                        attempts[int(m.group(1))] += 1
-                        break
+        if e.get("type") != "tool_call":
+            continue
+        name = e.get("name")
+        args = e.get("arguments") or {}
+        candidates: list[str] = []
+        if name == "trilogy":
+            raw = args.get("args") or []
+            if isinstance(raw, list) and len(raw) >= 2 and raw[0] == "run":
+                candidates = [str(a) for a in raw[1:]]
+        elif name == "run_file":
+            path = args.get("path")
+            if isinstance(path, str):
+                candidates = [path]
+        for a in candidates:
+            m = _RUN_FILE.search(a)
+            if m:
+                attempts[int(m.group(1))] += 1
+                break
     return attempts
 
 

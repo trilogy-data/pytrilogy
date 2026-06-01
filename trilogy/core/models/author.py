@@ -3311,6 +3311,9 @@ class Metadata:
     end_line: Optional[int] = None
     end_column: Optional[int] = None
     concept_source: ConceptSource = dc_field(default=ConceptSource.MANUAL)
+    # Hidden concepts stay fully queryable but are omitted from explore/metadata
+    # listings (the `--` declaration prefix, mirroring select-output hiding).
+    hidden: bool = False
 
 
 @dataclass

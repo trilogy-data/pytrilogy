@@ -8,7 +8,7 @@ properties id (
     time int, # Seconds elapsed since midnight (0-86399).
     hour int, # Hour of day (0-23).
     minute int, # Minute within the hour (0-59).
-    second int, # Second within the minute (0-59).
+    --second int, # Second within the minute (0-59).
     meal_time enum<string>['', 'breakfast', 'lunch', 'dinner']?, # Meal-time bucket; empty string for off-meal hours.
 );
 

@@ -59,6 +59,14 @@ class AgentState:
     # Number of times the reviewer pass kicked a submit back. Capped to avoid
     # infinite loops with an agent that won't accept it isn't done.
     submit_kickbacks: int = 0
+    # Set by return_control_to_user(force=true): the agent asserts it is done and
+    # the reviewer pass is skipped. Lets the agent override a mistaken kickback
+    # (it has context the reviewer lacks, e.g. a cosmetic display-truncation note).
+    force_return: bool = False
+    # When False, the `trilogy` tool refuses `database` (list/describe) calls —
+    # raw-table introspection is for ingest, not query generation against an
+    # already-built model. Mirrors AgentConfig.allow_database_introspection.
+    allow_db_introspection: bool = True
 
 
 SHOW_MESSAGE_TOOL = LLMToolDefinition(
@@ -165,11 +173,23 @@ RETURN_CONTROL_TOOL = LLMToolDefinition(
         "Hand control back to the user when a task is finished, with an"
         " optional message. Any open TODOs are auto-discarded. Note: a"
         " reviewer pass runs on submit; if you weren't actually done, you"
-        " will be kicked back to keep working."
+        " will be kicked back to keep working. If you ARE done and a kickback"
+        " is mistaken (e.g. it cites a cosmetic display/row-truncation note,"
+        " or you have context the reviewer lacks), call this again with"
+        " force=true and one line explaining why — that bypasses the reviewer."
     ),
     input_schema={
         "type": "object",
-        "properties": {"message": {"type": "string"}},
+        "properties": {
+            "message": {"type": "string"},
+            "force": {
+                "type": "boolean",
+                "description": (
+                    "Skip the reviewer and finish now. Use only to override a"
+                    " kickback you believe is wrong; state why in `message`."
+                ),
+            },
+        },
         "required": ["message"],
     },
 )
@@ -373,6 +393,13 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     hint = _trilogy_file_write_hint(raw_args)
     if hint is not None:
         return hint
+    if not state.allow_db_introspection and _first_non_flag_arg(raw_args) == "database":
+        return (
+            "trilogy database introspection is disabled for this task. The "
+            "semantic model is already built under raw/ — use "
+            "`explore <file.preql>` to see queryable concepts (it chains in "
+            "imported dimensions too). Do not list raw database tables."
+        )
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
     child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     try:
@@ -480,6 +507,7 @@ def handle_return_control(state: AgentState, args: dict) -> str:
     state.todos = []
     state.done = True
     state.farewell = message
+    state.force_return = bool(args.get("force"))
     return "return_control_to_user: ok"
 
 

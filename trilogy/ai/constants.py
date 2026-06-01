@@ -41,10 +41,9 @@ SELECT RULES:
   - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
   * WHERE conditions are pushed before aggregation calculation for aggregates in the select. Where conditions DO NOT
     apply to other aggregates in the WHERE CLAUSE. 
-  * HAVING filters on an aggregate that IS in the SELECT output. HAVING can ONLY reference fields that appear in the SELECT projection — select the aggregate with an alias, then reference that alias:
-      These fields can be hidden for conveience.
-      select customer.state, --sum(sales.amount) as total_sales
-      having total_sales > 1000
+  * HAVING can ONLY reference fields that appear in the SELECT projection — aggregates OR plain dimensions. Select what you filter on; hide it with a leading `--` when you don't want it in the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering one year AFTER a `lead/lag` over the full series:
+      select customer.state, --sum(sales.amount) as total_sales, --store.id
+      having total_sales > 1000 and store.id = 5
   * Nested aggregate — compare a per-entity total to the GROUP AVERAGE of those totals (a common "above 1.2x the group norm" ask). Define each grain with its own `by`, then filter in HAVING. Both derived metrics are selected hidden (`--`) so HAVING can reference them while the output stays just the id:
       auto cust_store_total <- sum(sales.amount) by sales.customer.id, sales.store.id;
       auto store_avg <- avg(cust_store_total) by sales.store.id;
@@ -76,6 +75,7 @@ SELECT RULES:
   6. Logical `and`.
   7. Logical `or`.
 - Always use a reasonable `LIMIT` for final queries unless the request is for a time series or line chart.
+- Self-referential queries — relating a row to OTHER rows of the same set (period-over-period, previous/next value, running total, share of a group total, rank): Trilogy has no self-joins or subqueries, so reach for a WINDOW function, NOT a re-grained `by (key +/- N)` aggregate. Two aggregates defined at different derived grains will not join back and silently produce NULL; the window carries the related value onto the current row instead (e.g. same week last year = `lag(metric, 53) over (order by week_seq)`).
 - Window functions use SQL-style syntax — the canonical form Trilogy parses, renders, and round-trips:
   * Ranking: `rank(<key>) over (partition by <group> order by <expr> desc)` — e.g. `rank(name) over (partition by state order by sum(births) desc) as top_name`. `partition by` is OPTIONAL (omit for a single global window). `dense_rank`/`row_number` take the same shape.
   * Multi-key ranking: `rank(a, b) over (...)` — all comma-separated args are equal-status grain keys (used when ranking ROLLUP output where the grain spans multiple columns).

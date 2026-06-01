@@ -58,6 +58,10 @@ class ParameterDeclarationSyntax:
         )
 
 
+def _is_hidden(node: SyntaxNode) -> bool:
+    return node.optional_node(SyntaxNodeKind.SELECT_HIDE_MODIFIER) is not None
+
+
 @dataclass(frozen=True)
 class ConceptDeclarationSyntax:
     purpose: SyntaxToken
@@ -65,17 +69,24 @@ class ConceptDeclarationSyntax:
     datatype: SyntaxNode
     metadata: SyntaxNode | None
     nullable: SyntaxNode | None
+    hidden: bool = False
 
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ConceptDeclarationSyntax":
         require_node(node, SyntaxNodeKind.CONCEPT_DECLARATION)
-        children = node.children
+        # An optional leading `--` hide modifier shifts positions, so resolve
+        # the purpose/name tokens by kind rather than by index.
+        purposes = node.child_tokens(SyntaxTokenKind.PURPOSE)
+        names = node.child_tokens(SyntaxTokenKind.IDENTIFIER)
+        if not purposes or not names:
+            raise syntax_error(node, "Concept declaration requires purpose and name")
         return cls(
-            purpose=require_token(children[0], SyntaxTokenKind.PURPOSE),
-            name=require_token(children[1], SyntaxTokenKind.IDENTIFIER),
+            purpose=purposes[0],
+            name=names[0],
             datatype=node.only_child_node(SyntaxNodeKind.DATA_TYPE),
             metadata=node.optional_node(SyntaxNodeKind.METADATA),
             nullable=node.optional_node(SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
+            hidden=_is_hidden(node),
         )
 
 
@@ -87,6 +98,7 @@ class ConceptPropertyDeclarationSyntax:
     datatype: SyntaxNode
     metadata: SyntaxNode | None
     nullable: SyntaxNode | None
+    hidden: bool = False
 
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ConceptPropertyDeclarationSyntax":
@@ -107,6 +119,7 @@ class ConceptPropertyDeclarationSyntax:
             datatype=node.only_child_node(SyntaxNodeKind.DATA_TYPE),
             metadata=node.optional_node(SyntaxNodeKind.METADATA),
             nullable=node.optional_node(SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
+            hidden=_is_hidden(node),
         )
 
 
@@ -116,11 +129,20 @@ class ConceptDerivationSyntax:
     name: SyntaxElement
     source: SyntaxElement
     metadata: SyntaxNode | None
+    hidden: bool = False
 
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ConceptDerivationSyntax":
         require_node(node, SyntaxNodeKind.CONCEPT_DERIVATION)
-        children = node.children
+        # Drop an optional leading `--` hide modifier before positional reads.
+        children = [
+            c
+            for c in node.children
+            if not (
+                isinstance(c, SyntaxNode)
+                and c.kind == SyntaxNodeKind.SELECT_HIDE_MODIFIER
+            )
+        ]
         if len(children) < 3:
             raise syntax_error(
                 node, "Concept derivation requires purpose, name, and source"
@@ -132,6 +154,7 @@ class ConceptDerivationSyntax:
             name=children[1],
             source=children[2],
             metadata=node.optional_node(SyntaxNodeKind.METADATA),
+            hidden=_is_hidden(node),
         )
 
 

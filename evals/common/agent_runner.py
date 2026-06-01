@@ -221,6 +221,8 @@ def write_trilogy_toml(
     model: str,
     max_iterations: int,
     force_tool_choice: bool = False,
+    allow_database_introspection: bool = True,
+    disable_todo: bool = False,
 ) -> None:
     """Configure the agent subprocess: DuckDB pointing at the benchmark file,
     provider/model, and the per-query iteration budget. ``quiet = true`` drops
@@ -261,9 +263,15 @@ tool_output_limit = 32768
 # Narration messages compound quadratically through history replays in long
 # unattended runs; the eval drops show_message entirely.
 quiet = true
+# Drop the todo tool (and its prompt mention) — A/B knob for short single-query
+# tasks where the scratch list tends to invite over-planning.
+disable_todo = {str(disable_todo).lower()}
 # When false, the model may reason in plain text before calling a tool
 # (tool_choice: auto) instead of being forced to act every turn.
 force_tool_choice = {str(force_tool_choice).lower()}
+# When false, the trilogy tool refuses `database list/describe` and the prompt
+# omits them — raw-table introspection is for ingest, not query generation.
+allow_database_introspection = {str(allow_database_introspection).lower()}
 """,
         encoding="utf-8",
     )

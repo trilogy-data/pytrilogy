@@ -127,6 +127,7 @@ def main() -> int:
         args.model,
         args.max_iterations,
         force_tool_choice=args.force_tool_choice,
+        allow_database_introspection=False,  # query generation, raw/ pre-populated
     )
     print(f"[2/3] Category '{category.key}': setting up workspace ...")
     seed = category.setup(workspace, SPEC, db_path=workspace_db, enriched_dir=None)

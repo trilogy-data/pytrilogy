@@ -87,6 +87,12 @@ class AgentConfig:
     # 11->2 and total tokens -51% when this was flipped to auto). Thinking-mode
     # models also reject forced tool_choice, so auto is the more portable default.
     force_tool_choice: bool = False
+    # When False, the agent's `trilogy` tool refuses `database list`/`database
+    # describe` and the prompt omits them. Raw-table introspection is for
+    # building a model (ingest); during query generation the model already
+    # exists under raw/, and listing tables just adds a confusing, unneeded
+    # surface. The per-query eval turns this off; the ingest eval leaves it on.
+    allow_database_introspection: bool = True
 
 
 @dataclass
@@ -146,6 +152,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
         "quiet",
         "disable_todo",
         "force_tool_choice",
+        "allow_database_introspection",
     },
 }
 
@@ -284,6 +291,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
         quiet=bool(agent_raw.get("quiet", False)),
         disable_todo=bool(agent_raw.get("disable_todo", False)),
         force_tool_choice=bool(agent_raw.get("force_tool_choice", False)),
+        allow_database_introspection=bool(
+            agent_raw.get("allow_database_introspection", True)
+        ),
     )
 
     # Canonical location is [engine].parallelism (matches docs and `trilogy init`
