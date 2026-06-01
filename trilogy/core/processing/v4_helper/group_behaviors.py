@@ -30,10 +30,17 @@ import networkx as nx
 
 from trilogy.core.enums import Derivation
 
-from .models import GroupBucket
+from .models import ConceptAttrs, GroupBucket
 
-NativeGrainFn = Callable[[GroupBucket, nx.DiGraph], frozenset[str]]
-CanPreserveFn = Callable[[nx.DiGraph, frozenset[str], str], bool]
+# Behaviors read node state from `concept_attrs` (the typed side dict keyed by
+# concept-graph node id) and walk lineage edges via `concept_graph` — the graph
+# itself carries only topology + edge metadata.
+NativeGrainFn = Callable[
+    [GroupBucket, nx.DiGraph, dict[str, ConceptAttrs]], frozenset[str]
+]
+CanPreserveFn = Callable[
+    [nx.DiGraph, dict[str, ConceptAttrs], frozenset[str], str], bool
+]
 
 
 @dataclass(frozen=True)
@@ -58,14 +65,20 @@ def _lineage_parents(concept_graph: nx.DiGraph, address: str) -> frozenset[str]:
 # ----- native_grain implementations -----------------------------------
 
 
-def native_grain_root(bucket: GroupBucket, concept_graph: nx.DiGraph) -> frozenset[str]:
+def native_grain_root(
+    bucket: GroupBucket,
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
+) -> frozenset[str]:
     """ROOT is the scan. There's no row-shape change to defend against, so
     we return an empty grain and let `can_preserve_root` short-circuit."""
     return frozenset()
 
 
 def native_grain_declared(
-    bucket: GroupBucket, concept_graph: nx.DiGraph
+    bucket: GroupBucket,
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
 ) -> frozenset[str]:
     """For groups whose row identity matches their declared
     ``grain_components`` (AGGREGATE / GROUP_TO / WINDOW / FILTER /
@@ -74,7 +87,9 @@ def native_grain_declared(
 
 
 def native_grain_basic_inherited(
-    bucket: GroupBucket, concept_graph: nx.DiGraph
+    bucket: GroupBucket,
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
 ) -> frozenset[str]:
     """BASIC's effective grain is the union of its primaries' lineage
     parents' grains.
@@ -99,9 +114,7 @@ def native_grain_basic_inherited(
     inherited: set[str] = set()
     for primary in bucket.primary_members:
         for parent in _lineage_parents(concept_graph, primary):
-            inherited.update(
-                concept_graph.nodes[parent].get("grain_components", frozenset())
-            )
+            inherited.update(concept_attrs[parent].grain_components)
     if inherited:
         return frozenset(inherited)
     return frozenset(bucket.grain_components)
@@ -111,7 +124,10 @@ def native_grain_basic_inherited(
 
 
 def can_preserve_root(
-    concept_graph: nx.DiGraph, native_grain: frozenset[str], address: str
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
+    native_grain: frozenset[str],
+    address: str,
 ) -> bool:
     """ROOT exposes only its primaries (the scan). There's no upstream
     to preserve from. Returning False here is a safety net — the
@@ -121,7 +137,10 @@ def can_preserve_root(
 
 
 def can_preserve_grain_subset(
-    concept_graph: nx.DiGraph, native_grain: frozenset[str], address: str
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
+    native_grain: frozenset[str],
+    address: str,
 ) -> bool:
     """A column rides through iff it is functionally determined by
     ``native_grain``: the address is itself a grain key, OR its declared
@@ -137,26 +156,31 @@ def can_preserve_grain_subset(
     parent path, it'll still land where it's needed."""
     if address in native_grain:
         return True
-    if address not in concept_graph.nodes:
+    if address not in concept_attrs:
         return False
-    col_grain = concept_graph.nodes[address].get("grain_components", frozenset())
+    col_grain = concept_attrs[address].grain_components
     if not col_grain:
         return True
     return col_grain <= native_grain
 
 
-def _lineage_parent_addrs(concept_graph: nx.DiGraph, address: str) -> set[str]:
+def _lineage_parent_addrs(
+    concept_graph: nx.DiGraph, concept_attrs: dict[str, ConceptAttrs], address: str
+) -> set[str]:
     if address not in concept_graph.nodes:
         return set()
     return {
-        concept_graph.nodes[u].get("address", u)
+        concept_attrs[u].address
         for u, _, d in concept_graph.in_edges(address, data=True)
         if d.get("kind") == "lineage"
     }
 
 
 def can_preserve_grouping(
-    concept_graph: nx.DiGraph, native_grain: frozenset[str], address: str
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
+    native_grain: frozenset[str],
+    address: str,
 ) -> bool:
     """Preservation for a GROUP-BY / PARTITION-BY derivation.
 
@@ -171,17 +195,17 @@ def can_preserve_grouping(
       in the SELECT with no GROUP BY entry, which is invalid SQL."""
     if address in native_grain:
         return True
-    if address not in concept_graph.nodes:
+    if address not in concept_attrs:
         return False
-    node = concept_graph.nodes[address]
-    col_grain = node.get("grain_components", frozenset())
+    node = concept_attrs[address]
+    col_grain = node.grain_components
     if col_grain and col_grain <= native_grain:
         return True
-    parents = _lineage_parent_addrs(concept_graph, address)
+    parents = _lineage_parent_addrs(concept_graph, concept_attrs, address)
     if parents and parents <= native_grain:
         return True
     if not col_grain:
-        return node.get("derivation") == Derivation.CONSTANT.value
+        return node.derivation == Derivation.CONSTANT.value
     return False
 
 

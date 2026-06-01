@@ -93,14 +93,16 @@ class GroupNodeData:
     conditions: list[str] = field(default_factory=list)
 
 
-def _concept_data(graph: nx.DiGraph, node: str) -> ConceptNodeData:
-    raw = graph.nodes[node]
+def _concept_data(concept_attrs: dict, node: str) -> ConceptNodeData:
+    raw = concept_attrs.get(node)
+    if raw is None:
+        return ConceptNodeData()
     return ConceptNodeData(
-        depth_label=raw.get("depth_label", "d*"),
-        derivation=raw.get("derivation", ""),
-        purpose=raw.get("purpose", ""),
-        granularity=raw.get("granularity", ""),
-        grain_components=raw.get("grain_components", frozenset()),
+        depth_label=raw.depth_label,
+        derivation=raw.derivation,
+        purpose=raw.purpose,
+        granularity=raw.granularity,
+        grain_components=raw.grain_components,
     )
 
 
@@ -306,7 +308,7 @@ def _layered_layout(
     return pos
 
 
-def render_digraph(graph: nx.DiGraph, output_path: Path) -> None:
+def render_digraph(graph: nx.DiGraph, concept_attrs: dict, output_path: Path) -> None:
     """Concept-dependency digraph: top-down by lineage depth, rectangular
     labels so long concept addresses stay readable."""
     lineage_edges = [
@@ -327,7 +329,7 @@ def render_digraph(graph: nx.DiGraph, output_path: Path) -> None:
         layer_gap=2.2,
         x_gap=5.4,
     )
-    concept_data = {n: _concept_data(graph, n) for n in graph.nodes}
+    concept_data = {n: _concept_data(concept_attrs, n) for n in graph.nodes}
     labels = {
         n: f"{_center_truncate(n, 28)}\n({d.depth_label})"
         for n, d in concept_data.items()
@@ -992,7 +994,7 @@ def main() -> None:
 
     concept_out = OUT_DIR / f"{stem}.png"
     group_out = OUT_DIR / f"{stem}_groups.png"
-    render_digraph(info.concept_graph, concept_out)
+    render_digraph(info.concept_graph, info.concept_attrs, concept_out)
     render_group_digraph(info.group_graph, info.group_attrs, group_out)
     print(f"wrote {concept_out}")
     print(f"wrote {group_out}")

@@ -28,7 +28,7 @@ from trilogy.core.processing.condition_utility import decompose_condition
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .group_behaviors import behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
-from .models import GroupAttrs, GroupBucket
+from .models import ConceptAttrs, GroupAttrs, GroupBucket
 
 # depth_label used for the secondary root bucket dedicated to feeding d1
 # (in-WHERE) aggregate calculations. Distinct from "root" so the bucket
@@ -57,15 +57,17 @@ def _leaf_inputs(primaries: set[str], lineage_parents: dict[str, set[str]]) -> s
     return leaves
 
 
-def _fd_on_key(concept_graph: nx.DiGraph, address: str, key: set[str]) -> bool:
+def _fd_on_key(
+    concept_attrs: dict[str, ConceptAttrs], address: str, key: set[str]
+) -> bool:
     """Whether `address` is functionally determined by the dimension key set
     `key`: it is a key, has no grain (constant), or its declared grain is a
     subset of the key."""
     if address in key:
         return True
-    if address not in concept_graph.nodes:
+    if address not in concept_attrs:
         return False
-    gc = concept_graph.nodes[address].get("grain_components", frozenset())
+    gc = concept_attrs[address].grain_components
     return not gc or set(gc) <= key
 
 
@@ -79,7 +81,9 @@ def _group_id_for(bucket: GroupBucket) -> str:
     )
 
 
-def _d1_calc_subgraph(concept_graph: nx.DiGraph) -> tuple[set[str], set[str]]:
+def _d1_calc_subgraph(
+    concept_graph: nx.DiGraph, concept_attrs: dict[str, ConceptAttrs]
+) -> tuple[set[str], set[str]]:
     """Identify (d1_calc_roots, d1_subgraph_nodes).
 
     Any concept reached via the WHERE recursion lives at a condition-phase
@@ -94,7 +98,7 @@ def _d1_calc_subgraph(concept_graph: nx.DiGraph) -> tuple[set[str], set[str]]:
     - d1_subgraph_nodes: every condition-phase node. Edge routing uses
       this as the destination side of the predicate."""
     d1_subgraph: set[str] = {
-        n for n, d in concept_graph.nodes(data=True) if d.get("depth_label") == "d1"
+        n for n in concept_graph.nodes if concept_attrs[n].depth_label == "d1"
     }
     if not d1_subgraph:
         return set(), set()
@@ -103,17 +107,14 @@ def _d1_calc_subgraph(concept_graph: nx.DiGraph) -> tuple[set[str], set[str]]:
         for pred, _, ed in concept_graph.in_edges(n, data=True):
             if ed.get("kind") != "lineage":
                 continue
-            pdata = concept_graph.nodes[pred]
-            if (
-                pdata.get("derivation") == Derivation.ROOT.value
-                and pdata.get("depth_label") != "d1"
-            ):
+            pa = concept_attrs[pred]
+            if pa.derivation == Derivation.ROOT.value and pa.depth_label != "d1":
                 d1_calc_roots.add(pred)
     return d1_calc_roots, d1_subgraph
 
 
 def _add_d1_root_bucket(
-    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     d1_calc_roots: set[str],
 ) -> str | None:
@@ -127,12 +128,10 @@ def _add_d1_root_bucket(
         grain_components=frozenset(),
     )
     for node in sorted(d1_calc_roots):
-        address = concept_graph.nodes[node].get("address", node)
+        address = concept_attrs[node].address
         bucket.primary_members.append(address)
         bucket.primary_node_ids.append(node)
-        bucket.member_depths[address] = concept_graph.nodes[node].get(
-            "depth_label", "d*"
-        )
+        bucket.member_depths[address] = concept_attrs[node].depth_label
     gid = _group_id_for(bucket)
     buckets[gid] = bucket
     return gid
@@ -140,6 +139,7 @@ def _add_d1_root_bucket(
 
 def _assign_groups(
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     output_addresses: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, str], dict[str, GroupBucket]]:
     """Group every concept by dispatching to its derivation's rule.
@@ -151,9 +151,10 @@ def _assign_groups(
     we run the rule for that derivation on-demand. This avoids any
     privileging in the call order — every derivation looks the same from
     the orchestrator's view; BASIC just happens to use the callback."""
-    by_derivation: dict[str, list[tuple[str, dict]]] = defaultdict(list)
-    for node, data in concept_graph.nodes(data=True):
-        by_derivation[data.get("derivation", "")].append((node, data))
+    by_derivation: dict[str, list[tuple[str, ConceptAttrs]]] = defaultdict(list)
+    for node in concept_graph.nodes:
+        a = concept_attrs[node]
+        by_derivation[a.derivation].append((node, a))
 
     primary_group: dict[str, str] = {}
     buckets: dict[str, GroupBucket] = {}
@@ -166,7 +167,12 @@ def _assign_groups(
         rule = GROUPING_RULES.get(derivation, DEFAULT_RULE)
         items = by_derivation.get(derivation, [])
         for bucket in rule(
-            items, concept_graph, primary_group, ensure_assigned, output_addresses
+            items,
+            concept_graph,
+            concept_attrs,
+            primary_group,
+            ensure_assigned,
+            output_addresses,
         ):
             group_id = _group_id_for(bucket)
             buckets[group_id] = bucket
@@ -180,6 +186,7 @@ def _assign_groups(
 
 def _attach_secondary_members(
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
 ) -> None:
     """Attach the concepts each grouping bucket implicitly carries beyond
@@ -198,12 +205,10 @@ def _attach_secondary_members(
     def add(bucket: GroupBucket, address: str) -> None:
         if address in bucket.primary_members or address in bucket.secondary_members:
             return
-        if address not in concept_graph.nodes:
+        if address not in concept_attrs:
             return
         bucket.secondary_members.append(address)
-        bucket.member_depths[address] = concept_graph.nodes[address].get(
-            "depth_label", "d*"
-        )
+        bucket.member_depths[address] = concept_attrs[address].depth_label
 
     for bucket in buckets.values():
         if bucket.derivation in GROUPING_DERIVATIONS:
@@ -508,6 +513,7 @@ def _add_final_node(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
 ) -> None:
@@ -516,7 +522,7 @@ def _add_final_node(
     cross-arm post-merge filter (which no pre-final group can host) can land on
     it; `_color_phases` colors the merge edges afterward like the rest."""
     non_condition_members = tuple(
-        n for n, d in concept_graph.nodes(data=True) if d.get("depth_label") != "d1"
+        n for n in concept_graph.nodes if concept_attrs[n].depth_label != "d1"
     )
     group_graph.add_node(FINAL_NODE_ID)
     attrs[FINAL_NODE_ID] = GroupAttrs(
@@ -533,6 +539,7 @@ def _compute_concept_sets(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
 ) -> None:
@@ -575,8 +582,8 @@ def _compute_concept_sets(
     for u, v, ed in concept_graph.edges(data=True):
         if ed.get("kind") != "lineage":
             continue
-        u_addr = concept_graph.nodes[u].get("address", u)
-        v_addr = concept_graph.nodes[v].get("address", v)
+        u_addr = concept_attrs[u].address
+        v_addr = concept_attrs[v].address
         lineage_parents.setdefault(v_addr, set()).add(u_addr)
 
     primary_of: dict[str, set[str]] = {}
@@ -592,7 +599,7 @@ def _compute_concept_sets(
     for gid, bucket in buckets.items():
         beh = behavior_for(derivation_of[gid])
         behavior_of[gid] = beh
-        native_grain_of[gid] = beh.native_grain(bucket, concept_graph)
+        native_grain_of[gid] = beh.native_grain(bucket, concept_graph, concept_attrs)
 
     # Natural row-grain of each concept (the keys it functionally depends on).
     # Used when an aggregating group demands lineage args from a row-level
@@ -601,9 +608,9 @@ def _compute_concept_sets(
     # GROUP BY to dedupe to that column shape, destroying the row population
     # AVG/SUM need (q09).
     source_grain_of: dict[str, frozenset[str]] = {}
-    for _n, _d in concept_graph.nodes(data=True):
-        _addr = _d.get("address", _n)
-        _gc = _d.get("grain_components")
+    for _n in concept_graph.nodes:
+        _addr = concept_attrs[_n].address
+        _gc = concept_attrs[_n].grain_components
         if _gc:
             source_grain_of[_addr] = frozenset(_gc)
 
@@ -698,7 +705,7 @@ def _compute_concept_sets(
             if pgid == FINAL_NODE_ID:
                 continue
             for addr in capability.get(pgid, set()):
-                if behavior.can_preserve(concept_graph, native, addr):
+                if behavior.can_preserve(concept_graph, concept_attrs, native, addr):
                     cap.add(addr)
         capability[gid] = cap
 
@@ -742,7 +749,7 @@ def _compute_concept_sets(
         if gid == FINAL_NODE_ID:
             continue
         for atom in attrs[gid].condition_atoms:
-            for arg_group in getattr(atom, "existence_arguments", ()) or ():
+            for arg_group in atom.existence_arguments or ():
                 for arg in arg_group:
                     source_gid = primary_to_gid.get(arg.address)
                     if source_gid is None or source_gid == gid:
@@ -891,6 +898,7 @@ def _compute_concept_sets(
 
 def build_group_graph(
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
 ) -> tuple[nx.DiGraph, dict[str, GroupAttrs]]:
@@ -904,10 +912,12 @@ def build_group_graph(
     collapses to one bucket; BASIC merges by grain subset/equality.
     """
     output_addresses = frozenset(c.address for c in mandatory_list or [])
-    primary_group, buckets = _assign_groups(concept_graph, output_addresses)
-    d1_calc_roots, d1_subgraph = _d1_calc_subgraph(concept_graph)
-    d1_root_gid = _add_d1_root_bucket(concept_graph, buckets, d1_calc_roots)
-    _attach_secondary_members(concept_graph, buckets)
+    primary_group, buckets = _assign_groups(
+        concept_graph, concept_attrs, output_addresses
+    )
+    d1_calc_roots, d1_subgraph = _d1_calc_subgraph(concept_graph, concept_attrs)
+    d1_root_gid = _add_d1_root_bucket(concept_attrs, buckets, d1_calc_roots)
+    _attach_secondary_members(concept_graph, concept_attrs, buckets)
     group_graph, attrs = _materialize_group_graph(
         concept_graph,
         primary_group,
@@ -919,17 +929,19 @@ def build_group_graph(
     # FINAL must exist before injection so a cross-arm post-merge filter can
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
-    _add_final_node(group_graph, attrs, concept_graph, buckets, conditions)
+    _add_final_node(
+        group_graph, attrs, concept_graph, concept_attrs, buckets, conditions
+    )
     condition_group_ids = _inject_conditions(
         group_graph, attrs, buckets, conditions, mandatory_list
     )
     _color_phases(group_graph, condition_group_ids)
     if mandatory_list is not None:
         _compute_concept_sets(
-            group_graph, attrs, concept_graph, buckets, mandatory_list
+            group_graph, attrs, concept_graph, concept_attrs, buckets, mandatory_list
         )
         changed = _route_dimension_enrichments(
-            group_graph, attrs, buckets, concept_graph
+            group_graph, attrs, buckets, concept_attrs
         )
         changed = _route_basics_through_richer_siblings(group_graph, attrs) or changed
         if changed:
@@ -939,7 +951,12 @@ def build_group_graph(
             # all mandatory concepts (rather than basic + aggregate
             # siblings, which would force a redundant merge).
             _compute_concept_sets(
-                group_graph, attrs, concept_graph, buckets, mandatory_list
+                group_graph,
+                attrs,
+                concept_graph,
+                concept_attrs,
+                buckets,
+                mandatory_list,
             )
     return group_graph, attrs
 
@@ -948,7 +965,7 @@ def _route_dimension_enrichments(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
-    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
 ) -> bool:
     """Re-source a dimension-lookup basic from its own grain-keyed scan.
 
@@ -998,7 +1015,7 @@ def _route_dimension_enrichments(
         inputs = list(b.input_concepts)
         if not inputs:
             continue
-        if not all(_fd_on_key(concept_graph, a, key) for a in inputs):
+        if not all(_fd_on_key(concept_attrs, a, key) for a in inputs):
             continue
         if not any(key <= set(attrs[g].grain_components) for g in grouping_gids):
             continue

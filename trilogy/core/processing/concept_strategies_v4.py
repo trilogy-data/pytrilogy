@@ -229,9 +229,11 @@ def _search_concepts(
         return _resolve_multiselect(
             ms_concept, mandatory_list, environment, depth, g, history, conditions
         )
-    concept_graph = build_concept_graph(mandatory_list, environment, conditions)
+    concept_graph, concept_attrs = build_concept_graph(
+        mandatory_list, environment, conditions
+    )
     group_graph, group_attrs = build_group_graph(
-        concept_graph, conditions, mandatory_list
+        concept_graph, concept_attrs, conditions, mandatory_list
     )
     strategy_node = build_strategy_node(
         group_graph, group_attrs, mandatory_list, environment, g, history
@@ -240,6 +242,7 @@ def _search_concepts(
         concept_graph=concept_graph,
         group_graph=group_graph,
         group_attrs=group_attrs,
+        concept_attrs=concept_attrs,
         strategy_node=strategy_node,
     )
 

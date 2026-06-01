@@ -12,18 +12,25 @@ derivation, fallback to a default.
 """
 
 from collections import defaultdict
-from typing import Any, Callable
+from typing import Callable
 
 import networkx as nx
 
 from trilogy.core.enums import Derivation
 
-from .models import GroupBucket
+from .models import ConceptAttrs, GroupBucket
 
-NodeItem = tuple[str, dict[str, Any]]
+NodeItem = tuple[str, ConceptAttrs]
 EnsureAssignedFn = Callable[[str], None]
 PartitionFn = Callable[
-    [list[NodeItem], nx.DiGraph, dict[str, str], EnsureAssignedFn, frozenset[str]],
+    [
+        list[NodeItem],
+        nx.DiGraph,
+        dict[str, ConceptAttrs],
+        dict[str, str],
+        EnsureAssignedFn,
+        frozenset[str],
+    ],
     list[GroupBucket],
 ]
 
@@ -48,20 +55,21 @@ def _split_by_label(items: list[NodeItem]) -> dict[str, list[NodeItem]]:
     of grain or derivation — they're different planning scopes."""
     by_label: dict[str, list[NodeItem]] = defaultdict(list)
     for node, data in items:
-        by_label[data.get("label", "")].append((node, data))
+        by_label[data.label].append((node, data))
     return by_label
 
 
-def _add_member(bucket: GroupBucket, node: str, data: dict[str, Any]) -> None:
-    address = data.get("address", node)
+def _add_member(bucket: GroupBucket, node: str, data: ConceptAttrs) -> None:
+    address = data.address
     bucket.primary_members.append(address)
     bucket.primary_node_ids.append(node)
-    bucket.member_depths[address] = data.get("depth_label", "d*")
+    bucket.member_depths[address] = data.depth_label
 
 
 def partition_by_depth_and_grain(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
     output_addresses: frozenset[str] = frozenset(),
@@ -81,11 +89,11 @@ def partition_by_depth_and_grain(
         GroupBucket,
     ] = {}
     for node, data in items:
-        depth_label = data.get("depth_label", "d*")
-        derivation = data.get("derivation", "")
-        grain = frozenset(data.get("grain_components", ()))
-        label = data.get("label", "")
-        grouping_mode = data.get("grouping_mode")
+        depth_label = data.depth_label
+        derivation = data.derivation
+        grain = data.grain_components
+        label = data.label
+        grouping_mode = data.grouping_mode
         key = (label, depth_label, grain, grouping_mode)
         bucket = by_key.get(key)
         if bucket is None:
@@ -103,6 +111,7 @@ def partition_by_depth_and_grain(
 def partition_aggregates(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
     output_addresses: frozenset[str] = frozenset(),
@@ -122,12 +131,12 @@ def partition_aggregates(
         GroupBucket,
     ] = {}
     for node, data in items:
-        depth_label = data.get("depth_label", "d*")
-        derivation = data.get("derivation", "")
-        grain = frozenset(data.get("grain_components", ()))
-        label = data.get("label", "")
-        grouping_mode = data.get("grouping_mode")
-        dedup = frozenset(data.get("agg_dedup_grain", ()))
+        depth_label = data.depth_label
+        derivation = data.derivation
+        grain = data.grain_components
+        label = data.label
+        grouping_mode = data.grouping_mode
+        dedup = data.agg_dedup_grain
         key = (label, depth_label, grain, grouping_mode, dedup)
         bucket = by_key.get(key)
         if bucket is None:
@@ -148,6 +157,7 @@ def partition_aggregates(
 def partition_roots(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
     output_addresses: frozenset[str] = frozenset(),
@@ -188,9 +198,9 @@ def partition_roots(
     for label_value, sub_items in _split_by_label(items).items():
         if not sub_items:
             continue
-        addr_of = {node: data.get("address", node) for node, data in sub_items}
-        existence_only_nodes = [(n, d) for n, d in sub_items if d.get("existence_only")]
-        main_items = [(n, d) for n, d in sub_items if not d.get("existence_only")]
+        addr_of = {node: data.address for node, data in sub_items}
+        existence_only_nodes = [(n, d) for n, d in sub_items if d.existence_only]
+        main_items = [(n, d) for n, d in sub_items if not d.existence_only]
 
         # Forward lineage reach per root. d1→d0 constraint edges are
         # carried as is_constraint=True flags on lineage edges, so the
@@ -241,14 +251,13 @@ def partition_roots(
                     for i in range(n)
                     if addr_of[main_items[i][0]] in output_addresses
                     or any(
-                        concept_graph.nodes[x].get("address", x) in output_addresses
-                        for x in reaches[i]
+                        concept_attrs[x].address in output_addresses for x in reaches[i]
                     )
                 ]
                 for k in range(1, len(output_roots)):
                     union(output_roots[0], output_roots[k])
 
-            components: dict[int, list[tuple[str, dict]]] = defaultdict(list)
+            components: dict[int, list[NodeItem]] = defaultdict(list)
             for i, item in enumerate(main_items):
                 components[find(i)].append(item)
         else:
@@ -288,6 +297,7 @@ def _stop_signature(
     node: str,
     recurse_through: str,
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
 ) -> frozenset[str]:
@@ -312,7 +322,7 @@ def _stop_signature(
             if pred in visited:
                 continue
             visited.add(pred)
-            pred_derivation = concept_graph.nodes[pred].get("derivation", "")
+            pred_derivation = concept_attrs[pred].derivation
             if pred_derivation == recurse_through:
                 stack.append(pred)
                 continue
@@ -327,6 +337,7 @@ def _partition_by_signature_and_grain(
     items: list[NodeItem],
     own_derivation: str,
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
 ) -> list[GroupBucket]:
@@ -352,14 +363,13 @@ def _partition_by_signature_and_grain(
                 node,
                 own_derivation,
                 concept_graph,
+                concept_attrs,
                 primary_group,
                 ensure_assigned,
             )
             for node, _ in sub_items
         ]
-        grains = [
-            frozenset(sub_items[i][1].get("grain_components", ())) for i in range(n)
-        ]
+        grains = [sub_items[i][1].grain_components for i in range(n)]
         uf = list(range(n))
 
         def find(x: int, _uf=uf) -> int:
@@ -388,7 +398,7 @@ def _partition_by_signature_and_grain(
             merged_grain: frozenset[str] = frozenset().union(
                 *(grains[i] for i in member_indices)
             )
-            depths = {sub_items[i][1].get("depth_label", "d*") for i in member_indices}
+            depths = {sub_items[i][1].depth_label for i in member_indices}
             group_depth = "d1" if "d1" in depths else next(iter(depths))
             shared_sig = sigs[member_indices[0]]
             # Stable signature representation: hash the sorted stop-set so
@@ -415,6 +425,7 @@ def _partition_by_signature_and_grain(
 def partition_basics_by_signature(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
     output_addresses: frozenset[str] = frozenset(),
@@ -426,6 +437,7 @@ def partition_basics_by_signature(
         items,
         Derivation.BASIC.value,
         concept_graph,
+        concept_attrs,
         primary_group,
         ensure_assigned,
     )
@@ -434,6 +446,7 @@ def partition_basics_by_signature(
 def partition_filters_by_signature(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
     output_addresses: frozenset[str] = frozenset(),
@@ -448,6 +461,7 @@ def partition_filters_by_signature(
         items,
         Derivation.FILTER.value,
         concept_graph,
+        concept_attrs,
         primary_group,
         ensure_assigned,
     )
@@ -456,6 +470,7 @@ def partition_filters_by_signature(
 def partition_rowsets(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
     output_addresses: frozenset[str] = frozenset(),
@@ -474,16 +489,22 @@ def partition_rowsets(
     Outputs without a ``rowset_name`` (multiselect rowsets, deliberately left
     unmarked) fall back to the default per-grain rule — their arms must stay
     in separate groups."""
-    plain = [(n, d) for n, d in items if d.get("rowset_name")]
-    multiselect = [(n, d) for n, d in items if not d.get("rowset_name")]
+    plain = [(n, d) for n, d in items if d.rowset_name]
+    multiselect = [(n, d) for n, d in items if not d.rowset_name]
     buckets: list[GroupBucket] = partition_by_depth_and_grain(
-        multiselect, concept_graph, primary_group, ensure_assigned, output_addresses
+        multiselect,
+        concept_graph,
+        concept_attrs,
+        primary_group,
+        ensure_assigned,
+        output_addresses,
     )
     by_key: dict[tuple[str, str, str], GroupBucket] = {}
     for node, data in plain:
-        label = data.get("label", "")
-        depth_label = data.get("depth_label", "d0")
-        rowset_name = data["rowset_name"]
+        label = data.label
+        depth_label = data.depth_label
+        rowset_name = data.rowset_name
+        assert rowset_name is not None
         key = (label, depth_label, rowset_name)
         bucket = by_key.get(key)
         if bucket is None:
@@ -493,7 +514,7 @@ def partition_rowsets(
             if rowset_name:
                 bucket.discriminator = f"rowset:{rowset_name}"
             by_key[key] = bucket
-        bucket.grain_components |= frozenset(data.get("grain_components", ()))
+        bucket.grain_components |= data.grain_components
         _add_member(bucket, node, data)
     return buckets + list(by_key.values())
 

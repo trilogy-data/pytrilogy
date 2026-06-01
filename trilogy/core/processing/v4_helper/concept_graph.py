@@ -35,7 +35,8 @@ from trilogy.core.processing.node_generators.common import (
     _walk_aggregate_grain_inputs,
 )
 
-from .constants import LABEL_DEPTH, ROW_SHAPE_BARRIER_DERIVATIONS
+from .constants import ROW_SHAPE_BARRIER_DERIVATIONS
+from .models import ConceptAttrs
 
 UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], List[BuildConcept]]
 
@@ -250,6 +251,7 @@ def _add_concept(
     concept: BuildConcept,
     environment: BuildEnvironment,
     graph: nx.DiGraph,
+    attrs: dict[str, ConceptAttrs],
     label: str = "",
 ) -> None:
     """Walk lineage from a concept toward its roots, under a fixed label.
@@ -284,8 +286,8 @@ def _add_concept(
     ):
         rowset_name = concept.lineage.rowset.name
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
-    graph.add_node(
-        nid,
+    graph.add_node(nid)
+    attrs[nid] = ConceptAttrs(
         address=concept.address,
         label=eff_label,
         derivation=concept.derivation.value,
@@ -317,7 +319,7 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     for upstream in fetcher(concept, environment):
-        _add_concept(upstream, environment, graph, label=label)
+        _add_concept(upstream, environment, graph, attrs, label=label)
         upstream_label = _effective_label(upstream, label)
         graph.add_edge(node_id(upstream_label, upstream.address), nid, kind="lineage")
 
@@ -353,8 +355,8 @@ def _rowset_inner_outputs(
     # row_arguments to classify d1. Skip the build dance for now and
     # return any pre-built where the rowset attached.
     conditions: list[BuildWhereClause] = []
-    where = getattr(select, "where_clause", None)
-    if where is not None and isinstance(where, BuildWhereClause):
+    where = select.where_clause
+    if isinstance(where, BuildWhereClause):
         conditions.append(where)
     return outputs, conditions
 
@@ -363,7 +365,7 @@ def build_concept_graph(
     mandatory_list: List[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
-) -> nx.DiGraph:
+) -> tuple[nx.DiGraph, dict[str, ConceptAttrs]]:
     """Build the concept-level DAG. Constraint edges (d1→d0) record the
     invariant that filter inputs must be available above any row-shape barrier
     that consumes their filtered output.
@@ -379,16 +381,19 @@ def build_concept_graph(
     together by `partition_basics_by_subset_grain` and form a group-
     level cycle through the rowset)."""
     graph: nx.DiGraph = nx.DiGraph()
+    attrs: dict[str, ConceptAttrs] = {}
     # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
-        _add_concept(concept, environment, graph)
+        _add_concept(concept, environment, graph, attrs)
     # Outer WHERE: condition-phase label "@condition". The same concept that
     # also appears in the SELECT gets a separate node here, so we never
     # have to retro-promote depth labels.
     for clause in conditions:
         for concept in clause.concept_arguments:
             resolved = environment.concepts.get(concept.address, concept) or concept
-            _add_concept(resolved, environment, graph, label=_condition_label(""))
+            _add_concept(
+                resolved, environment, graph, attrs, label=_condition_label("")
+            )
 
     # Walk each ROWSET leaf in the outer graph. Multiple outer concepts
     # may all point at the same rowset (q05: channel, id, sales_metric,
@@ -396,15 +401,16 @@ def build_concept_graph(
     # rowset name so we only walk the inner select once.
     seen_rowsets: set[str] = set()
     pending_rowsets: list[BuildConcept] = []
-    for nid, data in list(graph.nodes(data=True)):
-        if data.get("derivation") != Derivation.ROWSET.value:
+    for nid in list(graph.nodes):
+        a = attrs[nid]
+        if a.derivation != Derivation.ROWSET.value:
             continue
         # Skip rowsets discovered inside an already-labeled sub-graph;
         # nested rowsets are handled by the outer recursion below. Only
         # the outer blank-phase nodes have label="" so this test still works.
-        if data.get("label", ""):
+        if a.label:
             continue
-        address = data.get("address", nid)
+        address = a.address
         found = environment.concepts.get(address)
         if found is None or not isinstance(found.lineage, BuildRowsetItem):
             continue
@@ -421,7 +427,7 @@ def build_concept_graph(
             rowset_concept, environment
         )
         for inner_concept in inner_outputs:
-            _add_concept(inner_concept, environment, graph, label=rowset_name)
+            _add_concept(inner_concept, environment, graph, attrs, label=rowset_name)
         for clause in inner_conditions:
             for c in clause.concept_arguments:
                 resolved = environment.concepts.get(c.address, c) or c
@@ -429,6 +435,7 @@ def build_concept_graph(
                     resolved,
                     environment,
                     graph,
+                    attrs,
                     label=_condition_label(rowset_name),
                 )
         # Bridge: connect each outer rowset concept to its inner producer.
@@ -441,10 +448,10 @@ def build_concept_graph(
         # see the dependency. Adding it gives `_compute_concept_sets` a
         # real path to demand inner outputs from the outer rowset's
         # consumers.
-        for outer_nid, data in list(graph.nodes(data=True)):
-            if data.get("label", "") != "":
+        for outer_nid in list(graph.nodes):
+            if attrs[outer_nid].label != "":
                 continue
-            outer_addr = data.get("address")
+            outer_addr = attrs[outer_nid].address
             outer_concept = environment.concepts.get(outer_addr)
             if outer_concept is None:
                 continue
@@ -466,19 +473,19 @@ def build_concept_graph(
     # source under the filter node's label and wire an `existence` edge to the
     # filter so it lands in its own group and renders as `... IN (SELECT src
     # FROM <cte>)`.
-    for nid, data in list(graph.nodes(data=True)):
-        fconcept = environment.concepts.get(data.get("address", nid))
+    for nid in list(graph.nodes):
+        fconcept = environment.concepts.get(attrs[nid].address)
         if fconcept is None:
             continue
         existence_only = _filter_existence_only(fconcept)
         if not existence_only:
             continue
-        flabel = data.get("label", "")
+        flabel = attrs[nid].label
         for addr in existence_only:
             source = environment.concepts.get(addr)
             if source is None:
                 continue
-            _add_concept(source, environment, graph, label=flabel)
+            _add_concept(source, environment, graph, attrs, label=flabel)
             src_nid = node_id(_effective_label(source, flabel), source.address)
             if src_nid in graph and src_nid != nid and not graph.has_edge(src_nid, nid):
                 graph.add_edge(src_nid, nid, kind="existence")
@@ -497,7 +504,7 @@ def build_concept_graph(
             atom_row_addrs = [c.address for c in atom.row_arguments]
             for c in atom.row_arguments:
                 row_arg_addresses.add(c.address)
-            for arg_group in getattr(atom, "existence_arguments", ()) or ():
+            for arg_group in atom.existence_arguments or ():
                 for ec in arg_group:
                     existence_arg_addresses.add(ec.address)
                     for row_addr in atom_row_addrs:
@@ -507,9 +514,9 @@ def build_concept_graph(
     # side-channel subselect sources, not part of the main row stream
     # (q16: `cr.order_number` from `cs.order_number not in cr.order_number`).
     existence_only_addresses = existence_arg_addresses - row_arg_addresses
-    for n, d in graph.nodes(data=True):
-        if d.get("address") in existence_only_addresses:
-            d["existence_only"] = True
+    for n in graph.nodes:
+        if attrs[n].address in existence_only_addresses:
+            attrs[n].existence_only = True
 
     # Group nodes by scope-and-phase. Condition-phase nodes are d1 by
     # construction; the only d0 candidates live in the matching blank-phase
@@ -520,8 +527,8 @@ def build_concept_graph(
     # `existence` edge instead (below), so the dataflow distinction is
     # carried in the graph rather than recovered later via heuristics.
     nodes_by_scope_phase: dict[tuple[str, str], list[str]] = {}
-    for n, d in graph.nodes(data=True):
-        scope, phase = _scope_and_phase(d.get("label", ""))
+    for n in graph.nodes:
+        scope, phase = _scope_and_phase(attrs[n].label)
         nodes_by_scope_phase.setdefault((scope, phase), []).append(n)
     scopes_present = {scope for scope, _ in nodes_by_scope_phase}
     for scope in scopes_present:
@@ -529,10 +536,10 @@ def build_concept_graph(
         d0_blank_nodes = [
             n
             for n in nodes_by_scope_phase.get((scope, "blank"), [])
-            if graph.nodes[n].get(LABEL_DEPTH) == "d0"
+            if attrs[n].depth_label == "d0"
         ]
         for src in condition_nodes:
-            src_address = graph.nodes[src].get("address", src)
+            src_address = attrs[src].address
             if src_address not in row_arg_addresses:
                 continue
             for dst in d0_blank_nodes:
@@ -574,9 +581,9 @@ def build_concept_graph(
     mandatory_blank_ids = {node_id("", c.address) for c in mandatory_list}
     outer_condition_nodes = nodes_by_scope_phase.get(("", "condition"), [])
     for src in outer_condition_nodes:
-        if graph.nodes[src].get("derivation") == Derivation.ROOT.value:
+        if attrs[src].derivation == Derivation.ROOT.value:
             continue
-        src_address = graph.nodes[src].get("address", src)
+        src_address = attrs[src].address
         if src_address not in row_arg_addresses:
             continue
         if any(True for _ in graph.successors(src)):
@@ -585,4 +592,4 @@ def build_concept_graph(
             if dst not in graph.nodes or graph.has_edge(src, dst):
                 continue
             graph.add_edge(src, dst, kind="constraint", is_constraint=True)
-    return graph
+    return graph, attrs
