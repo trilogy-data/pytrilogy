@@ -53,6 +53,37 @@ select g, r;
     assert results == [("a", 1.0)]
 
 
+def test_predicate_not_pushed_past_window_order_key():
+    """A filter on a window's ORDER BY key (an aggregate also materialized in
+    the upstream group) must not be pushed below/into the window — SQL WHERE
+    precedes window evaluation, so dropping those rows changes the lead/lag.
+    The q59 family: a cross-year `lead` needs both years' rows present; filtering
+    `flag = 1` early would strip the year-2 rows and yield 0 results."""
+    engine = Dialects.DUCK_DB.default_executor()
+    text = """
+key rid int;
+property rid.store int;
+property rid.wk int;
+property rid.yr int;
+property rid.sales int;
+datasource t (rid, store, wk, yr, sales)
+  grain (rid)
+  query '''select 1 as rid, 1 as store, 10 as wk, 1 as yr, 100 as sales
+           union all select 2, 1, 62, 2, 50''';
+
+auto flag <- max(yr) by store, wk;
+auto sales_sum <- sum(sales) by store, wk;
+auto nwk <- wk - (case when flag = 2 then 52 else 0 end);
+auto ratio <- sales_sum / lead(sales_sum, 1) over (partition by store, nwk order by flag asc);
+
+select store as s, wk as w, ratio as r, --flag,
+having flag = 1 and ratio is not null
+order by w asc;
+"""
+    results = engine.execute_text(text)[-1].fetchall()
+    assert [(r.s, r.w, r.r) for r in results] == [(1, 10, 2.0)]
+
+
 def test_window_over_rollup_preserves_grouping_rows():
     """A window with `partition by` over a `sum() by rollup` must run on the
     materialised rollup output, not be re-planned via a join-back on

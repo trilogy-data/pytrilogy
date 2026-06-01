@@ -143,6 +143,36 @@ Overall goals:
 - **Store-count multiplication quirk (q54).** The reference joins the customer to ALL stores in their
   county/state (no `ss_store_sk` join) and multiplies revenue by the store count — not "store sales at
   matching stores". Hard to convey as a sensible business question; flag as quirky-reference.
+- **Integer division truncates (q34).** `dependent_count / vehicle_count > 1.2` where both are ints does
+  INTEGER division (3/2 = 1, not 1.5) → drops qualifying rows. Agent needs a float cast `(x * 1.0) / y`.
+  Recurring Trilogy/SQL gotcha. Question fix: "...divided by..., computed as a decimal, ...". Candidate
+  for agent-info guidance (int/int truncates; cast for ratios).
+- **Identity = surrogate id, not name (q39; also q77/q80 outlet, q58 item).** When the reference groups/
+  reports by `w_warehouse_sk`/`i_item_sk` etc., say "(identified by its surrogate id / internal row key)".
+  Agents default to the name, which both mislabels and changes grain (distinct sks share a name).
+- **item/store CODE = `text_id`, not surrogate `id` — SYSTEMIC fix applied (q20/q21/q29; also q58/q39).**
+  Agents GROUP BY `item.id` (surrogate) when the reference groups by `i_item_id` (business code = `text_id`).
+  Item is an SCD: several `id`s share one `text_id`, so `by item.id` SPLITS an item across versions and
+  under-counts. Fix applied: sharpened `item.preql`/`store.preql` id-vs-text_id descriptions ("id = SCD
+  version key, do NOT group per-item by it; text_id = THE per-item code, GROUP BY this"). Questions saying
+  "item code"/"store code" then resolve to text_id. (Parallel to the per-unit systemic fix.)
+- **Returning vs refunded customer/address — add model descriptions (q30, q81).** web_returns &
+  catalog_returns name the RETURNING customer `billing_customer` (confusing) vs `refunded_customer`, and
+  `return_address` vs `refunded_address`. Added trailing-comment descriptions to the imports so explore
+  disambiguates; agents otherwise grab `refunded_customer`.
+- **PER-UNIT FIX is now SYSTEMIC (done).** Field comments in physical/catalog/web_sales name the type
+  (`sales_price` = "unit price", `ext_sales_price` = "total price" = unit×qty); per-unit questions say
+  "unit price". Validated: agent bridges "unit price"→`sales_price` via the comment (q65 90%). "Extended
+  sales price" questions already work and were left as-is.
+
+### Eval-harness fixes
+- **Scorer float-precision false-negative (FIXED).** `_multiset` in `evals/common/scoring.py` compared
+  cells by exact `repr`, so a computed percentage/ratio that agreed to ~15 sig digits but differed in the
+  last ULP (e.g. `a*100/b` vs `100*a/b`) was wrongly graded FAIL. q20 was fully correct (all 100 item
+  codes + values matched) yet failed on `30.11121444718213` vs `30.111214447182128`. Added `_round_cell`
+  rounding floats to 9 decimals before hashing — far finer than any genuine difference (no false passes),
+  Decimals left exact. Verified q20 → pass, q21/q22/q26 still pass, q27/q29 still fail. Likely un-suppresses
+  other ratio/cov/margin queries (q31/q36/q39/q98…) — worth a full re-measure.
 
 ### Open / harder than a question fix
 - **Anti-join on a DERIVED concat key undercounts (~3%).** q87 (set-difference: store names+dates

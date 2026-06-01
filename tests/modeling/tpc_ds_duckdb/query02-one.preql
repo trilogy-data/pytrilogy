@@ -12,41 +12,38 @@ def weekday_sales(weekday) -> sum(
         when date.day_of_week = weekday then web_sales.ext_sales_price
         else 0.0::numeric(15,2)
     end
-) + sum(
+) by date.week_seq + sum(
     case
         when date.day_of_week = weekday then catalog_sales.ext_sales_price
         else 0.0::numeric(15,2)
     end
-);
+) by date.week_seq;
 
-rowset yearly_agg <- where
+auto sunday_sales <- @weekday_sales(0);
+auto monday_sales <- @weekday_sales(1);
+auto tuesday_sales <- @weekday_sales(2);
+auto wednesday_sales <- @weekday_sales(3);
+auto thursday_sales <- @weekday_sales(4);
+auto friday_sales <- @weekday_sales(5);
+auto saturday_sales <- @weekday_sales(6);
+
+def round_lag(sales) -> round(sales / (lead(sales, 53) over (order by date.week_seq asc)), 2);
+
+where
     date.week_seq in relevent_week_seq
 select
     date.week_seq,
-    @weekday_sales(0) as sunday_sales,
-    @weekday_sales(1) as monday_sales,
-    @weekday_sales(2) as tuesday_sales,
-    @weekday_sales(3) as wednesday_sales,
-    @weekday_sales(4) as thursday_sales,
-    @weekday_sales(5) as friday_sales,
-    @weekday_sales(6) as saturday_sales,
-;
-
-def round_lag(sales) -> round(sales / (lead(sales, 53) over (order by yearly_agg.date.week_seq asc)), 2);
-
-select
-    yearly_agg.date.week_seq,
-    @round_lag(yearly_agg.sunday_sales) as sunday_increase,
-    @round_lag(yearly_agg.monday_sales) as monday_increase,
-    @round_lag(yearly_agg.tuesday_sales) as tuesday_increase,
-    @round_lag(yearly_agg.wednesday_sales) as wednesday_increase,
-    @round_lag(yearly_agg.thursday_sales) as thursday_increase,
-    @round_lag(yearly_agg.friday_sales) as friday_increase,
-    @round_lag(yearly_agg.saturday_sales) as saturday_increase,
+    @round_lag(sunday_sales) as sunday_increase,
+    @round_lag(monday_sales) as monday_increase,
+    @round_lag(tuesday_sales) as tuesday_increase,
+    @round_lag(wednesday_sales) as wednesday_increase,
+    @round_lag(thursday_sales) as thursday_increase,
+    @round_lag(friday_sales) as friday_increase,
+    @round_lag(saturday_sales) as saturday_increase,
 having
     sunday_increase is not null
 
 order by
-    yearly_agg.date.week_seq asc nulls first
+    date.week_seq asc nulls first
 limit 100
 ;

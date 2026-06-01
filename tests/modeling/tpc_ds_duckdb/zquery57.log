@@ -1,5 +1,5 @@
 query_id = "57"
-gen_length = 5348
+gen_length = 5351
 preql_size = 2050
 comp_size = 2122
 generated_sql = """
@@ -43,10 +43,7 @@ GROUP BY
     1,
     2,
     3,
-    4
-HAVING
-    \"avg_monthly_sales\" > 0
-),
+    4),
 questionable as (
 SELECT
     \"thoughtful\".\"catalog_sales_call_center_name\" as \"catalog_sales_call_center_name\",
@@ -73,7 +70,7 @@ FROM
     \"questionable\"
     RIGHT OUTER JOIN \"abundant\" on \"questionable\".\"catalog_sales_call_center_name\" = \"abundant\".\"catalog_sales_call_center_name\" AND \"questionable\".\"catalog_sales_date_year\" = \"abundant\".\"catalog_sales_date_year\" AND \"questionable\".\"catalog_sales_item_brand_name\" = \"abundant\".\"catalog_sales_item_brand_name\" AND \"questionable\".\"catalog_sales_item_category\" is not distinct from \"abundant\".\"catalog_sales_item_category\"
 WHERE
-    coalesce(\"abundant\".\"catalog_sales_date_year\",\"questionable\".\"catalog_sales_date_year\") = 1999 and CASE
+    coalesce(\"abundant\".\"catalog_sales_date_year\",\"questionable\".\"catalog_sales_date_year\") = 1999 and \"abundant\".\"avg_monthly_sales\" > 0 and CASE
 	WHEN \"abundant\".\"avg_monthly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\") / \"abundant\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1

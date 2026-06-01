@@ -8,12 +8,12 @@ import store as store;
 import web_sales as web_sales;
 import date as return_date;
 import time as time;
-import customer as billing_customer;
-import customer as refunded_customer;
+import customer as billing_customer; # the RETURNING customer who returned the item (WR_RETURNING_CUSTOMER_SK) — use this for "returning customer"
+import customer as refunded_customer; # the customer who received the refund (WR_REFUNDED_CUSTOMER_SK; may differ from the returning customer)
 import customer_demographic as refunded_demographic;
 import customer_demographic as returning_demographic;
-import address as return_address;
-import address as refunded_address;
+import address as return_address; # the address the return originated from (the returning side) — use this for "returning-customer address"
+import address as refunded_address; # the address the refund was issued to
 import reason as reason;
 import web_page as web_page;
 

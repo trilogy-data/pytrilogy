@@ -1,5 +1,5 @@
 query_id = "47"
-gen_length = 6051
+gen_length = 6054
 preql_size = 2281
 comp_size = 2473
 generated_sql = """
@@ -47,10 +47,7 @@ GROUP BY
     2,
     3,
     4,
-    5
-HAVING
-    \"avg_monthly_sales\" > 0
-),
+    5),
 questionable as (
 SELECT
     \"thoughtful\".\"physical_sales_date_month_of_year\" as \"physical_sales_date_month_of_year\",
@@ -79,7 +76,7 @@ FROM
     \"questionable\"
     RIGHT OUTER JOIN \"abundant\" on \"questionable\".\"physical_sales_date_year\" = \"abundant\".\"physical_sales_date_year\" AND \"questionable\".\"physical_sales_item_brand_name\" = \"abundant\".\"physical_sales_item_brand_name\" AND \"questionable\".\"physical_sales_item_category\" is not distinct from \"abundant\".\"physical_sales_item_category\" AND \"questionable\".\"physical_sales_store_company_name\" is not distinct from \"abundant\".\"physical_sales_store_company_name\" AND \"questionable\".\"physical_sales_store_name\" = \"abundant\".\"physical_sales_store_name\"
 WHERE
-    coalesce(\"abundant\".\"physical_sales_date_year\",\"questionable\".\"physical_sales_date_year\") = 1999 and CASE
+    coalesce(\"abundant\".\"physical_sales_date_year\",\"questionable\".\"physical_sales_date_year\") = 1999 and \"abundant\".\"avg_monthly_sales\" > 0 and CASE
 	WHEN \"abundant\".\"avg_monthly_sales\" > 0 THEN abs(\"questionable\".\"sum_sales\" - \"abundant\".\"avg_monthly_sales\") / \"abundant\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
