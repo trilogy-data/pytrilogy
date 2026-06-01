@@ -1,5 +1,5 @@
 query_id = "98"
-gen_length = 3611
+gen_length = 3515
 preql_size = 801
 comp_size = 811
 generated_sql = """
@@ -61,16 +61,16 @@ SELECT
     \"abundant\".\"physical_sales_item_text_id\" as \"physical_sales_item_text_id\",
     \"abundant\".\"physical_sales_item_desc\" as \"physical_sales_item_desc\",
     \"abundant\".\"physical_sales_item_category\" as \"physical_sales_item_category\",
-    coalesce(\"abundant\".\"physical_sales_item_class\",\"thoughtful\".\"physical_sales_item_class\") as \"physical_sales_item_class\",
+    \"abundant\".\"physical_sales_item_class\" as \"physical_sales_item_class\",
     \"abundant\".\"physical_sales_item_current_price\" as \"physical_sales_item_current_price\",
     \"abundant\".\"item_revenue\" as \"item_revenue\",
     ( \"abundant\".\"item_revenue\" * 100.0 ) / (\"thoughtful\".\"_virt_agg_sum_9925573558789696\") as \"revenueratio\"
 FROM
     \"abundant\"
-    FULL JOIN \"thoughtful\" on \"abundant\".\"physical_sales_item_class\" is not distinct from \"thoughtful\".\"physical_sales_item_class\"
+    LEFT OUTER JOIN \"thoughtful\" on \"abundant\".\"physical_sales_item_class\" is not distinct from \"thoughtful\".\"physical_sales_item_class\"
 ORDER BY 
     \"abundant\".\"physical_sales_item_category\" asc nulls first,
-    coalesce(\"abundant\".\"physical_sales_item_class\",\"thoughtful\".\"physical_sales_item_class\") asc nulls first,
+    \"abundant\".\"physical_sales_item_class\" asc nulls first,
     \"abundant\".\"physical_sales_item_text_id\" asc nulls first,
     \"abundant\".\"physical_sales_item_desc\" asc nulls first,
     \"revenueratio\" asc nulls first"""
