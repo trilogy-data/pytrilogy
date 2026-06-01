@@ -707,6 +707,20 @@ def _compute_concept_sets(
     input_concepts: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
     hidden_concepts: dict[str, set[str]] = {gid: set() for gid in group_graph.nodes}
 
+    # Lineage-only reachability, for "does a row-shape-barrier below me already
+    # produce this concept?" A mandatory concept produced by a grouping
+    # descendant must be contributed by that barrier, not by a pre-barrier
+    # group (whose pre-aggregation rows can't merge with the aggregated ones).
+    lineage_edges_only = [
+        (u, v)
+        for u, v, ed in group_graph.edges(data=True)
+        if ed.get("kind") == "lineage"
+    ]
+    lineage_sub = group_graph.edge_subgraph(lineage_edges_only).copy()
+    for n in group_graph.nodes:
+        if n not in lineage_sub:
+            lineage_sub.add_node(n)
+
     output_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
     input_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
 
@@ -749,7 +763,17 @@ def _compute_concept_sets(
         outs: set[str] = existence_demand.get(gid, set()) & cap_gid
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
-                outs |= cap_gid & mandatory_addresses
+                mand = cap_gid & mandatory_addresses
+                # Drop a mandatory concept that a grouping (row-shape barrier)
+                # lineage-descendant already produces — it's the barrier's to
+                # contribute. Exposing it here (pre-barrier) leaks a rename of
+                # a grain key into the aggregate's input as an ungrouped column
+                # (q05 `s_channel`/`s_id` over a ROLLUP). Descendants are earlier
+                # in reverse topo, so their outputs are already computed.
+                for desc in nx.descendants(lineage_sub, gid):
+                    if derivation_of.get(desc) in GROUPING_DERIVATIONS:
+                        mand -= output_concepts[desc]
+                outs |= mand
                 # Same-grain FINAL contributors must expose their shared grain
                 # so the merge joins on the grain key, not on whatever columns
                 # happen to be shared (q39: a cov basic and the aggregate are
@@ -843,7 +867,7 @@ def _compute_concept_sets(
             else:
                 # A passthrough that's a pure rename of this grouping group's
                 # grain keys: demand the keys, not the rename, so the SELECT
-                # derives it from the (grouped) key instead of passing through a
+                # derives it from the (grouped) key rather than passing through a
                 # pre-materialized, ungrouped column — invalid under GROUP BY
                 # (q05 `s_channel`/`s_id` over a ROLLUP).
                 parents_c = lineage_parents.get(c, set())

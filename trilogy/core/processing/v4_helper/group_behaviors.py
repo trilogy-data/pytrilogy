@@ -158,13 +158,13 @@ def _lineage_parent_addrs(concept_graph: nx.DiGraph, address: str) -> set[str]:
 def can_preserve_grouping(
     concept_graph: nx.DiGraph, native_grain: frozenset[str], address: str
 ) -> bool:
-    """Preservation for a GROUP-BY/PARTITION-BY derivation.
+    """Preservation for a GROUP-BY / PARTITION-BY derivation.
 
-    Same as the subset rule, but with two adjustments for columns that aren't
+    Like the subset rule, but with two adjustments for columns that aren't
     grain-subset-determined:
     - a *rename of grain keys* (every lineage parent is a grain key) rides
-      through — it IS one of the group keys under another name, and the SELECT
-      renders it from the (grouped) key (q05 `s_channel`←`channel_label`,
+      through — it IS a group key under another name, and the SELECT renders it
+      from the (grouped) key (q05 `s_channel`←`channel_label`,
       `s_id`←`sales_id_label` over a ROLLUP);
     - a bare empty-grain column rides through only if it's a true CONSTANT — a
       row-varying empty-grain value (a CASE that isn't a key rename) would land

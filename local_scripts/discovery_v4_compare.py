@@ -25,6 +25,7 @@ import time
 import traceback
 from collections import Counter
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional, TypeVar
 
@@ -185,6 +186,20 @@ def hydrate_params(sql: str, env: Environment) -> tuple[str, dict[str, Any]]:
     return rewritten, params
 
 
+_FLOAT_TOLERANCE_PLACES = 8
+
+
+def _round_cell(v: Any) -> Any:
+    """Round float/Decimal cells to a fixed precision so floating-point noise
+    in non-additive aggregates (e.g. q39's AVG, summed in a different row order
+    on each side) doesn't read as a result mismatch. Exact for ints/strings."""
+    if isinstance(v, float):
+        return round(v, _FLOAT_TOLERANCE_PLACES)
+    if isinstance(v, Decimal):
+        return round(v, _FLOAT_TOLERANCE_PLACES)
+    return v
+
+
 def execute(
     con: duckdb.DuckDBPyConnection,
     sql: str,
@@ -193,14 +208,15 @@ def execute(
     """Return rows normalized to (sorted_by_column_name) tuples so two SQLs
     that produce the same data with different SELECT column ordering compare
     equal. Column order is a SQL surface concern; we care about row-level
-    semantic equality here."""
+    semantic equality here. Float/Decimal cells are rounded (see `_round_cell`)
+    so tiny aggregation-order noise doesn't trip the multiset compare."""
     cursor = con.execute(sql, params) if params else con.execute(sql)
     columns = [d[0] for d in cursor.description] if cursor.description else []
     rows = cursor.fetchall()
     if not columns:
-        return [tuple(r) for r in rows]
+        return [tuple(_round_cell(v) for v in r) for r in rows]
     order = sorted(range(len(columns)), key=lambda i: columns[i])
-    return [tuple(row[i] for i in order) for row in rows]
+    return [tuple(_round_cell(row[i]) for i in order) for row in rows]
 
 
 def parse_env(query_id: str) -> Optional[Environment]:

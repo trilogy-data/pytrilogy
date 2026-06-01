@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8125 | 158 | 257.90 ms |
-| reference | 7234 | 143 | 211.48 ms |
-| v4 / ref | 1.12x | 1.10x | 1.22x |
+| v4 | 8128 | 158 | 296.73 ms |
+| reference | 7234 | 143 | 303.52 ms |
+| v4 / ref | 1.12x | 1.10x | 0.98x |
 
 ## Preql
 
@@ -178,7 +178,7 @@ SELECT
 	WHEN "cooperative"."_wss_in_year2" = 1 THEN 52
 	ELSE 0
 	END) as "normalized_week",
-    "cooperative"."ss_date_week_seq" as "d_week_seq1",
+    "cooperative"."ss_date_week_seq" as "wss_week_seq",
     "cooperative"."ss_store_id" as "wss_store_id",
     "cooperative"."ss_store_name" as "s_store_name1",
     "cooperative"."ss_store_text_id" as "s_store_id1"
@@ -187,7 +187,6 @@ FROM
     LEFT OUTER JOIN "abundant" on "cooperative"."ss_date_week_seq" = "abundant"."ss_date_week_seq" AND "cooperative"."ss_store_id" = "abundant"."ss_store_id"),
 concerned as (
 SELECT
-    "juicy"."d_week_seq1" as "d_week_seq1",
     "juicy"."s_store_id1" as "s_store_id1",
     "juicy"."wss_fri_sales" as "wss_fri_sales",
     "juicy"."wss_mon_sales" as "wss_mon_sales",
@@ -197,6 +196,7 @@ SELECT
     "juicy"."wss_thu_sales" as "wss_thu_sales",
     "juicy"."wss_tue_sales" as "wss_tue_sales",
     "juicy"."wss_wed_sales" as "wss_wed_sales",
+    "juicy"."wss_week_seq" as "d_week_seq1",
     lead("juicy"."wss_fri_sales", 1) over (partition by "juicy"."wss_store_id","juicy"."normalized_week" order by "juicy"."wss_in_year2" asc ) as "_virt_window_lead_6145286498170393",
     lead("juicy"."wss_mon_sales", 1) over (partition by "juicy"."wss_store_id","juicy"."normalized_week" order by "juicy"."wss_in_year2" asc ) as "_virt_window_lead_4810407976310175",
     lead("juicy"."wss_sat_sales", 1) over (partition by "juicy"."wss_store_id","juicy"."normalized_week" order by "juicy"."wss_in_year2" asc ) as "_virt_window_lead_5231294923035285",
@@ -222,9 +222,9 @@ FROM
     "concerned"),
 sparkling as (
 SELECT
-    "juicy"."d_week_seq1" as "d_week_seq1",
     "juicy"."s_store_id1" as "s_store_id1",
     "juicy"."s_store_name1" as "s_store_name1",
+    "young"."d_week_seq1" as "d_week_seq1",
     "young"."fri_sales_ratio" as "fri_sales_ratio",
     "young"."mon_sales_ratio" as "mon_sales_ratio",
     "young"."sat_sales_ratio" as "sat_sales_ratio",
@@ -234,7 +234,7 @@ SELECT
     "young"."wed_sales_ratio" as "wed_sales_ratio"
 FROM
     "juicy"
-    INNER JOIN "young" on "juicy"."d_week_seq1" = "young"."d_week_seq1" AND "juicy"."s_store_id1" = "young"."s_store_id1" AND "juicy"."wss_store_id" = "young"."wss_store_id"
+    INNER JOIN "young" on "juicy"."s_store_id1" = "young"."s_store_id1" AND "juicy"."wss_store_id" = "young"."wss_store_id" AND "juicy"."wss_week_seq" = "young"."d_week_seq1"
 WHERE
     "juicy"."year1_flag" = 1 and "young"."sun_sales_ratio" is not null
 )

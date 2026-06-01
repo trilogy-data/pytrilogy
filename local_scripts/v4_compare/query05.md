@@ -1,24 +1,26 @@
 # Query 05
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 12420 | 254 | — |
-| reference | 10731 | 230 | 115.41 ms |
-| v4 / ref | 1.16x | 1.10x | — |
+| v4 | 10669 | 230 | 171.78 ms |
+| reference | 10731 | 230 | 169.04 ms |
+| v4 / ref | 0.99x | 1.00x | 1.02x |
 
 ## Preql
 
@@ -240,18 +242,6 @@ SELECT
 	ELSE null
 	END as "channel_label",
     CASE
-	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN 'store channel'
-	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
-	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN 'web channel'
-	ELSE null
-	END as "s_channel",
-    CASE
-	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN ('store' || "late"."sales_channel_dim_text_id")
-	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "late"."sales_channel_dim_text_id")
-	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN ('web_site' || "late"."sales_channel_dim_text_id")
-	ELSE null
-	END as "s_id",
-    CASE
 	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN ('store' || "late"."sales_channel_dim_text_id")
 	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "late"."sales_channel_dim_text_id")
 	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN ('web_site' || "late"."sales_channel_dim_text_id")
@@ -274,18 +264,6 @@ SELECT
 	ELSE null
 	END as "channel_label",
     CASE
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'STORE' THEN 'store channel'
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'CATALOG' THEN 'catalog channel'
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'WEB' THEN 'web channel'
-	ELSE null
-	END as "r_channel",
-    CASE
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'STORE' THEN ('store' || "cheerful"."sales_return_channel_dim_text_id")
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'CATALOG' THEN ('catalog_page' || "cheerful"."sales_return_channel_dim_text_id")
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'WEB' THEN ('web_site' || "cheerful"."sales_return_channel_dim_text_id")
-	ELSE null
-	END as "r_id",
-    CASE
 	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'STORE' THEN ('store' || "cheerful"."sales_return_channel_dim_text_id")
 	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'CATALOG' THEN ('catalog_page' || "cheerful"."sales_return_channel_dim_text_id")
 	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'WEB' THEN ('web_site' || "cheerful"."sales_return_channel_dim_text_id")
@@ -301,30 +279,30 @@ WHERE
 ),
 charming as (
 SELECT
-    "divergent"."s_channel" as "channel",
-    "divergent"."s_id" as "id",
+    "divergent"."channel_label" as "channel",
+    "divergent"."sales_id_label" as "id",
     sum("divergent"."sales_ext_sales_price") as "sales_total_a",
     sum("divergent"."sales_net_profit") as "profit_only_a"
 FROM
     "divergent"
 GROUP BY
-    ROLLUP ("divergent"."channel_label", "divergent"."sales_id_label")),
+    ROLLUP (1, 2)),
 young as (
 SELECT
-    "vacuous"."r_channel" as "channel",
-    "vacuous"."r_id" as "id",
+    "vacuous"."channel_label" as "channel",
+    "vacuous"."return_id_label" as "id",
     sum(coalesce("vacuous"."sales_return_amount",0)) as "returns_total_b",
     sum(coalesce("vacuous"."sales_return_net_loss",0)) as "loss_only_b"
 FROM
     "vacuous"
 GROUP BY
-    ROLLUP ("vacuous"."channel_label", "vacuous"."return_id_label"))
+    ROLLUP (1, 2))
 SELECT
     coalesce("charming"."channel","young"."channel") as "channel",
-    coalesce("young"."returns_total_b",0.0) as "returns_metric",
-    coalesce("charming"."sales_total_a",0.0) as "sales_metric",
     coalesce("charming"."profit_only_a",0.0) - coalesce("young"."loss_only_b",0.0) as "profit_metric",
-    coalesce("charming"."id","young"."id") as "id"
+    coalesce("charming"."sales_total_a",0.0) as "sales_metric",
+    coalesce("charming"."id","young"."id") as "id",
+    coalesce("young"."returns_total_b",0.0) as "returns_metric"
 FROM
     "charming"
     FULL JOIN "young" on "charming"."channel" is not distinct from "young"."channel" AND "charming"."id" is not distinct from "young"."id"
@@ -567,28 +545,4 @@ ORDER BY
     coalesce("concerned"."channel","divergent"."channel") asc nulls first,
     coalesce("concerned"."id","divergent"."id") asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 277, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 197, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.BinderException: Binder Error: column "s_channel" must appear in the GROUP BY clause or must be part of an aggregate function.
-Either add it to the GROUP BY list, or use "ANY_VALUE(s_channel)" if the exact value of "s_channel" is not important.
-
-LINE 224:     "divergent"."s_channel" as "channel",
-              ^
 ```
