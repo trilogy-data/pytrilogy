@@ -841,7 +841,16 @@ def _compute_concept_sets(
                             if gc not in primaries:
                                 ins.add(gc)
             else:
-                ins.add(c)
+                # A passthrough that's a pure rename of this grouping group's
+                # grain keys: demand the keys, not the rename, so the SELECT
+                # derives it from the (grouped) key instead of passing through a
+                # pre-materialized, ungrouped column — invalid under GROUP BY
+                # (q05 `s_channel`/`s_id` over a ROLLUP).
+                parents_c = lineage_parents.get(c, set())
+                if is_grouping and parents_c and parents_c <= grain_of[gid]:
+                    ins |= parents_c
+                else:
+                    ins.add(c)
         for atom in attrs[gid].condition_atoms:
             for arg in atom.row_arguments:
                 if arg.address not in primaries:

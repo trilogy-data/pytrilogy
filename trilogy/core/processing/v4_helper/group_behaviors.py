@@ -145,25 +145,44 @@ def can_preserve_grain_subset(
     return col_grain <= native_grain
 
 
+def _lineage_parent_addrs(concept_graph: nx.DiGraph, address: str) -> set[str]:
+    if address not in concept_graph.nodes:
+        return set()
+    return {
+        concept_graph.nodes[u].get("address", u)
+        for u, _, d in concept_graph.in_edges(address, data=True)
+        if d.get("kind") == "lineage"
+    }
+
+
 def can_preserve_grouping(
     concept_graph: nx.DiGraph, native_grain: frozenset[str], address: str
 ) -> bool:
-    """Preservation for a GROUP-BY/PARTITION-BY derivation. Same as the subset
-    rule, except an empty-grain column rides through only if it is a true
-    constant (``CONSTANT`` derivation). A row-varying derived value with empty
-    grain — e.g. q05's ``s_channel``, a CASE that renames a rollup key — would
-    otherwise be projected into the GROUP BY's SELECT without a grouping entry,
-    which is invalid SQL. Such a column stays out of the aggregate and is
-    sourced from the grain key it renames instead."""
+    """Preservation for a GROUP-BY/PARTITION-BY derivation.
+
+    Same as the subset rule, but with two adjustments for columns that aren't
+    grain-subset-determined:
+    - a *rename of grain keys* (every lineage parent is a grain key) rides
+      through — it IS one of the group keys under another name, and the SELECT
+      renders it from the (grouped) key (q05 `s_channel`←`channel_label`,
+      `s_id`←`sales_id_label` over a ROLLUP);
+    - a bare empty-grain column rides through only if it's a true CONSTANT — a
+      row-varying empty-grain value (a CASE that isn't a key rename) would land
+      in the SELECT with no GROUP BY entry, which is invalid SQL."""
     if address in native_grain:
         return True
     if address not in concept_graph.nodes:
         return False
     node = concept_graph.nodes[address]
     col_grain = node.get("grain_components", frozenset())
+    if col_grain and col_grain <= native_grain:
+        return True
+    parents = _lineage_parent_addrs(concept_graph, address)
+    if parents and parents <= native_grain:
+        return True
     if not col_grain:
         return node.get("derivation") == Derivation.CONSTANT.value
-    return col_grain <= native_grain
+    return False
 
 
 # ----- registry --------------------------------------------------------
