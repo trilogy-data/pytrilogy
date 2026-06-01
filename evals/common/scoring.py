@@ -416,9 +416,7 @@ def _score_one(
         # skipping the Trilogy transpile step.
         sql = _last_sql_statement(text)
         if not sql:
-            return QueryResult(
-                id=idx, status="error", detail="query file is empty"
-            )
+            return QueryResult(id=idx, status="error", detail="query file is empty")
     else:
         try:
             engine.environment = Environment(working_path=workspace)

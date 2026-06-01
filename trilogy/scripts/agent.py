@@ -233,8 +233,7 @@ def _dispatch(
     handler = handlers.get(call.name)
     if handler is None:
         return (
-            f"Unknown tool '{call.name}'. Available: "
-            f"{', '.join(handlers.keys())}."
+            f"Unknown tool '{call.name}'. Available: " f"{', '.join(handlers.keys())}."
         )
     try:
         return handler(state, call.arguments or {})
@@ -650,7 +649,9 @@ def agent(
 
         tools = list(SQL_TOOLS)
         handlers = SQL_TOOL_HANDLERS
-        system_prompt = sql_system_prompt(has_schema_md=(Path.cwd() / "schema.md").exists())
+        system_prompt = sql_system_prompt(
+            has_schema_md=(Path.cwd() / "schema.md").exists()
+        )
     else:
         excluded_tool_names: set[str] = set()
         if actual_quiet:

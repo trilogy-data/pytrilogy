@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common import agent_runner, db, prompts, scoring  # noqa: E402
+from common.categories import CATEGORIES, get_category  # noqa: E402
 from common.main import DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_ENV  # noqa: E402
 from common.report import load_env  # noqa: E402
 from spec import SPEC  # noqa: E402
@@ -48,9 +49,11 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--concurrency", type=int, default=3)
     p.add_argument(
-        "--base",
-        action="store_true",
-        help="ingest-only model instead of the enriched hand-curated dir",
+        "--category",
+        choices=sorted(CATEGORIES),
+        default="enriched",
+        help="which eval category to repeat: sql_bare, sql_schema, ingest, "
+        "enriched (default).",
     )
     p.add_argument(
         "--force-tool-choice",
@@ -61,17 +64,6 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--output-dir", type=Path, default=None)
     p.add_argument("--env-file", type=Path, default=REPO_ROOT / ".env.secrets")
     return p
-
-
-def _seed_model(workspace: Path, base: bool) -> None:
-    if base:
-        result = agent_runner.run_pre_ingest(workspace)
-    else:
-        result = agent_runner.install_enriched_model(
-            workspace, SPEC.default_enriched_dir, SPEC.enriched_skip_prefixes
-        )
-    if result["exit_code"] != 0:
-        raise SystemExit(f"model seed failed: {result['stderr'][:500]}")
 
 
 def _summarize(records: list[dict]) -> dict:
@@ -113,14 +105,14 @@ def main() -> int:
         print(f"ERROR: {api_env} not set (looked in {args.env_file})", file=sys.stderr)
         return 2
 
+    category = get_category(args.category)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     qid = args.query_id
     # Resolve to absolute: the agent subprocess runs with cwd=worker, so a
     # relative --output-dir would make the --log-file path resolve under the
     # worker dir (nonexistent nested parents) and crash the agent on startup.
     out = (
-        args.output_dir
-        or SPEC.results_dir / f"repeat_q{qid:02d}_{ts}{'_base' if args.base else ''}"
+        args.output_dir or SPEC.results_dir / f"repeat_q{qid:02d}_{ts}_{category.key}"
     ).resolve()
     workspace = out / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
@@ -136,11 +128,13 @@ def main() -> int:
         args.max_iterations,
         force_tool_choice=args.force_tool_choice,
     )
-    print(f"[2/3] Seeding {'base (ingest)' if args.base else 'enriched'} model ...")
-    _seed_model(workspace, args.base)
+    print(f"[2/3] Category '{category.key}': setting up workspace ...")
+    seed = category.setup(workspace, SPEC, db_path=workspace_db, enriched_dir=None)
+    if seed["exit_code"] != 0:
+        raise SystemExit(f"workspace setup failed: {seed['stderr'][:500]}")
 
     entry = next(p for p in prompts.active_prompts(SPEC) if p["id"] == qid)
-    task = prompts.build_single_query_task(SPEC, entry)
+    task = category.build_task(SPEC, entry)
     (out / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
 
     # Materialise per-worker workspaces BEFORE opening the scoring engine —
@@ -162,11 +156,18 @@ def main() -> int:
         with pool_lock:
             worker = pool.pop()
         try:
-            produced = worker / f"query{qid:02d}.preql"
+            produced = worker / f"query{qid:02d}{category.candidate_ext}"
             produced.unlink(missing_ok=True)  # never score a prior repeat's file
             log_path = out / f"agent_log.q{qid:02d}.r{rep:02d}.jsonl"
             result = agent_runner.run_agent(
-                worker, log_path, args.provider, args.model, task, args.timeout, "quiet"
+                worker,
+                log_path,
+                args.provider,
+                args.model,
+                task,
+                args.timeout,
+                "quiet",
+                toolset=category.harness,
             )
             metrics = scoring.parse_agent_log(log_path)
             wrote = produced.exists()
@@ -230,7 +231,7 @@ def main() -> int:
             "provider": args.provider,
             "scale_factor": args.scale_factor,
             "max_iterations": args.max_iterations,
-            "mode": "base" if args.base else "enriched",
+            "mode": category.key,
             "trilogy_version": _trilogy_version(),
         },
         "summary": summary,

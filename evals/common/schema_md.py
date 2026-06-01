@@ -43,9 +43,7 @@ def generate_schema_md(db_path: Path, benchmark_name: str) -> str:
                 [table],
             ).fetchall()
             try:
-                row_count = con.execute(
-                    f'select count(*) from "{table}"'
-                ).fetchone()[0]
+                row_count = con.execute(f'select count(*) from "{table}"').fetchone()[0]
             except Exception:
                 row_count = "?"
             lines.append(f"## {table} ({row_count} rows)")

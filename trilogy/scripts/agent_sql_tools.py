@@ -87,7 +87,7 @@ def _readonly_violation(sql: str) -> str | None:
 
 def _format_result(keys: list[str], rows: list) -> str:
     total = len(rows)
-    shown = rows[: _MAX_RESULT_ROWS]
+    shown = rows[:_MAX_RESULT_ROWS]
     lines = []
     if keys:
         lines.append(" | ".join(str(k) for k in keys))

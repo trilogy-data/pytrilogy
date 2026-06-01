@@ -40,6 +40,7 @@ def run_agent(
     task: str,
     timeout: int,
     monitor_mode: str,
+    toolset: str = "trilogy",
 ) -> dict:
     cmd = [
         sys.executable,
@@ -50,6 +51,8 @@ def run_agent(
         provider,
         "--model",
         model,
+        "--toolset",
+        toolset,
         "--log-file",
         str(log_path),
         task,
@@ -122,10 +125,15 @@ def prepare_worker_workspace(src: Path, worker_idx: int, db_filename: str) -> Pa
     worker_dir.mkdir(exist_ok=True)
     shutil.copy2(src / db_filename, worker_dir / db_filename)
     shutil.copy2(src / "trilogy.toml", worker_dir / "trilogy.toml")
-    worker_raw = worker_dir / "raw"
-    if worker_raw.exists():
-        shutil.rmtree(worker_raw)
-    shutil.copytree(src / "raw", worker_raw)
+    # raw/ (Trilogy categories) and schema.md (sql_schema) are copied only when
+    # present — SQL baselines have no raw/, sql_bare has neither.
+    if (src / "raw").exists():
+        worker_raw = worker_dir / "raw"
+        if worker_raw.exists():
+            shutil.rmtree(worker_raw)
+        shutil.copytree(src / "raw", worker_raw)
+    if (src / "schema.md").exists():
+        shutil.copy2(src / "schema.md", worker_dir / "schema.md")
     return worker_dir
 
 
