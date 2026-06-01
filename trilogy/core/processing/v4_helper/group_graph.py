@@ -538,16 +538,28 @@ def _propagate_raw_filters_to_d1_roots(
         if reach & existence_sources:
             continue
         d1_members = set(attrs[d1_gid].primary_members)
+        # The datasource that supplies the MOST of root_d1's inputs is the table
+        # the d1 aggregate actually scans (q74 → the sales fact; q06 → the item
+        # table, whose `current_price` the per-category avg reads — NOT the fact,
+        # even though they share the `item.id` join key). Propagate a raw filter
+        # only when its columns live in THAT table — otherwise a filter on the
+        # fact (`customer.id is not null`) wrongly narrows an item-level avg
+        # (q06). Requiring all d1_members in one table fails for joined dim
+        # attributes that aren't base columns (q74's `date.year`), so pick the
+        # best-overlap table instead.
+        scan_cols: frozenset[str] = frozenset()
+        best = 0
+        for cols in datasource_columns:
+            overlap = len(d1_members & cols)
+            if overlap > best:
+                best = overlap
+                scan_cols = cols
+        if not scan_cols:
+            continue
         for m_gid in main_roots:
-            if not d1_members <= set(attrs[m_gid].primary_members):
-                continue
             for atom in attrs[m_gid].condition_atoms:
                 row_args = {a.address for a in atom.row_arguments}
-                colocated = any(
-                    row_args <= cols and d1_members <= cols
-                    for cols in datasource_columns
-                )
-                if not colocated:
+                if not row_args <= scan_cols:
                     continue
                 if atom not in attrs[d1_gid].condition_atoms:
                     attrs[d1_gid].condition_atoms.append(atom)

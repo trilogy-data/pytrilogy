@@ -1,7 +1,7 @@
 # v4 vs reference — TPC-DS comparison
 
-**Total:** 75 queries
-- match: 75
+**Total:** 97 queries
+- match: 97
 
 | Query | Status | v4 rows | ref rows |
 | --- | --- | --- | --- |
@@ -70,13 +70,35 @@
 | [63](query63.md) | match | 100 | 100 |
 | [64](query64.md) | match | 2 | 2 |
 | [65](query65.md) | match | 100 | 100 |
+| [66](query66.md) | match | 5 | 5 |
 | [67](query67.md) | match | 100 | 100 |
+| [68](query68.md) | match | 100 | 100 |
 | [69](query69.md) | match | 100 | 100 |
+| [70](query70.md) | match | 3 | 3 |
+| [71](query71.md) | match | 1031 | 1031 |
+| [72](query72.md) | match | 100 | 100 |
+| [73](query73.md) | match | 1 | 1 |
+| [74](query74.md) | match | 92 | 92 |
+| [75](query75.md) | match | 100 | 100 |
+| [76](query76.md) | match | 100 | 100 |
+| [78](query78.md) | match | 100 | 100 |
+| [79](query79.md) | match | 100 | 100 |
+| [80](query80.md) | match | 100 | 100 |
 | [82](query82.md) | match | 2 | 2 |
+| [83](query83.md) | match | 24 | 24 |
+| [84](query84.md) | match | 16 | 16 |
 | [85](query85.md) | match | 1 | 1 |
+| [86](query86.md) | match | 100 | 100 |
 | [87](query87.md) | match | 1 | 1 |
 | [88](query88.md) | match | 1 | 1 |
 | [89](query89.md) | match | 100 | 100 |
 | [90](query90.md) | match | 1 | 1 |
+| [91](query91.md) | match | 2 | 2 |
+| [92](query92.md) | match | 1 | 1 |
 | [93](query93.md) | match | 100 | 100 |
+| [94](query94.md) | match | 1 | 1 |
+| [95](query95.md) | match | 1 | 1 |
 | [96](query96.md) | match | 1 | 1 |
+| [97](query97.md) | match | 1 | 1 |
+| [98](query98.md) | match | 2521 | 2521 |
+| [99](query99.md) | match | 90 | 90 |

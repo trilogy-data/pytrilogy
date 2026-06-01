@@ -18,24 +18,24 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2285 | 55 | 33.94 ms |
-| reference | 2285 | 55 | 31.96 ms |
-| v4 / ref | 1.00x | 1.00x | 1.06x |
+| v4 | 2317 | 55 | 42.05 ms |
+| reference | 2309 | 55 | 36.60 ms |
+| v4 / ref | 1.00x | 1.00x | 1.15x |
 
 ## Preql
 
 ```
 # Generate counts of (customer, item) pairs that appear only in store sales,
 # only in catalog sales, or in both, within a 12-month window.
-import unified_sales as sales;
+import all_sales as sales;
 
 rowset pair_presence <- where
     sales.sales_channel in ('STORE', 'CATALOG')
     and sales.date.month_seq between 1200 and 1200 + 11
-    and sales.customer.id is not null
+    and sales.billing_customer.id is not null
     and sales.item.id is not null
 select
-    sales.customer.id,
+    sales.billing_customer.id,
     sales.item.id,
     max(
             case
@@ -79,7 +79,7 @@ select
 WITH 
 cheerful as (
 SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
      'CATALOG'  as "sales_sales_channel"
@@ -91,7 +91,7 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
      'STORE'  as "sales_sales_channel"
@@ -106,27 +106,27 @@ SELECT
     max(CASE
 	WHEN "cheerful"."sales_sales_channel" = 'CATALOG' THEN "cheerful"."sales_order_id"
 	ELSE 0
-	END) as "pair_presence_catalog_present",
+	END) as "_pair_presence_catalog_present",
     max(CASE
 	WHEN "cheerful"."sales_sales_channel" = 'STORE' THEN "cheerful"."sales_order_id"
 	ELSE 0
-	END) as "pair_presence_store_present"
+	END) as "_pair_presence_store_present"
 FROM
     "cheerful"
 GROUP BY
-    "cheerful"."sales_customer_id",
+    "cheerful"."sales_billing_customer_id",
     "cheerful"."sales_item_id")
 SELECT
     sum(CASE
-	WHEN "cooperative"."pair_presence_store_present" >= 1 and "cooperative"."pair_presence_catalog_present" >= 1 THEN 1
+	WHEN "cooperative"."_pair_presence_store_present" >= 1 and "cooperative"."_pair_presence_catalog_present" >= 1 THEN 1
 	ELSE 0
 	END) as "both_sale_count",
     sum(CASE
-	WHEN "cooperative"."pair_presence_store_present" = 0 and "cooperative"."pair_presence_catalog_present" >= 1 THEN 1
+	WHEN "cooperative"."_pair_presence_store_present" = 0 and "cooperative"."_pair_presence_catalog_present" >= 1 THEN 1
 	ELSE 0
 	END) as "catalog_sale_count",
     sum(CASE
-	WHEN "cooperative"."pair_presence_store_present" >= 1 and "cooperative"."pair_presence_catalog_present" = 0 THEN 1
+	WHEN "cooperative"."_pair_presence_store_present" >= 1 and "cooperative"."_pair_presence_catalog_present" = 0 THEN 1
 	ELSE 0
 	END) as "store_sale_count"
 FROM
@@ -139,7 +139,7 @@ FROM
 WITH 
 cheerful as (
 SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
      'CATALOG'  as "sales_sales_channel"
@@ -151,7 +151,7 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
      'STORE'  as "sales_sales_channel"
@@ -174,7 +174,7 @@ SELECT
 FROM
     "cheerful"
 GROUP BY
-    "cheerful"."sales_customer_id",
+    "cheerful"."sales_billing_customer_id",
     "cheerful"."sales_item_id")
 SELECT
     sum(CASE

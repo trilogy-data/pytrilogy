@@ -1,37 +1,31 @@
 # Query 70
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
+| v4 execution | OK (3 rows) |
 | reference execution | OK (3 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
+v4 rows: 3 (3 distinct)
 ref rows: 3 (3 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (0, 'Williamson County', 'TN', Decimal('-444194870.30'), 1, 'Williamson County', 'TN')
-only in ref (showing up to 5 of 3):
-  1x  (2, Decimal('-444194870.30'), 1, None, None)
-  1x  (1, Decimal('-444194870.30'), 1, None, 'TN')
-  1x  (0, Decimal('-444194870.30'), 1, 'Williamson County', 'TN')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2992 | 81 | 33.17 ms |
-| reference | 2675 | 75 | 32.46 ms |
-| v4 / ref | 1.12x | 1.08x | 1.02x |
+| v4 | 3079 | 96 | 37.75 ms |
+| reference | 2979 | 86 | 76.80 ms |
+| v4 / ref | 1.03x | 1.12x | 0.49x |
 
 ## Preql
 
 ```
-import store_sales as ss;
+import physical_sales as ss;
 
 # Top-5 states by sum(profit) â€” same as reference's IN-subquery.
 auto state_total <- sum(ss.net_profit ? ss.date.month_seq between 1200 and 1211) by ss.store.state;
@@ -44,49 +38,36 @@ select
     --state_rnk,
 having
     state_rnk <= 5
-
 ;
 
-# Single ROLLUP(state, county) materialized in q70_rolled. Mirrors reference:
+# Single ROLLUP(state, county). The sum and the grouping() columns now resolve
+# into one rollup CTE, and the window runs directly over that CTE's rows, so
+# the NULL-keyed subtotal/total rows stay aligned. Mirrors the reference's
 # GROUP BY ROLLUP(state, county) with rank() OVER (PARTITION BY ...).
-#
-# We avoid `grouping()` because trilogy's planner splits the rollup into
-# separate CTEs when mixing `grouping()` with `sum()` (different dependency
-# bases on the source rows). Instead we derive lochierarchy/partition_state
-# from the rollup-output NULL pattern: store rows always have non-null
-# state/county in source, so a NULL in the rollup output unambiguously means
-# "rolled up at that level".
-rowset q70_rolled <- where
-    ss.date.month_seq between 1200 and 1211 and ss.store.state in top_states.ts_state
-select
-    sum(ss.net_profit) by rollup ss.store.state, ss.store.county as total_sum,
-    ss.store.state as r_state,
-    ss.store.county as r_county,
-;
+auto total_sum <- sum(ss.net_profit) by rollup ss.store.state, ss.store.county;
+auto g_state <- grouping(ss.store.state) by rollup ss.store.state, ss.store.county;
+auto g_county <- grouping(ss.store.county) by rollup ss.store.state, ss.store.county;
+auto lochierarchy <- g_state + g_county;
+# Partition by state only for the rows still resolved to a county (g_county=0);
+# subtotal/total rows partition on NULL. Matches the reference's
+# `case when grouping(s_county) = 0 then s_state end`.
+auto partition_state <- case when g_county = 0 then ss.store.state else null end;
+auto rank_within_parent <- rank(ss.store.state, ss.store.county)
+    over (partition by lochierarchy, partition_state order by total_sum desc);
 
-def loc_level(state, county) -> case
-    when county is not null then 0
-    when state is not null then 1
-    else 2
-end;
-def partition_state(state, county) -> case
-    when county is not null then state
-    else null
-end;
-
+where
+    ss.date.month_seq between 1200 and 1211
+    and ss.store.state in top_states.ts_state
 select
-    q70_rolled.total_sum,
-    q70_rolled.r_state as s_state,
-    q70_rolled.r_county as s_county,
-    @loc_level(q70_rolled.r_state, q70_rolled.r_county) as lochierarchy,
-    rank(q70_rolled.r_county, q70_rolled.r_state)
-            over (partition by @loc_level(q70_rolled.r_state, q70_rolled.r_county),
-                    @partition_state(q70_rolled.r_state, q70_rolled.r_county)
-                order by q70_rolled.total_sum desc) as rank_within_parent,
+    total_sum,
+    ss.store.state as s_state,
+    ss.store.county as s_county,
+    lochierarchy,
+    rank_within_parent,
 order by
     lochierarchy desc nulls first,
     case
-            when lochierarchy = 0 then s_state
+            when lochierarchy = 0 then ss.store.state
             else null
         end asc nulls first,
     rank_within_parent asc nulls first
@@ -100,83 +81,98 @@ limit 100
 WITH 
 cheerful as (
 SELECT
-    "ss_store_store"."S_STATE" as "ss_store_state",
-    sum("ss_store_sales"."SS_NET_PROFIT") as "state_total"
+    "ss_date_date"."D_MONTH_SEQ" as "ss_date_month_seq",
+    "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit",
+    "ss_store_store"."S_COUNTY" as "ss_store_county",
+    "ss_store_store"."S_STATE" as "ss_store_state"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
     LEFT OUTER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
 WHERE
     "ss_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
-
+),
+thoughtful as (
+SELECT
+    "cheerful"."ss_store_state" as "ss_store_state",
+    sum(CASE WHEN "cheerful"."ss_date_month_seq" BETWEEN 1200 AND 1211 THEN "cheerful"."ss_net_profit" ELSE NULL END) as "state_total"
+FROM
+    "cheerful"
 GROUP BY
     1),
-cooperative as (
-SELECT
-    "cheerful"."ss_store_state" as "_top_states_ts_state",
-    rank() over (order by "cheerful"."state_total" desc ) as "state_rnk"
-FROM
-    "cheerful"),
 questionable as (
 SELECT
-    "cooperative"."_top_states_ts_state" as "top_states_ts_state"
+    "thoughtful"."ss_store_state" as "ss_store_state",
+    rank() over (order by "thoughtful"."state_total" desc ) as "state_rnk"
 FROM
-    "cooperative"
-WHERE
-    "cooperative"."state_rnk" <= 5
-),
+    "thoughtful"),
 abundant as (
 SELECT
-    "ss_store_store"."S_COUNTY" as "q70_rolled_r_county",
-    "ss_store_store"."S_STATE" as "q70_rolled_r_state",
-    sum("ss_store_sales"."SS_NET_PROFIT") as "q70_rolled_total_sum"
+    "questionable"."ss_store_state" as "_top_states_ts_state",
+    "questionable"."state_rnk" as "state_rnk"
 FROM
-    "memory"."store_sales" as "ss_store_sales"
-    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+    "questionable"),
+uneven as (
+SELECT
+    "abundant"."_top_states_ts_state" as "_top_states_ts_state"
+FROM
+    "abundant"
 WHERE
-    "ss_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "ss_store_store"."S_STATE" in (select questionable."top_states_ts_state" from questionable where questionable."top_states_ts_state" is not null)
-
-GROUP BY
-    ROLLUP (2, 1)),
+    "abundant"."state_rnk" <= 5
+),
 yummy as (
 SELECT
-    "abundant"."q70_rolled_r_county" as "s_county",
-    "abundant"."q70_rolled_r_state" as "s_state",
-    CASE
-	WHEN "abundant"."q70_rolled_r_county" is not null THEN "abundant"."q70_rolled_r_state"
-	ELSE null
-	END as "partition_state",
-    CASE
-	WHEN "abundant"."q70_rolled_r_county" is not null THEN 0
-	WHEN "abundant"."q70_rolled_r_state" is not null THEN 1
-	ELSE 2
-	END as "loc_level",
-    CASE
-	WHEN "abundant"."q70_rolled_r_county" is not null THEN 0
-	WHEN "abundant"."q70_rolled_r_state" is not null THEN 1
-	ELSE 2
-	END as "lochierarchy"
+    "uneven"."_top_states_ts_state" as "top_states_ts_state"
 FROM
-    "abundant")
+    "uneven"),
+juicy as (
 SELECT
-    "yummy"."lochierarchy" as "lochierarchy",
-    rank() over (partition by "yummy"."loc_level","yummy"."partition_state" order by "abundant"."q70_rolled_total_sum" desc ) as "rank_within_parent",
-    "yummy"."s_county" as "s_county",
-    "yummy"."s_state" as "s_state",
-    "abundant"."q70_rolled_r_county" as "q70_rolled_r_county",
-    "abundant"."q70_rolled_r_state" as "q70_rolled_r_state",
-    "abundant"."q70_rolled_total_sum" as "q70_rolled_total_sum"
+    "cheerful"."ss_net_profit" as "ss_net_profit",
+    "cheerful"."ss_store_county" as "ss_store_county",
+    "cheerful"."ss_store_state" as "ss_store_state"
 FROM
-    "yummy"
-    INNER JOIN "abundant" on "yummy"."s_county" = "abundant"."q70_rolled_r_county" AND "yummy"."s_state" = "abundant"."q70_rolled_r_state"
+    "cheerful"
+WHERE
+    "cheerful"."ss_store_state" in (select yummy."top_states_ts_state" from yummy where yummy."top_states_ts_state" is not null)
+),
+vacuous as (
+SELECT
+    "juicy"."ss_store_county" as "ss_store_county",
+    "juicy"."ss_store_state" as "ss_store_state",
+    grouping("juicy"."ss_store_county") as "g_county",
+    grouping("juicy"."ss_store_state") as "g_state",
+    sum("juicy"."ss_net_profit") as "total_sum"
+FROM
+    "juicy"
+GROUP BY
+    ROLLUP (2, 1)),
+concerned as (
+SELECT
+    "vacuous"."g_state" + "vacuous"."g_county" as "lochierarchy",
+    "vacuous"."ss_store_county" as "ss_store_county",
+    "vacuous"."ss_store_state" as "ss_store_state",
+    "vacuous"."total_sum" as "total_sum",
+    rank() over (partition by "vacuous"."g_state" + "vacuous"."g_county",CASE
+	WHEN "vacuous"."g_county" = 0 THEN "vacuous"."ss_store_state"
+	ELSE null
+	END order by "vacuous"."total_sum" desc ) as "rank_within_parent"
+FROM
+    "vacuous")
+SELECT
+    "concerned"."lochierarchy" as "lochierarchy",
+    "concerned"."rank_within_parent" as "rank_within_parent",
+    "concerned"."ss_store_county" as "s_county",
+    "concerned"."ss_store_state" as "s_state",
+    "concerned"."total_sum" as "total_sum"
+FROM
+    "concerned"
 ORDER BY 
-    "yummy"."lochierarchy" desc nulls first,
+    "concerned"."lochierarchy" desc nulls first,
     CASE
-	WHEN "yummy"."lochierarchy" = 0 THEN "yummy"."s_state"
+	WHEN "concerned"."lochierarchy" = 0 THEN "concerned"."ss_store_state"
 	ELSE null
 	END asc nulls first,
-    "rank_within_parent" asc nulls first
+    "concerned"."rank_within_parent" asc nulls first
 LIMIT (100)
 ```
 
@@ -213,18 +209,9 @@ WHERE
 ),
 abundant as (
 SELECT
-    "ss_store_store"."S_COUNTY" as "q70_rolled_r_county",
-    "ss_store_store"."S_STATE" as "q70_rolled_r_state",
-    CASE
-	WHEN "ss_store_store"."S_COUNTY" is not null THEN "ss_store_store"."S_STATE"
-	ELSE null
-	END as "partition_state",
-    CASE
-	WHEN "ss_store_store"."S_COUNTY" is not null THEN 0
-	WHEN "ss_store_store"."S_STATE" is not null THEN 1
-	ELSE 2
-	END as "loc_level",
-    sum("ss_store_sales"."SS_NET_PROFIT") as "q70_rolled_total_sum"
+    "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit",
+    "ss_store_store"."S_COUNTY" as "ss_store_county",
+    "ss_store_store"."S_STATE" as "ss_store_state"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
@@ -233,29 +220,49 @@ WHERE
     "ss_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "ss_store_store"."S_STATE" in (select questionable."top_states_ts_state" from questionable where questionable."top_states_ts_state" is not null)
 
 GROUP BY
-    ROLLUP (2, 1))
+    1,
+    2,
+    3,
+    "ss_store_sales"."SS_ITEM_SK",
+    "ss_store_sales"."SS_STORE_SK",
+    "ss_store_sales"."SS_TICKET_NUMBER"),
+uneven as (
 SELECT
-    "abundant"."q70_rolled_total_sum" as "q70_rolled_total_sum",
-    "abundant"."q70_rolled_r_state" as "s_state",
-    "abundant"."q70_rolled_r_county" as "s_county",
+    "abundant"."ss_store_county" as "ss_store_county",
+    "abundant"."ss_store_state" as "ss_store_state",
     CASE
-	WHEN "abundant"."q70_rolled_r_county" is not null THEN 0
-	WHEN "abundant"."q70_rolled_r_state" is not null THEN 1
-	ELSE 2
-	END as "lochierarchy",
-    rank() over (partition by "abundant"."loc_level","abundant"."partition_state" order by "abundant"."q70_rolled_total_sum" desc ) as "rank_within_parent"
+	WHEN grouping("abundant"."ss_store_county") = 0 THEN "abundant"."ss_store_state"
+	ELSE null
+	END as "partition_state",
+    grouping("abundant"."ss_store_state") + grouping("abundant"."ss_store_county") as "lochierarchy",
+    sum("abundant"."ss_net_profit") as "total_sum"
 FROM
     "abundant"
+GROUP BY
+    ROLLUP (2, 1)),
+yummy as (
+SELECT
+    "uneven"."lochierarchy" as "lochierarchy",
+    "uneven"."ss_store_county" as "ss_store_county",
+    "uneven"."ss_store_state" as "ss_store_state",
+    "uneven"."total_sum" as "total_sum",
+    rank() over (partition by "uneven"."lochierarchy","uneven"."partition_state" order by "uneven"."total_sum" desc ) as "rank_within_parent"
+FROM
+    "uneven")
+SELECT
+    "yummy"."total_sum" as "total_sum",
+    "yummy"."ss_store_state" as "s_state",
+    "yummy"."ss_store_county" as "s_county",
+    "yummy"."lochierarchy" as "lochierarchy",
+    "yummy"."rank_within_parent" as "rank_within_parent"
+FROM
+    "yummy"
 ORDER BY 
-    "lochierarchy" desc nulls first,
+    "yummy"."lochierarchy" desc nulls first,
     CASE
-	WHEN CASE
-	WHEN "abundant"."q70_rolled_r_county" is not null THEN 0
-	WHEN "abundant"."q70_rolled_r_state" is not null THEN 1
-	ELSE 2
-	END = 0 THEN "abundant"."q70_rolled_r_state"
+	WHEN "yummy"."lochierarchy" = 0 THEN "yummy"."ss_store_state"
 	ELSE null
 	END asc nulls first,
-    "rank_within_parent" asc nulls first
+    "yummy"."rank_within_parent" asc nulls first
 LIMIT (100)
 ```

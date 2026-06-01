@@ -1,34 +1,26 @@
 # Query 72
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (1 distinct)
+v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 1):
-  100x  (None, None, None, None, None, None)
-only in ref (showing up to 5 of 100):
-  1x  (None, 0, 2, 2, 'Of course ot', 5207)
-  1x  ('Alone rights cannot w', 0, 2, 2, 'Social, royal laws m', 5204)
-  1x  ('Authorities offer complete, ', 0, 2, 2, 'Social, royal laws m', 5212)
-  1x  ('Available, major villages may use long over a daughters. Involved personnel sleep weak police. Physical names may lose extra arr', 0, 2, 2, 'Terms overcome instr', 5217)
-  1x  ('Businesses gain never early physical officials. More labour others would respect. Contemporary stones enhance courts. Sexual taxes might think. Times will hold neither traditional ', 0, 2, 2, 'Of course ot', 5198)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3753 | 83 | 234.78 ms |
-| reference | 6273 | 115 | 290.17 ms |
-| v4 / ref | 0.60x | 0.72x | 0.81x |
+| v4 | 4489 | 102 | 159.15 ms |
+| reference | 6273 | 115 | 325.38 ms |
+| v4 / ref | 0.72x | 0.89x | 0.49x |
 
 ## Preql
 
@@ -104,12 +96,11 @@ GROUP BY
     "cs_catalog_sales"."CS_ITEM_SK",
     "cs_catalog_sales"."CS_SOLD_DATE_SK",
     "inv_warehouse_inventory"."inv_warehouse_sk"),
-juicy as (
+concerned as (
 SELECT
     "yummy"."cs_item_desc" as "cs_item_desc",
     "yummy"."cs_sold_date_week_seq" as "cs_sold_date_week_seq",
     "yummy"."inv_warehouse_name" as "inv_warehouse_name",
-    count("yummy"."cs_order_number") as "total_cnt",
     sum(CASE
 	WHEN "yummy"."cs_promotion_id" is not null THEN 1
 	ELSE 0
@@ -124,37 +115,57 @@ GROUP BY
     1,
     2,
     3),
+juicy as (
+SELECT
+    "yummy"."cs_item_desc" as "cs_item_desc",
+    "yummy"."cs_order_number" as "cs_order_number",
+    "yummy"."cs_sold_date_week_seq" as "cs_sold_date_week_seq",
+    "yummy"."inv_warehouse_name" as "inv_warehouse_name"
+FROM
+    "yummy"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
 young as (
 SELECT
-    "juicy"."cs_sold_date_week_seq" as "week_seq"
+    "concerned"."cs_item_desc" as "cs_item_desc",
+    "concerned"."cs_item_desc" as "item_desc",
+    "concerned"."cs_sold_date_week_seq" as "cs_sold_date_week_seq",
+    "concerned"."cs_sold_date_week_seq" as "week_seq",
+    "concerned"."inv_warehouse_name" as "inv_warehouse_name",
+    "concerned"."inv_warehouse_name" as "warehouse_name",
+    "concerned"."no_promo" as "no_promo",
+    "concerned"."promo" as "promo"
 FROM
-    "juicy"),
-concerned as (
-SELECT
-    "juicy"."inv_warehouse_name" as "warehouse_name"
-FROM
-    "juicy"),
+    "concerned"),
 vacuous as (
 SELECT
-    "juicy"."cs_item_desc" as "item_desc"
-FROM
-    "juicy")
-SELECT
-    "vacuous"."item_desc" as "item_desc",
-    "concerned"."warehouse_name" as "warehouse_name",
-    "young"."week_seq" as "week_seq",
-    "juicy"."no_promo" as "no_promo",
-    "juicy"."promo" as "promo",
-    "juicy"."total_cnt" as "total_cnt"
+    "juicy"."cs_item_desc" as "cs_item_desc",
+    "juicy"."cs_sold_date_week_seq" as "cs_sold_date_week_seq",
+    "juicy"."inv_warehouse_name" as "inv_warehouse_name",
+    count("juicy"."cs_order_number") as "total_cnt"
 FROM
     "juicy"
-    FULL JOIN "vacuous" on "juicy"."cs_item_desc" is not distinct from "vacuous"."item_desc"
-    FULL JOIN "concerned" on "juicy"."inv_warehouse_name" = "concerned"."warehouse_name"
-    FULL JOIN "young" on "juicy"."cs_sold_date_week_seq" = "young"."week_seq"
+GROUP BY
+    1,
+    2,
+    3)
+SELECT
+    "young"."item_desc" as "item_desc",
+    "young"."warehouse_name" as "warehouse_name",
+    "young"."week_seq" as "week_seq",
+    "young"."no_promo" as "no_promo",
+    "young"."promo" as "promo",
+    coalesce("vacuous"."total_cnt",0) as "total_cnt"
+FROM
+    "young"
+    FULL JOIN "vacuous" on "young"."cs_item_desc" is not distinct from "vacuous"."cs_item_desc" AND "young"."cs_sold_date_week_seq" = "vacuous"."cs_sold_date_week_seq" AND "young"."inv_warehouse_name" is not distinct from "vacuous"."inv_warehouse_name"
 ORDER BY 
-    "juicy"."total_cnt" desc nulls first,
-    "vacuous"."item_desc" asc nulls first,
-    "concerned"."warehouse_name" asc nulls first,
+    coalesce("vacuous"."total_cnt",0) desc nulls first,
+    "young"."item_desc" asc nulls first,
+    "young"."warehouse_name" asc nulls first,
     "young"."week_seq" asc nulls first
 LIMIT (100)
 ```

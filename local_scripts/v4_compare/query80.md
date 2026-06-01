@@ -1,29 +1,31 @@
 # Query 80
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8547 | 166 | — |
-| reference | 7450 | 144 | 48.84 ms |
-| v4 / ref | 1.15x | 1.15x | — |
+| v4 | 7450 | 144 | 55.11 ms |
+| reference | 7450 | 144 | 53.43 ms |
+| v4 / ref | 1.00x | 1.00x | 1.03x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
 auto channel_label <- case
     when sales.sales_channel = 'STORE' then 'store channel'
@@ -177,19 +179,7 @@ SELECT
 	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
 	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN 'web channel'
 	ELSE null
-	END as "channel",
-    CASE
-	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN 'store channel'
-	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
-	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN 'web channel'
-	ELSE null
 	END as "channel_label",
-    CASE
-	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN ('store' || "cheerful"."sales_channel_dim_text_id")
-	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "cheerful"."sales_channel_dim_text_id")
-	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN ('web_site' || "cheerful"."sales_channel_dim_text_id")
-	ELSE null
-	END as "id",
     CASE
 	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN ('store' || "cheerful"."sales_channel_dim_text_id")
 	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "cheerful"."sales_channel_dim_text_id")
@@ -202,30 +192,20 @@ FROM
     INNER JOIN "cheerful" on "vacuous"."sales_channel_dim_id" = "cheerful"."sales_channel_dim_id" AND "vacuous"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_channel_dim_text_id" is not null
-),
-late as (
+)
 SELECT
-    "abhorrent"."channel" as "channel",
-    "abhorrent"."id_label" as "id_label",
+    "abhorrent"."channel_label" as "channel",
+    "abhorrent"."id_label" as "id",
     sum("abhorrent"."profit_minus_loss") as "profit_total",
-    sum("abhorrent"."sales_ext_sales_price") as "sales_total",
-    sum(coalesce("abhorrent"."sales_return_amount",0)) as "returns_total"
+    sum(coalesce("abhorrent"."sales_return_amount",0)) as "returns_total",
+    sum("abhorrent"."sales_ext_sales_price") as "sales_total"
 FROM
     "abhorrent"
 GROUP BY
-    ROLLUP ("abhorrent"."channel_label", 2))
-SELECT
-    coalesce("abhorrent"."channel","late"."channel") as "channel",
-    "abhorrent"."id" as "id",
-    "late"."sales_total" as "sales_total",
-    "late"."returns_total" as "returns_total",
-    "late"."profit_total" as "profit_total"
-FROM
-    "abhorrent"
-    FULL JOIN "late" on "abhorrent"."channel" is not distinct from "late"."channel" AND "abhorrent"."id" is not distinct from "late"."id_label"
+    ROLLUP (1, 2)
 ORDER BY 
-    coalesce("abhorrent"."channel","late"."channel") asc nulls first,
-    "abhorrent"."id" asc nulls first
+    "channel" asc nulls first,
+    "id" asc nulls first
 LIMIT (100)
 ```
 
@@ -376,28 +356,4 @@ ORDER BY
     "channel" asc nulls first,
     "id" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 277, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 197, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.BinderException: Binder Error: column "channel" must appear in the GROUP BY clause or must be part of an aggregate function.
-Either add it to the GROUP BY list, or use "ANY_VALUE(channel)" if the exact value of "channel" is not important.
-
-LINE 145:     "abhorrent"."channel" as "channel",
-              ^
 ```
