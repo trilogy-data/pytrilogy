@@ -1,24 +1,38 @@
 # Query 05
 
-**Status:** `exec_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (17 distinct)
+ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 16):
+  1x  (None, None, Decimal('-2491930.97'), Decimal('619202.81'), Decimal('19640463.31'))
+  1x  (None, None, Decimal('-4026273.07'), Decimal('3255243.12'), Decimal('19640463.31'))
+  1x  (None, None, Decimal('-2760559.48'), Decimal('1083573.98'), Decimal('19640463.31'))
+  1x  (None, None, Decimal('-4396139.07'), Decimal('1083573.98'), Decimal('38544639.28'))
+  1x  (None, None, Decimal('-24696015.40'), Decimal('1552466.33'), Decimal('54273632.11'))
+only in ref (showing up to 5 of 98):
+  1x  ('catalog channel', None, Decimal('-4396139.07'), Decimal('1083573.98'), Decimal('38544639.28'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAAABBAAAA', Decimal('-191.31'), Decimal('326.05'), Decimal('0.00'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAABABAAAA', Decimal('838.90'), Decimal('0.00'), Decimal('87201.46'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAABIAAAAA', Decimal('-417.26'), Decimal('564.80'), Decimal('0.00'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAACABAAAA', Decimal('-8354.81'), Decimal('410.56'), Decimal('66295.66'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 13665 | 309 | — |
-| reference | 10731 | 230 | 161.65 ms |
-| v4 / ref | 1.27x | 1.34x | — |
+| v4 | 13626 | 308 | 344.42 ms |
+| reference | 10731 | 230 | 100.50 ms |
+| v4 / ref | 1.27x | 1.34x | 3.43x |
 
 ## Preql
 
@@ -266,12 +280,6 @@ SELECT
 	ELSE null
 	END as "channel_label",
     CASE
-	WHEN "charming"."sales_sales_channel" = 'STORE' THEN 'store channel'
-	WHEN "charming"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
-	WHEN "charming"."sales_sales_channel" = 'WEB' THEN 'web channel'
-	ELSE null
-	END as "s_channel",
-    CASE
 	WHEN "charming"."sales_sales_channel" = 'STORE' THEN ('store' || "charming"."sales_channel_dim_text_id")
 	WHEN "charming"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "charming"."sales_channel_dim_text_id")
 	WHEN "charming"."sales_sales_channel" = 'WEB' THEN ('web_site' || "charming"."sales_channel_dim_text_id")
@@ -287,6 +295,12 @@ SELECT
 	WHEN "charming"."sales_sales_channel" = 'WEB' THEN 'web channel'
 	ELSE null
 	END as "channel_label",
+    CASE
+	WHEN "charming"."sales_sales_channel" = 'STORE' THEN 'store channel'
+	WHEN "charming"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
+	WHEN "charming"."sales_sales_channel" = 'WEB' THEN 'web channel'
+	ELSE null
+	END as "s_channel",
     CASE
 	WHEN "charming"."sales_sales_channel" = 'STORE' THEN ('store' || "charming"."sales_channel_dim_text_id")
 	WHEN "charming"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "charming"."sales_channel_dim_text_id")
@@ -338,14 +352,13 @@ FROM
 puzzled as (
 SELECT
     "premium"."channel_label" as "channel_label",
-    "premium"."s_channel" as "s_channel",
     "premium"."sales_id_label" as "sales_id_label",
     sum("premium"."sales_ext_sales_price") as "sales_total_a",
     sum("premium"."sales_net_profit") as "profit_only_a"
 FROM
     "premium"
 GROUP BY
-    ROLLUP (1, 3)),
+    ROLLUP (1, 2)),
 young as (
 SELECT
     "concerned"."channel_label" as "channel_label",
@@ -358,9 +371,9 @@ GROUP BY
     ROLLUP (1, 2)),
 waggish as (
 SELECT
+    "protective"."s_channel" as "channel",
     "protective"."s_id" as "id",
     "puzzled"."profit_only_a" as "profit_only_a",
-    "puzzled"."s_channel" as "channel",
     "puzzled"."sales_total_a" as "sales_total_a"
 FROM
     "puzzled"
@@ -375,11 +388,11 @@ FROM
     "sparkling"
     FULL JOIN "young" on "sparkling"."channel_label" is not distinct from "young"."channel_label" AND "sparkling"."r_id" is not distinct from "young"."return_id_label")
 SELECT
-    coalesce("waggish"."profit_only_a",0.0) - coalesce("abhorrent"."loss_only_b",0.0) as "profit_metric",
     coalesce("abhorrent"."channel","waggish"."channel") as "channel",
-    coalesce("abhorrent"."id","waggish"."id") as "id",
     coalesce("waggish"."sales_total_a",0.0) as "sales_metric",
-    coalesce("abhorrent"."returns_total_b",0.0) as "returns_metric"
+    coalesce("abhorrent"."returns_total_b",0.0) as "returns_metric",
+    coalesce("abhorrent"."id","waggish"."id") as "id",
+    coalesce("waggish"."profit_only_a",0.0) - coalesce("abhorrent"."loss_only_b",0.0) as "profit_metric"
 FROM
     "waggish"
     FULL JOIN "abhorrent" on "waggish"."channel" is not distinct from "abhorrent"."channel" AND "waggish"."id" is not distinct from "abhorrent"."id"
@@ -622,28 +635,4 @@ ORDER BY
     coalesce("concerned"."channel","divergent"."channel") asc nulls first,
     coalesce("concerned"."id","divergent"."id") asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 277, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 197, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.BinderException: Binder Error: column "s_channel" must appear in the GROUP BY clause or must be part of an aggregate function.
-Either add it to the GROUP BY list, or use "ANY_VALUE(s_channel)" if the exact value of "s_channel" is not important.
-
-LINE 261:     "premium"."s_channel" as "s_channel",
-              ^
 ```

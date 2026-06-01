@@ -145,6 +145,27 @@ def can_preserve_grain_subset(
     return col_grain <= native_grain
 
 
+def can_preserve_grouping(
+    concept_graph: nx.DiGraph, native_grain: frozenset[str], address: str
+) -> bool:
+    """Preservation for a GROUP-BY/PARTITION-BY derivation. Same as the subset
+    rule, except an empty-grain column rides through only if it is a true
+    constant (``CONSTANT`` derivation). A row-varying derived value with empty
+    grain — e.g. q05's ``s_channel``, a CASE that renames a rollup key — would
+    otherwise be projected into the GROUP BY's SELECT without a grouping entry,
+    which is invalid SQL. Such a column stays out of the aggregate and is
+    sourced from the grain key it renames instead."""
+    if address in native_grain:
+        return True
+    if address not in concept_graph.nodes:
+        return False
+    node = concept_graph.nodes[address]
+    col_grain = node.get("grain_components", frozenset())
+    if not col_grain:
+        return node.get("derivation") == Derivation.CONSTANT.value
+    return col_grain <= native_grain
+
+
 # ----- registry --------------------------------------------------------
 
 # Default behavior: declared grain + subset preservation. Used for any
@@ -170,17 +191,17 @@ GROUP_BEHAVIORS: dict[str, Behavior] = {
     Derivation.AGGREGATE.value: Behavior(
         derivation=Derivation.AGGREGATE.value,
         native_grain=native_grain_declared,
-        can_preserve=can_preserve_grain_subset,
+        can_preserve=can_preserve_grouping,
     ),
     Derivation.GROUP_TO.value: Behavior(
         derivation=Derivation.GROUP_TO.value,
         native_grain=native_grain_declared,
-        can_preserve=can_preserve_grain_subset,
+        can_preserve=can_preserve_grouping,
     ),
     Derivation.WINDOW.value: Behavior(
         derivation=Derivation.WINDOW.value,
         native_grain=native_grain_declared,
-        can_preserve=can_preserve_grain_subset,
+        can_preserve=can_preserve_grouping,
     ),
     Derivation.FILTER.value: Behavior(
         derivation=Derivation.FILTER.value,
