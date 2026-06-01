@@ -41,3 +41,21 @@ def test_cannot_find_complex():
     select sum(y) by x as fun;
 
     """)
+
+
+def test_disjoint_source_models_grouping():
+    from trilogy.core.processing.concept_strategies_v3 import _disjoint_source_models
+
+    class _C:
+        def __init__(self, address, namespace, sources=()):
+            self.address = address
+            self.namespace = namespace
+            self.sources = list(sources)
+
+    store_name = _C("ss.store.store_name", "ss.store")
+    web_rev = _C("local.web_rev", "local", sources=[_C("ws.net_paid", "ws")])
+
+    models = _disjoint_source_models([store_name, web_rev])
+    assert set(models) == {"ss", "ws"}
+    assert "ss.store.store_name" in models["ss"]
+    assert "local.web_rev" in models["ws"]

@@ -1,5 +1,25 @@
 # Engine bug handoff: `merge` + `in`-subselect on the merged key generates SQL referencing a non-existent CTE (DuckDB `Binder Error: Referenced table ... not found`)
 
+> **ROOT-CAUSED, FIX PENDING SIGN-OFF** (follow-up pass). Confirmed still
+> reproduces on the current tree. Root cause: the `merge ... into ~...`
+> canonicalizes the `in`-subselect's RHS so the existence concept's `.address`
+> collides with the LHS per-row concept's address (`store_sales.ticket_number`).
+> In `trilogy/core/processing/nodes/base_node.py::resolve_concept_map` the
+> existence-only parent (the GROUP CTE `thoughtful`) is order-sensitively allowed
+> to win the row column's `source_map` slot, so the fact CTE (`cheerful`) never
+> materializes the per-row column, and `existence_source_map` is left unpopulated.
+> The renderer at `dialect/base.py:1379` then faithfully emits
+> `thoughtful.ticket_number` in a `FROM` that only has `cheerful`.
+>
+> The minimal fix (make `resolve_concept_map` existence-aware so a row address
+> never resolves to an existence-only parent when a row parent provides it, and
+> populate `existence_source_map`) touches the most central source-map routing
+> used by *every* query, and per project norms needs the full tpc_ds + tpch agent
+> sweep to validate — not a partial unit run. Given this is a single, arguably
+> degenerate query (`X in X` after merge is a tautological filter) with a clean
+> workaround (drop the merge), the change is held for explicit sign-off rather
+> than landed unilaterally. See `syntax_error_followups.md` resolution notes.
+
 ## Summary
 
 When a query (a) `merge`s a key from one model into another and (b) filters with

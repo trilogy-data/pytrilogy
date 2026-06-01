@@ -1,5 +1,24 @@
 # Syntax / error / tooling follow-ups — handoff
 
+> **Resolution pass (follow-up).** Status per item:
+> - **P1 resolve-connections message — DONE.** Enriched in
+>   `trilogy/core/processing/concept_strategies_v3.py` (`_disjoint_source_models`
+>   helper + message). The error now names the disjoint source models and which
+>   output concepts draw on each, and suggests `merge <a>.<key> into ~<b>.<key>;`.
+>   Verified via CLI; unit test `tests/test_failure.py::test_disjoint_source_models_grouping`.
+> - **P1 tool-arg JSON — NOT ACTIONED (out of repo).** Eval-harness concern, not
+>   the `trilogy` package. Left for the harness owner.
+> - **P2 A/B (GROUP BY, AS), P3 C (UDF), P3 E (count_distinct), F — NOT ACTIONED.**
+>   Confirmed these are agent-prompt / docs items, not engine code; messages
+>   already good. Belong in the eval agent system prompt / feature docs.
+> - **P4 D (`by`-after-alias parse hint) — DEFERRED.** Adding a new parse-hint code
+>   requires wiring both grammar backends (lark + pest/rust rebuild); not worth it
+>   for a P4 given neighboring messages (103/201/211) are already strong.
+> - **P4 H (CLI missing PATH) — NOT ACTIONED.** click auto-generates the message;
+>   overriding is fiddly for marginal value.
+> - **G, J — no action** (as originally triaged).
+
+
 Source: run `20260601-025817` (q20–q29, deepseek, sf=1), from
 `charts/trilogy_failures.md` (base, 24/205) and
 `charts/trilogy_failures_enriched.md` (enriched, 10/132).

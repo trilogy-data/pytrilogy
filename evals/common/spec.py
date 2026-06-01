@@ -53,6 +53,11 @@ class BenchmarkSpec:
     SF=0.1, where the canonical manufact_id / store_id / profile filters
     don't match any rows). Falls back to PRAGMA when no file is found."""
 
+    schema_md_file: Path | None = None
+    """Optional curated schema-markdown doc for the ``sql_schema`` no-Trilogy
+    baseline. When set and the file exists, it is copied into the workspace as
+    ``schema.md`` instead of auto-generating one from DuckDB introspection."""
+
     default_scale_factor: float = 0.01
     default_num_queries: int = 22
 

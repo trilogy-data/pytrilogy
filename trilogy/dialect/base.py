@@ -68,6 +68,7 @@ from trilogy.core.models.build import (
     BuildSubselectComparison,
     BuildSubselectItem,
     BuildWindowItem,
+    concepts_to_build_grain_concepts,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,

@@ -479,3 +479,41 @@ SELECT
 
     assert "INVALID_REFERENCE_BUG" not in generated, generated
     assert "launch_count" in generated, generated
+
+
+DERIVED_IN_BY_GRAIN_SETUP = """
+key item_sk int;
+property item_sk.item_desc string;
+
+auto prefix <- substring(item_desc, 1, 4);
+auto pair <- sum(1) by (prefix, item_sk);
+
+datasource items (
+    item_sk: item_sk,
+    item_desc: item_desc
+)
+grain (item_sk)
+query '''
+select 1 as item_sk, 'Powers' as item_desc
+union all select 2 as item_sk, 'Costs' as item_desc
+union all select 3 as item_sk, 'Costways' as item_desc
+''';
+"""
+
+
+def test_aggregate_by_grain_with_derived_of_key():
+    """Regression: an aggregate `by`-grain that lists a derived concept (prefix)
+    alongside the key it functionally depends on (item_sk). The CTE grain prunes
+    the dependent concept to `{item_sk}`, but the aggregate's recorded by-grain
+    keeps `{prefix, item_sk}`. `_cte_at_aggregate_grain` must treat them as the
+    same partition rather than emitting an INVALID_REFERENCE_BUG placeholder."""
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(DERIVED_IN_BY_GRAIN_SETUP)
+
+    generated = exec.generate_sql("select prefix, item_sk, pair;")[-1]
+    assert "INVALID_REFERENCE_BUG" not in generated, generated
+
+    rows = exec.execute_text("select prefix, item_sk, pair;")[-1].fetchall()
+    # Each (prefix, item_sk) group is a single item row, so sum(1) == 1.
+    assert len(rows) == 3, rows
+    assert all(r.pair == 1 for r in rows), rows
