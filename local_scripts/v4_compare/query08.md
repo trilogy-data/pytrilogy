@@ -18,14 +18,14 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2418 | 55 | 36.24 ms |
-| reference | 2419 | 61 | 42.48 ms |
-| v4 / ref | 1.00x | 0.90x | 0.85x |
+| v4 | 2721 | 63 | 37.90 ms |
+| reference | 2479 | 61 | 42.72 ms |
+| v4 / ref | 1.10x | 1.03x | 0.89x |
 
 ## Preql
 
 ```
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 import customer as customer;
 
 const zips_pre <- unnest(
@@ -438,14 +438,14 @@ auto p_cust_zip <- customer.address.zip ? zip_p_count > 10;
 auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);
 
 where
-    store_sales.date.quarter = 2
-    and store_sales.date.year = 1998
-    and substring(store_sales.store.zip, 1, 2) in final_zips
+    physical_sales.date.quarter = 2
+    and physical_sales.date.year = 1998
+    and substring(physical_sales.store.zip, 1, 2) in final_zips
 select
-    store_sales.store.name,
-    sum(store_sales.net_profit) as store_net_profit,
+    physical_sales.store.name,
+    sum(physical_sales.net_profit) as store_net_profit,
 order by
-    store_sales.store.name asc
+    physical_sales.store.name asc
 limit 100
 ;
 ```
@@ -461,52 +461,60 @@ SELECT
 thoughtful as (
 SELECT
     "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
-    count(CASE WHEN "customer_customers"."C_PREFERRED_CUST_FLAG" = 'Y' THEN "customer_customers"."C_CUSTOMER_SK" ELSE NULL END) as "zip_p_count"
+    "customer_customers"."C_CUSTOMER_SK" as "customer_id",
+    "customer_customers"."C_PREFERRED_CUST_FLAG" as "customer_preferred_cust_flag"
 FROM
     "memory"."customer" as "customer_customers"
-    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
-GROUP BY
-    1),
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"),
 highfalutin as (
 SELECT
     SUBSTRING(cast("quizzical"."zips_pre" as string),1,5) as "zips"
 FROM
     "quizzical"),
+cooperative as (
+SELECT
+    "thoughtful"."customer_address_zip" as "customer_address_zip",
+    count(CASE WHEN "thoughtful"."customer_preferred_cust_flag" = 'Y' THEN "thoughtful"."customer_id" ELSE NULL END) as "zip_p_count"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
 abundant as (
 SELECT
-    SUBSTRING(CASE WHEN "thoughtful"."zip_p_count" > 10 THEN "thoughtful"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
+    SUBSTRING(CASE WHEN "cooperative"."zip_p_count" > 10 THEN "thoughtful"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
 FROM
-    "thoughtful"),
-yummy as (
+    "cooperative"
+    INNER JOIN "thoughtful" on "cooperative"."customer_address_zip" = "thoughtful"."customer_address_zip"),
+juicy as (
 SELECT
-    SUBSTRING(CASE WHEN "highfalutin"."zips" in (select abundant."_virt_func_substring_4293448550966409" from abundant where abundant."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END,1,2) as "final_zips"
+    CASE WHEN "highfalutin"."zips" in (select abundant."_virt_func_substring_4293448550966409" from abundant where abundant."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END as "_virt_filter_zips_2159288073185462"
 FROM
-    "abundant"
-    FULL JOIN "highfalutin" on 1=1),
+    "highfalutin"),
+vacuous as (
+SELECT
+    SUBSTRING("juicy"."_virt_filter_zips_2159288073185462",1,2) as "final_zips"
+FROM
+    "juicy"),
 abhorrent as (
 SELECT
-    "store_sales_store_sales"."SS_NET_PROFIT" as "store_sales_net_profit",
-    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
-    "store_sales_store_store"."S_ZIP" as "store_sales_store_zip"
+    "physical_sales_store_sales"."SS_NET_PROFIT" as "physical_sales_net_profit",
+    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
 WHERE
-    "store_sales_date_date"."D_QOY" = 2 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select yummy."final_zips" from yummy where yummy."final_zips" is not null)
+    "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select vacuous."final_zips" from vacuous where vacuous."final_zips" is not null)
 )
 SELECT
-    sum("abhorrent"."store_sales_net_profit") as "store_net_profit",
-    "abhorrent"."store_sales_store_name" as "store_sales_store_name"
+    sum("abhorrent"."physical_sales_net_profit") as "store_net_profit",
+    "abhorrent"."physical_sales_store_name" as "physical_sales_store_name"
 FROM
     "abhorrent"
-WHERE
-    SUBSTRING("abhorrent"."store_sales_store_zip",1,2) in (select yummy."final_zips" from yummy where yummy."final_zips" is not null)
-
 GROUP BY
     2
 ORDER BY 
-    "abhorrent"."store_sales_store_name" asc
+    "abhorrent"."physical_sales_store_name" asc
 LIMIT (100)
 ```
 
@@ -550,28 +558,28 @@ GROUP BY
     1),
 abhorrent as (
 SELECT
-    "store_sales_store_sales"."SS_NET_PROFIT" as "store_sales_net_profit",
-    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
+    "physical_sales_store_sales"."SS_NET_PROFIT" as "physical_sales_net_profit",
+    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
 WHERE
-    "store_sales_date_date"."D_QOY" = 2 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_store_store"."S_ZIP",1,2) in (select yummy."final_zips" from yummy where yummy."final_zips" is not null)
+    "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select yummy."final_zips" from yummy where yummy."final_zips" is not null)
 
 GROUP BY
     1,
     2,
-    "store_sales_store_sales"."SS_ITEM_SK",
-    "store_sales_store_sales"."SS_TICKET_NUMBER")
+    "physical_sales_store_sales"."SS_ITEM_SK",
+    "physical_sales_store_sales"."SS_TICKET_NUMBER")
 SELECT
-    "abhorrent"."store_sales_store_name" as "store_sales_store_name",
-    sum("abhorrent"."store_sales_net_profit") as "store_net_profit"
+    "abhorrent"."physical_sales_store_name" as "physical_sales_store_name",
+    sum("abhorrent"."physical_sales_net_profit") as "store_net_profit"
 FROM
     "abhorrent"
 GROUP BY
     1
 ORDER BY 
-    "abhorrent"."store_sales_store_name" asc
+    "abhorrent"."physical_sales_store_name" asc
 LIMIT (100)
 ```

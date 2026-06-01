@@ -4,6 +4,10 @@ These build synthetic group graphs and call the private orchestrator
 directly. The point is to exercise the two-pass capability/demand wiring
 end-to-end on shapes mirroring the TPC-DS regressions, without standing
 up a BuildEnvironment.
+
+Concept-node state lives in a side dict (``dict[str, ConceptAttrs]``) keyed
+by node id, mirroring production; the concept graph carries only topology +
+lineage edges.
 """
 
 import networkx as nx
@@ -11,7 +15,11 @@ import networkx as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.group_graph import _compute_concept_sets
-from trilogy.core.processing.v4_helper.models import GroupAttrs, GroupBucket
+from trilogy.core.processing.v4_helper.models import (
+    ConceptAttrs,
+    GroupAttrs,
+    GroupBucket,
+)
 
 
 # A minimal stand-in for BuildConcept — _compute_concept_sets only reads `.address`.
@@ -59,15 +67,20 @@ def _make_bucket(
 
 def _add_concept(
     cg: nx.DiGraph,
+    cattrs: dict[str, ConceptAttrs],
     address: str,
     grain: set[str] | None = None,
     derivation: str = Derivation.ROOT.value,
 ):
-    cg.add_node(
-        address,
-        grain_components=frozenset(grain or ()),
+    cg.add_node(address)
+    cattrs[address] = ConceptAttrs(
+        address=address,
+        label="",
         derivation=derivation,
+        purpose="",
+        granularity="",
         depth_label="d*",
+        grain_components=frozenset(grain or ()),
     )
 
 
@@ -84,14 +97,18 @@ def _add_lineage(cg: nx.DiGraph, parent: str, child: str):
 
 def test_q02_shape_basic_exposes_inherited_grain_key():
     cg = nx.DiGraph()
-    _add_concept(cg, "week_seq", grain={"date.id"})
-    _add_concept(cg, "ext_price", grain={"item.id", "order_id"})
+    cattrs: dict[str, ConceptAttrs] = {}
+    _add_concept(cg, cattrs, "week_seq", grain={"date.id"})
+    _add_concept(cg, cattrs, "ext_price", grain={"item.id", "order_id"})
     _add_concept(
-        cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
+        cg, cattrs, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
     )
-    _add_concept(cg, "win_lead", grain={"week_seq"}, derivation=Derivation.WINDOW.value)
+    _add_concept(
+        cg, cattrs, "win_lead", grain={"week_seq"}, derivation=Derivation.WINDOW.value
+    )
     _add_concept(
         cg,
+        cattrs,
         "round_result",
         grain={"item.id", "order_id"},
         derivation=Derivation.BASIC.value,
@@ -157,7 +174,7 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
     }
     mandatory = [_FakeConcept("round_result"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, cattrs, buckets, mandatory)
 
     basic_out = set(attrs["basic"].output_concepts)
     assert "round_result" in basic_out
@@ -170,10 +187,11 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
     """ROOT's `ext_price` (row grain) must NOT show up in AGGREGATE's
     capability — the grain check at the aggregate boundary blocks it."""
     cg = nx.DiGraph()
-    _add_concept(cg, "week_seq", grain={"date.id"})
-    _add_concept(cg, "ext_price", grain={"item.id"})
+    cattrs: dict[str, ConceptAttrs] = {}
+    _add_concept(cg, cattrs, "week_seq", grain={"date.id"})
+    _add_concept(cg, cattrs, "ext_price", grain={"item.id"})
     _add_concept(
-        cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
+        cg, cattrs, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
     )
     _add_lineage(cg, "ext_price", "agg_sum")
     _add_lineage(cg, "week_seq", "agg_sum")
@@ -204,7 +222,7 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, cattrs, buckets, mandatory)
 
     agg_out = set(attrs["agg"].output_concepts)
     assert (
@@ -221,16 +239,21 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
 
 def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
     cg = nx.DiGraph()
-    _add_concept(cg, "customer.id", grain={"customer.id"})
-    _add_concept(cg, "text_id", grain={"customer.id"})
-    _add_concept(cg, "first_name", grain={"customer.id"})
-    _add_concept(cg, "ext_price", grain={"item.id"})  # row grain, irrelevant
-    _add_concept(cg, "year", grain={"date.id"})
+    cattrs: dict[str, ConceptAttrs] = {}
+    _add_concept(cg, cattrs, "customer.id", grain={"customer.id"})
+    _add_concept(cg, cattrs, "text_id", grain={"customer.id"})
+    _add_concept(cg, cattrs, "first_name", grain={"customer.id"})
+    _add_concept(cg, cattrs, "ext_price", grain={"item.id"})  # row grain, irrelevant
+    _add_concept(cg, cattrs, "year", grain={"date.id"})
     _add_concept(
-        cg, "local_id", grain={"customer.id"}, derivation=Derivation.BASIC.value
+        cg, cattrs, "local_id", grain={"customer.id"}, derivation=Derivation.BASIC.value
     )
     _add_concept(
-        cg, "local_name", grain={"customer.id"}, derivation=Derivation.BASIC.value
+        cg,
+        cattrs,
+        "local_name",
+        grain={"customer.id"},
+        derivation=Derivation.BASIC.value,
     )
     _add_lineage(cg, "text_id", "local_id")
     _add_lineage(cg, "first_name", "local_name")
@@ -269,7 +292,7 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
     }
     mandatory = [_FakeConcept("local_id"), _FakeConcept("local_name")]
 
-    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, cattrs, buckets, mandatory)
 
     basic_out = set(attrs["basic"].output_concepts)
     assert "local_id" in basic_out and "local_name" in basic_out
@@ -286,10 +309,11 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
 
 def test_aggregate_inputs_include_primary_lineage_args():
     cg = nx.DiGraph()
-    _add_concept(cg, "week_seq", grain={"date.id"})
-    _add_concept(cg, "ext_price", grain={"item.id", "order_id"})
+    cattrs: dict[str, ConceptAttrs] = {}
+    _add_concept(cg, cattrs, "week_seq", grain={"date.id"})
+    _add_concept(cg, cattrs, "ext_price", grain={"item.id", "order_id"})
     _add_concept(
-        cg, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
+        cg, cattrs, "agg_sum", grain={"week_seq"}, derivation=Derivation.AGGREGATE.value
     )
     _add_lineage(cg, "ext_price", "agg_sum")
     _add_lineage(cg, "week_seq", "agg_sum")
@@ -319,7 +343,7 @@ def test_aggregate_inputs_include_primary_lineage_args():
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, cattrs, buckets, mandatory)
 
     agg_in = set(attrs["agg"].input_concepts)
     # Inputs for the SUM: ext_price (lineage arg) and week_seq (passthrough output).
@@ -328,9 +352,14 @@ def test_aggregate_inputs_include_primary_lineage_args():
 
 def test_basic_inputs_drop_primaries_that_are_computed_locally():
     cg = nx.DiGraph()
-    _add_concept(cg, "agg_sum", grain={"week_seq"})
+    cattrs: dict[str, ConceptAttrs] = {}
+    _add_concept(cg, cattrs, "agg_sum", grain={"week_seq"})
     _add_concept(
-        cg, "round_result", grain={"week_seq"}, derivation=Derivation.BASIC.value
+        cg,
+        cattrs,
+        "round_result",
+        grain={"week_seq"},
+        derivation=Derivation.BASIC.value,
     )
     _add_lineage(cg, "agg_sum", "round_result")
 
@@ -365,7 +394,7 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally():
     }
     mandatory = [_FakeConcept("round_result")]
 
-    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, cattrs, buckets, mandatory)
 
     basic_in = set(attrs["basic"].input_concepts)
     # The lineage arg agg_sum must come from upstream.
@@ -381,8 +410,9 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally():
 
 def test_intermediate_groups_have_empty_hidden_concepts():
     cg = nx.DiGraph()
-    _add_concept(cg, "x", grain={"x"})
-    _add_concept(cg, "y", grain={"x"}, derivation=Derivation.BASIC.value)
+    cattrs: dict[str, ConceptAttrs] = {}
+    _add_concept(cg, cattrs, "x", grain={"x"})
+    _add_concept(cg, cattrs, "y", grain={"x"}, derivation=Derivation.BASIC.value)
     _add_lineage(cg, "x", "y")
 
     gg = nx.DiGraph()
@@ -398,7 +428,7 @@ def test_intermediate_groups_have_empty_hidden_concepts():
     }
     mandatory = [_FakeConcept("y")]
 
-    _compute_concept_sets(gg, attrs, cg, buckets, mandatory)
+    _compute_concept_sets(gg, attrs, cg, cattrs, buckets, mandatory)
 
     assert attrs["root"].hidden_concepts == ()
     assert attrs["basic"].hidden_concepts == ()

@@ -1,36 +1,32 @@
 # Query 54
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (1, 10715)
-only in ref (showing up to 5 of 1):
-  1x  (1, 10715, 535750)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3828 | 87 | 68.87 ms |
-| reference | 4183 | 91 | 63.95 ms |
-| v4 / ref | 0.92x | 0.96x | 1.08x |
+| v4 | 4204 | 96 | 31.45 ms |
+| reference | 4263 | 91 | 30.37 ms |
+| v4 / ref | 0.99x | 1.05x | 1.04x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
-import store_sales as ss;
+import all_sales as sales;
+import physical_sales as ss;
 import store as store;
 
 # my_customers: customers who bought i_category='Women' & i_class='maternity'
@@ -41,9 +37,9 @@ rowset my_customers <- where
     and sales.item.class = 'maternity'
     and sales.date.year = 1998
     and sales.date.month_of_year = 12
-    and sales.customer.id is not null
+    and sales.billing_customer.id is not null
 select
-    sales.customer.id as my_cust_id,
+    sales.billing_customer.id as my_cust_id,
 ;
 
 # Reference q54 cross-joins each ss row with every store matching the
@@ -51,14 +47,14 @@ select
 # (count of stores in customer's county/state), via 2 rowsets keyed on
 # (county, state) and merged.
 rowset cust_ss <- where
-    ss.customer.id in my_customers.my_cust_id
+    ss.billing_customer.id in my_customers.my_cust_id
     and ss.date.month_seq >= 1188
     and ss.date.month_seq <= 1190
-    and ss.customer.id is not null
+    and ss.billing_customer.id is not null
 select
-    ss.customer.id as ss_cust_id,
-    ss.customer.address.county as ss_cust_county,
-    ss.customer.address.state as ss_cust_state,
+    ss.billing_customer.id as ss_cust_id,
+    ss.billing_customer.address.county as ss_cust_county,
+    ss.billing_customer.address.state as ss_cust_state,
     sum(ss.ext_sales_price) as ss_revenue,
 ;
 
@@ -98,7 +94,7 @@ limit 100
 WITH 
 cheerful as (
 SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id"
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -108,7 +104,7 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id"
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -128,22 +124,22 @@ GROUP BY
     2),
 thoughtful as (
 SELECT
-    "cheerful"."sales_customer_id" as "my_customers_my_cust_id"
+    "cheerful"."sales_billing_customer_id" as "my_customers_my_cust_id"
 FROM
     "cheerful"
 GROUP BY
     1),
 concerned as (
 SELECT
-    "ss_customer_address_customer_address"."CA_COUNTY" as "cust_ss_ss_cust_county",
-    "ss_customer_address_customer_address"."CA_STATE" as "cust_ss_ss_cust_state",
+    "ss_billing_customer_address_customer_address"."CA_COUNTY" as "cust_ss_ss_cust_county",
+    "ss_billing_customer_address_customer_address"."CA_STATE" as "cust_ss_ss_cust_state",
     "ss_store_sales"."SS_CUSTOMER_SK" as "cust_ss_ss_cust_id",
     sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "cust_ss_ss_revenue"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
-    LEFT OUTER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "ss_billing_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_billing_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "ss_billing_customer_address_customer_address" on "ss_billing_customer_customers"."C_CURRENT_ADDR_SK" = "ss_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "ss_store_sales"."SS_CUSTOMER_SK" in (select thoughtful."my_customers_my_cust_id" from thoughtful where thoughtful."my_customers_my_cust_id" is not null) and "ss_date_date"."D_MONTH_SEQ" >= 1188 and "ss_date_date"."D_MONTH_SEQ" <= 1190 and "ss_store_sales"."SS_CUSTOMER_SK" is not null
 
@@ -163,24 +159,33 @@ GROUP BY
     2),
 macho as (
 SELECT
-    count("sweltering"."my_revenue_rev_cust_id") as "num_customers"
+    "sweltering"."my_revenue_rev_cust_id" as "my_revenue_rev_cust_id"
 FROM
-    "sweltering"),
+    "sweltering"
+GROUP BY
+    1),
 late as (
 SELECT
+    cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) * 50 as "segment_base",
     cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) as "segment"
 FROM
-    "sweltering")
+    "sweltering"),
+scrawny as (
+SELECT
+    CASE WHEN "macho"."my_revenue_rev_cust_id" IS NOT NULL THEN 1 ELSE 0 END as "num_customers"
+FROM
+    "macho")
 SELECT
     "late"."segment" as "segment",
-    coalesce("macho"."num_customers",0) as "num_customers"
+    coalesce("scrawny"."num_customers",0) as "num_customers",
+    "late"."segment_base" as "segment_base"
 FROM
-    "macho"
+    "scrawny"
     FULL JOIN "late" on 1=1
 ORDER BY 
     "late"."segment" asc nulls first,
-    coalesce("macho"."num_customers",0) asc nulls first,
-    "late"."segment" * 50 asc nulls first
+    coalesce("scrawny"."num_customers",0) asc nulls first,
+    "late"."segment_base" asc nulls first
 LIMIT (100)
 ```
 
@@ -190,7 +195,7 @@ LIMIT (100)
 WITH 
 cheerful as (
 SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id"
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -200,7 +205,7 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id"
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -220,22 +225,22 @@ GROUP BY
     2),
 thoughtful as (
 SELECT
-    "cheerful"."sales_customer_id" as "my_customers_my_cust_id"
+    "cheerful"."sales_billing_customer_id" as "my_customers_my_cust_id"
 FROM
     "cheerful"
 GROUP BY
     1),
 concerned as (
 SELECT
-    "ss_customer_address_customer_address"."CA_COUNTY" as "cust_ss_ss_cust_county",
-    "ss_customer_address_customer_address"."CA_STATE" as "cust_ss_ss_cust_state",
+    "ss_billing_customer_address_customer_address"."CA_COUNTY" as "cust_ss_ss_cust_county",
+    "ss_billing_customer_address_customer_address"."CA_STATE" as "cust_ss_ss_cust_state",
     "ss_store_sales"."SS_CUSTOMER_SK" as "cust_ss_ss_cust_id",
     sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "cust_ss_ss_revenue"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
-    LEFT OUTER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "ss_billing_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_billing_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "ss_billing_customer_address_customer_address" on "ss_billing_customer_customers"."C_CURRENT_ADDR_SK" = "ss_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
     "ss_store_sales"."SS_CUSTOMER_SK" in (select thoughtful."my_customers_my_cust_id" from thoughtful where thoughtful."my_customers_my_cust_id" is not null) and "ss_date_date"."D_MONTH_SEQ" >= 1188 and "ss_date_date"."D_MONTH_SEQ" <= 1190 and "ss_store_sales"."SS_CUSTOMER_SK" is not null
 

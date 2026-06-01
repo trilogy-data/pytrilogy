@@ -24,7 +24,6 @@ from trilogy.core.processing.node_generators.rowset_node import gen_rowset_node
 from trilogy.core.processing.node_generators.subselect_node import gen_subselect_node
 from trilogy.core.processing.node_generators.union_node import gen_union_node
 from trilogy.core.processing.node_generators.unnest_node import gen_unnest_node
-from trilogy.core.processing.node_generators.window_node import gen_window_node
 from trilogy.core.processing.nodes import History, StrategyNode
 
 DerivationHandler = Callable[..., "StrategyNode | None"]
@@ -88,7 +87,6 @@ def _wrap(fn: Callable) -> DerivationHandler:
 _HANDLERS: dict[str, DerivationHandler] = {
     Derivation.ROOT.value: _build_root,
     Derivation.AGGREGATE.value: _wrap(gen_group_node),
-    Derivation.WINDOW.value: _wrap(gen_window_node),
     Derivation.BASIC.value: _wrap(gen_basic_node),
     Derivation.FILTER.value: _wrap(gen_filter_node),
     Derivation.CONSTANT.value: _wrap(gen_constant_node),

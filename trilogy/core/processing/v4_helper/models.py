@@ -22,6 +22,11 @@ class GroupAttrs:
     primary_members: tuple[str, ...] = ()
     secondary_members: tuple[str, ...] = ()
     member_depths: dict[str, str] = field(default_factory=dict)
+    # For an aggregate group whose count(s) must count distinct entities, the
+    # grain its input is reduced to before aggregating (e.g. {order_number} for
+    # `count(order_number)`). Empty when no reduction is needed. Drives an
+    # intermediate dedup GroupNode in the strategy builder.
+    dedup_grain: frozenset[str] = frozenset()
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently — so a single clause may live at
@@ -36,6 +41,34 @@ class GroupAttrs:
 
 
 @dataclass
+class ConceptAttrs:
+    """Strongly-typed per-concept-node state. Like `GroupAttrs`, lives in a
+    side dict (``dict[str, ConceptAttrs]``) keyed by concept-graph node id
+    rather than on the nx.DiGraph node attributes — the graph stays as
+    topology + edge metadata (``kind``) only, and the stage-2 grouping pipeline
+    reads node state with attribute access (and mypy coverage) instead of
+    stringly-typed dict lookups.
+
+    ``address`` is the bare concept address; the node id may differ from it
+    for any non-blank phase/label (the ``[label]address`` form)."""
+
+    address: str
+    label: str
+    derivation: str
+    purpose: str
+    granularity: str
+    depth_label: str
+    grain_components: frozenset[str] = frozenset()
+    grouping_mode: str | None = None
+    rowset_name: str | None = None
+    agg_dedup_grain: frozenset[str] = frozenset()
+    # Tagged post-build for a concept that appears ONLY as an existence arg
+    # (semijoin RHS) and never as a row arg — `partition_roots` places such a
+    # node in its own scan bucket (side-channel subselect source).
+    existence_only: bool = False
+
+
+@dataclass
 class BuildInfo:
     """Result bundle for discovery: the raw concept graph, the grouped graph,
     per-group attributes, and the materialized StrategyNode produced by
@@ -44,6 +77,7 @@ class BuildInfo:
     concept_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     group_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     group_attrs: dict[str, GroupAttrs] = field(default_factory=dict)
+    concept_attrs: dict[str, ConceptAttrs] = field(default_factory=dict)
     strategy_node: StrategyNode | None = None
 
     def copy(self) -> "BuildInfo":
@@ -51,6 +85,9 @@ class BuildInfo:
             concept_graph=self.concept_graph.copy(),
             group_graph=self.group_graph.copy(),
             group_attrs={k: _copy_attrs(v) for k, v in self.group_attrs.items()},
+            concept_attrs={
+                k: _copy_concept_attrs(v) for k, v in self.concept_attrs.items()
+            },
             strategy_node=self.strategy_node.copy() if self.strategy_node else None,
         )
 
@@ -70,6 +107,23 @@ def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
         output_concepts=a.output_concepts,
         hidden_concepts=a.hidden_concepts,
         input_concepts=a.input_concepts,
+        dedup_grain=a.dedup_grain,
+    )
+
+
+def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
+    return ConceptAttrs(
+        address=a.address,
+        label=a.label,
+        derivation=a.derivation,
+        purpose=a.purpose,
+        granularity=a.granularity,
+        depth_label=a.depth_label,
+        grain_components=a.grain_components,
+        grouping_mode=a.grouping_mode,
+        rowset_name=a.rowset_name,
+        agg_dedup_grain=a.agg_dedup_grain,
+        existence_only=a.existence_only,
     )
 
 
@@ -102,3 +156,6 @@ class GroupBucket:
     # split, which can land two co-grain buckets with disjoint upstream
     # sources. Empty string for rules that don't need it.
     discriminator: str = ""
+    # Grain to reduce this aggregate's input to before aggregating (a count of
+    # distinct entities); empty when no reduction is needed. See GroupAttrs.
+    dedup_grain: frozenset[str] = frozenset()

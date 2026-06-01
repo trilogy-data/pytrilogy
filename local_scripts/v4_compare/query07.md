@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1617 | 20 | 50.28 ms |
-| reference | 1617 | 20 | 50.18 ms |
-| v4 / ref | 1.00x | 1.00x | 1.00x |
+| v4 | 1698 | 20 | 52.32 ms |
+| reference | 1698 | 20 | 53.54 ms |
+| v4 / ref | 1.00x | 1.00x | 0.98x |
 
 ## Preql
 
@@ -28,22 +28,22 @@ ref rows: 100 (100 distinct)
 # compute the average quantity, list price, discount, and sales price for promotional items sold in stores where the
 # promotion is not offered by mail or a special event. Restrict the results to a specific gender, marital and
 # educational status.
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 where
-    store_sales.customer_demographic.gender = 'M'
-    and store_sales.customer_demographic.marital_status = 'S'
-    and store_sales.customer_demographic.education_status = 'College'
-    and (store_sales.promotion.channel_email = 'N' or store_sales.promotion.channel_event = 'N')
-    and store_sales.date.year = 2000
+    physical_sales.customer_demographic.gender = 'M'
+    and physical_sales.customer_demographic.marital_status = 'S'
+    and physical_sales.customer_demographic.education_status = 'College'
+    and (physical_sales.promotion.channel_email = 'N' or physical_sales.promotion.channel_event = 'N')
+    and physical_sales.date.year = 2000
 select
-    store_sales.item.name,
-    avg(store_sales.quantity) as avg_quantity,
-    avg(store_sales.list_price) as avg_list_price,
-    avg(store_sales.coupon_amt) as avg_coupon_amt,
-    avg(store_sales.sales_price) as avg_sales_price,
+    physical_sales.item.text_id,
+    avg(physical_sales.quantity) as avg_quantity,
+    avg(physical_sales.list_price) as avg_list_price,
+    avg(physical_sales.coupon_amt) as avg_coupon_amt,
+    avg(physical_sales.sales_price) as avg_sales_price,
 order by
-    store_sales.item.name asc
+    physical_sales.item.text_id asc
 limit 100
 ;
 ```
@@ -52,24 +52,24 @@ limit 100
 
 ```sql
 SELECT
-    avg("store_sales_store_sales"."SS_COUPON_AMT") as "avg_coupon_amt",
-    avg("store_sales_store_sales"."SS_LIST_PRICE") as "avg_list_price",
-    avg("store_sales_store_sales"."SS_QUANTITY") as "avg_quantity",
-    avg("store_sales_store_sales"."SS_SALES_PRICE") as "avg_sales_price",
-    "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_name"
+    avg("physical_sales_store_sales"."SS_COUPON_AMT") as "avg_coupon_amt",
+    avg("physical_sales_store_sales"."SS_LIST_PRICE") as "avg_list_price",
+    avg("physical_sales_store_sales"."SS_QUANTITY") as "avg_quantity",
+    avg("physical_sales_store_sales"."SS_SALES_PRICE") as "avg_sales_price",
+    "physical_sales_item_items"."I_ITEM_ID" as "physical_sales_item_text_id"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."promotion" as "store_sales_promotion_promotion" on "store_sales_store_sales"."SS_PROMO_SK" = "store_sales_promotion_promotion"."P_PROMO_SK"
-    INNER JOIN "memory"."customer_demographics" as "store_sales_customer_demographic_customer_demographics" on "store_sales_store_sales"."SS_CDEMO_SK" = "store_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."promotion" as "physical_sales_promotion_promotion" on "physical_sales_store_sales"."SS_PROMO_SK" = "physical_sales_promotion_promotion"."P_PROMO_SK"
+    INNER JOIN "memory"."customer_demographics" as "physical_sales_customer_demographic_customer_demographics" on "physical_sales_store_sales"."SS_CDEMO_SK" = "physical_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "store_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and ( "store_sales_promotion_promotion"."P_CHANNEL_EMAIL" = 'N' or "store_sales_promotion_promotion"."P_CHANNEL_EVENT" = 'N' ) and "store_sales_date_date"."D_YEAR" = 2000
+    "physical_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "physical_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "physical_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and ( "physical_sales_promotion_promotion"."P_CHANNEL_EMAIL" = 'N' or "physical_sales_promotion_promotion"."P_CHANNEL_EVENT" = 'N' ) and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
     5
 ORDER BY 
-    "store_sales_item_items"."I_ITEM_ID" asc
+    "physical_sales_item_items"."I_ITEM_ID" asc
 LIMIT (100)
 ```
 
@@ -77,23 +77,23 @@ LIMIT (100)
 
 ```sql
 SELECT
-    "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_name",
-    avg("store_sales_store_sales"."SS_QUANTITY") as "avg_quantity",
-    avg("store_sales_store_sales"."SS_LIST_PRICE") as "avg_list_price",
-    avg("store_sales_store_sales"."SS_COUPON_AMT") as "avg_coupon_amt",
-    avg("store_sales_store_sales"."SS_SALES_PRICE") as "avg_sales_price"
+    "physical_sales_item_items"."I_ITEM_ID" as "physical_sales_item_text_id",
+    avg("physical_sales_store_sales"."SS_QUANTITY") as "avg_quantity",
+    avg("physical_sales_store_sales"."SS_LIST_PRICE") as "avg_list_price",
+    avg("physical_sales_store_sales"."SS_COUPON_AMT") as "avg_coupon_amt",
+    avg("physical_sales_store_sales"."SS_SALES_PRICE") as "avg_sales_price"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."promotion" as "store_sales_promotion_promotion" on "store_sales_store_sales"."SS_PROMO_SK" = "store_sales_promotion_promotion"."P_PROMO_SK"
-    INNER JOIN "memory"."customer_demographics" as "store_sales_customer_demographic_customer_demographics" on "store_sales_store_sales"."SS_CDEMO_SK" = "store_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."promotion" as "physical_sales_promotion_promotion" on "physical_sales_store_sales"."SS_PROMO_SK" = "physical_sales_promotion_promotion"."P_PROMO_SK"
+    INNER JOIN "memory"."customer_demographics" as "physical_sales_customer_demographic_customer_demographics" on "physical_sales_store_sales"."SS_CDEMO_SK" = "physical_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "store_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "store_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "store_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and ( "store_sales_promotion_promotion"."P_CHANNEL_EMAIL" = 'N' or "store_sales_promotion_promotion"."P_CHANNEL_EVENT" = 'N' ) and "store_sales_date_date"."D_YEAR" = 2000
+    "physical_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "physical_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "physical_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and ( "physical_sales_promotion_promotion"."P_CHANNEL_EMAIL" = 'N' or "physical_sales_promotion_promotion"."P_CHANNEL_EVENT" = 'N' ) and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
     1
 ORDER BY 
-    "store_sales_item_items"."I_ITEM_ID" asc
+    "physical_sales_item_items"."I_ITEM_ID" asc
 LIMIT (100)
 ```

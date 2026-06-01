@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1397 | 36 | 23.33 ms |
-| reference | 1242 | 33 | 8.91 ms |
-| v4 / ref | 1.12x | 1.09x | 2.62x |
+| v4 | 1396 | 36 | 22.83 ms |
+| reference | 1241 | 33 | 9.13 ms |
+| v4 / ref | 1.12x | 1.09x | 2.50x |
 
 ## Preql
 
@@ -30,11 +30,10 @@ import catalog_sales;
 const start_date <- '2000-01-27'::date;
 const end_date <- '2000-04-26'::date;
 
-# Transform this tpc-ds sql query to trilogy following trilogy syntax
 auto avg_item_disc <- 1.3 * avg(discount_amount ? sold_date.date between start_date and end_date) by item.id;
 
 where
-    item.manufacturer_id = 977
+    item.manufacturer_id = 48
     and sold_date.date between start_date and end_date
     and discount_amount > avg_item_disc
 select
@@ -65,7 +64,7 @@ FROM
     INNER JOIN "memory"."item" as "item_items" on "catalog_sales"."CS_ITEM_SK" = "item_items"."I_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
 WHERE
-    "item_items"."I_MANUFACT_ID" = 977 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
+    "item_items"."I_MANUFACT_ID" = 48 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 ),
 abundant as (
 SELECT
@@ -97,7 +96,7 @@ FROM
     INNER JOIN "memory"."item" as "item_items" on "catalog_sales"."CS_ITEM_SK" = "item_items"."I_ITEM_SK"
     INNER JOIN "memory"."date_dim" as "sold_date_date" on "catalog_sales"."CS_SOLD_DATE_SK" = "sold_date_date"."D_DATE_SK"
 WHERE
-    "item_items"."I_MANUFACT_ID" = 977 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
+    "item_items"."I_MANUFACT_ID" = 48 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 ),
 thoughtful as (
 SELECT

@@ -1,22 +1,30 @@
 # Query 95
 
-**Status:** `gen_fail`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
+| results identical | NO |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1 (1 distinct)
+ref rows: 1 (1 distinct)
+only in v4 (showing up to 5 of 1):
+  1x  (95, Decimal('-18202.90'), Decimal('100592.32'))
+only in ref (showing up to 5 of 1):
+  1x  (68, Decimal('-18202.90'), Decimal('100592.32'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 4030 | 76 | 157.70 ms |
+| v4 | 3058 | 56 | 37.98 ms |
+| reference | 4030 | 76 | 58.35 ms |
+| v4 / ref | 0.76x | 0.74x | 0.65x |
 
 ## Preql
 
@@ -44,7 +52,64 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+questionable as (
+SELECT
+    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number",
+    "web_sales_web_sales"."WS_WAREHOUSE_SK" as "web_sales_warehouse_id",
+    CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END as "web_sales_is_returned"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+    LEFT OUTER JOIN "memory"."web_returns" as "web_sales_web_returns" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_web_returns"."WR_ITEM_SK" AND "web_sales_web_sales"."WS_ORDER_NUMBER" = "web_sales_web_returns"."WR_ORDER_NUMBER"
+GROUP BY
+    1,
+    2,
+    3),
+uneven as (
+SELECT
+    "questionable"."web_sales_order_number" as "web_sales_order_number",
+    count("questionable"."web_sales_warehouse_id") as "_virt_agg_count_2435454530783120"
+FROM
+    "questionable"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    CASE WHEN "questionable"."web_sales_is_returned" is True THEN "questionable"."web_sales_order_number" ELSE NULL END as "returned_orders"
+FROM
+    "questionable"),
+yummy as (
+SELECT
+    CASE WHEN "uneven"."_virt_agg_count_2435454530783120" > 1 THEN "uneven"."web_sales_order_number" ELSE NULL END as "multi_warehouse_order"
+FROM
+    "uneven"),
+thoughtful as (
+SELECT
+    "web_sales_web_sales"."WS_EXT_SHIP_COST" as "web_sales_ext_ship_cost",
+    "web_sales_web_sales"."WS_NET_PROFIT" as "web_sales_net_profit",
+    "web_sales_web_sales"."WS_ORDER_NUMBER" as "web_sales_order_number"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+    INNER JOIN "memory"."web_site" as "web_sales_web_site_web_site" on "web_sales_web_sales"."WS_WEB_SITE_SK" = "web_sales_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "web_sales_ship_date_date" on "web_sales_web_sales"."WS_SHIP_DATE_SK" = "web_sales_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "web_sales_ship_address_customer_address" on "web_sales_web_sales"."WS_SHIP_ADDR_SK" = "web_sales_ship_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("web_sales_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "web_sales_ship_address_customer_address"."CA_STATE" = 'IL' and "web_sales_web_site_web_site"."web_company_name" = 'pri' and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select yummy."multi_warehouse_order" from yummy where yummy."multi_warehouse_order" is not null) and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select abundant."returned_orders" from abundant where abundant."returned_orders" is not null)
+)
+SELECT
+    count("thoughtful"."web_sales_order_number") as "order_count",
+    sum("thoughtful"."web_sales_net_profit") as "total_net_profit",
+    sum("thoughtful"."web_sales_ext_ship_cost") as "total_shipping_cost"
+FROM
+    "thoughtful"
+WHERE
+    "thoughtful"."web_sales_order_number" in (select yummy."multi_warehouse_order" from yummy where yummy."multi_warehouse_order" is not null) and "thoughtful"."web_sales_order_number" in (select abundant."returned_orders" from abundant where abundant."returned_orders" is not null)
+
+ORDER BY 
+    "order_count" desc
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -125,41 +190,4 @@ FROM
 ORDER BY 
     coalesce("vacuous"."order_count",0) desc
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 58, in _search_concepts
-    strategy_node = build_strategy_node(
-        group_graph, mandatory_list, environment, g, history
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 412, in build_strategy_node
-    # pass in `_compute_concept_sets`. The SELECT needs to project the
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 223, in _topological_order
-    return list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```

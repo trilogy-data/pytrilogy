@@ -18,14 +18,14 @@ ref rows: 53 (53 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6152 | 92 | 24.64 ms |
-| reference | 4649 | 80 | 27.23 ms |
-| v4 / ref | 1.32x | 1.15x | 0.90x |
+| v4 | 6152 | 92 | 28.23 ms |
+| reference | 4649 | 80 | 28.39 ms |
+| v4 / ref | 1.32x | 1.15x | 0.99x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
 auto relevent_week_seq <- sales.date.week_seq ? sales.date.year in (2001, 2002);
 

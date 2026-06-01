@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1510 | 32 | 16.80 ms |
-| reference | 1510 | 32 | 17.01 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 1513 | 32 | 17.24 ms |
+| reference | 1513 | 32 | 17.57 ms |
+| v4 / ref | 1.00x | 1.00x | 0.98x |
 
 ## Preql
 
@@ -32,7 +32,7 @@ where
     and inventory.item.current_price between 0.99 and 1.49
 select
     inventory.warehouse.name,
-    inventory.item.name,
+    inventory.item.text_id,
     sum(
             case
                 when inventory.date.date < '2000-03-11'::date then inventory.quantity_on_hand
@@ -53,7 +53,7 @@ having
 
 order by
     inventory.warehouse.name asc nulls first,
-    inventory.item.name asc nulls first
+    inventory.item.text_id asc nulls first
 limit 100
 ;
 ```
@@ -63,7 +63,7 @@ limit 100
 ```sql
 SELECT
     "inventory_warehouse_warehouse"."w_warehouse_name" as "inventory_warehouse_name",
-    "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
+    "inventory_item_items"."I_ITEM_ID" as "inventory_item_text_id",
     sum(CASE
 	WHEN cast("inventory_date_date"."D_DATE" as date) < date '2000-03-11' THEN "inventory_warehouse_inventory"."inv_quantity_on_hand"
 	ELSE 0
@@ -100,7 +100,7 @@ LIMIT (100)
 ```sql
 SELECT
     "inventory_warehouse_warehouse"."w_warehouse_name" as "inventory_warehouse_name",
-    "inventory_item_items"."I_ITEM_ID" as "inventory_item_name",
+    "inventory_item_items"."I_ITEM_ID" as "inventory_item_text_id",
     sum(CASE
 	WHEN cast("inventory_date_date"."D_DATE" as date) < date '2000-03-11' THEN "inventory_warehouse_inventory"."inv_quantity_on_hand"
 	ELSE 0

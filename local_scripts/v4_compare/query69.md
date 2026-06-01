@@ -18,36 +18,36 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4140 | 73 | 74.43 ms |
-| reference | 4137 | 80 | 83.66 ms |
-| v4 / ref | 1.00x | 0.91x | 0.89x |
+| v4 | 4140 | 73 | 67.89 ms |
+| reference | 4137 | 80 | 82.83 ms |
+| v4 / ref | 1.00x | 0.91x | 0.82x |
 
 ## Preql
 
 ```
 import customer as customer;
-import unified_sales as sales;
+import all_sales as sales;
 
 # TPC-DS q69 uses ss_customer_sk for the store EXISTS branch,
 # ws_bill_customer_sk for web, and cs_ship_customer_sk for catalog, so:
-#   - store/web filters use sales.customer.id (= SS_CUSTOMER_SK / WS_BILL_CUSTOMER_SK)
+#   - store/web filters use sales.billing_customer.id (= SS_CUSTOMER_SK / WS_BILL_CUSTOMER_SK)
 #   - catalog filter uses sales.ship_customer.id (= CS_SHIP_CUSTOMER_SK)
 rowset store_buyers <- where
     sales.sales_channel = 'STORE'
     and sales.date.year = 2001
     and sales.date.month_of_year between 4 and 6
-    and sales.customer.id is not null
+    and sales.billing_customer.id is not null
 select
-    sales.customer.id as store_cust_id,
+    sales.billing_customer.id as store_cust_id,
 ;
 
 rowset web_buyers <- where
     sales.sales_channel = 'WEB'
     and sales.date.year = 2001
     and sales.date.month_of_year between 4 and 6
-    and sales.customer.id is not null
+    and sales.billing_customer.id is not null
 select
-    sales.customer.id as web_cust_id,
+    sales.billing_customer.id as web_cust_id,
 ;
 
 rowset catalog_buyers <- where

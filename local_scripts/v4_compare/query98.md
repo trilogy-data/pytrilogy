@@ -1,38 +1,26 @@
 # Query 98
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (2522 rows) |
+| v4 execution | OK (2521 rows) |
 | reference execution | OK (2521 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 2522 (2522 distinct)
+v4 rows: 2521 (2521 distinct)
 ref rows: 2521 (2521 distinct)
-only in v4 (showing up to 5 of 8):
-  1x  (Decimal('1554.04'), 0.7870806219255772, 'Books', 'business', Decimal('2.57'), 'National, famous weeks become just sufficient women. Humans allow there things.', 'AAAAAAAABIPBAAAA')
-  1x  (Decimal('2145.25'), 0.6311303527701673, 'Books', 'home repair', Decimal('4.31'), 'Complex, a', 'AAAAAAAAINLAAAAA')
-  1x  (Decimal('876.12'), 0.20933770607621258, 'Books', 'mystery', Decimal('1.83'), 'Interesting, payable rules hear computers; similar laws would get once then effective blues. Cultural increases ought to go major marks.', 'AAAAAAAAJFEEAAAA')
-  1x  (Decimal('2145.25'), 0.7351823865756055, 'Home', 'bedding', Decimal('3.51'), 'As prime legs proceed probably orange, historic experiments. Here different skills may not appease usually continental terms. Cheerful daughters take on a shops. Far', 'AAAAAAAAAOGAAAAA')
-  1x  (Decimal('71.76'), 0.021511576126742992, 'Home', 'furniture', Decimal('0.85'), 'Most increased shares may not examine sometimes evident, environmental roots. Minerals may live ge', 'AAAAAAAAAFDAAAAA')
-only in ref (showing up to 5 of 7):
-  1x  (None, None, 'Books', 'parenting', Decimal('1.50'), 'Direct', 'AAAAAAAACLKCAAAA')
-  1x  (None, None, 'Books', 'parenting', Decimal('4.51'), 'Ancient forests read books. Patients give; especially personal fields provide parties. Social, obvious members used to support as quite financial aspects. Briskly p', 'AAAAAAAALODDAAAA')
-  1x  (None, None, 'Books', 'sports', Decimal('3.78'), 'Modern, new communications come here to a databases. Expectation', 'AAAAAAAAKHFBAAAA')
-  1x  (None, None, 'Home', 'paint', Decimal('5.47'), 'Then serious drugs cannot celebrate here. Possible, fatal problems could not save successful pr', 'AAAAAAAAEBKCAAAA')
-  1x  (None, None, 'Sports', 'basketball', Decimal('1.19'), 'Primary, front circumstances may no', 'AAAAAAAACBFAAAAA')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3209 | 73 | 215.79 ms |
-| reference | 2918 | 58 | 152.51 ms |
-| v4 / ref | 1.10x | 1.26x | 1.41x |
+| v4 | 2918 | 58 | 44.43 ms |
+| reference | 2918 | 58 | 50.33 ms |
+| v4 / ref | 1.00x | 1.00x | 0.88x |
 
 ## Preql
 
@@ -102,39 +90,24 @@ GROUP BY
     2,
     3,
     4,
-    5),
-questionable as (
+    5)
 SELECT
-    "thoughtful"."_virt_agg_sum_9873055619986236" as "_virt_agg_sum_9873055619986236",
-    ( "thoughtful"."_virt_agg_sum_9873055619986236" * 100.0 ) / ("cooperative"."_virt_agg_sum_7595906549305205") as "revenueratio"
+    "thoughtful"."item_revenue" as "item_revenue",
+    ( "thoughtful"."_virt_agg_sum_9873055619986236" * 100.0 ) / ("cooperative"."_virt_agg_sum_7595906549305205") as "revenueratio",
+    "thoughtful"."store_sales_item_category" as "store_sales_item_category",
+    coalesce("cooperative"."store_sales_item_class","thoughtful"."store_sales_item_class") as "store_sales_item_class",
+    "thoughtful"."store_sales_item_current_price" as "store_sales_item_current_price",
+    "thoughtful"."store_sales_item_desc" as "store_sales_item_desc",
+    "thoughtful"."store_sales_item_name" as "store_sales_item_name"
 FROM
     "thoughtful"
-    INNER JOIN "cooperative" on "thoughtful"."store_sales_item_class" is not distinct from "cooperative"."store_sales_item_class")
-SELECT
-    "thoughtful"."store_sales_item_name" as "store_sales_item_name",
-    "thoughtful"."store_sales_item_desc" as "store_sales_item_desc",
-    "thoughtful"."store_sales_item_category" as "store_sales_item_category",
-    "thoughtful"."store_sales_item_class" as "store_sales_item_class",
-    "thoughtful"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "thoughtful"."item_revenue" as "item_revenue",
-    "questionable"."revenueratio" as "revenueratio"
-FROM
-    "questionable"
-    INNER JOIN "thoughtful" on "questionable"."_virt_agg_sum_9873055619986236" = "thoughtful"."_virt_agg_sum_9873055619986236"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
+    INNER JOIN "cooperative" on "thoughtful"."store_sales_item_class" is not distinct from "cooperative"."store_sales_item_class"
 ORDER BY 
     "thoughtful"."store_sales_item_category" asc nulls first,
-    "thoughtful"."store_sales_item_class" asc nulls first,
+    coalesce("cooperative"."store_sales_item_class","thoughtful"."store_sales_item_class") asc nulls first,
     "thoughtful"."store_sales_item_name" asc nulls first,
     "thoughtful"."store_sales_item_desc" asc nulls first,
-    "questionable"."revenueratio" asc nulls first
+    "revenueratio" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2390 | 31 | 39.63 ms |
-| reference | 6854 | 114 | 112.61 ms |
-| v4 / ref | 0.35x | 0.27x | 0.35x |
+| v4 | 2393 | 31 | 37.63 ms |
+| reference | 6893 | 114 | 112.96 ms |
+| v4 / ref | 0.35x | 0.27x | 0.33x |
 
 ## Preql
 
@@ -36,7 +36,7 @@ where
     and analysis.catalog_date.month_of_year between 4 and 10
     and analysis.is_returned
 select
-    analysis.item.name,
+    analysis.item.text_id,
     analysis.item.desc,
     analysis.store.text_id,
     analysis.store.name,
@@ -44,7 +44,7 @@ select
     sum(analysis.store_return_net_loss) as store_returns_loss,
     sum(analysis.catalog_net_profit) as catalog_sales_profit,
 order by
-    analysis.item.name asc,
+    analysis.item.text_id asc,
     analysis.item.desc asc,
     analysis.store.text_id asc,
     analysis.store.name asc
@@ -57,7 +57,7 @@ limit 100
 ```sql
 SELECT
     "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
-    "analysis_item_items"."I_ITEM_ID" as "analysis_item_name",
+    "analysis_item_items"."I_ITEM_ID" as "analysis_item_text_id",
     "analysis_store_store"."S_STORE_NAME" as "analysis_store_name",
     "analysis_store_store"."S_STORE_ID" as "analysis_store_text_id",
     sum("analysis_catalog_sales"."CS_NET_PROFIT") as "catalog_sales_profit",
@@ -107,7 +107,7 @@ vacuous as (
 SELECT
     "analysis_catalog_sales"."CS_NET_PROFIT" as "analysis_catalog_net_profit",
     "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
-    "analysis_item_items"."I_ITEM_ID" as "analysis_item_name",
+    "analysis_item_items"."I_ITEM_ID" as "analysis_item_text_id",
     "analysis_store_store"."S_STORE_ID" as "analysis_store_text_id",
     "analysis_store_store"."S_STORE_NAME" as "analysis_store_name"
 FROM
@@ -133,7 +133,7 @@ GROUP BY
 yummy as (
 SELECT
     "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
-    "analysis_item_items"."I_ITEM_ID" as "analysis_item_name",
+    "analysis_item_items"."I_ITEM_ID" as "analysis_item_text_id",
     "analysis_store_returns"."SR_NET_LOSS" as "analysis_store_return_net_loss",
     "analysis_store_sales"."SS_NET_PROFIT" as "analysis_store_net_profit",
     "analysis_store_store"."S_STORE_ID" as "analysis_store_text_id",
@@ -162,7 +162,7 @@ GROUP BY
 concerned as (
 SELECT
     "vacuous"."analysis_item_desc" as "analysis_item_desc",
-    "vacuous"."analysis_item_name" as "analysis_item_name",
+    "vacuous"."analysis_item_text_id" as "analysis_item_text_id",
     "vacuous"."analysis_store_name" as "analysis_store_name",
     "vacuous"."analysis_store_text_id" as "analysis_store_text_id",
     sum("vacuous"."analysis_catalog_net_profit") as "catalog_sales_profit"
@@ -176,7 +176,7 @@ GROUP BY
 juicy as (
 SELECT
     "yummy"."analysis_item_desc" as "analysis_item_desc",
-    "yummy"."analysis_item_name" as "analysis_item_name",
+    "yummy"."analysis_item_text_id" as "analysis_item_text_id",
     "yummy"."analysis_store_name" as "analysis_store_name",
     "yummy"."analysis_store_text_id" as "analysis_store_text_id",
     sum("yummy"."analysis_store_net_profit") as "store_sales_profit",
@@ -189,7 +189,7 @@ GROUP BY
     3,
     4)
 SELECT
-    coalesce("concerned"."analysis_item_name","juicy"."analysis_item_name") as "analysis_item_name",
+    coalesce("concerned"."analysis_item_text_id","juicy"."analysis_item_text_id") as "analysis_item_text_id",
     coalesce("concerned"."analysis_item_desc","juicy"."analysis_item_desc") as "analysis_item_desc",
     coalesce("concerned"."analysis_store_text_id","juicy"."analysis_store_text_id") as "analysis_store_text_id",
     coalesce("concerned"."analysis_store_name","juicy"."analysis_store_name") as "analysis_store_name",
@@ -198,9 +198,9 @@ SELECT
     "concerned"."catalog_sales_profit" as "catalog_sales_profit"
 FROM
     "concerned"
-    INNER JOIN "juicy" on "concerned"."analysis_item_desc" is not distinct from "juicy"."analysis_item_desc" AND "concerned"."analysis_item_name" = "juicy"."analysis_item_name" AND "concerned"."analysis_store_name" is not distinct from "juicy"."analysis_store_name" AND "concerned"."analysis_store_text_id" is not distinct from "juicy"."analysis_store_text_id"
+    INNER JOIN "juicy" on "concerned"."analysis_item_desc" is not distinct from "juicy"."analysis_item_desc" AND "concerned"."analysis_item_text_id" = "juicy"."analysis_item_text_id" AND "concerned"."analysis_store_name" is not distinct from "juicy"."analysis_store_name" AND "concerned"."analysis_store_text_id" is not distinct from "juicy"."analysis_store_text_id"
 ORDER BY 
-    coalesce("concerned"."analysis_item_name","juicy"."analysis_item_name") asc,
+    coalesce("concerned"."analysis_item_text_id","juicy"."analysis_item_text_id") asc,
     coalesce("concerned"."analysis_item_desc","juicy"."analysis_item_desc") asc,
     coalesce("concerned"."analysis_store_text_id","juicy"."analysis_store_text_id") asc,
     coalesce("concerned"."analysis_store_name","juicy"."analysis_store_name") asc

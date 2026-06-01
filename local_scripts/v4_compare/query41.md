@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (4 rows) |
-| reference execution | OK (4 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 4 (4 distinct)
-ref rows: 4 (4 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2531 | 32 | 8.92 ms |
-| reference | 2400 | 42 | 11.38 ms |
-| v4 / ref | 1.05x | 0.76x | 0.78x |
+| v4 | 2243 | 32 | 8.59 ms |
+| reference | 2112 | 42 | 11.95 ms |
+| v4 / ref | 1.06x | 0.76x | 0.72x |
 
 ## Preql
 
@@ -29,59 +29,19 @@ import item as item;
 
 auto manufact_matches <- count(
     item.id
-        ? (
-    item.category = 'Women'
-    and item.color in ('powder', 'khaki')
-    and item.units in ('Ounce', 'Oz')
-    and item.size in ('medium', 'extra large')
-)
-or (
-    item.category = 'Women'
-    and item.color in ('brown', 'honeydew')
-    and item.units in ('Bunch', 'Ton')
-    and item.size in ('N/A', 'small')
-)
-or (
-    item.category = 'Men'
-    and item.color in ('floral', 'deep')
-    and item.units in ('N/A', 'Dozen')
-    and item.size in ('petite', 'large')
-)
-or (
-    item.category = 'Men'
-    and item.color in ('light', 'cornflower')
-    and item.units in ('Box', 'Pound')
-    and item.size in ('medium', 'extra large')
-)
-or (
-    item.category = 'Women'
-    and item.color in ('midnight', 'snow')
-    and item.units in ('Pallet', 'Gross')
-    and item.size in ('medium', 'extra large')
-)
-or (
-    item.category = 'Women'
-    and item.color in ('cyan', 'papaya')
-    and item.units in ('Cup', 'Dram')
-    and item.size in ('N/A', 'small')
-)
-or (
-    item.category = 'Men'
-    and item.color in ('orange', 'frosted')
-    and item.units in ('Each', 'Tbl')
-    and item.size in ('petite', 'large')
-)
-or (
-    item.category = 'Men'
-    and item.color in ('forest', 'ghost')
-    and item.units in ('Lb', 'Bundle')
-    and item.size in ('medium', 'extra large')
-)
+        ? (item.category = 'Books'       and item.color = 'tan'     and item.units = 'Oz'     and item.size = 'N/A')
+       or (item.category = 'Electronics' and item.color = 'purple'  and item.units = 'Ton'    and item.size = 'N/A')
+       or (item.category = 'Men'         and item.color = 'misty'   and item.units = 'Box'    and item.size = 'medium')
+       or (item.category = 'Books'       and item.color = 'medium'  and item.units = 'Tsp'    and item.size = 'N/A')
+       or (item.category = 'Books'       and item.color = 'midnight' and item.units = 'Gram'  and item.size = 'N/A')
+       or (item.category = 'Books'       and item.color = 'pale'    and item.units = 'Pound'  and item.size = 'N/A')
+       or (item.category = 'Electronics' and item.color = 'khaki'   and item.units = 'Pallet' and item.size = 'N/A')
+       or (item.category = 'Electronics' and item.color = 'mint'    and item.units = 'Gross'  and item.size = 'N/A')
 )
     by item.manufact;
 
 select
-    item.product_name ? item.manufacturer_id between 738 and 778 as filtered_product_name,
+    item.product_name ? item.manufacturer_id between 1 and 500 as filtered_product_name,
     --manufact_matches,
 having
     filtered_product_name is not null and manufact_matches > 0
@@ -99,14 +59,14 @@ WITH
 highfalutin as (
 SELECT
     "item_items"."I_MANUFACT" as "item_manufact",
-    CASE WHEN "item_items"."I_MANUFACT_ID" BETWEEN 738 AND 778 THEN "item_items"."I_PRODUCT_NAME" ELSE NULL END as "filtered_product_name",
-    CASE WHEN ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('powder','khaki') and "item_items"."I_UNITS" in ('Ounce','Oz') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('brown','honeydew') and "item_items"."I_UNITS" in ('Bunch','Ton') and "item_items"."I_SIZE" in ('N/A','small') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('floral','deep') and "item_items"."I_UNITS" in ('N/A','Dozen') and "item_items"."I_SIZE" in ('petite','large') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('light','cornflower') and "item_items"."I_UNITS" in ('Box','Pound') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('midnight','snow') and "item_items"."I_UNITS" in ('Pallet','Gross') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('cyan','papaya') and "item_items"."I_UNITS" in ('Cup','Dram') and "item_items"."I_SIZE" in ('N/A','small') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('orange','frosted') and "item_items"."I_UNITS" in ('Each','Tbl') and "item_items"."I_SIZE" in ('petite','large') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('forest','ghost') and "item_items"."I_UNITS" in ('Lb','Bundle') and "item_items"."I_SIZE" in ('medium','extra large') ) THEN "item_items"."I_ITEM_SK" ELSE NULL END as "_virt_filter_id_7632345629166937"
+    CASE WHEN "item_items"."I_MANUFACT_ID" BETWEEN 1 AND 500 THEN "item_items"."I_PRODUCT_NAME" ELSE NULL END as "filtered_product_name",
+    CASE WHEN ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'tan' and "item_items"."I_UNITS" = 'Oz' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'purple' and "item_items"."I_UNITS" = 'Ton' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" = 'misty' and "item_items"."I_UNITS" = 'Box' and "item_items"."I_SIZE" = 'medium' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'medium' and "item_items"."I_UNITS" = 'Tsp' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'midnight' and "item_items"."I_UNITS" = 'Gram' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'pale' and "item_items"."I_UNITS" = 'Pound' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'khaki' and "item_items"."I_UNITS" = 'Pallet' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'mint' and "item_items"."I_UNITS" = 'Gross' and "item_items"."I_SIZE" = 'N/A' ) THEN "item_items"."I_ITEM_SK" ELSE NULL END as "_virt_filter_id_7263619893092856"
 FROM
     "memory"."item" as "item_items"),
 wakeful as (
 SELECT
     "highfalutin"."item_manufact" as "item_manufact",
-    count("highfalutin"."_virt_filter_id_7632345629166937") as "manufact_matches"
+    count("highfalutin"."_virt_filter_id_7263619893092856") as "manufact_matches"
 FROM
     "highfalutin"
 GROUP BY
@@ -139,7 +99,7 @@ SELECT
 FROM
     "memory"."item" as "item_items"
 WHERE
-    ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('powder','khaki') and "item_items"."I_UNITS" in ('Ounce','Oz') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('brown','honeydew') and "item_items"."I_UNITS" in ('Bunch','Ton') and "item_items"."I_SIZE" in ('N/A','small') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('floral','deep') and "item_items"."I_UNITS" in ('N/A','Dozen') and "item_items"."I_SIZE" in ('petite','large') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('light','cornflower') and "item_items"."I_UNITS" in ('Box','Pound') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('midnight','snow') and "item_items"."I_UNITS" in ('Pallet','Gross') and "item_items"."I_SIZE" in ('medium','extra large') ) or ( "item_items"."I_CATEGORY" = 'Women' and "item_items"."I_COLOR" in ('cyan','papaya') and "item_items"."I_UNITS" in ('Cup','Dram') and "item_items"."I_SIZE" in ('N/A','small') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('orange','frosted') and "item_items"."I_UNITS" in ('Each','Tbl') and "item_items"."I_SIZE" in ('petite','large') ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" in ('forest','ghost') and "item_items"."I_UNITS" in ('Lb','Bundle') and "item_items"."I_SIZE" in ('medium','extra large') )
+    ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'tan' and "item_items"."I_UNITS" = 'Oz' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'purple' and "item_items"."I_UNITS" = 'Ton' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Men' and "item_items"."I_COLOR" = 'misty' and "item_items"."I_UNITS" = 'Box' and "item_items"."I_SIZE" = 'medium' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'medium' and "item_items"."I_UNITS" = 'Tsp' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'midnight' and "item_items"."I_UNITS" = 'Gram' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Books' and "item_items"."I_COLOR" = 'pale' and "item_items"."I_UNITS" = 'Pound' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'khaki' and "item_items"."I_UNITS" = 'Pallet' and "item_items"."I_SIZE" = 'N/A' ) or ( "item_items"."I_CATEGORY" = 'Electronics' and "item_items"."I_COLOR" = 'mint' and "item_items"."I_UNITS" = 'Gross' and "item_items"."I_SIZE" = 'N/A' )
 
 GROUP BY
     1
@@ -153,7 +113,7 @@ SELECT
 FROM
     "memory"."item" as "item_items"
 WHERE
-    "item_items"."I_MANUFACT_ID" BETWEEN 738 AND 778
+    "item_items"."I_MANUFACT_ID" BETWEEN 1 AND 500
 
 GROUP BY
     1,

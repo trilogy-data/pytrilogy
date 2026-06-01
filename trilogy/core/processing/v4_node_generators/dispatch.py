@@ -4,7 +4,6 @@ parent StrategyNodes instead of a `source_concepts` callback."""
 
 from typing import Callable, List
 
-from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
@@ -57,9 +56,13 @@ def build_node(
     g: ReferenceGraph,
 ) -> StrategyNode | None:
     """Dispatch on `derivation`. ROOT needs `history`/`g` for datasource
-    selection; the other v4 generators ignore them. Derivations without a v4
-    generator fall back to the v3-backed factory_dispatch (which itself runs
-    the legacy gen_X_node via a source-concepts callback)."""
+    selection; the other v4 generators ignore them.
+
+    Only derivations WITHOUT a v4 generator (rowset/multiselect/recursive — not
+    yet ported) delegate to the v3-backed factory_dispatch. An implemented v4
+    generator that raises is a real bug: the exception propagates rather than
+    silently degrading to v3 (which would mask the failure and quietly
+    reintroduce v3's planning)."""
     fn = _GENERATORS.get(derivation)
     if fn is None:
         return _fallback_to_v3(
@@ -71,27 +74,15 @@ def build_node(
             history=history,
             g=g,
         )
-    try:
-        if derivation == Derivation.ROOT.value:
-            return fn(outputs, parents, environment, conditions, history=history, g=g)
-        return fn(
-            outputs,
-            parents,
-            environment,
-            conditions,
-            preexisting_conditions=preexisting_conditions,
-        )
-    except Exception as exc:
-        logger.info(f"[v4-gen] {derivation} failed: {exc!r}; falling back to v3")
-        return _fallback_to_v3(
-            derivation=derivation,
-            outputs=outputs,
-            parents=parents,
-            environment=environment,
-            conditions=conditions,
-            history=history,
-            g=g,
-        )
+    if derivation == Derivation.ROOT.value:
+        return fn(outputs, parents, environment, conditions, history=history, g=g)
+    return fn(
+        outputs,
+        parents,
+        environment,
+        conditions,
+        preexisting_conditions=preexisting_conditions,
+    )
 
 
 def _fallback_to_v3(

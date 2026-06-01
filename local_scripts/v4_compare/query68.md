@@ -30,8 +30,8 @@ only in ref (showing up to 5 of 100):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3293 | 54 | 63.53 ms |
-| reference | 3059 | 50 | 63.20 ms |
+| v4 | 3293 | 54 | 42.74 ms |
+| reference | 3059 | 50 | 42.32 ms |
 | v4 / ref | 1.08x | 1.08x | 1.01x |
 
 ## Preql
@@ -96,8 +96,8 @@ SELECT
     "customer_customers"."C_FIRST_NAME" as "customer_first_name",
     "customer_customers"."C_LAST_NAME" as "customer_last_name"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"),
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"),
 uneven as (
 SELECT
     "store_sales_sale_address_customer_address"."CA_CITY" as "store_sales_sale_address_city",
@@ -154,8 +154,8 @@ SELECT
     "customer_customers"."C_FIRST_NAME" as "customer_first_name",
     "customer_customers"."C_LAST_NAME" as "customer_last_name"
 FROM
-    "memory"."customer_address" as "customer_address_customer_address"
-    INNER JOIN "memory"."customer" as "customer_customers" on "customer_address_customer_address"."CA_ADDRESS_SK" = "customer_customers"."C_CURRENT_ADDR_SK"),
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"),
 uneven as (
 SELECT
     "store_sales_sale_address_customer_address"."CA_CITY" as "store_sales_sale_address_city",

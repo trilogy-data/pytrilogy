@@ -18,14 +18,14 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10989 | 234 | 97.53 ms |
-| reference | 10768 | 230 | 96.43 ms |
-| v4 / ref | 1.02x | 1.02x | 1.01x |
+| v4 | 10669 | 230 | 96.80 ms |
+| reference | 10731 | 230 | 97.31 ms |
+| v4 / ref | 0.99x | 1.00x | 0.99x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
 auto channel_label <- case
     when sales.sales_channel = 'STORE' then 'store channel'
@@ -46,41 +46,33 @@ auto return_id_label <- case
     else null
 end;
 
-rowset q5_results <- where
+where
     sales.channel_dim_text_id is not null
     and sales.date.date between '2000-08-23'::date and '2000-09-06'::date
 select
-    channel_label as s_channel,
-    sales_id_label as s_id,
-    sum(sales.ext_sales_price) by rollup channel_label, sales_id_label as sales_total_a,
-    sum(sales.net_profit) by rollup channel_label, sales_id_label as profit_only_a,
+    --channel_label as s_channel,
+    --sales_id_label as s_id,
+    --sum(sales.ext_sales_price) by rollup channel_label, sales_id_label as sales_total_a,
+    --sum(sales.net_profit) by rollup channel_label, sales_id_label as profit_only_a,
 merge
 where
     sales.return_channel_dim_text_id is not null
     and sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date
 select
-    channel_label as r_channel,
-    return_id_label as r_id,
-    sum(coalesce(sales.return_amount, 0)) by rollup channel_label, return_id_label as returns_total_b,
-    sum(coalesce(sales.return_net_loss, 0)) by rollup channel_label, return_id_label as loss_only_b,
+    --channel_label as r_channel,
+    --return_id_label as r_id,
+    --sum(coalesce(sales.return_amount, 0)) by rollup channel_label, return_id_label as returns_total_b,
+    --sum(coalesce(sales.return_net_loss, 0)) by rollup channel_label, return_id_label as loss_only_b,
 align
     channel: s_channel, r_channel
     and id: s_id, r_id
 derive
-    coalesce(q5_results.sales_total_a, 0.0) -> sales_metric,
-    coalesce(q5_results.returns_total_b, 0.0) -> returns_metric,
-    coalesce(q5_results.profit_only_a, 0.0) - coalesce(q5_results.loss_only_b, 0.0) -> profit_metric
-;
-
-select
-    q5_results.channel,
-    q5_results.id,
-    q5_results.sales_metric as sales,
-    q5_results.returns_metric as returns_,
-    q5_results.profit_metric as profit,
+    coalesce(sales_total_a, 0.0) -> sales_metric,
+    coalesce(returns_total_b, 0.0) -> returns_metric,
+    coalesce(profit_only_a, 0.0) - coalesce(loss_only_b, 0.0) -> profit_metric
 order by
-    q5_results.channel asc nulls first,
-    q5_results.id asc nulls first
+    channel asc nulls first,
+    id asc nulls first
 limit 100
 ;
 ```
@@ -89,7 +81,7 @@ limit 100
 
 ```sql
 WITH 
-sweltering as (
+late as (
 SELECT
     "sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "sales_channel_dim_id",
     "sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "sales_channel_dim_text_id",
@@ -119,7 +111,7 @@ FROM
 WHERE
     "sales_web_dim_unified"."web_site_id" is not null
 ),
-scrawny as (
+friendly as (
 SELECT
     "sales_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "sales_channel_dim_id",
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
@@ -239,27 +231,27 @@ SELECT
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"),
-kaput as (
+divergent as (
 SELECT
-    "scrawny"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "scrawny"."sales_net_profit" as "sales_net_profit",
+    "friendly"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "friendly"."sales_net_profit" as "sales_net_profit",
     CASE
-	WHEN "scrawny"."sales_sales_channel" = 'STORE' THEN 'store channel'
-	WHEN "scrawny"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
-	WHEN "scrawny"."sales_sales_channel" = 'WEB' THEN 'web channel'
+	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN 'store channel'
+	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
+	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN 'web channel'
 	ELSE null
 	END as "channel_label",
     CASE
-	WHEN "scrawny"."sales_sales_channel" = 'STORE' THEN ('store' || "sweltering"."sales_channel_dim_text_id")
-	WHEN "scrawny"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "sweltering"."sales_channel_dim_text_id")
-	WHEN "scrawny"."sales_sales_channel" = 'WEB' THEN ('web_site' || "sweltering"."sales_channel_dim_text_id")
+	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN ('store' || "late"."sales_channel_dim_text_id")
+	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "late"."sales_channel_dim_text_id")
+	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN ('web_site' || "late"."sales_channel_dim_text_id")
 	ELSE null
 	END as "sales_id_label"
 FROM
-    "scrawny"
-    INNER JOIN "sweltering" on "scrawny"."sales_channel_dim_id" = "sweltering"."sales_channel_dim_id" AND "scrawny"."sales_sales_channel" = "sweltering"."sales_sales_channel"
+    "friendly"
+    INNER JOIN "late" on "friendly"."sales_channel_dim_id" = "late"."sales_channel_dim_id" AND "friendly"."sales_sales_channel" = "late"."sales_sales_channel"
 WHERE
-    "sweltering"."sales_channel_dim_text_id" is not null
+    "late"."sales_channel_dim_text_id" is not null
 ),
 vacuous as (
 SELECT
@@ -285,42 +277,38 @@ FROM
 WHERE
     "cheerful"."sales_return_channel_dim_text_id" is not null and cast("sales_return_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06'
 ),
-divergent as (
+charming as (
 SELECT
-    "kaput"."channel_label" as "_q5_results_s_channel",
-    "kaput"."channel_label" as "channel",
-    "kaput"."sales_id_label" as "_q5_results_s_id",
-    "kaput"."sales_id_label" as "id",
-    sum("kaput"."sales_ext_sales_price") as "_q5_results_sales_total_a",
-    sum("kaput"."sales_net_profit") as "_q5_results_profit_only_a"
+    "divergent"."channel_label" as "channel",
+    "divergent"."sales_id_label" as "id",
+    sum("divergent"."sales_ext_sales_price") as "sales_total_a",
+    sum("divergent"."sales_net_profit") as "profit_only_a"
 FROM
-    "kaput"
+    "divergent"
 GROUP BY
-    ROLLUP (2, 4)),
-concerned as (
+    ROLLUP (1, 2)),
+young as (
 SELECT
-    "vacuous"."channel_label" as "_q5_results_r_channel",
     "vacuous"."channel_label" as "channel",
-    "vacuous"."return_id_label" as "_q5_results_r_id",
     "vacuous"."return_id_label" as "id",
-    sum(coalesce("vacuous"."sales_return_amount",0)) as "_q5_results_returns_total_b",
-    sum(coalesce("vacuous"."sales_return_net_loss",0)) as "_q5_results_loss_only_b"
+    sum(coalesce("vacuous"."sales_return_amount",0)) as "returns_total_b",
+    sum(coalesce("vacuous"."sales_return_net_loss",0)) as "loss_only_b"
 FROM
     "vacuous"
 GROUP BY
-    ROLLUP (2, 4))
+    ROLLUP (1, 2))
 SELECT
-    coalesce("divergent"."_q5_results_profit_only_a",0.0) - coalesce("concerned"."_q5_results_loss_only_b",0.0) as "profit",
-    coalesce("concerned"."_q5_results_returns_total_b",0.0) as "returns_",
-    coalesce("divergent"."_q5_results_sales_total_a",0.0) as "sales",
-    coalesce("concerned"."channel","divergent"."channel") as "q5_results_channel",
-    coalesce("concerned"."id","divergent"."id") as "q5_results_id"
+    coalesce("young"."returns_total_b",0.0) as "returns_metric",
+    coalesce("charming"."channel","young"."channel") as "channel",
+    coalesce("charming"."sales_total_a",0.0) as "sales_metric",
+    coalesce("charming"."profit_only_a",0.0) - coalesce("young"."loss_only_b",0.0) as "profit_metric",
+    coalesce("charming"."id","young"."id") as "id"
 FROM
-    "divergent"
-    FULL JOIN "concerned" on "divergent"."channel" is not distinct from "concerned"."channel" AND "divergent"."id" is not distinct from "concerned"."id"
+    "charming"
+    FULL JOIN "young" on "charming"."channel" is not distinct from "young"."channel" AND "charming"."id" is not distinct from "young"."id"
 ORDER BY 
-    "q5_results_channel" asc nulls first,
-    "q5_results_id" asc nulls first
+    coalesce("charming"."channel","young"."channel") asc nulls first,
+    coalesce("charming"."id","young"."id") asc nulls first
 LIMIT (100)
 ```
 
@@ -528,8 +516,8 @@ divergent as (
 SELECT
     "kaput"."channel_label" as "channel",
     "kaput"."sales_id_label" as "id",
-    sum("kaput"."sales_ext_sales_price") as "_q5_results_sales_total_a",
-    sum("kaput"."sales_net_profit") as "_q5_results_profit_only_a"
+    sum("kaput"."sales_ext_sales_price") as "sales_total_a",
+    sum("kaput"."sales_net_profit") as "profit_only_a"
 FROM
     "kaput"
 GROUP BY
@@ -538,23 +526,23 @@ concerned as (
 SELECT
     "vacuous"."channel_label" as "channel",
     "vacuous"."return_id_label" as "id",
-    sum(coalesce("vacuous"."sales_return_amount",0)) as "_q5_results_returns_total_b",
-    sum(coalesce("vacuous"."sales_return_net_loss",0)) as "_q5_results_loss_only_b"
+    sum(coalesce("vacuous"."sales_return_amount",0)) as "returns_total_b",
+    sum(coalesce("vacuous"."sales_return_net_loss",0)) as "loss_only_b"
 FROM
     "vacuous"
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    coalesce("concerned"."channel","divergent"."channel") as "q5_results_channel",
-    coalesce("concerned"."id","divergent"."id") as "q5_results_id",
-    coalesce("divergent"."_q5_results_sales_total_a",0.0) as "sales",
-    coalesce("concerned"."_q5_results_returns_total_b",0.0) as "returns_",
-    coalesce("divergent"."_q5_results_profit_only_a",0.0) - coalesce("concerned"."_q5_results_loss_only_b",0.0) as "profit"
+    coalesce("concerned"."channel","divergent"."channel") as "channel",
+    coalesce("concerned"."id","divergent"."id") as "id",
+    coalesce("divergent"."sales_total_a",0.0) as "sales_metric",
+    coalesce("concerned"."returns_total_b",0.0) as "returns_metric",
+    coalesce("divergent"."profit_only_a",0.0) - coalesce("concerned"."loss_only_b",0.0) as "profit_metric"
 FROM
     "divergent"
     FULL JOIN "concerned" on "divergent"."channel" is not distinct from "concerned"."channel" AND "divergent"."id" is not distinct from "concerned"."id"
 ORDER BY 
-    "q5_results_channel" asc nulls first,
-    "q5_results_id" asc nulls first
+    coalesce("concerned"."channel","divergent"."channel") asc nulls first,
+    coalesce("concerned"."id","divergent"."id") asc nulls first
 LIMIT (100)
 ```

@@ -5,25 +5,25 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (6 rows) |
+| v4 execution | OK (4 rows) |
 | reference execution | OK (2 rows) |
 | results identical | NO |
 
 ## Result comparison
 
-v4 rows: 6 (2 distinct)
+v4 rows: 4 (2 distinct)
 ref rows: 2 (2 distinct)
 only in v4 (showing up to 5 of 2):
-  2x  ('AAAAAAAABAAAAAAA', 'NY Metro', 'Bob Belcher', Decimal('4725.36'))
-  2x  ('AAAAAAAABAAAAAAA', 'NY Metro', 'Bob Belcher', Decimal('574.43'))
+  1x  ('AAAAAAAABAAAAAAA', 'NY Metro', 'Bob Belcher', Decimal('4725.36'))
+  1x  ('AAAAAAAABAAAAAAA', 'NY Metro', 'Bob Belcher', Decimal('574.43'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3647 | 54 | 37.54 ms |
-| reference | 2219 | 24 | 36.00 ms |
-| v4 / ref | 1.64x | 2.25x | 1.04x |
+| v4 | 2930 | 41 | 19.15 ms |
+| reference | 2219 | 24 | 18.06 ms |
+| v4 / ref | 1.32x | 1.71x | 1.06x |
 
 ## Preql
 
@@ -65,9 +65,7 @@ SELECT
     "cr_call_center_call_center"."CC_CALL_CENTER_ID" as "cr_call_center_text_id",
     "cr_call_center_call_center"."CC_MANAGER" as "cr_call_center_manager",
     "cr_call_center_call_center"."CC_NAME" as "cr_call_center_name",
-    "cr_catalog_returns"."CR_NET_LOSS" as "cr_net_loss",
-    "cr_customer_demographics_customer_demographics"."CD_EDUCATION_STATUS" as "cr_customer_demographics_education_status",
-    "cr_customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "cr_customer_demographics_marital_status"
+    sum("cr_catalog_returns"."CR_NET_LOSS") as "returns_loss"
 FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
     INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
@@ -78,41 +76,30 @@ FROM
     INNER JOIN "memory"."household_demographics" as "cr_customer_household_demographic_household_demographics" on "cr_customer_customers"."C_CURRENT_HDEMO_SK" = "cr_customer_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
     "cr_date_date"."D_YEAR" = 1998 and "cr_date_date"."D_MOY" = 11 and ( ( "cr_customer_demographics_customer_demographics"."CD_MARITAL_STATUS" = 'M' and "cr_customer_demographics_customer_demographics"."CD_EDUCATION_STATUS" = 'Unknown' ) or ( "cr_customer_demographics_customer_demographics"."CD_MARITAL_STATUS" = 'W' and "cr_customer_demographics_customer_demographics"."CD_EDUCATION_STATUS" = 'Advanced Degree' ) ) and "cr_customer_household_demographic_household_demographics"."HD_BUY_POTENTIAL" like 'Unknown%' and "cr_customer_address_customer_address"."CA_GMT_OFFSET" = -7
-),
-yummy as (
-SELECT
-    "abundant"."cr_call_center_manager" as "cr_call_center_manager",
-    "abundant"."cr_call_center_name" as "cr_call_center_name",
-    "abundant"."cr_call_center_text_id" as "cr_call_center_text_id",
-    sum("abundant"."cr_net_loss") as "returns_loss"
-FROM
-    "abundant"
+
 GROUP BY
     1,
     2,
     3,
-    "abundant"."cr_customer_demographics_education_status",
-    "abundant"."cr_customer_demographics_marital_status"),
-uneven as (
+    "cr_customer_demographics_customer_demographics"."CD_EDUCATION_STATUS",
+    "cr_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"),
+yummy as (
 SELECT
-    "abundant"."cr_call_center_manager" as "cr_call_center_manager",
     "abundant"."cr_call_center_manager" as "manager",
     "abundant"."cr_call_center_name" as "call_center_name",
-    "abundant"."cr_call_center_name" as "cr_call_center_name",
-    "abundant"."cr_call_center_text_id" as "call_center",
-    "abundant"."cr_call_center_text_id" as "cr_call_center_text_id"
+    "abundant"."cr_call_center_text_id" as "call_center"
 FROM
     "abundant")
 SELECT
-    "uneven"."call_center" as "call_center",
-    "uneven"."call_center_name" as "call_center_name",
-    "uneven"."manager" as "manager",
-    "yummy"."returns_loss" as "returns_loss"
+    "yummy"."call_center" as "call_center",
+    "yummy"."call_center_name" as "call_center_name",
+    "yummy"."manager" as "manager",
+    "abundant"."returns_loss" as "returns_loss"
 FROM
-    "yummy"
-    FULL JOIN "uneven" on "yummy"."cr_call_center_manager" is not distinct from "uneven"."cr_call_center_manager" AND "yummy"."cr_call_center_name" = "uneven"."cr_call_center_name" AND "yummy"."cr_call_center_text_id" = "uneven"."cr_call_center_text_id"
+    "abundant"
+    FULL JOIN "yummy" on "abundant"."cr_call_center_manager" is not distinct from "yummy"."manager" AND "abundant"."cr_call_center_name" = "yummy"."call_center_name" AND "abundant"."cr_call_center_text_id" = "yummy"."call_center"
 ORDER BY 
-    "yummy"."returns_loss" desc nulls first
+    "abundant"."returns_loss" desc nulls first
 ```
 
 ## Reference SQL (zquery log)

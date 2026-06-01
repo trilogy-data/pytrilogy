@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2584 | 55 | 57.92 ms |
-| reference | 3713 | 83 | 66.17 ms |
-| v4 / ref | 0.70x | 0.66x | 0.88x |
+| v4 | 3203 | 81 | 71.62 ms |
+| reference | 3728 | 83 | 61.44 ms |
+| v4 / ref | 0.86x | 0.98x | 1.17x |
 
 ## Preql
 
@@ -37,7 +37,7 @@ where
     and cs.order_number not in cr.order_number
     and cs.order_number in multi_warehouse_sales
 select
-    count_distinct(cs.order_number) as order_count,
+    count(cs.order_number) as order_count,
     sum(cs.ext_ship_cost) as total_shipping_cost,
     sum(cs.net_profit) as total_net_profit,
 order by
@@ -74,7 +74,7 @@ FROM
     "abundant"
 GROUP BY
     1),
-yummy as (
+juicy as (
 SELECT
     CASE WHEN "uneven"."_virt_agg_count_7777088585630721" > 1 THEN "uneven"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
 FROM
@@ -90,19 +90,45 @@ FROM
     INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
     INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select yummy."multi_warehouse_sales" from yummy where yummy."multi_warehouse_sales" is not null)
-)
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
+),
+vacuous as (
 SELECT
-    count(distinct "questionable"."cs_order_number") as "order_count",
-    sum("questionable"."cs_net_profit") as "total_net_profit",
-    sum("questionable"."cs_ext_ship_cost") as "total_shipping_cost"
+    "questionable"."cs_ext_ship_cost" as "cs_ext_ship_cost",
+    "questionable"."cs_net_profit" as "cs_net_profit",
+    "questionable"."cs_order_number" as "cs_order_number"
 FROM
     "questionable"
 WHERE
-    "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select yummy."multi_warehouse_sales" from yummy where yummy."multi_warehouse_sales" is not null)
-
+    "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
+),
+young as (
+SELECT
+    "vacuous"."cs_order_number" as "cs_order_number"
+FROM
+    "vacuous"
+GROUP BY
+    1),
+concerned as (
+SELECT
+    sum("vacuous"."cs_ext_ship_cost") as "total_shipping_cost",
+    sum("vacuous"."cs_net_profit") as "total_net_profit"
+FROM
+    "vacuous"),
+sparkling as (
+SELECT
+    count("young"."cs_order_number") as "order_count"
+FROM
+    "young")
+SELECT
+    coalesce("sparkling"."order_count",0) as "order_count",
+    "concerned"."total_shipping_cost" as "total_shipping_cost",
+    "concerned"."total_net_profit" as "total_net_profit"
+FROM
+    "concerned"
+    FULL JOIN "sparkling" on 1=1
 ORDER BY 
-    "order_count" desc
+    coalesce("sparkling"."order_count",0) desc
 LIMIT (100)
 ```
 
@@ -173,7 +199,7 @@ GROUP BY
     "cs_catalog_sales"."CS_ORDER_NUMBER"),
 vacuous as (
 SELECT
-    count(distinct "thoughtful"."cs_order_number") as "order_count"
+    count("thoughtful"."cs_order_number") as "order_count"
 FROM
     "thoughtful"),
 young as (
@@ -183,13 +209,13 @@ SELECT
 FROM
     "concerned")
 SELECT
-    "vacuous"."order_count" as "order_count",
+    coalesce("vacuous"."order_count",0) as "order_count",
     "young"."total_shipping_cost" as "total_shipping_cost",
     "young"."total_net_profit" as "total_net_profit"
 FROM
     "vacuous"
     FULL JOIN "young" on 1=1
 ORDER BY 
-    "vacuous"."order_count" desc
+    coalesce("vacuous"."order_count",0) desc
 LIMIT (100)
 ```

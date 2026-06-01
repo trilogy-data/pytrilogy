@@ -64,8 +64,8 @@ late as (
 SELECT
     \"concerned\".\"cust_ss_ss_cust_id\" as \"my_revenue_rev_cust_id\"
 FROM
-    \"sparkling\"
-    INNER JOIN \"concerned\" on \"sparkling\".\"stores_cs_scs_county\" = \"concerned\".\"cust_ss_ss_cust_county\" AND \"sparkling\".\"stores_cs_scs_state\" = \"concerned\".\"cust_ss_ss_cust_state\"
+    \"concerned\"
+    INNER JOIN \"sparkling\" on \"concerned\".\"cust_ss_ss_cust_county\" = \"sparkling\".\"stores_cs_scs_county\" AND \"concerned\".\"cust_ss_ss_cust_state\" = \"sparkling\".\"stores_cs_scs_state\"
 GROUP BY
     1),
 sweltering as (
@@ -73,8 +73,8 @@ SELECT
     cast(round(( \"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\" ) / 50,0) as int) * 50 as \"segment_base\",
     cast(round(( \"concerned\".\"cust_ss_ss_revenue\" * \"sparkling\".\"stores_cs_scs_count\" ) / 50,0) as int) as \"segment\"
 FROM
-    \"sparkling\"
-    INNER JOIN \"concerned\" on \"sparkling\".\"stores_cs_scs_county\" = \"concerned\".\"cust_ss_ss_cust_county\" AND \"sparkling\".\"stores_cs_scs_state\" = \"concerned\".\"cust_ss_ss_cust_state\"
+    \"concerned\"
+    INNER JOIN \"sparkling\" on \"concerned\".\"cust_ss_ss_cust_county\" = \"sparkling\".\"stores_cs_scs_county\" AND \"concerned\".\"cust_ss_ss_cust_state\" = \"sparkling\".\"stores_cs_scs_state\"
 GROUP BY
     1,
     2),

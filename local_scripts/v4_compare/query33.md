@@ -18,14 +18,14 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3995 | 65 | 24.80 ms |
-| reference | 4269 | 79 | 25.85 ms |
-| v4 / ref | 0.94x | 0.82x | 0.96x |
+| v4 | 3995 | 65 | 22.42 ms |
+| reference | 4269 | 79 | 22.81 ms |
+| v4 / ref | 0.94x | 0.82x | 0.98x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 import item as items;
 
 auto electronics_manuf_ids <- items.manufacturer_id ? items.category = 'Electronics';

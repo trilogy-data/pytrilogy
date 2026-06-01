@@ -1,22 +1,26 @@
 # Query 94
 
-**Status:** `gen_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | FAILED |
+| v4 SQL generation | OK |
+| v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 1 (1 distinct)
+ref rows: 1 (1 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 0 | 0 | — |
-| reference | 3548 | 83 | 154.75 ms |
+| v4 | 2521 | 55 | 36.93 ms |
+| reference | 3548 | 83 | 45.55 ms |
+| v4 / ref | 0.71x | 0.66x | 0.81x |
 
 ## Preql
 
@@ -44,7 +48,63 @@ limit 100
 
 ## v4 generated SQL
 
-_v4 did not produce SQL._
+```sql
+WITH 
+abundant as (
+SELECT
+    "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number",
+    "ws_web_sales"."WS_WAREHOUSE_SK" as "ws_warehouse_id"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+GROUP BY
+    1,
+    2),
+quizzical as (
+SELECT
+    "wr_web_returns"."WR_ORDER_NUMBER" as "wr_web_sales_order_number"
+FROM
+    "memory"."web_returns" as "wr_web_returns"
+GROUP BY
+    1),
+uneven as (
+SELECT
+    "abundant"."ws_order_number" as "ws_order_number",
+    count("abundant"."ws_warehouse_id") as "_virt_agg_count_9309405360138092"
+FROM
+    "abundant"
+GROUP BY
+    1),
+yummy as (
+SELECT
+    CASE WHEN "uneven"."_virt_agg_count_9309405360138092" > 1 THEN "uneven"."ws_order_number" ELSE NULL END as "multi_warehouse_orders"
+FROM
+    "uneven"),
+questionable as (
+SELECT
+    "ws_web_sales"."WS_EXT_SHIP_COST" as "ws_ext_ship_cost",
+    "ws_web_sales"."WS_NET_PROFIT" as "ws_net_profit",
+    "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "ws_ship_address_customer_address" on "ws_web_sales"."WS_SHIP_ADDR_SK" = "ws_ship_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("ws_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_ship_address_customer_address"."CA_STATE" = 'IL' and "ws_web_site_web_site"."web_company_name" = 'pri' and "ws_web_sales"."WS_ORDER_NUMBER" in (select yummy."multi_warehouse_orders" from yummy where yummy."multi_warehouse_orders" is not null) and "ws_web_sales"."WS_ORDER_NUMBER" not in (select quizzical."wr_web_sales_order_number" from quizzical where quizzical."wr_web_sales_order_number" is not null)
+)
+SELECT
+    count(distinct "questionable"."ws_order_number") as "order_count",
+    sum("questionable"."ws_net_profit") as "total_net_profit",
+    sum("questionable"."ws_ext_ship_cost") as "total_shipping_cost"
+FROM
+    "questionable"
+WHERE
+    "questionable"."ws_order_number" in (select yummy."multi_warehouse_orders" from yummy where yummy."multi_warehouse_orders" is not null) and "questionable"."ws_order_number" not in (select quizzical."wr_web_sales_order_number" from quizzical where quizzical."wr_web_sales_order_number" is not null)
+
+ORDER BY 
+    "order_count" asc
+LIMIT (100)
+```
 
 ## Reference SQL (zquery log)
 
@@ -132,41 +192,4 @@ FROM
 ORDER BY 
     "vacuous"."order_count" asc
 LIMIT (100)
-```
-
-## v4 generation error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 132, in generate_v4_sql
-    info, build_env, _, build_stmt = run_tpcds_query(query_id)
-                                     ~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4.py", line 469, in run_tpcds_query
-    info = search_concepts(
-        mandatory_list=list(build_stmt.output_components),
-    ...<4 lines>...
-        conditions=[conditions] if conditions else [],
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 92, in search_concepts
-    result = _search_concepts(
-        mandatory_list,
-    ...<5 lines>...
-        conditions=conditions,
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\concept_strategies_v4.py", line 58, in _search_concepts
-    strategy_node = build_strategy_node(
-        group_graph, mandatory_list, environment, g, history
-    )
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 412, in build_strategy_node
-    # pass in `_compute_concept_sets`. The SELECT needs to project the
-  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\v4_helper\strategy_builder.py", line 223, in _topological_order
-    return list(nx.topological_sort(lineage_only))
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 308, in topological_sort
-    for generation in nx.topological_generations(G):
-                      ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\algorithms\dag.py", line 238, in topological_generations
-    raise nx.NetworkXUnfeasible(
-        "Graph contains a cycle or graph changed during iteration"
-    )
-networkx.exception.NetworkXUnfeasible: Graph contains a cycle or graph changed during iteration
 ```

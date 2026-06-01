@@ -1,49 +1,37 @@
 # Query 44
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
+| v4 execution | OK (10 rows) |
 | reference execution | OK (10 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (88 distinct)
+v4 rows: 10 (10 distinct)
 ref rows: 10 (10 distinct)
-only in v4 (showing up to 5 of 88):
-  13x  (None, 'callyn stantiation', 1)
-  1x  ('pripripripriought', 'callyn stantiation', 1)
-  1x  ('pripripripri', 'callyn stantiation', 1)
-  1x  ('pripripriought', 'callyn stantiation', 1)
-  1x  ('pripripriese', 'callyn stantiation', 1)
-only in ref (showing up to 5 of 10):
-  1x  ('eingpricallyoughtought', 'callyn stantiation', 1)
-  1x  ('ableableableable', 'callyableesepriought', 2)
-  1x  ('eingableableation', 'eingesepriantiought', 3)
-  1x  ('oughtableeseable', 'bareingpriought', 4)
-  1x  ('eingpriationcallyought', 'baroughtoughtation', 5)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2924 | 105 | 106.44 ms |
-| reference | 2861 | 101 | 110.91 ms |
-| v4 / ref | 1.02x | 1.04x | 0.96x |
+| v4 | 2775 | 103 | 67.36 ms |
+| reference | 2861 | 101 | 66.66 ms |
+| v4 / ref | 0.97x | 1.02x | 1.01x |
 
 ## Preql
 
 ```
-import store_sales as ss;
+import physical_sales as ss;
 
 # Threshold: avg net_profit for store 4 where address is null.
 # Pre-compute in a filtered `with` block so trilogy emits
 # `WHERE SS_ADDR_SK IS NULL` instead of `avg(CASE WHEN SS_ADDR_SK IS NULL THEN ...)`.
 rowset addr_null_threshold <- where
-    ss.store.id = 4 and ss.sale_address.id is null
+    ss.store.id = 1 and ss.sale_address.id is null
 select
     avg(ss.net_profit) as threshold,
 ;
@@ -52,14 +40,14 @@ select
 auto item_avg_profit <- avg(ss.net_profit) by ss.item.id;
 
 rowset ascending <- where
-    ss.store.id = 4 and item_avg_profit > 0.9 * addr_null_threshold.threshold
+    ss.store.id = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold
 select
     rank(ss.item.id) over (order by item_avg_profit asc) as rnk_a,
     ss.item.product_name as best_performing,
 ;
 
 rowset descending <- where
-    ss.store.id = 4 and item_avg_profit > 0.9 * addr_null_threshold.threshold
+    ss.store.id = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold
 select
     rank(ss.item.id) over (order by item_avg_profit desc) as rnk_d,
     ss.item.product_name as worst_performing,
@@ -68,7 +56,7 @@ select
 merge ascending.rnk_a into descending.rnk_d;
 
 where
-    ss.store.id = 4
+    ss.store.id = 1
 select
     ascending.rnk_a as rnk,
     ascending.best_performing,
@@ -95,7 +83,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4
+    "ss_store_sales"."SS_STORE_SK" = 1
 
 GROUP BY
     1),
@@ -105,7 +93,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4
+    "ss_store_sales"."SS_STORE_SK" = 1
 
 GROUP BY
     1,
@@ -116,7 +104,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4 and "ss_store_sales"."SS_ADDR_SK" is null
+    "ss_store_sales"."SS_STORE_SK" = 1 and "ss_store_sales"."SS_ADDR_SK" is null
 ),
 questionable as (
 SELECT
@@ -157,40 +145,38 @@ GROUP BY
     2),
 yummy as (
 SELECT
-    "ss_item_items"."I_PRODUCT_NAME" as "ascending_best_performing"
+    "ss_item_items"."I_PRODUCT_NAME" as "ascending_best_performing",
+    "uneven"."_ascending_rnk_a" as "ascending_rnk_a"
 FROM
     "uneven"
     INNER JOIN "memory"."item" as "ss_item_items" on "uneven"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
 GROUP BY
     1,
-    "uneven"."_ascending_rnk_a"),
+    2),
 vacuous as (
 SELECT
     "juicy"."descending_rnk_d" as "rnk",
     "juicy"."descending_worst_performing" as "descending_worst_performing"
 FROM
-    "juicy"),
-concerned as (
+    "juicy")
 SELECT
-    "vacuous"."descending_worst_performing" as "descending_worst_performing",
     "vacuous"."rnk" as "rnk",
-    "yummy"."ascending_best_performing" as "ascending_best_performing"
+    "yummy"."ascending_best_performing" as "ascending_best_performing",
+    "vacuous"."descending_worst_performing" as "descending_worst_performing"
 FROM
-    "yummy"
-    RIGHT OUTER JOIN "vacuous" on 1=1
+    "vacuous"
+    INNER JOIN "yummy" on "vacuous"."rnk" = "yummy"."ascending_rnk_a"
 WHERE
     "vacuous"."rnk" < 11
-)
-SELECT
-    "concerned"."rnk" as "rnk",
-    "concerned"."ascending_best_performing" as "ascending_best_performing",
-    "concerned"."descending_worst_performing" as "descending_worst_performing"
-FROM
-    "concerned"
+
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
-    "concerned"."rnk" asc nulls first,
-    "concerned"."ascending_best_performing" desc nulls first,
-    "concerned"."descending_worst_performing" desc nulls first
+    "vacuous"."rnk" asc nulls first,
+    "yummy"."ascending_best_performing" desc nulls first,
+    "vacuous"."descending_worst_performing" desc nulls first
 LIMIT (100)
 ```
 
@@ -205,7 +191,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4
+    "ss_store_sales"."SS_STORE_SK" = 1
 
 GROUP BY
     1),
@@ -215,7 +201,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4
+    "ss_store_sales"."SS_STORE_SK" = 1
 
 GROUP BY
     1,
@@ -226,7 +212,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4 and "ss_store_sales"."SS_ADDR_SK" is null
+    "ss_store_sales"."SS_STORE_SK" = 1 and "ss_store_sales"."SS_ADDR_SK" is null
 ),
 questionable as (
 SELECT

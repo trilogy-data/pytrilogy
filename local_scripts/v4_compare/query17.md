@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4561 | 60 | 27.27 ms |
-| reference | 8060 | 125 | 69.77 ms |
-| v4 / ref | 0.57x | 0.48x | 0.39x |
+| v4 | 4573 | 60 | 26.16 ms |
+| reference | 8099 | 125 | 64.38 ms |
+| v4 / ref | 0.56x | 0.48x | 0.41x |
 
 ## Preql
 
@@ -33,7 +33,7 @@ where
     and analysis.catalog_date.quarter_name in ('2001Q1', '2001Q2', '2001Q3')
     and analysis.is_returned
 select
-    analysis.item.name,
+    analysis.item.text_id,
     analysis.item.desc,
     analysis.store.state,
     count(analysis.store_quantity) as store_sales_quantitycount,
@@ -49,7 +49,7 @@ select
     stddev(analysis.catalog_quantity) as catalog_sales_quantitystdev,
     stddev(analysis.catalog_quantity) / avg(analysis.catalog_quantity) as catalog_sales_quantitycov,
 order by
-    analysis.item.name asc nulls first,
+    analysis.item.text_id asc nulls first,
     analysis.item.desc asc nulls first,
     analysis.store.state asc nulls first
 limit 100
@@ -63,7 +63,7 @@ WITH
 uneven as (
 SELECT
     "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
-    "analysis_item_items"."I_ITEM_ID" as "analysis_item_name",
+    "analysis_item_items"."I_ITEM_ID" as "analysis_item_text_id",
     "analysis_store_store"."S_STATE" as "analysis_store_state",
     avg("analysis_catalog_sales"."CS_QUANTITY") as "_virt_agg_avg_1688371525139287",
     avg("analysis_catalog_sales"."CS_QUANTITY") as "catalog_sales_quantityave",
@@ -97,7 +97,7 @@ GROUP BY
     2,
     3)
 SELECT
-    "uneven"."analysis_item_name" as "analysis_item_name",
+    "uneven"."analysis_item_text_id" as "analysis_item_text_id",
     "uneven"."analysis_item_desc" as "analysis_item_desc",
     "uneven"."analysis_store_state" as "analysis_store_state",
     "uneven"."store_sales_quantitycount" as "store_sales_quantitycount",
@@ -115,7 +115,7 @@ SELECT
 FROM
     "uneven"
 ORDER BY 
-    "uneven"."analysis_item_name" asc nulls first,
+    "uneven"."analysis_item_text_id" asc nulls first,
     "uneven"."analysis_item_desc" asc nulls first,
     "uneven"."analysis_store_state" asc nulls first
 LIMIT (100)
@@ -140,7 +140,7 @@ vacuous as (
 SELECT
     "analysis_catalog_sales"."CS_QUANTITY" as "analysis_catalog_quantity",
     "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
-    "analysis_item_items"."I_ITEM_ID" as "analysis_item_name",
+    "analysis_item_items"."I_ITEM_ID" as "analysis_item_text_id",
     "analysis_store_store"."S_STATE" as "analysis_store_state"
 FROM
     "memory"."store_sales" as "analysis_store_sales"
@@ -164,7 +164,7 @@ GROUP BY
 yummy as (
 SELECT
     "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
-    "analysis_item_items"."I_ITEM_ID" as "analysis_item_name",
+    "analysis_item_items"."I_ITEM_ID" as "analysis_item_text_id",
     "analysis_store_returns"."SR_RETURN_QUANTITY" as "analysis_store_return_quantity",
     "analysis_store_sales"."SS_QUANTITY" as "analysis_store_quantity",
     "analysis_store_store"."S_STATE" as "analysis_store_state"
@@ -191,7 +191,7 @@ GROUP BY
 concerned as (
 SELECT
     "vacuous"."analysis_item_desc" as "analysis_item_desc",
-    "vacuous"."analysis_item_name" as "analysis_item_name",
+    "vacuous"."analysis_item_text_id" as "analysis_item_text_id",
     "vacuous"."analysis_store_state" as "analysis_store_state",
     avg("vacuous"."analysis_catalog_quantity") as "_virt_agg_avg_1688371525139287",
     avg("vacuous"."analysis_catalog_quantity") as "catalog_sales_quantityave",
@@ -207,7 +207,7 @@ GROUP BY
 juicy as (
 SELECT
     "yummy"."analysis_item_desc" as "analysis_item_desc",
-    "yummy"."analysis_item_name" as "analysis_item_name",
+    "yummy"."analysis_item_text_id" as "analysis_item_text_id",
     "yummy"."analysis_store_state" as "analysis_store_state",
     avg("yummy"."analysis_store_quantity") as "_virt_agg_avg_7518273379920258",
     avg("yummy"."analysis_store_quantity") as "store_sales_quantityave",
@@ -226,7 +226,7 @@ GROUP BY
     2,
     3)
 SELECT
-    coalesce("concerned"."analysis_item_name","juicy"."analysis_item_name") as "analysis_item_name",
+    coalesce("concerned"."analysis_item_text_id","juicy"."analysis_item_text_id") as "analysis_item_text_id",
     coalesce("concerned"."analysis_item_desc","juicy"."analysis_item_desc") as "analysis_item_desc",
     coalesce("concerned"."analysis_store_state","juicy"."analysis_store_state") as "analysis_store_state",
     coalesce("juicy"."store_sales_quantitycount",0) as "store_sales_quantitycount",
@@ -243,9 +243,9 @@ SELECT
     "concerned"."_virt_agg_stddev_2693366057110854" / "concerned"."_virt_agg_avg_1688371525139287" as "catalog_sales_quantitycov"
 FROM
     "concerned"
-    INNER JOIN "juicy" on "concerned"."analysis_item_desc" is not distinct from "juicy"."analysis_item_desc" AND "concerned"."analysis_item_name" = "juicy"."analysis_item_name" AND "concerned"."analysis_store_state" is not distinct from "juicy"."analysis_store_state"
+    INNER JOIN "juicy" on "concerned"."analysis_item_desc" is not distinct from "juicy"."analysis_item_desc" AND "concerned"."analysis_item_text_id" = "juicy"."analysis_item_text_id" AND "concerned"."analysis_store_state" is not distinct from "juicy"."analysis_store_state"
 ORDER BY 
-    coalesce("concerned"."analysis_item_name","juicy"."analysis_item_name") asc nulls first,
+    coalesce("concerned"."analysis_item_text_id","juicy"."analysis_item_text_id") asc nulls first,
     coalesce("concerned"."analysis_item_desc","juicy"."analysis_item_desc") asc nulls first,
     coalesce("concerned"."analysis_store_state","juicy"."analysis_store_state") asc nulls first
 LIMIT (100)

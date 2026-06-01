@@ -18,14 +18,14 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1767 | 26 | 16.89 ms |
-| reference | 3444 | 59 | 39.74 ms |
+| v4 | 1815 | 26 | 17.79 ms |
+| reference | 3540 | 59 | 40.94 ms |
 | v4 / ref | 0.51x | 0.44x | 0.43x |
 
 ## Preql
 
 ```
-import store_sales as ss;
+import physical_sales as ss;
 
 auto promotional_sales <- sum(
     ss.ext_sales_price
@@ -38,7 +38,7 @@ where
     ss.date.year = 1998
     and ss.date.month_of_year = 11
     and ss.item.category = 'Jewelry'
-    and ss.customer.address.gmt_offset = -5
+    and ss.billing_customer.address.gmt_offset = -5
     and ss.store.gmt_offset = -5
 select
     promotional_sales as promotions,
@@ -64,11 +64,11 @@ FROM
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
     INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
     LEFT OUTER JOIN "memory"."promotion" as "ss_promotion_promotion" on "ss_store_sales"."SS_PROMO_SK" = "ss_promotion_promotion"."P_PROMO_SK"
-    INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "ss_billing_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_billing_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "ss_billing_customer_address_customer_address" on "ss_billing_customer_customers"."C_CURRENT_ADDR_SK" = "ss_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "ss_date_date"."D_YEAR" = 1998 and "ss_date_date"."D_MOY" = 11 and "ss_item_items"."I_CATEGORY" = 'Jewelry' and "ss_customer_address_customer_address"."CA_GMT_OFFSET" = -5 and "ss_store_store"."S_GMT_OFFSET" = -5
+    "ss_date_date"."D_YEAR" = 1998 and "ss_date_date"."D_MOY" = 11 and "ss_item_items"."I_CATEGORY" = 'Jewelry' and "ss_billing_customer_address_customer_address"."CA_GMT_OFFSET" = -5 and "ss_store_store"."S_GMT_OFFSET" = -5
 )
 SELECT
     "abundant"."promotional_sales" as "promotions",
@@ -97,11 +97,11 @@ FROM
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
     INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
     LEFT OUTER JOIN "memory"."promotion" as "ss_promotion_promotion" on "ss_store_sales"."SS_PROMO_SK" = "ss_promotion_promotion"."P_PROMO_SK"
-    INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "ss_billing_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_billing_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "ss_billing_customer_address_customer_address" on "ss_billing_customer_customers"."C_CURRENT_ADDR_SK" = "ss_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "ss_date_date"."D_YEAR" = 1998 and "ss_date_date"."D_MOY" = 11 and "ss_item_items"."I_CATEGORY" = 'Jewelry' and "ss_customer_address_customer_address"."CA_GMT_OFFSET" = -5 and "ss_store_store"."S_GMT_OFFSET" = -5
+    "ss_date_date"."D_YEAR" = 1998 and "ss_date_date"."D_MOY" = 11 and "ss_item_items"."I_CATEGORY" = 'Jewelry' and "ss_billing_customer_address_customer_address"."CA_GMT_OFFSET" = -5 and "ss_store_store"."S_GMT_OFFSET" = -5
 ),
 vacuous as (
 SELECT
@@ -111,10 +111,10 @@ FROM
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
     INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
     INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."customer_address" as "ss_customer_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer" as "ss_billing_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_billing_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "ss_billing_customer_address_customer_address" on "ss_billing_customer_customers"."C_CURRENT_ADDR_SK" = "ss_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "ss_date_date"."D_YEAR" = 1998 and "ss_date_date"."D_MOY" = 11 and "ss_item_items"."I_CATEGORY" = 'Jewelry' and "ss_customer_address_customer_address"."CA_GMT_OFFSET" = -5 and "ss_store_store"."S_GMT_OFFSET" = -5
+    "ss_date_date"."D_YEAR" = 1998 and "ss_date_date"."D_MOY" = 11 and "ss_item_items"."I_CATEGORY" = 'Jewelry' and "ss_billing_customer_address_customer_address"."CA_GMT_OFFSET" = -5 and "ss_store_store"."S_GMT_OFFSET" = -5
 ),
 uneven as (
 SELECT

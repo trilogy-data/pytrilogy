@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1809 | 27 | 18.77 ms |
-| reference | 1809 | 27 | 18.45 ms |
-| v4 / ref | 1.00x | 1.00x | 1.02x |
+| v4 | 1846 | 27 | 17.95 ms |
+| reference | 1846 | 27 | 17.31 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -40,7 +40,7 @@ where
     and catalog_sales.sold_date.date between start_date and end_date
 select
     catalog_sales.warehouse.state,
-    catalog_sales.item.name,
+    catalog_sales.item.text_id,
     sum(
             case
                 when catalog_sales.sold_date.date < cutoff then catalog_sales.sales_price - coalesce(catalog_returns.refunded_cash, 0.0)
@@ -55,7 +55,7 @@ select
         ) as sales_after,
 order by
     catalog_sales.warehouse.state asc,
-    catalog_sales.item.name asc
+    catalog_sales.item.text_id asc
 limit 100
 ;
 ```
@@ -64,15 +64,15 @@ limit 100
 
 ```sql
 SELECT
-    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_name",
+    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_text_id",
     "catalog_sales_warehouse_warehouse"."w_state" as "catalog_sales_warehouse_state",
     sum(CASE
 	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) >= :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
-	ELSE 0.0
+	ELSE cast(0.0 as numeric)
 	END) as "sales_after",
     sum(CASE
 	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) < :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
-	ELSE 0.0
+	ELSE cast(0.0 as numeric)
 	END) as "sales_before"
 FROM
     "memory"."catalog_sales" as "catalog_sales_catalog_sales"
@@ -97,14 +97,14 @@ LIMIT (100)
 ```sql
 SELECT
     "catalog_sales_warehouse_warehouse"."w_state" as "catalog_sales_warehouse_state",
-    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_name",
+    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_text_id",
     sum(CASE
 	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) < :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
-	ELSE 0.0
+	ELSE cast(0.0 as numeric)
 	END) as "sales_before",
     sum(CASE
 	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) >= :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
-	ELSE 0.0
+	ELSE cast(0.0 as numeric)
 	END) as "sales_after"
 FROM
     "memory"."catalog_sales" as "catalog_sales_catalog_sales"

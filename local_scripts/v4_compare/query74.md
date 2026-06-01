@@ -20,9 +20,9 @@ only in v4 (showing up to 5 of 1):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3019 | 65 | 218.63 ms |
-| reference | 3347 | 71 | 238.80 ms |
-| v4 / ref | 0.90x | 0.92x | 0.92x |
+| v4 | 3245 | 71 | 71.65 ms |
+| reference | 3347 | 71 | 93.59 ms |
+| v4 / ref | 0.97x | 1.00x | 0.77x |
 
 ## Preql
 
@@ -71,6 +71,14 @@ limit 100
 WITH 
 cheerful as (
 SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+UNION ALL
+SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
     "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
@@ -85,7 +93,7 @@ SELECT
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"),
-abundant as (
+cooperative as (
 SELECT
     "cheerful"."sales_customer_id" as "sales_customer_id",
     sum(CASE WHEN "cheerful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "cheerful"."sales_net_paid" ELSE NULL END) as "store_first_year",
@@ -97,39 +105,37 @@ FROM
     LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
 GROUP BY
     1),
-questionable as (
+yummy as (
 SELECT
-    "cheerful"."sales_customer_id" as "sales_customer_id",
+    "cooperative"."sales_customer_id" as "sales_customer_id",
+    "cooperative"."store_first_year" as "store_first_year",
+    "cooperative"."store_second_year" as "store_second_year",
+    "cooperative"."web_first_year" as "web_first_year",
+    "cooperative"."web_second_year" as "web_second_year",
     "sales_customer_customers"."C_CUSTOMER_ID" as "sales_customer_text_id",
     "sales_customer_customers"."C_FIRST_NAME" as "sales_customer_first_name",
     "sales_customer_customers"."C_LAST_NAME" as "sales_customer_last_name"
 FROM
-    "cheerful"
-    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."customer" as "sales_customer_customers" on "cheerful"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
+    "cooperative"
+    LEFT OUTER JOIN "memory"."customer" as "sales_customer_customers" on "cooperative"."sales_customer_id" = "sales_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "cheerful"."sales_customer_id" is not null
+    "cooperative"."store_first_year" > 0
 )
 SELECT
-    "questionable"."sales_customer_text_id" as "customer_id",
-    "questionable"."sales_customer_first_name" as "customer_first_name",
-    "questionable"."sales_customer_last_name" as "customer_last_name"
+    "yummy"."sales_customer_first_name" as "customer_first_name",
+    "yummy"."sales_customer_text_id" as "customer_id",
+    "yummy"."sales_customer_last_name" as "customer_last_name"
 FROM
-    "abundant"
-    LEFT OUTER JOIN "questionable" on "abundant"."sales_customer_id" is not distinct from "questionable"."sales_customer_id"
+    "yummy"
 WHERE
-    "abundant"."store_first_year" > 0 and "abundant"."web_first_year" > 0 and ( CASE
-	WHEN "abundant"."web_first_year" > 0 THEN "abundant"."web_second_year" / "abundant"."web_first_year"
+    "yummy"."web_first_year" > 0 and ( CASE
+	WHEN "yummy"."web_first_year" > 0 THEN "yummy"."web_second_year" / "yummy"."web_first_year"
 	ELSE null
 	END ) > ( CASE
-	WHEN "abundant"."store_first_year" > 0 THEN "abundant"."store_second_year" / "abundant"."store_first_year"
+	WHEN "yummy"."store_first_year" > 0 THEN "yummy"."store_second_year" / "yummy"."store_first_year"
 	ELSE null
 	END )
 
-GROUP BY
-    1,
-    2,
-    3
 ORDER BY 
     "customer_id" asc nulls first
 LIMIT (100)
@@ -200,8 +206,8 @@ SELECT
     "questionable"."sales_customer_first_name" as "customer_first_name",
     "questionable"."sales_customer_last_name" as "customer_last_name"
 FROM
-    "uneven"
-    INNER JOIN "questionable" on "uneven"."sales_customer_id" = "questionable"."sales_customer_id"
+    "questionable"
+    INNER JOIN "uneven" on "questionable"."sales_customer_id" = "uneven"."sales_customer_id"
 GROUP BY
     1,
     2,
