@@ -1,5 +1,5 @@
 query_id = "34"
-gen_length = 3065
+gen_length = 3001
 preql_size = 1616
 comp_size = 1449
 generated_sql = """
@@ -19,7 +19,7 @@ WHERE
     ( \"physical_sales_date_date\".\"D_DOM\" BETWEEN 1 AND 3 or \"physical_sales_date_date\".\"D_DOM\" BETWEEN 25 AND 28 ) and ( \"physical_sales_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' or \"physical_sales_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = 'Unknown' ) and \"physical_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 0 and ( CASE
 	WHEN \"physical_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\" > 0 THEN (\"physical_sales_household_demographic_household_demographics\".\"HD_DEP_COUNT\" * 1.0) / \"physical_sales_household_demographic_household_demographics\".\"HD_VEHICLE_COUNT\"
 	ELSE null
-	END ) > 1.2 and \"physical_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"physical_sales_store_store\".\"S_COUNTY\" = 'Williamson County' and \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"physical_sales_store_sales\".\"SS_TICKET_NUMBER\" is not null
+	END ) > 1.2 and \"physical_sales_date_date\".\"D_YEAR\" in (1999,2000,2001) and \"physical_sales_store_store\".\"S_COUNTY\" = 'Williamson County' and \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1,

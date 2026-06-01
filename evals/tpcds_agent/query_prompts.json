@@ -7,7 +7,7 @@
   {
     "id": 2,
     "grade": "hard",
-    "prompt": "For web and catalog sales, the daily sales is the sum the extended sales price split into seven day-of-the-week columns (Sunday through Saturday), grouped by the calendar week. Output the 2001 week sequence and the seven ratios. Each ratio is the 2001 week's day-of-week sales divided by the same day-of-week sales in the corresponding week 53 weeks later in 2002 (that is, the 2001 value divided by the 2002 value), rounded to two decimal places. Order by week sequence with nulls first."
+    "prompt": "For web and catalog sales, sum the extended sales price into seven day-of-the-week columns (Sunday through Saturday) for each calendar week sequence. Each week sequence totals ALL of its days' sales across every calendar year the week touches (do not filter the summed sales by year). Report every week sequence belonging to 2001, with seven ratios: each is that week sequence's day-of-week sales divided by the same day-of-week sales in the week sequence 53 later (which belongs to 2002), i.e. the 2001 value divided by the 2002 value, rounded to two decimal places. Order by week sequence with nulls first."
   },
   {
     "id": 3,
