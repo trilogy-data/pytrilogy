@@ -1,5 +1,30 @@
 # Bug handoff: window function (`partition by`) over `sum(...) by rollup` drops/duplicates rollup rows
 
+## RESOLVED (2026-05-31)
+
+**Root cause.** A window node only carries its window arguments (partition/order
+keys) into its output. When the order/partition references a `sum(...) by rollup`
+aggregate, the aggregate's *other* grain keys are dropped, so recovering them
+(e.g. `g2`) needs a join-back. That join degraded to `(kept_key, aggregate_value)`
+— non-unique across ROLLUP rows (`(b,x,5)` vs `(b,NULL,5)` collide) and NULL-bearing
+(`NULL = NULL` drops the grand total). Confirmed in the generated SQL: a `wakeful`
+window CTE `INNER JOIN highfalutin ON wakeful.g1=highfalutin.g1 AND wakeful.total=highfalutin.total`.
+
+**Fix.** `resolve_window_parent_concepts` (`trilogy/core/processing/node_generators/window_node.py`)
+now expands any `Derivation.AGGREGATE` window argument to include its full grain
+keys. The window then preserves its true input grain, carries every rollup key as
+a pass-through output column, and the planner emits the window directly over the
+single rollup CTE — no join-back. This also fixes the `grouping()`+`level`
+cross-product (the `sum` and `grouping()` columns share one rollup CTE).
+
+**Tests.** `tests/engine/test_duckdb.py::test_window_over_rollup_preserves_grouping_rows`
+and `::test_window_partition_by_grouping_level_over_rollup`. The reference
+`tests/modeling/tpc_ds_duckdb/query70.preql` was rewritten from the rowset +
+NULL-pattern workaround to the clean `grouping()` + inline-window form (passes
+against `PRAGMA tpcds(70)`).
+
+The original investigation notes are preserved below.
+
 ## Summary
 
 A window function with a `partition by` clause computed over a `sum(...) by rollup`

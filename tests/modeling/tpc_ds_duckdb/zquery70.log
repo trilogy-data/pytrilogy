@@ -1,6 +1,6 @@
 query_id = "70"
-gen_length = 2671
-preql_size = 1511
+gen_length = 2975
+preql_size = 1306
 comp_size = 1258
 generated_sql = """
 
@@ -34,18 +34,9 @@ WHERE
 ),
 abundant as (
 SELECT
-    \"ss_store_store\".\"S_COUNTY\" as \"q70_rolled_r_county\",
-    \"ss_store_store\".\"S_STATE\" as \"q70_rolled_r_state\",
-    CASE
-	WHEN \"ss_store_store\".\"S_COUNTY\" is not null THEN \"ss_store_store\".\"S_STATE\"
-	ELSE null
-	END as \"partition_state\",
-    CASE
-	WHEN \"ss_store_store\".\"S_COUNTY\" is not null THEN 0
-	WHEN \"ss_store_store\".\"S_STATE\" is not null THEN 1
-	ELSE 2
-	END as \"loc_level\",
-    sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"q70_rolled_total_sum\"
+    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\",
+    \"ss_store_store\".\"S_COUNTY\" as \"ss_store_county\",
+    \"ss_store_store\".\"S_STATE\" as \"ss_store_state\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
@@ -54,28 +45,48 @@ WHERE
     \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"ss_store_store\".\"S_STATE\" in (select questionable.\"top_states_ts_state\" from questionable where questionable.\"top_states_ts_state\" is not null)
 
 GROUP BY
-    ROLLUP (2, 1))
+    1,
+    2,
+    3,
+    \"ss_store_sales\".\"SS_ITEM_SK\",
+    \"ss_store_sales\".\"SS_STORE_SK\",
+    \"ss_store_sales\".\"SS_TICKET_NUMBER\"),
+uneven as (
 SELECT
-    \"abundant\".\"q70_rolled_total_sum\" as \"q70_rolled_total_sum\",
-    \"abundant\".\"q70_rolled_r_state\" as \"s_state\",
-    \"abundant\".\"q70_rolled_r_county\" as \"s_county\",
+    \"abundant\".\"ss_store_county\" as \"ss_store_county\",
+    \"abundant\".\"ss_store_state\" as \"ss_store_state\",
     CASE
-	WHEN \"abundant\".\"q70_rolled_r_county\" is not null THEN 0
-	WHEN \"abundant\".\"q70_rolled_r_state\" is not null THEN 1
-	ELSE 2
-	END as \"lochierarchy\",
-    rank() over (partition by \"abundant\".\"loc_level\",\"abundant\".\"partition_state\" order by \"abundant\".\"q70_rolled_total_sum\" desc ) as \"rank_within_parent\"
+	WHEN grouping(\"abundant\".\"ss_store_county\") = 0 THEN \"abundant\".\"ss_store_state\"
+	ELSE null
+	END as \"partition_state\",
+    grouping(\"abundant\".\"ss_store_state\") + grouping(\"abundant\".\"ss_store_county\") as \"lochierarchy\",
+    sum(\"abundant\".\"ss_net_profit\") as \"total_sum\"
 FROM
     \"abundant\"
+GROUP BY
+    ROLLUP (2, 1)),
+yummy as (
+SELECT
+    \"uneven\".\"lochierarchy\" as \"lochierarchy\",
+    \"uneven\".\"ss_store_county\" as \"ss_store_county\",
+    \"uneven\".\"ss_store_state\" as \"ss_store_state\",
+    \"uneven\".\"total_sum\" as \"total_sum\",
+    rank() over (partition by \"uneven\".\"lochierarchy\",\"uneven\".\"partition_state\" order by \"uneven\".\"total_sum\" desc ) as \"rank_within_parent\"
+FROM
+    \"uneven\")
+SELECT
+    \"yummy\".\"total_sum\" as \"total_sum\",
+    \"yummy\".\"ss_store_state\" as \"s_state\",
+    \"yummy\".\"ss_store_county\" as \"s_county\",
+    \"yummy\".\"lochierarchy\" as \"lochierarchy\",
+    \"yummy\".\"rank_within_parent\" as \"rank_within_parent\"
+FROM
+    \"yummy\"
 ORDER BY 
-    \"lochierarchy\" desc nulls first,
+    \"yummy\".\"lochierarchy\" desc nulls first,
     CASE
-	WHEN CASE
-	WHEN \"abundant\".\"q70_rolled_r_county\" is not null THEN 0
-	WHEN \"abundant\".\"q70_rolled_r_state\" is not null THEN 1
-	ELSE 2
-	END = 0 THEN \"abundant\".\"q70_rolled_r_state\"
+	WHEN \"yummy\".\"lochierarchy\" = 0 THEN \"yummy\".\"ss_store_state\"
 	ELSE null
 	END asc nulls first,
-    \"rank_within_parent\" asc nulls first
+    \"yummy\".\"rank_within_parent\" asc nulls first
 LIMIT (100)"""

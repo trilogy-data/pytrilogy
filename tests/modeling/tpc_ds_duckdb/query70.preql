@@ -11,49 +11,36 @@ select
     --state_rnk,
 having
     state_rnk <= 5
-
 ;
 
-# Single ROLLUP(state, county) materialized in q70_rolled. Mirrors reference:
+# Single ROLLUP(state, county). The sum and the grouping() columns now resolve
+# into one rollup CTE, and the window runs directly over that CTE's rows, so
+# the NULL-keyed subtotal/total rows stay aligned. Mirrors the reference's
 # GROUP BY ROLLUP(state, county) with rank() OVER (PARTITION BY ...).
-#
-# We avoid `grouping()` because trilogy's planner splits the rollup into
-# separate CTEs when mixing `grouping()` with `sum()` (different dependency
-# bases on the source rows). Instead we derive lochierarchy/partition_state
-# from the rollup-output NULL pattern: store rows always have non-null
-# state/county in source, so a NULL in the rollup output unambiguously means
-# "rolled up at that level".
-rowset q70_rolled <- where
-    ss.date.month_seq between 1200 and 1211 and ss.store.state in top_states.ts_state
-select
-    sum(ss.net_profit) by rollup ss.store.state, ss.store.county as total_sum,
-    ss.store.state as r_state,
-    ss.store.county as r_county,
-;
+auto total_sum <- sum(ss.net_profit) by rollup ss.store.state, ss.store.county;
+auto g_state <- grouping(ss.store.state) by rollup ss.store.state, ss.store.county;
+auto g_county <- grouping(ss.store.county) by rollup ss.store.state, ss.store.county;
+auto lochierarchy <- g_state + g_county;
+# Partition by state only for the rows still resolved to a county (g_county=0);
+# subtotal/total rows partition on NULL. Matches the reference's
+# `case when grouping(s_county) = 0 then s_state end`.
+auto partition_state <- case when g_county = 0 then ss.store.state else null end;
+auto rank_within_parent <- rank(ss.store.state, ss.store.county)
+    over (partition by lochierarchy, partition_state order by total_sum desc);
 
-def loc_level(state, county) -> case
-    when county is not null then 0
-    when state is not null then 1
-    else 2
-end;
-def partition_state(state, county) -> case
-    when county is not null then state
-    else null
-end;
-
+where
+    ss.date.month_seq between 1200 and 1211
+    and ss.store.state in top_states.ts_state
 select
-    q70_rolled.total_sum,
-    q70_rolled.r_state as s_state,
-    q70_rolled.r_county as s_county,
-    @loc_level(q70_rolled.r_state, q70_rolled.r_county) as lochierarchy,
-    rank(q70_rolled.r_county, q70_rolled.r_state)
-            over (partition by @loc_level(q70_rolled.r_state, q70_rolled.r_county),
-                    @partition_state(q70_rolled.r_state, q70_rolled.r_county)
-                order by q70_rolled.total_sum desc) as rank_within_parent,
+    total_sum,
+    ss.store.state as s_state,
+    ss.store.county as s_county,
+    lochierarchy,
+    rank_within_parent,
 order by
     lochierarchy desc nulls first,
     case
-            when lochierarchy = 0 then s_state
+            when lochierarchy = 0 then ss.store.state
             else null
         end asc nulls first,
     rank_within_parent asc nulls first

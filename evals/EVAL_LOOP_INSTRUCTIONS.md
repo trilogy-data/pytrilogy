@@ -127,6 +127,22 @@ Overall goals:
   count-lines + empty-bucket=0 fixes but FORGOT q99's null-FK guard ("only where warehouse/ship-mode/
   web-site are recorded"). q62 only passed once BOTH the lag sign AND the null-FK guard were added
   (10x: 90%). Re-investigate empirically (score the candidate, diff rows) when a "should-pass" fix doesn't.
+- **Per-unit price is the single most common bug** — confirmed across q51, q53, q59, q63, q65, q66, q89.
+  Any "sales price" / "per-line sales price" sum where the reference uses `ss_sales_price`/`ws_sales_price`/
+  `cs_sales_price`. Always say "the per-unit sales price (not the line-extended amount)". Consider a
+  systemic model-description tweak if it keeps recurring.
+- **item code = `text_id` (business id), not `id` (surrogate).** Agents group/output `item.id` (i_item_sk)
+  when the reference outputs `i_item_id`. Grouping by the surrogate also splits rows (multiple sks per
+  business id). Say "the item code (the stable business identifier, not the surrogate key)". (q58.)
+- **Sale-vs-store address for GMT/geography filters.** "billing or sale addresses with GMT offset -5" →
+  the STORE channel's address is the SALE address (`ss_addr_sk` → `sale_address`), NOT the store's own
+  `store.gmt_offset`. Agents grab the store's timezone. (q56.)
+- **Multi-key fact-to-fact match the model doesn't enforce.** physical_sales fuses store_sales↔store_returns
+  at `(item.id, ticket_number)` only; a "matched by ticket, item, AND customer" question needs an explicit
+  `billing_customer.id = return_customer.id` filter the agent omits. (q50.)
+- **Store-count multiplication quirk (q54).** The reference joins the customer to ALL stores in their
+  county/state (no `ss_store_sk` join) and multiplies revenue by the store count — not "store sales at
+  matching stores". Hard to convey as a sensible business question; flag as quirky-reference.
 
 ### Open / harder than a question fix
 - **Anti-join on a DERIVED concat key undercounts (~3%).** q87 (set-difference: store names+dates
