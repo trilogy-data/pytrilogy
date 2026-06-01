@@ -7,8 +7,7 @@ rule can demand its dependencies be bucketed on the fly. Most rules
 ignore the trailing arguments; BASIC uses them to walk lineage ancestors
 and key its buckets by the set of non-BASIC stopping groups.
 
-Parallels `factory_dispatch.py`: one registry per shape concern, lookup by
-derivation, fallback to a default.
+One registry per shape concern, lookup by derivation, fallback to a default.
 """
 
 from collections import defaultdict
@@ -18,6 +17,7 @@ import networkx as nx
 
 from trilogy.core.enums import Derivation
 
+from .concept_graph import _scope_and_phase
 from .models import ConceptAttrs, GroupBucket
 
 NodeItem = tuple[str, ConceptAttrs]
@@ -475,48 +475,42 @@ def partition_rowsets(
     ensure_assigned: EnsureAssignedFn,
     output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
-    """Rowset outputs share one row population (one select), so they bucket
-    together by rowset identity rather than per-column grain — keeping the
-    whole rowset in a single scan/CTE (like the reference's `juicy`) instead
-    of fragmenting into grain-keyed groups the FINAL node must rejoin on
-    grain keys (degrading to `1=1` for grain-mismatched contributors).
+    """Every handle of one rowset shares a row population (the rowset is one
+    sub-query, planned in full by `gen_rowset`), so they all bucket into a
+    single boundary group by rowset identity — never per-column grain (which
+    the FINAL node would have to rejoin on grain keys, degrading to `1=1` for
+    grain-mismatched contributors) and never per-DEPTH.
 
-    Keyed by `(label, depth, rowset_name)`: depth keeps a d1 (condition-input)
-    rowset output separate from a d0 one; the bucket grain is the union of its
-    members' grains (they're the same rows, so an over-wide grain only widens
-    ride-through within the one CTE, never splits).
-
-    Outputs without a ``rowset_name`` (multiselect rowsets, deliberately left
-    unmarked) fall back to the default per-grain rule — their arms must stay
-    in separate groups."""
-    plain = [(n, d) for n, d in items if d.rowset_name]
-    multiselect = [(n, d) for n, d in items if not d.rowset_name]
-    buckets: list[GroupBucket] = partition_by_depth_and_grain(
-        multiselect,
-        concept_graph,
-        concept_attrs,
-        primary_group,
-        ensure_assigned,
-        output_addresses,
-    )
-    by_key: dict[tuple[str, str, str], GroupBucket] = {}
-    for node, data in plain:
-        label = data.label
-        depth_label = data.depth_label
-        rowset_name = data.rowset_name
-        assert rowset_name is not None
-        key = (label, depth_label, rowset_name)
-        bucket = by_key.get(key)
-        if bucket is None:
-            bucket = _bucket_for(
-                depth_label, Derivation.ROWSET.value, frozenset(), label=label
-            )
-            if rowset_name:
-                bucket.discriminator = f"rowset:{rowset_name}"
-            by_key[key] = bucket
-        bucket.grain_components |= data.grain_components
-        _add_member(bucket, node, data)
-    return buckets + list(by_key.values())
+    Keyed by `(label, rowset_name)` only — deliberately NOT including depth. A
+    rowset referenced in both the SELECT (d0) and a WHERE (d1) is still one
+    population; splitting d0/d1 stranded a consumer's filter from its scan (q64:
+    an arm's `count(...) by dims` read the d0 dim handles while the per-arm
+    `marital != ...` filter sat in a separate d1 handle group, so the filter
+    fell through to FINAL and the aggregate counted unfiltered rows). The
+    bucket depth is d1 only if every member is d1 (a pure condition-feeder
+    rowset); any d0 member makes it a d0 boundary that produces SELECT output.
+    Grain is the union of members' grains (same rows, so a wider grain only
+    widens ride-through within the one CTE)."""
+    by_key: dict[tuple[str, str], GroupBucket] = {}
+    members_by_key: dict[tuple[str, str], list[NodeItem]] = defaultdict(list)
+    for node, data in items:
+        assert data.rowset_name is not None
+        # Key on SCOPE, not the full label: the label's "@condition" phase
+        # suffix would otherwise split a rowset's SELECT (blank-phase) handles
+        # from its WHERE (condition-phase) handles into two groups (q64).
+        scope = _scope_and_phase(data.label)[0]
+        members_by_key[(scope, data.rowset_name)].append((node, data))
+    for (scope, rowset_name), members in members_by_key.items():
+        depth_label = "d1" if all(d.depth_label == "d1" for _, d in members) else "d0"
+        bucket = _bucket_for(
+            depth_label, Derivation.ROWSET.value, frozenset(), label=scope
+        )
+        bucket.discriminator = f"rowset:{rowset_name}"
+        for node, data in members:
+            bucket.grain_components |= data.grain_components
+            _add_member(bucket, node, data)
+        by_key[(scope, rowset_name)] = bucket
+    return list(by_key.values())
 
 
 # Per-derivation registry. Any derivation not in here uses the default rule.

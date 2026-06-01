@@ -1140,6 +1140,14 @@ class BaseDialect:
             and not cte.group_to_grain
             and isinstance(cte, CTE)
             and any(n.address == c.address for n in cte.nullable_concepts)
+            # A multiselect-align merge CTE is the exception: a NULL count there
+            # means "this entity is absent from this arm", not "0 facts", and
+            # must stay NULL so a cross-arm comparison (q64 `cnt_00 <= cnt_99`)
+            # excludes single-arm rows. Coalescing to 0 would let them through.
+            and not any(
+                isinstance(o.lineage, BuildMultiSelectLineage)
+                for o in cte.output_columns
+            )
         ):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])
         assert rval is not None

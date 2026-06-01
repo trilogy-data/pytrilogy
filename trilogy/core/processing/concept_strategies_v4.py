@@ -221,6 +221,7 @@ def resolve_rowset(
     depth: int,
     g: ReferenceGraph,
     history: "V4History",
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """Plan a rowset boundary node by recursively planning its inner select
     through v4, then projecting that producer under the outer handle addresses.
@@ -399,7 +400,7 @@ def resolve_rowset(
                     inputs.append(arm_concept)
                     hidden.add(arm_concept.address)
 
-    return SelectNode(
+    boundary = SelectNode(
         output_concepts=handles,
         input_concepts=inputs,
         parents=[inner_node],
@@ -410,6 +411,22 @@ def resolve_rowset(
         grain=BuildGrain.from_concepts([h for h in handles if h.address not in hidden]),
         hidden_concepts=hidden,
     )
+    # A filter the group graph injected at this boundary is a consumer-side
+    # predicate over the rowset's rows — e.g. a multiselect arm's per-arm
+    # `marital != ...` over the row-projection rowset it reads (q64). The inner
+    # plan didn't apply it (it's not part of the rowset's own select), so apply
+    # it here over the materialized rows.
+    if conditions is not None:
+        boundary = SelectNode(
+            output_concepts=list(handles),
+            input_concepts=list(boundary.usable_outputs),
+            parents=[boundary],
+            environment=inner_env,
+            conditions=conditions.conditional,
+            grain=boundary.grain,
+            hidden_concepts=hidden,
+        )
+    return boundary
 
 
 def _search_concepts(

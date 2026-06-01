@@ -26,4 +26,6 @@ def gen_rowset(
 
     if not outputs or not isinstance(history, V4History):
         return None
-    return resolve_rowset(outputs, environment, depth=0, g=g, history=history)
+    return resolve_rowset(
+        outputs, environment, depth=0, g=g, history=history, conditions=conditions
+    )
