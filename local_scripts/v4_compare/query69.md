@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4140 | 73 | 67.89 ms |
-| reference | 4137 | 80 | 82.83 ms |
-| v4 / ref | 1.00x | 0.91x | 0.82x |
+| v4 | 4808 | 103 | 83.75 ms |
+| reference | 4137 | 80 | 99.53 ms |
+| v4 / ref | 1.16x | 1.29x | 0.84x |
 
 ## Preql
 
@@ -87,20 +87,9 @@ limit 100
 
 ```sql
 WITH 
-uneven as (
+abhorrent as (
 SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "store_buyers_store_cust_id"
-FROM
-    "memory"."store_sales" as "sales_store_sales_unified"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
-WHERE
-    "sales_date_date"."D_YEAR" = 2001 and "sales_date_date"."D_MOY" BETWEEN 4 AND 6 and  'STORE'  = 'STORE' and "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
-
-GROUP BY
-    1),
-vacuous as (
-SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "web_buyers_web_cust_id"
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -109,9 +98,20 @@ WHERE
 
 GROUP BY
     1),
+juicy as (
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 2001 and "sales_date_date"."D_MOY" BETWEEN 4 AND 6 and  'STORE'  = 'STORE' and "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
 thoughtful as (
 SELECT
-    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "catalog_buyers_cat_cust_id"
+    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "sales_ship_customer_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
@@ -120,6 +120,36 @@ WHERE
 
 GROUP BY
     1),
+macho as (
+SELECT
+    "abhorrent"."sales_billing_customer_id" as "_web_buyers_web_cust_id"
+FROM
+    "abhorrent"),
+young as (
+SELECT
+    "juicy"."sales_billing_customer_id" as "_store_buyers_store_cust_id"
+FROM
+    "juicy"),
+uneven as (
+SELECT
+    "thoughtful"."sales_ship_customer_id" as "_catalog_buyers_cat_cust_id"
+FROM
+    "thoughtful"),
+scrawny as (
+SELECT
+    "macho"."_web_buyers_web_cust_id" as "web_buyers_web_cust_id"
+FROM
+    "macho"),
+sparkling as (
+SELECT
+    "young"."_store_buyers_store_cust_id" as "store_buyers_store_cust_id"
+FROM
+    "young"),
+yummy as (
+SELECT
+    "uneven"."_catalog_buyers_cat_cust_id" as "catalog_buyers_cat_cust_id"
+FROM
+    "uneven"),
 cheerful as (
 SELECT
     "customer_customers"."C_CUSTOMER_SK" as "customer_id",
@@ -133,7 +163,7 @@ FROM
     INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
     LEFT OUTER JOIN "memory"."customer_demographics" as "customer_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_demographics_customer_demographics"."CD_DEMO_SK"
 WHERE
-    "customer_address_customer_address"."CA_STATE" in ('KY','GA','NM') and "customer_customers"."C_CUSTOMER_SK" in (select uneven."store_buyers_store_cust_id" from uneven where uneven."store_buyers_store_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select vacuous."web_buyers_web_cust_id" from vacuous where vacuous."web_buyers_web_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select thoughtful."catalog_buyers_cat_cust_id" from thoughtful where thoughtful."catalog_buyers_cat_cust_id" is not null)
+    "customer_address_customer_address"."CA_STATE" in ('KY','GA','NM') and "customer_customers"."C_CUSTOMER_SK" in (select sparkling."store_buyers_store_cust_id" from sparkling where sparkling."store_buyers_store_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select scrawny."web_buyers_web_cust_id" from scrawny where scrawny."web_buyers_web_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select yummy."catalog_buyers_cat_cust_id" from yummy where yummy."catalog_buyers_cat_cust_id" is not null)
 )
 SELECT
     "cheerful"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",

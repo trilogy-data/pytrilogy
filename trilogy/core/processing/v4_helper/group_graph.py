@@ -491,6 +491,71 @@ def _inject_conditions(
     return condition_group_ids
 
 
+def _propagate_raw_filters_to_d1_roots(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    datasource_columns: list[frozenset[str]],
+) -> set[str]:
+    """A `root_d1` bucket is a pristine DUPLICATE of a main fact scan, split off
+    so a d1 calc reads rows untouched by *sibling* WHERE atoms. That split is
+    right when the d1 calc is a separate population:
+
+    - a SEMIJOIN source — `week_seq in relevent_week_seq` (q02): the source
+      spans all channels, so the outer `sales_channel in (...)` must not narrow
+      it (and propagating there also cycles the CTE graph, since the existence
+      source feeds back into the main stream);
+    - an aggregate over a DIFFERENT table than the filter — `avg(item.price) by
+      category` filtered on `sales.date` (q06): the average is over the item
+      dimension, which the sales-grain date filter never touches.
+
+    But when the d1 aggregate reads the SAME fact the filter applies to —
+    `avg(ss.net_profit) by item` under `ss.store.id = 1` (q44) — the filter
+    belongs on its input too, or the avg covers the wrong population. So copy a
+    main root's atoms (all raw root-column filters by construction) onto a
+    `root_d1` only when (a) root_d1 feeds no existence source and (b) some
+    single datasource carries BOTH the atom's columns and all of root_d1's scan
+    columns — i.e. the filter and the aggregate genuinely share one table.
+    Returns the root_d1 gids that gained atoms."""
+    existence_sources = {
+        u for u, _, d in group_graph.edges(data=True) if d.get("kind") == "existence"
+    }
+    d1_roots = [
+        gid
+        for gid in group_graph.nodes
+        if gid in attrs and attrs[gid].depth_label == ROOT_D1_DEPTH
+    ]
+    main_roots = [
+        gid
+        for gid in group_graph.nodes
+        if gid in attrs
+        and attrs[gid].derivation == Derivation.ROOT.value
+        and attrs[gid].depth_label == "root"
+        and attrs[gid].condition_atoms
+    ]
+    touched: set[str] = set()
+    for d1_gid in d1_roots:
+        reach = nx.descendants(group_graph, d1_gid) | {d1_gid}
+        if reach & existence_sources:
+            continue
+        d1_members = set(attrs[d1_gid].primary_members)
+        for m_gid in main_roots:
+            if not d1_members <= set(attrs[m_gid].primary_members):
+                continue
+            for atom in attrs[m_gid].condition_atoms:
+                row_args = {a.address for a in atom.row_arguments}
+                colocated = any(
+                    row_args <= cols and d1_members <= cols
+                    for cols in datasource_columns
+                )
+                if not colocated:
+                    continue
+                if atom not in attrs[d1_gid].condition_atoms:
+                    attrs[d1_gid].condition_atoms.append(atom)
+                    attrs[d1_gid].conditions.append(str(atom))
+                    touched.add(d1_gid)
+    return touched
+
+
 def _color_phases(
     group_graph: nx.DiGraph,
     condition_group_ids: set[str],
@@ -912,6 +977,7 @@ def build_group_graph(
     concept_attrs: dict[str, ConceptAttrs],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
+    datasource_columns: list[frozenset[str]] | None = None,
 ) -> tuple[nx.DiGraph, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
@@ -945,6 +1011,9 @@ def build_group_graph(
     )
     condition_group_ids = _inject_conditions(
         group_graph, attrs, buckets, conditions, mandatory_list
+    )
+    condition_group_ids |= _propagate_raw_filters_to_d1_roots(
+        group_graph, attrs, datasource_columns or []
     )
     _color_phases(group_graph, condition_group_ids)
     if mandatory_list is not None:

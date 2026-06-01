@@ -19,6 +19,7 @@ from .constant import gen_constant
 from .filter import gen_filter
 from .group_to import gen_group_to
 from .root import gen_root
+from .rowset import gen_rowset
 from .subselect import gen_subselect
 from .union import gen_union
 from .unnest import gen_unnest
@@ -41,6 +42,7 @@ _GENERATORS: dict[str, GeneratorFn] = {
     Derivation.UNION.value: gen_union,
     Derivation.SUBSELECT.value: gen_subselect,
     Derivation.GROUP_TO.value: gen_group_to,
+    Derivation.ROWSET.value: gen_rowset,
 }
 
 
@@ -55,11 +57,12 @@ def build_node(
     history: History,
     g: ReferenceGraph,
 ) -> StrategyNode | None:
-    """Dispatch on `derivation`. ROOT needs `history`/`g` for datasource
-    selection; the other v4 generators ignore them.
+    """Dispatch on `derivation`. ROOT and ROWSET need `history`/`g` (ROOT for
+    datasource selection, ROWSET to recursively plan its inner select); the
+    other v4 generators ignore them.
 
-    Only derivations WITHOUT a v4 generator (rowset/multiselect/recursive — not
-    yet ported) delegate to the v3-backed factory_dispatch. An implemented v4
+    Only derivations WITHOUT a v4 generator (multiselect/recursive — not yet
+    ported) delegate to the v3-backed factory_dispatch. An implemented v4
     generator that raises is a real bug: the exception propagates rather than
     silently degrading to v3 (which would mask the failure and quietly
     reintroduce v3's planning)."""
@@ -74,7 +77,7 @@ def build_node(
             history=history,
             g=g,
         )
-    if derivation == Derivation.ROOT.value:
+    if derivation in (Derivation.ROOT.value, Derivation.ROWSET.value):
         return fn(outputs, parents, environment, conditions, history=history, g=g)
     return fn(
         outputs,

@@ -21,7 +21,6 @@ from typing import Callable, List
 import networkx as nx
 
 from trilogy.core.enums import Derivation, FunctionType, Purpose
-from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -311,16 +310,17 @@ def _add_concept(
     grouping_mode = None
     if isinstance(concept.lineage, BuildAggregateWrapper):
         grouping_mode = concept.lineage.grouping.value
-    # Rowset identity: outputs of one PLAIN-select rowset share a row
-    # population, so the rowset grouping rule buckets them together by name.
-    # Multiselect (merge/align) rowsets are excluded — their arms and
-    # cross-arm HAVING need separate groups (unifying them pushes a HAVING
-    # atom past the arms' aggregate barriers), so they fall back to the
-    # default grain rule.
+    # Rowset identity: every handle of one rowset shares a row population (the
+    # rowset is one sub-query, planned in full by `gen_rowset`), so the rowset
+    # grouping rule buckets them into a single boundary group by name. This
+    # holds for multiselect (merge/align) rowsets too now that the inner is
+    # planned recursively rather than walked into this graph — the arms and any
+    # cross-arm HAVING are resolved inside `resolve_rowset`, so the outer
+    # boundary must NOT fragment per-grain (q64: per-grain split left each
+    # boundary exposing only a subset of handles, so the FINAL merge couldn't
+    # source the rest).
     rowset_name = None
-    if isinstance(concept.lineage, BuildRowsetItem) and isinstance(
-        concept.lineage.rowset.select, SelectLineage
-    ):
+    if isinstance(concept.lineage, BuildRowsetItem):
         rowset_name = concept.lineage.rowset.name
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
     graph.add_node(nid)
@@ -361,43 +361,6 @@ def _add_concept(
         graph.add_edge(node_id(upstream_label, upstream.address), nid, kind="lineage")
 
 
-def _rowset_inner_outputs(
-    rowset_concept: BuildConcept,
-    environment: BuildEnvironment,
-) -> tuple[list[BuildConcept], list[BuildWhereClause]]:
-    """For a ROWSET concept (lineage = BuildRowsetItem), return the
-    inner select's output components (resolved against `environment`) and
-    its inner WHERE clauses. The outputs become the mandatory list for
-    the rowset's labeled sub-graph; the wheres become its conditions —
-    same shape as the outer planner's inputs."""
-    lineage = rowset_concept.lineage
-    if not isinstance(lineage, BuildRowsetItem):
-        return [], []
-    select = lineage.rowset.select
-    if not isinstance(select, (SelectLineage, MultiSelectLineage)):
-        return [], []
-    # `select` is the AUTHOR-level lineage; its `output_components` /
-    # `selection` carry author-level ConceptRefs by address. Resolve each
-    # against the build environment to recover the BuildConcept used by
-    # _add_concept.
-    raw = select.output_components
-    outputs = [
-        environment.concepts[c.address]
-        for c in raw
-        if c.address in environment.concepts
-    ]
-    # `where_clause` on a SelectLineage / MultiSelectLineage is the
-    # author-level WhereClause; the build env materializes a build
-    # version somewhere, but for the inner walk we only need its
-    # row_arguments to classify d1. Skip the build dance for now and
-    # return any pre-built where the rowset attached.
-    conditions: list[BuildWhereClause] = []
-    where = select.where_clause
-    if isinstance(where, BuildWhereClause):
-        conditions.append(where)
-    return outputs, conditions
-
-
 def build_concept_graph(
     mandatory_list: List[BuildConcept],
     environment: BuildEnvironment,
@@ -432,75 +395,14 @@ def build_concept_graph(
                 resolved, environment, graph, attrs, label=_condition_label("")
             )
 
-    # Walk each ROWSET leaf in the outer graph. Multiple outer concepts
-    # may all point at the same rowset (q05: channel, id, sales_metric,
-    # returns_metric, profit_metric all live in q5_results) — dedup by
-    # rowset name so we only walk the inner select once.
-    seen_rowsets: set[str] = set()
-    pending_rowsets: list[BuildConcept] = []
-    for nid in list(graph.nodes):
-        a = attrs[nid]
-        if a.derivation != Derivation.ROWSET.value:
-            continue
-        # Skip rowsets discovered inside an already-labeled sub-graph;
-        # nested rowsets are handled by the outer recursion below. Only
-        # the outer blank-phase nodes have label="" so this test still works.
-        if a.label:
-            continue
-        address = a.address
-        found = environment.concepts.get(address)
-        if found is None or not isinstance(found.lineage, BuildRowsetItem):
-            continue
-        rowset_name = found.lineage.rowset.name
-        if rowset_name in seen_rowsets:
-            continue
-        seen_rowsets.add(rowset_name)
-        pending_rowsets.append(found)
-
-    for rowset_concept in pending_rowsets:
-        assert isinstance(rowset_concept.lineage, BuildRowsetItem)
-        rowset_name = rowset_concept.lineage.rowset.name
-        inner_outputs, inner_conditions = _rowset_inner_outputs(
-            rowset_concept, environment
-        )
-        for inner_concept in inner_outputs:
-            _add_concept(inner_concept, environment, graph, attrs, label=rowset_name)
-        for clause in inner_conditions:
-            for c in clause.concept_arguments:
-                resolved = environment.concepts.get(c.address, c) or c
-                _add_concept(
-                    resolved,
-                    environment,
-                    graph,
-                    attrs,
-                    label=_condition_label(rowset_name),
-                )
-        # Bridge: connect each outer rowset concept to its inner producer.
-        # `BuildRowsetItem.content` is the inner BuildConcept the outer
-        # alias wraps (e.g. outer `l0_filtered.brand_l0` ← inner
-        # `local._l0_filtered_brand_l0`). Without this edge the inner
-        # pipeline and the outer rowset boundary live as disconnected
-        # subgraphs — the SQL builder reconciles them via concept aliasing
-        # at render time, but the planner (and the visualization) can't
-        # see the dependency. Adding it gives `_compute_concept_sets` a
-        # real path to demand inner outputs from the outer rowset's
-        # consumers.
-        for outer_nid in list(graph.nodes):
-            if attrs[outer_nid].label != "":
-                continue
-            outer_addr = attrs[outer_nid].address
-            outer_concept = environment.concepts.get(outer_addr)
-            if outer_concept is None:
-                continue
-            lineage = outer_concept.lineage
-            if not isinstance(lineage, BuildRowsetItem):
-                continue
-            if lineage.rowset.name != rowset_name:
-                continue
-            inner_addr = lineage.content.address
-            inner_nid = node_id(rowset_name, inner_addr)
-            if inner_nid in graph and outer_nid in graph:
-                graph.add_edge(inner_nid, outer_nid, kind="lineage")
+    # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):
+    # its inner select is a self-contained sub-query that the native
+    # `gen_rowset` generator plans recursively through v4's own
+    # `search_concepts` (mirroring v3's `get_query_node`), so the inner
+    # lineage never enters the outer concept/group graph. Walking it in here
+    # only ever produced a partial picture — it captured the inner outputs and
+    # WHERE but not the inner HAVING or multiselect arms — so the boundary
+    # node is built from the recursively-planned inner instead.
 
     # Filter-nested existence: a semijoin inside a derived FILTER concept
     # (q08 `final_zips <- substring(zips ? zips in substring(p_cust_zip,1,5),
