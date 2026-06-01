@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1394 | 20 | 41.93 ms |
-| reference | 1394 | 20 | 38.10 ms |
-| v4 / ref | 1.00x | 1.00x | 1.10x |
+| v4 | 1397 | 20 | 35.63 ms |
+| reference | 1397 | 20 | 37.87 ms |
+| v4 / ref | 1.00x | 1.00x | 0.94x |
 
 ## Preql
 
@@ -37,13 +37,13 @@ where
     and (cs.promotion.channel_email = 'N' or cs.promotion.channel_event = 'N')
     and cs.date.year = 2000
 select
-    cs.item.name,
+    cs.item.text_id,
     avg(cs.quantity) as agg1,
     avg(cs.list_price) as agg2,
     avg(cs.coupon_amt) as agg3,
     avg(cs.sales_price) as agg4,
 order by
-    cs.item.name asc
+    cs.item.text_id asc
 limit 100
 ;
 ```
@@ -52,7 +52,7 @@ limit 100
 
 ```sql
 SELECT
-    "cs_item_items"."I_ITEM_ID" as "cs_item_name",
+    "cs_item_items"."I_ITEM_ID" as "cs_item_text_id",
     avg("cs_catalog_sales"."CS_QUANTITY") as "agg1",
     avg("cs_catalog_sales"."CS_LIST_PRICE") as "agg2",
     avg("cs_catalog_sales"."CS_COUPON_AMT") as "agg3",
@@ -77,7 +77,7 @@ LIMIT (100)
 
 ```sql
 SELECT
-    "cs_item_items"."I_ITEM_ID" as "cs_item_name",
+    "cs_item_items"."I_ITEM_ID" as "cs_item_text_id",
     avg("cs_catalog_sales"."CS_QUANTITY") as "agg1",
     avg("cs_catalog_sales"."CS_LIST_PRICE") as "agg2",
     avg("cs_catalog_sales"."CS_COUPON_AMT") as "agg3",

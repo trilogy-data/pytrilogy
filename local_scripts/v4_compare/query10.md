@@ -18,28 +18,28 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6400 | 116 | 146.66 ms |
-| reference | 4848 | 84 | 101.21 ms |
-| v4 / ref | 1.32x | 1.38x | 1.45x |
+| v4 | 6439 | 116 | 168.39 ms |
+| reference | 4875 | 84 | 109.22 ms |
+| v4 / ref | 1.32x | 1.38x | 1.54x |
 
 ## Preql
 
 ```
 import customer as customer;
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 import web_sales as web_sales;
 import catalog_sales as catalog_sales;
 
 #Count the customers with the same gender, marital status, education status, purchase estimate, credit rating,
 #dependent count, employed dependent count and college dependent count who live in certain counties and who
 # have purchased from both stores and another sales channel during a three month time period of a given year.
-merge catalog_sales.customer.id into ~customer.id;
-merge web_sales.customer.id into ~customer.id;
-merge store_sales.customer.id into ~customer.id;
+merge catalog_sales.billing_customer.id into ~customer.id;
+merge web_sales.billing_customer.id into ~customer.id;
+merge physical_sales.billing_customer.id into ~customer.id;
 
 auto relevant_customers <- customer.id
-    ? store_sales.date.year = 2002
-and store_sales.date.month_of_year in (1, 2, 3, 4)
+    ? physical_sales.date.year = 2002
+and physical_sales.date.month_of_year in (1, 2, 3, 4)
 and customer.address.county in ('Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', 'La Porte County')
 and (
     (web_sales.date.year = 2002 and web_sales.date.month_of_year in (1, 2, 3, 4))
@@ -90,10 +90,10 @@ GROUP BY
     2),
 questionable as (
 SELECT
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "customer_id",
-    "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id"
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "customer_id",
+    "physical_sales_store_sales"."SS_SOLD_DATE_SK" as "physical_sales_date_id"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
+    "memory"."store_sales" as "physical_sales_store_sales"
 GROUP BY
     1,
     2),
@@ -111,8 +111,8 @@ SELECT
     "catalog_sales_date_date"."D_MOY" as "catalog_sales_date_month_of_year",
     "catalog_sales_date_date"."D_YEAR" as "catalog_sales_date_year",
     "customer_address_customer_address"."CA_COUNTY" as "customer_address_county",
-    "store_sales_date_date"."D_MOY" as "store_sales_date_month_of_year",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year",
+    "physical_sales_date_date"."D_MOY" as "physical_sales_date_month_of_year",
+    "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
     "web_sales_date_date"."D_MOY" as "web_sales_date_month_of_year",
     "web_sales_date_date"."D_YEAR" as "web_sales_date_year",
     coalesce("customer_customers"."C_CUSTOMER_SK","questionable"."customer_id","quizzical"."customer_id","yummy"."customer_id") as "customer_id"
@@ -123,8 +123,8 @@ FROM
     FULL JOIN "quizzical" on coalesce("yummy"."customer_id", "questionable"."customer_id") = "quizzical"."customer_id"
     FULL JOIN "memory"."customer" as "customer_customers" on coalesce("yummy"."customer_id", "questionable"."customer_id", "quizzical"."customer_id") = "customer_customers"."C_CUSTOMER_SK"
     FULL JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
-    FULL JOIN "memory"."date_dim" as "store_sales_date_date" on "questionable"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
     FULL JOIN "memory"."date_dim" as "catalog_sales_date_date" on "quizzical"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"
+    FULL JOIN "memory"."date_dim" as "physical_sales_date_date" on "questionable"."physical_sales_date_id" = "physical_sales_date_date"."D_DATE_SK"
 GROUP BY
     1,
     2,
@@ -136,7 +136,7 @@ GROUP BY
     8),
 concerned as (
 SELECT
-    CASE WHEN "vacuous"."store_sales_date_year" = 2002 and "vacuous"."store_sales_date_month_of_year" in (1,2,3,4) and "vacuous"."customer_address_county" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( "vacuous"."web_sales_date_year" = 2002 and "vacuous"."web_sales_date_month_of_year" in (1,2,3,4) ) or ( "vacuous"."catalog_sales_date_year" = 2002 and "vacuous"."catalog_sales_date_month_of_year" in (1,2,3,4) ) ) THEN "vacuous"."customer_id" ELSE NULL END as "relevant_customers"
+    CASE WHEN "vacuous"."physical_sales_date_year" = 2002 and "vacuous"."physical_sales_date_month_of_year" in (1,2,3,4) and "vacuous"."customer_address_county" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( "vacuous"."web_sales_date_year" = 2002 and "vacuous"."web_sales_date_month_of_year" in (1,2,3,4) ) or ( "vacuous"."catalog_sales_date_year" = 2002 and "vacuous"."catalog_sales_date_month_of_year" in (1,2,3,4) ) ) THEN "vacuous"."customer_id" ELSE NULL END as "relevant_customers"
 FROM
     "vacuous"),
 sparkling as (
@@ -211,10 +211,10 @@ GROUP BY
     2),
 questionable as (
 SELECT
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "customer_id",
-    "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_date_id"
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "customer_id",
+    "physical_sales_store_sales"."SS_SOLD_DATE_SK" as "physical_sales_date_id"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
+    "memory"."store_sales" as "physical_sales_store_sales"
 GROUP BY
     1,
     2),
@@ -237,10 +237,10 @@ FROM
     LEFT OUTER JOIN "quizzical" on coalesce("yummy"."customer_id", "questionable"."customer_id") = "quizzical"."customer_id"
     INNER JOIN "memory"."customer" as "customer_customers" on coalesce("yummy"."customer_id", "questionable"."customer_id", "quizzical"."customer_id") = "customer_customers"."C_CUSTOMER_SK"
     INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "questionable"."store_sales_date_id" = "store_sales_date_date"."D_DATE_SK"
     LEFT OUTER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "quizzical"."catalog_sales_date_id" = "catalog_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "questionable"."physical_sales_date_id" = "physical_sales_date_date"."D_DATE_SK"
 WHERE
-    "store_sales_date_date"."D_YEAR" = 2002 and "store_sales_date_date"."D_MOY" in (1,2,3,4) and "customer_address_customer_address"."CA_COUNTY" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( "web_sales_date_date"."D_YEAR" = 2002 and "web_sales_date_date"."D_MOY" in (1,2,3,4) ) or ( "catalog_sales_date_date"."D_YEAR" = 2002 and "catalog_sales_date_date"."D_MOY" in (1,2,3,4) ) )
+    "physical_sales_date_date"."D_YEAR" = 2002 and "physical_sales_date_date"."D_MOY" in (1,2,3,4) and "customer_address_customer_address"."CA_COUNTY" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( "web_sales_date_date"."D_YEAR" = 2002 and "web_sales_date_date"."D_MOY" in (1,2,3,4) ) or ( "catalog_sales_date_date"."D_YEAR" = 2002 and "catalog_sales_date_date"."D_MOY" in (1,2,3,4) ) )
 
 GROUP BY
     1)

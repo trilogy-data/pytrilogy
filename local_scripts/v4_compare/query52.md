@@ -18,28 +18,28 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 938 | 21 | 36.07 ms |
-| reference | 938 | 21 | 36.04 ms |
+| v4 | 995 | 21 | 31.77 ms |
+| reference | 995 | 21 | 31.84 ms |
 | v4 / ref | 1.00x | 1.00x | 1.00x |
 
 ## Preql
 
 ```
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 where
-    store_sales.item.manager_id = 1
-    and store_sales.date.month_of_year = 11
-    and store_sales.date.year = 2000
+    physical_sales.item.manager_id = 1
+    and physical_sales.date.month_of_year = 11
+    and physical_sales.date.year = 2000
 select
-    store_sales.date.year,
-    store_sales.item.brand_id,
-    store_sales.item.brand_name,
-    sum(store_sales.ext_sales_price) as ext_price,
+    physical_sales.date.year,
+    physical_sales.item.brand_id,
+    physical_sales.item.brand_name,
+    sum(physical_sales.ext_sales_price) as ext_price,
 order by
-    store_sales.date.year asc,
+    physical_sales.date.year asc,
     ext_price desc,
-    store_sales.item.brand_id asc
+    physical_sales.item.brand_id asc
 limit 100
 ;
 ```
@@ -48,25 +48,25 @@ limit 100
 
 ```sql
 SELECT
-    sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year",
-    "store_sales_item_items"."I_BRAND_ID" as "store_sales_item_brand_id",
-    "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name"
+    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price",
+    "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
+    "physical_sales_item_items"."I_BRAND_ID" as "physical_sales_item_brand_id",
+    "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
-    "store_sales_item_items"."I_MANAGER_ID" = 1 and "store_sales_date_date"."D_MOY" = 11 and "store_sales_date_date"."D_YEAR" = 2000
+    "physical_sales_item_items"."I_MANAGER_ID" = 1 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
     2,
     3,
     4
 ORDER BY 
-    "store_sales_date_date"."D_YEAR" asc,
+    "physical_sales_date_date"."D_YEAR" asc,
     "ext_price" desc,
-    "store_sales_item_items"."I_BRAND_ID" asc
+    "physical_sales_item_items"."I_BRAND_ID" asc
 LIMIT (100)
 ```
 
@@ -74,24 +74,24 @@ LIMIT (100)
 
 ```sql
 SELECT
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year",
-    "store_sales_item_items"."I_BRAND_ID" as "store_sales_item_brand_id",
-    "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
-    sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price"
+    "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
+    "physical_sales_item_items"."I_BRAND_ID" as "physical_sales_item_brand_id",
+    "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name",
+    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
-    "store_sales_item_items"."I_MANAGER_ID" = 1 and "store_sales_date_date"."D_MOY" = 11 and "store_sales_date_date"."D_YEAR" = 2000
+    "physical_sales_item_items"."I_MANAGER_ID" = 1 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    "store_sales_date_date"."D_YEAR" asc,
+    "physical_sales_date_date"."D_YEAR" asc,
     "ext_price" desc,
-    "store_sales_item_items"."I_BRAND_ID" asc
+    "physical_sales_item_items"."I_BRAND_ID" asc
 LIMIT (100)
 ```

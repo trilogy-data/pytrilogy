@@ -18,20 +18,20 @@ ref rows: 10 (10 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2775 | 103 | 75.74 ms |
-| reference | 2861 | 101 | 77.64 ms |
-| v4 / ref | 0.97x | 1.02x | 0.98x |
+| v4 | 2775 | 103 | 82.70 ms |
+| reference | 2861 | 101 | 82.23 ms |
+| v4 / ref | 0.97x | 1.02x | 1.01x |
 
 ## Preql
 
 ```
-import store_sales as ss;
+import physical_sales as ss;
 
 # Threshold: avg net_profit for store 4 where address is null.
 # Pre-compute in a filtered `with` block so trilogy emits
 # `WHERE SS_ADDR_SK IS NULL` instead of `avg(CASE WHEN SS_ADDR_SK IS NULL THEN ...)`.
 rowset addr_null_threshold <- where
-    ss.store.id = 4 and ss.sale_address.id is null
+    ss.store.id = 1 and ss.sale_address.id is null
 select
     avg(ss.net_profit) as threshold,
 ;
@@ -40,14 +40,14 @@ select
 auto item_avg_profit <- avg(ss.net_profit) by ss.item.id;
 
 rowset ascending <- where
-    ss.store.id = 4 and item_avg_profit > 0.9 * addr_null_threshold.threshold
+    ss.store.id = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold
 select
     rank(ss.item.id) over (order by item_avg_profit asc) as rnk_a,
     ss.item.product_name as best_performing,
 ;
 
 rowset descending <- where
-    ss.store.id = 4 and item_avg_profit > 0.9 * addr_null_threshold.threshold
+    ss.store.id = 1 and item_avg_profit > 0.9 * addr_null_threshold.threshold
 select
     rank(ss.item.id) over (order by item_avg_profit desc) as rnk_d,
     ss.item.product_name as worst_performing,
@@ -56,7 +56,7 @@ select
 merge ascending.rnk_a into descending.rnk_d;
 
 where
-    ss.store.id = 4
+    ss.store.id = 1
 select
     ascending.rnk_a as rnk,
     ascending.best_performing,
@@ -83,7 +83,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4
+    "ss_store_sales"."SS_STORE_SK" = 1
 
 GROUP BY
     1),
@@ -93,7 +93,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4
+    "ss_store_sales"."SS_STORE_SK" = 1
 
 GROUP BY
     1,
@@ -104,7 +104,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4 and "ss_store_sales"."SS_ADDR_SK" is null
+    "ss_store_sales"."SS_STORE_SK" = 1 and "ss_store_sales"."SS_ADDR_SK" is null
 ),
 questionable as (
 SELECT
@@ -191,7 +191,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4
+    "ss_store_sales"."SS_STORE_SK" = 1
 
 GROUP BY
     1),
@@ -201,7 +201,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4
+    "ss_store_sales"."SS_STORE_SK" = 1
 
 GROUP BY
     1,
@@ -212,7 +212,7 @@ SELECT
 FROM
     "memory"."store_sales" as "ss_store_sales"
 WHERE
-    "ss_store_sales"."SS_STORE_SK" = 4 and "ss_store_sales"."SS_ADDR_SK" is null
+    "ss_store_sales"."SS_STORE_SK" = 1 and "ss_store_sales"."SS_ADDR_SK" is null
 ),
 questionable as (
 SELECT

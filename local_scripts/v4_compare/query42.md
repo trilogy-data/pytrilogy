@@ -18,29 +18,29 @@ ref rows: 10 (10 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1019 | 22 | 15.80 ms |
-| reference | 1019 | 22 | 16.16 ms |
-| v4 / ref | 1.00x | 1.00x | 0.98x |
+| v4 | 1079 | 22 | 19.92 ms |
+| reference | 1079 | 22 | 18.66 ms |
+| v4 / ref | 1.00x | 1.00x | 1.07x |
 
 ## Preql
 
 ```
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 where
-    store_sales.item.manager_id = 1
-    and store_sales.date.month_of_year = 11
-    and store_sales.date.year = 2000
+    physical_sales.item.manager_id = 1
+    and physical_sales.date.month_of_year = 11
+    and physical_sales.date.year = 2000
 select
-    store_sales.date.year,
-    store_sales.item.category_id,
-    store_sales.item.category,
-    sum(store_sales.ext_sales_price) as total_ext_sales_price,
+    physical_sales.date.year,
+    physical_sales.item.category_id,
+    physical_sales.item.category,
+    sum(physical_sales.ext_sales_price) as total_ext_sales_price,
 order by
     total_ext_sales_price desc,
-    store_sales.date.year asc,
-    store_sales.item.category_id asc,
-    store_sales.item.category asc
+    physical_sales.date.year asc,
+    physical_sales.item.category_id asc,
+    physical_sales.item.category asc
 limit 100
 ;
 ```
@@ -49,16 +49,16 @@ limit 100
 
 ```sql
 SELECT
-    sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "total_ext_sales_price",
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year",
-    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
-    "store_sales_item_items"."I_CATEGORY_ID" as "store_sales_item_category_id"
+    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "total_ext_sales_price",
+    "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
+    "physical_sales_item_items"."I_CATEGORY" as "physical_sales_item_category",
+    "physical_sales_item_items"."I_CATEGORY_ID" as "physical_sales_item_category_id"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
-    "store_sales_item_items"."I_MANAGER_ID" = 1 and "store_sales_date_date"."D_MOY" = 11 and "store_sales_date_date"."D_YEAR" = 2000
+    "physical_sales_item_items"."I_MANAGER_ID" = 1 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
     2,
@@ -66,9 +66,9 @@ GROUP BY
     4
 ORDER BY 
     "total_ext_sales_price" desc,
-    "store_sales_date_date"."D_YEAR" asc,
-    "store_sales_item_items"."I_CATEGORY_ID" asc,
-    "store_sales_item_items"."I_CATEGORY" asc
+    "physical_sales_date_date"."D_YEAR" asc,
+    "physical_sales_item_items"."I_CATEGORY_ID" asc,
+    "physical_sales_item_items"."I_CATEGORY" asc
 LIMIT (100)
 ```
 
@@ -76,16 +76,16 @@ LIMIT (100)
 
 ```sql
 SELECT
-    "store_sales_date_date"."D_YEAR" as "store_sales_date_year",
-    "store_sales_item_items"."I_CATEGORY_ID" as "store_sales_item_category_id",
-    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
-    sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "total_ext_sales_price"
+    "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
+    "physical_sales_item_items"."I_CATEGORY_ID" as "physical_sales_item_category_id",
+    "physical_sales_item_items"."I_CATEGORY" as "physical_sales_item_category",
+    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "total_ext_sales_price"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
-    "store_sales_item_items"."I_MANAGER_ID" = 1 and "store_sales_date_date"."D_MOY" = 11 and "store_sales_date_date"."D_YEAR" = 2000
+    "physical_sales_item_items"."I_MANAGER_ID" = 1 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
     1,
@@ -93,8 +93,8 @@ GROUP BY
     3
 ORDER BY 
     "total_ext_sales_price" desc,
-    "store_sales_date_date"."D_YEAR" asc,
-    "store_sales_item_items"."I_CATEGORY_ID" asc,
-    "store_sales_item_items"."I_CATEGORY" asc
+    "physical_sales_date_date"."D_YEAR" asc,
+    "physical_sales_item_items"."I_CATEGORY_ID" asc,
+    "physical_sales_item_items"."I_CATEGORY" asc
 LIMIT (100)
 ```

@@ -18,23 +18,23 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5705 | 121 | 96.50 ms |
-| reference | 5247 | 81 | 106.34 ms |
-| v4 / ref | 1.09x | 1.49x | 0.91x |
+| v4 | 4633 | 85 | 84.51 ms |
+| reference | 5253 | 81 | 104.84 ms |
+| v4 / ref | 0.88x | 1.05x | 0.81x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 import date as date;
 
 auto target_week_seq <- date.week_seq ? date._date_string = '2000-01-03';
 
-def channel_item_rev(channel) -> sum(sales.ext_sales_price ? sales.sales_channel = channel) by sales.item.name;
+def channel_item_rev(channel) -> sum(sales.ext_sales_price ? sales.sales_channel = channel) by sales.item.text_id;
 
-auto ss_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE') by sales.item.name;
-auto cs_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'CATALOG') by sales.item.name;
-auto ws_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB') by sales.item.name;
+auto ss_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'STORE') by sales.item.text_id;
+auto cs_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'CATALOG') by sales.item.text_id;
+auto ws_item_rev <- sum(sales.ext_sales_price ? sales.sales_channel = 'WEB') by sales.item.text_id;
 auto avg_rev <- (ss_item_rev + cs_item_rev + ws_item_rev) / 3;
 auto ss_dev <- ss_item_rev / avg_rev * 100;
 auto cs_dev <- cs_item_rev / avg_rev * 100;
@@ -43,7 +43,7 @@ auto ws_dev <- ws_item_rev / avg_rev * 100;
 where
     sales.date.week_seq in target_week_seq
 select
-    sales.item.name as item_id,
+    sales.item.text_id as item_id,
     ss_item_rev,
     ss_dev,
     cs_item_rev,
@@ -116,7 +116,7 @@ SELECT
     "cooperative"."sales_date_week_seq" as "sales_date_week_seq",
     "cooperative"."sales_ext_sales_price" as "sales_ext_sales_price",
     "cooperative"."sales_sales_channel" as "sales_sales_channel",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
 FROM
     "cooperative"
     INNER JOIN "memory"."item" as "sales_item_items" on "cooperative"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
@@ -125,7 +125,7 @@ WHERE
 ),
 yummy as (
 SELECT
-    "uneven"."sales_item_name" as "sales_item_name",
+    "uneven"."sales_item_text_id" as "sales_item_text_id",
     sum(CASE WHEN "uneven"."sales_sales_channel" = 'CATALOG' THEN "uneven"."sales_ext_sales_price" ELSE NULL END) as "cs_item_rev",
     sum(CASE WHEN "uneven"."sales_sales_channel" = 'STORE' THEN "uneven"."sales_ext_sales_price" ELSE NULL END) as "ss_item_rev",
     sum(CASE WHEN "uneven"."sales_sales_channel" = 'WEB' THEN "uneven"."sales_ext_sales_price" ELSE NULL END) as "ws_item_rev"
@@ -135,60 +135,24 @@ WHERE
     "uneven"."sales_date_week_seq" in (select highfalutin."target_week_seq" from highfalutin where highfalutin."target_week_seq" is not null)
 
 GROUP BY
-    1),
-young as (
+    1)
 SELECT
-    "yummy"."cs_item_rev" as "cs_item_rev",
-    "yummy"."sales_item_name" as "sales_item_name",
+    "yummy"."sales_item_text_id" as "item_id",
     "yummy"."ss_item_rev" as "ss_item_rev",
-    "yummy"."ws_item_rev" as "ws_item_rev",
-    ( "yummy"."cs_item_rev" / ( (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 ) ) * 100 as "cs_dev",
     ( "yummy"."ss_item_rev" / ( (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 ) ) * 100 as "ss_dev",
+    "yummy"."cs_item_rev" as "cs_item_rev",
+    ( "yummy"."cs_item_rev" / ( (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 ) ) * 100 as "cs_dev",
+    "yummy"."ws_item_rev" as "ws_item_rev",
     ( "yummy"."ws_item_rev" / ( (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 ) ) * 100 as "ws_dev",
     (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 as "avg_rev"
 FROM
     "yummy"
 WHERE
-    "yummy"."ss_item_rev" BETWEEN 0.9 * "yummy"."cs_item_rev" AND 1.1 * "yummy"."cs_item_rev"
-),
-concerned as (
-SELECT
-    "yummy"."sales_item_name" as "item_id"
-FROM
-    "yummy"
-WHERE
-    "yummy"."ss_item_rev" BETWEEN 0.9 * "yummy"."cs_item_rev" AND 1.1 * "yummy"."cs_item_rev"
-),
-sparkling as (
-SELECT
-    "concerned"."item_id" as "item_id",
-    "young"."avg_rev" as "avg_rev",
-    "young"."cs_dev" as "cs_dev",
-    "young"."cs_item_rev" as "cs_item_rev",
-    "young"."ss_dev" as "ss_dev",
-    "young"."ss_item_rev" as "ss_item_rev",
-    "young"."ws_dev" as "ws_dev",
-    "young"."ws_item_rev" as "ws_item_rev"
-FROM
-    "young"
-    INNER JOIN "concerned" on "young"."sales_item_name" = "concerned"."item_id")
-SELECT
-    "sparkling"."item_id" as "item_id",
-    "sparkling"."ss_item_rev" as "ss_item_rev",
-    "sparkling"."ss_dev" as "ss_dev",
-    "sparkling"."cs_item_rev" as "cs_item_rev",
-    "sparkling"."cs_dev" as "cs_dev",
-    "sparkling"."ws_item_rev" as "ws_item_rev",
-    "sparkling"."ws_dev" as "ws_dev",
-    "sparkling"."avg_rev" as "avg_rev"
-FROM
-    "sparkling"
-WHERE
-    "sparkling"."ss_item_rev" BETWEEN 0.9 * "sparkling"."ws_item_rev" AND 1.1 * "sparkling"."ws_item_rev" and "sparkling"."cs_item_rev" BETWEEN 0.9 * "sparkling"."ss_item_rev" AND 1.1 * "sparkling"."ss_item_rev" and "sparkling"."cs_item_rev" BETWEEN 0.9 * "sparkling"."ws_item_rev" AND 1.1 * "sparkling"."ws_item_rev" and "sparkling"."ws_item_rev" BETWEEN 0.9 * "sparkling"."ss_item_rev" AND 1.1 * "sparkling"."ss_item_rev" and "sparkling"."ws_item_rev" BETWEEN 0.9 * "sparkling"."cs_item_rev" AND 1.1 * "sparkling"."cs_item_rev"
+    "yummy"."ss_item_rev" BETWEEN 0.9 * "yummy"."cs_item_rev" AND 1.1 * "yummy"."cs_item_rev" and "yummy"."ss_item_rev" BETWEEN 0.9 * "yummy"."ws_item_rev" AND 1.1 * "yummy"."ws_item_rev" and "yummy"."cs_item_rev" BETWEEN 0.9 * "yummy"."ss_item_rev" AND 1.1 * "yummy"."ss_item_rev" and "yummy"."cs_item_rev" BETWEEN 0.9 * "yummy"."ws_item_rev" AND 1.1 * "yummy"."ws_item_rev" and "yummy"."ws_item_rev" BETWEEN 0.9 * "yummy"."ss_item_rev" AND 1.1 * "yummy"."ss_item_rev" and "yummy"."ws_item_rev" BETWEEN 0.9 * "yummy"."cs_item_rev" AND 1.1 * "yummy"."cs_item_rev"
 
 ORDER BY 
-    "sparkling"."item_id" asc nulls first,
-    "sparkling"."ss_item_rev" asc nulls first
+    "item_id" asc nulls first,
+    "yummy"."ss_item_rev" asc nulls first
 LIMIT (100)
 ```
 
@@ -246,7 +210,7 @@ yummy as (
 SELECT
     "questionable"."sales_ext_sales_price" as "sales_ext_sales_price",
     "questionable"."sales_sales_channel" as "sales_sales_channel",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
 FROM
     "questionable"
     INNER JOIN "memory"."item" as "sales_item_items" on "questionable"."sales_item_id" = "sales_item_items"."I_ITEM_SK"
@@ -257,7 +221,7 @@ GROUP BY
     "questionable"."sales_item_id",
     "questionable"."sales_order_id")
 SELECT
-    "yummy"."sales_item_name" as "item_id",
+    "yummy"."sales_item_text_id" as "item_id",
     sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_ext_sales_price" ELSE NULL END) as "ss_item_rev",
     ( sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_ext_sales_price" ELSE NULL END) / ( (( sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_ext_sales_price" ELSE NULL END) + sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_ext_sales_price" ELSE NULL END) ) + sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_ext_sales_price" ELSE NULL END)) / 3 ) ) * 100 as "ss_dev",
     sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_ext_sales_price" ELSE NULL END) as "cs_item_rev",

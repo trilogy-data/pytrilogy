@@ -18,65 +18,65 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 15298 | 212 | 63.50 ms |
-| reference | 15298 | 212 | 63.88 ms |
+| v4 | 15862 | 212 | 62.16 ms |
+| reference | 15862 | 212 | 62.67 ms |
 | v4 / ref | 1.00x | 1.00x | 0.99x |
 
 ## Preql
 
 ```
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 # Quantity ranges are disjoint, so each row contributes to exactly one bucket.
 # Assigning bucket_id once and grouping lets a single scan + per-group
 # count(DISTINCT) replace six count(DISTINCT)s on overlapping CASE-filtered
 # subsets of the same column -- the outer max(CASE) pivots back to wide.
 auto bucket_id <- case
-    when store_sales.quantity between 0 and 5 then 1
-    when store_sales.quantity between 6 and 10 then 2
-    when store_sales.quantity between 11 and 15 then 3
-    when store_sales.quantity between 16 and 20 then 4
-    when store_sales.quantity between 21 and 25 then 5
-    when store_sales.quantity between 26 and 30 then 6
+    when physical_sales.quantity between 0 and 5 then 1
+    when physical_sales.quantity between 6 and 10 then 2
+    when physical_sales.quantity between 11 and 15 then 3
+    when physical_sales.quantity between 16 and 20 then 4
+    when physical_sales.quantity between 21 and 25 then 5
+    when physical_sales.quantity between 26 and 30 then 6
     else null
 end;
 auto filtered_lp <- case
     when bucket_id = 1
     and (
-        store_sales.list_price between 8 and 18
-        or store_sales.coupon_amt between 459 and 1459
-        or store_sales.wholesale_cost between 57 and 77
-    ) then store_sales.list_price
+        physical_sales.list_price between 8 and 18
+        or physical_sales.coupon_amt between 459 and 1459
+        or physical_sales.wholesale_cost between 57 and 77
+    ) then physical_sales.list_price
     when bucket_id = 2
     and (
-        store_sales.list_price between 90 and 100
-        or store_sales.coupon_amt between 2323 and 3323
-        or store_sales.wholesale_cost between 31 and 51
-    ) then store_sales.list_price
+        physical_sales.list_price between 90 and 100
+        or physical_sales.coupon_amt between 2323 and 3323
+        or physical_sales.wholesale_cost between 31 and 51
+    ) then physical_sales.list_price
     when bucket_id = 3
     and (
-        store_sales.list_price between 142 and 152
-        or store_sales.coupon_amt between 12214 and 13214
-        or store_sales.wholesale_cost between 79 and 99
-    ) then store_sales.list_price
+        physical_sales.list_price between 142 and 152
+        or physical_sales.coupon_amt between 12214 and 13214
+        or physical_sales.wholesale_cost between 79 and 99
+    ) then physical_sales.list_price
     when bucket_id = 4
     and (
-        store_sales.list_price between 135 and 145
-        or store_sales.coupon_amt between 6071 and 7071
-        or store_sales.wholesale_cost between 38 and 58
-    ) then store_sales.list_price
+        physical_sales.list_price between 135 and 145
+        or physical_sales.coupon_amt between 6071 and 7071
+        or physical_sales.wholesale_cost between 38 and 58
+    ) then physical_sales.list_price
     when bucket_id = 5
     and (
-        store_sales.list_price between 122 and 132
-        or store_sales.coupon_amt between 836 and 1836
-        or store_sales.wholesale_cost between 17 and 37
-    ) then store_sales.list_price
+        physical_sales.list_price between 122 and 132
+        or physical_sales.coupon_amt between 836 and 1836
+        or physical_sales.wholesale_cost between 17 and 37
+    ) then physical_sales.list_price
     when bucket_id = 6
     and (
-        store_sales.list_price between 154 and 164
-        or store_sales.coupon_amt between 7326 and 8326
-        or store_sales.wholesale_cost between 7 and 27
-    ) then store_sales.list_price
+        physical_sales.list_price between 154 and 164
+        or physical_sales.coupon_amt between 7326 and 8326
+        or physical_sales.wholesale_cost between 7 and 27
+    ) then physical_sales.list_price
     else null
 end;
 auto lp_avg <- avg(filtered_lp) by bucket_id;
@@ -86,7 +86,7 @@ auto lp_cntd <- count_distinct(filtered_lp) by bucket_id;
 def pivot(metric, b) -> max(metric ? bucket_id = b);
 
 where
-    store_sales.quantity between 0 and 30
+    physical_sales.quantity between 0 and 30
 select
     @pivot(lp_avg, 1) as B1_LP,
     @pivot(lp_cnt, 1) as B1_CNT,
@@ -117,189 +117,189 @@ WITH
 quizzical as (
 SELECT
     CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
 	END as "bucket_id",
     avg(CASE
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 1 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 1 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 2 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 2 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 3 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 3 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 4 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 4 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 5 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 5 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 6 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 6 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	ELSE null
 	END) as "lp_avg",
     count(CASE
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 1 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 1 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 2 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 2 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 3 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 3 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 4 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 4 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 5 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 5 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 6 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 6 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	ELSE null
 	END) as "lp_cnt",
     count(distinct CASE
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 1 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 1 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 2 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 2 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 3 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 3 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 4 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 4 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 5 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 5 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 6 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 6 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	ELSE null
 	END) as "lp_cntd"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
+    "memory"."store_sales" as "physical_sales_store_sales"
 WHERE
-    "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 30
+    "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 30
 
 GROUP BY
     1)
@@ -334,189 +334,189 @@ WITH
 quizzical as (
 SELECT
     CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
 	END as "bucket_id",
     avg(CASE
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 1 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 1 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 2 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 2 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 3 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 3 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 4 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 4 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 5 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 5 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 6 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 6 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	ELSE null
 	END) as "lp_avg",
     count(CASE
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 1 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 1 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 2 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 2 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 3 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 3 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 4 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 4 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 5 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 5 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 6 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 6 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	ELSE null
 	END) as "lp_cnt",
     count(distinct CASE
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 1 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 1 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 8 AND 18 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 459 AND 1459 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 57 AND 77 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 2 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 2 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 90 AND 100 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 2323 AND 3323 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 31 AND 51 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 3 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 3 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 142 AND 152 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 12214 AND 13214 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 79 AND 99 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 4 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 4 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 135 AND 145 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 6071 AND 7071 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 38 AND 58 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 5 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 5 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 122 AND 132 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 836 AND 1836 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 17 AND 37 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	WHEN CASE
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
-	WHEN "store_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 5 THEN 1
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 6 AND 10 THEN 2
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 11 AND 15 THEN 3
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 16 AND 20 THEN 4
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 21 AND 25 THEN 5
+	WHEN "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 26 AND 30 THEN 6
 	ELSE null
-	END = 6 and ( "store_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "store_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "store_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "store_sales_store_sales"."SS_LIST_PRICE"
+	END = 6 and ( "physical_sales_store_sales"."SS_LIST_PRICE" BETWEEN 154 AND 164 or "physical_sales_store_sales"."SS_COUPON_AMT" BETWEEN 7326 AND 8326 or "physical_sales_store_sales"."SS_WHOLESALE_COST" BETWEEN 7 AND 27 ) THEN "physical_sales_store_sales"."SS_LIST_PRICE"
 	ELSE null
 	END) as "lp_cntd"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
+    "memory"."store_sales" as "physical_sales_store_sales"
 WHERE
-    "store_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 30
+    "physical_sales_store_sales"."SS_QUANTITY" BETWEEN 0 AND 30
 
 GROUP BY
     1)

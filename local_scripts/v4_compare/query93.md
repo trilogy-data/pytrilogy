@@ -18,14 +18,14 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1385 | 34 | 39.65 ms |
-| reference | 914 | 19 | 30.81 ms |
-| v4 / ref | 1.52x | 1.79x | 1.29x |
+| v4 | 1417 | 34 | 36.84 ms |
+| reference | 914 | 19 | 24.29 ms |
+| v4 / ref | 1.55x | 1.79x | 1.52x |
 
 ## Preql
 
 ```
-import store_sales as ss;
+import physical_sales as ss;
 
 auto act_sales <- case
     when ss.return_quantity is not null then (ss.quantity - ss.return_quantity) * ss.sales_price
@@ -35,8 +35,8 @@ end;
 where
     ss.return_reason.desc = 'reason 28'
 select
-    ss.customer.id as customer_sk,
-    sum(act_sales) by ss.customer.id as sumsales,
+    ss.billing_customer.id as customer_sk,
+    sum(act_sales) by ss.billing_customer.id as sumsales,
 order by
     sumsales asc nulls first,
     customer_sk asc nulls first
@@ -51,7 +51,7 @@ WITH
 cheerful as (
 SELECT
     "ss_store_sales"."SS_CUSTOMER_SK" as "customer_sk",
-    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_customer_id",
+    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_billing_customer_id",
     CASE
 	WHEN "ss_store_returns"."SR_RETURN_QUANTITY" is not null THEN ("ss_store_sales"."SS_QUANTITY" - "ss_store_returns"."SR_RETURN_QUANTITY") * "ss_store_sales"."SS_SALES_PRICE"
 	ELSE "ss_store_sales"."SS_QUANTITY" * "ss_store_sales"."SS_SALES_PRICE"
@@ -65,7 +65,7 @@ WHERE
 ),
 cooperative as (
 SELECT
-    "cheerful"."ss_customer_id" as "ss_customer_id",
+    "cheerful"."ss_billing_customer_id" as "ss_billing_customer_id",
     sum("cheerful"."act_sales") as "sumsales"
 FROM
     "cheerful"
@@ -76,7 +76,7 @@ SELECT
     "cooperative"."sumsales" as "sumsales"
 FROM
     "cheerful"
-    FULL JOIN "cooperative" on "cheerful"."customer_sk" is not distinct from "cooperative"."ss_customer_id"
+    FULL JOIN "cooperative" on "cheerful"."customer_sk" is not distinct from "cooperative"."ss_billing_customer_id"
 ORDER BY 
     "cooperative"."sumsales" asc nulls first,
     "cheerful"."customer_sk" asc nulls first

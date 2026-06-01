@@ -18,32 +18,32 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1794 | 28 | 35.91 ms |
-| reference | 1794 | 28 | 34.68 ms |
-| v4 / ref | 1.00x | 1.00x | 1.04x |
+| v4 | 1944 | 28 | 36.00 ms |
+| reference | 1944 | 28 | 34.97 ms |
+| v4 / ref | 1.00x | 1.00x | 1.03x |
 
 ## Preql
 
 ```
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 where
-    store_sales.item.manager_id = 8
-    and store_sales.date.month_of_year = 11
-    and store_sales.date.year = 1998
-    and substring(store_sales.customer.address.zip, 1, 5) != substring(store_sales.store.zip, 1, 5)
+    physical_sales.item.manager_id = 8
+    and physical_sales.date.month_of_year = 11
+    and physical_sales.date.year = 1998
+    and substring(physical_sales.billing_customer.address.zip, 1, 5) != substring(physical_sales.store.zip, 1, 5)
 select
-    store_sales.item.brand_id,
-    store_sales.item.brand_name,
-    store_sales.item.manufacturer_id,
-    store_sales.item.manufact,
-    sum(store_sales.ext_sales_price) as ext_price,
+    physical_sales.item.brand_id,
+    physical_sales.item.brand_name,
+    physical_sales.item.manufacturer_id,
+    physical_sales.item.manufact,
+    sum(physical_sales.ext_sales_price) as ext_price,
 order by
     ext_price desc,
-    store_sales.item.brand_name asc,
-    store_sales.item.brand_id asc,
-    store_sales.item.manufacturer_id asc,
-    store_sales.item.manufact asc
+    physical_sales.item.brand_name asc,
+    physical_sales.item.brand_id asc,
+    physical_sales.item.manufacturer_id asc,
+    physical_sales.item.manufact asc
 limit 100
 ;
 ```
@@ -52,20 +52,20 @@ limit 100
 
 ```sql
 SELECT
-    sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price",
-    "store_sales_item_items"."I_BRAND_ID" as "store_sales_item_brand_id",
-    "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
-    "store_sales_item_items"."I_MANUFACT" as "store_sales_item_manufact",
-    "store_sales_item_items"."I_MANUFACT_ID" as "store_sales_item_manufacturer_id"
+    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price",
+    "physical_sales_item_items"."I_BRAND_ID" as "physical_sales_item_brand_id",
+    "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name",
+    "physical_sales_item_items"."I_MANUFACT" as "physical_sales_item_manufact",
+    "physical_sales_item_items"."I_MANUFACT_ID" as "physical_sales_item_manufacturer_id"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "store_sales_store_sales"."SS_CUSTOMER_SK" = "store_sales_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."customer_address" as "store_sales_customer_address_customer_address" on "store_sales_customer_customers"."C_CURRENT_ADDR_SK" = "store_sales_customer_address_customer_address"."CA_ADDRESS_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "physical_sales_billing_customer_address_customer_address" on "physical_sales_billing_customer_customers"."C_CURRENT_ADDR_SK" = "physical_sales_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "store_sales_item_items"."I_MANAGER_ID" = 8 and "store_sales_date_date"."D_MOY" = 11 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("store_sales_store_store"."S_ZIP",1,5)
+    "physical_sales_item_items"."I_MANAGER_ID" = 8 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("physical_sales_store_store"."S_ZIP",1,5)
 
 GROUP BY
     2,
@@ -74,10 +74,10 @@ GROUP BY
     5
 ORDER BY 
     "ext_price" desc,
-    "store_sales_item_items"."I_BRAND" asc,
-    "store_sales_item_items"."I_BRAND_ID" asc,
-    "store_sales_item_items"."I_MANUFACT_ID" asc,
-    "store_sales_item_items"."I_MANUFACT" asc
+    "physical_sales_item_items"."I_BRAND" asc,
+    "physical_sales_item_items"."I_BRAND_ID" asc,
+    "physical_sales_item_items"."I_MANUFACT_ID" asc,
+    "physical_sales_item_items"."I_MANUFACT" asc
 LIMIT (100)
 ```
 
@@ -85,20 +85,20 @@ LIMIT (100)
 
 ```sql
 SELECT
-    "store_sales_item_items"."I_BRAND_ID" as "store_sales_item_brand_id",
-    "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
-    "store_sales_item_items"."I_MANUFACT_ID" as "store_sales_item_manufacturer_id",
-    "store_sales_item_items"."I_MANUFACT" as "store_sales_item_manufact",
-    sum("store_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price"
+    "physical_sales_item_items"."I_BRAND_ID" as "physical_sales_item_brand_id",
+    "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name",
+    "physical_sales_item_items"."I_MANUFACT_ID" as "physical_sales_item_manufacturer_id",
+    "physical_sales_item_items"."I_MANUFACT" as "physical_sales_item_manufact",
+    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
-    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "store_sales_store_sales"."SS_CUSTOMER_SK" = "store_sales_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."customer_address" as "store_sales_customer_address_customer_address" on "store_sales_customer_customers"."C_CURRENT_ADDR_SK" = "store_sales_customer_address_customer_address"."CA_ADDRESS_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "physical_sales_billing_customer_customers" on "physical_sales_store_sales"."SS_CUSTOMER_SK" = "physical_sales_billing_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "physical_sales_billing_customer_address_customer_address" on "physical_sales_billing_customer_customers"."C_CURRENT_ADDR_SK" = "physical_sales_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "store_sales_item_items"."I_MANAGER_ID" = 8 and "store_sales_date_date"."D_MOY" = 11 and "store_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("store_sales_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("store_sales_store_store"."S_ZIP",1,5)
+    "physical_sales_item_items"."I_MANAGER_ID" = 8 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("physical_sales_store_store"."S_ZIP",1,5)
 
 GROUP BY
     1,
@@ -107,9 +107,9 @@ GROUP BY
     4
 ORDER BY 
     "ext_price" desc,
-    "store_sales_item_items"."I_BRAND" asc,
-    "store_sales_item_items"."I_BRAND_ID" asc,
-    "store_sales_item_items"."I_MANUFACT_ID" asc,
-    "store_sales_item_items"."I_MANUFACT" asc
+    "physical_sales_item_items"."I_BRAND" asc,
+    "physical_sales_item_items"."I_BRAND_ID" asc,
+    "physical_sales_item_items"."I_MANUFACT_ID" asc,
+    "physical_sales_item_items"."I_MANUFACT" asc
 LIMIT (100)
 ```

@@ -18,14 +18,14 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8125 | 158 | 194.94 ms |
-| reference | 7234 | 143 | 256.20 ms |
-| v4 / ref | 1.12x | 1.10x | 0.76x |
+| v4 | 8125 | 158 | 192.55 ms |
+| reference | 7234 | 143 | 200.92 ms |
+| v4 / ref | 1.12x | 1.10x | 0.96x |
 
 ## Preql
 
 ```
-import store_sales as ss;
+import physical_sales as ss;
 
 def day_sales(d) -> sum(ss.sales_price ? ss.date.day_name = d) by ss.store.id, ss.date.week_seq;
 

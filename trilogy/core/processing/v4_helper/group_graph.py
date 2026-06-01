@@ -35,23 +35,39 @@ from .models import GroupAttrs, GroupBucket
 # gets its own group id and doesn't collide with the main root bucket.
 ROOT_D1_DEPTH = "root_d1"
 
-# Derivations that compute over an input row POPULATION — only these need
-# to be sourced from a pristine, unfiltered scan when they appear in a
-# WHERE clause. AGGREGATE/WINDOW/GROUP_TO are population-sensitive: avg/
-# sum/rank depend on which rows are present. ROWSET / SUBSELECT / UNNEST
-# / UNION / RECURSIVE are NOT — a rowset used inside `IN` is its own
-# subquery scope, an unnest is pointwise, etc. Including them would split
-# roots for every `x IN some_rowset` clause and break parent wiring
-# downstream (q23 regression).
-_POPULATION_SENSITIVE_DERIVATIONS = GROUPING_DERIVATIONS
 
 
-def _lineage_parents(concept_graph: nx.DiGraph, node: str) -> frozenset[str]:
-    return frozenset(
-        u
-        for u, _, d in concept_graph.in_edges(node, data=True)
-        if d.get("kind") == "lineage"
-    )
+def _leaf_inputs(primaries: set[str], lineage_parents: dict[str, set[str]]) -> set[str]:
+    """The first non-primary lineage ancestor of each primary — the columns a
+    group actually consumes. Walks *through* primaries computed inside the
+    group (a primary whose lineage arg is another primary, e.g. q49's chained
+    rename) so the demand bottoms out on real inputs, not intermediates."""
+    leaves: set[str] = set()
+    for c in primaries:
+        stack = list(lineage_parents.get(c, set()))
+        seen: set[str] = set()
+        while stack:
+            p = stack.pop()
+            if p in seen:
+                continue
+            seen.add(p)
+            if p in primaries:
+                stack.extend(lineage_parents.get(p, set()))
+            else:
+                leaves.add(p)
+    return leaves
+
+
+def _fd_on_key(concept_graph: nx.DiGraph, address: str, key: set[str]) -> bool:
+    """Whether `address` is functionally determined by the dimension key set
+    `key`: it is a key, has no grain (constant), or its declared grain is a
+    subset of the key."""
+    if address in key:
+        return True
+    if address not in concept_graph.nodes:
+        return False
+    gc = concept_graph.nodes[address].get("grain_components", frozenset())
+    return not gc or set(gc) <= key
 
 
 def _group_id_for(bucket: GroupBucket) -> str:
@@ -64,17 +80,7 @@ def _group_id_for(bucket: GroupBucket) -> str:
     )
 
 
-def _lineage_only_subgraph(concept_graph: nx.DiGraph) -> nx.DiGraph:
-    edges = [
-        (u, v)
-        for u, v, ed in concept_graph.edges(data=True)
-        if ed.get("kind") == "lineage"
-    ]
-    sub = concept_graph.edge_subgraph(edges).copy()
-    for n in concept_graph.nodes:
-        if n not in sub:
-            sub.add_node(n)
-    return sub
+
 
 
 def _d1_calc_subgraph(concept_graph: nx.DiGraph) -> tuple[set[str], set[str]]:
@@ -604,6 +610,44 @@ def _compute_concept_sets(
         if _gc:
             source_grain_of[_addr] = frozenset(_gc)
 
+    # Effective-grain override for a basic that rides pointwise on a grouping
+    # sibling. `native_grain_basic_inherited` walks CONCEPT lineage, so a basic
+    # that renames a raw grain key (q66 `date.year as year_`) reports the raw
+    # source grain ({date.id}) even though, once routed onto the aggregate
+    # (group-level lineage edge), its rows live at the aggregate's grain. That
+    # stale grain blocks the grain key from riding through as a merge join key,
+    # so the FINAL merge re-joins on the value and fans out. When every leaf
+    # input of the basic is covered by a grouping lineage-parent's grain +
+    # outputs (i.e. it's genuinely computed pointwise over that parent), adopt
+    # that parent's grain as the basic's effective grain.
+    for gid in group_graph.nodes:
+        if gid == FINAL_NODE_ID:
+            continue
+        d = derivation_of[gid]
+        if d == Derivation.ROOT.value or d in GROUPING_DERIVATIONS:
+            continue
+        leaves = _leaf_inputs(primary_of[gid], lineage_parents)
+        if not leaves:
+            continue
+        for pgid in group_graph.predecessors(gid):
+            if group_graph.edges[pgid, gid].get("kind") != "lineage":
+                continue
+            if derivation_of[pgid] not in GROUPING_DERIVATIONS:
+                continue
+            gp_grain = grain_of[pgid]
+            # Only correct a grain that's actually stale: when the declared
+            # grain is already covered by the grouping parent's grain, the
+            # lineage-inherited grain is already right (rollup/window basics —
+            # q14/q36 — rely on it). The fix targets a rename of a *raw* grain
+            # key whose declared grain (the source row id) is finer than and
+            # disjoint from the parent's grain.
+            if grain_of[gid] <= gp_grain:
+                continue
+            if leaves <= (gp_grain | primary_of[pgid]):
+                grain_of[gid] = gp_grain
+                native_grain_of[gid] = gp_grain
+                break
+
     # Topo includes all dependency edges (lineage / constraint / existence)
     # so a side-channel source builds before its consumer. The JOIN-key
     # and demand passes below treat each edge kind differently.
@@ -854,7 +898,11 @@ def build_group_graph(
         _compute_concept_sets(
             group_graph, attrs, concept_graph, buckets, mandatory_list
         )
-        if _route_basics_through_richer_siblings(group_graph, attrs):
+        changed = _route_dimension_enrichments(
+            group_graph, attrs, buckets, concept_graph
+        )
+        changed = _route_basics_through_richer_siblings(group_graph, attrs) or changed
+        if changed:
             # Topology changed — recompute output/input demand so the basic
             # now picks up its new aggregate parent's outputs as passthrough,
             # and `_assemble_final_node` sees a single contributor covering
@@ -864,6 +912,89 @@ def build_group_graph(
                 group_graph, attrs, concept_graph, buckets, mandatory_list
             )
     return group_graph, attrs
+
+
+def _route_dimension_enrichments(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    concept_graph: nx.DiGraph,
+) -> bool:
+    """Re-source a dimension-lookup basic from its own grain-keyed scan.
+
+    A basic whose grain is a key K, whose every input is a property
+    functionally determined by K, and which currently scans off the shared
+    (fact-grain) root, renders at the fact's detail grain — so the FINAL
+    merge that joins it to an aggregate on K fans out (q66 warehouse dims:
+    one detail row per fact, joined onto the per-(warehouse, year) aggregate).
+
+    When there is an aggregate whose grain contains K (the merge partner that
+    makes this a star-schema enrichment, not a standalone dim query), split
+    the basic's root source into a dedicated ROOT group scanning only the
+    dimension columns. v3's datasource search then resolves that to the bare
+    dimension table at grain {K} — one row per key — and the FINAL merge joins
+    cleanly. Mirrors the reference's post-aggregate `JOIN warehouse`.
+    """
+    grouping_gids = [
+        g
+        for g in group_graph.nodes
+        if g != FINAL_NODE_ID and attrs[g].derivation in GROUPING_DERIVATIONS
+    ]
+    if not grouping_gids:
+        return False
+    changed = False
+    for bgid in list(group_graph.nodes):
+        if bgid == FINAL_NODE_ID:
+            continue
+        b = attrs[bgid]
+        if b.derivation != Derivation.BASIC.value:
+            continue
+        key = set(b.grain_components)
+        if not key:
+            continue
+        lineage_preds = [
+            p
+            for p in group_graph.predecessors(bgid)
+            if group_graph.edges[p, bgid].get("kind") == "lineage"
+        ]
+        # Pure dimension lookup: every row-stream source is a root scan. A
+        # non-root lineage parent means the basic also rides a transform
+        # (aggregate/window) and isn't a standalone key→property lookup.
+        root_preds = [
+            p for p in lineage_preds if attrs[p].derivation == Derivation.ROOT.value
+        ]
+        if not root_preds or len(root_preds) != len(lineage_preds):
+            continue
+        inputs = list(b.input_concepts)
+        if not inputs:
+            continue
+        if not all(_fd_on_key(concept_graph, a, key) for a in inputs):
+            continue
+        if not any(key <= set(attrs[g].grain_components) for g in grouping_gids):
+            continue
+
+        rdim_gid = f"grp:root:root:dim:{'|'.join(sorted(key))}"
+        if rdim_gid not in group_graph:
+            group_graph.add_node(rdim_gid)
+            attrs[rdim_gid] = GroupAttrs(
+                depth_label="root",
+                derivation=Derivation.ROOT.value,
+                grain_components=frozenset(),
+                primary_members=tuple(inputs),
+                members=tuple(inputs),
+            )
+            dim_bucket = GroupBucket(
+                depth_label="root",
+                derivation=Derivation.ROOT.value,
+                grain_components=frozenset(),
+            )
+            dim_bucket.primary_members = list(inputs)
+            buckets[rdim_gid] = dim_bucket
+        group_graph.add_edge(rdim_gid, bgid, kind="lineage")
+        for rp in root_preds:
+            group_graph.remove_edge(rp, bgid)
+        changed = True
+    return changed
 
 
 def _route_basics_through_richer_siblings(

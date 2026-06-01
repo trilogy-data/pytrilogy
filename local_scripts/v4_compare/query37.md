@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1853 | 52 | 549.70 ms |
-| reference | 1431 | 42 | 161.17 ms |
-| v4 / ref | 1.29x | 1.24x | 3.41x |
+| v4 | 1865 | 52 | 604.59 ms |
+| reference | 1434 | 42 | 174.30 ms |
+| v4 / ref | 1.30x | 1.24x | 3.47x |
 
 ## Preql
 
@@ -38,11 +38,11 @@ where
     and items.manufacturer_id in (677, 940, 694, 808)
     and items.id in inv_item_ids
 select
-    items.name,
+    items.text_id,
     items.desc,
     items.current_price,
 order by
-    items.name asc nulls first
+    items.text_id asc nulls first
 limit 100
 ;
 ```
@@ -83,7 +83,7 @@ cooperative as (
 SELECT
     "items_items"."I_CURRENT_PRICE" as "items_current_price",
     "items_items"."I_ITEM_DESC" as "items_desc",
-    "items_items"."I_ITEM_ID" as "items_name",
+    "items_items"."I_ITEM_ID" as "items_text_id",
     "items_items"."I_ITEM_SK" as "items_id"
 FROM
     "memory"."item" as "items_items"
@@ -93,14 +93,14 @@ WHERE
 SELECT
     "cooperative"."items_current_price" as "items_current_price",
     "cooperative"."items_desc" as "items_desc",
-    "cooperative"."items_name" as "items_name"
+    "cooperative"."items_text_id" as "items_text_id"
 FROM
     "cooperative"
 WHERE
     "cooperative"."items_id" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
 
 ORDER BY 
-    "cooperative"."items_name" asc nulls first
+    "cooperative"."items_text_id" asc nulls first
 LIMIT (100)
 ```
 
@@ -134,7 +134,7 @@ WHERE
 GROUP BY
     1)
 SELECT
-    "items_items"."I_ITEM_ID" as "items_name",
+    "items_items"."I_ITEM_ID" as "items_text_id",
     "items_items"."I_ITEM_DESC" as "items_desc",
     "items_items"."I_CURRENT_PRICE" as "items_current_price"
 FROM

@@ -18,14 +18,14 @@ ref rows: 34 (34 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5732 | 124 | 54.78 ms |
-| reference | 5628 | 128 | 57.19 ms |
-| v4 / ref | 1.02x | 0.97x | 0.96x |
+| v4 | 5732 | 124 | 33.88 ms |
+| reference | 5628 | 128 | 37.55 ms |
+| v4 / ref | 1.02x | 0.97x | 0.90x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
 # Per-(channel, item) ratios. Filter requires a returns row with return_amount > 10000
 # (acts as INNER on LEFT JOIN to returns), and Dec 2001.

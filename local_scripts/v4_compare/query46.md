@@ -18,14 +18,14 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3603 | 71 | 90.31 ms |
-| reference | 2870 | 51 | 95.36 ms |
-| v4 / ref | 1.26x | 1.39x | 0.95x |
+| v4 | 3724 | 71 | 75.70 ms |
+| reference | 2951 | 51 | 78.05 ms |
+| v4 / ref | 1.26x | 1.39x | 0.97x |
 
 ## Preql
 
 ```
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 import customer as customer;
 
 select
@@ -36,20 +36,20 @@ select
 merge
 where
     (
-        store_sales.household_demographic.dependent_count = 4
-        or store_sales.household_demographic.vehicle_count = 3
+        physical_sales.household_demographic.dependent_count = 4
+        or physical_sales.household_demographic.vehicle_count = 3
     )
-    and store_sales.date.day_of_week in (6, 0)
-    and store_sales.date.year in (1999, 2000, 2001)
-    and store_sales.store.city in ('Fairview', 'Midway')
+    and physical_sales.date.day_of_week in (6, 0)
+    and physical_sales.date.year in (1999, 2000, 2001)
+    and physical_sales.store.city in ('Fairview', 'Midway')
 select
-    store_sales.sale_address.city as bought_city,
-    store_sales.ticket_number,
-    --store_sales.customer.id,
-    sum(store_sales.coupon_amt) as amt,
-    sum(store_sales.net_profit) as profit,
+    physical_sales.sale_address.city as bought_city,
+    physical_sales.ticket_number,
+    --physical_sales.billing_customer.id,
+    sum(physical_sales.coupon_amt) as amt,
+    sum(physical_sales.net_profit) as profit,
 align
-    --customer_id: store_sales.customer.id, customer.id
+    --customer_id: physical_sales.billing_customer.id, customer.id
 where
 customer.address.city != bought_city
 order by
@@ -57,7 +57,7 @@ order by
     customer.first_name asc nulls first,
     customer.address.city asc nulls first,
     bought_city asc nulls first,
-    store_sales.ticket_number asc nulls first
+    physical_sales.ticket_number asc nulls first
 limit 100
 ;
 ```
@@ -68,19 +68,19 @@ limit 100
 WITH 
 uneven as (
 SELECT
-    "store_sales_sale_address_customer_address"."CA_CITY" as "store_sales_sale_address_city",
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_id",
-    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number",
-    sum("store_sales_store_sales"."SS_COUPON_AMT") as "amt",
-    sum("store_sales_store_sales"."SS_NET_PROFIT") as "profit"
+    "physical_sales_sale_address_customer_address"."CA_CITY" as "physical_sales_sale_address_city",
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "physical_sales_billing_customer_id",
+    "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
+    sum("physical_sales_store_sales"."SS_COUPON_AMT") as "amt",
+    sum("physical_sales_store_sales"."SS_NET_PROFIT") as "profit"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
-    LEFT OUTER JOIN "memory"."customer_address" as "store_sales_sale_address_customer_address" on "store_sales_store_sales"."SS_ADDR_SK" = "store_sales_sale_address_customer_address"."CA_ADDRESS_SK"
-    INNER JOIN "memory"."household_demographics" as "store_sales_household_demographic_household_demographics" on "store_sales_store_sales"."SS_HDEMO_SK" = "store_sales_household_demographic_household_demographics"."HD_DEMO_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "physical_sales_sale_address_customer_address" on "physical_sales_store_sales"."SS_ADDR_SK" = "physical_sales_sale_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."household_demographics" as "physical_sales_household_demographic_household_demographics" on "physical_sales_store_sales"."SS_HDEMO_SK" = "physical_sales_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
-    ( "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 4 or "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" = 3 ) and "store_sales_date_date"."D_DOW" in (6,0) and "store_sales_date_date"."D_YEAR" in (1999,2000,2001) and "store_sales_store_store"."S_CITY" in ('Fairview','Midway')
+    ( "physical_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 4 or "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" = 3 ) and "physical_sales_date_date"."D_DOW" in (6,0) and "physical_sales_date_date"."D_YEAR" in (1999,2000,2001) and "physical_sales_store_store"."S_CITY" in ('Fairview','Midway')
 
 GROUP BY
     1,
@@ -98,18 +98,18 @@ FROM
 juicy as (
 SELECT
     "uneven"."amt" as "amt",
-    "uneven"."profit" as "profit",
-    "uneven"."store_sales_customer_id" as "customer_id",
-    "uneven"."store_sales_sale_address_city" as "bought_city",
-    "uneven"."store_sales_ticket_number" as "store_sales_ticket_number"
+    "uneven"."physical_sales_billing_customer_id" as "customer_id",
+    "uneven"."physical_sales_sale_address_city" as "bought_city",
+    "uneven"."physical_sales_ticket_number" as "physical_sales_ticket_number",
+    "uneven"."profit" as "profit"
 FROM
     "uneven"),
 vacuous as (
 SELECT
     "juicy"."amt" as "amt",
     "juicy"."bought_city" as "bought_city",
+    "juicy"."physical_sales_ticket_number" as "physical_sales_ticket_number",
     "juicy"."profit" as "profit",
-    "juicy"."store_sales_ticket_number" as "store_sales_ticket_number",
     "wakeful"."customer_address_city" as "customer_address_city",
     "wakeful"."customer_first_name" as "customer_first_name",
     "wakeful"."customer_last_name" as "customer_last_name"
@@ -124,7 +124,7 @@ SELECT
     "vacuous"."customer_first_name" as "customer_first_name",
     "vacuous"."customer_address_city" as "customer_address_city",
     "vacuous"."bought_city" as "bought_city",
-    "vacuous"."store_sales_ticket_number" as "store_sales_ticket_number",
+    "vacuous"."physical_sales_ticket_number" as "physical_sales_ticket_number",
     "vacuous"."amt" as "amt",
     "vacuous"."profit" as "profit"
 FROM
@@ -134,7 +134,7 @@ ORDER BY
     "vacuous"."customer_first_name" asc nulls first,
     "vacuous"."customer_address_city" asc nulls first,
     "vacuous"."bought_city" asc nulls first,
-    "vacuous"."store_sales_ticket_number" asc nulls first
+    "vacuous"."physical_sales_ticket_number" asc nulls first
 LIMIT (100)
 ```
 
@@ -153,19 +153,19 @@ FROM
     INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"),
 uneven as (
 SELECT
-    "store_sales_sale_address_customer_address"."CA_CITY" as "bought_city",
-    "store_sales_store_sales"."SS_CUSTOMER_SK" as "customer_id",
-    "store_sales_store_sales"."SS_TICKET_NUMBER" as "store_sales_ticket_number",
-    sum("store_sales_store_sales"."SS_COUPON_AMT") as "amt",
-    sum("store_sales_store_sales"."SS_NET_PROFIT") as "profit"
+    "physical_sales_sale_address_customer_address"."CA_CITY" as "bought_city",
+    "physical_sales_store_sales"."SS_CUSTOMER_SK" as "customer_id",
+    "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
+    sum("physical_sales_store_sales"."SS_COUPON_AMT") as "amt",
+    sum("physical_sales_store_sales"."SS_NET_PROFIT") as "profit"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
-    LEFT OUTER JOIN "memory"."customer_address" as "store_sales_sale_address_customer_address" on "store_sales_store_sales"."SS_ADDR_SK" = "store_sales_sale_address_customer_address"."CA_ADDRESS_SK"
-    INNER JOIN "memory"."household_demographics" as "store_sales_household_demographic_household_demographics" on "store_sales_store_sales"."SS_HDEMO_SK" = "store_sales_household_demographic_household_demographics"."HD_DEMO_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
+    LEFT OUTER JOIN "memory"."customer_address" as "physical_sales_sale_address_customer_address" on "physical_sales_store_sales"."SS_ADDR_SK" = "physical_sales_sale_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."household_demographics" as "physical_sales_household_demographic_household_demographics" on "physical_sales_store_sales"."SS_HDEMO_SK" = "physical_sales_household_demographic_household_demographics"."HD_DEMO_SK"
 WHERE
-    ( "store_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 4 or "store_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" = 3 ) and "store_sales_date_date"."D_DOW" in (6,0) and "store_sales_date_date"."D_YEAR" in (1999,2000,2001) and "store_sales_store_store"."S_CITY" in ('Fairview','Midway')
+    ( "physical_sales_household_demographic_household_demographics"."HD_DEP_COUNT" = 4 or "physical_sales_household_demographic_household_demographics"."HD_VEHICLE_COUNT" = 3 ) and "physical_sales_date_date"."D_DOW" in (6,0) and "physical_sales_date_date"."D_YEAR" in (1999,2000,2001) and "physical_sales_store_store"."S_CITY" in ('Fairview','Midway')
 
 GROUP BY
     1,
@@ -176,7 +176,7 @@ SELECT
     "wakeful"."customer_first_name" as "customer_first_name",
     "wakeful"."customer_address_city" as "customer_address_city",
     "uneven"."bought_city" as "bought_city",
-    "uneven"."store_sales_ticket_number" as "store_sales_ticket_number",
+    "uneven"."physical_sales_ticket_number" as "physical_sales_ticket_number",
     "uneven"."amt" as "amt",
     "uneven"."profit" as "profit"
 FROM
@@ -190,6 +190,6 @@ ORDER BY
     "wakeful"."customer_first_name" asc nulls first,
     "wakeful"."customer_address_city" asc nulls first,
     "uneven"."bought_city" asc nulls first,
-    "uneven"."store_sales_ticket_number" asc nulls first
+    "uneven"."physical_sales_ticket_number" asc nulls first
 LIMIT (100)
 ```

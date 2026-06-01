@@ -18,14 +18,14 @@ ref rows: 44 (44 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3784 | 72 | 87.12 ms |
-| reference | 5451 | 57 | 87.11 ms |
+| v4 | 3784 | 72 | 85.33 ms |
+| reference | 5451 | 57 | 85.69 ms |
 | v4 / ref | 0.69x | 1.26x | 1.00x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
 def channel_qtr(channel, qtr) -> sum(sales.ext_sales_price ? sales.sales_channel = channel and sales.date.quarter = qtr)
     by sales.bill_address.county, sales.date.year;

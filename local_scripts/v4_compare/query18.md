@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5820 | 106 | 115.59 ms |
-| reference | 7284 | 111 | 88.49 ms |
-| v4 / ref | 0.80x | 0.95x | 1.31x |
+| v4 | 5847 | 106 | 116.12 ms |
+| reference | 7308 | 111 | 84.85 ms |
+| v4 / ref | 0.80x | 0.95x | 1.37x |
 
 ## Preql
 
@@ -33,7 +33,7 @@ auto row_birth_year <- group(cs.bill_customer.birth_year) by cs.order_number, cs
 auto row_dep_count <- group(cs.bill_customer_demographic.dependent_count) by cs.order_number, cs.item.id;
 
 def rollup_avg(metric) -> avg(metric::numeric(12,2))
-    by rollup cs.item.name, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
+    by rollup cs.item.text_id, cs.bill_customer.address.country, cs.bill_customer.address.state, cs.bill_customer.address.county;
 
 where
     cs.bill_customer_demographic.gender = 'F'
@@ -43,7 +43,7 @@ where
     and cs.date.year = 1998
     and cs.bill_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
 select
-    cs.item.name,
+    cs.item.text_id,
     cs.bill_customer.address.country,
     cs.bill_customer.address.state,
     cs.bill_customer.address.county,
@@ -58,7 +58,7 @@ order by
     cs.bill_customer.address.country asc nulls first,
     cs.bill_customer.address.state asc nulls first,
     cs.bill_customer.address.county asc nulls first,
-    cs.item.name asc nulls first
+    cs.item.text_id asc nulls first
 limit 100
 ;
 ```
@@ -81,7 +81,7 @@ SELECT
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
     "cs_catalog_sales"."CS_QUANTITY" as "cs_quantity",
     "cs_catalog_sales"."CS_SALES_PRICE" as "cs_sales_price",
-    "cs_item_items"."I_ITEM_ID" as "cs_item_name"
+    "cs_item_items"."I_ITEM_ID" as "cs_item_text_id"
 FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
@@ -105,7 +105,7 @@ GROUP BY
     3,
     4,
     "questionable"."cs_coupon_amt",
-    "questionable"."cs_item_name",
+    "questionable"."cs_item_text_id",
     "questionable"."cs_list_price",
     "questionable"."cs_net_profit",
     "questionable"."cs_quantity",
@@ -115,7 +115,7 @@ SELECT
     "questionable"."cs_bill_customer_birth_year" as "row_birth_year",
     "questionable"."cs_coupon_amt" as "cs_coupon_amt",
     "questionable"."cs_item_id" as "cs_item_id",
-    "questionable"."cs_item_name" as "cs_item_name",
+    "questionable"."cs_item_text_id" as "cs_item_text_id",
     "questionable"."cs_list_price" as "cs_list_price",
     "questionable"."cs_net_profit" as "cs_net_profit",
     "questionable"."cs_order_number" as "cs_order_number",
@@ -136,7 +136,7 @@ GROUP BY
 yummy as (
 SELECT
     "abundant"."cs_coupon_amt" as "cs_coupon_amt",
-    "abundant"."cs_item_name" as "cs_item_name",
+    "abundant"."cs_item_text_id" as "cs_item_text_id",
     "abundant"."cs_list_price" as "cs_list_price",
     "abundant"."cs_net_profit" as "cs_net_profit",
     "abundant"."cs_quantity" as "cs_quantity",
@@ -154,7 +154,7 @@ SELECT
     "yummy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
     "yummy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
     "yummy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
-    "yummy"."cs_item_name" as "cs_item_name",
+    "yummy"."cs_item_text_id" as "cs_item_text_id",
     avg(cast("yummy"."cs_quantity" as numeric(12,2))) as "agg1",
     avg(cast("yummy"."cs_list_price" as numeric(12,2))) as "agg2",
     avg(cast("yummy"."cs_coupon_amt" as numeric(12,2))) as "agg3",
@@ -170,7 +170,7 @@ ORDER BY
     "yummy"."cs_bill_customer_address_country" asc nulls first,
     "yummy"."cs_bill_customer_address_state" asc nulls first,
     "yummy"."cs_bill_customer_address_county" asc nulls first,
-    "yummy"."cs_item_name" asc nulls first
+    "yummy"."cs_item_text_id" asc nulls first
 LIMIT (100)
 ```
 
@@ -206,7 +206,7 @@ SELECT
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
     "cs_catalog_sales"."CS_QUANTITY" as "cs_quantity",
     "cs_catalog_sales"."CS_SALES_PRICE" as "cs_sales_price",
-    "cs_item_items"."I_ITEM_ID" as "cs_item_name"
+    "cs_item_items"."I_ITEM_ID" as "cs_item_text_id"
 FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
@@ -240,7 +240,7 @@ SELECT
     "yummy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
     "yummy"."cs_bill_customer_birth_year" as "cs_bill_customer_birth_year",
     "yummy"."cs_coupon_amt" as "cs_coupon_amt",
-    "yummy"."cs_item_name" as "cs_item_name",
+    "yummy"."cs_item_text_id" as "cs_item_text_id",
     "yummy"."cs_list_price" as "cs_list_price",
     "yummy"."cs_net_profit" as "cs_net_profit",
     "yummy"."cs_quantity" as "cs_quantity",
@@ -256,7 +256,7 @@ SELECT
     "juicy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
     "juicy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
     "juicy"."cs_coupon_amt" as "cs_coupon_amt",
-    "juicy"."cs_item_name" as "cs_item_name",
+    "juicy"."cs_item_text_id" as "cs_item_text_id",
     "juicy"."cs_list_price" as "cs_list_price",
     "juicy"."cs_net_profit" as "cs_net_profit",
     "juicy"."cs_quantity" as "cs_quantity",
@@ -267,7 +267,7 @@ FROM
     "juicy"
     FULL JOIN "questionable" on "juicy"."cs_bill_customer_birth_year" is not distinct from "questionable"."cs_bill_customer_birth_year" AND "juicy"."cs_item_id" = "questionable"."cs_item_id" AND "juicy"."cs_order_number" = "questionable"."cs_order_number")
 SELECT
-    "vacuous"."cs_item_name" as "cs_item_name",
+    "vacuous"."cs_item_text_id" as "cs_item_text_id",
     "vacuous"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
     "vacuous"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
     "vacuous"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
@@ -286,6 +286,6 @@ ORDER BY
     "vacuous"."cs_bill_customer_address_country" asc nulls first,
     "vacuous"."cs_bill_customer_address_state" asc nulls first,
     "vacuous"."cs_bill_customer_address_county" asc nulls first,
-    "vacuous"."cs_item_name" asc nulls first
+    "vacuous"."cs_item_text_id" asc nulls first
 LIMIT (100)
 ```

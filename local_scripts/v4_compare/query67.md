@@ -18,14 +18,14 @@ ref rows: 100 (83 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3634 | 78 | 1.881 s |
-| reference | 3634 | 78 | 2.125 s |
-| v4 / ref | 1.00x | 1.00x | 0.89x |
+| v4 | 3634 | 78 | 1.359 s |
+| reference | 3634 | 78 | 1.361 s |
+| v4 / ref | 1.00x | 1.00x | 1.00x |
 
 ## Preql
 
 ```
-import store_sales as ss;
+import physical_sales as ss;
 
 where
     ss.date.month_seq between 1200 and 1211 and ss.store.id is not null

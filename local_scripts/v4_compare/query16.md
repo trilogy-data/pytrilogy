@@ -1,26 +1,30 @@
 # Query 16
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
-| results identical | YES |
+| results identical | NO |
 
 ## Result comparison
 
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
+only in v4 (showing up to 5 of 1):
+  1x  (850, Decimal('-143869.23'), Decimal('1095837.99'))
+only in ref (showing up to 5 of 1):
+  1x  (233, Decimal('-143869.23'), Decimal('1095837.99'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2584 | 55 | 69.84 ms |
-| reference | 3713 | 83 | 80.18 ms |
-| v4 / ref | 0.70x | 0.66x | 0.87x |
+| v4 | 2575 | 55 | 63.31 ms |
+| reference | 3728 | 83 | 75.37 ms |
+| v4 / ref | 0.69x | 0.66x | 0.84x |
 
 ## Preql
 
@@ -37,7 +41,7 @@ where
     and cs.order_number not in cr.order_number
     and cs.order_number in multi_warehouse_sales
 select
-    count_distinct(cs.order_number) as order_count,
+    count(cs.order_number) as order_count,
     sum(cs.ext_ship_cost) as total_shipping_cost,
     sum(cs.net_profit) as total_net_profit,
 order by
@@ -93,7 +97,7 @@ WHERE
     cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select yummy."multi_warehouse_sales" from yummy where yummy."multi_warehouse_sales" is not null)
 )
 SELECT
-    count(distinct "questionable"."cs_order_number") as "order_count",
+    count("questionable"."cs_order_number") as "order_count",
     sum("questionable"."cs_net_profit") as "total_net_profit",
     sum("questionable"."cs_ext_ship_cost") as "total_shipping_cost"
 FROM
@@ -173,7 +177,7 @@ GROUP BY
     "cs_catalog_sales"."CS_ORDER_NUMBER"),
 vacuous as (
 SELECT
-    count(distinct "thoughtful"."cs_order_number") as "order_count"
+    count("thoughtful"."cs_order_number") as "order_count"
 FROM
     "thoughtful"),
 young as (
@@ -183,13 +187,13 @@ SELECT
 FROM
     "concerned")
 SELECT
-    "vacuous"."order_count" as "order_count",
+    coalesce("vacuous"."order_count",0) as "order_count",
     "young"."total_shipping_cost" as "total_shipping_cost",
     "young"."total_net_profit" as "total_net_profit"
 FROM
     "vacuous"
     FULL JOIN "young" on 1=1
 ORDER BY 
-    "vacuous"."order_count" desc
+    coalesce("vacuous"."order_count",0) desc
 LIMIT (100)
 ```

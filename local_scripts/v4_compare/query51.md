@@ -18,14 +18,14 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3925 | 104 | 509.86 ms |
-| reference | 3934 | 107 | 401.69 ms |
-| v4 / ref | 1.00x | 0.97x | 1.27x |
+| v4 | 3033 | 77 | 229.09 ms |
+| reference | 3934 | 107 | 357.49 ms |
+| v4 / ref | 0.77x | 0.72x | 0.64x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
 # Per-channel daily ext_sales_price aggregated at (item, date) grain.
 # Uses inline `?` filter so only that channel's rows contribute to that channel's
@@ -148,55 +148,28 @@ SELECT
     sum("cooperative"."store_daily") over (partition by "cooperative"."sales_item_id" order by "cooperative"."sales_date_date" asc ) as "store_cume",
     sum("cooperative"."web_daily") over (partition by "cooperative"."sales_item_id" order by "cooperative"."sales_date_date" asc ) as "web_cume"
 FROM
-    "cooperative"),
-juicy as (
+    "cooperative")
 SELECT
-    "uneven"."sales_date_date" as "sales_date_date",
-    "uneven"."sales_item_id" as "sales_item_id",
-    "uneven"."store_cume" as "store_cumulative",
-    "uneven"."web_cume" as "web_cumulative",
+    "uneven"."sales_item_id" as "item_sk",
+    "uneven"."sales_date_date" as "d_date",
+    CASE
+	WHEN "uneven"."web_has_row" = 1 THEN "uneven"."web_cume"
+	ELSE null
+	END as "web_sales",
     CASE
 	WHEN "uneven"."store_has_row" = 1 THEN "uneven"."store_cume"
 	ELSE null
 	END as "store_sales",
-    CASE
-	WHEN "uneven"."web_has_row" = 1 THEN "uneven"."web_cume"
-	ELSE null
-	END as "web_sales"
+    "uneven"."web_cume" as "web_cumulative",
+    "uneven"."store_cume" as "store_cumulative"
 FROM
-    "uneven"),
-yummy as (
-SELECT
-    "uneven"."sales_date_date" as "d_date",
-    "uneven"."sales_item_id" as "item_sk"
-FROM
-    "uneven"),
-vacuous as (
-SELECT
-    "juicy"."store_cumulative" as "store_cumulative",
-    "juicy"."store_sales" as "store_sales",
-    "juicy"."web_cumulative" as "web_cumulative",
-    "juicy"."web_sales" as "web_sales",
-    "yummy"."d_date" as "d_date",
-    "yummy"."item_sk" as "item_sk"
-FROM
-    "juicy"
-    INNER JOIN "yummy" on "juicy"."sales_date_date" = "yummy"."d_date" AND "juicy"."sales_item_id" = "yummy"."item_sk"
+    "uneven"
 WHERE
-    "juicy"."web_cumulative" > "juicy"."store_cumulative"
-)
-SELECT
-    "vacuous"."item_sk" as "item_sk",
-    "vacuous"."d_date" as "d_date",
-    "vacuous"."web_sales" as "web_sales",
-    "vacuous"."store_sales" as "store_sales",
-    "vacuous"."web_cumulative" as "web_cumulative",
-    "vacuous"."store_cumulative" as "store_cumulative"
-FROM
-    "vacuous"
+    "uneven"."web_cume" > "uneven"."store_cume"
+
 ORDER BY 
-    "vacuous"."item_sk" asc nulls first,
-    "vacuous"."d_date" asc nulls first
+    "item_sk" asc nulls first,
+    "d_date" asc nulls first
 LIMIT (100)
 ```
 

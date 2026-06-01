@@ -18,14 +18,14 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6685 | 171 | 261.72 ms |
-| reference | 6203 | 160 | 253.77 ms |
-| v4 / ref | 1.08x | 1.07x | 1.03x |
+| v4 | 6685 | 171 | 296.91 ms |
+| reference | 6203 | 160 | 278.78 ms |
+| v4 / ref | 1.08x | 1.07x | 1.07x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
 # Composite key for (brand_id, class_id, category_id) tuples â€” encoded so a
 # single-column `in` filter can carry membership downstream.
@@ -56,7 +56,7 @@ select
     avg(sales.quantity * sales.list_price) as average_sales,
 ;
 
-# One per fact row (unified_sales grain is (sales_channel, order_id, item.id)).
+# One per fact row (all_sales grain is (sales_channel, order_id, item.id)).
 auto channel_label <- case
     when sales.sales_channel = 'STORE' then 'store'
     when sales.sales_channel = 'CATALOG' then 'catalog'
@@ -64,7 +64,7 @@ auto channel_label <- case
     else null
 end;
 
-# Map unified_sales' uppercase channel codes to the reference's lowercase labels.
+# Map all_sales' uppercase channel codes to the reference's lowercase labels.
 auto cross_channel_count <- count_distinct(sales.sales_channel) by tuple_key;
 
 # Per (channel, brand_id, class_id, category_id) aggregates for Nov 2001, items in

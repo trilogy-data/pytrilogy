@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2111 | 48 | 35.59 ms |
-| reference | 2111 | 48 | 36.71 ms |
-| v4 / ref | 1.00x | 1.00x | 0.97x |
+| v4 | 2123 | 48 | 36.82 ms |
+| reference | 2123 | 48 | 35.25 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -31,7 +31,7 @@ where
     web_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
     and web_sales.item.category in ('Sports', 'Books', 'Home')
 select
-    web_sales.item.name,
+    web_sales.item.text_id,
     web_sales.item.desc,
     web_sales.item.category,
     web_sales.item.class,
@@ -42,7 +42,7 @@ select
 order by
     web_sales.item.category asc,
     web_sales.item.class asc,
-    web_sales.item.name asc,
+    web_sales.item.text_id asc,
     web_sales.item.desc asc,
     revenueratio asc
 limit 100
@@ -59,7 +59,7 @@ SELECT
     "web_sales_item_items"."I_CLASS" as "web_sales_item_class",
     "web_sales_item_items"."I_CURRENT_PRICE" as "web_sales_item_current_price",
     "web_sales_item_items"."I_ITEM_DESC" as "web_sales_item_desc",
-    "web_sales_item_items"."I_ITEM_ID" as "web_sales_item_name",
+    "web_sales_item_items"."I_ITEM_ID" as "web_sales_item_text_id",
     sum("web_sales_web_sales"."WS_EXT_SALES_PRICE") as "itemrevenue"
 FROM
     "memory"."web_sales" as "web_sales_web_sales"
@@ -89,14 +89,14 @@ SELECT
     coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") as "web_sales_item_class",
     "cheerful"."web_sales_item_current_price" as "web_sales_item_current_price",
     "cheerful"."web_sales_item_desc" as "web_sales_item_desc",
-    "cheerful"."web_sales_item_name" as "web_sales_item_name"
+    "cheerful"."web_sales_item_text_id" as "web_sales_item_text_id"
 FROM
     "cheerful"
     INNER JOIN "cooperative" on "cheerful"."web_sales_item_class" is not distinct from "cooperative"."web_sales_item_class"
 ORDER BY 
     "cheerful"."web_sales_item_category" asc,
     coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") asc,
-    "cheerful"."web_sales_item_name" asc,
+    "cheerful"."web_sales_item_text_id" asc,
     "cheerful"."web_sales_item_desc" asc,
     "revenueratio" asc
 LIMIT (100)
@@ -112,7 +112,7 @@ SELECT
     "web_sales_item_items"."I_CLASS" as "web_sales_item_class",
     "web_sales_item_items"."I_CURRENT_PRICE" as "web_sales_item_current_price",
     "web_sales_item_items"."I_ITEM_DESC" as "web_sales_item_desc",
-    "web_sales_item_items"."I_ITEM_ID" as "web_sales_item_name",
+    "web_sales_item_items"."I_ITEM_ID" as "web_sales_item_text_id",
     sum("web_sales_web_sales"."WS_EXT_SALES_PRICE") as "itemrevenue"
 FROM
     "memory"."web_sales" as "web_sales_web_sales"
@@ -136,7 +136,7 @@ FROM
 GROUP BY
     1)
 SELECT
-    "cheerful"."web_sales_item_name" as "web_sales_item_name",
+    "cheerful"."web_sales_item_text_id" as "web_sales_item_text_id",
     "cheerful"."web_sales_item_desc" as "web_sales_item_desc",
     "cheerful"."web_sales_item_category" as "web_sales_item_category",
     coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") as "web_sales_item_class",
@@ -149,7 +149,7 @@ FROM
 ORDER BY 
     "cheerful"."web_sales_item_category" asc,
     coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") asc,
-    "cheerful"."web_sales_item_name" asc,
+    "cheerful"."web_sales_item_text_id" asc,
     "cheerful"."web_sales_item_desc" asc,
     "revenueratio" asc
 LIMIT (100)
