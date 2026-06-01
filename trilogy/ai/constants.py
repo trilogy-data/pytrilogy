@@ -18,6 +18,8 @@ SELECT RULES:
   * No matching record (anti-join): `import customers as c; import orders as o; where c.id not in o.customer_id` → customers who never placed an order.
   * Has a matching record (semi-join): `where c.id in o.customer_id` → customers who have placed an order.
   Prefer this over an aggregate hack like `sum(o.amount) by c.id is null` — a nullable measure can be null even when a matching row exists, so it silently mis-classifies.
+- Membership in a COMPUTED set of values (the "filter X to rows whose value is in a set produced by another query") — the closest thing to a SQL `IN (subquery)`: define the set as a derived concept (filter it with `?`), then test membership with `in` against that concept. The right side is a concept, not a literal list — no `(select ...)`. Both sides may be expressions:
+  * Build the set, then filter: `auto big_zip <- customer.address.zip ? (count(customer.id ? customer.preferred_cust_flag = 'Y') by customer.address.zip) > 10;` then `where substring(store.zip, 1, 2) in substring(big_zip, 1, 2)` → stores whose 2-digit zip-prefix matches a high-preferred-customer zip. The membership compares the LEFT expression against every value of the RIGHT concept (a semi-join over a value set), so mind the grain of each side — `substring(...)` on both sides matches prefixes, not full values.
 - Never write the `distinct` keyword. `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count the distinct values of a non-key property.
 - All fields exist in a global namespace; field paths look like `order.product.id`. Always use the full path. NEVER include a from clause.
 - If a field has a grain defined, and that grain is not in the query output, aggregate it to get desired result. 

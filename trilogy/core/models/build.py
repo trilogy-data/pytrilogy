@@ -38,6 +38,7 @@ from trilogy.core.enums import (
     Purpose,
     WindowType,
 )
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
@@ -2852,9 +2853,38 @@ class Factory:
         if isinstance(base.right, (AggregateWrapper, WindowItem, FilterItem, Function)):
             right_c, _ = self.instantiate_concept(base.right)
             right = right_c
+        left_built = self.handle_constant(self.build(base.left))
+        right_built = self.handle_constant(self.build(right))
+        # When both sides of `X in Y` resolve to the same concept the comparison
+        # has collapsed to a self-comparison — usually because a `merge` made the
+        # two keys one concept (or a literal `X in X`). It can't filter one model
+        # by another, and compiling it emits a self-referential existence
+        # subselect against a CTE not in scope (an opaque DB error downstream).
+        # Raise a clear error instead of silently optimizing it away.
+        if (
+            isinstance(left_built, BuildConcept)
+            and isinstance(right_built, BuildConcept)
+            and left_built.address == right_built.address
+        ):
+            op = base.operator.value
+            merged = sorted(left_built.pseudonyms)
+            if merged:
+                cause = (
+                    f" — {left_built.address} and {', '.join(merged)} are merged"
+                    " into one concept"
+                )
+            else:
+                cause = ""
+            raise InvalidSyntaxException(
+                f"`{left_built.address} {op} {right_built.address}` compares a"
+                f" concept to itself{cause}, so it cannot filter one model by"
+                " another. To filter by values present in a related model, compare"
+                " two distinct (unmerged) concepts (reference the other model's"
+                " key directly, or drop the `merge`)."
+            )
         return BuildSubselectComparison(
-            left=self.handle_constant(self.build(base.left)),
-            right=self.handle_constant(self.build(right)),
+            left=left_built,
+            right=right_built,
             operator=base.operator,
         )
 

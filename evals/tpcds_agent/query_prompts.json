@@ -7,7 +7,7 @@
   {
     "id": 2,
     "grade": "hard",
-    "prompt": "For web and catalog sales, the daily sales is the sum the extended sales price split into seven day-of-the-week columns (Sunday through Saturday), grouped by the calendar week. We want to see growth from 2001 to 2002 per week of year and day of week; Output the 2001 week sequence and the seven ratios (the week in 2002/53 weeks earler in 2001), ordered by week sequence with nulls first."
+    "prompt": "For web and catalog sales, the daily sales is the sum the extended sales price split into seven day-of-the-week columns (Sunday through Saturday), grouped by the calendar week. Output the 2001 week sequence and the seven ratios. Each ratio is the 2001 week's day-of-week sales divided by the same day-of-week sales in the corresponding week 53 weeks later in 2002 (that is, the 2001 value divided by the 2002 value). Order by week sequence with nulls first."
   },
   {
     "id": 3,
@@ -22,12 +22,12 @@
   {
     "id": 5,
     "grade": "hard",
-    "prompt": "For the date range 2000-08-23 to 2000-09-06 inclusive, produce a rolled-up summary across three sales channels (store, catalog, web). Combine sales and returns into one stream: store sales/store returns per store, catalog sales/catalog returns per catalog page, and web sales/web returns (matching returns to their originating sale by item and order number) per web site. Per group, sum the extended sales price as sales, the return amount as returns, and the net profit minus net loss as profit. Then aggregate to channel-level and grand-total levels with a rollup over (channel, outlet), where the outlet is the group's business code prefixed with its kind (store, catalog_page, or web_site). Report channel, outlet, total sales, total returns, and total profit, ordered by channel and outlet with nulls first; limit 100 rows."
+    "prompt": "For the date range 2000-08-23 to 2000-09-06 inclusive (count sales whose sale date is in the range and returns whose return date is in the range), produce a rolled-up summary across three sales channels (store, catalog, web). Combine sales and returns into one stream: store sales/store returns per store, catalog sales/catalog returns per catalog page, and web sales/web returns (matching returns to their originating sale by item and order number) per web site. Per group, sum the extended sales price as sales, the return amount as returns, and the net profit minus net loss as profit. Then aggregate to channel-level and grand-total levels with a rollup over (channel, outlet), labelling each channel exactly 'store channel', 'catalog channel', or 'web channel', where the outlet is the group's business code prefixed with its kind (store, catalog_page, or web_site). Report channel, outlet, total sales, total returns, and total profit, ordered by channel and outlet with nulls first; limit 100 rows."
   },
   {
     "id": 6,
     "grade": "medium",
-    "prompt": "Find the states with at least 10 qualifying line items (a line item being one ticket + item.id combination) in January 2001 where the item current price is more than 1.2 times the average current price of items in the same category. Consider only items whose category is assigned and customers whose current home address is known. Use the state from the customer's own current home address. Report the state and that line-item count, ordered by the count ascending with nulls first, then state with nulls first; limit 100 rows."
+    "prompt": "Find the states with at least 10 qualifying line items (a line item being one ticket + item.id combination) in January 2001 where the item current price is more than 1.2 times the average current price of items in the same category. Consider only items whose category is assigned, and only customers who have a current home address on record. That address may have no state recorded — still include those customers and report them under a null state. Use the state from the customer's own current home address. Report the state and that line-item count, ordered by the count ascending with nulls first, then state with nulls first; limit 100 rows."
   },
   {
     "id": 7,
@@ -55,7 +55,7 @@
   {
     "id": 10,
     "grade": "medium",
-    "prompt": "For customers whose current home address is in one of the counties 'Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', or 'La Porte County', and who made at least one store sale in the first four calendar months of 2002 (January through April) and either at least one web sale or at least one catalog sale in the same year (matched via the web-sale bill customer or the catalog-sale ship customer), use the customer's current customer-demographics record. For each combination of gender, marital status, education status, purchase estimate, credit rating, dependent count, dependent-employed count, and dependent-college count, report the customer count six separate times alongside those eight attributes. Order by the eight attributes in their listed order; limit 100 rows."
+    "prompt": "For customers whose current home address is in one of the counties 'Rush County', 'Toole County', 'Jefferson County', 'Dona Ana County', or 'La Porte County', and who made at least one store sale in the first four calendar months of 2002 (January through April) and either at least one web sale or at least one catalog sale in that same January-through-April 2002 window (matched via the web-sale bill customer or the catalog-sale ship customer), use the customer's current customer-demographics record. For each combination of gender, marital status, education status, purchase estimate, credit rating, dependent count, dependent-employed count, and dependent-college count, report the customer count six separate times alongside those eight attributes. Order by the eight attributes in their listed order; limit 100 rows."
   },
   {
     "id": 11,
