@@ -174,13 +174,50 @@ def _grain_and_keys(
     return extras
 
 
+def _window_aggregate_grain_keys(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> List[BuildConcept]:
+    """Grain keys of every aggregate in the window's argument closure.
+
+    A window preserves its argument's grain row-for-row. When an argument is
+    (or rides, through BASIC expressions, on top of) an aggregate at its own
+    group grain, every grain key of that aggregate must be a window parent —
+    otherwise a dropped key forces a join-back on (kept_key, aggregate_value),
+    which is non-unique and NULL-bearing for ROLLUP subtotal/total rows
+    (q36/q59). Mirrors v3's `resolve_window_parent_concepts`, but walks
+    transitively through BASIC args and stops at each aggregate boundary (a
+    nested aggregate already collapsed its own upstream)."""
+    extras: list[BuildConcept] = []
+    seen: set[str] = set()
+    stack = list(_lineage_args(concept, environment))
+    while stack:
+        arg = stack.pop()
+        if arg.address in seen:
+            continue
+        seen.add(arg.address)
+        if arg.derivation == Derivation.AGGREGATE:
+            for gkey in arg.grain.components:
+                if gkey in environment.concepts:
+                    extras.append(environment.concepts[gkey])
+            continue  # stop at the aggregate boundary
+        if arg.derivation == Derivation.BASIC and arg.lineage is not None:
+            stack.extend(
+                environment.concepts.get(p.address, p) or p
+                for p in arg.lineage.concept_arguments
+            )
+    return extras
+
+
 def _upstream_window(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> List[BuildConcept]:
-    """WINDOW: lineage args plus grain components and keys (matches
+    """WINDOW: lineage args, the grain keys of any aggregate in the argument
+    closure, plus the window's own grain components and keys (matches
     `resolve_window_parent_concepts`)."""
-    return list(_lineage_args(concept, environment)) + _grain_and_keys(
-        concept, environment
+    return (
+        list(_lineage_args(concept, environment))
+        + _window_aggregate_grain_keys(concept, environment)
+        + _grain_and_keys(concept, environment)
     )
 
 

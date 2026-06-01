@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7815 | 106 | 216.90 ms |
-| reference | 6056 | 93 | 152.43 ms |
-| v4 / ref | 1.29x | 1.14x | 1.42x |
+| v4 | 7815 | 106 | 215.57 ms |
+| reference | 6059 | 90 | 183.20 ms |
+| v4 / ref | 1.29x | 1.18x | 1.18x |
 
 ## Preql
 
@@ -245,10 +245,7 @@ GROUP BY
     2,
     3,
     4,
-    5
-HAVING
-    "avg_monthly_sales" > 0
-),
+    5),
 questionable as (
 SELECT
     "thoughtful"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
@@ -277,7 +274,7 @@ FROM
     "questionable"
     RIGHT OUTER JOIN "abundant" on "questionable"."physical_sales_date_year" = "abundant"."physical_sales_date_year" AND "questionable"."physical_sales_item_brand_name" = "abundant"."physical_sales_item_brand_name" AND "questionable"."physical_sales_item_category" is not distinct from "abundant"."physical_sales_item_category" AND "questionable"."physical_sales_store_company_name" is not distinct from "abundant"."physical_sales_store_company_name" AND "questionable"."physical_sales_store_name" = "abundant"."physical_sales_store_name"
 WHERE
-    coalesce("abundant"."physical_sales_date_year","questionable"."physical_sales_date_year") = 1999 and CASE
+    coalesce("abundant"."physical_sales_date_year","questionable"."physical_sales_date_year") = 1999 and "abundant"."avg_monthly_sales" > 0 and CASE
 	WHEN "abundant"."avg_monthly_sales" > 0 THEN abs("questionable"."sum_sales" - "abundant"."avg_monthly_sales") / "abundant"."avg_monthly_sales"
 	ELSE null
 	END > 0.1

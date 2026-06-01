@@ -18,53 +18,43 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2510 | 54 | 86.21 ms |
-| reference | 2553 | 60 | 90.10 ms |
-| v4 / ref | 0.98x | 0.90x | 0.96x |
+| v4 | 2382 | 55 | 101.22 ms |
+| reference | 2332 | 60 | 100.94 ms |
+| v4 / ref | 1.02x | 0.92x | 1.00x |
 
 ## Preql
 
 ```
 import physical_sales as ss;
 
-# Single ROLLUP(category, class). All rollup aggregates AND grouping/CASE
-# derivations are computed INSIDE the rowset SELECT (with the underlying sums
-# and grouping bits hidden via `--`). Exposing only the derived
-# `gross_margin`/`lochierarchy`/`partition_cat` keeps the planner's source-
-# resolution from splitting the two sums across separate CTEs.
-#
-# We use real `grouping()` here (not the rollup-NULL-pattern trick from q70)
-# because some items in TPC-DS have NULL category/class, so a NULL in the
-# rollup output is ambiguous between "data NULL" and "rolled up".
-rowset q36_rolled <- where
+# Single ROLLUP(category, class). Both rollup sums and the grouping() columns
+# resolve into one rollup CTE, and the window (ordering by the gross-margin
+# ratio of the two sums) runs directly over it, so the NULL-keyed subtotal/
+# total rows stay aligned. Real `grouping()` (not the rollup-NULL-pattern
+# trick) because some items have NULL category/class, so a NULL in the rollup
+# output is ambiguous between "data NULL" and "rolled up".
+auto profit_sum <- sum(ss.net_profit) by rollup ss.item.category, ss.item.class;
+auto sales_sum <- sum(ss.ext_sales_price) by rollup ss.item.category, ss.item.class;
+auto gross_margin <- profit_sum::numeric(15, 4) / sales_sum::numeric(15, 4);
+auto g_cat <- grouping(ss.item.category) by rollup ss.item.category, ss.item.class;
+auto g_class <- grouping(ss.item.class) by rollup ss.item.category, ss.item.class;
+auto lochierarchy <- g_cat + g_class;
+auto partition_cat <- case when g_class = 0 then ss.item.category else null end;
+auto rank_within_parent <- rank(ss.item.category, ss.item.class)
+    over (partition by lochierarchy, partition_cat order by gross_margin asc);
+
+where
     ss.date.year = 2001 and ss.store.state = 'TN'
 select
-    --sum(ss.net_profit) by rollup ss.item.category, ss.item.class as profit_sum,
-    --sum(ss.ext_sales_price) by rollup ss.item.category, ss.item.class as sales_sum,
-    --grouping(ss.item.category) by rollup ss.item.category, ss.item.class as g_cat,
-    --grouping(ss.item.class) by rollup ss.item.category, ss.item.class as g_class,
-    profit_sum::numeric(15,4) / sales_sum::numeric(15,4) as gross_margin,
-    g_cat + g_class as lochierarchy,
-    case
-            when g_class = 0 then ss.item.category
-            else null
-        end as partition_cat,
-    ss.item.category as r_category,
-    ss.item.class as r_class,
-;
-
-select
-    q36_rolled.gross_margin,
-    q36_rolled.r_category as i_category,
-    q36_rolled.r_class as i_class,
-    q36_rolled.lochierarchy,
-    rank(q36_rolled.r_class, q36_rolled.r_category)
-            over (partition by q36_rolled.lochierarchy, q36_rolled.partition_cat
-                order by q36_rolled.gross_margin asc) as rank_within_parent,
+    gross_margin,
+    ss.item.category as i_category,
+    ss.item.class as i_class,
+    lochierarchy,
+    rank_within_parent,
 order by
-    q36_rolled.lochierarchy desc nulls first,
+    lochierarchy desc nulls first,
     case
-            when q36_rolled.lochierarchy = 0 then i_category
+            when lochierarchy = 0 then ss.item.category
             else null
         end asc nulls first,
     rank_within_parent asc nulls first
@@ -92,39 +82,40 @@ WHERE
 ),
 cooperative as (
 SELECT
-    "thoughtful"."ss_item_category" as "q36_rolled_r_category",
-    "thoughtful"."ss_item_class" as "q36_rolled_r_class",
-    CASE
-	WHEN grouping("thoughtful"."ss_item_class") = 0 THEN "thoughtful"."ss_item_category"
-	ELSE null
-	END as "q36_rolled_partition_cat",
-    cast(sum("thoughtful"."ss_net_profit") as numeric(15,4)) / cast(sum("thoughtful"."ss_ext_sales_price") as numeric(15,4)) as "q36_rolled_gross_margin",
-    grouping("thoughtful"."ss_item_category") + grouping("thoughtful"."ss_item_class") as "q36_rolled_lochierarchy"
+    "thoughtful"."ss_item_category" as "ss_item_category",
+    "thoughtful"."ss_item_class" as "ss_item_class",
+    grouping("thoughtful"."ss_item_category") as "g_cat",
+    grouping("thoughtful"."ss_item_class") as "g_class",
+    sum("thoughtful"."ss_ext_sales_price") as "sales_sum",
+    sum("thoughtful"."ss_net_profit") as "profit_sum"
 FROM
     "thoughtful"
 GROUP BY
     ROLLUP (1, 2)),
 questionable as (
 SELECT
-    "cooperative"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
-    "cooperative"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy",
-    "cooperative"."q36_rolled_r_category" as "q36_rolled_r_category",
-    "cooperative"."q36_rolled_r_class" as "q36_rolled_r_class",
-    rank() over (partition by "cooperative"."q36_rolled_lochierarchy","cooperative"."q36_rolled_partition_cat" order by "cooperative"."q36_rolled_gross_margin" asc ) as "rank_within_parent"
+    "cooperative"."g_cat" + "cooperative"."g_class" as "lochierarchy",
+    "cooperative"."ss_item_category" as "ss_item_category",
+    "cooperative"."ss_item_class" as "ss_item_class",
+    cast("cooperative"."profit_sum" as numeric(15,4)) / cast("cooperative"."sales_sum" as numeric(15,4)) as "gross_margin",
+    rank() over (partition by "cooperative"."g_cat" + "cooperative"."g_class",CASE
+	WHEN "cooperative"."g_class" = 0 THEN "cooperative"."ss_item_category"
+	ELSE null
+	END order by cast("cooperative"."profit_sum" as numeric(15,4)) / cast("cooperative"."sales_sum" as numeric(15,4)) asc ) as "rank_within_parent"
 FROM
     "cooperative")
 SELECT
-    "questionable"."q36_rolled_r_category" as "i_category",
-    "questionable"."q36_rolled_r_class" as "i_class",
-    "questionable"."rank_within_parent" as "rank_within_parent",
-    "questionable"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
-    "questionable"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy"
+    "questionable"."gross_margin" as "gross_margin",
+    "questionable"."ss_item_category" as "i_category",
+    "questionable"."ss_item_class" as "i_class",
+    "questionable"."lochierarchy" as "lochierarchy",
+    "questionable"."rank_within_parent" as "rank_within_parent"
 FROM
     "questionable"
 ORDER BY 
-    "questionable"."q36_rolled_lochierarchy" desc nulls first,
+    "questionable"."lochierarchy" desc nulls first,
     CASE
-	WHEN "questionable"."q36_rolled_lochierarchy" = 0 THEN "questionable"."q36_rolled_r_category"
+	WHEN "questionable"."lochierarchy" = 0 THEN "questionable"."ss_item_category"
 	ELSE null
 	END asc nulls first,
     "questionable"."rank_within_parent" asc nulls first
@@ -151,32 +142,32 @@ WHERE
 ),
 cooperative as (
 SELECT
-    "thoughtful"."ss_item_category" as "q36_rolled_r_category",
-    "thoughtful"."ss_item_class" as "q36_rolled_r_class",
+    "thoughtful"."ss_item_category" as "ss_item_category",
+    "thoughtful"."ss_item_class" as "ss_item_class",
     CASE
 	WHEN grouping("thoughtful"."ss_item_class") = 0 THEN "thoughtful"."ss_item_category"
 	ELSE null
-	END as "q36_rolled_partition_cat",
-    cast(sum("thoughtful"."ss_net_profit") as numeric(15,4)) / cast(sum("thoughtful"."ss_ext_sales_price") as numeric(15,4)) as "q36_rolled_gross_margin",
-    grouping("thoughtful"."ss_item_category") + grouping("thoughtful"."ss_item_class") as "q36_rolled_lochierarchy"
+	END as "partition_cat",
+    cast(sum("thoughtful"."ss_net_profit") as numeric(15,4)) / cast(sum("thoughtful"."ss_ext_sales_price") as numeric(15,4)) as "gross_margin",
+    grouping("thoughtful"."ss_item_category") + grouping("thoughtful"."ss_item_class") as "lochierarchy"
 FROM
     "thoughtful"
 GROUP BY
     ROLLUP (1, 2)),
 questionable as (
 SELECT
-    "cooperative"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
-    "cooperative"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy",
-    "cooperative"."q36_rolled_r_category" as "q36_rolled_r_category",
-    "cooperative"."q36_rolled_r_class" as "q36_rolled_r_class",
-    rank() over (partition by "cooperative"."q36_rolled_lochierarchy","cooperative"."q36_rolled_partition_cat" order by "cooperative"."q36_rolled_gross_margin" asc ) as "rank_within_parent"
+    "cooperative"."gross_margin" as "gross_margin",
+    "cooperative"."lochierarchy" as "lochierarchy",
+    "cooperative"."ss_item_category" as "ss_item_category",
+    "cooperative"."ss_item_class" as "ss_item_class",
+    rank() over (partition by "cooperative"."lochierarchy","cooperative"."partition_cat" order by "cooperative"."gross_margin" asc ) as "rank_within_parent"
 FROM
     "cooperative")
 SELECT
-    "questionable"."q36_rolled_gross_margin" as "q36_rolled_gross_margin",
-    "questionable"."q36_rolled_r_category" as "i_category",
-    "questionable"."q36_rolled_r_class" as "i_class",
-    "questionable"."q36_rolled_lochierarchy" as "q36_rolled_lochierarchy",
+    "questionable"."gross_margin" as "gross_margin",
+    "questionable"."ss_item_category" as "i_category",
+    "questionable"."ss_item_class" as "i_class",
+    "questionable"."lochierarchy" as "lochierarchy",
     "questionable"."rank_within_parent" as "rank_within_parent"
 FROM
     "questionable"
@@ -187,9 +178,9 @@ GROUP BY
     4,
     5
 ORDER BY 
-    "questionable"."q36_rolled_lochierarchy" desc nulls first,
+    "questionable"."lochierarchy" desc nulls first,
     CASE
-	WHEN "questionable"."q36_rolled_lochierarchy" = 0 THEN "questionable"."q36_rolled_r_category"
+	WHEN "questionable"."lochierarchy" = 0 THEN "questionable"."ss_item_category"
 	ELSE null
 	END asc nulls first,
     "questionable"."rank_within_parent" asc nulls first

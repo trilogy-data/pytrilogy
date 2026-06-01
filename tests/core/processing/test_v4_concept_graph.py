@@ -9,9 +9,12 @@ existence loop, the count-dedup discriminator, and `_resolve_multiselect` all
 run on a genuine plan.
 """
 
+import pytest
+
 from trilogy import Environment
 from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import BuildComparison, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import V4History, search_concepts
@@ -19,6 +22,7 @@ from trilogy.core.processing.nodes import MergeNode
 from trilogy.core.processing.v4_helper.concept_graph import (
     _count_dedup_grain,
     _filter_existence_only,
+    _upstream_window,
     build_concept_graph,
 )
 
@@ -79,6 +83,27 @@ auto store_total <- sum(value) by store_id;
 with high_value as
 select store_id
 where store_total > 5;
+"""
+
+WINDOW_OVER_AGG_MODEL = """
+key store_id int;
+key week_seq int;
+key order_id int;
+property order_id.sales float;
+
+datasource sales (
+    order_id:order_id,
+    store_id:store_id,
+    week_seq:week_seq,
+    sales:sales
+)
+grain (order_id)
+query '''select 1 as order_id, 1 as store_id, 1 as week_seq, 2.0 as sales''';
+
+auto weekly_sales <- sum(sales) by store_id, week_seq;
+# A BASIC sitting between the window and the aggregate (q36/q59 shape).
+auto weekly_ratio <- weekly_sales::float / 2.0;
+auto ranked <- rank(store_id, week_seq) over (partition by store_id order by weekly_ratio asc);
 """
 
 EXISTENCE_MODEL = """
@@ -145,6 +170,31 @@ class TestCountDedupGrain:
         assert cattrs[addr].agg_dedup_grain == frozenset(
             {"local.customer_id", "local.store_id"}
         )
+
+
+# ----- _upstream_window ------------------------------------------------
+
+
+class TestUpstreamWindow:
+    def test_carries_aggregate_grain_keys_through_basic(self):
+        """A window whose argument is a BASIC over an aggregate (q36/q59)
+        must pull the aggregate's grain keys through as window parents — a
+        1-level lineage walk wouldn't reach them since the aggregate is a hop
+        below the BASIC."""
+        _, benv = _build(WINDOW_OVER_AGG_MODEL)
+        ranked = benv.concepts["local.ranked"]
+        assert ranked.derivation == Derivation.WINDOW
+        parents = {p.address for p in _upstream_window(ranked, benv)}
+        assert "local.store_id" in parents
+        assert "local.week_seq" in parents
+
+    def test_stops_at_aggregate_boundary(self):
+        """The walk stops at the aggregate — it does not pull the aggregate's
+        own source-row inputs (e.g. order_id) as window parents."""
+        _, benv = _build(WINDOW_OVER_AGG_MODEL)
+        ranked = benv.concepts["local.ranked"]
+        parents = {p.address for p in _upstream_window(ranked, benv)}
+        assert "local.order_id" not in parents
 
 
 # ----- _filter_existence_only -----------------------------------------
@@ -248,9 +298,11 @@ class TestResolveMultiselect:
         assert first.strategy_node is not None
         assert second.strategy_node is not None
 
-    def test_unresolvable_arm_returns_empty(self):
-        """If an arm references a concept with no datasource, the arm can't
-        resolve and the whole multiselect returns an empty BuildInfo."""
+    def test_unresolvable_arm_raises(self):
+        """An arm referencing a concept with no datasource is a genuine
+        planning failure — it raises loudly rather than silently degrading
+        (the v4 dispatch no longer falls back to v3 for implemented
+        derivations)."""
         env, benv = _build("""
 key one int;
 key unsourced int;
@@ -266,8 +318,8 @@ ALIGN
     one_key:one,unsourced
 ;
 """)
-        info = _search(env, benv, ["local.one_key"])
-        assert info.strategy_node is None
+        with pytest.raises(NoDatasourceException):
+            _search(env, benv, ["local.one_key"])
 
     def test_merge_with_outer_conditions(self):
         """An outer WHERE referencing the merge key is applied above the

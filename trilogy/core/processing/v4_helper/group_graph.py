@@ -633,24 +633,35 @@ def _compute_concept_sets(
         leaves = _leaf_inputs(primary_of[gid], lineage_parents)
         if not leaves:
             continue
-        for pgid in group_graph.predecessors(gid):
-            if group_graph.edges[pgid, gid].get("kind") != "lineage":
-                continue
-            if derivation_of[pgid] not in GROUPING_DERIVATIONS:
-                continue
-            gp_grain = grain_of[pgid]
-            # Only correct a grain that's actually stale: when the declared
-            # grain is already covered by the grouping parent's grain, the
-            # lineage-inherited grain is already right (rollup/window basics —
-            # q14/q36 — rely on it). The fix targets a rename of a *raw* grain
-            # key whose declared grain (the source row id) is finer than and
-            # disjoint from the parent's grain.
-            if grain_of[gid] <= gp_grain:
-                continue
-            if leaves <= (gp_grain | primary_of[pgid]):
-                grain_of[gid] = gp_grain
-                native_grain_of[gid] = gp_grain
-                break
+        grouping_preds = [
+            p
+            for p in group_graph.predecessors(gid)
+            if group_graph.edges[p, gid].get("kind") == "lineage"
+            and derivation_of[p] in GROUPING_DERIVATIONS
+        ]
+        # Same-grain grouping parents (e.g. q59's ratio reads both an aggregate
+        # `sun_sales` and a `lead(...)` window, both at (store, week_seq)) are
+        # considered collectively: the basic computes pointwise over their
+        # shared grain, but each leaf may be a primary of a *different* parent.
+        # Check coverage against the union of their primaries so a leaf supplied
+        # by the aggregate isn't rejected when matched against the window.
+        grains = {grain_of[p] for p in grouping_preds}
+        if len(grains) != 1:
+            continue
+        gp_grain = next(iter(grains))
+        # Only correct a grain that's actually stale: when the declared grain is
+        # already covered by the grouping parents' grain, the lineage-inherited
+        # grain is already right (rollup/window basics — q14/q36 — rely on it).
+        # The fix targets a rename/derive whose declared grain (the source row
+        # id) is finer than and disjoint from the parents' grain.
+        if grain_of[gid] <= gp_grain:
+            continue
+        covered = set(gp_grain)
+        for p in grouping_preds:
+            covered |= primary_of[p]
+        if leaves <= covered:
+            grain_of[gid] = gp_grain
+            native_grain_of[gid] = gp_grain
 
     # Topo includes all dependency edges (lineage / constraint / existence)
     # so a side-channel source builds before its consumer. The JOIN-key

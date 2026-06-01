@@ -29,7 +29,7 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.v4_node_generators import build_node
 
-from .constants import FINAL_NODE_ID
+from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .models import GroupAttrs
 
 _AGGREGATING_DERIVATIONS = {
@@ -577,6 +577,15 @@ def _assemble_final_node(
         # outputs only).
         output_addrs = {o.address for o in sole_node.output_concepts}
         grain_addrs = set(attrs[gid].grain_components)
+        # A basic riding a window-over-aggregate (q36 `i_category`/`i_class`
+        # over a ROLLUP-then-rank) passes the aggregate's grain keys through as
+        # row-identity / partition columns. Those aren't this basic's declared
+        # grain, so add every grouping ancestor's grain to the hide candidates —
+        # otherwise the carried keys (e.g. bare `ss.item.category`) leak into the
+        # FINAL projection alongside their mandatory rename.
+        for anc in nx.ancestors(group_graph, gid):
+            if anc != FINAL_NODE_ID and attrs[anc].derivation in GROUPING_DERIVATIONS:
+                grain_addrs |= set(attrs[anc].grain_components)
         hide = (grain_addrs & output_addrs) - mandatory_addresses
         if hide:
             existing = set(sole_node.hidden_concepts or set())
