@@ -54,13 +54,11 @@ def _resolve_import_path(
     if explicit_stdlib:
         target = join(STDLIB_ROOT, *path) + ".preql"
         token_lookup: Path | str = Path(target)
-    elif is_stdlib:
-        troot = Path(environment.working_path)
-        for _ in range(parent_dirs):
-            troot = troot.parent
-        target = join(troot, *path) + ".preql"
-        token_lookup = Path(target)
-    elif isinstance(environment.config.import_resolver, FileSystemImportResolver):
+    elif is_stdlib or isinstance(
+        environment.config.import_resolver, FileSystemImportResolver
+    ):
+        # Resolve against working_path: a stdlib sibling lives in the std dir,
+        # and a filesystem import lives relative to the importing file.
         troot = Path(environment.working_path)
         for _ in range(parent_dirs):
             troot = troot.parent
