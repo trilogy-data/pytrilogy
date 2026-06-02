@@ -17,6 +17,7 @@ import argparse
 import json
 import re
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 
 from . import scoring
@@ -46,6 +47,7 @@ STATUS_COLORS_ALT = {
 STATUS_ORDER = ["pass", "fail", "error", "missing", "timeout", "exhausted", "crashed"]
 OK_COLOR = "#2e7d32"
 ERR_COLOR = "#c62828"
+TOKEN_COLOR = "#1f77b4"  # per-query token-usage background bars (2nd y-axis)
 _RUN_FILE = re.compile(r"query(\d+)\.(?:preql|sql)")
 # Per-query log file name -> query id (`agent_log.q07.jsonl`, also the repeat
 # harness's `agent_log.q07.r03.jsonl`). The per-query eval gives each query its
@@ -356,11 +358,40 @@ def _plot_tool_calls(ax, outcomes: dict[str, list[int]]) -> None:
     ax.legend(fontsize=8)
 
 
-def _plot_per_query(ax, queries: list[dict], attempts: Counter[int]) -> None:
+def _token_background(
+    ax, bars: list[tuple[Sequence[float], Sequence[float], float, str]]
+):
+    """Draw per-query token usage as transparent bars on a 2nd y-axis BEHIND the
+    foreground scatter. ``bars`` is a list of (xs, tokens, width, color); one
+    entry for a single run, two (offset) for a comparison. Returns the twin axis.
+
+    The twin axis is created on top of ``ax`` by matplotlib, so we lift ``ax``'s
+    z-order above it and hide ``ax``'s opaque patch — that puts the scatter in
+    front of the shaded bars while keeping the token scale on the right."""
+    ax_tok = ax.twinx()
+    top = 1.0
+    for xs, tokens, width, color in bars:
+        ax_tok.bar(xs, tokens, width=width, color=color, alpha=0.16, zorder=0)
+        top = max(top, *tokens) if tokens else top
+    ax_tok.set_ylim(0, top * 1.18)
+    ax_tok.set_ylabel("tokens (bars)", color=TOKEN_COLOR)
+    ax_tok.tick_params(axis="y", labelcolor=TOKEN_COLOR)
+    ax_tok.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+    ax.set_zorder(ax_tok.get_zorder() + 1)
+    ax.patch.set_visible(False)
+    return ax_tok
+
+
+def _plot_per_query(
+    ax, queries: list[dict], attempts: Counter[int], tokens_by_id: dict[int, float]
+) -> None:
     from matplotlib.lines import Line2D
 
     xs = list(range(len(queries)))
     ys = [attempts.get(q["id"], 0) for q in queries]
+    _token_background(
+        ax, [(xs, [tokens_by_id.get(q["id"], 0) for q in queries], 0.8, TOKEN_COLOR)]
+    )
     colors = [STATUS_COLORS.get(q["status"], "#000000") for q in queries]
     ax.scatter(xs, ys, c=colors, s=220, edgecolors="black", zorder=3)
     for x, y in zip(xs, ys):
@@ -578,11 +609,14 @@ def _plot_per_query_overlay(
     attempts_b: Counter[int],
     label_a: str,
     label_b: str,
+    tokens_a: dict[int, float],
+    tokens_b: dict[int, float],
 ) -> None:
     """Both runs' per-query results on one chart. Each query id gets two
     markers — circle for run A (base palette), triangle for run B (alt
     palette) — offset slightly along x so they don't overlap. Color encodes
-    final status; marker shape + palette encodes which run."""
+    final status; marker shape + palette encodes which run. Transparent
+    background bars (2nd y-axis) show each run's per-query token usage."""
     from matplotlib.lines import Line2D
 
     by_id_a = {q["id"]: q for q in queries_a}
@@ -590,6 +624,24 @@ def _plot_per_query_overlay(
     ids = sorted(set(by_id_a) | set(by_id_b))
     xs = list(range(len(ids)))
     max_y = 2
+
+    _token_background(
+        ax,
+        [
+            (
+                [x - 0.18 for x in xs],
+                [tokens_a.get(i, 0) for i in ids],
+                0.34,
+                TOKEN_COLOR,
+            ),
+            (
+                [x + 0.18 for x in xs],
+                [tokens_b.get(i, 0) for i in ids],
+                0.34,
+                "#9575cd",
+            ),
+        ],
+    )
 
     for x, qid in zip(xs, ids):
         qa = by_id_a.get(qid)
@@ -709,7 +761,11 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
         fontweight="bold",
     )
     _plot_tool_calls(axes[0][0], tool_outcomes(events))
-    _plot_per_query(axes[0][1], report["queries"], query_run_attempts(events))
+    v = _per_query_metric_vectors(report, events)
+    tokens_by_id = dict(zip(v["qids"], v["tokens"]))
+    _plot_per_query(
+        axes[0][1], report["queries"], query_run_attempts(events), tokens_by_id
+    )
     _plot_outcomes(axes[1][0], summary["status_breakdown"])
     _plot_metrics(axes[1][1], report, events)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
@@ -754,6 +810,8 @@ def render_comparison(
         fontweight="bold",
     )
 
+    va = _per_query_metric_vectors(report_a, events_a)
+    vb = _per_query_metric_vectors(report_b, events_b)
     ax_per_query = fig.add_subplot(gs[0, :])
     _plot_per_query_overlay(
         ax_per_query,
@@ -763,6 +821,8 @@ def render_comparison(
         query_run_attempts(events_b),
         label_a,
         label_b,
+        dict(zip(va["qids"], va["tokens"])),
+        dict(zip(vb["qids"], vb["tokens"])),
     )
 
     ax_tools_a = fig.add_subplot(gs[1, 0])

@@ -2,16 +2,16 @@ import physical_sales as physical_sales;
 
 where
     physical_sales.store.market = 8
-    and physical_sales.billing_customer.birth_country != upper(physical_sales.billing_customer.address.country)
+    and physical_sales.customer.birth_country != upper(physical_sales.customer.address.country)
     and physical_sales.is_returned is True
-    and physical_sales.store.zip = physical_sales.billing_customer.address.zip
+    and physical_sales.store.zip = physical_sales.customer.address.zip
 select
-    physical_sales.billing_customer.last_name,
-    physical_sales.billing_customer.first_name,
+    physical_sales.customer.last_name,
+    physical_sales.customer.first_name,
     physical_sales.store.name,
     --avg(
             sum(physical_sales.net_paid)
-                by physical_sales.billing_customer.id, physical_sales.item.id, physical_sales.store.id
+                by physical_sales.customer.id, physical_sales.item.id, physical_sales.store.id
         )
             by * as avg_store_customer_sales,
     sum(physical_sales.net_paid ? physical_sales.item.color = 'peach') as peach_sales,

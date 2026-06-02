@@ -22,8 +22,8 @@ Top 5 queries where PreQL is longest vs reference SQL
 | 28 | 2,793 | 2,056 | +737 |
 | 89 | 1,659 | 965 | +694 |
 | 76 | 2,347 | 1,708 | +639 |
-| 64 | 4,403 | 3,783 | +620 |
-| 29 | 1,626 | 1,089 | +537 |
+| 29 | 1,618 | 1,089 | +529 |
+| 81 | 1,976 | 1,459 | +517 |
 
 Trilogy execution is faster than the reference SQL for 42/99 queries. Total Trilogy execution time is 28.330s vs 99.911s reference SQL time.
 
@@ -47,19 +47,19 @@ Top 5 queries where reference SQL is fastest vs Trilogy
 
 Queries: 5
 
-PreQL is shorter than the reference SQL for 3/5 queries. Total PreQL length is 7,484 chars vs 8,957 reference SQL chars.
+PreQL is shorter than the reference SQL for 3/5 queries. Total PreQL length is 7,436 chars vs 8,957 reference SQL chars.
 
 | Length metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| PreQL - Reference SQL chars | -1,249 | -9 | +493 |
-| PreQL vs Reference SQL | -48.7% | -0.8% | +38.3% |
+| PreQL - Reference SQL chars | -1,249 | -17 | +477 |
+| PreQL vs Reference SQL | -48.7% | -1.5% | +36.2% |
 
 Top 5 queries where PreQL is longest vs reference SQL
 
 | Query | PreQL chars | Reference SQL chars | PreQL - Reference SQL |
 | --- | ---: | ---: | ---: |
 | 30.alt | 2,007 | 1,507 | +500 |
-| 97.2 | 1,642 | 1,159 | +483 |
+| 97.2 | 1,602 | 1,159 | +443 |
 
 Trilogy execution is faster than the reference SQL for 2/5 queries. Total Trilogy execution time is 2.402s vs 0.545s reference SQL time.
 

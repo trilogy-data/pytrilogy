@@ -18,11 +18,11 @@ where
 select
     physical_sales.sale_address.city as bought_city,
     physical_sales.ticket_number,
-    --physical_sales.billing_customer.id,
+    --physical_sales.customer.id,
     sum(physical_sales.coupon_amt) as amt,
     sum(physical_sales.net_profit) as profit,
 align
-    --customer_id: physical_sales.billing_customer.id, customer.id
+    --customer_id: physical_sales.customer.id, customer.id
 where
 customer.address.city != bought_city
 order by

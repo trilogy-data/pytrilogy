@@ -1,6 +1,7 @@
 from trilogy import Environment
 from trilogy.ai.constants import AGGREGATE_FUNCTIONS, FUNCTIONS, RULE_PROMPT
 from trilogy.ai.models import LLMRequestOptions, LLMToolDefinition
+from trilogy.ai.syntax_examples import example_headers
 from trilogy.authoring import (
     ArrayType,
     Concept,
@@ -32,6 +33,12 @@ A typical trilogy query only needs to import one file (the fact) and will use do
 
 In the rare case of merging two fact domains, use a MERGE statement to merge share dimensions concepts another; ex `merge concept_a into ~concept_b`. This marks concept_a as being identical to a partial subset
 of concept_b, enabling discovery to bridge the two. If a dimenion is accessible through a fact, via abc.def - use that instead of merging".
+
+Additional syntax examples:
+These less-common patterns have complete, copy-pasteable examples. Do NOT guess
+the syntax — print the full example on demand with
+`trilogy agent-info syntax example <name>`:
+{example_headers()}
 
 """
 

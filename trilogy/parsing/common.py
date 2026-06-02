@@ -117,6 +117,15 @@ def unwrap_transformation(
         return input
     elif isinstance(input, SubselectItem):
         return input
+    elif isinstance(input, Comparison):
+        # A comparison / membership (`x > 5`, `x in other`) references real
+        # concepts, so it must not fall through to the CONSTANT wrapper below —
+        # that mislabels the derived column as a literal, and a downstream
+        # `flag = true` then constant-folds to `1 = 0`. Route it through the
+        # parenthetical path (the form a user would write with explicit
+        # parens), which the build pipeline handles correctly. Covers
+        # SubselectComparison (a Comparison subclass).
+        return Parenthetical(content=input)
     else:
         return Function(
             operator=FunctionType.CONSTANT,

@@ -8,20 +8,20 @@ where
     and physical_sales.date.day_of_week = 1
     and physical_sales.date.year in (1999, 2000, 2001)
     and physical_sales.store.employees between 200 and 295
-    and physical_sales.billing_customer.id is not null
+    and physical_sales.customer.id is not null
 select
     --physical_sales.sale_address.id,
-    physical_sales.billing_customer.last_name,
-    physical_sales.billing_customer.first_name,
+    physical_sales.customer.last_name,
+    physical_sales.customer.first_name,
     substring(physical_sales.store.city, 1, 30) as city_short,
     physical_sales.ticket_number,
     sum(physical_sales.coupon_amt)
-            by physical_sales.ticket_number, physical_sales.billing_customer.id, physical_sales.sale_address.id, physical_sales.store.city as amt,
+            by physical_sales.ticket_number, physical_sales.customer.id, physical_sales.sale_address.id, physical_sales.store.city as amt,
     sum(physical_sales.net_profit)
-            by physical_sales.ticket_number, physical_sales.billing_customer.id, physical_sales.sale_address.id, physical_sales.store.city as profit,
+            by physical_sales.ticket_number, physical_sales.customer.id, physical_sales.sale_address.id, physical_sales.store.city as profit,
 order by
-    physical_sales.billing_customer.last_name asc nulls first,
-    physical_sales.billing_customer.first_name asc nulls first,
+    physical_sales.customer.last_name asc nulls first,
+    physical_sales.customer.first_name asc nulls first,
     city_short asc nulls first,
     profit asc nulls first,
     physical_sales.ticket_number asc

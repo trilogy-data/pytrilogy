@@ -12,11 +12,11 @@ import date as date;
 import date as return_date;
 import time as time;
 import time as return_time;
-import customer as billing_customer; # link to our latest records for the customer associated with payment
+import customer as customer; # the customer account tied to the order
 import customer as return_customer; # the customer account tied to the return
 import promotion as promotion;
-import customer_demographic as customer_demographic; # The customer demograph info at POS
-import household_demographic as household_demographic; # The household demographic info at POS
+import customer_demographic as customer_demographic; # The sale time (PIT) customer demographic info 
+import household_demographic as household_demographic; # The sale time (PIT) household demographic info
 import store as store;
 import store as return_store;
 import address as sale_address;
@@ -26,21 +26,21 @@ key ticket_number int; # Store-sale ticket (receipt) number identifying a single
 
 properties <ticket_number, item.id> (
     quantity int, # Number of units of the item sold on this ticket line.
-    sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit (USD). The whole-line total is ext_sales_price (the "total price").
-    list_price numeric::usd, # Per-unit list price before discounts (USD).
-    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity (USD), the extended line amount. The per-unit price is sales_price (the "unit price").
-    ext_wholesale_cost numeric::usd, # Line-extended wholesale cost (USD).
-    ext_list_price numeric::usd, # Line-extended list price (USD).
-    ext_discount_amount numeric::usd, # Extended discount applied to the line (USD).
-    coupon_amt numeric::usd, # Coupon/credit amount applied to the line (USD).
-    net_profit numeric::usd, # Net profit reported for the line (USD).
+    sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit. The whole-line total is ext_sales_price (the "total price").
+    list_price numeric::usd, # Per-unit list price before discounts.
+    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity, the extended line amount. The per-unit price is sales_price (the "unit price").
+    ext_wholesale_cost numeric::usd, # Line-extended wholesale cost.
+    ext_list_price numeric::usd, # Line-extended list price.
+    ext_discount_amount numeric::usd, # Extended discount applied to the line.
+    coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
+    net_profit numeric::usd, # Net profit reported for the line.
     is_returned bool, # True if at least part of this ticket line was later returned (derived from store_returns).
-    net_paid numeric::usd, # Net amount paid by the customer for the line, excluding tax (USD).
-    ext_tax numeric::usd, # Extended sales tax on the line (USD).
-    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost (USD).
-    return_amount numeric::usd?, # Refund amount if the item on this line was returned (USD).
+    net_paid numeric::usd, # Net amount paid by the customer for the line, excluding tax.
+    ext_tax numeric::usd, # Extended sales tax on the line.
+    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost.
+    return_amount numeric::usd?, # Refund amount if the item on this line was returned.
     return_quantity int?, # Number of units returned for this line.
-    return_net_loss numeric::usd?, # Net financial loss on the return for this line (USD).
+    return_net_loss numeric::usd?, # Net financial loss on the return for this line.
     row_counter int, # Constant 1, used for unconditional row counts.
 );
 
@@ -53,7 +53,7 @@ datasource store_sales (
     raw('''1'''): row_counter,
     SS_SOLD_DATE_SK: ?date.id, # FK to date the sale occurred (optional in source data).
     SS_SOLD_TIME_SK: ?time.id, # FK to time-of-day the sale occurred.
-    SS_CUSTOMER_SK: ?billing_customer.id, # FK to the purchasing customer (optional — anonymous sales allowed).
+    SS_CUSTOMER_SK: ?customer.id, # FK to the purchasing customer (optional — anonymous sales allowed).
     SS_CDEMO_SK: ?customer_demographic.id, # FK to the customer's demographic profile at time of sale.
     SS_HDEMO_SK: ?household_demographic.id, # FK to the customer's household profile at time of sale.
     SS_TICKET_NUMBER: ticket_number,

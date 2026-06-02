@@ -1,0 +1,28 @@
+key order_id int;
+property order_id.sale_amount float?;
+property order_id.return_amount float?;
+property order_id.return_flag int?;
+
+datasource sales_src (
+    order_id: order_id,
+    sale_amount: sale_amount,
+)
+grain (order_id)
+query '''select 1 as order_id, 100.0 as sale_amount
+   union all select 2, 200.0
+   union all select 3, 300.0''';
+
+datasource returns_src (
+    order_id: ~order_id,
+    return_amount: return_amount,
+    return_flag: return_flag,
+)
+grain (order_id)
+query '''select 1 as order_id, 10.0 as return_amount, 1 as return_flag''';
+
+# BUG: filtering the return measure makes sales_src<->returns_src an INNER JOIN,
+# dropping orders 2 & 3. Expect sales=600; actual sales=100. Remove the
+# `? return_flag = 1` and sales is correctly 600 (LEFT OUTER JOIN).
+select
+    sum(sale_amount) as sales,
+    sum(return_amount ? return_flag = 1) as returns;

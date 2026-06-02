@@ -8,8 +8,8 @@ end;
 where
     ss.return_reason.desc = 'reason 28'
 select
-    ss.billing_customer.id as customer_sk,
-    sum(act_sales) by ss.billing_customer.id as sumsales,
+    ss.customer.id as customer_sk,
+    sum(act_sales) by ss.customer.id as sumsales,
 order by
     sumsales asc nulls first,
     customer_sk asc nulls first

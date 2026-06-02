@@ -4,7 +4,7 @@ where
     physical_sales.item.manager_id = 8
     and physical_sales.date.month_of_year = 11
     and physical_sales.date.year = 1998
-    and substring(physical_sales.billing_customer.address.zip, 1, 5) != substring(physical_sales.store.zip, 1, 5)
+    and substring(physical_sales.customer.address.zip, 1, 5) != substring(physical_sales.store.zip, 1, 5)
 select
     physical_sales.item.brand_id,
     physical_sales.item.brand_name,

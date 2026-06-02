@@ -16,9 +16,9 @@ import warehouse as warehouse;
 import ship_mode as ship_mode;
 
 key sales_channel enum<string>['WEB', 'CATALOG', 'STORE'];
-key channel_dim_id int; # store/web/site for order
-key return_channel_dim_id int; # used for the return store
-key order_id int;
+key channel_dim_id int; # the ID of the store/web/site for order (web_site_id, catalog_id, or store_id as appropriate)
+key return_channel_dim_id int; # the ID of the store/web/site used for the return (web_site_id, catalog_id, or store_id as appropriate)
+key order_id int; # the ID of the order (ticket number for store, order number for web/catalog)
 
 # return identifier
 properties channel_dim_id (
@@ -199,7 +199,7 @@ partial datasource web_returns_unified (
     raw(''' 'WEB' '''): sales_channel,
     WR_ORDER_NUMBER: ~order_id,
     WR_ITEM_SK: ~item.id,
-    WR_RETURNED_DATE_SK: ?return_date.id,
+    WR_RETURNED_DATE_SK: ?~return_date.id,
     WR_RETURN_AMT: return_amount,
     WR_RETURN_QUANTITY: return_quantity,
     WR_NET_LOSS: return_net_loss,
@@ -214,7 +214,7 @@ partial datasource catalog_returns_unified (
     CR_ORDER_NUMBER: ~order_id,
     CR_ITEM_SK: ~item.id,
     CR_CATALOG_PAGE_SK: ?return_channel_dim_id,
-    CR_RETURNED_DATE_SK: return_date.id,
+    CR_RETURNED_DATE_SK: ?~return_date.id,
     CR_RETURN_AMOUNT: return_amount,
     CR_RETURN_QUANTITY: return_quantity,
     CR_NET_LOSS: return_net_loss,
@@ -229,7 +229,7 @@ partial datasource store_returns_unified (
     SR_TICKET_NUMBER: ~order_id,
     SR_ITEM_SK: ~item.id,
     SR_STORE_SK: ?return_channel_dim_id,
-    SR_RETURNED_DATE_SK: ?return_date.id,
+    SR_RETURNED_DATE_SK: ?~return_date.id,
     SR_RETURN_AMT: return_amount,
     SR_RETURN_QUANTITY: return_quantity,
     SR_NET_LOSS: return_net_loss,

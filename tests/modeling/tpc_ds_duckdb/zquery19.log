@@ -1,6 +1,6 @@
 query_id = "19"
-gen_length = 1942
-preql_size = 693
+gen_length = 1894
+preql_size = 685
 comp_size = 708
 generated_sql = """
 SELECT
@@ -14,10 +14,10 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"physical_sales_date_date\" on \"physical_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"physical_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"physical_sales_item_items\" on \"physical_sales_store_sales\".\"SS_ITEM_SK\" = \"physical_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"physical_sales_store_store\" on \"physical_sales_store_sales\".\"SS_STORE_SK\" = \"physical_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"physical_sales_billing_customer_customers\" on \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"physical_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"physical_sales_billing_customer_address_customer_address\" on \"physical_sales_billing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"physical_sales_billing_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"physical_sales_customer_customers\" on \"physical_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"physical_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"physical_sales_customer_address_customer_address\" on \"physical_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"physical_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"physical_sales_item_items\".\"I_MANAGER_ID\" = 8 and \"physical_sales_date_date\".\"D_MOY\" = 11 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_billing_customer_address_customer_address\".\"CA_ZIP\",1,5) != SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,5)
+    \"physical_sales_item_items\".\"I_MANAGER_ID\" = 8 and \"physical_sales_date_date\".\"D_MOY\" = 11 and \"physical_sales_date_date\".\"D_YEAR\" = 1998 and SUBSTRING(\"physical_sales_customer_address_customer_address\".\"CA_ZIP\",1,5) != SUBSTRING(\"physical_sales_store_store\".\"S_ZIP\",1,5)
 
 GROUP BY
     1,

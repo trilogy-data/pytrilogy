@@ -20,14 +20,14 @@ select
 # (count of stores in customer's county/state), via 2 rowsets keyed on
 # (county, state) and merged.
 rowset cust_ss <- where
-    ss.billing_customer.id in my_customers.my_cust_id
+    ss.customer.id in my_customers.my_cust_id
     and ss.date.month_seq >= 1188
     and ss.date.month_seq <= 1190
-    and ss.billing_customer.id is not null
+    and ss.customer.id is not null
 select
-    ss.billing_customer.id as ss_cust_id,
-    ss.billing_customer.address.county as ss_cust_county,
-    ss.billing_customer.address.state as ss_cust_state,
+    ss.customer.id as ss_cust_id,
+    ss.customer.address.county as ss_cust_county,
+    ss.customer.address.state as ss_cust_state,
     sum(ss.ext_sales_price) as ss_revenue,
 ;
 

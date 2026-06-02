@@ -10,7 +10,7 @@ import date as date;
 import date as ship_date;
 import date as sold_date;
 import time as time;
-import customer as billing_customer; # the bill-to customer's latest/current records
+import customer as ship_customer; # the ship-to customer's latest/current records
 import customer as bill_customer; # the bill-to customer's latest/current records
 import call_center as call_center;
 import catalog_page as catalog_page;
@@ -57,7 +57,7 @@ datasource catalog_sales (
     CS_SOLD_DATE_SK: ?sold_date.id, # Role-played alias of the sold-date FK.
     CS_SOLD_TIME_SK: ?time.id, # FK to time-of-day the order was placed.
     CS_SHIP_DATE_SK: ?ship_date.id, # FK to date the order shipped.
-    CS_SHIP_CUSTOMER_SK: ?billing_customer.id, # FK to the customer the order was shipped to.
+    CS_SHIP_CUSTOMER_SK: ?ship_customer.id, # FK to the customer the order was shipped to.
     CS_SHIP_ADDR_SK: ?customer_address.id, # FK to the shipping address.
     CS_BILL_CUSTOMER_SK: ?bill_customer.id, # FK to the customer billed for the order.
     CS_BILL_CDEMO_SK: ?bill_customer_demographic.id, # FK to the bill-to customer's demographic profile.

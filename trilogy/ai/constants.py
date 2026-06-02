@@ -17,15 +17,14 @@ SELECT RULES:
 - Existence / non-existence across two models that are NOT directly connected (no shared dotted path): import both, then test a linking key with `in` / `not in` against the OTHER model's key. This is the anti-join / semi-join — it is column-level (`key not in other.key`), NOT a subquery, and needs no merge. Use it for "rows with (no) matching record in another model":
   * No matching record (anti-join): `import customers as c; import orders as o; where c.id not in o.customer_id` → customers who never placed an order.
   * Has a matching record (semi-join): `where c.id in o.customer_id` → customers who have placed an order.
-  Prefer this over an aggregate hack like `sum(o.amount) by c.id is null` — a nullable measure can be null even when a matching row exists, so it silently mis-classifies.
-- Membership in a COMPUTED set of values (the "filter X to rows whose value is in a set produced by another query") — the closest thing to a SQL `IN (subquery)`: define the set as a derived concept (filter it with `?`), then test membership with `in` against that concept. The right side is a concept, not a literal list — no `(select ...)`. Both sides may be expressions:
+- Membership in a COMPUTED set of values (the "filter X to rows whose value is in a set produced by another query") — is equivalent to a SQL `IN (subquery)`: define the set as a derived concept (filter it with `?`), then test membership with `in` against that concept. The right side is a concept, not a literal list — no `(select ...)`. Both sides may be expressions:
   * Build the set, then filter: `auto big_zip <- customer.address.zip ? (count(customer.id ? customer.preferred_cust_flag = 'Y') by customer.address.zip) > 10;` then `where substring(store.zip, 1, 2) in substring(big_zip, 1, 2)` → stores whose 2-digit zip-prefix matches a high-preferred-customer zip. The membership compares the LEFT expression against every value of the RIGHT concept (a semi-join over a value set), so mind the grain of each side — `substring(...)` on both sides matches prefixes, not full values.
 - Never write the `distinct` keyword. `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count the distinct values of a non-key property.
 - All fields exist in a global namespace; field paths look like `order.product.id`. Always use the full path. NEVER include a from clause.
 - If a field has a grain defined, and that grain is not in the query output, aggregate it to get desired result. 
 - Newly created fields at the output of the select must be aliased with as (e.g. `sum(births) as all_births`). 
-- Aliases cannot happen inside calculations or in the where/having/order clause. Never alias fields with existing names. 'sum(revenue) as total_revenue' is valid, but '(sum(births) as total_revenue) +1 as revenue_plus_one' is not.
-- Automatic groups. NEVER include the GROUP BY clause for a select. Grouping is automatic by non-aggregated fields in the SELECT clause.
+- Aliases cannot happen inside calculations or in the where/having/order clause. Never alias fields to an existing name. 'sum(revenue) as total_revenue' is valid, but '(sum(births) as total_revenue) +1 as revenue_plus_one' is not.
+- Automatic group by. NEVER include the GROUP BY clause for a select. Grouping is automatic by non-aggregated fields in the SELECT clause.
 - You CAN dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens (`by (substring(phone, 1, 2), upper(name))`). Use parens whenever a `by` entry is anything other than a simple identifier — function calls, casts, arithmetic, etc. — e.g. `avg(price) by (substring(phone, 1, 2))`. Without the parens the parser will reject the expression form.
 - Histograms / bucket-of-aggregates (counting entities by a per-entity metric): define the per-key metric with `by`, then SELECT it alongside `count(<other_key>)` — the outer select buckets by the metric and counts how many entities fall into each bucket. Wrap with `coalesce(..., 0)` to include entities whose underlying rows are missing (the left-join equivalent — entities with zero matching child rows stay in the histogram). Example: bucket customers by how many of their orders match a predicate, including customers with zero matches:
@@ -37,6 +36,7 @@ SELECT RULES:
   Do NOT instead write a per-customer SELECT (one row per customer) — that's the input to the bucketing, not the output.
 - Count must specify a field (no `count(*)`) Counts are automatically deduplicated for keys. A count of a property counts the key. Use count_distinct for unique property members; do not use it on keys as it is identical to count.
 - Since there are no underlying tables, sum/count of a constant should always specify a grain field (e.g. `sum(1) by x as count`). 
+- Use the where clause to filter *before* aggregation, the *having* for after. It is idiomatic to include hidden fields in the output to filter.
 - Filtering on aggregates:
   - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
   * WHERE conditions are pushed before aggregation calculation for aggregates in the select. Where conditions DO NOT
@@ -54,18 +54,6 @@ SELECT RULES:
       need to filter inside those. 
       where store=1 and item.price > 1.2 * avg(item.price ? explicit_other_condition) by item.category
       select item.name, item.price
-- Condition scoping: WHERE conditions DO NOT filter each other, and they DO NOT scope aggregates inside other conditions. Each aggregate computes over its own input, independent of sibling WHERE clauses. To scope an aggregate's input, push the filter INSIDE the aggregate with `?`:
-  * Wrong (the `region = 'EUROPE'` clause does NOT restrict the `min(price)` in the other clause; min is over ALL rows):
-      where region = 'EUROPE'
-        and price = min(price) by part_id
-  * Right (the `?` filter restricts the min's input to EUROPE rows per part):
-      where region = 'EUROPE'
-        and price = min(price ? region = 'EUROPE') by part_id
-    Quick rules:
-    - Global filters show in WHERE
-    - Filtering on aggregates post-global filters can be done through the having clause with a hidden aggregate
-    in select
-    - OR in WHERE with `?` inline filter syntax
 - Operator precedence (highest binds first; use `(...)` to override):
   1. Primaries: literal, identifier, function call, parenthetical `(...)`, member access (`.`, `[]`, `::` cast).
   2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).
@@ -75,7 +63,7 @@ SELECT RULES:
   6. Logical `and`.
   7. Logical `or`.
 - Always use a reasonable `LIMIT` for final queries unless the request is for a time series or line chart.
-- Self-referential queries — relating a row to OTHER rows of the same set (period-over-period, previous/next value, running total, share of a group total, rank): Trilogy has no self-joins or subqueries, so reach for a WINDOW function, NOT a re-grained `by (key +/- N)` aggregate. Two aggregates defined at different derived grains will not join back and silently produce NULL; the window carries the related value onto the current row instead (same week PRIOR year = `lag(metric, 53) over (order by week_seq)`; same week NEXT year = `lead(metric, 53) over (order by week_seq)` — `lag` looks back, `lead` looks ahead).
+- Self-referential queries — relating a row to OTHER rows of the same set (period-over-period, previous/next value, running total, share of a group total, rank): Default to WINDOW function, NOT a re-grained `by (key +/- N)` aggregate. Two aggregates defined at different derived grains will not join back and silently produce NULL; the window carries the related value onto the current row instead (same week PRIOR year = `lag(metric, 53) over (order by week_seq)`; same week NEXT year = `lead(metric, 53) over (order by week_seq)` — `lag` looks back, `lead` looks ahead).
 - Window functions use SQL-style syntax — the canonical form Trilogy parses, renders, and round-trips:
   * Ranking: `rank(<key>) over (partition by <group> order by <expr> desc)` — e.g. `rank(name) over (partition by state order by sum(births) desc) as top_name`. `partition by` is OPTIONAL (omit for a single global window). `dense_rank`/`row_number` take the same shape.
   * Multi-key ranking: `rank(a, b) over (...)` — all comma-separated args are equal-status grain keys (used when ranking ROLLUP output where the grain spans multiple columns).
@@ -94,7 +82,7 @@ SELECT RULES:
 - Use `::type` casting, e.g., `"2020-01-01"::date`.
 - Date_parts have no quotes; use `date_part(order_date, year)` instead of `date_part(order_date, 'year')`. Prefer idiomatic function casts (year(order_date) instead of date_part(order_date, year)) when possible.
 - Comments use `#` only, per line.
-- For complex logic, break down your query into concept declarations that can be resued
+- For complex logic, break down your query into concept declarations that can be reused
 - Three example queries:
 
 Query 1: For names with more than 10 births in vermont ever, find the top 10 names by total births 

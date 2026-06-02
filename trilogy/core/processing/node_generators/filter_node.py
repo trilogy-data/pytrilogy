@@ -182,6 +182,36 @@ def _filter_content_has_unfiltered_aggregate(
     return False
 
 
+def _optional_cosourced_with_content(
+    concept: BuildConcept,
+    local_optional: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> bool:
+    """True if a single datasource provides the filter content *and* every
+    local_optional concept.
+
+    The disjoint pushdown lifts the predicate into the parent relation's
+    WHERE. That parent is a per-row source for both the filtered concept and
+    every local_optional concept. If an optional concept lives only on a
+    *different* datasource (joined to the content's source by a key), filtering
+    the content's rows drops the join partner's unmatched rows — undercounting
+    any aggregate over that optional concept. Two measures on two key-joined
+    sources (sales + filtered returns) hit exactly this. Require co-sourcing so
+    the pushed WHERE can never reach across a join.
+    """
+    if not isinstance(concept.lineage, FILTER_TYPES):
+        return False
+    content = concept.lineage.content
+    if not isinstance(content, BuildConcept):
+        return False
+    optional_addresses = _concept_addresses(local_optional)
+    for datasource in environment.datasources.values():
+        ds_addresses = {c.address for c in datasource.output_concepts}
+        if content.address in ds_addresses and optional_addresses <= ds_addresses:
+            return True
+    return False
+
+
 def pushdown_filter_to_parent(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -239,6 +269,7 @@ def pushdown_filter_to_parent(
             filter_concept_addrs
             and filter_concept_addrs.isdisjoint(local_optional_addrs)
             and not has_spine_local
+            and _optional_cosourced_with_content(concept, local_optional, environment)
             and not _filter_content_has_sibling_filters(concept, environment)
             and not _filter_content_has_unfiltered_aggregate(concept, environment)
         ):

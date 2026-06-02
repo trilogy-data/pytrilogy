@@ -16,23 +16,23 @@ where
         end) > 1.2
     and physical_sales.date.year in (1999, 2000, 2001)
     and physical_sales.store.county = 'Williamson County'
-    and physical_sales.billing_customer.id is not null
+    and physical_sales.customer.id is not null
     and physical_sales.ticket_number is not null
 select
-    --physical_sales.billing_customer.id,
-    physical_sales.billing_customer.last_name,
-    physical_sales.billing_customer.first_name,
-    physical_sales.billing_customer.salutation,
-    physical_sales.billing_customer.preferred_cust_flag,
+    --physical_sales.customer.id,
+    physical_sales.customer.last_name,
+    physical_sales.customer.first_name,
+    physical_sales.customer.salutation,
+    physical_sales.customer.preferred_cust_flag,
     physical_sales.ticket_number,
-    sum(physical_sales.row_counter) by physical_sales.billing_customer.id, physical_sales.ticket_number as cnt,
+    sum(physical_sales.row_counter) by physical_sales.customer.id, physical_sales.ticket_number as cnt,
 having
     cnt between 15 and 20
 
 order by
-    physical_sales.billing_customer.last_name asc nulls first,
-    physical_sales.billing_customer.first_name asc nulls first,
-    physical_sales.billing_customer.salutation asc nulls first,
-    physical_sales.billing_customer.preferred_cust_flag desc nulls first,
+    physical_sales.customer.last_name asc nulls first,
+    physical_sales.customer.first_name asc nulls first,
+    physical_sales.customer.salutation asc nulls first,
+    physical_sales.customer.preferred_cust_flag desc nulls first,
     physical_sales.ticket_number asc nulls first
 ;

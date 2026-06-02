@@ -5,7 +5,7 @@ import catalog_sales as catalog_sales;
 import customer as customer;
 import item as item;
 
-merge physical_sales.billing_customer.id into ~customer.id;
+merge physical_sales.customer.id into ~customer.id;
 merge physical_sales.item.id into ~item.id;
 merge catalog_sales.bill_customer.id into ~customer.id;
 merge catalog_sales.item.id into ~item.id;

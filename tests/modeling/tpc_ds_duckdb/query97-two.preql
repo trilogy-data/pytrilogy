@@ -6,7 +6,7 @@ import catalog_sales as catalog_sales;
 rowset merged <- where
     physical_sales.date.month_seq between 1200 and 1200 + 11
 select
-    physical_sales.billing_customer.id,
+    physical_sales.customer.id,
     physical_sales.item.id,
 merge
 where
@@ -15,14 +15,14 @@ select
     catalog_sales.bill_customer.id,
     catalog_sales.item.id,
 align
-    customer_id: physical_sales.billing_customer.id, catalog_sales.bill_customer.id
+    customer_id: physical_sales.customer.id, catalog_sales.bill_customer.id
     and item_id: physical_sales.item.id, catalog_sales.item.id
 ;
 
 select
     sum(
             case
-                when merged.physical_sales.billing_customer.id is not null
+                when merged.physical_sales.customer.id is not null
                 and merged.physical_sales.item.id is not null
                 and merged.catalog_sales.bill_customer.id is null
                 and merged.catalog_sales.item.id is null then 1
@@ -31,7 +31,7 @@ select
         ) as store_sale_count,
     sum(
             case
-                when merged.physical_sales.billing_customer.id is null
+                when merged.physical_sales.customer.id is null
                 and merged.physical_sales.item.id is null
                 and merged.catalog_sales.bill_customer.id is not null
                 and merged.catalog_sales.item.id is not null then 1
@@ -40,7 +40,7 @@ select
         ) as catalog_sale_count,
     sum(
             case
-                when merged.physical_sales.billing_customer.id is not null
+                when merged.physical_sales.customer.id is not null
                 and merged.physical_sales.item.id is not null
                 and merged.catalog_sales.bill_customer.id is not null
                 and merged.catalog_sales.item.id is not null then 1

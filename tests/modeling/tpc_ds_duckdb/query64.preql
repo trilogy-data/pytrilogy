@@ -26,10 +26,10 @@ and ss.date.year = yr
 and ss.is_returned
 and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
 and ss.item.current_price between 65 and 74
-and ss.billing_customer.id is not null
+and ss.customer.id is not null
 and ss.store.id is not null
 and ss.sale_address.id is not null
-and ss.billing_customer.address.id is not null;
+and ss.customer.address.id is not null;
 
 # Row-grain projection for each year. Both marital_status columns are
 # selected here so the outer aggregate can apply the inequality.
@@ -45,18 +45,18 @@ select
     ss.sale_address.street_name,
     ss.sale_address.city,
     ss.sale_address.zip,
-    ss.billing_customer.address.street_number,
-    ss.billing_customer.address.street_name,
-    ss.billing_customer.address.city,
-    ss.billing_customer.address.zip,
+    ss.customer.address.street_number,
+    ss.customer.address.street_name,
+    ss.customer.address.city,
+    ss.customer.address.zip,
     ss.date.year,
-    ss.billing_customer.first_sales_date.year,
-    ss.billing_customer.first_shipto_date.year,
+    ss.customer.first_sales_date.year,
+    ss.customer.first_shipto_date.year,
     ss.wholesale_cost,
     ss.list_price,
     ss.coupon_amt,
     ss.customer_demographic.marital_status,
-    ss.billing_customer.demographics.marital_status,
+    ss.customer.demographics.marital_status,
 ;
 
 rowset ss_rows_00 <- where
@@ -71,11 +71,11 @@ select
     ss.list_price,
     ss.coupon_amt,
     ss.customer_demographic.marital_status,
-    ss.billing_customer.demographics.marital_status,
+    ss.customer.demographics.marital_status,
 ;
 
 rowset q64_results <- where
-    ss_rows_99.ss.customer_demographic.marital_status != ss_rows_99.ss.billing_customer.demographics.marital_status
+    ss_rows_99.ss.customer_demographic.marital_status != ss_rows_99.ss.customer.demographics.marital_status
 select
     ss_rows_99.ss.item.id as item_sk_99,
     ss_rows_99.ss.store.name as s_name_99,
@@ -85,20 +85,20 @@ select
     ss_rows_99.ss.sale_address.street_name as b_str_99,
     ss_rows_99.ss.sale_address.city as b_city_99,
     ss_rows_99.ss.sale_address.zip as b_zip_99,
-    ss_rows_99.ss.billing_customer.address.street_number as c_sn_99,
-    ss_rows_99.ss.billing_customer.address.street_name as c_str_99,
-    ss_rows_99.ss.billing_customer.address.city as c_city_99,
-    ss_rows_99.ss.billing_customer.address.zip as c_zip_99,
+    ss_rows_99.ss.customer.address.street_number as c_sn_99,
+    ss_rows_99.ss.customer.address.street_name as c_str_99,
+    ss_rows_99.ss.customer.address.city as c_city_99,
+    ss_rows_99.ss.customer.address.zip as c_zip_99,
     ss_rows_99.ss.date.year as syear_99,
-    ss_rows_99.ss.billing_customer.first_sales_date.year as fsyear_99,
-    ss_rows_99.ss.billing_customer.first_shipto_date.year as s2year_99,
+    ss_rows_99.ss.customer.first_sales_date.year as fsyear_99,
+    ss_rows_99.ss.customer.first_shipto_date.year as s2year_99,
     count(ss_rows_99.ss.ticket_number) as cnt_99,
     sum(ss_rows_99.ss.wholesale_cost) as s1_99,
     sum(ss_rows_99.ss.list_price) as s2_99,
     sum(ss_rows_99.ss.coupon_amt) as s3_99,
 merge
 where
-    ss_rows_00.ss.customer_demographic.marital_status != ss_rows_00.ss.billing_customer.demographics.marital_status
+    ss_rows_00.ss.customer_demographic.marital_status != ss_rows_00.ss.customer.demographics.marital_status
 select
     ss_rows_00.ss.item.id as item_sk_00,
     ss_rows_00.ss.store.name as s_name_00,
