@@ -922,9 +922,8 @@ def compile_sql(
 
     node = info.strategy_node.copy()
 
-    having_clause = build_stmt.having_clause if build_stmt is not None else None
-    if having_clause is not None:
-        having = having_clause.conditional
+    if build_stmt is not None and build_stmt.having_clause is not None:
+        having = build_stmt.having_clause.conditional
         combined = (
             BuildConditional(
                 left=node.conditions,
