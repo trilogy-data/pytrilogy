@@ -31,6 +31,9 @@ class RuleContext:
     symbol_table: SymbolTable
     semantic_state: SemanticState
     source_text: str = ""
+    # True while parsing inside a stdlib file, so its bare relative imports
+    # resolve as stdlib siblings. See import_rules._resolve_import_path.
+    in_stdlib: bool = False
     concepts: ConceptLookup = field(init=False, repr=False, compare=False)
     types: TypeLookup = field(init=False, repr=False, compare=False)
 
