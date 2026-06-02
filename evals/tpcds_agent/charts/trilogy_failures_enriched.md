@@ -1,23 +1,83 @@
-# Trilogy failure analysis — 20260601-190402
+# Trilogy failure analysis — 20260601-230447
 
-- Run `20260601-190401_enriched` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 301 | failed: 25 (8%)
+- Run `20260601-230442_enriched` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 241 | failed: 25 (10%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `syntax-parse` | 9 | 36% |
-| `other` | 7 | 28% |
-| `undefined-concept` | 6 | 24% |
-| `syntax-missing-alias` | 2 | 8% |
-| `cli-misuse` | 1 | 4% |
+| `syntax-parse` | 12 | 48% |
+| `other` | 10 | 40% |
+| `syntax-missing-alias` | 1 | 4% |
+| `undefined-concept` | 1 | 4% |
+| `join-resolution` | 1 | 4% |
 
 ## Detail
 
 ### `syntax-parse`
 
-- `trilogy run --import raw.all_sales:sales select sales.date.week_seq, sum(sales.ext_sales_price) as total where sales.date.year = 2001 and sales.sales_channel in ('WEB', 'CATALOG') group by sales.date.week_seq order by sales.date.week_seq limit 5;`
+- `trilogy file write query01.preql --content import raw.physical_returns as r;
+
+# Total returns per billing customer per store
+auto cust_store_total <- sum(r.r…_date.year = 2000
+
+select
+    r.billing_customer.text_id,
+    --qualifies
+having
+    qualifies = 1
+order by
+    r.billing_customer.text_id
+limit 100;`
+
+  ```text
+  refused to write 'query01.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('RPAR', ')') at line 10, column 69.
+  Expected one of:
+          * WHEN
+
+  Location:
+  ...total > 1.2 * store_avg, 1, 0) ??? ) by r.billing_customer.id;  w...
+
+  Write stats: received 636 chars / 636 bytes; tail: …'ifies = 1\\norder by\\n
+  r.billing_customer.text_id\\nlimit 100;'.
+  ```
+- `trilogy file write query02.preql --content import raw.all_sales as sales;
+
+# Only catalog and web sales (exclude store)
+auto cw_sales <- sales.ext_sales_pric…d sales.date.week_seq <= 5322 as is_2001
+having sales.date.week_seq >= 5270 and sales.date.week_seq <= 5322
+order by sales.date.week_seq nulls first;`
+
+  ```text
+  refused to write 'query02.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('DOUBLE_STRING_CHARS', '--sun_r,\n
+  --sales.date.week_seq >= 5270 and sales.date.week_seq <= 5322 as
+  is_2001\nhaving sales.date.week_seq >= 5270 and sales.date.week_seq <=
+  5322\norder by sales.date.week_seq nulls first;') at line 33, column 5.
+  Expected one of:
+          * METADATA
+          * ORDER
+          * WHERE
+          * HAVING
+          * _TERMINATOR
+          * MERGE
+          * LIMIT
+          * COMMA
+  Previous tokens: [Token('IDENTIFIER', 'saturday')]
+
+  Location:
+  ...ay,     sat_r as saturday     ??? --sun_r,     --sales.date.week...
+
+  Write stats: received 1824 chars / 1824 bytes; tail: …'e.week_seq <=
+  5322\\norder by sales.date.week_seq nulls first;'.
+  ```
+- `trilogy run --import raw.all_sales:sales select sales.date.week_seq as ws, sum(sales.ext_sales_price ? sales.date.day_of_week = 0 and sales.sales_channel in ('CATALOG','WEB')) as sun where sales.date.week_seq in (5270, 5323) group by ws;`
 
   ```text
   Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP
@@ -25,210 +85,184 @@
   SELECT. To aggregate at a different grain than the select, write `agg(x) by
   dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...channel in ('WEB', 'CATALOG') ??? group by sales.date.week_seq o...
+  ...date.week_seq in (5270, 5323) ??? group by ws;
   ```
-- `trilogy file write query04.preql --content import raw.physical_sales as ps;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
+- `trilogy file write query04.preql --content import raw.all_sales as s;
 
-merge ps.billing_cus…st_flag
-order by customer_code asc nulls first, first_name asc nulls first, last_name asc nulls first, preferred_cust_flag asc nulls first
-limit 100;`
+
+# The per-line computation: ((ext_list_price - ext_wholesale_cost - ext_discount_amou…    customer_code asc nulls first,
+    first_name asc nulls first,
+    last_name asc nulls first,
+    preferred_cust_flag asc nulls first
+limit 100;
+`
 
   ```text
   refused to write 'query04.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('LOGICAL_AND', 'and') at line 31, column 51.
+  Unexpected token Token('_TERMINATOR', ';') at line 23, column 59.
   Expected one of:
-          * _TERMINATOR
+          * SELECT
 
   Location:
-  ...01_positive <- store_2001 > 0 ??? and catalog_2001 > 0 and web_2...
+  ...alog_2001 > 0 and web_2001 > 0 ??? ;  # Ratios: 2002 / 2001 (only...
 
-  Write stats: received 2331 chars / 2331 bytes; tail: …' nulls first,
-  preferred_cust_flag asc nulls first\\nlimit 100;'.
+  Write stats: received 1929 chars / 1929 bytes; tail: …'s first,\\n
+  preferred_cust_flag asc nulls first\\nlimit 100;\\n'.
   ```
-- `trilogy file write query05.preql --content import raw.all_sales as sales;
+- `trilogy file write query05.preql --content import raw.all_sales as all_sales;
 
-# Date range boundaries
-auto sale_in_range <- sales.date.date between '2000-08-23'…y rollup (channel_label, outlet_label) as g_outlet
-
-order by g_channel asc, g_outlet asc, channel asc nulls first, outlet asc nulls first
-limit 100;
-`
+# Define the date range filter
+where all_sales.date.date between '2000-08-23':…turn_date.date between '2000-08-23'::date and '2000-09-06'::date) as total_profit
+order by channel asc nulls first, outlet asc nulls first
+limit 100;`
 
   ```text
   refused to write 'query05.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('_TERMINATOR', ';') at line 8, column 126.
+  Unexpected token Token('AS', 'as') at line 19, column 7.
   Expected one of:
           * WHEN
 
   Location:
-  ...hannel', 'WEB', 'web channel') ??? ;  # Outlet label: kind + busi...
+   = 'WEB', 'web channel'     ) ??? as channel,     case(
 
-  Write stats: received 1911 chars / 1911 bytes; tail: …' channel asc nulls
-  first, outlet asc nulls first\\nlimit 100;\\n'.
+  Write stats: received 1627 chars / 1627 bytes; tail: …'y channel asc nulls
+  first, outlet asc nulls first\\nlimit 100;'.
   ```
-- `trilogy file write query05.preql --content import raw.all_sales as sales;
+- `trilogy file write query05.preql --content import raw.all_sales as all_sales;
 
-# Date range boundaries
-auto sale_in_range <- sales.date.date between '2000-08-23'…by rollup (channel_label, outlet_label) as g_outlet
-order by g_channel asc, g_outlet asc, channel asc nulls first, outlet asc nulls first
-limit 100;
-`
-
-  ```text
-  …
-  ollup (channel_label, outlet_label) as
-  total_sales,\n    sum(returns_sum) by rollup (channel_label, outlet_label) as
-  total_returns,\n    sum(profit_sum) by rollup (channel_label, outlet_label) as
-  total_profit,\n    grouping(channel_label) by rollup (channel_label,
-  outlet_label) as g_channel,\n    grouping(outlet_label) by rollup
-  (channel_label, outlet_label) as g_outlet\norder by g_channel asc, g_outlet
-  asc, channel asc nulls first, outlet asc nulls first\nlimit 100;\n") at line 8,
-  column 34.
-  Expected one of:
-          * _TERMINATOR
-  Previous tokens: [Token('IDENTIFIER', 'simple_case')]
-
-  Location:
-  ...o channel_label <- simple_case ??? (sales.sales_channel, 'STORE',...
-
-  Write stats: received 1998 chars / 1998 bytes; tail: …' channel asc nulls
-  first, outlet asc nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write query05.preql --content import raw.all_sales as sales;
-
-# Date range boundaries - filter rows where either sale or return is in range
-
-# C…by rollup (channel_label, outlet_label) as g_outlet
-order by g_channel asc, g_outlet asc, channel asc nulls first, outlet asc nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('WILDCARD_IDENTIFIER', 'channel_label') at line 27,
-  column 31.
-  Expected one of:
-          * RPAR
-  Previous tokens: [Token('LPAR', '(')]
-
-  Location:
-      sum(sales_amt) by rollup ( ??? channel_label, outlet_label) a...
-
-  Write stats: received 1891 chars / 1891 bytes; tail: …' channel asc nulls
-  first, outlet asc nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write query05.preql --content import raw.all_sales as sales;
-
-# Channel label
-auto channel_label <- case when sales.sales_channel = 'STORE' then…hannel_label, outlet_label) as g_outlet
-order by g_channel asc, g_outlet asc, channel_label asc nulls first, outlet_label asc nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('WILDCARD_IDENTIFIER', 'channel_label') at line 14,
-  column 111.
-  Expected one of:
-          * RPAR
-  Previous tokens: [Token('LPAR', '(')]
-
-  Location:
-  ...2000-09-06'::date) by rollup ( ??? channel_label, outlet_label) a...
-
-  Write stats: received 1683 chars / 1683 bytes; tail: …'el asc nulls first,
-  outlet_label asc nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write query05.preql --content import raw.all_sales as sales;
-
-# Channel label
-auto channel_label <- case when sales.sales_channel = 'STORE' then…hannel_label, outlet_label) as g_outlet
-order by g_channel asc, g_outlet asc, channel_label asc nulls first, outlet_label asc nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('WILDCARD_IDENTIFIER', 'channel_label') at line 20,
-  column 30.
-  Expected one of:
-          * RPAR
-  Previous tokens: [Token('LPAR', '(')]
-
-  Location:
-       sum(sale_val) by rollup ( ??? channel_label, outlet_label) a...
-
-  Write stats: received 1833 chars / 1833 bytes; tail: …'el asc nulls first,
-  outlet_label asc nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write query05.preql --content import raw.all_sales as sales;
-
-# Channel label
-auto channel_label <- case when sales.sales_channel = 'STORE' then…g1 as g_channel,
-    @rl_g2 as g_outlet
-order by g_channel asc, g_outlet asc, channel_label asc nulls first, outlet_label asc nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Unexpected token Token('_BINDING', '->') at line 20, column 11.
-  Expected one of:
-          * LPAR
-  Previous tokens: [Token('IDENTIFIER', 'rl_g1')]
-
-  Location:
-  ...abel, outlet_label; def rl_g1 ??? -> grouping(channel_label) by
-
-  Write stats: received 2069 chars / 2069 bytes; tail: …'el asc nulls first,
-  outlet_label asc nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write query08.preql --content parameter zips string;
-
-# ZIP codes where more than 10 preferred customers have their current home address
-auto pr…(zips, ',')
-
-select
-    physical_sales.store.name as store_name
-    sum(physical_sales.net_profit) as total_net_profit
-order by store_name
+# Filter: rows where sale date is in range OR return date is in range
+where al… total_returns,
+    coalesce(profit_sales, 0) - coalesce(loss_returns, 0) as total_profit
+order by channel nulls first, outlet nulls first
 limit 100;`
 
   ```text
-  refused to write 'query08.preql': not syntactically valid Trilogy.
+  refused to write 'query05.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Unexpected token Token('_SUM', 'sum(') at line 18, column 5.
+  Unexpected token Token('ORDER_IDENTIFIER', 'auto ') at line 8, column 1.
   Expected one of:
-          * MERGE
-          * HAVING
-          * LIMIT
-          * COMMA
-          * METADATA
-          * WHERE
-          * ORDER
-          * _TERMINATOR
-  Previous tokens: [Token('IDENTIFIER', 'store_name')]
+          * SELECT
+  Previous tokens: [Token('DATE', 'date')]
 
   Location:
-  ....store.name as store_name     ??? sum(physical_sales.net_profit)...
+  ...ate to its own date condition ??? auto sales_amt <- sum(all_sale...
 
-  Write stats: received 903 chars / 903 bytes; tail: …'t_profit) as
-  total_net_profit\\norder by store_name\\nlimit 100;'.
+  Write stats: received 1697 chars / 1697 bytes; tail: …'\\norder by channel
+  nulls first, outlet nulls first\\nlimit 100;'.
+  ```
+- `trilogy run - --import raw.all_sales:all_sales`
+
+  ```text
+  --> 4:39
+    |
+  4 | select all_sales.sales_channel, count(*) as cnt,
+  sum(all_sales.return_amount) as returns
+    |                                       ^---
+    |
+    = expected access_chain
+  Location:
+  ...ll_sales.sales_channel, count( ??? *) as cnt, sum(all_sales.retur...
+  ```
+- `trilogy run - --import raw.all_sales:all_sales`
+
+  ```text
+  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP
+  BY — remove it. Grouping is automatic by the non-aggregated fields in your
+  SELECT. To aggregate at a different grain than the select, write `agg(x) by
+  dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...unt(all_sales.row_one) as cnt ??? group by all_sales.sales_chann...
+  ```
+- `trilogy run - --import raw.all_sales:all_sales`
+
+  ```text
+  --> 3:104
+    |
+  3 | select all_sales.sales_channel, all_sales.channel_dim_text_id,
+  sum(all_sales.return_amount) as returns sum(all_sales.net_profit) as profit
+  limit 20;
+    |
+  ^---
+    |
+    = expected metadata, limit, order_by, where, or having
+  Location:
+  ...les.return_amount) as returns ??? sum(all_sales.net_profit) as p...
+  ```
+- `trilogy run - --import raw.all_sales:all_sales`
+
+  ```text
+  --> 4:240
+    |
+  4 | select sum(all_sales.ext_sales_price ? all_sales.date.date between
+  '2000-08-23'::date and '2000-09-06'::date) as sales,
+  sum(all_sales.return_amount ? all_sales.return_date.date between
+  '2000-08-23'::date and '2000-09-06'::date) as returns by
+  all_sales.sales_channel limit 10;
+    |
+  ^---
+    |
+    = expected metadata, limit, order_by, where, or having
+  Location:
+  ...2000-09-06'::date) as returns ??? by all_sales.sales_channel lim...
+  ```
+- `trilogy file write query05.preql --content import raw.all_sales as all_sales;
+
+# Filter: sales whose sale date is in the date range
+where all_sales.date.date…l), @outlet_label(all_sales.sales_channel, all_sales.channel_dim_text_id) as total_profit
+order by channel nulls first, outlet nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query05.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('ORDER_IDENTIFIER', 'def ') at line 8, column 1.
+  Expected one of:
+          * SELECT
+  Previous tokens: [Token('DATE', 'date')]
+
+  Location:
+  ...ion to keep things consistent ??? def channel_label(c) -> case w...
+
+  Write stats: received 1349 chars / 1349 bytes; tail: …'\\norder by channel
+  nulls first, outlet nulls first\\nlimit 100;'.
+  ```
+- `trilogy file write query05.preql --content import raw.all_sales as all_sales;
+
+# Build channel and outlet labels using def for reuse
+def channel_label(c) -> …l), @outlet_label(all_sales.sales_channel, all_sales.channel_dim_text_id) as total_profit
+order by channel nulls first, outlet nulls first
+limit 100;`
+
+  ```text
+  refused to write 'query05.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Unexpected token Token('DOUBLE_STRING_CHARS',
+  '@channel_label(all_sales.sales_channel),
+  @outlet_label(all_sales.sales_channel, all_sales.channel_dim_text_id) as
+  total_sales,\n    sum(all_sales.return_amount) by rollup
+  @channel_label(all_sales.sales_channel), @outlet_label(all_sales.sales_channel,
+  all_sales.channel_dim_text_id) as total_returns,\n    sum(all_sales.net_profit)
+  - sum(all_sales.return_net_loss) by rollup
+  @channel_label(all_sales.sales_channel), @outlet_label(all_sales.sales_channel,
+  all_sales.channel_dim_text_id) as total_profit\norder by channel nulls first,
+  outlet nulls first\nlimit 100;') at line 13, column 46.
+  Expected one of:
+          * LPAR
+          * IDENTIFIER
+  Previous tokens: [Token('ROLLUP', 'rollup')]
+
+  Location:
+  ...es.ext_sales_price) by rollup ??? @channel_label(all_sales.sales...
+
+  Write stats: received 1297 chars / 1297 bytes; tail: …'\\norder by channel
+  nulls first, outlet nulls first\\nlimit 100;'.
   ```
 
 ### `other`
@@ -236,38 +270,108 @@ limit 100;`
 - `trilogy run query01.preql`
 
   ```text
-  HAVING references 'local.qualifies', which is not in the
-  SELECT projection (line 14). Add it to SELECT, each prefixed with `--` so it
-  stays out of the output rows — keep your HAVING as-is:
-      select <your existing columns>, --local.qualifies
+  HAVING references 'local.cust_store_total',
+  'local.store_avg', which are not in the SELECT projection (line 9). Add them to
+  SELECT, each prefixed with `--` so they stay out of the output rows — keep your
+  HAVING as-is:
+      select <your existing columns>, --local.cust_store_total, --local.store_avg
   Alternatively move a row-level filter to WHERE; for an aggregate condition on a
   non-output grain, write `agg(x) by grain` inline in WHERE.
   ```
-- `trilogy run --import raw.all_sales:sales auto day_total <- sum(sales.ext_sales_price ? sales.sales_channel in ('WEB', 'CATALOG')) by sales.date.week_seq, sal…es.sales_channel in ('WEB', 'CATALOG')
-  and sales.date.week_seq between 5270 and 5322
-order by sales.date.week_seq, sales.date.day_of_week
-limit 14;`
+- `trilogy run query01.preql`
 
   ```text
-  ORDER BY references 'sales.date.day_of_week', which is not in
-  the SELECT projection (line 4). Add it to SELECT to sort by it — prefix with
-  `--` to keep it out of the output rows, e.g. `select ...,
-  --sales.date.day_of_week order by sales.date.day_of_week asc`.
+  Multiple where clauses are not supported
+  ```
+- `trilogy run query01.preql`
+
+  ```text
+  Cannot compare BOOL (ref:local.qualifies) and INTEGER (0) of
+  different types with operator > in ref:local.qualifies > 0
+  ```
+- `trilogy run query01.preql`
+
+  ```text
+  HAVING references 'r.billing_customer.id', which is not in
+  the SELECT projection (line 9). Add it to SELECT, each prefixed with `--` so it
+  stays out of the output rows — keep your HAVING as-is:
+      select <your existing columns>, --r.billing_customer.id
+  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
+  non-output grain, write `agg(x) by grain` inline in WHERE.
+  ```
+- `trilogy run query01.preql`
+
+  ```text
+  HAVING references 'local.qual_count', which is not in the
+  SELECT projection (line 12). Add it to SELECT, each prefixed with `--` so it
+  stays out of the output rows — keep your HAVING as-is:
+      select <your existing columns>, --local.qual_count
+  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
+  non-output grain, write `agg(x) by grain` inline in WHERE.
+  ```
+- `trilogy run query02.preql`
+
+  ```text
+  Unable to import '.\all_sales.preql': [Errno 2] No such file
+  or directory: '.\\all_sales.preql'. Did you mean: raw.all_sales?
+  ```
+- `trilogy run query04.preql`
+
+  ```text
+  HAVING references 'local.store_2001', 'local.catalog_2001',
+  'local.web_2001', 'local.catalog_ratio', 'local.store_ratio',
+  'local.web_ratio', which are not in the SELECT projection (line 27). Add them
+  to SELECT, each prefixed with `--` so they stay out of the output rows — keep
+  your HAVING as-is:
+      select <your existing columns>, --local.store_2001, --local.catalog_2001,
+  --local.web_2001, --local.catalog_ratio, --local.store_ratio, --local.web_ratio
+  Alternatively move a row-level filter to WHERE; for an aggregate condition on a
+  non-output grain, write `agg(x) by grain` inline in WHERE.
+  ```
+- `trilogy run - --import raw.all_sales:all_sales`
+
+  ```text
+  Received invalid type <class
+  'trilogy.core.models.author.Between'> ref:all_sales.return_date.date between
+  constant(2000-08-23) and constant(2000-09-06) as input to concept derivation:
+  `auto return_date_in_range <- all_sales.return_date.date between
+  '2000-08-23'::date and '2000-09-06'::date`
   ```
 - `trilogy run query05.preql`
 
   ```text
-  list index out of range
-  ```
-- `trilogy run query05.preql`
+  (_duckdb.BinderException) Binder Error: column
+  "all_sales_channel_dim_id" must appear in the GROUP BY clause or must be part
+  of an aggregate function.
+  Either add it to the GROUP BY list, or use
+  "ANY_VALUE(all_sales_channel_dim_id)" if the exact value of
+  "all_sales_channel_dim_id" is not important.
 
-  ```text
-  list index out of range
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-  list index out of range
+  LINE 179:     "scrawny"."all_sales_channel_dim_id" as "all_sales_channel_...
+                ^
+  [SQL:
+  WITH
+  vacuous as (
+  SELECT
+      "all_sales_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as
+  "all_sales_channel_dim_id",
+      "all_sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "all_sales_date_id"
+  …
+  as "outlet",
+      "friendly"."total_sales" as "total_sales",
+      "friendly"."total_returns" as "total_returns",
+      "friendly"."_virt_agg_sum_8391465486749127" -
+  "late"."_virt_agg_sum_8956394585779731" as "total_profit"
+  FROM
+      "friendly"
+      FULL JOIN "late" on "friendly"."all_sales_channel_dim_id" is not distinct
+  from "late"."all_sales_channel_dim_id" AND "friendly"."all_sales_sales_channel"
+  = "late"."all_sales_sales_channel"
+  ORDER BY
+      "friendly"."channel" asc nulls first,
+      "friendly"."outlet" asc nulls first
+  LIMIT (100)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
 - `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
@@ -276,34 +380,36 @@ limit 14;`
   of type VARCHAR and VARCHAR[] in IN/ANY/ALL clause - an explicit cast is
   required
 
-  LINE 39: ...380358091742" is not null) and "sales_store_store"."S_ZIP" in
-  (select questionable."_virt_func_split_4785012549328100...
+  LINE 15: ..._sales_billing_customer_address_customer_address"."CA_ZIP" in
+  (select abundant."zips_list" from abundant where abundant...
                                                                          ^
   [SQL:
   WITH
+  abundant as (
+  SELECT
+      STRING_SPLIT( $1 , ',' ) as "zips_list"
+  ),
   wakeful as (
   SELECT
-      SUBSTRING("customer_address_customer_address"."CA_ZIP",1,2) as
-  "_virt_func_substring_22380358091742"
-  FROM
-      "customer" as "customer_customers"
-      INNER JOIN "customer_address" as "customer_address_customer
+      "physical_sales_billing_customer_address_customer_address"."CA_ZIP" as
+  "physical_sales_billing_customer_address_zip",
+      count("physical_
   …
-  thoughtful."_virt_func_substring_22380358091742" is not null) and
-  "sales_store_store"."S_ZIP" in (select
-  questionable."_virt_func_split_4785012549328100" from questionable where
-  questionable."_virt_func_split_4785012549328100" is not null)
+  and
+  SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select
+  uneven."_virt_func_substring_9221055437369198" from uneven where
+  uneven."_virt_func_substring_9221055437369198" is not null)
 
   GROUP BY
       1,
       2,
-      "sales_store_sales"."SS_ITEM_SK",
-      "sales_store_sales"."SS_TICKET_NUMBER")
+      "physical_sales_store_sales"."SS_ITEM_SK",
+      "physical_sales_store_sales"."SS_TICKET_NUMBER")
   SELECT
-      "juicy"."sales_store_name" as "store_name",
-      sum("juicy"."sales_net_profit") as "total_net_profit"
+      "sparkling"."physical_sales_store_name" as "store_name",
+      sum("sparkling"."physical_sales_net_profit") as "total_net_profit"
   FROM
-      "juicy"
+      "sparkling"
   GROUP BY
       1
   ORDER BY
@@ -312,137 +418,41 @@ limit 14;`
 
   (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+
+### `syntax-missing-alias`
+
+- `trilogy run --import raw.all_sales:sales select count(sales.ext_sales_price ? sales.sales_channel in ('WEB','CATALOG'));`
 
   ```text
-  (_duckdb.ParserException) Parser Error: syntax error at or
-  near "render"
-
-  LINE 19:     CASE WHEN ( INVALID_REFERENCE_BUG_<Cannot render aggregate
-  local._virt_agg_count_6728219847194714...
-                                                         ^
-  [SQL:
-  WITH
-  cheerful as (
-  SELECT
-      "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
-      "customer_customers"."C_CUSTOMER_SK" as "_virt_filter_id_8603331542397217"
-  FROM
-      "customer" as "customer_customers"
-      INNER JOIN "customer_address" as "customer_address_customer_address" on
-  "customer_customers"."C_CURRENT_ADDR_SK" =
-  …
-   = 1998 and "sales_date_date"."D_QOY" = 2 and
-  SUBSTRING("sales_store_store"."S_ZIP",1,2) in (select
-  cooperative."_virt_func_substring_1010830310934997" from cooperative where
-  cooperative."_virt_func_substring_1010830310934997" is not null)
-
-  GROUP BY
-      1,
-      2,
-      "sales_store_sales"."SS_ITEM_SK",
-      "sales_store_sales"."SS_TICKET_NUMBER")
-  SELECT
-      "juicy"."sales_store_name" as "store_name",
-      sum("juicy"."sales_net_profit") as "total_net_profit"
-  FROM
-      "juicy"
-  GROUP BY
-      1
-  ORDER BY
-      "store_name" asc
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/f405)
+  Syntax [201]: Missing alias? Alias must be specified with
+  "AS" - e.g. `SELECT x+1 AS y` Here: `count(sales.ext_sales_price ?
+  sales.sales_channel in ('WEB','CATALOG')) as catalog_count`
+  Location:
+  ..._channel in ('WEB','CATALOG')) ??? ;
   ```
 
 ### `undefined-concept`
 
-- `trilogy run test_check3.preql duckdb`
-
-  ```text
-  (UndefinedConceptException(...), "line: 3: Undefined concept:
-  ws.ext_list_price. Suggestions: ['ws.ext_sales_price', 'ws.sales_price',
-  'ws.ext_ship_cost']")
-  ```
-- `trilogy run query04.preql duckdb`
-
-  ```text
-  (UndefinedConceptException(...), "Undefined concept:
-  first_name. Suggestions: ['c.first_name', 'c.last_name']")
-  ```
-- `trilogy run query04.preql duckdb`
-
-  ```text
-  (UndefinedConceptException(...), "Undefined concept:
-  first_name. Suggestions: ['c.first_name', 'c.last_name']")
-  ```
-- `trilogy run query04.preql duckdb`
+- `trilogy run query04.preql`
 
   ```text
   (UndefinedConceptException(...), 'Undefined concept:
   first_name.')
   ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+
+### `join-resolution`
+
+- `trilogy run query10.preql`
 
   ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  customer.preferred_cust_flag.')
-  ```
-- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  (UndefinedConceptException(...), 'line: 11: Undefined
-  concept: physical_sales.net_profit.')
-  ```
-
-### `syntax-missing-alias`
-
-- `trilogy file write query05.preql --content import raw.all_sales as sales;
-
-select distinct sales.sales_channel, 
-    count(1) as cnt
-limit 100;
-`
-
-  ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT
-  x+1 AS y` Here: `distinct sales.sales_channel as distinct_sales_sales_channel`
-  Location:
-  ...t distinct sales.sales_channel ??? ,      count(1) as cnt limit 1...
-
-  Write stats: received 101 chars / 101 bytes; tail: …'stinct
-  sales.sales_channel, \\n    count(1) as cnt\\nlimit 100;\\n'.
-  ```
-- `trilogy file write query05.preql --content import raw.all_sales as sales;
-
-auto channel_label <- case when sales.sales_channel = 'STORE' then 'store channel'…id) when sales.sales_channel = 'WEB' then concat('web_site', sales.channel_dim_text_id) end;
-
-select distinct channel_label, outlet_label
-limit 100;
-`
-
-  ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT
-  x+1 AS y` Here: `distinct channel_label as distinct_channel_label`
-  Location:
-   select distinct channel_label ??? , outlet_label limit 100;
-
-  Write stats: received 579 chars / 579 bytes; tail: …'nd;\\n\\nselect distinct
-  channel_label, outlet_label\\nlimit 100;\\n'.
-  ```
-
-### `cli-misuse`
-
-- `trilogy run - --import raw/physical_sales:ps --import raw/catalog_sales:cs --import raw/web_sales:ws select ps.billing_customer.text_id, ps.date.year, sum((ps.ext_list_price - ps.ext_wholesale_cost - ps.ext_discount_amount + ps.ext_sales_price) / 2) as store_total limit 5;`
-
-  ```text
-  'select ps.billing_customer.text_id, ps.date.year, sum((ps.ext_list_price - ps.ext_wholesale_cost - ps.ext_discount_amount + ps.ext_sales_price) / 2) as store_total limit 5;' looks like a file path, not a dialect. The dialect argument comes AFTER the input file.
-    Try: trilogy run select ps.billing_customer.text_id, ps.date.year, sum((ps.ext_list_price - ps.ext_wholesale_cost - ps.ext_discount_amount + ps.ext_sales_price) / 2) as store_total limit 5; <dialect>
+  Could not resolve connections for query with output
+  ['local._virt_filter_id_1661235927883585<Purpose.PROPERTY>Derivation.FILTER>']
+  from current model. The output draws on models that are not connected in the
+  current graph: catalog_sales (needed by
+  local._virt_filter_id_1661235927883585); customer (needed by
+  local._virt_filter_id_1661235927883585); store_sales (needed by
+  local._virt_filter_id_1661235927883585); web_sales (needed by
+  local._virt_filter_id_1661235927883585). If these should be related, bridge
+  their keys with a merge, e.g. `merge catalog_sales.<key> into
+  ~customer.<key>;`.
   ```

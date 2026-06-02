@@ -5,7 +5,7 @@ Reads a run's ``report.json`` + ``agent_log*.jsonl`` and writes two artifacts
 under the benchmark's ``charts/`` (meant to be committed) for tracking harness
 and prompt improvements over time:
 
-  - dashboard.png        — tool calls, per-query attempts, outcomes, metrics
+  - dashboard.png        — tool calls, per-query DB queries executed, outcomes, metrics
   - trilogy_failures.md  — every failed `trilogy` call, bucketed by category
 
 Invoked from per-benchmark shims; ``run_main`` accepts an explicit ``eval_dir``
@@ -47,6 +47,10 @@ STATUS_ORDER = ["pass", "fail", "error", "missing", "timeout", "exhausted", "cra
 OK_COLOR = "#2e7d32"
 ERR_COLOR = "#c62828"
 _RUN_FILE = re.compile(r"query(\d+)\.(?:preql|sql)")
+# Per-query log file name -> query id (`agent_log.q07.jsonl`, also the repeat
+# harness's `agent_log.q07.r03.jsonl`). The per-query eval gives each query its
+# own agent + log, so a read action's query id is its log file, not its args.
+_LOG_QUERY_ID = re.compile(r"agent_log\.q(\d+)")
 
 
 def latest_run_dir(results_dir: Path) -> Path:
@@ -62,12 +66,21 @@ def load_run_events(run_dir: Path) -> tuple[None, list[dict]]:
     runs while the eval is still in flight."""
     events: list[dict] = []
     for log in sorted(run_dir.glob("agent_log*.jsonl")):
+        m = _LOG_QUERY_ID.search(log.name)
+        qid = int(m.group(1)) if m else None
         for line in log.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                try:
-                    events.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            # Tag with the source query id so read-action attribution doesn't
+            # depend on the call args naming the query file (inline executes
+            # don't). Legacy single-file logs have no qid and fall back to args.
+            if qid is not None and isinstance(event, dict):
+                event["_query_id"] = qid
+            events.append(event)
     return None, events
 
 
@@ -105,28 +118,50 @@ def tool_outcomes(events: list[dict]) -> dict[str, list[int]]:
     return outcomes
 
 
+def _is_db_read_call(name: str, args: dict) -> bool:
+    """True for any tool call that executes against the database — a "read
+    action". Counts the answer-file run AND inline/ad-hoc executes, across both
+    toolsets: trilogy `run <file|inline>`, and the SQL baseline's `run_file` /
+    `run_query`."""
+    if name == "trilogy":
+        raw = args.get("args") or []
+        return isinstance(raw, list) and bool(raw) and raw[0] == "run"
+    return name in ("run_file", "run_query")
+
+
+def _run_targets(name: str, args: dict) -> list[str]:
+    """Strings a read-action call points at, for legacy query-id matching."""
+    if name == "trilogy":
+        raw = args.get("args") or []
+        return [str(a) for a in raw[1:]] if isinstance(raw, list) else []
+    val = args.get("path") or args.get("sql")
+    return [val] if isinstance(val, str) else []
+
+
 def query_run_attempts(events: list[dict]) -> Counter[int]:
-    """query id -> count of answer-file run invocations. Covers both the Trilogy
-    toolset (`trilogy run query<id>.preql`) and the no-Trilogy SQL toolset
-    (`run_file query<id>.sql`), so per-query attempt counts are comparable across
-    categories. Ad-hoc `run_query` SQL is exploration (no query id) and is not
-    counted, mirroring how non-`run` trilogy subcommands aren't counted."""
+    """query id -> count of ALL database read actions the agent made for that
+    query: the answer-file run plus every inline/ad-hoc execute, across both
+    toolsets (trilogy `run <file|inline>`, SQL `run_file` / `run_query`).
+
+    Attribution is by the source log file (`agent_log.qNN.jsonl`), which
+    `load_run_events` tags onto each event — the per-query eval gives each query
+    its own agent + log, so every read action there belongs to that query. For
+    legacy merged logs with no per-query filename, falls back to matching
+    `queryNN` in the run target; inline executes are then unattributable and
+    skipped (as before)."""
     attempts: Counter[int] = Counter()
     for e in events:
         if e.get("type") != "tool_call":
             continue
-        name = e.get("name")
+        name = str(e.get("name", "?"))
         args = e.get("arguments") or {}
-        candidates: list[str] = []
-        if name == "trilogy":
-            raw = args.get("args") or []
-            if isinstance(raw, list) and len(raw) >= 2 and raw[0] == "run":
-                candidates = [str(a) for a in raw[1:]]
-        elif name == "run_file":
-            path = args.get("path")
-            if isinstance(path, str):
-                candidates = [path]
-        for a in candidates:
+        if not isinstance(args, dict) or not _is_db_read_call(name, args):
+            continue
+        qid = e.get("_query_id")
+        if qid is not None:
+            attempts[int(qid)] += 1
+            continue
+        for a in _run_targets(name, args):
             m = _RUN_FILE.search(a)
             if m:
                 attempts[int(m.group(1))] += 1
@@ -333,8 +368,10 @@ def _plot_per_query(ax, queries: list[dict], attempts: Counter[int]) -> None:
     ax.set_xticks(xs)
     ax.set_xticklabels([f"q{q['id']}" for q in queries])
     ax.set_ylim(-0.6, max([*ys, 2]) + 1.2)
-    ax.set_ylabel("`trilogy run` attempts")
-    ax.set_title("Per-query — run attempts, colored by final status")
+    ax.set_ylabel("db queries executed")
+    ax.set_title(
+        "Per-query — DB queries executed (file + inline), colored by final status"
+    )
     ax.grid(axis="y", alpha=0.3)
     ax.legend(
         handles=[
@@ -371,43 +408,166 @@ def _plot_outcomes(ax, breakdown: dict[str, int]) -> None:
     ax.legend(fontsize=8, ncol=2)
 
 
-def _plot_metrics(ax, report: dict) -> None:
-    meta, agent, summary = report["meta"], report["agent"], report["summary"]
-    tok = agent["tokens"]
-    # `wall_duration_seconds` is the true elapsed wall clock; falls back to
-    # the sum-of-per-query `duration_seconds` for reports rendered before the
-    # field was added. `avg_query_seconds` is concurrency-independent so it
-    # stays comparable across runs at different parallelism levels.
-    wall = agent.get("wall_duration_seconds", agent["duration_seconds"])
-    avg = agent.get(
-        "avg_query_seconds",
-        (
-            round(agent["duration_seconds"] / meta["num_queries"], 1)
-            if meta.get("num_queries")
-            else 0.0
-        ),
-    )
-    rows = [
-        (
-            "pass rate",
-            f"{summary['pass_count']}/{meta['num_queries']}"
-            f"  ({summary['pass_rate'] * 100:.0f}%)",
-        ),
-        ("wall time", f"{wall:.0f}s"),
-        ("avg/query", f"{avg:.0f}s"),
-        ("LLM iterations", str(agent["iterations"])),
-        ("tool calls", str(agent["tool_calls_total"])),
-        ("tool success", f"{agent['tool_success_rate'] * 100:.0f}%"),
-        (
-            "tokens",
-            f"{tok['total']:,} ({tok['prompt']:,} in / {tok['completion']:,} out)",
-        ),
-        ("agent exit code", str(agent["exit_code"])),
+def _pct(sorted_vals: list[float], p: float) -> float:
+    """Linear-interpolated percentile (numpy's 'linear' method), no numpy dep."""
+    if not sorted_vals:
+        return 0.0
+    if len(sorted_vals) == 1:
+        return float(sorted_vals[0])
+    k = (len(sorted_vals) - 1) * (p / 100.0)
+    lo = int(k)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    if lo == hi:
+        return float(sorted_vals[lo])
+    return sorted_vals[lo] * (hi - k) + sorted_vals[hi] * (k - lo)
+
+
+def _metric_row(label: str, vals: list[float], total: float, fmt) -> list[str]:
+    """One table row: P5/P50/P95/AVG over the per-query values, plus a TOTAL the
+    caller supplies (a sum for counts, the overall ratio for a rate)."""
+    s = sorted(float(v) for v in vals)
+    avg = sum(s) / len(s) if s else 0.0
+    return [label] + [
+        fmt(c) for c in (_pct(s, 5), _pct(s, 50), _pct(s, 95), avg, total)
     ]
+
+
+def _per_query_metric_vectors(report: dict, events: list[dict]) -> dict:
+    """Per-query metric vectors for the percentile table, attributed by the
+    ``_query_id`` tag on events (so it works live and post-hoc). Duration prefers
+    the authoritative subprocess time in ``report['per_query']`` and falls back
+    to the first→last event-timestamp span."""
+    from datetime import datetime
+
+    iters: Counter[int] = Counter()
+    calls: Counter[int] = Counter()
+    results: Counter[int] = Counter()
+    errors: Counter[int] = Counter()
+    toks: Counter[int] = Counter()
+    first_ts: dict[int, str] = {}
+    last_ts: dict[int, str] = {}
+    for e in events:
+        raw_qid = e.get("_query_id")
+        if raw_qid is None:
+            continue
+        qid = int(raw_qid)
+        ts = e.get("ts")
+        if isinstance(ts, str):  # ISO-8601 UTC — lexical compare gives min/max
+            if qid not in first_ts or ts < first_ts[qid]:
+                first_ts[qid] = ts
+            if qid not in last_ts or ts > last_ts[qid]:
+                last_ts[qid] = ts
+        etype = e.get("type")
+        if etype == "llm_response":
+            iters[qid] += 1
+            toks[qid] += (e.get("usage") or {}).get("total_tokens") or 0
+        elif etype == "tool_call":
+            calls[qid] += 1
+        elif etype == "tool_result":
+            results[qid] += 1
+            if scoring._is_error_result(
+                str(e.get("name", "?")), str(e.get("result") or "")
+            ):
+                errors[qid] += 1
+
+    durations: dict[int, float] = {}
+    for pq in report.get("per_query") or []:
+        d = pq.get("duration_seconds")
+        if d is not None:
+            durations[int(pq["id"])] = float(d)
+
+    qids = sorted(set(iters) | set(calls) | set(results) | set(toks) | set(durations))
+    for qid in qids:
+        if qid not in durations and qid in first_ts and qid in last_ts:
+            try:
+                durations[qid] = (
+                    datetime.fromisoformat(last_ts[qid])
+                    - datetime.fromisoformat(first_ts[qid])
+                ).total_seconds()
+            except ValueError:
+                durations[qid] = 0.0
+
+    ok_total = sum(results[q] - errors[q] for q in qids)
+    res_total = sum(results[q] for q in qids)
+    return {
+        "qids": qids,
+        "duration": [durations.get(q, 0.0) for q in qids],
+        "iterations": [float(iters[q]) for q in qids],
+        "tool_calls": [float(calls[q]) for q in qids],
+        "tokens": [float(toks[q]) for q in qids],
+        # per-query success rate; a query with no tool results scores 1.0,
+        # mirroring AgentMetrics.tool_success_rate.
+        "success": [
+            (results[q] - errors[q]) / results[q] if results[q] else 1.0 for q in qids
+        ],
+        "duration_total": sum(durations.get(q, 0.0) for q in qids),
+        "iterations_total": float(sum(iters[q] for q in qids)),
+        "tool_calls_total": float(sum(calls[q] for q in qids)),
+        "tokens_total": float(sum(toks[q] for q in qids)),
+        "success_total": (ok_total / res_total) if res_total else 1.0,
+    }
+
+
+def _plot_metrics(ax, report: dict, events: list[dict]) -> None:
+    meta, agent, summary = report["meta"], report["agent"], report["summary"]
     ax.axis("off")
+
+    v = _per_query_metric_vectors(report, events)
+    wall = agent.get("wall_duration_seconds", agent["duration_seconds"])
+    per_query = report.get("per_query") or []
+    # `agent.exit_code` is a run-level rollup (0 iff every per-query subprocess
+    # exited 0, else 1), so the bare code is opaque. Report the count of queries
+    # whose agent exited non-zero instead — the Outcomes panel shows which.
+    if per_query:
+        nonzero = sum(1 for r in per_query if r.get("exit_code", 0) != 0)
+        exits = f"{nonzero}/{len(per_query)} non-zero"
+    else:
+        exits = f"rollup {agent['exit_code']}"
+    header = (
+        f"pass {summary['pass_count']}/{meta['num_queries']} "
+        f"({summary['pass_rate'] * 100:.0f}%)     wall {wall:.0f}s     "
+        f"agent exits: {exits}"
+    )
     ax.text(0.0, 1.0, "Run metrics", fontsize=11, fontweight="bold", va="top")
-    body = "\n".join(f"{k:<16}{v}" for k, v in rows)
-    ax.text(0.0, 0.84, body, fontsize=10, va="top", family="monospace")
+    ax.text(0.0, 0.90, header, fontsize=9, va="top", family="monospace")
+    ax.text(
+        0.0,
+        0.80,
+        "per-query distribution; TOTAL = sum (overall ratio for success)",
+        fontsize=8,
+        va="top",
+        style="italic",
+        color="#555555",
+    )
+
+    def _int(x: float) -> str:
+        return f"{x:,.0f}"
+
+    def _pctf(x: float) -> str:
+        return f"{x * 100:.0f}%"
+
+    table_rows = [
+        _metric_row("duration (s)", v["duration"], v["duration_total"], _int),
+        _metric_row("llm iterations", v["iterations"], v["iterations_total"], _int),
+        _metric_row("tool calls", v["tool_calls"], v["tool_calls_total"], _int),
+        _metric_row("tool success", v["success"], v["success_total"], _pctf),
+        _metric_row("tokens", v["tokens"], v["tokens_total"], _int),
+    ]
+    tbl = ax.table(
+        cellText=table_rows,
+        colLabels=["metric", "P5", "P50", "P95", "AVG", "TOTAL"],
+        loc="center",
+        cellLoc="right",
+        bbox=[0.0, 0.0, 1.0, 0.72],
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    tbl.scale(1, 1.4)
+    for (r, c), cell in tbl.get_celld().items():
+        if r == 0:
+            cell.set_text_props(fontweight="bold")
+        if c == 0:
+            cell.set_text_props(ha="left")
 
 
 def _plot_per_query_overlay(
@@ -482,9 +642,9 @@ def _plot_per_query_overlay(
     ax.set_xticks(xs)
     ax.set_xticklabels([f"q{i}" for i in ids])
     ax.set_ylim(-0.6, max_y + 1.4)
-    ax.set_ylabel("`trilogy run` attempts")
+    ax.set_ylabel("db queries executed")
     ax.set_title(
-        f"Per-query — run attempts, colored by final status  "
+        f"Per-query — DB queries executed (file + inline), colored by final status  "
         f"(○ {label_a}, △ {label_b})"
     )
     ax.grid(axis="y", alpha=0.3)
@@ -551,7 +711,7 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
     _plot_tool_calls(axes[0][0], tool_outcomes(events))
     _plot_per_query(axes[0][1], report["queries"], query_run_attempts(events))
     _plot_outcomes(axes[1][0], summary["status_breakdown"])
-    _plot_metrics(axes[1][1], report)
+    _plot_metrics(axes[1][1], report, events)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
@@ -621,11 +781,11 @@ def render_comparison(
 
     ax_metrics_a = fig.add_subplot(gs[3, 0])
     ax_metrics_b = fig.add_subplot(gs[3, 1])
-    _plot_metrics(ax_metrics_a, report_a)
+    _plot_metrics(ax_metrics_a, report_a, events_a)
     ax_metrics_a.text(
         0.0, 1.06, f"({label_a})", fontsize=9, va="bottom", style="italic"
     )
-    _plot_metrics(ax_metrics_b, report_b)
+    _plot_metrics(ax_metrics_b, report_b, events_b)
     ax_metrics_b.text(
         0.0, 1.06, f"({label_b})", fontsize=9, va="bottom", style="italic"
     )
