@@ -114,6 +114,7 @@ class HydrationContext:
     symbol_table: SymbolTable | None = None
     semantic_state: SemanticState | None = None
     in_flight_imports: set[str] | None = None
+    in_stdlib: bool = False
 
 
 class NativeHydrator:
@@ -142,8 +143,10 @@ class NativeHydrator:
                 if context.in_flight_imports is not None
                 else set()
             ),
+            in_stdlib=context.in_stdlib,
             semantic_state=self.semantic_state,
         )
+        self.in_stdlib = context.in_stdlib
         self.function_factory = FunctionFactory(self.environment)
         self.symbol_table: SymbolTable = (
             context.symbol_table
@@ -158,6 +161,7 @@ class NativeHydrator:
             symbol_table=self.symbol_table,
             semantic_state=self.semantic_state,
             source_text="",
+            in_stdlib=self.in_stdlib,
         )
 
     @property
@@ -211,6 +215,7 @@ class NativeHydrator:
             symbol_table=self.symbol_table,
             semantic_state=self.semantic_state,
             source_text=self.text_lookup.get(self.token_address, ""),
+            in_stdlib=self.in_stdlib,
         )
         try:
             self.plans = self.plan(document.forms)

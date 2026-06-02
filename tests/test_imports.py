@@ -465,3 +465,14 @@ order by id asc;
     assert row[1] == "fun"
     assert row[2] == "greatest"
     assert row[3] == "times"
+
+
+def test_stdlib_sibling_import_under_dict_resolver():
+    content = {
+        "lineitem": "import std.money;\nkey id int;\nproperty id.amount float::usd;"
+    }
+    env = Environment(
+        config=EnvironmentConfig(import_resolver=DictImportResolver(content=content))
+    )
+    env.parse("import lineitem;")
+    assert "usd" in env.data_types

@@ -27,6 +27,7 @@ STDLIB_ROOT = Path(__file__).parent.parent.parent.parent
 def _resolve_import_path(
     raw_args: list[str],
     environment: Environment,
+    in_stdlib: bool = False,
 ) -> tuple[str, str, str, str, Path | str, bool, int]:
     leading_dots = 0
     parsed_args: list[str] = []
@@ -44,10 +45,21 @@ def _resolve_import_path(
         cache_key = parsed_args[0]
     input_path = parsed_args[0]
     path = input_path.split(".")
-    is_stdlib = path[0] == "std"
-    if is_stdlib:
+    # A stdlib file's relative imports are themselves stdlib imports, so a bare
+    # sibling reference (``std/money.preql`` -> ``import currency;``) inherits
+    # stdlib context and resolves against the std dir even under a non-filesystem
+    # resolver. ``in_stdlib`` carries that context down from the parent parse.
+    explicit_stdlib = path[0] == "std"
+    is_stdlib = explicit_stdlib or in_stdlib
+    if explicit_stdlib:
         target = join(STDLIB_ROOT, *path) + ".preql"
         token_lookup: Path | str = Path(target)
+    elif is_stdlib:
+        troot = Path(environment.working_path)
+        for _ in range(parent_dirs):
+            troot = troot.parent
+        target = join(troot, *path) + ".preql"
+        token_lookup = Path(target)
     elif isinstance(environment.config.import_resolver, FileSystemImportResolver):
         troot = Path(environment.working_path)
         for _ in range(parent_dirs):
@@ -69,7 +81,7 @@ def import_statement(
 ) -> ImportRequest:
     args = [str(hydrate(child)) for child in node.children]
     alias, cache_key, input_path, target, token_lookup, is_stdlib, leading_dots = (
-        _resolve_import_path(args, context.environment)
+        _resolve_import_path(args, context.environment, context.in_stdlib)
     )
     return ImportRequest(
         alias=alias,
@@ -91,7 +103,7 @@ def selective_import_statement(
     concepts_list: list[str] = next(a for a in args if isinstance(a, list))
     path_args = [str(a) for a in args if not isinstance(a, list)]
     alias, cache_key, input_path, target, token_lookup, is_stdlib, leading_dots = (
-        _resolve_import_path(path_args, context.environment)
+        _resolve_import_path(path_args, context.environment, context.in_stdlib)
     )
     return ImportRequest(
         alias=alias,

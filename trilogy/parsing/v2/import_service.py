@@ -123,6 +123,9 @@ class ImportHydrationService:
     # Shared by reference across child ImportHydrationServices via
     # HydrationContext so cycle detection sees the full parse stack.
     in_flight_imports: set[str] = field(default_factory=set)
+    # True while parsing inside a stdlib file; propagated to child parses so
+    # nested sibling imports stay stdlib regardless of the import resolver.
+    in_stdlib: bool = False
     # Parser-local SemanticState. When a cycle is detected, the broken
     # alias is registered here so ConceptLookup can generate narrow
     # UndefinedConceptFull placeholders for datasource columns referencing
@@ -201,6 +204,7 @@ class ImportHydrationService:
                     text_lookup=self.text_lookup,
                     import_keys=key_path,
                     in_flight_imports=self.in_flight_imports,
+                    in_stdlib=request.is_stdlib or self.in_stdlib,
                 )
                 NativeHydrator(child_context).parse(document)
                 self.parsed_environments[env_cache_key] = new_env
