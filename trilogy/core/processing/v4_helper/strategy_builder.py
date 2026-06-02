@@ -30,7 +30,12 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.v4_node_generators import build_node
 
-from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
+from .constants import (
+    DEPENDENCY_EDGE_KINDS,
+    EDGE_KIND_EXISTENCE,
+    FINAL_NODE_ID,
+    GROUPING_DERIVATIONS,
+)
 from .models import GroupAttrs
 
 _AGGREGATING_DERIVATIONS = {
@@ -173,7 +178,7 @@ def _parent_nodes_for(
         # `_existence_for_group` wires them as side-channel parents post-
         # build. Including them here would put them in JOIN dedup and
         # mistakenly merge their row stream into this group's FROM.
-        if group_graph.edges[pgid, gid].get("kind") == "existence":
+        if group_graph.edges[pgid, gid].get("kind") == EDGE_KIND_EXISTENCE:
             continue
         node = built.get(pgid)
         if node is not None:
@@ -419,7 +424,7 @@ def _topological_order(group_graph: nx.DiGraph) -> list[str]:
     dep_edges = [
         (u, v)
         for u, v, d in group_graph.edges(data=True)
-        if d.get("kind") in ("lineage", "constraint", "existence")
+        if d.get("kind") in DEPENDENCY_EDGE_KINDS
     ]
     dep_graph = group_graph.edge_subgraph(dep_edges).copy()
     for n in group_graph.nodes:

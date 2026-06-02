@@ -2,7 +2,7 @@
 explicit parent StrategyNodes (decided by stage 2, the group graph) instead of
 a `source_concepts` callback."""
 
-from typing import Callable, List
+from typing import Callable
 
 from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph
@@ -50,8 +50,8 @@ _GENERATORS: dict[str, GeneratorFn] = {
 def build_node(
     *,
     derivation: str,
-    outputs: List[BuildConcept],
-    parents: List[StrategyNode],
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None,
     preexisting_conditions: BuildWhereClause | None = None,

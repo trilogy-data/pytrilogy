@@ -16,7 +16,6 @@ API and the History cache wiring.
 """
 
 from dataclasses import dataclass, field
-from typing import List
 
 import networkx as nx
 
@@ -162,7 +161,7 @@ def _build_nested_select(
 
 def _resolve_multiselect(
     ms_concept: BuildConcept,
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
@@ -258,7 +257,7 @@ def _resolve_multiselect(
 
 
 def resolve_rowset(
-    outputs: List[BuildConcept],
+    outputs: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
@@ -445,7 +444,7 @@ def resolve_rowset(
 
 
 def _search_concepts(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
@@ -488,7 +487,7 @@ def _search_concepts(
 
 
 def search_concepts(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     history: V4History,
     environment: BuildEnvironment,
     depth: int,

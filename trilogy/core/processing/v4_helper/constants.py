@@ -1,4 +1,17 @@
+from typing import Literal
+
 from trilogy.core.enums import Derivation
+
+EdgeKind = Literal["lineage", "constraint", "existence", "merge"]
+
+EDGE_KIND_LINEAGE: EdgeKind = "lineage"
+EDGE_KIND_CONSTRAINT: EdgeKind = "constraint"
+EDGE_KIND_EXISTENCE: EdgeKind = "existence"
+EDGE_KIND_MERGE: EdgeKind = "merge"
+
+DEPENDENCY_EDGE_KINDS: frozenset[EdgeKind] = frozenset(
+    (EDGE_KIND_LINEAGE, EDGE_KIND_CONSTRAINT, EDGE_KIND_EXISTENCE)
+)
 
 # Derivations that change row shape — a filter cannot be safely pushed below
 # one of these; it must be applied above the barrier instead.

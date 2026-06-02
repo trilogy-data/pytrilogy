@@ -1,5 +1,3 @@
-from typing import List
-
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -7,8 +5,8 @@ from trilogy.core.processing.nodes import History, StrategyNode
 
 
 def gen_rowset(
-    outputs: List[BuildConcept],
-    parents: List[StrategyNode],
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     preexisting_conditions: BuildWhereClause | None = None,

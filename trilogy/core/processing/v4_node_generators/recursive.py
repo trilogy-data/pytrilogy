@@ -1,5 +1,3 @@
-from typing import List
-
 from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.models.build import (
     BuildComparison,
@@ -13,8 +11,8 @@ from trilogy.core.processing.nodes import RecursiveNode, StrategyNode
 
 
 def gen_recursive(
-    outputs: List[BuildConcept],
-    parents: List[StrategyNode],
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     preexisting_conditions: BuildWhereClause | None = None,

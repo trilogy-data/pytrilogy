@@ -30,6 +30,7 @@ import networkx as nx
 
 from trilogy.core.enums import Derivation
 
+from .constants import EDGE_KIND_LINEAGE
 from .models import ConceptAttrs, GroupBucket
 
 # Behaviors read node state from `concept_attrs` (the typed side dict keyed by
@@ -58,7 +59,7 @@ def _lineage_parents(concept_graph: nx.DiGraph, address: str) -> frozenset[str]:
     return frozenset(
         u
         for u, _, d in concept_graph.in_edges(address, data=True)
-        if d.get("kind") == "lineage"
+        if d.get("kind") == EDGE_KIND_LINEAGE
     )
 
 
@@ -172,7 +173,7 @@ def _lineage_parent_addrs(
     return {
         concept_attrs[u].address
         for u, _, d in concept_graph.in_edges(address, data=True)
-        if d.get("kind") == "lineage"
+        if d.get("kind") == EDGE_KIND_LINEAGE
     }
 
 

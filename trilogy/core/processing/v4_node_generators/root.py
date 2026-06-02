@@ -3,8 +3,6 @@ concepts. Delegates to v3 because datasource search/join planning is the one
 piece the v4 prototype hasn't replaced yet — the per-node `add_output_concept`
 and datasource scoring lives there."""
 
-from typing import List
-
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing import concept_strategies_v3 as v3
@@ -47,8 +45,8 @@ def _split_existence_atoms(
 
 
 def gen_root(
-    outputs: List[BuildConcept],
-    parents: List[StrategyNode],  # always empty for ROOT; kept for uniform sig
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],  # always empty for ROOT; kept for uniform sig
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     *,

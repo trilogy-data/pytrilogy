@@ -8,7 +8,7 @@ this node must contain. The default fetcher returns
 consumes. Specialized fetchers (AGGREGATE, FILTER, WINDOW, SUBSELECT) add
 row-identity concepts that aren't visible from the lineage walk alone:
 property keys, grain components, partition keys. Everything the fetcher
-returns gets a `kind="lineage"` edge — an aggregate's grain keys aren't
+returns gets a `kind=EDGE_KIND_LINEAGE` edge — an aggregate's grain keys aren't
 optional metadata, they're what keeps row identity intact through the SUM.
 
 This mirrors the per-derivation `resolve_*_parent_concepts` helpers used
@@ -16,7 +16,7 @@ by the v3 generators (`gen_group_node`, `gen_filter_node`,
 `gen_window_node`, `gen_subselect_node`).
 """
 
-from typing import Callable, List
+from typing import Callable
 
 import networkx as nx
 
@@ -34,10 +34,15 @@ from trilogy.core.processing.node_generators.common import (
     _walk_aggregate_grain_inputs,
 )
 
-from .constants import ROW_SHAPE_BARRIER_DERIVATIONS
+from .constants import (
+    EDGE_KIND_CONSTRAINT,
+    EDGE_KIND_EXISTENCE,
+    EDGE_KIND_LINEAGE,
+    ROW_SHAPE_BARRIER_DERIVATIONS,
+)
 from .models import ConceptAttrs
 
-UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], List[BuildConcept]]
+UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], list[BuildConcept]]
 
 
 # Phase suffix appended to a label when a concept is reached via the WHERE
@@ -87,7 +92,7 @@ def classify_depth(concept: BuildConcept, label: str) -> str:
 
 def _lineage_args(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """The default — concepts the lineage's expression directly consumes."""
     if concept.lineage is None:
         return []
@@ -99,13 +104,13 @@ def _lineage_args(
 
 def _upstream_default(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     return _lineage_args(concept, environment)
 
 
 def _upstream_aggregate(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """AGGREGATE: lineage args plus row-identity concepts of each function
     arg (property keys, rowset grain). Stops at inner aggregate boundaries
     via `_walk_aggregate_grain_inputs`."""
@@ -130,7 +135,7 @@ def _filter_existence_only(concept: BuildConcept) -> set[str]:
 
 def _upstream_filter(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """FILTER: lineage args plus property keys of the filtered concept
     (matches `resolve_filter_parent_concepts`). A filter over a property
     needs the property's keys to keep the row stream identifiable.
@@ -160,7 +165,7 @@ def _upstream_filter(
 
 def _grain_and_keys(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     extras: list[BuildConcept] = []
     if concept.grain:
         for g in concept.grain.components:
@@ -175,7 +180,7 @@ def _grain_and_keys(
 
 def _window_aggregate_grain_keys(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """Grain keys of every aggregate in the window's argument closure.
 
     A window preserves its argument's grain row-for-row. When an argument is
@@ -209,7 +214,7 @@ def _window_aggregate_grain_keys(
 
 def _upstream_window(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """WINDOW: lineage args, the grain keys of any aggregate in the argument
     closure, plus the window's own grain components and keys (matches
     `resolve_window_parent_concepts`)."""
@@ -222,7 +227,7 @@ def _upstream_window(
 
 def _upstream_subselect(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """SUBSELECT: lineage args plus grain components (matches
     `resolve_subselect_parent_concepts`)."""
     base = list(_lineage_args(concept, environment))
@@ -358,11 +363,11 @@ def _add_concept(
     for upstream in fetcher(concept, environment):
         _add_concept(upstream, environment, graph, attrs, label=label)
         upstream_label = _effective_label(upstream, label)
-        graph.add_edge(node_id(upstream_label, upstream.address), nid, kind="lineage")
+        graph.add_edge(node_id(upstream_label, upstream.address), nid, kind=EDGE_KIND_LINEAGE)
 
 
 def build_concept_graph(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
 ) -> tuple[nx.DiGraph, dict[str, ConceptAttrs]]:
@@ -427,7 +432,7 @@ def build_concept_graph(
             _add_concept(source, environment, graph, attrs, label=flabel)
             src_nid = node_id(_effective_label(source, flabel), source.address)
             if src_nid in graph and src_nid != nid and not graph.has_edge(src_nid, nid):
-                graph.add_edge(src_nid, nid, kind="existence")
+                graph.add_edge(src_nid, nid, kind=EDGE_KIND_EXISTENCE)
 
     # Classify how each atom uses its concept arguments. A row-argument
     # gets joined into the consumer's row stream; an existence-argument
@@ -485,7 +490,7 @@ def build_concept_graph(
                 if graph.has_edge(src, dst):
                     graph.edges[src, dst]["is_constraint"] = True
                 else:
-                    graph.add_edge(src, dst, kind="constraint", is_constraint=True)
+                    graph.add_edge(src, dst, kind=EDGE_KIND_CONSTRAINT, is_constraint=True)
 
     # Existence edges: for each `... IN <subselect>` atom, the existence
     # source must be built and topologically ordered before the host
@@ -503,7 +508,7 @@ def build_concept_graph(
             row_nid = node_id(candidate_label, row_addr)
             if existence_nid in graph and row_nid in graph and existence_nid != row_nid:
                 if not graph.has_edge(existence_nid, row_nid):
-                    graph.add_edge(existence_nid, row_nid, kind="existence")
+                    graph.add_edge(existence_nid, row_nid, kind=EDGE_KIND_EXISTENCE)
 
     # Backfill: if a condition-phase node has no successor (no d0 barrier
     # consumed it), wire a constraint from it to the matching blank-phase
@@ -530,5 +535,5 @@ def build_concept_graph(
         for dst in mandatory_blank_ids:
             if dst not in graph.nodes or graph.has_edge(src, dst):
                 continue
-            graph.add_edge(src, dst, kind="constraint", is_constraint=True)
+            graph.add_edge(src, dst, kind=EDGE_KIND_CONSTRAINT, is_constraint=True)
     return graph, attrs

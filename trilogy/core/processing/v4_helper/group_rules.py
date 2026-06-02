@@ -18,6 +18,7 @@ import networkx as nx
 from trilogy.core.enums import Derivation
 
 from .concept_graph import _scope_and_phase
+from .constants import EDGE_KIND_LINEAGE
 from .models import ConceptAttrs, GroupBucket
 
 NodeItem = tuple[str, ConceptAttrs]
@@ -214,7 +215,7 @@ def partition_roots(
                 for nxt in concept_graph.successors(cur):
                     if nxt in seen:
                         continue
-                    if concept_graph.edges[cur, nxt].get("kind") != "lineage":
+                    if concept_graph.edges[cur, nxt].get("kind") != EDGE_KIND_LINEAGE:
                         continue
                     seen.add(nxt)
                     stack.append(nxt)
@@ -317,7 +318,7 @@ def _stop_signature(
     while stack:
         current = stack.pop()
         for pred, _, ed in concept_graph.in_edges(current, data=True):
-            if ed.get("kind") != "lineage":
+            if ed.get("kind") != EDGE_KIND_LINEAGE:
                 continue
             if pred in visited:
                 continue
