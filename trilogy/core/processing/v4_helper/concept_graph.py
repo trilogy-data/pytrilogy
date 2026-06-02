@@ -363,7 +363,9 @@ def _add_concept(
     for upstream in fetcher(concept, environment):
         _add_concept(upstream, environment, graph, attrs, label=label)
         upstream_label = _effective_label(upstream, label)
-        graph.add_edge(node_id(upstream_label, upstream.address), nid, kind=EDGE_KIND_LINEAGE)
+        graph.add_edge(
+            node_id(upstream_label, upstream.address), nid, kind=EDGE_KIND_LINEAGE
+        )
 
 
 def build_concept_graph(
@@ -490,7 +492,9 @@ def build_concept_graph(
                 if graph.has_edge(src, dst):
                     graph.edges[src, dst]["is_constraint"] = True
                 else:
-                    graph.add_edge(src, dst, kind=EDGE_KIND_CONSTRAINT, is_constraint=True)
+                    graph.add_edge(
+                        src, dst, kind=EDGE_KIND_CONSTRAINT, is_constraint=True
+                    )
 
     # Existence edges: for each `... IN <subselect>` atom, the existence
     # source must be built and topologically ordered before the host

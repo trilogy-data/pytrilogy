@@ -319,7 +319,9 @@ def render_digraph(graph: nx.DiGraph, concept_attrs: dict, output_path: Path) ->
     """Concept-dependency digraph: top-down by lineage depth, rectangular
     labels so long concept addresses stay readable."""
     lineage_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == EDGE_KIND_LINEAGE
+        (u, v)
+        for u, v, d in graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_LINEAGE
     ]
     constraint_edges = [
         (u, v)
@@ -531,7 +533,9 @@ def render_group_digraph(
         return "#555555"
 
     lineage_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == EDGE_KIND_LINEAGE
+        (u, v)
+        for u, v, d in graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_LINEAGE
     ]
     merge_edges = [
         (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == EDGE_KIND_MERGE

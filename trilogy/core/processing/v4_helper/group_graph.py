@@ -532,7 +532,9 @@ def _propagate_raw_filters_to_d1_roots(
     columns — i.e. the filter and the aggregate genuinely share one table.
     Returns the root_d1 gids that gained atoms."""
     existence_sources = {
-        u for u, _, d in group_graph.edges(data=True) if d.get("kind") == EDGE_KIND_EXISTENCE
+        u
+        for u, _, d in group_graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_EXISTENCE
     }
     d1_roots = [
         gid
@@ -928,7 +930,9 @@ def _compute_concept_sets(
             for sibling in group_graph.predecessors(succ):
                 if sibling == gid or sibling == FINAL_NODE_ID:
                     continue
-                sibling_kind = group_graph.edges[sibling, succ].get("kind", EDGE_KIND_LINEAGE)
+                sibling_kind = group_graph.edges[sibling, succ].get(
+                    "kind", EDGE_KIND_LINEAGE
+                )
                 if sibling_kind == EDGE_KIND_EXISTENCE:
                     continue
                 outs |= grain_of.get(sibling, frozenset()) & cap_gid
