@@ -1,5 +1,17 @@
 # Engine bug handoff: `INVALID_REFERENCE_BUG_<Cannot render aggregate ...>` emitted into SQL when a `by`-grain mixes a derived concept with a key it depends on
 
+> **RESOLVED** (`trilogy/dialect/base.py` `_cte_at_aggregate_grain`). The guard
+> added in #564 compared the CTE grain against the *raw* by-addresses with exact
+> set equality. When the by-grain lists properties functionally determined by
+> keys also in it (a date beside its order id, a dist-center name reached via the
+> product id), the CTE grain reduces to just the keys and is a strict *subset* of
+> the by-addresses — the equality check failed and emitted the sentinel. Fix:
+> treat a CTE grain that is a subset of the by-addresses as "at grain" (the
+> dropped components are functionally dependent, so `agg(x)` still collapses to
+> `x`); a genuinely-finer CTE carries components *not* in the by-grain and is
+> still rejected. Regression test:
+> `tests/modeling/the_look/test_the_look.py::test_wrapped_aggregate_with_dependent_by_grain`.
+
 ## Summary
 
 The SQL renderer emits its internal sentinel string
