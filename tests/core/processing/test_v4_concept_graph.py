@@ -17,8 +17,9 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import BuildComparison, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing import concept_strategies_v4 as v4
 from trilogy.core.processing.concept_strategies_v4 import V4History, search_concepts
-from trilogy.core.processing.nodes import MergeNode
+from trilogy.core.processing.nodes import MergeNode, SelectNode
 from trilogy.core.processing.v4_helper.concept_graph import (
     _count_dedup_grain,
     _filter_existence_only,
@@ -268,6 +269,48 @@ ALIGN
 
 
 class TestResolveMultiselect:
+    def test_merge_arms_use_arm_materialized_environments(self, monkeypatch):
+        """Each multiselect arm is planned in its own materialized environment."""
+        env, benv = _build(MULTISELECT_MODEL)
+        seen_envs: list[BuildEnvironment] = []
+
+        def fake_search_concepts(
+            mandatory_list,
+            history,
+            environment,
+            depth,
+            g,
+            accept_partial=False,
+            conditions=None,
+        ):
+            seen_envs.append(environment)
+            return v4.BuildInfo(
+                strategy_node=SelectNode(
+                    input_concepts=[],
+                    output_concepts=list(mandatory_list),
+                    environment=environment,
+                )
+            )
+
+        monkeypatch.setattr(v4, "search_concepts", fake_search_concepts)
+        monkeypatch.setattr(v4, "extra_align_joins", lambda *_args: [])
+        monkeypatch.setattr(v4.StrategyNode, "rebuild_cache", lambda _self: None)
+
+        info = v4._resolve_multiselect(
+            benv.concepts["local.one_key"],
+            [benv.concepts["local.one_key"]],
+            benv,
+            0,
+            generate_graph(benv),
+            V4History(base_environment=env),
+            [],
+        )
+
+        assert info.strategy_node is not None
+        assert len(seen_envs) == 2
+        assert all(arm_env is not benv for arm_env in seen_envs)
+        assert len({id(arm_env) for arm_env in seen_envs}) == 2
+
     def test_merge_resolves_to_merge_node(self):
         env, benv = _build(MULTISELECT_MODEL)
         info = _search(env, benv, ["local.one_key"])

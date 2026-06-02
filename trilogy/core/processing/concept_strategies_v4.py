@@ -103,6 +103,63 @@ class V4History(History):
         self.build_history[self._v4_key(search, accept_partial, conditions)] = output
 
 
+def _factory_for_history(history: "V4History") -> Factory:
+    author_env = history.base_environment
+    caches = history.build_caches
+    if caches.pseudonym_map is None:
+        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
+    return Factory(
+        environment=author_env,
+        build_cache=caches.build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        grain_build_cache=caches.grain_build_cache,
+        pseudonym_map=caches.pseudonym_map,
+    )
+
+
+def _protected_addresses(
+    statement: BuildSelectLineage | BuildMultiSelectLineage,
+) -> set[str]:
+    protected: set[str] = set()
+    for component in statement.output_components:
+        protected.add(component.address)
+        protected.add(component.canonical_address)
+    order_by = statement.order_by
+    if order_by is not None:
+        for item in order_by.items:
+            for arg in item.concept_arguments:
+                protected.add(arg.address)
+                protected.add(arg.canonical_address)
+    return protected
+
+
+def _build_nested_select(
+    select: SelectLineage | MultiSelectLineage,
+    history: "V4History",
+) -> tuple[
+    BuildSelectLineage | BuildMultiSelectLineage,
+    BuildEnvironment,
+    BuildWhereClause | None,
+]:
+    """Build and materialize one nested select in its own build environment."""
+    author_env = history.base_environment
+    caches = history.build_caches
+    factory = _factory_for_history(history)
+    built: BuildSelectLineage | BuildMultiSelectLineage = factory.build(select)
+    build_env = author_env.materialize_for_select(
+        built.local_concepts,
+        build_cache=caches.build_cache,
+        pseudonym_map=factory.pseudonym_map,
+        grain_build_cache=caches.grain_build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        datasource_build_cache=caches.datasource_build_cache,
+    )
+    where_clause = strip_tautological_not_null(
+        built.where_clause, build_env, _protected_addresses(built)
+    )
+    return built, build_env, where_clause
+
+
 def _resolve_multiselect(
     ms_concept: BuildConcept,
     mandatory_list: List[BuildConcept],
@@ -122,21 +179,6 @@ def _resolve_multiselect(
     lineage = ms_concept.lineage
     assert isinstance(lineage, BuildMultiSelectLineage)
 
-    # Arms are stored as AUTHOR SelectLineage (built lazily during discovery);
-    # build each one against the author environment to recover its outputs and
-    # WHERE, then plan those through v4.
-    author_env = history.base_environment
-    caches = history.build_caches
-    if caches.pseudonym_map is None:
-        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
-    factory = Factory(
-        environment=author_env,
-        build_cache=caches.build_cache,
-        canonical_build_cache=caches.canonical_build_cache,
-        grain_build_cache=caches.grain_build_cache,
-        pseudonym_map=caches.pseudonym_map,
-    )
-
     def _empty() -> BuildInfo:
         return BuildInfo(
             concept_graph=nx.DiGraph(),
@@ -147,14 +189,14 @@ def _resolve_multiselect(
 
     arm_nodes: list[StrategyNode] = []
     for arm in lineage.selects:
-        built_arm = factory.build(arm)
-        arm_conditions = [built_arm.where_clause] if built_arm.where_clause else []
+        built_arm, arm_env, arm_where = _build_nested_select(arm, history)
+        arm_conditions = [arm_where] if arm_where else []
         arm_info = search_concepts(
             mandatory_list=list(built_arm.output_components),
             history=history,
-            environment=environment,
+            environment=arm_env,
             depth=depth + 1,
-            g=g,
+            g=generate_graph(arm_env),
             conditions=arm_conditions,
         )
         arm_node = arm_info.strategy_node
@@ -250,35 +292,8 @@ def resolve_rowset(
     assert isinstance(lineage, BuildRowsetItem)
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
-    author_env = history.base_environment
-    caches = history.build_caches
-    if caches.pseudonym_map is None:
-        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
-    factory = Factory(
-        environment=author_env,
-        build_cache=caches.build_cache,
-        canonical_build_cache=caches.canonical_build_cache,
-        grain_build_cache=caches.grain_build_cache,
-        pseudonym_map=caches.pseudonym_map,
-    )
-    built: BuildSelectLineage | BuildMultiSelectLineage = factory.build(select)
-    inner_env = author_env.materialize_for_select(
-        built.local_concepts,
-        build_cache=caches.build_cache,
-        pseudonym_map=factory.pseudonym_map,
-        grain_build_cache=caches.grain_build_cache,
-        canonical_build_cache=caches.canonical_build_cache,
-        datasource_build_cache=caches.datasource_build_cache,
-    )
+    built, inner_env, inner_where = _build_nested_select(select, history)
     inner_g = generate_graph(inner_env)
-
-    # Strip tautological `IS NOT NULL` on model-non-nullable columns (mirrors
-    # `get_query_node`) so they don't pin into required concepts for no effect.
-    protected: set[str] = set()
-    for component in built.output_components:
-        protected.add(component.address)
-        protected.add(component.canonical_address)
-    inner_where = strip_tautological_not_null(built.where_clause, inner_env, protected)
 
     inner_info = search_concepts(
         mandatory_list=list(built.output_components),
