@@ -233,7 +233,8 @@ COMPARISON_ITEMS = (BuildComparison,)
 CONDITIONAL_ITEMS = (BuildConditional,)
 BETWEEN_ITEMS = (BuildBetween,)
 
-BASE_INVALID = f"INVALID_REFERENCE_BUG"
+BASE_INVALID = "INVALID_REFERENCE_BUG"
+
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
     if not callsite:
@@ -874,6 +875,29 @@ class BaseDialect:
             f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
         )
 
+    def _canonical_render_siblings(
+        self, c: BuildConcept, cte: CTE | UnionCTE
+    ) -> list[BuildConcept]:
+        """Concepts in this CTE sharing ``c``'s canonical lineage but bound under
+        a different address. A concept materialized-as-root (lineage stripped
+        because its canonical lineage is precomputed) has no source_map entry of
+        its own when the plan binds a canonical sibling instead — e.g. inline
+        ``year(flight_date)`` selected alongside the named auto ``flight_year``.
+        The sibling produces the same SQL expression, so rendering through it
+        satisfies ``c``. A canonically-equivalent concept under the *same*
+        address but carrying lineage (the un-stripped duplicate) also qualifies."""
+        siblings: list[BuildConcept] = []
+        for source in (cte.output_columns, cte.source.output_concepts):
+            for other in source:
+                if other is c or any(other is s for s in siblings):
+                    continue
+                if other.canonical_address != c.canonical_address:
+                    continue
+                if other.lineage is None and not cte.source_map.get(other.address, []):
+                    continue
+                siblings.append(other)
+        return siblings
+
     def render_concept_sql(
         self,
         c: BuildConcept,
@@ -884,10 +908,14 @@ class BaseDialect:
         result = None
         if not isinstance(c, BuildConcept):
             raise SyntaxError(f"Expected BuildConcept, got {type(c)} {c}")
+        candidates: list[BuildConcept] = []
         if c.pseudonyms:
-            candidates = [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
+            candidates += [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
+        if c.lineage is None and not cte.source_map.get(c.address, []):
+            candidates += self._canonical_render_siblings(c, cte)
+        if candidates:
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] pseudonym candidates are {[x.address for x in candidates]}"
+                f"{LOGGER_PREFIX} [{c.address}] render candidates are {[x.address for x in candidates]}"
             )
             for candidate in [c] + candidates:
                 try:
