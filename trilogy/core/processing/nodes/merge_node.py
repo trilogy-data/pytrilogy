@@ -21,6 +21,7 @@ from trilogy.core.processing.grain_utility import (
     non_null_proofs,
 )
 from trilogy.core.processing.join_resolution import (
+    _collect_deep_partial_addresses,
     compute_outer_null_status,
     get_node_joins,
     prune_outer_join_pairs,
@@ -395,6 +396,24 @@ class MergeNode(StrategyNode):
                 for condition in _collect_applied_conditions(source):
                     branch_proofs |= non_null_proofs(condition)
             branch_proofs &= output_addresses
+            # A branch-local filter proves its column non-null, but that only
+            # constrains the FINAL output when no branch supplies the column
+            # completely. When one branch has it COMPLETE (non-partial) and
+            # another has it PARTIAL — e.g. a rowset's `where order_id...` over
+            # its base key outer-joined back to the unfiltered base — the merge
+            # legitimately spans rows outside the filter, so the outer join must
+            # keep them: the column is non-null in the filtered branch but not
+            # complete there. (A column complete on one branch and merely absent
+            # from the rest, e.g. q81's dimension `...address.state`, still
+            # forces INNER — it isn't partial anywhere.)
+            complete_addresses: set[str] = set()
+            partial_addresses: set[str] = set()
+            for source in final_datasets:
+                source_partial = _collect_deep_partial_addresses(source)
+                source_outputs = {c.address for c in source.output_concepts}
+                complete_addresses |= source_outputs - source_partial
+                partial_addresses |= source_outputs & source_partial
+            branch_proofs -= complete_addresses & partial_addresses
             if branch_proofs:
                 for join in joins:
                     downgrade_join_for_proofs(join, branch_proofs, final_datasets)
