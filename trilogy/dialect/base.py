@@ -233,33 +233,12 @@ COMPARISON_ITEMS = (BuildComparison,)
 CONDITIONAL_ITEMS = (BuildConditional,)
 BETWEEN_ITEMS = (BuildBetween,)
 
+BASE_INVALID = f"INVALID_REFERENCE_BUG"
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
-    # if CONFIG.validate_missing:
-    #     raise SyntaxError(f"INVALID_REFERENCE_BUG_{callsite}<{x}>")
-
-    return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
-
-
-def _cte_at_aggregate_grain(cte: CTE | UnionCTE, agg: BuildAggregateWrapper) -> bool:
-    """True iff `cte`'s grain matches the aggregate's `by`-grain, so each row
-    in `cte` represents exactly one aggregate group and `agg(x)` collapses to
-    `x` safely (the FUNCTION_GRAIN_MATCH_MAP optimization)."""
-    agg_addrs = {p.address for p in agg.by}
-    grain = cte.grain.components
-    if grain == agg_addrs:
-        return True
-    # a rowset projection renames its source concept (my_rowset.x <- local.x);
-    # resolve grain components back to the underlying address before comparing
-    # so a rowset-grained CTE still matches an aggregate by the base concept.
-    return {_resolve_rowset_grain_source(addr, cte) for addr in grain} == agg_addrs
-
-
-def _resolve_rowset_grain_source(address: str, cte: CTE | UnionCTE) -> str:
-    concept = cte.get_concept(address)
-    if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
-        return concept.lineage.content.address
-    return address
+    if not callsite:
+        return BASE_INVALID
+    return f"{BASE_INVALID}_{callsite}<{x}>"
 
 
 def _window_over_clause(window: str, sort: str) -> str:
@@ -1036,25 +1015,9 @@ class BaseDialect:
                 ]
                 if cte.group_to_grain:
                     rval = self.FUNCTION_MAP[c.lineage.function.operator](args, [])
-                elif _cte_at_aggregate_grain(cte, c.lineage):
-                    # CTE is already grouped at the aggregate's target grain
-                    # (one row per group), so agg(x) == x. Skip the wrapper.
-                    logger.debug(
-                        f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at"
-                        " target grain"
-                    )
-                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args, [])}"
                 else:
-                    # source_map missed AND the CTE is not at the aggregate's
-                    # grain — emitting args[0] would silently produce wrong
-                    # values (e.g. ORDER BY collapsing to monthly_total -
-                    # monthly_total when avg_monthly_overall was aliased away).
-                    rval = INVALID_REFERENCE_STRING(
-                        f"Cannot render aggregate {c.address} in CTE "
-                        f"{cte.name}: source_map miss and CTE grain "
-                        f"{cte.grain} != aggregate by-grain "
-                        f"<{sorted(p.address for p in c.lineage.by)}>"
-                    )
+                    # EXPERIMENT: guard removed, unconditional collapse
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args, [])}"
             elif (
                 isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.UNION
@@ -1998,10 +1961,6 @@ class BaseDialect:
         self,
         query: ProcessedQuery,
     ) -> List[CompiledCTE]:
-        # Inlined datasources are folded onto consumers' ``inlined_parents``
-        # and thus unreachable via ``parent_ctes`` — they're already absent
-        # from ``query.ctes`` (no WITH entry), exactly as in the pre-refactor
-        # structural inline.
         return [self.render_cte(cte) for cte in query.ctes[:-1]] + [
             # last CTE needs to respect the user output order
             self.render_cte(sort_select_output(query.ctes[-1], query), auto_sort=False)
@@ -2307,7 +2266,7 @@ class BaseDialect:
             ctes=compiled_ctes[:-1],
         )
 
-        if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
+        if CONFIG.strict_mode and BASE_INVALID in final:
             raise ValueError(
                 f"Invalid reference string found in query: {final}, this should never"
                 " occur. Please create an issue to report this."
