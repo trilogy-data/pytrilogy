@@ -1,0 +1,35 @@
+# q77 WEB branch, extracted as a standalone select (negative test id -3).
+# Same merge-join shape as the store branch but keyed on web_page; included so
+# the per-branch v3/v4 parity audit covers all three multiselect arms.
+import web_sales as ws;
+import web_returns as wr;
+
+const period_start <- '2000-08-23'::date;
+const period_end <- '2000-09-22'::date;
+
+rowset ws_grouped <- where
+    ws.date.date between period_start and period_end
+select
+    ws.web_page.id as ws_wp_id,
+    sum(ws.ext_sales_price) as ws_sales,
+    sum(ws.net_profit) as ws_profit,
+;
+
+rowset wr_grouped <- where
+    wr.return_date.date between period_start and period_end
+select
+    wr.web_page.id as wr_wp_id,
+    sum(wr.return_amount) as wr_returns,
+    sum(wr.net_loss) as wr_loss,
+;
+
+merge wr_grouped.wr_wp_id into ws_grouped.ws_wp_id;
+
+select
+    'web channel' as u_channel_w,
+    ws_grouped.ws_wp_id as u_id_w,
+    ws_grouped.ws_sales::numeric(15,2) as u_sales_w,
+    coalesce(wr_grouped.wr_returns, 0)::numeric(15,2) as u_returns_w,
+    ws_grouped.ws_profit - coalesce(wr_grouped.wr_loss, 0)::numeric(15,2) as u_profit_w,
+order by u_id_w asc nulls first
+;

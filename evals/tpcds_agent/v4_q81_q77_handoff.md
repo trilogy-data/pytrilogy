@@ -114,11 +114,110 @@ q05/q46/q64). Useful repro/instrument: dump the FINAL contributors + chosen join
 types for q81 (the two contributors are `root/root` with the GA filter and
 `aggregate/d0` with `customer_state > scaled_state`).
 
-## q77 — value mismatch (same row count)
+## q77 — DIAGNOSED, not fixed (inline-aggregate arm column grain)
 
-Not yet diagnosed. v4 44 rows / ref 44 rows, but 43 differ — same cardinality,
-wrong values, so likely a join-key or grain issue rather than fan-out. Start by
-diffing the v4 vs reference SQL in `query77.md`.
+**Symptom:** v4 44 rows / ref 44 rows, ~43 differ. The **catalog channel** rows are
+wrong: `returns` come out exactly **4×** the correct scalar (`cr_total_returns`),
+`sales`/`profit` decoupled from their `id`. 4 = number of `cs.call_center` GROUP BY
+groups in the period (3 distinct + 1 NULL group).
+
+**Root cause:** The catalog arm of the `l0_union` multiselect is **inlined**
+(`select cs.call_center.id as u_id_c, sum(cs.ext_sales_price)*cr_totals.cr_n_groups
+as u_sales_c, ...`), mixing a per-call-center catalog_sales aggregate with a scalar
+from a *different* rowset (`cr_totals`). The arm's **grain is correctly
+`cs.call_center.id`**, but its output columns (`u_id_c`, `u_sales_c`, `u_profit_c`)
+get grain **`(cs.item.id, cs.order_number)`** — the catalog_sales **row grain** —
+because grain derivation **descends through**: (a) the bare (no-`by`) aggregate to
+its input column `cs.ext_sales_price`, and (b) the FK key `cs.call_center.id` to its
+binding `keys = {cs.item.id, cs.order_number}`. With that lying grain the v4 planner
+can't see the columns share `cs.call_center.id`, so it builds `u_id_c` (CTE
+`abhorrent`) separately from `u_sales_c`/`u_profit_c` (CTE `young`) and recombines
+them with `FULL JOIN ... ON 1=1` (cross join) → N² rows → 4× inflation. The store
+and web arms are correct because they route through explicit rowset wrappers
+(`ss_grouped`, `ws_grouped`) whose rowset items already carry the grouping grain.
+
+**Why it's hard (the grain is re-derived in ≥3 phases, each undoes a single-site fix):**
+1. Parse `function_to_concept` (`parsing/common.py:~827`): row-op key traversal
+   descends an FK KEY to `x.keys`.
+2. Parse `Concept.set_select_grain` → `get_select_grain_and_keys`
+   (`models/author.py:~1307`): BASIC else-branch descends `concept_arguments` into
+   the aggregate input; no-lineage KEY returns `self.keys`.
+3. Build `__build_concept` (`models/build.py:2543`): calls
+   `get_select_grain_and_keys(self.grain)` again with the **factory** grain (the
+   physical source grain, `(item, order)`), re-deriving the same wrong grain.
+
+**Attempts (all reverted — each fixed catalog but regressed store/web, or got undone
+at build):**
+- no-lineage KEY → return `{self.address}`: fixed `u_id_c`→`cs.call_center.id` but
+  flipped `u_id_s`/`u_id_w` to `Abstract` (multi-pass reconciliation relied on old
+  behavior).
+- bare-aggregate BASIC → select grain: made `u_sales_c` `Abstract` (a later pass
+  passed `Abstract`), didn't co-locate.
+- **clamp** (most promising): in the BASIC else-branch, when the descended grain is
+  **disjoint** from the passed select grain, clamp to the select grain. This fixed
+  the **parse-level** grain (`u_id_c`/`u_sales_c`→`cs.call_center.id`) and left
+  store/web untouched — but **build** (#3) re-derives with the factory grain
+  `(item, order)` (not disjoint from itself) so the clamp doesn't fire there, and
+  the planner had already chosen `(item, order)` for the factory.
+
+**Recommended fix direction:** make the arm's logical grain (`cs.call_center.id`)
+authoritative for the inline-aggregate columns *consistently across parse + build*,
+so the v4 planner builds the catalog arm at `cs.call_center.id` and co-locates
+`u_id_c`/`u_sales_c`/`u_profit_c` (key-join, not `1=1`). Likely needs the clamp at
+BOTH `get_select_grain_and_keys` sites AND ensuring the build factory grain for a
+multiselect arm is the arm's select grain, not the source row grain. Validate with
+v4 `--test-set` + v3 `test_queries.py` (multiselect q05/q14/q33/q49/q64) after each
+change — high blast radius (parse + build grain touches every query).
+
+### Standalone-select probe (CONFIRMED it's a select-level bug, found the fix)
+Extracting just the catalog arm as a **plain standalone select** (with its
+`cr_grouped`/`cr_totals` prereq rowsets) reproduces the bug exactly: build grains
+`(item, order)`, four `FULL JOIN ... ON 1=1`, 4× inflation. So it is NOT
+multiselect-native. **The fix that makes the standalone arm match the reference
+EXACTLY** (4 rows: None/1/2/5, `returns=2008328.89` scalar, `sales`/`profit` per-cc
+correct): in `get_select_grain_and_keys` BASIC else-branch, clamp the descended
+grain to the select grain when it is **disjoint** from it, **guarded** by
+`self.address not in grain.components` (so a grouping key that *is* the select grain,
+e.g. `coalesce(fk,-1) as cr_cc_key`, isn't clamped to itself — that de-aggregates
+its downstream `count()`).
+
+### CONCLUSIVE: it's a v4-planner bug, NOT a grain bug (author fix abandoned)
+Decisive test (local harness `local_scripts/_v3_v4_compare.py` — generates v3 via
+`Dialects.DUCK_DB.default_executor().generate_sql()` and v4 via discovery, runs both
+on duckdb). On the **catalog arm as a standalone select, with NO author fix**:
+- **v3 → 4 rows, CORRECT.**  **v4 → 16 rows, cross-join fan-out, WRONG.**
+
+Same parse/build (same "buggy" `(item, order)` grain) feeds both, yet v3 is right.
+So the grain inaccuracy is NOT the bug — **the v4 planner is brittle to it and v3
+isn't.** The earlier `_contains_abstract_aggregate` author fix only *masked* it (by
+coincidentally re-bucketing) — **reverted**; tree is at baseline.
+
+**Root cause (v4 group graph).** v3's `yummy` CTE derives `u_id_c`, `u_sales_c`,
+`u_profit_c` together off `abundant` (the cs aggregate, whose grouping-key column
+`cs_call_center_id` IS exposed), cross-joining the `cr_totals` scalar **once** (1
+row, no fan-out). v4 sources `u_id_c` from the **raw root** `cs.call_center.id`, so
+in `_partition_by_signature_and_grain` (`v4_helper/group_rules.py:336`) the
+stop-signatures differ — `sig(u_id_c)={root}` vs `sig(u_sales_c)={aggregate,rowset}`
+— and the two co-grain BASICs split into separate buckets, then cross-join (their
+shared `(item,order)` grain is a lie for the aggregate, so there's no real join
+key). **v4 fails to source an aggregate's grouping key from the aggregate group**,
+so column-basics referencing it (`u_id_c`) detach from the aggregate's other derived
+columns (`u_sales_c`). Fix direction: make the aggregate's grouping key sourceable
+from the aggregate group (assign its `primary_group` to the aggregate, or fold a
+key-only basic into the aggregate bucket) so dependent basics co-source — then no
+cross-join and no grain patch needed.
+
+**Store arm (separate, also v4-side) — to re-check under this lens:**
+- `u_id_s = ss_grouped.ss_store_id` alias → its bucket/grain; and
+- `u_returns_s` not exposing `ss_store_id` for the rowset `merge` join.
+Both previously chased as grain bugs; given the catalog finding, first confirm with
+the v3-vs-v4 harness whether v3 gets the store arm right (likely yes) → fix in v4.
+
+**Multiselect isolation (separate cleanup).** `_resolve_multiselect`
+(`concept_strategies_v4.py:152`) reuses the outer env+graph per arm;
+`resolve_rowset` (~265) materializes a FRESH per-branch env. Mirroring it is the
+right structure but regresses q49 — orthogonal to the above; do after arms are
+individually correct.
 
 ## Validation
 - `python local_scripts/discovery_v4_compare.py --test-set` → expect 97/97 (and

@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (14 rows) |
+| reference execution | OK (14 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 14 (14 distinct)
+ref rows: 14 (14 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2123 | 48 | 30.77 ms |
-| reference | 2123 | 48 | 31.11 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 2029 | 48 | 8.47 ms |
+| reference | 2029 | 48 | 9.45 ms |
+| v4 / ref | 1.00x | 1.00x | 0.90x |
 
 ## Preql
 
@@ -86,7 +86,7 @@ SELECT
     "cheerful"."itemrevenue" as "itemrevenue",
     ("cheerful"."itemrevenue" * 100.0) / "cooperative"."itemclassrevenue" as "revenueratio",
     "cheerful"."web_sales_item_category" as "web_sales_item_category",
-    coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") as "web_sales_item_class",
+    "cheerful"."web_sales_item_class" as "web_sales_item_class",
     "cheerful"."web_sales_item_current_price" as "web_sales_item_current_price",
     "cheerful"."web_sales_item_desc" as "web_sales_item_desc",
     "cheerful"."web_sales_item_text_id" as "web_sales_item_text_id"
@@ -95,7 +95,7 @@ FROM
     INNER JOIN "cooperative" on "cheerful"."web_sales_item_class" is not distinct from "cooperative"."web_sales_item_class"
 ORDER BY 
     "cheerful"."web_sales_item_category" asc,
-    coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") asc,
+    "cheerful"."web_sales_item_class" asc,
     "cheerful"."web_sales_item_text_id" asc,
     "cheerful"."web_sales_item_desc" asc,
     "revenueratio" asc
@@ -139,7 +139,7 @@ SELECT
     "cheerful"."web_sales_item_text_id" as "web_sales_item_text_id",
     "cheerful"."web_sales_item_desc" as "web_sales_item_desc",
     "cheerful"."web_sales_item_category" as "web_sales_item_category",
-    coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") as "web_sales_item_class",
+    "cheerful"."web_sales_item_class" as "web_sales_item_class",
     "cheerful"."web_sales_item_current_price" as "web_sales_item_current_price",
     "cheerful"."itemrevenue" as "itemrevenue",
     ("cheerful"."itemrevenue" * 100.0) / "cooperative"."itemclassrevenue" as "revenueratio"
@@ -148,7 +148,7 @@ FROM
     INNER JOIN "cooperative" on "cheerful"."web_sales_item_class" is not distinct from "cooperative"."web_sales_item_class"
 ORDER BY 
     "cheerful"."web_sales_item_category" asc,
-    coalesce("cheerful"."web_sales_item_class","cooperative"."web_sales_item_class") asc,
+    "cheerful"."web_sales_item_class" asc,
     "cheerful"."web_sales_item_text_id" asc,
     "cheerful"."web_sales_item_desc" asc,
     "revenueratio" asc

@@ -1,38 +1,26 @@
 # Query 81
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
-| results identical | NO |
+| v4 execution | OK (9 rows) |
+| reference execution | OK (9 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (58 distinct)
-ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 53):
-  2x  ('Woodlawn', 'United States', 'Morgan County', Decimal('-5.00000000'), 'single family', 'GA', 'Walnut ', '329', 'Boulevard', 'Suite 460', '34098', 'Ruth', 'Parker', 'Mrs.', 'AAAAAAAAAAAGAAAA', None)
-  1x  ('Edgewood', 'United States', 'Meriwether County', Decimal('-5.00000000'), 'single family', 'GA', 'Tenth 3rd', '300', 'Road', 'Suite 130', '30069', 'Eduardo', 'Goodwin', 'Mr.', 'AAAAAAAAAAAIBAAA', None)
-  1x  ('Oakwood', 'United States', 'Wheeler County', Decimal('-5.00000000'), 'condo', 'GA', 'Sycamore ', '12', 'Way', 'Suite 440', '30169', 'Jayme', 'Mcfarland', 'Ms.', 'AAAAAAAAAABBAAAA', None)
-  1x  ('Bunker Hill', 'United States', 'Tattnall County', Decimal('-5.00000000'), 'apartment', 'GA', 'Third Cedar', '968', 'RD', 'Suite N', '30150', 'Wendy', 'Jones', 'Mrs.', 'AAAAAAAAAABFBAAA', None)
-  2x  ('Riceville', 'United States', 'Wheeler County', Decimal('-5.00000000'), 'apartment', 'GA', 'Cedar ', '566', 'Wy', 'Suite G', '35867', 'Kristopher', 'Stone', 'Mr.', 'AAAAAAAAAABJAAAA', None)
-only in ref (showing up to 5 of 95):
-  1x  ('Shiloh', 'United States', 'Hart County', Decimal('-5.00000000'), 'apartment', 'GA', 'Hickory Broadway', '272', 'Circle', 'Suite A', '39275', 'Kevin', 'Chalmers', 'Sir', 'AAAAAAAAAGCEBAAA', Decimal('6973.39000000'))
-  1x  ('Oneida', 'United States', 'Dougherty County', Decimal('-5.00000000'), 'apartment', 'GA', '14th ', '904', 'Lane', 'Suite 490', '34027', 'Amy', 'Sullivan', 'Mrs.', 'AAAAAAAAAGKEBAAA', Decimal('5039.40000000'))
-  1x  ('Woodville', 'United States', 'Montgomery County', Decimal('-5.00000000'), 'single family', 'GA', 'Meadow ', '142', 'Road', 'Suite 460', '34289', 'Eugene', 'Morris', 'Mr.', 'AAAAAAAAAHJAAAAA', Decimal('2182.75000000'))
-  1x  ('Post Oak', 'United States', 'Oglethorpe County', Decimal('-5.00000000'), 'single family', 'GA', 'River ', '896', 'Ave', 'Suite 310', '38567', None, 'Kirby', None, 'AAAAAAAAAIPLAAAA', Decimal('1811.05000000'))
-  1x  ('Summit', 'United States', 'Murray County', Decimal('-5.00000000'), 'single family', 'GA', '2nd Ridge', '63', 'Ave', 'Suite S', '30499', 'Garrett', 'King', 'Mr.', 'AAAAAAAAAJDEBAAA', Decimal('5694.48000000'))
+v4 rows: 9 (9 distinct)
+ref rows: 9 (9 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9649 | 135 | 125.98 ms |
-| reference | 7464 | 111 | 99.92 ms |
-| v4 / ref | 1.29x | 1.22x | 1.26x |
+| v4 | 9583 | 153 | 86.48 ms |
+| reference | 7464 | 111 | 49.50 ms |
+| v4 / ref | 1.28x | 1.38x | 1.75x |
 
 ## Preql
 
@@ -172,12 +160,12 @@ FROM
 concerned as (
 SELECT
     "abundant"."customer_state" as "customer_state",
+    "questionable"."cr_billing_customer_id" as "cr_billing_customer_id",
     "questionable"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
-    coalesce("abundant"."cr_billing_customer_id","questionable"."cr_billing_customer_id") as "cr_billing_customer_id",
-    coalesce("abundant"."cr_return_address_state","questionable"."cr_return_address_state","vacuous"."cr_return_address_state") as "cr_return_address_state"
+    "questionable"."cr_return_address_state" as "cr_return_address_state"
 FROM
     "questionable"
-    RIGHT OUTER JOIN "abundant" on "questionable"."cr_billing_customer_id" = "abundant"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "abundant"."cr_return_address_state"
+    INNER JOIN "abundant" on "questionable"."cr_billing_customer_id" = "abundant"."cr_billing_customer_id" AND "questionable"."cr_return_address_state" is not distinct from "abundant"."cr_return_address_state"
     INNER JOIN "vacuous" on "questionable"."cr_return_address_state" is not distinct from "vacuous"."cr_return_address_state"
 WHERE
     "abundant"."customer_state" > "vacuous"."scaled_state"
@@ -191,7 +179,7 @@ GROUP BY
     "questionable"."cr_billing_customer_last_name",
     "questionable"."cr_billing_customer_salutation")
 SELECT
-    coalesce("concerned"."cr_billing_customer_text_id","questionable"."cr_billing_customer_text_id") as "cr_billing_customer_text_id",
+    "questionable"."cr_billing_customer_text_id" as "cr_billing_customer_text_id",
     "questionable"."cr_billing_customer_salutation" as "cr_billing_customer_salutation",
     "questionable"."cr_billing_customer_first_name" as "cr_billing_customer_first_name",
     "questionable"."cr_billing_customer_last_name" as "cr_billing_customer_last_name",
@@ -209,9 +197,27 @@ SELECT
     "concerned"."customer_state" as "customer_state"
 FROM
     "questionable"
-    FULL JOIN "concerned" on "questionable"."cr_billing_customer_id" = "concerned"."cr_billing_customer_id" AND "questionable"."cr_billing_customer_text_id" = "concerned"."cr_billing_customer_text_id" AND "questionable"."cr_return_address_state" is not distinct from "concerned"."cr_return_address_state"
+    INNER JOIN "concerned" on "questionable"."cr_billing_customer_id" = "concerned"."cr_billing_customer_id" AND "questionable"."cr_billing_customer_text_id" = "concerned"."cr_billing_customer_text_id" AND "questionable"."cr_return_address_state" is not distinct from "concerned"."cr_return_address_state"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    "questionable"."cr_billing_customer_id"
 ORDER BY 
-    coalesce("concerned"."cr_billing_customer_text_id","questionable"."cr_billing_customer_text_id") asc nulls first,
+    "questionable"."cr_billing_customer_text_id" asc nulls first,
     "questionable"."cr_billing_customer_salutation" asc nulls first,
     "questionable"."cr_billing_customer_first_name" asc nulls first,
     "questionable"."cr_billing_customer_last_name" asc nulls first,

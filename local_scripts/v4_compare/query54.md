@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
-| reference execution | OK (1 rows) |
+| v4 execution | OK (0 rows) |
+| reference execution | OK (0 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+v4 rows: 0 (0 distinct)
+ref rows: 0 (0 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6364 | 159 | 38.94 ms |
-| reference | 4263 | 91 | 35.34 ms |
-| v4 / ref | 1.49x | 1.75x | 1.10x |
+| v4 | 5999 | 147 | 11.15 ms |
+| reference | 4263 | 91 | 9.16 ms |
+| v4 / ref | 1.41x | 1.62x | 1.22x |
 
 ## Preql
 
@@ -92,7 +92,7 @@ limit 100
 
 ```sql
 WITH 
-friendly as (
+scrawny as (
 SELECT
     "store_store"."S_COUNTY" as "store_county",
     "store_store"."S_STATE" as "store_state",
@@ -122,13 +122,13 @@ FROM
 WHERE
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 12 and "sales_item_items"."I_CATEGORY" = 'Women' and "sales_item_items"."I_CLASS" = 'maternity'
 ),
-busy as (
+divergent as (
 SELECT
-    "friendly"."_stores_cs_scs_count" as "_stores_cs_scs_count",
-    "friendly"."store_county" as "_stores_cs_scs_county",
-    "friendly"."store_state" as "_stores_cs_scs_state"
+    "scrawny"."_stores_cs_scs_count" as "_stores_cs_scs_count",
+    "scrawny"."store_county" as "_stores_cs_scs_county",
+    "scrawny"."store_state" as "_stores_cs_scs_state"
 FROM
-    "friendly"),
+    "scrawny"),
 thoughtful as (
 SELECT
     "cheerful"."sales_billing_customer_id" as "sales_billing_customer_id"
@@ -136,13 +136,13 @@ FROM
     "cheerful"
 GROUP BY
     1),
-charming as (
+busy as (
 SELECT
-    "busy"."_stores_cs_scs_count" as "stores_cs_scs_count",
-    "busy"."_stores_cs_scs_county" as "stores_cs_scs_county",
-    "busy"."_stores_cs_scs_state" as "stores_cs_scs_state"
+    "divergent"."_stores_cs_scs_count" as "stores_cs_scs_count",
+    "divergent"."_stores_cs_scs_county" as "stores_cs_scs_county",
+    "divergent"."_stores_cs_scs_state" as "stores_cs_scs_state"
 FROM
-    "busy"),
+    "divergent"),
 uneven as (
 SELECT
     "thoughtful"."sales_billing_customer_id" as "_my_customers_my_cust_id"
@@ -195,60 +195,48 @@ SELECT
     "late"."_cust_ss_ss_revenue" as "cust_ss_ss_revenue"
 FROM
     "late"),
-protective as (
+charming as (
 SELECT
-    "macho"."cust_ss_ss_cust_id" as "cust_ss_ss_cust_id",
-    "macho"."cust_ss_ss_revenue" * "charming"."stores_cs_scs_count" as "_my_revenue_revenue"
+    "macho"."cust_ss_ss_cust_id" as "_my_revenue_rev_cust_id",
+    "macho"."cust_ss_ss_revenue" * "busy"."stores_cs_scs_count" as "_my_revenue_revenue"
 FROM
     "macho"
-    INNER JOIN "charming" on "macho"."cust_ss_ss_cust_county" = "charming"."stores_cs_scs_county" AND "macho"."cust_ss_ss_cust_state" = "charming"."stores_cs_scs_state"),
-scrawny as (
+    INNER JOIN "busy" on "macho"."cust_ss_ss_cust_county" = "busy"."stores_cs_scs_county" AND "macho"."cust_ss_ss_cust_state" = "busy"."stores_cs_scs_state"),
+premium as (
 SELECT
-    "macho"."cust_ss_ss_cust_id" as "_my_revenue_rev_cust_id"
+    "charming"."_my_revenue_rev_cust_id" as "my_revenue_rev_cust_id",
+    "charming"."_my_revenue_revenue" as "my_revenue_revenue"
 FROM
-    "macho"),
-puzzled as (
-SELECT
-    "protective"."_my_revenue_revenue" as "_my_revenue_revenue",
-    "scrawny"."_my_revenue_rev_cust_id" as "_my_revenue_rev_cust_id"
-FROM
-    "protective"
-    INNER JOIN "scrawny" on "protective"."cust_ss_ss_cust_id" = "scrawny"."_my_revenue_rev_cust_id"),
+    "charming"),
 waggish as (
 SELECT
-    "puzzled"."_my_revenue_rev_cust_id" as "my_revenue_rev_cust_id",
-    "puzzled"."_my_revenue_revenue" as "my_revenue_revenue"
+    "premium"."my_revenue_rev_cust_id" as "my_revenue_rev_cust_id"
 FROM
-    "puzzled"),
-puffy as (
-SELECT
-    "waggish"."my_revenue_rev_cust_id" as "my_revenue_rev_cust_id"
-FROM
-    "waggish"
+    "premium"
 GROUP BY
     1),
+puzzled as (
+SELECT
+    cast(round(( "premium"."my_revenue_revenue" ) / 50,0) as int) * 50 as "segment_base",
+    cast(round(( "premium"."my_revenue_revenue" ) / 50,0) as int) as "segment"
+FROM
+    "premium"),
 rambunctious as (
 SELECT
-    cast(round(( "waggish"."my_revenue_revenue" ) / 50,0) as int) * 50 as "segment_base",
-    cast(round(( "waggish"."my_revenue_revenue" ) / 50,0) as int) as "segment"
+    CASE WHEN "waggish"."my_revenue_rev_cust_id" IS NOT NULL THEN 1 ELSE 0 END as "num_customers"
 FROM
-    "waggish"),
-hard as (
+    "waggish")
 SELECT
-    CASE WHEN "puffy"."my_revenue_rev_cust_id" IS NOT NULL THEN 1 ELSE 0 END as "num_customers"
+    "puzzled"."segment" as "segment",
+    coalesce("rambunctious"."num_customers",0) as "num_customers",
+    "puzzled"."segment_base" as "segment_base"
 FROM
-    "puffy")
-SELECT
-    "rambunctious"."segment" as "segment",
-    coalesce("hard"."num_customers",0) as "num_customers",
-    "rambunctious"."segment_base" as "segment_base"
-FROM
-    "hard"
-    FULL JOIN "rambunctious" on 1=1
+    "rambunctious"
+    FULL JOIN "puzzled" on 1=1
 ORDER BY 
-    "rambunctious"."segment" asc nulls first,
-    coalesce("hard"."num_customers",0) asc nulls first,
-    "rambunctious"."segment_base" asc nulls first
+    "puzzled"."segment" asc nulls first,
+    coalesce("rambunctious"."num_customers",0) asc nulls first,
+    "puzzled"."segment_base" asc nulls first
 LIMIT (100)
 ```
 

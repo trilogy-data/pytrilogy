@@ -1,26 +1,30 @@
 # Query 01
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | YES |
+| results identical | NO |
 
 ## Result comparison
 
-v4 rows: 100 (92 distinct)
-ref rows: 100 (92 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 1):
+  1x  ('AAAAAAAAHKBAAAAA',)
+only in ref (showing up to 5 of 1):
+  1x  ('AAAAAAAAPEBAAAAA',)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1655 | 42 | 29.72 ms |
-| reference | 1822 | 48 | 21.12 ms |
-| v4 / ref | 0.91x | 0.88x | 1.41x |
+| v4 | 1652 | 42 | 12.25 ms |
+| reference | 1822 | 48 | 5.24 ms |
+| v4 / ref | 0.91x | 0.88x | 2.34x |
 
 ## Preql
 
@@ -71,8 +75,7 @@ SELECT
 FROM
     "thoughtful"
 GROUP BY
-    1),
-abundant as (
+    1)
 SELECT
     "thoughtful"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
 FROM
@@ -80,13 +83,14 @@ FROM
     INNER JOIN "questionable" on "thoughtful"."returns_store_id" = "questionable"."returns_store_id"
 WHERE
     "thoughtful"."total_returns" > ( 1.2 * "questionable"."avg_store_returns" )
-)
-SELECT
-    "abundant"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
-FROM
-    "abundant"
+
+GROUP BY
+    1,
+    "questionable"."avg_store_returns",
+    "thoughtful"."returns_store_id",
+    "thoughtful"."total_returns"
 ORDER BY 
-    "abundant"."returns_billing_customer_text_id" asc
+    "thoughtful"."returns_billing_customer_text_id" asc
 LIMIT (100)
 ```
 

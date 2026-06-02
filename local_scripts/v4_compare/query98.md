@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (2521 rows) |
-| reference execution | OK (2521 rows) |
+| v4 execution | OK (24 rows) |
+| reference execution | OK (24 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 2521 (2521 distinct)
-ref rows: 2521 (2521 distinct)
+v4 rows: 24 (24 distinct)
+ref rows: 24 (24 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3103 | 59 | 55.00 ms |
-| reference | 3613 | 70 | 54.49 ms |
-| v4 / ref | 0.86x | 0.84x | 1.01x |
+| v4 | 3006 | 59 | 13.67 ms |
+| reference | 3517 | 70 | 14.00 ms |
+| v4 / ref | 0.85x | 0.84x | 0.98x |
 
 ## Preql
 
@@ -97,16 +97,16 @@ SELECT
     "thoughtful"."item_revenue" as "item_revenue",
     ( "thoughtful"."item_revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9925573558789696") as "revenueratio",
     "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
-    coalesce("cooperative"."physical_sales_item_class","thoughtful"."physical_sales_item_class") as "physical_sales_item_class",
+    "thoughtful"."physical_sales_item_class" as "physical_sales_item_class",
     "thoughtful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
     "thoughtful"."physical_sales_item_desc" as "physical_sales_item_desc",
     "thoughtful"."physical_sales_item_text_id" as "physical_sales_item_text_id"
 FROM
     "cooperative"
-    FULL JOIN "thoughtful" on "cooperative"."physical_sales_item_class" is not distinct from "thoughtful"."physical_sales_item_class"
+    RIGHT OUTER JOIN "thoughtful" on "cooperative"."physical_sales_item_class" is not distinct from "thoughtful"."physical_sales_item_class"
 ORDER BY 
     "thoughtful"."physical_sales_item_category" asc nulls first,
-    coalesce("cooperative"."physical_sales_item_class","thoughtful"."physical_sales_item_class") asc nulls first,
+    "thoughtful"."physical_sales_item_class" asc nulls first,
     "thoughtful"."physical_sales_item_text_id" asc nulls first,
     "thoughtful"."physical_sales_item_desc" asc nulls first,
     "revenueratio" asc nulls first
@@ -172,16 +172,16 @@ SELECT
     "abundant"."physical_sales_item_text_id" as "physical_sales_item_text_id",
     "abundant"."physical_sales_item_desc" as "physical_sales_item_desc",
     "abundant"."physical_sales_item_category" as "physical_sales_item_category",
-    coalesce("abundant"."physical_sales_item_class","thoughtful"."physical_sales_item_class") as "physical_sales_item_class",
+    "abundant"."physical_sales_item_class" as "physical_sales_item_class",
     "abundant"."physical_sales_item_current_price" as "physical_sales_item_current_price",
     "abundant"."item_revenue" as "item_revenue",
     ( "abundant"."item_revenue" * 100.0 ) / ("thoughtful"."_virt_agg_sum_9925573558789696") as "revenueratio"
 FROM
     "abundant"
-    FULL JOIN "thoughtful" on "abundant"."physical_sales_item_class" is not distinct from "thoughtful"."physical_sales_item_class"
+    LEFT OUTER JOIN "thoughtful" on "abundant"."physical_sales_item_class" is not distinct from "thoughtful"."physical_sales_item_class"
 ORDER BY 
     "abundant"."physical_sales_item_category" asc nulls first,
-    coalesce("abundant"."physical_sales_item_class","thoughtful"."physical_sales_item_class") asc nulls first,
+    "abundant"."physical_sales_item_class" asc nulls first,
     "abundant"."physical_sales_item_text_id" asc nulls first,
     "abundant"."physical_sales_item_desc" asc nulls first,
     "revenueratio" asc nulls first

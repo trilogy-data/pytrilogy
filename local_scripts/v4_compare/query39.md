@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (243 rows) |
-| reference execution | OK (243 rows) |
+| v4 execution | OK (0 rows) |
+| reference execution | OK (0 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 243 (243 distinct)
-ref rows: 243 (243 distinct)
+v4 rows: 0 (0 distinct)
+ref rows: 0 (0 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2900 | 83 | 41.60 ms |
-| reference | 2041 | 36 | 30.57 ms |
-| v4 / ref | 1.42x | 2.31x | 1.36x |
+| v4 | 2091 | 53 | 2.91 ms |
+| reference | 2041 | 36 | 2.67 ms |
+| v4 / ref | 1.02x | 1.47x | 1.09x |
 
 ## Preql
 
@@ -93,72 +93,42 @@ WHERE
 
 GROUP BY
     1,
-    2),
-abundant as (
+    2)
 SELECT
-    1 as "dmoy1",
-    2 as "dmoy2"
-),
-questionable as (
-SELECT
-    "wakeful"."inventory_item_id" as "isk1",
-    "wakeful"."inventory_item_id" as "isk2",
     "wakeful"."inventory_warehouse_id" as "wsk1",
-    "wakeful"."inventory_warehouse_id" as "wsk2",
+    "wakeful"."inventory_item_id" as "isk1",
+    1 as "dmoy1",
     "wakeful"."mean1" as "mean1",
-    "wakeful"."mean2" as "mean2"
-FROM
-    "wakeful"),
-cooperative as (
-SELECT
-    "wakeful"."inventory_item_id" as "inventory_item_id",
-    "wakeful"."inventory_warehouse_id" as "inventory_warehouse_id",
     CASE
 	WHEN "wakeful"."mean1" = 0 THEN null
 	ELSE "wakeful"."stdev1" / "wakeful"."mean1"
 	END as "cov1",
+    "wakeful"."inventory_warehouse_id" as "wsk2",
+    "wakeful"."inventory_item_id" as "isk2",
+    2 as "dmoy2",
+    "wakeful"."mean2" as "mean2",
     CASE
 	WHEN "wakeful"."mean2" = 0 THEN null
 	ELSE "wakeful"."stdev2" / "wakeful"."mean2"
 	END as "cov2"
 FROM
-    "wakeful")
-SELECT
-    "questionable"."wsk1" as "wsk1",
-    "questionable"."isk1" as "isk1",
-    "abundant"."dmoy1" as "dmoy1",
-    "questionable"."mean1" as "mean1",
-    "cooperative"."cov1" as "cov1",
-    "questionable"."wsk2" as "wsk2",
-    "questionable"."isk2" as "isk2",
-    "abundant"."dmoy2" as "dmoy2",
-    "questionable"."mean2" as "mean2",
-    "cooperative"."cov2" as "cov2"
-FROM
-    "questionable"
-    INNER JOIN "cooperative" on "questionable"."isk1" = "cooperative"."inventory_item_id" AND "questionable"."wsk1" = "cooperative"."inventory_warehouse_id"
-    LEFT OUTER JOIN "abundant" on 1=1
+    "wakeful"
 WHERE
-    "cooperative"."cov1" > 1 and "cooperative"."cov2" > 1
+    CASE
+	WHEN "wakeful"."mean1" = 0 THEN null
+	ELSE "wakeful"."stdev1" / "wakeful"."mean1"
+	END > 1 and CASE
+	WHEN "wakeful"."mean2" = 0 THEN null
+	ELSE "wakeful"."stdev2" / "wakeful"."mean2"
+	END > 1
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10
 ORDER BY 
-    "questionable"."wsk1" asc nulls first,
-    "questionable"."isk1" asc nulls first,
-    "questionable"."mean1" asc nulls first,
-    "cooperative"."cov1" asc nulls first,
-    "questionable"."mean2" asc nulls first,
-    "cooperative"."cov2" asc nulls first
+    "wsk1" asc nulls first,
+    "isk1" asc nulls first,
+    "wakeful"."mean1" asc nulls first,
+    "cov1" asc nulls first,
+    "wakeful"."mean2" asc nulls first,
+    "cov2" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

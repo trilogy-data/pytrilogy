@@ -854,7 +854,9 @@ def run_tpcds_query(
     """Resolve `name` to a preql file under TPCDS_DIR, build the v4 plan.
     Returns the BuildSelectLineage too so compile_sql can apply HAVING,
     ORDER BY, hidden_concepts, and LIMIT from the original statement."""
-    if name.isdigit():
+    if name.lstrip("-").isdigit():
+        # Negative ids (-1, -2, …) are the standalone q77-branch probes,
+        # stored as query-1.preql etc.; :02d keeps the sign and pads positives.
         filename = f"query{int(name):02d}.preql"
     elif name.endswith(".preql"):
         filename = name
