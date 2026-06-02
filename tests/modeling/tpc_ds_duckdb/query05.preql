@@ -18,22 +18,27 @@ auto entity_id <- case
     else null
 end;
 
-# Net = in-window sale profit minus in-window return loss, per row.
+# Each measure is gated by its OWN dimension's presence (the reference inner-joins
+# sales to the sale entity and returns to the return entity separately): a sale
+# counts only with a sale entity in the sale window; a return only with a return
+# entity in the return window. Without the per-measure gate, a combined row whose
+# return entity is null but sale entity is valid would mis-count its return.
 auto net_contribution <-
-    coalesce(sales.net_profit ? sales.date.date between '2000-08-23'::date and '2000-09-06'::date, 0.0)
-    - coalesce(sales.return_net_loss ? sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date, 0.0);
+    coalesce(sales.net_profit ? sales.date.date between '2000-08-23'::date and '2000-09-06'::date and sales.channel_dim_text_id is not null, 0.0)
+    - coalesce(sales.return_net_loss ? sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date and sales.return_channel_dim_text_id is not null, 0.0);
 
 where
-    sales.date.date between '2000-08-23'::date and '2000-09-06'::date
-    or sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date
+    entity_text is not null
+    and (sales.date.date between '2000-08-23'::date and '2000-09-06'::date
+         or sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date)
+# `by rollup ()` rolls up over the inferred select grain (channel, id) — no need
+# to restate the grouping keys.
 select
     channel_label as channel,
     entity_id as id,
-    sum(sales.ext_sales_price ? sales.date.date between '2000-08-23'::date and '2000-09-06'::date)
-        by rollup channel_label, entity_id as sales,
-    sum(sales.return_amount ? sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date)
-        by rollup channel_label, entity_id as returns,
-    sum(net_contribution) by rollup channel_label, entity_id as profit
+    coalesce(sum(sales.ext_sales_price ? sales.date.date between '2000-08-23'::date and '2000-09-06'::date and sales.channel_dim_text_id is not null) by rollup (), 0.0) as sales,
+    coalesce(sum(sales.return_amount ? sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date and sales.return_channel_dim_text_id is not null) by rollup (), 0.0) as returns,
+    coalesce(sum(net_contribution) by rollup (), 0.0) as profit
 order by
     channel asc nulls first,
     id asc nulls first

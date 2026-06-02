@@ -22,7 +22,7 @@
   {
     "id": 5,
     "grade": "hard",
-    "prompt": "Report sales performance across all sales channels: store, catalog, and web. Group by the channel type + channel ('web channel, 'store channel', 'catalog channel'), then the store identifier prefixed with one of 'store' 'catalog' or 'web' (no space; raw concatenation, ex `storeABCDEF`), total gross sales, total returns, net profit after subtracting return-related net losses. Sales individually filtered by sales date between August 23, 2000 and September 6, 2000 and associated with the sale store identiifer; returns individually by return date in that same period and use the return store identifier by grouping. Also include subtotal rows by channel and a grand total row across all channels. Sort the output by channel and entity identifier, with total rows appearing first where applicable, and return only the first 100 rows."
+    "prompt": "Report sales performance across all sales channels: store, catalog, and web. Group by the channel type + channel ('web channel, 'store channel', 'catalog channel'), then the store identifier prefixed with one of 'store' 'catalog' or 'web' (no space; raw concatenation, ex `storeABCDEF`), total gross sales, total returns, net profit after subtracting return-related net losses. Sales individually filtered by sales date between August 23, 2000 and September 6, 2000 and associated with non-null sale store identifier; returns individually by return date in that same period and use a non-null return store identifier by grouping. Also include subtotal rows by channel and a grand total row across all channels. Sort the output by channel and entity identifier, with total rows appearing first where applicable, and return only the first 100 rows."
   },
   {
     "id": 6,

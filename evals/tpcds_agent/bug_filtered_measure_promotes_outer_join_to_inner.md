@@ -1,5 +1,20 @@
 # Bug handoff: a filtered measure on a secondary datasource promotes its join from LEFT OUTER to INNER (drops rows)
 
+## RESOLVED (2026-06-02)
+
+Fixed in `gen_filter_node` (`trilogy/core/processing/node_generators/filter_node.py`):
+the disjoint-pushdown branch lifted a `sum(measure ? cond)` predicate into the
+*merged* parent relation's WHERE whenever the predicate's concepts were disjoint
+from `local_optional`. When `local_optional` held a measure from a *different*
+key-joined datasource, that pushed-down WHERE filtered the whole join, collapsing
+LEFT OUTER → INNER. The fix adds a `_optional_cosourced_with_content` guard: only
+take the disjoint pushdown when a single datasource supplies both the filter
+content and every `local_optional` concept; otherwise fall back to
+`LEFT OUTER JOIN` + `CASE WHEN cond THEN measure`. Regression test:
+`tests/complex/test_filtered_measure_join_type.py`. The repro below is now 3/3 OK,
+and `tests/modeling/tpc_ds_duckdb/query05.preql` is an exact match vs `query05.sql`
+(see that file's per-measure-gate + coalesce comments). Original notes preserved below.
+
 ## Summary
 
 When two measures live on two datasources joined by a key, aggregating them
