@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
-| reference execution | OK (1 rows) |
+| v4 execution | OK (0 rows) |
+| reference execution | OK (0 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+v4 rows: 0 (0 distinct)
+ref rows: 0 (0 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4204 | 96 | 31.45 ms |
-| reference | 4263 | 91 | 30.37 ms |
-| v4 / ref | 0.99x | 1.05x | 1.04x |
+| v4 | 5999 | 147 | 13.55 ms |
+| reference | 4263 | 91 | 11.60 ms |
+| v4 / ref | 1.41x | 1.62x | 1.17x |
 
 ## Preql
 
@@ -92,6 +92,16 @@ limit 100
 
 ```sql
 WITH 
+scrawny as (
+SELECT
+    "store_store"."S_COUNTY" as "store_county",
+    "store_store"."S_STATE" as "store_state",
+    count("store_store"."S_STORE_SK") as "_stores_cs_scs_count"
+FROM
+    "memory"."store" as "store_store"
+GROUP BY
+    1,
+    2),
 cheerful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id"
@@ -112,80 +122,121 @@ FROM
 WHERE
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null and "sales_date_date"."D_YEAR" = 1998 and "sales_date_date"."D_MOY" = 12 and "sales_item_items"."I_CATEGORY" = 'Women' and "sales_item_items"."I_CLASS" = 'maternity'
 ),
-sparkling as (
+divergent as (
 SELECT
-    "store_store"."S_COUNTY" as "stores_cs_scs_county",
-    "store_store"."S_STATE" as "stores_cs_scs_state",
-    count("store_store"."S_STORE_SK") as "stores_cs_scs_count"
+    "scrawny"."_stores_cs_scs_count" as "_stores_cs_scs_count",
+    "scrawny"."store_county" as "_stores_cs_scs_county",
+    "scrawny"."store_state" as "_stores_cs_scs_state"
 FROM
-    "memory"."store" as "store_store"
-GROUP BY
-    1,
-    2),
+    "scrawny"),
 thoughtful as (
 SELECT
-    "cheerful"."sales_billing_customer_id" as "my_customers_my_cust_id"
+    "cheerful"."sales_billing_customer_id" as "sales_billing_customer_id"
 FROM
     "cheerful"
 GROUP BY
     1),
-concerned as (
+busy as (
 SELECT
-    "ss_billing_customer_address_customer_address"."CA_COUNTY" as "cust_ss_ss_cust_county",
-    "ss_billing_customer_address_customer_address"."CA_STATE" as "cust_ss_ss_cust_state",
-    "ss_store_sales"."SS_CUSTOMER_SK" as "cust_ss_ss_cust_id",
-    sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "cust_ss_ss_revenue"
+    "divergent"."_stores_cs_scs_count" as "stores_cs_scs_count",
+    "divergent"."_stores_cs_scs_county" as "stores_cs_scs_county",
+    "divergent"."_stores_cs_scs_state" as "stores_cs_scs_state"
+FROM
+    "divergent"),
+uneven as (
+SELECT
+    "thoughtful"."sales_billing_customer_id" as "_my_customers_my_cust_id"
+FROM
+    "thoughtful"),
+yummy as (
+SELECT
+    "uneven"."_my_customers_my_cust_id" as "my_customers_my_cust_id"
+FROM
+    "uneven"),
+sparkling as (
+SELECT
+    "ss_billing_customer_address_customer_address"."CA_COUNTY" as "ss_billing_customer_address_county",
+    "ss_billing_customer_address_customer_address"."CA_STATE" as "ss_billing_customer_address_state",
+    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_billing_customer_id",
+    "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
     INNER JOIN "memory"."customer" as "ss_billing_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_billing_customer_customers"."C_CUSTOMER_SK"
     LEFT OUTER JOIN "memory"."customer_address" as "ss_billing_customer_address_customer_address" on "ss_billing_customer_customers"."C_CURRENT_ADDR_SK" = "ss_billing_customer_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    "ss_store_sales"."SS_CUSTOMER_SK" in (select thoughtful."my_customers_my_cust_id" from thoughtful where thoughtful."my_customers_my_cust_id" is not null) and "ss_date_date"."D_MONTH_SEQ" >= 1188 and "ss_date_date"."D_MONTH_SEQ" <= 1190 and "ss_store_sales"."SS_CUSTOMER_SK" is not null
-
+    "ss_date_date"."D_MONTH_SEQ" >= 1188 and "ss_date_date"."D_MONTH_SEQ" <= 1190 and "ss_store_sales"."SS_CUSTOMER_SK" is not null and "ss_store_sales"."SS_CUSTOMER_SK" in (select yummy."my_customers_my_cust_id" from yummy where yummy."my_customers_my_cust_id" is not null)
+),
+abhorrent as (
+SELECT
+    "sparkling"."ss_billing_customer_address_county" as "ss_billing_customer_address_county",
+    "sparkling"."ss_billing_customer_address_state" as "ss_billing_customer_address_state",
+    "sparkling"."ss_billing_customer_id" as "ss_billing_customer_id",
+    sum("sparkling"."ss_ext_sales_price") as "_cust_ss_ss_revenue"
+FROM
+    "sparkling"
 GROUP BY
     1,
     2,
     3),
-sweltering as (
-SELECT
-    "concerned"."cust_ss_ss_cust_id" as "my_revenue_rev_cust_id",
-    "concerned"."cust_ss_ss_revenue" * "sparkling"."stores_cs_scs_count" as "my_revenue_revenue"
-FROM
-    "concerned"
-    INNER JOIN "sparkling" on "concerned"."cust_ss_ss_cust_county" = "sparkling"."stores_cs_scs_county" AND "concerned"."cust_ss_ss_cust_state" = "sparkling"."stores_cs_scs_state"
-GROUP BY
-    1,
-    2),
-macho as (
-SELECT
-    "sweltering"."my_revenue_rev_cust_id" as "my_revenue_rev_cust_id"
-FROM
-    "sweltering"
-GROUP BY
-    1),
 late as (
 SELECT
-    cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) * 50 as "segment_base",
-    cast(round(( "sweltering"."my_revenue_revenue" ) / 50,0) as int) as "segment"
+    "abhorrent"."_cust_ss_ss_revenue" as "_cust_ss_ss_revenue",
+    "abhorrent"."ss_billing_customer_address_county" as "_cust_ss_ss_cust_county",
+    "abhorrent"."ss_billing_customer_address_state" as "_cust_ss_ss_cust_state",
+    "abhorrent"."ss_billing_customer_id" as "_cust_ss_ss_cust_id"
 FROM
-    "sweltering"),
-scrawny as (
+    "abhorrent"),
+macho as (
 SELECT
-    CASE WHEN "macho"."my_revenue_rev_cust_id" IS NOT NULL THEN 1 ELSE 0 END as "num_customers"
+    "late"."_cust_ss_ss_cust_county" as "cust_ss_ss_cust_county",
+    "late"."_cust_ss_ss_cust_id" as "cust_ss_ss_cust_id",
+    "late"."_cust_ss_ss_cust_state" as "cust_ss_ss_cust_state",
+    "late"."_cust_ss_ss_revenue" as "cust_ss_ss_revenue"
 FROM
-    "macho")
+    "late"),
+charming as (
 SELECT
-    "late"."segment" as "segment",
-    coalesce("scrawny"."num_customers",0) as "num_customers",
-    "late"."segment_base" as "segment_base"
+    "macho"."cust_ss_ss_cust_id" as "_my_revenue_rev_cust_id",
+    "macho"."cust_ss_ss_revenue" * "busy"."stores_cs_scs_count" as "_my_revenue_revenue"
 FROM
-    "scrawny"
-    FULL JOIN "late" on 1=1
+    "macho"
+    INNER JOIN "busy" on "macho"."cust_ss_ss_cust_county" = "busy"."stores_cs_scs_county" AND "macho"."cust_ss_ss_cust_state" = "busy"."stores_cs_scs_state"),
+premium as (
+SELECT
+    "charming"."_my_revenue_rev_cust_id" as "my_revenue_rev_cust_id",
+    "charming"."_my_revenue_revenue" as "my_revenue_revenue"
+FROM
+    "charming"),
+waggish as (
+SELECT
+    "premium"."my_revenue_rev_cust_id" as "my_revenue_rev_cust_id"
+FROM
+    "premium"
+GROUP BY
+    1),
+puzzled as (
+SELECT
+    cast(round(( "premium"."my_revenue_revenue" ) / 50,0) as int) * 50 as "segment_base",
+    cast(round(( "premium"."my_revenue_revenue" ) / 50,0) as int) as "segment"
+FROM
+    "premium"),
+rambunctious as (
+SELECT
+    CASE WHEN "waggish"."my_revenue_rev_cust_id" IS NOT NULL THEN 1 ELSE 0 END as "num_customers"
+FROM
+    "waggish")
+SELECT
+    "puzzled"."segment" as "segment",
+    coalesce("rambunctious"."num_customers",0) as "num_customers",
+    "puzzled"."segment_base" as "segment_base"
+FROM
+    "rambunctious"
+    FULL JOIN "puzzled" on 1=1
 ORDER BY 
-    "late"."segment" asc nulls first,
-    coalesce("scrawny"."num_customers",0) asc nulls first,
-    "late"."segment_base" asc nulls first
+    "puzzled"."segment" asc nulls first,
+    coalesce("rambunctious"."num_customers",0) asc nulls first,
+    "puzzled"."segment_base" asc nulls first
 LIMIT (100)
 ```
 

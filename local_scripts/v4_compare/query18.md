@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (45 rows) |
+| reference execution | OK (45 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 45 (45 distinct)
+ref rows: 45 (45 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5847 | 106 | 100.73 ms |
-| reference | 7308 | 111 | 75.65 ms |
-| v4 / ref | 0.80x | 0.95x | 1.33x |
+| v4 | 5652 | 100 | 38.25 ms |
+| reference | 7254 | 111 | 34.20 ms |
+| v4 / ref | 0.78x | 0.90x | 1.12x |
 
 ## Preql
 
@@ -113,43 +113,37 @@ GROUP BY
 abundant as (
 SELECT
     "questionable"."cs_bill_customer_birth_year" as "row_birth_year",
-    "questionable"."cs_coupon_amt" as "cs_coupon_amt",
     "questionable"."cs_item_id" as "cs_item_id",
-    "questionable"."cs_item_text_id" as "cs_item_text_id",
-    "questionable"."cs_list_price" as "cs_list_price",
-    "questionable"."cs_net_profit" as "cs_net_profit",
-    "questionable"."cs_order_number" as "cs_order_number",
-    "questionable"."cs_quantity" as "cs_quantity",
-    "questionable"."cs_sales_price" as "cs_sales_price"
+    "questionable"."cs_order_number" as "cs_order_number"
 FROM
     "questionable"
 GROUP BY
     1,
     2,
     3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9),
+    "questionable"."cs_coupon_amt",
+    "questionable"."cs_item_text_id",
+    "questionable"."cs_list_price",
+    "questionable"."cs_net_profit",
+    "questionable"."cs_quantity",
+    "questionable"."cs_sales_price"),
 yummy as (
 SELECT
-    "abundant"."cs_coupon_amt" as "cs_coupon_amt",
-    "abundant"."cs_item_text_id" as "cs_item_text_id",
-    "abundant"."cs_list_price" as "cs_list_price",
-    "abundant"."cs_net_profit" as "cs_net_profit",
-    "abundant"."cs_quantity" as "cs_quantity",
-    "abundant"."cs_sales_price" as "cs_sales_price",
     "abundant"."row_birth_year" as "row_birth_year",
     "questionable"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
     "questionable"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
     "questionable"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "questionable"."cs_coupon_amt" as "cs_coupon_amt",
+    "questionable"."cs_item_text_id" as "cs_item_text_id",
+    "questionable"."cs_list_price" as "cs_list_price",
+    "questionable"."cs_net_profit" as "cs_net_profit",
+    "questionable"."cs_quantity" as "cs_quantity",
+    "questionable"."cs_sales_price" as "cs_sales_price",
     "uneven"."row_dep_count" as "row_dep_count"
 FROM
     "abundant"
-    FULL JOIN "questionable" on "abundant"."cs_item_id" = "questionable"."cs_item_id" AND "abundant"."cs_order_number" = "questionable"."cs_order_number"
-    FULL JOIN "uneven" on "questionable"."cs_bill_customer_demographic_dependent_count" is not distinct from "uneven"."cs_bill_customer_demographic_dependent_count" AND coalesce("questionable"."cs_item_id", "abundant"."cs_item_id") = "uneven"."cs_item_id" AND coalesce("questionable"."cs_order_number", "abundant"."cs_order_number") = "uneven"."cs_order_number")
+    RIGHT OUTER JOIN "questionable" on "abundant"."cs_item_id" = "questionable"."cs_item_id" AND "abundant"."cs_order_number" = "questionable"."cs_order_number"
+    LEFT OUTER JOIN "uneven" on "questionable"."cs_bill_customer_demographic_dependent_count" is not distinct from "uneven"."cs_bill_customer_demographic_dependent_count" AND "questionable"."cs_item_id" = "uneven"."cs_item_id" AND "questionable"."cs_order_number" = "uneven"."cs_order_number")
 SELECT
     "yummy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
     "yummy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
@@ -234,6 +228,8 @@ FROM
     "cooperative"),
 juicy as (
 SELECT
+    "abundant"."cs_item_id" as "cs_item_id",
+    "abundant"."cs_order_number" as "cs_order_number",
     "abundant"."row_dep_count" as "row_dep_count",
     "yummy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
     "yummy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
@@ -244,12 +240,10 @@ SELECT
     "yummy"."cs_list_price" as "cs_list_price",
     "yummy"."cs_net_profit" as "cs_net_profit",
     "yummy"."cs_quantity" as "cs_quantity",
-    "yummy"."cs_sales_price" as "cs_sales_price",
-    coalesce("abundant"."cs_item_id","yummy"."cs_item_id") as "cs_item_id",
-    coalesce("abundant"."cs_order_number","yummy"."cs_order_number") as "cs_order_number"
+    "yummy"."cs_sales_price" as "cs_sales_price"
 FROM
     "abundant"
-    FULL JOIN "yummy" on "abundant"."cs_item_id" = "yummy"."cs_item_id" AND "abundant"."cs_order_number" = "yummy"."cs_order_number"),
+    RIGHT OUTER JOIN "yummy" on "abundant"."cs_item_id" = "yummy"."cs_item_id" AND "abundant"."cs_order_number" = "yummy"."cs_order_number"),
 vacuous as (
 SELECT
     "juicy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
@@ -265,7 +259,7 @@ SELECT
     "questionable"."row_birth_year" as "row_birth_year"
 FROM
     "juicy"
-    FULL JOIN "questionable" on "juicy"."cs_bill_customer_birth_year" is not distinct from "questionable"."cs_bill_customer_birth_year" AND "juicy"."cs_item_id" = "questionable"."cs_item_id" AND "juicy"."cs_order_number" = "questionable"."cs_order_number")
+    LEFT OUTER JOIN "questionable" on "juicy"."cs_bill_customer_birth_year" is not distinct from "questionable"."cs_bill_customer_birth_year" AND "juicy"."cs_item_id" = "questionable"."cs_item_id" AND "juicy"."cs_order_number" = "questionable"."cs_order_number")
 SELECT
     "vacuous"."cs_item_text_id" as "cs_item_text_id",
     "vacuous"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",

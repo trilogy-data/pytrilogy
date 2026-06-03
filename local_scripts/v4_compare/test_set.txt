@@ -68,13 +68,43 @@
 63
 64
 65
+66
 67
+68
 69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
 82
+83
+84
 85
+86
 87
 88
 89
 90
+91
+92
 93
+94
+95
 96
+97
+98
+99
+# Negative ids are the q77-branch standalone probes (query-1/-2/-3.preql):
+# catalog (-1), store (-2), web (-3). All now MATCH v3 after the FINAL
+# passthrough-fold fix (no zquery log; v3 ref generated live).
+-1
+-2
+-3

@@ -1,5 +1,5 @@
 query_id = "18"
-gen_length = 7306
+gen_length = 7252
 preql_size = 1379
 comp_size = 1593
 generated_sql = """
@@ -61,6 +61,8 @@ FROM
     \"cooperative\"),
 juicy as (
 SELECT
+    \"abundant\".\"cs_item_id\" as \"cs_item_id\",
+    \"abundant\".\"cs_order_number\" as \"cs_order_number\",
     \"abundant\".\"row_dep_count\" as \"row_dep_count\",
     \"yummy\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
     \"yummy\".\"cs_bill_customer_address_county\" as \"cs_bill_customer_address_county\",
@@ -71,12 +73,10 @@ SELECT
     \"yummy\".\"cs_list_price\" as \"cs_list_price\",
     \"yummy\".\"cs_net_profit\" as \"cs_net_profit\",
     \"yummy\".\"cs_quantity\" as \"cs_quantity\",
-    \"yummy\".\"cs_sales_price\" as \"cs_sales_price\",
-    coalesce(\"abundant\".\"cs_item_id\",\"yummy\".\"cs_item_id\") as \"cs_item_id\",
-    coalesce(\"abundant\".\"cs_order_number\",\"yummy\".\"cs_order_number\") as \"cs_order_number\"
+    \"yummy\".\"cs_sales_price\" as \"cs_sales_price\"
 FROM
     \"abundant\"
-    FULL JOIN \"yummy\" on \"abundant\".\"cs_item_id\" = \"yummy\".\"cs_item_id\" AND \"abundant\".\"cs_order_number\" = \"yummy\".\"cs_order_number\"),
+    RIGHT OUTER JOIN \"yummy\" on \"abundant\".\"cs_item_id\" = \"yummy\".\"cs_item_id\" AND \"abundant\".\"cs_order_number\" = \"yummy\".\"cs_order_number\"),
 vacuous as (
 SELECT
     \"juicy\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",
@@ -92,7 +92,7 @@ SELECT
     \"questionable\".\"row_birth_year\" as \"row_birth_year\"
 FROM
     \"juicy\"
-    FULL JOIN \"questionable\" on \"juicy\".\"cs_bill_customer_birth_year\" is not distinct from \"questionable\".\"cs_bill_customer_birth_year\" AND \"juicy\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"juicy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
+    LEFT OUTER JOIN \"questionable\" on \"juicy\".\"cs_bill_customer_birth_year\" is not distinct from \"questionable\".\"cs_bill_customer_birth_year\" AND \"juicy\".\"cs_item_id\" = \"questionable\".\"cs_item_id\" AND \"juicy\".\"cs_order_number\" = \"questionable\".\"cs_order_number\")
 SELECT
     \"vacuous\".\"cs_item_text_id\" as \"cs_item_text_id\",
     \"vacuous\".\"cs_bill_customer_address_country\" as \"cs_bill_customer_address_country\",

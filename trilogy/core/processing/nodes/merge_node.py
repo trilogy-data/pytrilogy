@@ -15,10 +15,13 @@ from trilogy.core.processing.grain_utility import (
     calculate_joined_pregrain,
     condition_key_grain,
     downgrade_join_for_condition,
+    downgrade_join_for_proofs,
     grain_satisfied_by_pregrain,
     has_condition_key_outside_grain,
+    non_null_proofs,
 )
 from trilogy.core.processing.join_resolution import (
+    _collect_deep_partial_addresses,
     compute_outer_null_status,
     get_node_joins,
     prune_outer_join_pairs,
@@ -40,6 +43,17 @@ def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
             _has_applied_condition(parent) for parent in source.datasources
         )
     return bool(source.where)
+
+
+def _collect_applied_conditions(source: QueryDatasource | BuildDatasource) -> list:
+    """All filter conditions applied anywhere within a parent branch's tree."""
+    out: list = []
+    if isinstance(source, QueryDatasource):
+        if source.condition is not None:
+            out.append(source.condition)
+        for parent in source.datasources:
+            out.extend(_collect_applied_conditions(parent))
+    return out
 
 
 def deduplicate_nodes(
@@ -367,6 +381,42 @@ class MergeNode(StrategyNode):
         )
         for join in joins:
             downgrade_join_for_condition(join, self.conditions, final_datasets)
+        # A query-level filter (e.g. a HAVING like ``customer_state > scaled``)
+        # is sometimes pushed into the single branch that exposes its columns
+        # rather than kept on this merge. It still constrains the FINAL output,
+        # so honor it here: any output concept it proves non-null must not be
+        # re-nulled by an outer join. Only for inferred-join merges — a
+        # MULTISELECT align supplies explicit ``node_joins`` whose FULL is
+        # intentional (each arm's rows survive even where the other arm, with
+        # its own HAVING, has none), so an arm-local proof must not force INNER.
+        if self.node_joins is None:
+            output_addresses = {c.address for c in self.output_concepts}
+            branch_proofs: set[str] = set()
+            for source in final_datasets:
+                for condition in _collect_applied_conditions(source):
+                    branch_proofs |= non_null_proofs(condition)
+            branch_proofs &= output_addresses
+            # A branch-local filter proves its column non-null, but that only
+            # constrains the FINAL output when no branch supplies the column
+            # completely. When one branch has it COMPLETE (non-partial) and
+            # another has it PARTIAL — e.g. a rowset's `where order_id...` over
+            # its base key outer-joined back to the unfiltered base — the merge
+            # legitimately spans rows outside the filter, so the outer join must
+            # keep them: the column is non-null in the filtered branch but not
+            # complete there. (A column complete on one branch and merely absent
+            # from the rest, e.g. q81's dimension `...address.state`, still
+            # forces INNER — it isn't partial anywhere.)
+            complete_addresses: set[str] = set()
+            partial_addresses: set[str] = set()
+            for source in final_datasets:
+                source_partial = _collect_deep_partial_addresses(source)
+                source_outputs = {c.address for c in source.output_concepts}
+                complete_addresses |= source_outputs - source_partial
+                partial_addresses |= source_outputs & source_partial
+            branch_proofs -= complete_addresses & partial_addresses
+            if branch_proofs:
+                for join in joins:
+                    downgrade_join_for_proofs(join, branch_proofs, final_datasets)
         # Compute per-datasource NULL-ability based on the resolved join graph.
         # Used to (a) order ``final_datasets`` so the preserved side wins
         # ``resolve_concept_map``'s first-pass for shared concepts and

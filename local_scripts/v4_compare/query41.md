@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (3 rows) |
+| reference execution | OK (3 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 3 (3 distinct)
+ref rows: 3 (3 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2243 | 32 | 8.59 ms |
-| reference | 2112 | 42 | 11.95 ms |
-| v4 / ref | 1.06x | 0.76x | 0.72x |
+| v4 | 2186 | 30 | 8.10 ms |
+| reference | 2112 | 42 | 7.87 ms |
+| v4 / ref | 1.04x | 0.71x | 1.03x |
 
 ## Preql
 
@@ -70,8 +70,7 @@ SELECT
 FROM
     "highfalutin"
 GROUP BY
-    1),
-cheerful as (
+    1)
 SELECT
     "highfalutin"."filtered_product_name" as "filtered_product_name"
 FROM
@@ -79,13 +78,12 @@ FROM
     INNER JOIN "highfalutin" on "wakeful"."item_manufact" is not distinct from "highfalutin"."item_manufact"
 WHERE
     "highfalutin"."filtered_product_name" is not null and "wakeful"."manufact_matches" > 0
-)
-SELECT
-    "cheerful"."filtered_product_name" as "filtered_product_name"
-FROM
-    "cheerful"
+
+GROUP BY
+    1,
+    "wakeful"."manufact_matches"
 ORDER BY 
-    "cheerful"."filtered_product_name" asc
+    "highfalutin"."filtered_product_name" asc
 LIMIT (100)
 ```
 

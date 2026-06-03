@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (0 rows) |
+| reference execution | OK (0 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 0 (0 distinct)
+ref rows: 0 (0 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3494 | 73 | 66.26 ms |
-| reference | 2581 | 61 | 46.09 ms |
-| v4 / ref | 1.35x | 1.20x | 1.44x |
+| v4 | 3110 | 71 | 13.80 ms |
+| reference | 2581 | 61 | 7.80 ms |
+| v4 / ref | 1.20x | 1.16x | 1.77x |
 
 ## Preql
 
@@ -98,33 +98,31 @@ SELECT
     "thoughtful"."physical_sales_store_id" as "physical_sales_store_id",
     "thoughtful"."physical_sales_store_name" as "physical_sales_store_name"
 FROM
-    "thoughtful"),
-uneven as (
+    "thoughtful")
 SELECT
-    "questionable"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
-    "questionable"."physical_sales_item_current_price" as "physical_sales_item_current_price",
-    "questionable"."physical_sales_item_desc" as "physical_sales_item_desc",
-    "questionable"."physical_sales_item_wholesale_cost" as "physical_sales_item_wholesale_cost",
     "questionable"."physical_sales_store_name" as "physical_sales_store_name",
-    "questionable"."revenue" as "revenue"
+    "questionable"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "questionable"."revenue" as "revenue",
+    "questionable"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "questionable"."physical_sales_item_wholesale_cost" as "physical_sales_item_wholesale_cost",
+    "questionable"."physical_sales_item_brand_name" as "physical_sales_item_brand_name"
 FROM
     "questionable"
     INNER JOIN "abundant" on "questionable"."physical_sales_store_id" = "abundant"."physical_sales_store_id"
 WHERE
     "questionable"."revenue" <= 0.1 * "abundant"."store_avg_revenue"
-)
-SELECT
-    "uneven"."physical_sales_store_name" as "physical_sales_store_name",
-    "uneven"."physical_sales_item_desc" as "physical_sales_item_desc",
-    "uneven"."revenue" as "revenue",
-    "uneven"."physical_sales_item_current_price" as "physical_sales_item_current_price",
-    "uneven"."physical_sales_item_wholesale_cost" as "physical_sales_item_wholesale_cost",
-    "uneven"."physical_sales_item_brand_name" as "physical_sales_item_brand_name"
-FROM
-    "uneven"
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "abundant"."store_avg_revenue"
 ORDER BY 
-    "uneven"."physical_sales_store_name" asc nulls first,
-    "uneven"."physical_sales_item_desc" asc nulls first
+    "questionable"."physical_sales_store_name" asc nulls first,
+    "questionable"."physical_sales_item_desc" asc nulls first
 LIMIT (100)
 ```
 

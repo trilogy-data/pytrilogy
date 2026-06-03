@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (21 rows) |
+| reference execution | OK (21 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 21 (21 distinct)
+ref rows: 21 (21 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6825 | 129 | 76.13 ms |
-| reference | 6372 | 130 | 165.07 ms |
-| v4 / ref | 1.07x | 0.99x | 0.46x |
+| v4 | 6315 | 131 | 81.73 ms |
+| reference | 6372 | 130 | 115.04 ms |
+| v4 / ref | 0.99x | 1.01x | 0.71x |
 
 ## Preql
 
@@ -123,56 +123,59 @@ SELECT
     "wakeful"."fri_sales" as "fri_sales",
     "wakeful"."mon_sales" as "mon_sales",
     "wakeful"."sat_sales" as "sat_sales",
-    "wakeful"."ss_date_week_seq" - (CASE
-	WHEN "wakeful"."year_flag" = 2 THEN 52
-	ELSE 0
-	END) as "normalized_week",
     "wakeful"."ss_date_week_seq" as "ss_date_week_seq",
     "wakeful"."ss_store_id" as "ss_store_id",
     "wakeful"."sun_sales" as "sun_sales",
     "wakeful"."thu_sales" as "thu_sales",
     "wakeful"."tue_sales" as "tue_sales",
     "wakeful"."wed_sales" as "wed_sales",
-    "wakeful"."year_flag" as "year_flag"
+    "wakeful"."year_flag" as "year_flag",
+    lead("wakeful"."fri_sales", 1) over (partition by "wakeful"."ss_store_id","wakeful"."ss_date_week_seq" - (CASE
+	WHEN "wakeful"."year_flag" = 2 THEN 52
+	ELSE 0
+	END) order by "wakeful"."year_flag" asc ) as "_virt_window_lead_2781518767952423",
+    lead("wakeful"."mon_sales", 1) over (partition by "wakeful"."ss_store_id","wakeful"."ss_date_week_seq" - (CASE
+	WHEN "wakeful"."year_flag" = 2 THEN 52
+	ELSE 0
+	END) order by "wakeful"."year_flag" asc ) as "_virt_window_lead_2528494396952318",
+    lead("wakeful"."sat_sales", 1) over (partition by "wakeful"."ss_store_id","wakeful"."ss_date_week_seq" - (CASE
+	WHEN "wakeful"."year_flag" = 2 THEN 52
+	ELSE 0
+	END) order by "wakeful"."year_flag" asc ) as "_virt_window_lead_1424385664204750",
+    lead("wakeful"."sun_sales", 1) over (partition by "wakeful"."ss_store_id","wakeful"."ss_date_week_seq" - (CASE
+	WHEN "wakeful"."year_flag" = 2 THEN 52
+	ELSE 0
+	END) order by "wakeful"."year_flag" asc ) as "_virt_window_lead_6227340597452426",
+    lead("wakeful"."thu_sales", 1) over (partition by "wakeful"."ss_store_id","wakeful"."ss_date_week_seq" - (CASE
+	WHEN "wakeful"."year_flag" = 2 THEN 52
+	ELSE 0
+	END) order by "wakeful"."year_flag" asc ) as "_virt_window_lead_644735902284924",
+    lead("wakeful"."tue_sales", 1) over (partition by "wakeful"."ss_store_id","wakeful"."ss_date_week_seq" - (CASE
+	WHEN "wakeful"."year_flag" = 2 THEN 52
+	ELSE 0
+	END) order by "wakeful"."year_flag" asc ) as "_virt_window_lead_1092584691553364",
+    lead("wakeful"."wed_sales", 1) over (partition by "wakeful"."ss_store_id","wakeful"."ss_date_week_seq" - (CASE
+	WHEN "wakeful"."year_flag" = 2 THEN 52
+	ELSE 0
+	END) order by "wakeful"."year_flag" asc ) as "_virt_window_lead_8976818883664558"
 FROM
     "wakeful"),
-questionable as (
-SELECT
-    "cooperative"."fri_sales" as "fri_sales",
-    "cooperative"."mon_sales" as "mon_sales",
-    "cooperative"."sat_sales" as "sat_sales",
-    "cooperative"."ss_date_week_seq" as "ss_date_week_seq",
-    "cooperative"."ss_store_id" as "ss_store_id",
-    "cooperative"."sun_sales" as "sun_sales",
-    "cooperative"."thu_sales" as "thu_sales",
-    "cooperative"."tue_sales" as "tue_sales",
-    "cooperative"."wed_sales" as "wed_sales",
-    "cooperative"."year_flag" as "year_flag",
-    lead("cooperative"."fri_sales", 1) over (partition by "cooperative"."ss_store_id","cooperative"."normalized_week" order by "cooperative"."year_flag" asc ) as "_virt_window_lead_2781518767952423",
-    lead("cooperative"."mon_sales", 1) over (partition by "cooperative"."ss_store_id","cooperative"."normalized_week" order by "cooperative"."year_flag" asc ) as "_virt_window_lead_2528494396952318",
-    lead("cooperative"."sat_sales", 1) over (partition by "cooperative"."ss_store_id","cooperative"."normalized_week" order by "cooperative"."year_flag" asc ) as "_virt_window_lead_1424385664204750",
-    lead("cooperative"."sun_sales", 1) over (partition by "cooperative"."ss_store_id","cooperative"."normalized_week" order by "cooperative"."year_flag" asc ) as "_virt_window_lead_6227340597452426",
-    lead("cooperative"."thu_sales", 1) over (partition by "cooperative"."ss_store_id","cooperative"."normalized_week" order by "cooperative"."year_flag" asc ) as "_virt_window_lead_644735902284924",
-    lead("cooperative"."tue_sales", 1) over (partition by "cooperative"."ss_store_id","cooperative"."normalized_week" order by "cooperative"."year_flag" asc ) as "_virt_window_lead_1092584691553364",
-    lead("cooperative"."wed_sales", 1) over (partition by "cooperative"."ss_store_id","cooperative"."normalized_week" order by "cooperative"."year_flag" asc ) as "_virt_window_lead_8976818883664558"
-FROM
-    "cooperative"),
 abundant as (
 SELECT
-    "questionable"."fri_sales" / "questionable"."_virt_window_lead_2781518767952423" as "fri_sales_ratio",
-    "questionable"."mon_sales" / "questionable"."_virt_window_lead_2528494396952318" as "mon_sales_ratio",
-    "questionable"."sat_sales" / "questionable"."_virt_window_lead_1424385664204750" as "sat_sales_ratio",
-    "questionable"."ss_date_week_seq" as "d_week_seq1",
-    "questionable"."ss_date_week_seq" as "ss_date_week_seq",
-    "questionable"."ss_store_id" as "ss_store_id",
-    "questionable"."sun_sales" / "questionable"."_virt_window_lead_6227340597452426" as "sun_sales_ratio",
-    "questionable"."thu_sales" / "questionable"."_virt_window_lead_644735902284924" as "thu_sales_ratio",
-    "questionable"."tue_sales" / "questionable"."_virt_window_lead_1092584691553364" as "tue_sales_ratio",
-    "questionable"."wed_sales" / "questionable"."_virt_window_lead_8976818883664558" as "wed_sales_ratio"
+    "cooperative"."fri_sales" / "cooperative"."_virt_window_lead_2781518767952423" as "fri_sales_ratio",
+    "cooperative"."mon_sales" / "cooperative"."_virt_window_lead_2528494396952318" as "mon_sales_ratio",
+    "cooperative"."sat_sales" / "cooperative"."_virt_window_lead_1424385664204750" as "sat_sales_ratio",
+    "cooperative"."ss_date_week_seq" as "d_week_seq1",
+    "cooperative"."ss_store_id" as "ss_store_id",
+    "cooperative"."sun_sales" / "cooperative"."_virt_window_lead_6227340597452426" as "sun_sales_ratio",
+    "cooperative"."thu_sales" / "cooperative"."_virt_window_lead_644735902284924" as "thu_sales_ratio",
+    "cooperative"."tue_sales" / "cooperative"."_virt_window_lead_1092584691553364" as "tue_sales_ratio",
+    "cooperative"."wed_sales" / "cooperative"."_virt_window_lead_8976818883664558" as "wed_sales_ratio",
+    "cooperative"."year_flag" as "year_flag"
 FROM
-    "questionable"
+    "cooperative"
 WHERE
-    "questionable"."year_flag" = 1
+    "cooperative"."year_flag" = 1
 ),
 juicy as (
 SELECT
@@ -187,11 +190,10 @@ SELECT
     "uneven"."s_store_id1" as "s_store_id1",
     "uneven"."s_store_name1" as "s_store_name1"
 FROM
-    "cooperative"
-    INNER JOIN "abundant" on "cooperative"."ss_date_week_seq" = "abundant"."ss_date_week_seq" AND "cooperative"."ss_store_id" = "abundant"."ss_store_id"
-    INNER JOIN "uneven" on "cooperative"."ss_store_id" = "uneven"."ss_store_id"
+    "abundant"
+    INNER JOIN "uneven" on "abundant"."ss_store_id" = "uneven"."ss_store_id"
 WHERE
-    "cooperative"."year_flag" = 1
+    "abundant"."year_flag" = 1
 )
 SELECT
     "juicy"."s_store_name1" as "s_store_name1",

@@ -1,52 +1,46 @@
 # Query 83
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (81 rows) |
-| reference execution | OK (24 rows) |
-| results identical | NO |
+| v4 execution | OK (0 rows) |
+| reference execution | OK (0 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 81 (24 distinct)
-ref rows: 24 (24 distinct)
-only in v4 (showing up to 5 of 24):
-  4x  (48.333333333333336, 15.862068965517242, 69, 'AAAAAAAAAHFBAAAA', 17.24137931034483, 75, 0.22988505747126436, 1)
-  2x  (22.666666666666668, 6.862745098039215, 14, 'AAAAAAAACLJBAAAA', 25.0, 51, 1.4705882352941178, 3)
-  3x  (20.666666666666668, 13.440860215053762, 25, 'AAAAAAAACOPBAAAA', 5.913978494623656, 11, 13.978494623655916, 26)
-  3x  (28.333333333333332, 1.9607843137254901, 5, 'AAAAAAAADJABAAAA', 27.84313725490196, 71, 3.5294117647058822, 9)
-  2x  (34.333333333333336, 0.6472491909385113, 2, 'AAAAAAAADLOAAAAA', 30.42071197411003, 94, 2.2653721682847894, 7)
+v4 rows: 0 (0 distinct)
+ref rows: 0 (0 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7188 | 151 | 41.91 ms |
-| reference | 5928 | 135 | 78.25 ms |
-| v4 / ref | 1.21x | 1.12x | 0.54x |
+| v4 | 5197 | 99 | 34.94 ms |
+| reference | 5955 | 135 | 70.17 ms |
+| v4 / ref | 0.87x | 0.73x | 0.50x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 import date as date;
 
 auto target_week_seqs <- date.week_seq ? date.date in ('2000-06-30'::date, '2000-09-27'::date, '2000-11-17'::date);
 
-# Per-channel return quantities by item.name; the week_seq filter applies to
+# Per-channel return quantities by item.text_id; the week_seq filter applies to
 # the return date.
-def channel_qty(channel) -> sum(sales.return_quantity ? sales.sales_channel = channel) by sales.item.name;
-def channel_present(channel) -> count(sales.order_id ? sales.sales_channel = channel) by sales.item.name;
+def channel_qty(channel) -> sum(sales.return_quantity ? sales.sales_channel = channel) by sales.item.text_id;
+def channel_present(channel) -> count(sales.order_id ? sales.sales_channel = channel) by sales.item.text_id;
 
-auto sr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'STORE') by sales.item.name;
-auto cr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'CATALOG') by sales.item.name;
-auto wr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'WEB') by sales.item.name;
-auto sr_item_present <- count(sales.order_id ? sales.sales_channel = 'STORE') by sales.item.name;
-auto cr_item_present <- count(sales.order_id ? sales.sales_channel = 'CATALOG') by sales.item.name;
-auto wr_item_present <- count(sales.order_id ? sales.sales_channel = 'WEB') by sales.item.name;
+auto sr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'STORE') by sales.item.text_id;
+auto cr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'CATALOG') by sales.item.text_id;
+auto wr_item_qty <- sum(sales.return_quantity ? sales.sales_channel = 'WEB') by sales.item.text_id;
+auto sr_item_present <- count(sales.order_id ? sales.sales_channel = 'STORE') by sales.item.text_id;
+auto cr_item_present <- count(sales.order_id ? sales.sales_channel = 'CATALOG') by sales.item.text_id;
+auto wr_item_present <- count(sales.order_id ? sales.sales_channel = 'WEB') by sales.item.text_id;
 auto total_qty <- sr_item_qty + cr_item_qty + wr_item_qty;
 auto avg_qty <- total_qty / 3.0;
 auto sr_dev <- (sr_item_qty * 1.0) / total_qty / 3.0 * 100;
@@ -56,7 +50,7 @@ auto wr_dev <- (wr_item_qty * 1.0) / total_qty / 3.0 * 100;
 where
     sales.return_date.week_seq in target_week_seqs
 select
-    sales.item.name as item_id,
+    sales.item.text_id as item_id,
     sr_item_qty,
     sr_dev,
     cr_item_qty,
@@ -131,7 +125,7 @@ SELECT
     "cooperative"."sales_return_date_week_seq" as "sales_return_date_week_seq",
     "cooperative"."sales_return_quantity" as "sales_return_quantity",
     "cooperative"."sales_sales_channel" as "sales_sales_channel",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
 FROM
     "memory"."item" as "sales_item_items"
     INNER JOIN "cooperative" on "sales_item_items"."I_ITEM_SK" = "cooperative"."sales_item_id"
@@ -147,89 +141,37 @@ GROUP BY
     "sales_item_items"."I_ITEM_SK"),
 yummy as (
 SELECT
-    "uneven"."sales_item_name" as "sales_item_name",
-    "uneven"."sales_order_id" as "sales_order_id",
-    "uneven"."sales_return_quantity" as "sales_return_quantity",
-    "uneven"."sales_sales_channel" as "sales_sales_channel"
+    "uneven"."sales_item_text_id" as "sales_item_text_id",
+    count(CASE WHEN "uneven"."sales_sales_channel" = 'CATALOG' THEN "uneven"."sales_order_id" ELSE NULL END) as "cr_item_present",
+    count(CASE WHEN "uneven"."sales_sales_channel" = 'STORE' THEN "uneven"."sales_order_id" ELSE NULL END) as "sr_item_present",
+    count(CASE WHEN "uneven"."sales_sales_channel" = 'WEB' THEN "uneven"."sales_order_id" ELSE NULL END) as "wr_item_present",
+    sum(CASE WHEN "uneven"."sales_sales_channel" = 'CATALOG' THEN "uneven"."sales_return_quantity" ELSE NULL END) as "cr_item_qty",
+    sum(CASE WHEN "uneven"."sales_sales_channel" = 'STORE' THEN "uneven"."sales_return_quantity" ELSE NULL END) as "sr_item_qty",
+    sum(CASE WHEN "uneven"."sales_sales_channel" = 'WEB' THEN "uneven"."sales_return_quantity" ELSE NULL END) as "wr_item_qty"
 FROM
     "uneven"
 WHERE
     "uneven"."sales_return_date_week_seq" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-),
-juicy as (
-SELECT
-    "yummy"."sales_item_name" as "sales_item_name",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_7518965045904948",
-    CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_return_quantity" ELSE NULL END as "_virt_filter_return_quantity_1904161637839137",
-    CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_5282889778133979",
-    CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_return_quantity" ELSE NULL END as "_virt_filter_return_quantity_6293408465554798",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_4128599423878258",
-    CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_return_quantity" ELSE NULL END as "_virt_filter_return_quantity_6234128225083739"
-FROM
-    "yummy"),
-concerned as (
-SELECT
-    "juicy"."sales_item_name" as "sales_item_name",
-    count("juicy"."_virt_filter_order_id_4128599423878258") as "wr_item_present",
-    count("juicy"."_virt_filter_order_id_5282889778133979") as "sr_item_present",
-    count("juicy"."_virt_filter_order_id_7518965045904948") as "cr_item_present",
-    sum("juicy"."_virt_filter_return_quantity_1904161637839137") as "cr_item_qty",
-    sum("juicy"."_virt_filter_return_quantity_6234128225083739") as "wr_item_qty",
-    sum("juicy"."_virt_filter_return_quantity_6293408465554798") as "sr_item_qty"
-FROM
-    "juicy"
+
 GROUP BY
-    1),
-vacuous as (
+    1)
 SELECT
-    "juicy"."sales_item_name" as "item_id"
+    "yummy"."sales_item_text_id" as "item_id",
+    "yummy"."sr_item_qty" as "sr_item_qty",
+    ( ( ("yummy"."sr_item_qty" * 1.0) / ( ( "yummy"."sr_item_qty" + "yummy"."cr_item_qty" ) + "yummy"."wr_item_qty" ) ) / 3.0 ) * 100 as "sr_dev",
+    "yummy"."cr_item_qty" as "cr_item_qty",
+    ( ( ("yummy"."cr_item_qty" * 1.0) / ( ( "yummy"."sr_item_qty" + "yummy"."cr_item_qty" ) + "yummy"."wr_item_qty" ) ) / 3.0 ) * 100 as "cr_dev",
+    "yummy"."wr_item_qty" as "wr_item_qty",
+    ( ( ("yummy"."wr_item_qty" * 1.0) / ( ( "yummy"."sr_item_qty" + "yummy"."cr_item_qty" ) + "yummy"."wr_item_qty" ) ) / 3.0 ) * 100 as "wr_dev",
+    ( ( "yummy"."sr_item_qty" + "yummy"."cr_item_qty" ) + "yummy"."wr_item_qty" ) / 3.0 as "average"
 FROM
-    "juicy"),
-young as (
-SELECT
-    "concerned"."cr_item_present" as "cr_item_present",
-    "concerned"."cr_item_qty" as "cr_item_qty",
-    "concerned"."sales_item_name" as "sales_item_name",
-    "concerned"."sr_item_present" as "sr_item_present",
-    "concerned"."sr_item_qty" as "sr_item_qty",
-    "concerned"."wr_item_present" as "wr_item_present",
-    "concerned"."wr_item_qty" as "wr_item_qty"
-FROM
-    "concerned"
+    "yummy"
 WHERE
-    "concerned"."sr_item_present" > 0
-),
-sparkling as (
-SELECT
-    "vacuous"."item_id" as "item_id",
-    "young"."cr_item_present" as "cr_item_present",
-    "young"."cr_item_qty" as "cr_item_qty",
-    "young"."sr_item_qty" as "sr_item_qty",
-    "young"."wr_item_present" as "wr_item_present",
-    "young"."wr_item_qty" as "wr_item_qty"
-FROM
-    "young"
-    INNER JOIN "vacuous" on "young"."sales_item_name" = "vacuous"."item_id"
-WHERE
-    "young"."sr_item_present" > 0
-)
-SELECT
-    "sparkling"."item_id" as "item_id",
-    "sparkling"."sr_item_qty" as "sr_item_qty",
-    ( ( ("sparkling"."sr_item_qty" * 1.0) / ( ( "sparkling"."sr_item_qty" + "sparkling"."cr_item_qty" ) + "sparkling"."wr_item_qty" ) ) / 3.0 ) * 100 as "sr_dev",
-    "sparkling"."cr_item_qty" as "cr_item_qty",
-    ( ( ("sparkling"."cr_item_qty" * 1.0) / ( ( "sparkling"."sr_item_qty" + "sparkling"."cr_item_qty" ) + "sparkling"."wr_item_qty" ) ) / 3.0 ) * 100 as "cr_dev",
-    "sparkling"."wr_item_qty" as "wr_item_qty",
-    ( ( ("sparkling"."wr_item_qty" * 1.0) / ( ( "sparkling"."sr_item_qty" + "sparkling"."cr_item_qty" ) + "sparkling"."wr_item_qty" ) ) / 3.0 ) * 100 as "wr_dev",
-    ( ( "sparkling"."sr_item_qty" + "sparkling"."cr_item_qty" ) + "sparkling"."wr_item_qty" ) / 3.0 as "average"
-FROM
-    "sparkling"
-WHERE
-    "sparkling"."cr_item_present" > 0 and "sparkling"."wr_item_present" > 0
+    "yummy"."sr_item_present" > 0 and "yummy"."cr_item_present" > 0 and "yummy"."wr_item_present" > 0
 
 ORDER BY 
-    "sparkling"."item_id" asc nulls first,
-    "sparkling"."sr_item_qty" asc nulls first
+    "item_id" asc nulls first,
+    "yummy"."sr_item_qty" asc nulls first
 LIMIT (100)
 ```
 
@@ -285,7 +227,7 @@ WHERE
 ),
 concerned as (
 SELECT
-    "sales_item_items"."I_ITEM_ID" as "sales_item_name",
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id",
     CASE WHEN "questionable"."sales_sales_channel" = 'CATALOG' THEN "questionable"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_7518965045904948",
     CASE WHEN "questionable"."sales_sales_channel" = 'STORE' THEN "questionable"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_5282889778133979",
     CASE WHEN "questionable"."sales_sales_channel" = 'WEB' THEN "questionable"."sales_order_id" ELSE NULL END as "_virt_filter_order_id_4128599423878258"
@@ -302,7 +244,7 @@ yummy as (
 SELECT
     "questionable"."sales_return_quantity" as "sales_return_quantity",
     "questionable"."sales_sales_channel" as "sales_sales_channel",
-    "sales_item_items"."I_ITEM_ID" as "sales_item_name"
+    "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
 FROM
     "memory"."item" as "sales_item_items"
     LEFT OUTER JOIN "questionable" on "sales_item_items"."I_ITEM_SK" = "questionable"."sales_item_id"
@@ -314,7 +256,7 @@ GROUP BY
     "sales_item_items"."I_ITEM_SK"),
 abhorrent as (
 SELECT
-    "concerned"."sales_item_name" as "sales_item_name",
+    "concerned"."sales_item_text_id" as "sales_item_text_id",
     count("concerned"."_virt_filter_order_id_4128599423878258") as "wr_item_present",
     count("concerned"."_virt_filter_order_id_5282889778133979") as "sr_item_present",
     count("concerned"."_virt_filter_order_id_7518965045904948") as "cr_item_present"
@@ -327,7 +269,7 @@ HAVING
 ),
 juicy as (
 SELECT
-    "yummy"."sales_item_name" as "sales_item_name",
+    "yummy"."sales_item_text_id" as "sales_item_text_id",
     sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_return_quantity" ELSE NULL END) as "cr_item_qty",
     sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_return_quantity" ELSE NULL END) as "sr_item_qty",
     sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_return_quantity" ELSE NULL END) as "wr_item_qty"
@@ -340,7 +282,7 @@ SELECT
     "abhorrent"."cr_item_present" as "cr_item_present",
     "abhorrent"."wr_item_present" as "wr_item_present",
     "juicy"."cr_item_qty" as "cr_item_qty",
-    "juicy"."sales_item_name" as "item_id",
+    "juicy"."sales_item_text_id" as "item_id",
     "juicy"."sr_item_qty" as "sr_item_qty",
     "juicy"."wr_item_qty" as "wr_item_qty",
     ( ( "juicy"."sr_item_qty" + "juicy"."cr_item_qty" ) + "juicy"."wr_item_qty" ) / 3.0 as "average",
@@ -349,7 +291,7 @@ SELECT
     ( ( ("juicy"."wr_item_qty" * 1.0) / ( ( "juicy"."sr_item_qty" + "juicy"."cr_item_qty" ) + "juicy"."wr_item_qty" ) ) / 3.0 ) * 100 as "wr_dev"
 FROM
     "abhorrent"
-    INNER JOIN "juicy" on "abhorrent"."sales_item_name" = "juicy"."sales_item_name"
+    INNER JOIN "juicy" on "abhorrent"."sales_item_text_id" = "juicy"."sales_item_text_id"
 WHERE
     "abhorrent"."sr_item_present" > 0
 )

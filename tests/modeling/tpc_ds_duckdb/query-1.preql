@@ -1,0 +1,34 @@
+# q77 CATALOG branch, extracted as a standalone select (negative test id -1).
+# Inlined aggregate * scalar-from-a-different-rowset — the shape that makes the
+# v4 planner cross-join u_id_c off the raw scan against u_sales_c off the
+# aggregate. v3 plans it correctly (single projection over the aggregate).
+import catalog_sales as cs;
+import catalog_returns as cr;
+
+const period_start <- '2000-08-23'::date;
+const period_end <- '2000-09-22'::date;
+
+rowset cr_grouped <- where
+    cr.date.date between period_start and period_end
+select
+    coalesce(cr.call_center.id, -1) as cr_cc_key,
+    sum(cr.return_amount) as cr_returns_per_cc,
+    sum(cr.net_loss) as cr_loss_per_cc,
+;
+
+rowset cr_totals <- select
+    count(cr_grouped.cr_cc_key) as cr_n_groups,
+    sum(cr_grouped.cr_returns_per_cc) as cr_total_returns,
+    sum(cr_grouped.cr_loss_per_cc) as cr_total_loss,
+;
+
+where
+    cs.date.date between period_start and period_end
+select
+    'catalog channel' as u_channel_c,
+    cs.call_center.id as u_id_c,
+    sum(cs.ext_sales_price) * cr_totals.cr_n_groups::numeric(15,2) as u_sales_c,
+    cr_totals.cr_total_returns::numeric(15,2) as u_returns_c,
+    sum(cs.net_profit) * cr_totals.cr_n_groups - cr_totals.cr_total_loss::numeric(15,2) as u_profit_c,
+order by u_id_c asc nulls first
+;

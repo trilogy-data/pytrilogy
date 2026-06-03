@@ -5,44 +5,45 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (2521 rows) |
-| reference execution | OK (2521 rows) |
+| v4 execution | OK (24 rows) |
+| reference execution | OK (24 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 2521 (2521 distinct)
-ref rows: 2521 (2521 distinct)
+v4 rows: 24 (24 distinct)
+ref rows: 24 (24 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2918 | 58 | 44.43 ms |
-| reference | 2918 | 58 | 50.33 ms |
-| v4 / ref | 1.00x | 1.00x | 0.88x |
+| v4 | 3006 | 59 | 16.51 ms |
+| reference | 3517 | 70 | 16.95 ms |
+| v4 / ref | 0.85x | 0.84x | 0.97x |
 
 ## Preql
 
 ```
-import store_sales as store_sales;
+import physical_sales as physical_sales;
 
 where
-    store_sales.item.category in ('Sports', 'Books', 'Home')
-    and store_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
+    physical_sales.item.category in ('Sports', 'Books', 'Home')
+    and physical_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
 select
-    store_sales.item.name,
-    store_sales.item.desc,
-    store_sales.item.category,
-    store_sales.item.class,
-    store_sales.item.current_price,
-    sum(store_sales.ext_sales_price) as item_revenue,
-    sum(store_sales.ext_sales_price) * 100.0 / (sum(store_sales.ext_sales_price) by store_sales.item.class) as revenueratio,
+    --physical_sales.item.id,
+    physical_sales.item.text_id,
+    physical_sales.item.desc,
+    physical_sales.item.category,
+    physical_sales.item.class,
+    physical_sales.item.current_price,
+    sum(physical_sales.ext_sales_price) as item_revenue,
+    item_revenue * 100.0 / (sum(physical_sales.ext_sales_price) by physical_sales.item.class) as revenueratio,
 order by
-    store_sales.item.category asc nulls first,
-    store_sales.item.class asc nulls first,
-    store_sales.item.name asc nulls first,
-    store_sales.item.desc asc nulls first,
+    physical_sales.item.category asc nulls first,
+    physical_sales.item.class asc nulls first,
+    physical_sales.item.text_id asc nulls first,
+    physical_sales.item.desc asc nulls first,
     revenueratio asc nulls first
 ;
 ```
@@ -53,36 +54,36 @@ order by
 WITH 
 cheerful as (
 SELECT
-    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
-    "store_sales_item_items"."I_CLASS" as "store_sales_item_class",
-    "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
-    "store_sales_item_items"."I_ITEM_DESC" as "store_sales_item_desc",
-    "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_name",
-    "store_sales_store_sales"."SS_EXT_SALES_PRICE" as "store_sales_ext_sales_price"
+    "physical_sales_item_items"."I_CATEGORY" as "physical_sales_item_category",
+    "physical_sales_item_items"."I_CLASS" as "physical_sales_item_class",
+    "physical_sales_item_items"."I_CURRENT_PRICE" as "physical_sales_item_current_price",
+    "physical_sales_item_items"."I_ITEM_DESC" as "physical_sales_item_desc",
+    "physical_sales_item_items"."I_ITEM_ID" as "physical_sales_item_text_id",
+    "physical_sales_item_items"."I_ITEM_SK" as "physical_sales_item_id",
+    "physical_sales_store_sales"."SS_EXT_SALES_PRICE" as "physical_sales_ext_sales_price"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
-    "store_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("store_sales_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
+    "physical_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("physical_sales_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 ),
 cooperative as (
 SELECT
-    "cheerful"."store_sales_item_class" as "store_sales_item_class",
-    sum("cheerful"."store_sales_ext_sales_price") as "_virt_agg_sum_7595906549305205"
+    "cheerful"."physical_sales_item_class" as "physical_sales_item_class",
+    sum("cheerful"."physical_sales_ext_sales_price") as "_virt_agg_sum_9925573558789696"
 FROM
     "cheerful"
 GROUP BY
     1),
 thoughtful as (
 SELECT
-    "cheerful"."store_sales_item_category" as "store_sales_item_category",
-    "cheerful"."store_sales_item_class" as "store_sales_item_class",
-    "cheerful"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "cheerful"."store_sales_item_desc" as "store_sales_item_desc",
-    "cheerful"."store_sales_item_name" as "store_sales_item_name",
-    sum("cheerful"."store_sales_ext_sales_price") as "_virt_agg_sum_9873055619986236",
-    sum("cheerful"."store_sales_ext_sales_price") as "item_revenue"
+    "cheerful"."physical_sales_item_category" as "physical_sales_item_category",
+    "cheerful"."physical_sales_item_class" as "physical_sales_item_class",
+    "cheerful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "cheerful"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "cheerful"."physical_sales_item_text_id" as "physical_sales_item_text_id",
+    sum("cheerful"."physical_sales_ext_sales_price") as "item_revenue"
 FROM
     "cheerful"
 GROUP BY
@@ -90,23 +91,24 @@ GROUP BY
     2,
     3,
     4,
-    5)
+    5,
+    "cheerful"."physical_sales_item_id")
 SELECT
     "thoughtful"."item_revenue" as "item_revenue",
-    ( "thoughtful"."_virt_agg_sum_9873055619986236" * 100.0 ) / ("cooperative"."_virt_agg_sum_7595906549305205") as "revenueratio",
-    "thoughtful"."store_sales_item_category" as "store_sales_item_category",
-    coalesce("cooperative"."store_sales_item_class","thoughtful"."store_sales_item_class") as "store_sales_item_class",
-    "thoughtful"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "thoughtful"."store_sales_item_desc" as "store_sales_item_desc",
-    "thoughtful"."store_sales_item_name" as "store_sales_item_name"
+    ( "thoughtful"."item_revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9925573558789696") as "revenueratio",
+    "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
+    "thoughtful"."physical_sales_item_class" as "physical_sales_item_class",
+    "thoughtful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "thoughtful"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "thoughtful"."physical_sales_item_text_id" as "physical_sales_item_text_id"
 FROM
-    "thoughtful"
-    INNER JOIN "cooperative" on "thoughtful"."store_sales_item_class" is not distinct from "cooperative"."store_sales_item_class"
+    "cooperative"
+    RIGHT OUTER JOIN "thoughtful" on "cooperative"."physical_sales_item_class" is not distinct from "thoughtful"."physical_sales_item_class"
 ORDER BY 
-    "thoughtful"."store_sales_item_category" asc nulls first,
-    coalesce("cooperative"."store_sales_item_class","thoughtful"."store_sales_item_class") asc nulls first,
-    "thoughtful"."store_sales_item_name" asc nulls first,
-    "thoughtful"."store_sales_item_desc" asc nulls first,
+    "thoughtful"."physical_sales_item_category" asc nulls first,
+    "thoughtful"."physical_sales_item_class" asc nulls first,
+    "thoughtful"."physical_sales_item_text_id" asc nulls first,
+    "thoughtful"."physical_sales_item_desc" asc nulls first,
     "revenueratio" asc nulls first
 ```
 
@@ -116,59 +118,71 @@ ORDER BY
 WITH 
 cheerful as (
 SELECT
-    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
-    "store_sales_item_items"."I_CLASS" as "store_sales_item_class",
-    "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
-    "store_sales_item_items"."I_ITEM_DESC" as "store_sales_item_desc",
-    "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_name",
-    "store_sales_store_sales"."SS_EXT_SALES_PRICE" as "store_sales_ext_sales_price"
+    "physical_sales_item_items"."I_CLASS" as "physical_sales_item_class",
+    "physical_sales_item_items"."I_ITEM_SK" as "physical_sales_item_id",
+    "physical_sales_store_sales"."SS_EXT_SALES_PRICE" as "physical_sales_ext_sales_price"
 FROM
-    "memory"."store_sales" as "store_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "store_sales_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
-    "store_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("store_sales_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
+    "physical_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("physical_sales_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
+),
+questionable as (
+SELECT
+    "physical_sales_item_items"."I_CATEGORY" as "physical_sales_item_category",
+    "physical_sales_item_items"."I_CLASS" as "physical_sales_item_class",
+    "physical_sales_item_items"."I_CURRENT_PRICE" as "physical_sales_item_current_price",
+    "physical_sales_item_items"."I_ITEM_DESC" as "physical_sales_item_desc",
+    "physical_sales_item_items"."I_ITEM_ID" as "physical_sales_item_text_id",
+    "physical_sales_item_items"."I_ITEM_SK" as "physical_sales_item_id"
+FROM
+    "memory"."item" as "physical_sales_item_items"
+WHERE
+    "physical_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home')
 ),
 cooperative as (
 SELECT
-    "cheerful"."store_sales_item_class" as "store_sales_item_class",
-    sum("cheerful"."store_sales_ext_sales_price") as "_virt_agg_sum_7595906549305205"
+    "cheerful"."physical_sales_item_id" as "physical_sales_item_id",
+    sum("cheerful"."physical_sales_ext_sales_price") as "item_revenue"
 FROM
     "cheerful"
 GROUP BY
     1),
 thoughtful as (
 SELECT
-    "cheerful"."store_sales_item_category" as "store_sales_item_category",
-    "cheerful"."store_sales_item_class" as "store_sales_item_class",
-    "cheerful"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "cheerful"."store_sales_item_desc" as "store_sales_item_desc",
-    "cheerful"."store_sales_item_name" as "store_sales_item_name",
-    sum("cheerful"."store_sales_ext_sales_price") as "_virt_agg_sum_9873055619986236",
-    sum("cheerful"."store_sales_ext_sales_price") as "item_revenue"
+    "cheerful"."physical_sales_item_class" as "physical_sales_item_class",
+    sum("cheerful"."physical_sales_ext_sales_price") as "_virt_agg_sum_9925573558789696"
 FROM
     "cheerful"
 GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5)
+    1),
+abundant as (
 SELECT
-    "thoughtful"."store_sales_item_name" as "store_sales_item_name",
-    "thoughtful"."store_sales_item_desc" as "store_sales_item_desc",
-    "thoughtful"."store_sales_item_category" as "store_sales_item_category",
-    coalesce("cooperative"."store_sales_item_class","thoughtful"."store_sales_item_class") as "store_sales_item_class",
-    "thoughtful"."store_sales_item_current_price" as "store_sales_item_current_price",
-    "thoughtful"."item_revenue" as "item_revenue",
-    ( "thoughtful"."_virt_agg_sum_9873055619986236" * 100.0 ) / ("cooperative"."_virt_agg_sum_7595906549305205") as "revenueratio"
+    "cooperative"."item_revenue" as "item_revenue",
+    "questionable"."physical_sales_item_category" as "physical_sales_item_category",
+    "questionable"."physical_sales_item_class" as "physical_sales_item_class",
+    "questionable"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "questionable"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "questionable"."physical_sales_item_text_id" as "physical_sales_item_text_id"
 FROM
-    "thoughtful"
-    INNER JOIN "cooperative" on "thoughtful"."store_sales_item_class" is not distinct from "cooperative"."store_sales_item_class"
+    "questionable"
+    INNER JOIN "cooperative" on "questionable"."physical_sales_item_id" = "cooperative"."physical_sales_item_id")
+SELECT
+    "abundant"."physical_sales_item_text_id" as "physical_sales_item_text_id",
+    "abundant"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "abundant"."physical_sales_item_category" as "physical_sales_item_category",
+    "abundant"."physical_sales_item_class" as "physical_sales_item_class",
+    "abundant"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "abundant"."item_revenue" as "item_revenue",
+    ( "abundant"."item_revenue" * 100.0 ) / ("thoughtful"."_virt_agg_sum_9925573558789696") as "revenueratio"
+FROM
+    "abundant"
+    LEFT OUTER JOIN "thoughtful" on "abundant"."physical_sales_item_class" is not distinct from "thoughtful"."physical_sales_item_class"
 ORDER BY 
-    "thoughtful"."store_sales_item_category" asc nulls first,
-    coalesce("cooperative"."store_sales_item_class","thoughtful"."store_sales_item_class") asc nulls first,
-    "thoughtful"."store_sales_item_name" asc nulls first,
-    "thoughtful"."store_sales_item_desc" asc nulls first,
+    "abundant"."physical_sales_item_category" asc nulls first,
+    "abundant"."physical_sales_item_class" asc nulls first,
+    "abundant"."physical_sales_item_text_id" asc nulls first,
+    "abundant"."physical_sales_item_desc" asc nulls first,
     "revenueratio" asc nulls first
 ```

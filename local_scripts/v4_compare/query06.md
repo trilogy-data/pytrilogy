@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (46 rows) |
-| reference execution | OK (46 rows) |
+| v4 execution | OK (2 rows) |
+| reference execution | OK (2 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 46 (46 distinct)
-ref rows: 46 (46 distinct)
+v4 rows: 2 (2 distinct)
+ref rows: 2 (2 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3288 | 59 | 36.30 ms |
-| reference | 2439 | 44 | 23.64 ms |
-| v4 / ref | 1.35x | 1.34x | 1.54x |
+| v4 | 3342 | 62 | 9.32 ms |
+| reference | 2439 | 44 | 6.51 ms |
+| v4 / ref | 1.37x | 1.41x | 1.43x |
 
 ## Preql
 
@@ -76,9 +76,12 @@ SELECT
     avg("physical_sales_item_items"."I_CURRENT_PRICE") as "_virt_agg_avg_8857095867163344"
 FROM
     "memory"."item" as "physical_sales_item_items"
+WHERE
+    "physical_sales_item_items"."I_CATEGORY" is not null
+
 GROUP BY
     1),
-abundant as (
+uneven as (
 SELECT
     "cooperative"."physical_sales_billing_customer_address_state" as "physical_sales_billing_customer_address_state",
     "cooperative"."physical_sales_row_counter" as "physical_sales_row_counter"
@@ -98,10 +101,10 @@ GROUP BY
     "questionable"."_virt_agg_avg_8857095867163344",
     coalesce("cooperative"."physical_sales_item_category","questionable"."physical_sales_item_category"))
 SELECT
-    "abundant"."physical_sales_billing_customer_address_state" as "physical_sales_billing_customer_address_state",
-    sum("abundant"."physical_sales_row_counter") as "physical_sales_line_item_count"
+    "uneven"."physical_sales_billing_customer_address_state" as "physical_sales_billing_customer_address_state",
+    sum("uneven"."physical_sales_row_counter") as "physical_sales_line_item_count"
 FROM
-    "abundant"
+    "uneven"
 GROUP BY
     1
 HAVING
@@ -109,7 +112,7 @@ HAVING
 
 ORDER BY 
     "physical_sales_line_item_count" asc nulls first,
-    "abundant"."physical_sales_billing_customer_address_state" asc nulls first
+    "uneven"."physical_sales_billing_customer_address_state" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

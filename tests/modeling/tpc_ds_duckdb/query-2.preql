@@ -1,0 +1,34 @@
+# q77 STORE branch, extracted as a standalone select (negative test id -2).
+# Two per-store aggregates joined by a rowset `merge` (sales keyed by store,
+# returns keyed by return_store). Checks v4 parity on the merge-join shape.
+import physical_sales as ss;
+
+const period_start <- '2000-08-23'::date;
+const period_end <- '2000-09-22'::date;
+
+rowset ss_grouped <- where
+    ss.date.date between period_start and period_end
+select
+    ss.store.id as ss_store_id,
+    sum(ss.ext_sales_price) as ss_sales,
+    sum(ss.net_profit) as ss_profit,
+;
+
+rowset sr_grouped <- where
+    ss.return_date.date between period_start and period_end
+select
+    ss.return_store.id as sr_store_id,
+    sum(ss.return_amount) as sr_returns,
+    sum(ss.return_net_loss) as sr_loss,
+;
+
+merge sr_grouped.sr_store_id into ss_grouped.ss_store_id;
+
+select
+    'store channel' as u_channel_s,
+    ss_grouped.ss_store_id as u_id_s,
+    ss_grouped.ss_sales::numeric(15,2) as u_sales_s,
+    coalesce(sr_grouped.sr_returns, 0)::numeric(15,2) as u_returns_s,
+    ss_grouped.ss_profit - coalesce(sr_grouped.sr_loss, 0)::numeric(15,2) as u_profit_s,
+order by u_id_s asc nulls first
+;

@@ -5,29 +5,29 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (44 rows) |
-| reference execution | OK (44 rows) |
+| v4 execution | OK (8 rows) |
+| reference execution | OK (8 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 44 (44 distinct)
-ref rows: 44 (44 distinct)
+v4 rows: 8 (8 distinct)
+ref rows: 8 (8 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8048 | 184 | 36.40 ms |
-| reference | 7786 | 175 | 34.86 ms |
-| v4 / ref | 1.03x | 1.05x | 1.04x |
+| v4 | 9232 | 215 | 29.29 ms |
+| reference | 7495 | 166 | 28.09 ms |
+| v4 / ref | 1.23x | 1.30x | 1.04x |
 
 ## Preql
 
 ```
 import catalog_sales as cs;
 import catalog_returns as cr;
-import store_sales as ss;
+import physical_sales as ss;
 import web_sales as ws;
 import web_returns as wr;
 
@@ -145,24 +145,11 @@ limit 100
 
 ```sql
 WITH 
-busy as (
+cool as (
 SELECT
-    "wr_web_returns"."WR_WEB_PAGE_SK" as "wr_grouped_wr_wp_id",
-    sum("wr_web_returns"."WR_NET_LOSS") as "wr_grouped_wr_loss",
-    sum("wr_web_returns"."WR_RETURN_AMT") as "wr_grouped_wr_returns"
-FROM
-    "memory"."web_returns" as "wr_web_returns"
-    INNER JOIN "memory"."date_dim" as "wr_return_date_date" on "wr_web_returns"."WR_RETURNED_DATE_SK" = "wr_return_date_date"."D_DATE_SK"
-WHERE
-    cast("wr_return_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
-
-GROUP BY
-    1),
-puzzled as (
-SELECT
-    "ws_web_sales"."WS_WEB_PAGE_SK" as "ws_grouped_ws_wp_id",
-    sum("ws_web_sales"."WS_EXT_SALES_PRICE") as "ws_grouped_ws_sales",
-    sum("ws_web_sales"."WS_NET_PROFIT") as "ws_grouped_ws_profit"
+    "ws_web_sales"."WS_WEB_PAGE_SK" as "ws_web_page_id",
+    sum("ws_web_sales"."WS_EXT_SALES_PRICE") as "_ws_grouped_ws_sales",
+    sum("ws_web_sales"."WS_NET_PROFIT") as "_ws_grouped_ws_profit"
 FROM
     "memory"."web_sales" as "ws_web_sales"
     INNER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
@@ -171,24 +158,24 @@ WHERE
 
 GROUP BY
     1),
-sparkling as (
+sedate as (
 SELECT
-    "ss_store_sales"."SS_STORE_SK" as "ss_grouped_ss_store_id",
-    sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "ss_grouped_ss_sales",
-    sum("ss_store_sales"."SS_NET_PROFIT") as "ss_grouped_ss_profit"
+    "wr_web_returns"."WR_WEB_PAGE_SK" as "wr_web_page_id",
+    sum("wr_web_returns"."WR_NET_LOSS") as "_wr_grouped_wr_loss",
+    sum("wr_web_returns"."WR_RETURN_AMT") as "_wr_grouped_wr_returns"
 FROM
-    "memory"."store_sales" as "ss_store_sales"
-    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    "memory"."web_returns" as "wr_web_returns"
+    INNER JOIN "memory"."date_dim" as "wr_return_date_date" on "wr_web_returns"."WR_RETURNED_DATE_SK" = "wr_return_date_date"."D_DATE_SK"
 WHERE
-    cast("ss_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
+    cast("wr_return_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
 
 GROUP BY
     1),
-macho as (
+busy as (
 SELECT
-    "ss_store_returns"."SR_STORE_SK" as "sr_grouped_sr_store_id",
-    sum("ss_store_returns"."SR_NET_LOSS") as "sr_grouped_sr_loss",
-    sum("ss_store_returns"."SR_RETURN_AMT") as "sr_grouped_sr_returns"
+    "ss_store_returns"."SR_STORE_SK" as "ss_return_store_id",
+    sum("ss_store_returns"."SR_NET_LOSS") as "_sr_grouped_sr_loss",
+    sum("ss_store_returns"."SR_RETURN_AMT") as "_sr_grouped_sr_returns"
 FROM
     "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
@@ -198,11 +185,24 @@ WHERE
 
 GROUP BY
     1),
+late as (
+SELECT
+    "ss_store_sales"."SS_STORE_SK" as "ss_store_id",
+    sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "_ss_grouped_ss_sales",
+    sum("ss_store_sales"."SS_NET_PROFIT") as "_ss_grouped_ss_profit"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+WHERE
+    cast("ss_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
 wakeful as (
 SELECT
-    coalesce("cr_catalog_returns"."CR_CALL_CENTER_SK",-1) as "cr_grouped_cr_cc_key",
-    sum("cr_catalog_returns"."CR_NET_LOSS") as "cr_grouped_cr_loss_per_cc",
-    sum("cr_catalog_returns"."CR_RETURN_AMOUNT") as "cr_grouped_cr_returns_per_cc"
+    coalesce("cr_catalog_returns"."CR_CALL_CENTER_SK",-1) as "_cr_grouped_cr_cc_key",
+    sum("cr_catalog_returns"."CR_NET_LOSS") as "_cr_grouped_cr_loss_per_cc",
+    sum("cr_catalog_returns"."CR_RETURN_AMOUNT") as "_cr_grouped_cr_returns_per_cc"
 FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
     INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
@@ -211,7 +211,7 @@ WHERE
 
 GROUP BY
     1),
-uneven as (
+juicy as (
 SELECT
     "cs_catalog_sales"."CS_CALL_CENTER_SK" as "cs_call_center_id",
     sum("cs_catalog_sales"."CS_EXT_SALES_PRICE") as "_virt_agg_sum_6520591768854391",
@@ -224,109 +224,140 @@ WHERE
 
 GROUP BY
     1),
-rambunctious as (
+wary as (
 SELECT
-    "puzzled"."ws_grouped_ws_profit" - cast(coalesce("busy"."wr_grouped_wr_loss",0) as numeric(15,2)) as "u_profit",
-    "puzzled"."ws_grouped_ws_wp_id" as "u_id",
-    :_l0_union_u_channel_w as "u_channel",
-    cast("puzzled"."ws_grouped_ws_sales" as numeric(15,2)) as "u_sales",
-    cast(coalesce("busy"."wr_grouped_wr_returns",0) as numeric(15,2)) as "u_returns"
+    "cool"."_ws_grouped_ws_profit" as "_ws_grouped_ws_profit",
+    "cool"."_ws_grouped_ws_sales" as "_ws_grouped_ws_sales",
+    "cool"."ws_web_page_id" as "_ws_grouped_ws_wp_id"
 FROM
-    "puzzled"
-    INNER JOIN "busy" on "puzzled"."ws_grouped_ws_wp_id" = "busy"."wr_grouped_wr_wp_id"),
-friendly as (
+    "cool"),
+resonant as (
 SELECT
-    "sparkling"."ss_grouped_ss_profit" - cast(coalesce("macho"."sr_grouped_sr_loss",0) as numeric(15,2)) as "u_profit",
-    "sparkling"."ss_grouped_ss_store_id" as "u_id",
-    :_l0_union_u_channel_s as "u_channel",
-    cast("sparkling"."ss_grouped_ss_sales" as numeric(15,2)) as "u_sales",
-    cast(coalesce("macho"."sr_grouped_sr_returns",0) as numeric(15,2)) as "u_returns"
+    "sedate"."_wr_grouped_wr_loss" as "_wr_grouped_wr_loss",
+    "sedate"."_wr_grouped_wr_returns" as "_wr_grouped_wr_returns",
+    "sedate"."wr_web_page_id" as "_wr_grouped_wr_wp_id"
 FROM
-    "macho"
-    INNER JOIN "sparkling" on "macho"."sr_grouped_sr_store_id" = "sparkling"."ss_grouped_ss_store_id"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-thoughtful as (
+    "sedate"),
+protective as (
 SELECT
-    count("wakeful"."cr_grouped_cr_cc_key") as "_cr_totals_cr_n_groups",
-    sum("wakeful"."cr_grouped_cr_loss_per_cc") as "_cr_totals_cr_total_loss",
-    sum("wakeful"."cr_grouped_cr_returns_per_cc") as "_cr_totals_cr_total_returns"
+    "busy"."_sr_grouped_sr_loss" as "_sr_grouped_sr_loss",
+    "busy"."_sr_grouped_sr_returns" as "_sr_grouped_sr_returns",
+    "busy"."ss_return_store_id" as "_sr_grouped_sr_store_id"
 FROM
-    "wakeful"),
+    "busy"),
+scrawny as (
+SELECT
+    "late"."_ss_grouped_ss_profit" as "_ss_grouped_ss_profit",
+    "late"."_ss_grouped_ss_sales" as "_ss_grouped_ss_sales",
+    "late"."ss_store_id" as "_ss_grouped_ss_store_id"
+FROM
+    "late"),
 cooperative as (
 SELECT
-    "thoughtful"."_cr_totals_cr_n_groups" as "cr_totals_cr_n_groups",
-    "thoughtful"."_cr_totals_cr_total_loss" as "cr_totals_cr_total_loss",
-    cast("thoughtful"."_cr_totals_cr_total_returns" as numeric(15,2)) as "_l0_union_u_returns_c"
+    count("wakeful"."_cr_grouped_cr_cc_key") as "_cr_totals_cr_n_groups",
+    sum("wakeful"."_cr_grouped_cr_loss_per_cc") as "_cr_totals_cr_total_loss",
+    sum("wakeful"."_cr_grouped_cr_returns_per_cc") as "_cr_totals_cr_total_returns"
 FROM
-    "thoughtful"),
-juicy as (
+    "wakeful"),
+bewildered as (
 SELECT
-    "uneven"."_virt_agg_sum_6520591768854391" * cast("cooperative"."cr_totals_cr_n_groups" as numeric(15,2)) as "_l0_union_u_sales_c",
-    "uneven"."cs_call_center_id" as "_l0_union_u_id_c",
-    ( "uneven"."_virt_agg_sum_6226990944561419" * "cooperative"."cr_totals_cr_n_groups" ) - cast("cooperative"."cr_totals_cr_total_loss" as numeric(15,2)) as "_l0_union_u_profit_c",
-    :_l0_union_u_channel_c as "_l0_union_u_channel_c"
+    "wary"."_ws_grouped_ws_profit" as "ws_grouped_ws_profit",
+    "wary"."_ws_grouped_ws_sales" as "ws_grouped_ws_sales",
+    "wary"."_ws_grouped_ws_wp_id" as "ws_grouped_ws_wp_id"
 FROM
-    "cooperative"
-    FULL JOIN "uneven" on 1=1),
-vacuous as (
+    "wary"),
+dapper as (
 SELECT
-    "cooperative"."_l0_union_u_returns_c" as "u_returns",
-    "juicy"."_l0_union_u_channel_c" as "u_channel",
-    "juicy"."_l0_union_u_id_c" as "u_id",
-    "juicy"."_l0_union_u_profit_c" as "u_profit",
-    "juicy"."_l0_union_u_sales_c" as "u_sales"
+    "resonant"."_wr_grouped_wr_loss" as "wr_grouped_wr_loss",
+    "resonant"."_wr_grouped_wr_returns" as "wr_grouped_wr_returns",
+    "resonant"."_wr_grouped_wr_wp_id" as "wr_grouped_wr_wp_id"
 FROM
-    "juicy"
-    FULL JOIN "cooperative" on 1=1),
-puffy as (
+    "resonant"),
+premium as (
 SELECT
-    coalesce("friendly"."u_channel","rambunctious"."u_channel","vacuous"."u_channel") as "u_channel",
-    coalesce("friendly"."u_id","rambunctious"."u_id","vacuous"."u_id") as "u_id",
-    coalesce("friendly"."u_profit","rambunctious"."u_profit","vacuous"."u_profit") as "u_profit",
-    coalesce("friendly"."u_returns","rambunctious"."u_returns","vacuous"."u_returns") as "u_returns",
-    coalesce("friendly"."u_sales","rambunctious"."u_sales","vacuous"."u_sales") as "u_sales"
+    "protective"."_sr_grouped_sr_loss" as "sr_grouped_sr_loss",
+    "protective"."_sr_grouped_sr_returns" as "sr_grouped_sr_returns",
+    "protective"."_sr_grouped_sr_store_id" as "sr_grouped_sr_store_id"
 FROM
-    "vacuous"
-    FULL JOIN "friendly" on "vacuous"."u_channel" is not distinct from "friendly"."u_channel" AND "vacuous"."u_id" is not distinct from "friendly"."u_id" AND "vacuous"."u_profit" is not distinct from "friendly"."u_profit" AND "vacuous"."u_returns" is not distinct from "friendly"."u_returns" AND "vacuous"."u_sales" is not distinct from "friendly"."u_sales"
-    FULL JOIN "rambunctious" on coalesce("vacuous"."u_channel", "friendly"."u_channel") = "rambunctious"."u_channel" AND coalesce("vacuous"."u_id", "friendly"."u_id") = "rambunctious"."u_id" AND coalesce("vacuous"."u_profit", "friendly"."u_profit") = "rambunctious"."u_profit" AND coalesce("vacuous"."u_returns", "friendly"."u_returns") = "rambunctious"."u_returns" AND coalesce("vacuous"."u_sales", "friendly"."u_sales") = "rambunctious"."u_sales"),
-hard as (
+    "protective"),
+friendly as (
 SELECT
-    "puffy"."u_channel" as "l0_union_u_channel",
-    "puffy"."u_id" as "l0_union_u_id",
-    "puffy"."u_profit" as "l0_union_u_profit",
-    "puffy"."u_returns" as "l0_union_u_returns",
-    "puffy"."u_sales" as "l0_union_u_sales"
+    "scrawny"."_ss_grouped_ss_profit" as "ss_grouped_ss_profit",
+    "scrawny"."_ss_grouped_ss_sales" as "ss_grouped_ss_sales",
+    "scrawny"."_ss_grouped_ss_store_id" as "ss_grouped_ss_store_id"
 FROM
-    "puffy"
-    FULL JOIN "cooperative" on 1=1),
-sedate as (
+    "scrawny"),
+abundant as (
 SELECT
-    "hard"."l0_union_u_channel" as "l0_union_u_channel",
-    "hard"."l0_union_u_id" as "l0_union_u_id",
-    sum("hard"."l0_union_u_profit") as "profit",
-    sum("hard"."l0_union_u_returns") as "returns_",
-    sum("hard"."l0_union_u_sales") as "sales"
+    "cooperative"."_cr_totals_cr_n_groups" as "cr_totals_cr_n_groups",
+    "cooperative"."_cr_totals_cr_total_loss" as "cr_totals_cr_total_loss",
+    "cooperative"."_cr_totals_cr_total_returns" as "cr_totals_cr_total_returns"
 FROM
-    "hard"
+    "cooperative"),
+level as (
+SELECT
+    "bewildered"."ws_grouped_ws_profit" - cast(coalesce("dapper"."wr_grouped_wr_loss",0) as numeric(15,2)) as "u_profit",
+    "bewildered"."ws_grouped_ws_wp_id" as "u_id",
+    :_l0_union_u_channel_w as "u_channel",
+    cast("bewildered"."ws_grouped_ws_sales" as numeric(15,2)) as "u_sales",
+    cast(coalesce("dapper"."wr_grouped_wr_returns",0) as numeric(15,2)) as "u_returns"
+FROM
+    "bewildered"
+    INNER JOIN "dapper" on "bewildered"."ws_grouped_ws_wp_id" = "dapper"."wr_grouped_wr_wp_id"),
+puzzled as (
+SELECT
+    "friendly"."ss_grouped_ss_profit" - cast(coalesce("premium"."sr_grouped_sr_loss",0) as numeric(15,2)) as "u_profit",
+    "friendly"."ss_grouped_ss_store_id" as "u_id",
+    :_l0_union_u_channel_s as "u_channel",
+    cast("friendly"."ss_grouped_ss_sales" as numeric(15,2)) as "u_sales",
+    cast(coalesce("premium"."sr_grouped_sr_returns",0) as numeric(15,2)) as "u_returns"
+FROM
+    "premium"
+    INNER JOIN "friendly" on "premium"."sr_grouped_sr_store_id" = "friendly"."ss_grouped_ss_store_id"),
+concerned as (
+SELECT
+    "juicy"."_virt_agg_sum_6520591768854391" * cast("abundant"."cr_totals_cr_n_groups" as numeric(15,2)) as "u_sales",
+    "juicy"."cs_call_center_id" as "u_id",
+    ( "juicy"."_virt_agg_sum_6226990944561419" * "abundant"."cr_totals_cr_n_groups" ) - cast("abundant"."cr_totals_cr_total_loss" as numeric(15,2)) as "u_profit",
+    :_l0_union_u_channel_c as "u_channel",
+    cast("abundant"."cr_totals_cr_total_returns" as numeric(15,2)) as "u_returns"
+FROM
+    "abundant"
+    FULL JOIN "juicy" on 1=1),
+tearful as (
+SELECT
+    coalesce("concerned"."u_channel","level"."u_channel","puzzled"."u_channel") as "l0_union_u_channel",
+    coalesce("concerned"."u_id","level"."u_id","puzzled"."u_id") as "l0_union_u_id",
+    coalesce("concerned"."u_profit","level"."u_profit","puzzled"."u_profit") as "l0_union_u_profit",
+    coalesce("concerned"."u_returns","level"."u_returns","puzzled"."u_returns") as "l0_union_u_returns",
+    coalesce("concerned"."u_sales","level"."u_sales","puzzled"."u_sales") as "l0_union_u_sales"
+FROM
+    "concerned"
+    FULL JOIN "puzzled" on "concerned"."u_channel" is not distinct from "puzzled"."u_channel" AND "concerned"."u_id" is not distinct from "puzzled"."u_id" AND "concerned"."u_profit" is not distinct from "puzzled"."u_profit" AND "concerned"."u_returns" is not distinct from "puzzled"."u_returns" AND "concerned"."u_sales" is not distinct from "puzzled"."u_sales"
+    FULL JOIN "level" on coalesce("concerned"."u_channel", "puzzled"."u_channel") = "level"."u_channel" AND coalesce("concerned"."u_id", "puzzled"."u_id") = "level"."u_id" AND coalesce("concerned"."u_profit", "puzzled"."u_profit") = "level"."u_profit" AND coalesce("concerned"."u_returns", "puzzled"."u_returns") = "level"."u_returns" AND coalesce("concerned"."u_sales", "puzzled"."u_sales") = "level"."u_sales"),
+gullible as (
+SELECT
+    "tearful"."l0_union_u_channel" as "l0_union_u_channel",
+    "tearful"."l0_union_u_id" as "l0_union_u_id",
+    sum("tearful"."l0_union_u_profit") as "profit",
+    sum("tearful"."l0_union_u_returns") as "returns_",
+    sum("tearful"."l0_union_u_sales") as "sales"
+FROM
+    "tearful"
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    "sedate"."l0_union_u_channel" as "channel",
-    "sedate"."l0_union_u_id" as "id",
-    "sedate"."profit" as "profit",
-    "sedate"."returns_" as "returns_",
-    "sedate"."sales" as "sales"
+    "gullible"."l0_union_u_channel" as "channel",
+    "gullible"."l0_union_u_id" as "id",
+    "gullible"."profit" as "profit",
+    "gullible"."returns_" as "returns_",
+    "gullible"."sales" as "sales"
 FROM
-    "sedate"
+    "gullible"
 ORDER BY 
     "channel" asc nulls first,
     "id" asc nulls first,
-    "sedate"."returns_" desc
+    "gullible"."returns_" desc
 LIMIT (100)
 ```
 
@@ -334,6 +365,19 @@ LIMIT (100)
 
 ```sql
 WITH 
+wakeful as (
+SELECT
+    coalesce("cr_catalog_returns"."CR_CALL_CENTER_SK",-1) as "cr_grouped_cr_cc_key",
+    sum("cr_catalog_returns"."CR_NET_LOSS") as "cr_grouped_cr_loss_per_cc",
+    sum("cr_catalog_returns"."CR_RETURN_AMOUNT") as "cr_grouped_cr_returns_per_cc"
+FROM
+    "memory"."catalog_returns" as "cr_catalog_returns"
+    INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
+WHERE
+    cast("cr_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
 busy as (
 SELECT
     "wr_web_returns"."WR_WEB_PAGE_SK" as "wr_grouped_wr_wp_id",
@@ -387,20 +431,7 @@ WHERE
 
 GROUP BY
     1),
-wakeful as (
-SELECT
-    coalesce("cr_catalog_returns"."CR_CALL_CENTER_SK",-1) as "cr_grouped_cr_cc_key",
-    sum("cr_catalog_returns"."CR_NET_LOSS") as "cr_grouped_cr_loss_per_cc",
-    sum("cr_catalog_returns"."CR_RETURN_AMOUNT") as "cr_grouped_cr_returns_per_cc"
-FROM
-    "memory"."catalog_returns" as "cr_catalog_returns"
-    INNER JOIN "memory"."date_dim" as "cr_date_date" on "cr_catalog_returns"."CR_RETURNED_DATE_SK" = "cr_date_date"."D_DATE_SK"
-WHERE
-    cast("cr_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
-
-GROUP BY
-    1),
-uneven as (
+abundant as (
 SELECT
     "cs_catalog_sales"."CS_CALL_CENTER_SK" as "cs_call_center_id",
     sum("cs_catalog_sales"."CS_EXT_SALES_PRICE") as "_virt_agg_sum_6520591768854391",
@@ -413,6 +444,17 @@ WHERE
 
 GROUP BY
     1),
+juicy as (
+SELECT
+    cast(sum("wakeful"."cr_grouped_cr_returns_per_cc") as numeric(15,2)) as "_l0_union_u_returns_c"
+FROM
+    "wakeful"),
+thoughtful as (
+SELECT
+    count("wakeful"."cr_grouped_cr_cc_key") as "cr_totals_cr_n_groups",
+    sum("wakeful"."cr_grouped_cr_loss_per_cc") as "cr_totals_cr_total_loss"
+FROM
+    "wakeful"),
 rambunctious as (
 SELECT
     "puzzled"."ws_grouped_ws_profit" - cast(coalesce("busy"."wr_grouped_wr_loss",0) as numeric(15,2)) as "u_profit",
@@ -432,46 +474,26 @@ SELECT
     cast(coalesce("macho"."sr_grouped_sr_returns",0) as numeric(15,2)) as "u_returns"
 FROM
     "macho"
-    INNER JOIN "sparkling" on "macho"."sr_grouped_sr_store_id" = "sparkling"."ss_grouped_ss_store_id"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
-thoughtful as (
+    INNER JOIN "sparkling" on "macho"."sr_grouped_sr_store_id" = "sparkling"."ss_grouped_ss_store_id"),
+yummy as (
 SELECT
-    count("wakeful"."cr_grouped_cr_cc_key") as "_cr_totals_cr_n_groups",
-    sum("wakeful"."cr_grouped_cr_loss_per_cc") as "_cr_totals_cr_total_loss",
-    sum("wakeful"."cr_grouped_cr_returns_per_cc") as "_cr_totals_cr_total_returns"
-FROM
-    "wakeful"),
-cooperative as (
-SELECT
-    "thoughtful"."_cr_totals_cr_n_groups" as "cr_totals_cr_n_groups",
-    "thoughtful"."_cr_totals_cr_total_loss" as "cr_totals_cr_total_loss",
-    cast("thoughtful"."_cr_totals_cr_total_returns" as numeric(15,2)) as "_l0_union_u_returns_c"
-FROM
-    "thoughtful"),
-juicy as (
-SELECT
-    "uneven"."_virt_agg_sum_6520591768854391" * cast("cooperative"."cr_totals_cr_n_groups" as numeric(15,2)) as "_l0_union_u_sales_c",
-    "uneven"."cs_call_center_id" as "_l0_union_u_id_c",
-    ( "uneven"."_virt_agg_sum_6226990944561419" * "cooperative"."cr_totals_cr_n_groups" ) - cast("cooperative"."cr_totals_cr_total_loss" as numeric(15,2)) as "_l0_union_u_profit_c",
+    "abundant"."_virt_agg_sum_6520591768854391" * cast("thoughtful"."cr_totals_cr_n_groups" as numeric(15,2)) as "_l0_union_u_sales_c",
+    "abundant"."cs_call_center_id" as "_l0_union_u_id_c",
+    ( "abundant"."_virt_agg_sum_6226990944561419" * "thoughtful"."cr_totals_cr_n_groups" ) - cast("thoughtful"."cr_totals_cr_total_loss" as numeric(15,2)) as "_l0_union_u_profit_c",
     :_l0_union_u_channel_c as "_l0_union_u_channel_c"
 FROM
-    "cooperative"
-    FULL JOIN "uneven" on 1=1),
+    "thoughtful"
+    FULL JOIN "abundant" on 1=1),
 vacuous as (
 SELECT
-    "cooperative"."_l0_union_u_returns_c" as "u_returns",
-    "juicy"."_l0_union_u_channel_c" as "u_channel",
-    "juicy"."_l0_union_u_id_c" as "u_id",
-    "juicy"."_l0_union_u_profit_c" as "u_profit",
-    "juicy"."_l0_union_u_sales_c" as "u_sales"
+    "juicy"."_l0_union_u_returns_c" as "u_returns",
+    "yummy"."_l0_union_u_channel_c" as "u_channel",
+    "yummy"."_l0_union_u_id_c" as "u_id",
+    "yummy"."_l0_union_u_profit_c" as "u_profit",
+    "yummy"."_l0_union_u_sales_c" as "u_sales"
 FROM
-    "juicy"
-    FULL JOIN "cooperative" on 1=1),
+    "yummy"
+    FULL JOIN "juicy" on 1=1),
 puffy as (
 SELECT
     coalesce("friendly"."u_channel","rambunctious"."u_channel","vacuous"."u_channel") as "u_channel",
@@ -492,7 +514,7 @@ SELECT
     "puffy"."u_sales" as "l0_union_u_sales"
 FROM
     "puffy"
-    FULL JOIN "cooperative" on 1=1)
+    FULL JOIN "juicy" on 1=1)
 SELECT
     "hard"."l0_union_u_channel" as "channel",
     "hard"."l0_union_u_id" as "id",

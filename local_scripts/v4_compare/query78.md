@@ -1,60 +1,62 @@
 # Query 78
 
-**Status:** `exec_fail`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | FAILED |
+| v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
+| results identical | YES |
 
 ## Result comparison
 
-_at least one side did not produce rows._
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8179 | 171 | — |
-| reference | 6271 | 109 | 340.46 ms |
-| v4 / ref | 1.30x | 1.57x | — |
+| v4 | 6369 | 125 | 55.57 ms |
+| reference | 6303 | 109 | 55.94 ms |
+| v4 / ref | 1.01x | 1.15x | 0.99x |
 
 ## Preql
 
 ```
-import unified_sales as sales;
+import all_sales as sales;
 
-def channel_sum(metric, channel) -> sum(metric ? sales.sales_channel = channel) by sales.date.year, sales.item.id, sales.customer.id;
+def channel_sum(metric, channel) -> sum(metric ? sales.sales_channel = channel) by sales.date.year, sales.item.id, sales.billing_customer.id;
 
 auto ss_qty <- sum(sales.quantity ? sales.sales_channel = 'STORE')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto ss_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'STORE')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto ss_sp <- sum(sales.sales_price ? sales.sales_channel = 'STORE')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto ws_qty <- sum(sales.quantity ? sales.sales_channel = 'WEB')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto ws_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'WEB')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto ws_sp <- sum(sales.sales_price ? sales.sales_channel = 'WEB')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto cs_qty <- sum(sales.quantity ? sales.sales_channel = 'CATALOG')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto cs_wc <- sum(sales.wholesale_cost ? sales.sales_channel = 'CATALOG')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto cs_sp <- sum(sales.sales_price ? sales.sales_channel = 'CATALOG')
-    by sales.date.year, sales.item.id, sales.customer.id;
+    by sales.date.year, sales.item.id, sales.billing_customer.id;
 auto other_chan_qty <- coalesce(ws_qty, 0) + coalesce(cs_qty, 0);
 auto other_chan_wc <- coalesce(ws_wc, 0) + coalesce(cs_wc, 0);
 auto other_chan_sp <- coalesce(ws_sp, 0) + coalesce(cs_sp, 0);
 
 where
-    sales.is_returned is null and sales.date.year = 2000 and sales.customer.id is not null
+    sales.is_returned is null and sales.date.year = 2000 and sales.billing_customer.id is not null
 select
     sales.date.year as ss_sold_year,
     sales.item.id as ss_item_sk,
-    sales.customer.id as ss_customer_sk,
+    sales.billing_customer.id as ss_customer_sk,
     round(ss_qty::numeric(7,2) / other_chan_qty::numeric(7,2), 2) as ratio,
     ss_qty as store_qty,
     ss_wc as store_wholesale_cost,
@@ -112,7 +114,7 @@ FROM
     "memory"."web_returns" as "sales_web_returns_unified"),
 abundant as (
 SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
     "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
@@ -128,7 +130,7 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
     "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
@@ -144,7 +146,7 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
     "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
@@ -160,101 +162,55 @@ WHERE
 ),
 yummy as (
 SELECT
-    "abundant"."sales_customer_id" as "sales_customer_id",
+    "abundant"."sales_billing_customer_id" as "sales_billing_customer_id",
     "abundant"."sales_date_year" as "sales_date_year",
     "abundant"."sales_item_id" as "sales_item_id",
-    "abundant"."sales_quantity" as "sales_quantity",
-    "abundant"."sales_sales_channel" as "sales_sales_channel",
-    "abundant"."sales_sales_price" as "sales_sales_price",
-    "abundant"."sales_wholesale_cost" as "sales_wholesale_cost"
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'CATALOG' THEN "abundant"."sales_quantity" ELSE NULL END) as "cs_qty",
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'CATALOG' THEN "abundant"."sales_sales_price" ELSE NULL END) as "cs_sp",
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'CATALOG' THEN "abundant"."sales_wholesale_cost" ELSE NULL END) as "cs_wc",
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_quantity" ELSE NULL END) as "ss_qty",
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_sales_price" ELSE NULL END) as "ss_sp",
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_wholesale_cost" ELSE NULL END) as "ss_wc",
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'WEB' THEN "abundant"."sales_quantity" ELSE NULL END) as "ws_qty",
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'WEB' THEN "abundant"."sales_sales_price" ELSE NULL END) as "ws_sp",
+    sum(CASE WHEN "abundant"."sales_sales_channel" = 'WEB' THEN "abundant"."sales_wholesale_cost" ELSE NULL END) as "ws_wc"
 FROM
     "abundant"
     LEFT OUTER JOIN "cheerful" on "abundant"."sales_item_id" = "cheerful"."sales_item_id" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id" AND "abundant"."sales_sales_channel" = "cheerful"."sales_sales_channel"
 WHERE
     "cheerful"."sales_is_returned" is null
-),
-vacuous as (
-SELECT
-    "yummy"."sales_customer_id" as "sales_customer_id",
-    "yummy"."sales_date_year" as "sales_date_year",
-    "yummy"."sales_item_id" as "sales_item_id",
-    sum(CASE WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN "yummy"."sales_quantity" ELSE NULL END) as "cs_qty",
-    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_quantity" ELSE NULL END) as "ss_qty",
-    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_sales_price" ELSE NULL END) as "ss_sp",
-    sum(CASE WHEN "yummy"."sales_sales_channel" = 'STORE' THEN "yummy"."sales_wholesale_cost" ELSE NULL END) as "ss_wc",
-    sum(CASE WHEN "yummy"."sales_sales_channel" = 'WEB' THEN "yummy"."sales_quantity" ELSE NULL END) as "ws_qty"
-FROM
-    "yummy"
+
 GROUP BY
     1,
     2,
-    3),
-juicy as (
+    3)
 SELECT
-    "yummy"."sales_customer_id" as "ss_customer_sk",
     "yummy"."sales_date_year" as "ss_sold_year",
-    "yummy"."sales_item_id" as "ss_item_sk"
+    "yummy"."sales_item_id" as "ss_item_sk",
+    "yummy"."sales_billing_customer_id" as "ss_customer_sk",
+    round(cast("yummy"."ss_qty" as numeric(7,2)) / cast(coalesce("yummy"."ws_qty",0) + coalesce("yummy"."cs_qty",0) as numeric(7,2)),2) as "ratio",
+    "yummy"."ss_qty" as "store_qty",
+    "yummy"."ss_wc" as "store_wholesale_cost",
+    "yummy"."ss_sp" as "store_sales_price",
+    coalesce("yummy"."ws_qty",0) + coalesce("yummy"."cs_qty",0) as "other_chan_qty",
+    coalesce("yummy"."ws_wc",0) + coalesce("yummy"."cs_wc",0) as "other_chan_wholesale_cost",
+    coalesce("yummy"."ws_sp",0) + coalesce("yummy"."cs_sp",0) as "other_chan_sales_price"
 FROM
-    "yummy"),
-young as (
-SELECT
-    "vacuous"."cs_qty" as "cs_qty",
-    "vacuous"."sales_customer_id" as "sales_customer_id",
-    "vacuous"."sales_date_year" as "sales_date_year",
-    "vacuous"."sales_item_id" as "sales_item_id",
-    "vacuous"."ss_qty" as "store_qty",
-    "vacuous"."ss_sp" as "store_sales_price",
-    "vacuous"."ss_wc" as "store_wholesale_cost",
-    "vacuous"."ws_qty" as "ws_qty",
-    coalesce("vacuous"."ws_qty",0) + coalesce("vacuous"."cs_qty",0) as "other_chan_qty",
-    round(cast("vacuous"."ss_qty" as numeric(7,2)) / cast(coalesce("vacuous"."ws_qty",0) + coalesce("vacuous"."cs_qty",0) as numeric(7,2)),2) as "ratio"
-FROM
-    "vacuous"),
-sparkling as (
-SELECT
-    "juicy"."ss_customer_sk" as "ss_customer_sk",
-    "juicy"."ss_item_sk" as "ss_item_sk",
-    "juicy"."ss_sold_year" as "ss_sold_year",
-    "young"."cs_qty" as "cs_qty",
-    "young"."other_chan_qty" as "other_chan_qty",
-    "young"."ratio" as "ratio",
-    "young"."store_qty" as "store_qty",
-    "young"."store_sales_price" as "store_sales_price",
-    "young"."store_wholesale_cost" as "store_wholesale_cost",
-    "young"."ws_qty" as "ws_qty"
-FROM
-    "young"
-    LEFT OUTER JOIN "juicy" on "young"."sales_customer_id" = "juicy"."ss_customer_sk" AND "young"."sales_date_year" = "juicy"."ss_sold_year" AND "young"."sales_item_id" = "juicy"."ss_item_sk"
+    "yummy"
 WHERE
-    "young"."store_qty" > 0
-)
-SELECT
-    "sparkling"."ss_sold_year" as "ss_sold_year",
-    "sparkling"."ss_item_sk" as "ss_item_sk",
-    "sparkling"."ss_customer_sk" as "ss_customer_sk",
-    "sparkling"."ratio" as "ratio",
-    "sparkling"."store_qty" as "store_qty",
-    "sparkling"."store_wholesale_cost" as "store_wholesale_cost",
-    "sparkling"."store_sales_price" as "store_sales_price",
-    "sparkling"."other_chan_qty" as "other_chan_qty",
-    coalesce(CASE WHEN  'CATALOG'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.wholesale_cost> ELSE NULL END,0) + coalesce(CASE WHEN  'CATALOG'  = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.wholesale_cost> ELSE NULL END,0) as "other_chan_wholesale_cost",
-    coalesce(CASE WHEN  'CATALOG'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END,0) + coalesce(CASE WHEN  'CATALOG'  = 'CATALOG' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.sales_price> ELSE NULL END,0) as "other_chan_sales_price"
-FROM
-    "sparkling"
-WHERE
-    ( coalesce("sparkling"."ws_qty",0) > 0 or coalesce("sparkling"."cs_qty",0) > 0 )
+    "yummy"."ss_qty" > 0 and ( coalesce("yummy"."ws_qty",0) > 0 or coalesce("yummy"."cs_qty",0) > 0 )
 
 ORDER BY 
-    "sparkling"."ss_sold_year" asc nulls first,
-    "sparkling"."ss_item_sk" asc nulls first,
-    "sparkling"."ss_customer_sk" asc nulls first,
-    "sparkling"."store_qty" desc nulls last,
-    "sparkling"."store_wholesale_cost" desc nulls last,
-    "sparkling"."store_sales_price" desc nulls last,
-    "sparkling"."other_chan_qty" asc nulls first,
+    "ss_sold_year" asc nulls first,
+    "ss_item_sk" asc nulls first,
+    "ss_customer_sk" asc nulls first,
+    "store_qty" desc nulls last,
+    "store_wholesale_cost" desc nulls last,
+    "store_sales_price" desc nulls last,
+    "other_chan_qty" asc nulls first,
     "other_chan_wholesale_cost" asc nulls first,
     "other_chan_sales_price" asc nulls first,
-    "sparkling"."ratio" asc nulls first
+    "ratio" asc nulls first
 LIMIT (100)
 ```
 
@@ -288,7 +244,7 @@ FROM
     "memory"."web_returns" as "sales_web_returns_unified"),
 abundant as (
 SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
     "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
     "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
@@ -304,7 +260,7 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_customer_id",
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
     "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
@@ -320,7 +276,7 @@ WHERE
 
 UNION ALL
 SELECT
-    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_customer_id",
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
     "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
     "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
@@ -337,7 +293,7 @@ WHERE
 SELECT
     "abundant"."sales_date_year" as "ss_sold_year",
     "abundant"."sales_item_id" as "ss_item_sk",
-    "abundant"."sales_customer_id" as "ss_customer_sk",
+    "abundant"."sales_billing_customer_id" as "ss_customer_sk",
     round(cast(sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_quantity" ELSE NULL END) as numeric(7,2)) / cast(coalesce(sum(CASE WHEN "abundant"."sales_sales_channel" = 'WEB' THEN "abundant"."sales_quantity" ELSE NULL END),0) + coalesce(sum(CASE WHEN "abundant"."sales_sales_channel" = 'CATALOG' THEN "abundant"."sales_quantity" ELSE NULL END),0) as numeric(7,2)),2) as "ratio",
     sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_quantity" ELSE NULL END) as "store_qty",
     sum(CASE WHEN "abundant"."sales_sales_channel" = 'STORE' THEN "abundant"."sales_wholesale_cost" ELSE NULL END) as "store_wholesale_cost",
@@ -370,27 +326,4 @@ ORDER BY
     "other_chan_sales_price" asc nulls first,
     "ratio" asc nulls first
 LIMIT (100)
-```
-
-## v4 execution error
-
-```
-Traceback (most recent call last):
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in run_one
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 52, in _time
-    value = fn()
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 281, in <lambda>
-    result.v4_exec_seconds, result.v4_rows = _time(lambda: _exec(v4_sql))
-                                                           ~~~~~^^^^^^^^
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 277, in _exec
-    return execute(con, bound_sql, params or None)
-  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 197, in execute
-    cursor = con.execute(sql, params) if params else con.execute(sql)
-                                                     ~~~~~~~~~~~^^^^^
-_duckdb.ParserException: Parser Error: syntax error at or near "source"
-
-LINE 153: ... WHEN  'CATALOG'  = 'WEB' THEN INVALID_REFERENCE_BUG_<Missing source reference to sales.wholesale_cost> ELSE NULL END...
-                                                                           ^
 ```

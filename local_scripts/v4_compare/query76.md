@@ -1,43 +1,31 @@
 # Query 76
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
-only in v4 (showing up to 5 of 100):
-  1x  (None, None, Decimal('13630.14'), None, None, 'Books', 'catalog', None, None, 'catalog', None, None, 9, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Books', None, None, 1, Decimal('13630.14'), 9, None, None, 1998)
-  1x  (None, None, Decimal('36422.12'), None, None, 'Children', 'catalog', None, None, 'catalog', None, None, 14, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Children', None, None, 1, Decimal('36422.12'), 14, None, None, 1998)
-  1x  (None, None, Decimal('18547.58'), None, None, 'Electronics', 'catalog', None, None, 'catalog', None, None, 17, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Electronics', None, None, 1, Decimal('18547.58'), 17, None, None, 1998)
-  1x  (None, None, Decimal('17219.87'), None, None, 'Home', 'catalog', None, None, 'catalog', None, None, 9, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Home', None, None, 1, Decimal('17219.87'), 9, None, None, 1998)
-  1x  (None, None, Decimal('21296.55'), None, None, 'Jewelry', 'catalog', None, None, 'catalog', None, None, 11, 'cs_ship_addr_sk', None, None, 'cs_ship_addr_sk', 1, 1998, 'Jewelry', None, None, 1, Decimal('21296.55'), 11, None, None, 1998)
-only in ref (showing up to 5 of 100):
-  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Books', Decimal('13630.14'), 9)
-  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Children', Decimal('36422.12'), 14)
-  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Electronics', Decimal('18547.58'), 17)
-  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Home', Decimal('17219.87'), 9)
-  1x  ('catalog', 'cs_ship_addr_sk', 1, 1998, 'Jewelry', Decimal('21296.55'), 11)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9734 | 212 | 137.47 ms |
-| reference | 7468 | 176 | 99.31 ms |
-| v4 / ref | 1.30x | 1.20x | 1.38x |
+| v4 | 9082 | 194 | 58.40 ms |
+| reference | 7468 | 176 | 63.29 ms |
+| v4 / ref | 1.22x | 1.10x | 0.92x |
 
 ## Preql
 
 ```
-import store_sales as ss;
+import physical_sales as ss;
 import catalog_sales as cs;
 import web_sales as ws;
 
@@ -130,87 +118,70 @@ limit 100
 
 ```sql
 WITH 
-friendly as (
+kaput as (
 SELECT
-    "ws_web_sales"."WS_ITEM_SK" as "ws_item_id",
+    "ws_date_date"."D_QOY" as "ws_date_quarter",
+    "ws_date_date"."D_YEAR" as "ws_date_year",
+    "ws_item_items"."I_CATEGORY" as "ws_item_category",
+    "ws_item_items"."I_ITEM_SK" as "ws_item_id",
+    "ws_web_sales"."WS_EXT_SALES_PRICE" as "ws_ext_sales_price",
     "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number",
     "ws_web_sales"."WS_SHIP_CUSTOMER_SK" as "ws_ship_customer_id"
 FROM
     "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "ws_item_items" on "ws_web_sales"."WS_ITEM_SK" = "ws_item_items"."I_ITEM_SK"
 WHERE
-    "ws_web_sales"."WS_SHIP_CUSTOMER_SK" is null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
+    "ws_web_sales"."WS_SHIP_CUSTOMER_SK" is null and "ws_web_sales"."WS_ORDER_NUMBER" is not null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
 ),
 concerned as (
 SELECT
-    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
+    "ss_date_date"."D_QOY" as "ss_date_quarter",
+    "ss_date_date"."D_YEAR" as "ss_date_year",
+    "ss_item_items"."I_CATEGORY" as "ss_item_category",
+    "ss_item_items"."I_ITEM_SK" as "ss_item_id",
+    "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
     "ss_store_sales"."SS_STORE_SK" as "ss_store_id",
     "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
 FROM
     "memory"."store_sales" as "ss_store_sales"
-WHERE
-    "ss_store_sales"."SS_STORE_SK" is null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
-),
-quizzical as (
-SELECT
-    "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
-    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
-    "cs_catalog_sales"."CS_SHIP_ADDR_SK" as "cs_customer_address_id"
-FROM
-    "memory"."catalog_sales" as "cs_catalog_sales"
-WHERE
-    "cs_catalog_sales"."CS_SHIP_ADDR_SK" is null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
-),
-macho as (
-SELECT
-    "ws_date_date"."D_QOY" as "ws_date_quarter",
-    "ws_date_date"."D_YEAR" as "ws_date_year",
-    "ws_web_sales"."WS_EXT_SALES_PRICE" as "ws_ext_sales_price",
-    "ws_web_sales"."WS_ITEM_SK" as "ws_item_id",
-    "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number"
-FROM
-    "memory"."web_sales" as "ws_web_sales"
-    INNER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
-WHERE
-    "ws_web_sales"."WS_ORDER_NUMBER" is not null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
-),
-juicy as (
-SELECT
-    "ss_date_date"."D_QOY" as "ss_date_quarter",
-    "ss_date_date"."D_YEAR" as "ss_date_year",
-    "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
-    "ss_store_sales"."SS_ITEM_SK" as "ss_item_id",
-    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
-FROM
-    "memory"."store_sales" as "ss_store_sales"
     INNER JOIN "memory"."date_dim" as "ss_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
 WHERE
-    "ss_store_sales"."SS_TICKET_NUMBER" is not null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
+    "ss_store_sales"."SS_STORE_SK" is null and "ss_store_sales"."SS_TICKET_NUMBER" is not null and "ss_store_sales"."SS_SOLD_DATE_SK" is not null
 ),
-thoughtful as (
+cheerful as (
 SELECT
     "cs_catalog_sales"."CS_EXT_SALES_PRICE" as "cs_ext_sales_price",
     "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
+    "cs_catalog_sales"."CS_SHIP_ADDR_SK" as "cs_customer_address_id",
     "cs_date_date"."D_QOY" as "cs_date_quarter",
-    "cs_date_date"."D_YEAR" as "cs_date_year"
+    "cs_date_date"."D_YEAR" as "cs_date_year",
+    "cs_item_items"."I_CATEGORY" as "cs_item_category"
 FROM
     "memory"."catalog_sales" as "cs_catalog_sales"
     INNER JOIN "memory"."date_dim" as "cs_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "cs_item_items" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_item_items"."I_ITEM_SK"
 WHERE
-    "cs_catalog_sales"."CS_ORDER_NUMBER" is not null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
+    "cs_catalog_sales"."CS_SHIP_ADDR_SK" is null and "cs_catalog_sales"."CS_ORDER_NUMBER" is not null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
 ),
-kaput as (
+divergent as (
 SELECT
-    "friendly"."ws_item_id" as "ws_item_id",
-    "friendly"."ws_order_number" as "ws_order_number",
+    "kaput"."ws_ext_sales_price" as "ws_ext_sales_price",
+    "kaput"."ws_item_category" as "ws_item_category",
+    "kaput"."ws_item_id" as "ws_item_id",
+    "kaput"."ws_order_number" as "ws_order_number",
     CASE
-	WHEN "friendly"."ws_ship_customer_id" is null THEN 1
+	WHEN "kaput"."ws_ship_customer_id" is null THEN 1
 	ELSE 0
 	END as "ws_row_flag"
 FROM
-    "friendly"),
+    "kaput"),
 young as (
 SELECT
+    "concerned"."ss_ext_sales_price" as "ss_ext_sales_price",
+    "concerned"."ss_item_category" as "ss_item_category",
     "concerned"."ss_item_id" as "ss_item_id",
     "concerned"."ss_ticket_number" as "ss_ticket_number",
     CASE
@@ -219,121 +190,120 @@ SELECT
 	END as "ss_row_flag"
 FROM
     "concerned"),
-highfalutin as (
+thoughtful as (
 SELECT
-    "quizzical"."cs_item_id" as "cs_item_id",
-    "quizzical"."cs_order_number" as "cs_order_number",
+    "cheerful"."cs_ext_sales_price" as "cs_ext_sales_price",
+    "cheerful"."cs_item_category" as "cs_item_category",
+    "cheerful"."cs_item_id" as "cs_item_id",
+    "cheerful"."cs_order_number" as "cs_order_number",
     CASE
-	WHEN "quizzical"."cs_customer_address_id" is null THEN 1
+	WHEN "cheerful"."cs_customer_address_id" is null THEN 1
 	ELSE 0
 	END as "cs_row_flag"
 FROM
-    "quizzical"),
-divergent as (
+    "cheerful"),
+busy as (
 SELECT
-    "macho"."ws_date_quarter" as "_q76_results_qoy_b",
-    "macho"."ws_date_quarter" as "d_qoy",
-    "macho"."ws_date_year" as "_q76_results_year_b",
-    "macho"."ws_date_year" as "d_year",
-    "ws_item_items"."I_CATEGORY" as "_q76_results_category_b",
-    "ws_item_items"."I_CATEGORY" as "i_category",
-    :_q76_results_channel_b as "_q76_results_channel_b",
-    :_q76_results_channel_b as "channel",
-    :_q76_results_col_name_b as "_q76_results_col_name_b",
-    :_q76_results_col_name_b as "col_name",
-    sum("kaput"."ws_row_flag") as "_q76_results_cnt_b",
-    sum("macho"."ws_ext_sales_price") as "_q76_results_amt_b"
+    "divergent"."ws_item_category" as "ws_item_category",
+    "kaput"."ws_date_quarter" as "ws_date_quarter",
+    "kaput"."ws_date_year" as "ws_date_year",
+    sum("divergent"."ws_ext_sales_price") as "_q76_results_amt_b",
+    sum("divergent"."ws_row_flag") as "_q76_results_cnt_b"
 FROM
-    "kaput"
-    INNER JOIN "macho" on "kaput"."ws_item_id" = "macho"."ws_item_id" AND "kaput"."ws_order_number" = "macho"."ws_order_number"
-    INNER JOIN "memory"."item" as "ws_item_items" on "kaput"."ws_item_id" = "ws_item_items"."I_ITEM_SK"
+    "divergent"
+    FULL JOIN "kaput" on "divergent"."ws_item_id" = "kaput"."ws_item_id" AND "divergent"."ws_order_number" = "kaput"."ws_order_number"
 GROUP BY
+    1,
     2,
-    4,
-    6,
-    8,
-    10),
+    3),
 sparkling as (
 SELECT
-    "juicy"."ss_date_quarter" as "_q76_results_qoy_a",
-    "juicy"."ss_date_quarter" as "d_qoy",
-    "juicy"."ss_date_year" as "_q76_results_year_a",
-    "juicy"."ss_date_year" as "d_year",
-    "ss_item_items"."I_CATEGORY" as "_q76_results_category_a",
-    "ss_item_items"."I_CATEGORY" as "i_category",
-    :_q76_results_channel_a as "_q76_results_channel_a",
-    :_q76_results_channel_a as "channel",
-    :_q76_results_col_name_a as "_q76_results_col_name_a",
-    :_q76_results_col_name_a as "col_name",
-    sum("juicy"."ss_ext_sales_price") as "_q76_results_amt_a",
+    "concerned"."ss_date_quarter" as "ss_date_quarter",
+    "concerned"."ss_date_year" as "ss_date_year",
+    "young"."ss_item_category" as "ss_item_category",
+    sum("young"."ss_ext_sales_price") as "_q76_results_amt_a",
     sum("young"."ss_row_flag") as "_q76_results_cnt_a"
 FROM
     "young"
-    INNER JOIN "juicy" on "young"."ss_item_id" = "juicy"."ss_item_id" AND "young"."ss_ticket_number" = "juicy"."ss_ticket_number"
-    INNER JOIN "memory"."item" as "ss_item_items" on "young"."ss_item_id" = "ss_item_items"."I_ITEM_SK"
+    FULL JOIN "concerned" on "young"."ss_item_id" = "concerned"."ss_item_id" AND "young"."ss_ticket_number" = "concerned"."ss_ticket_number"
 GROUP BY
+    1,
     2,
-    4,
-    6,
-    8,
-    10),
-questionable as (
+    3),
+cooperative as (
 SELECT
-    "cs_item_items"."I_CATEGORY" as "_q76_results_category_c",
-    "cs_item_items"."I_CATEGORY" as "i_category",
-    "thoughtful"."cs_date_quarter" as "_q76_results_qoy_c",
-    "thoughtful"."cs_date_quarter" as "d_qoy",
-    "thoughtful"."cs_date_year" as "_q76_results_year_c",
-    "thoughtful"."cs_date_year" as "d_year",
+    "cheerful"."cs_date_quarter" as "cs_date_quarter",
+    "cheerful"."cs_date_year" as "cs_date_year",
+    "thoughtful"."cs_item_category" as "cs_item_category",
+    sum("thoughtful"."cs_ext_sales_price") as "_q76_results_amt_c",
+    sum("thoughtful"."cs_row_flag") as "_q76_results_cnt_c"
+FROM
+    "thoughtful"
+    FULL JOIN "cheerful" on "thoughtful"."cs_item_id" = "cheerful"."cs_item_id" AND "thoughtful"."cs_order_number" = "cheerful"."cs_order_number"
+GROUP BY
+    1,
+    2,
+    3),
+protective as (
+SELECT
+    "busy"."_q76_results_amt_b" as "_q76_results_amt_b",
+    "busy"."_q76_results_cnt_b" as "_q76_results_cnt_b",
+    "busy"."ws_date_quarter" as "_q76_results_qoy_b",
+    "busy"."ws_date_quarter" as "d_qoy",
+    "busy"."ws_date_year" as "_q76_results_year_b",
+    "busy"."ws_date_year" as "d_year",
+    "busy"."ws_item_category" as "_q76_results_category_b",
+    "busy"."ws_item_category" as "i_category",
+    :_q76_results_channel_b as "_q76_results_channel_b",
+    :_q76_results_channel_b as "channel",
+    :_q76_results_col_name_b as "_q76_results_col_name_b",
+    :_q76_results_col_name_b as "col_name"
+FROM
+    "busy"),
+sweltering as (
+SELECT
+    "sparkling"."_q76_results_amt_a" as "_q76_results_amt_a",
+    "sparkling"."_q76_results_cnt_a" as "_q76_results_cnt_a",
+    "sparkling"."ss_date_quarter" as "_q76_results_qoy_a",
+    "sparkling"."ss_date_quarter" as "d_qoy",
+    "sparkling"."ss_date_year" as "_q76_results_year_a",
+    "sparkling"."ss_date_year" as "d_year",
+    "sparkling"."ss_item_category" as "_q76_results_category_a",
+    "sparkling"."ss_item_category" as "i_category",
+    :_q76_results_channel_a as "_q76_results_channel_a",
+    :_q76_results_channel_a as "channel",
+    :_q76_results_col_name_a as "_q76_results_col_name_a",
+    :_q76_results_col_name_a as "col_name"
+FROM
+    "sparkling"),
+abundant as (
+SELECT
+    "cooperative"."_q76_results_amt_c" as "_q76_results_amt_c",
+    "cooperative"."_q76_results_cnt_c" as "_q76_results_cnt_c",
+    "cooperative"."cs_date_quarter" as "_q76_results_qoy_c",
+    "cooperative"."cs_date_quarter" as "d_qoy",
+    "cooperative"."cs_date_year" as "_q76_results_year_c",
+    "cooperative"."cs_date_year" as "d_year",
+    "cooperative"."cs_item_category" as "_q76_results_category_c",
+    "cooperative"."cs_item_category" as "i_category",
     :_q76_results_channel_c as "_q76_results_channel_c",
     :_q76_results_channel_c as "channel",
     :_q76_results_col_name_c as "_q76_results_col_name_c",
-    :_q76_results_col_name_c as "col_name",
-    sum("highfalutin"."cs_row_flag") as "_q76_results_cnt_c",
-    sum("thoughtful"."cs_ext_sales_price") as "_q76_results_amt_c"
+    :_q76_results_col_name_c as "col_name"
 FROM
-    "thoughtful"
-    INNER JOIN "highfalutin" on "thoughtful"."cs_item_id" = "highfalutin"."cs_item_id" AND "thoughtful"."cs_order_number" = "highfalutin"."cs_order_number"
-    INNER JOIN "memory"."item" as "cs_item_items" on "thoughtful"."cs_item_id" = "cs_item_items"."I_ITEM_SK"
-GROUP BY
-    2,
-    4,
-    6,
-    8,
-    10)
+    "cooperative")
 SELECT
-    coalesce("divergent"."channel","questionable"."channel","sparkling"."channel") as "q76_results_channel",
-    coalesce("divergent"."col_name","questionable"."col_name","sparkling"."col_name") as "q76_results_col_name",
-    coalesce("divergent"."d_year","questionable"."d_year","sparkling"."d_year") as "q76_results_d_year",
-    coalesce("divergent"."d_qoy","questionable"."d_qoy","sparkling"."d_qoy") as "q76_results_d_qoy",
-    coalesce("divergent"."i_category","questionable"."i_category","sparkling"."i_category") as "q76_results_i_category",
-    coalesce("sparkling"."_q76_results_cnt_a","divergent"."_q76_results_cnt_b","questionable"."_q76_results_cnt_c") as "q76_results_sales_cnt",
-    coalesce("sparkling"."_q76_results_amt_a","divergent"."_q76_results_amt_b","questionable"."_q76_results_amt_c") as "q76_results_sales_amt",
-    "sparkling"."_q76_results_channel_a" as "q76_results_channel_a",
-    "sparkling"."_q76_results_col_name_a" as "q76_results_col_name_a",
-    "sparkling"."_q76_results_year_a" as "q76_results_year_a",
-    "sparkling"."_q76_results_qoy_a" as "q76_results_qoy_a",
-    "sparkling"."_q76_results_category_a" as "q76_results_category_a",
-    "sparkling"."_q76_results_cnt_a" as "q76_results_cnt_a",
-    "sparkling"."_q76_results_amt_a" as "q76_results_amt_a",
-    "divergent"."_q76_results_channel_b" as "q76_results_channel_b",
-    "divergent"."_q76_results_col_name_b" as "q76_results_col_name_b",
-    "divergent"."_q76_results_year_b" as "q76_results_year_b",
-    "divergent"."_q76_results_qoy_b" as "q76_results_qoy_b",
-    "divergent"."_q76_results_category_b" as "q76_results_category_b",
-    "divergent"."_q76_results_cnt_b" as "q76_results_cnt_b",
-    "divergent"."_q76_results_amt_b" as "q76_results_amt_b",
-    "questionable"."_q76_results_channel_c" as "q76_results_channel_c",
-    "questionable"."_q76_results_col_name_c" as "q76_results_col_name_c",
-    "questionable"."_q76_results_year_c" as "q76_results_year_c",
-    "questionable"."_q76_results_qoy_c" as "q76_results_qoy_c",
-    "questionable"."_q76_results_category_c" as "q76_results_category_c",
-    "questionable"."_q76_results_cnt_c" as "q76_results_cnt_c",
-    "questionable"."_q76_results_amt_c" as "q76_results_amt_c"
+    coalesce("abundant"."channel","protective"."channel","sweltering"."channel") as "q76_results_channel",
+    coalesce("abundant"."col_name","protective"."col_name","sweltering"."col_name") as "q76_results_col_name",
+    coalesce("abundant"."d_qoy","protective"."d_qoy","sweltering"."d_qoy") as "q76_results_d_qoy",
+    coalesce("abundant"."d_year","protective"."d_year","sweltering"."d_year") as "q76_results_d_year",
+    coalesce("abundant"."i_category","protective"."i_category","sweltering"."i_category") as "q76_results_i_category",
+    coalesce("sweltering"."_q76_results_amt_a","protective"."_q76_results_amt_b","abundant"."_q76_results_amt_c") as "q76_results_sales_amt",
+    coalesce("sweltering"."_q76_results_cnt_a","protective"."_q76_results_cnt_b","abundant"."_q76_results_cnt_c") as "q76_results_sales_cnt"
 FROM
-    "sparkling"
-    FULL JOIN "divergent" on "sparkling"."channel" is not distinct from "divergent"."channel" AND "sparkling"."col_name" is not distinct from "divergent"."col_name" AND "sparkling"."d_qoy" is not distinct from "divergent"."d_qoy" AND "sparkling"."d_year" is not distinct from "divergent"."d_year" AND "sparkling"."i_category" is not distinct from "divergent"."i_category"
-    FULL JOIN "questionable" on coalesce("sparkling"."channel", "divergent"."channel") = "questionable"."channel" AND coalesce("sparkling"."col_name", "divergent"."col_name") = "questionable"."col_name" AND coalesce("sparkling"."d_qoy", "divergent"."d_qoy") = "questionable"."d_qoy" AND coalesce("sparkling"."d_year", "divergent"."d_year") = "questionable"."d_year" AND coalesce("sparkling"."i_category", "divergent"."i_category") = "questionable"."i_category"
+    "sweltering"
+    FULL JOIN "protective" on "sweltering"."channel" is not distinct from "protective"."channel" AND "sweltering"."col_name" is not distinct from "protective"."col_name" AND "sweltering"."d_qoy" is not distinct from "protective"."d_qoy" AND "sweltering"."d_year" is not distinct from "protective"."d_year" AND "sweltering"."i_category" is not distinct from "protective"."i_category"
+    FULL JOIN "abundant" on coalesce("sweltering"."channel", "protective"."channel") = "abundant"."channel" AND coalesce("sweltering"."col_name", "protective"."col_name") = "abundant"."col_name" AND coalesce("sweltering"."d_qoy", "protective"."d_qoy") = "abundant"."d_qoy" AND coalesce("sweltering"."d_year", "protective"."d_year") = "abundant"."d_year" AND coalesce("sweltering"."i_category", "protective"."i_category") = "abundant"."i_category"
 ORDER BY 
     "q76_results_channel" asc nulls first,
     "q76_results_col_name" asc nulls first,

@@ -136,6 +136,21 @@ def load_reference_sql(query_id: str) -> Optional[str]:
     return sql.strip()
 
 
+def generate_v3_reference_sql(query_id: str) -> Optional[str]:
+    """Live v3 reference for queries with no zquery log — the negative-id
+    standalone branch probes. Mirrors the executor path the logs were captured
+    from, so the comparison is the same v3-vs-v4 parity check, just unlogged."""
+    preql_path = TPCDS_DIR / f"query{query_id}.preql"
+    if not preql_path.exists():
+        return None
+    from trilogy import Dialects
+
+    env = Environment(working_path=TPCDS_DIR)
+    eng = Dialects.DUCK_DB.default_executor(environment=env)
+    statements = eng.generate_sql(preql_path.read_text())
+    return statements[-1].strip() if statements else None
+
+
 _PARAM_RE = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)")
 
 
@@ -274,6 +289,8 @@ def run_one(
     result.v4_gen_error = v4_err
 
     ref_sql = load_reference_sql(query_id)
+    if ref_sql is None:
+        ref_sql = generate_v3_reference_sql(query_id)
     result.ref_sql = ref_sql
 
     # Parse the preql once so we can hydrate :name placeholders for either side.
@@ -511,8 +528,11 @@ def parse_query_arg(arg: str) -> list[str]:
         piece = piece.strip()
         if not piece:
             continue
-        if piece.isdigit():
-            out.append(f"{int(piece):02d}")
+        if piece.lstrip("-").isdigit():
+            n = int(piece)
+            # Negatives are the standalone q77-branch probes (query-1.preql …);
+            # keep the bare "-1" so the filename resolves, zero-pad positives.
+            out.append(str(n) if n < 0 else f"{n:02d}")
         else:
             out.append(piece)
     return out
@@ -531,7 +551,17 @@ def main() -> int:
         help=f"Run the curated set in {TEST_SET_FILE.name} (passing + targeted "
         "queries; excludes plans that spin under the current planner).",
     )
+    parser.add_argument(
+        "--dataset",
+        default="memory",
+        help="Dataset dir under tpc_ds_duckdb to run against (default 'memory' = "
+        "sf=1; 'memory_sf001' = sf=0.01 for a fast pass). Both sides execute on "
+        "the same data, so parity holds at any scale.",
+    )
     args = parser.parse_args()
+
+    global DATASET_DIR
+    DATASET_DIR = TPCDS_DIR / args.dataset
 
     if args.test_set:
         ids = load_test_set()

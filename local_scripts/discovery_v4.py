@@ -22,7 +22,7 @@ import argparse
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import cast
 
 import matplotlib
 
@@ -33,6 +33,7 @@ import networkx as nx  # noqa: E402
 from trilogy import Environment
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import (
     BuildComparison,
     BuildMultiSelectLineage,
@@ -49,6 +50,12 @@ from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts,
 )
 from trilogy.core.processing.condition_utility import strip_tautological_not_null
+from trilogy.core.processing.v4_helper.constants import (
+    EDGE_KIND_CONSTRAINT,
+    EDGE_KIND_EXISTENCE,
+    EDGE_KIND_LINEAGE,
+    EDGE_KIND_MERGE,
+)
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -312,10 +319,14 @@ def render_digraph(graph: nx.DiGraph, concept_attrs: dict, output_path: Path) ->
     """Concept-dependency digraph: top-down by lineage depth, rectangular
     labels so long concept addresses stay readable."""
     lineage_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == "lineage"
+        (u, v)
+        for u, v, d in graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_LINEAGE
     ]
     constraint_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == "constraint"
+        (u, v)
+        for u, v, d in graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_CONSTRAINT
     ]
 
     # Constraint edges (d1 → d0 "must apply above") are real build-order
@@ -522,16 +533,22 @@ def render_group_digraph(
         return "#555555"
 
     lineage_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == "lineage"
+        (u, v)
+        for u, v, d in graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_LINEAGE
     ]
     merge_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == "merge"
+        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == EDGE_KIND_MERGE
     ]
     existence_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == "existence"
+        (u, v)
+        for u, v, d in graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_EXISTENCE
     ]
     constraint_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == "constraint"
+        (u, v)
+        for u, v, d in graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_CONSTRAINT
     ]
     # All three edge kinds express build-order: a d1 condition filter must
     # be built before the root that subselects from it (existence), a sibling
@@ -729,7 +746,7 @@ def _materialize_for_query(
 ) -> tuple[
     BuildSelectLineage | BuildMultiSelectLineage,
     BuildEnvironment,
-    Optional[BuildWhereClause],
+    BuildWhereClause | None,
 ]:
     """Mirror trilogy.core.query_processor.get_query_node up to (but not
     including) the source_query_concepts call, returning the inputs v4 needs."""
@@ -849,12 +866,14 @@ def run_tpcds_query(
     BuildInfo,
     BuildEnvironment,
     str,
-    Optional[BuildSelectLineage | BuildMultiSelectLineage],
+    BuildSelectLineage | BuildMultiSelectLineage | None,
 ]:
     """Resolve `name` to a preql file under TPCDS_DIR, build the v4 plan.
     Returns the BuildSelectLineage too so compile_sql can apply HAVING,
     ORDER BY, hidden_concepts, and LIMIT from the original statement."""
-    if name.isdigit():
+    if name.lstrip("-").isdigit():
+        # Negative ids (-1, -2, …) are the standalone q77-branch probes,
+        # stored as query-1.preql etc.; :02d keeps the sign and pads positives.
         filename = f"query{int(name):02d}.preql"
     elif name.endswith(".preql"):
         filename = name
@@ -885,7 +904,7 @@ def run_tpcds_query(
 def compile_sql(
     info: BuildInfo,
     build_env: BuildEnvironment,
-    build_stmt: Optional[BuildSelectLineage | BuildMultiSelectLineage] = None,
+    build_stmt: BuildSelectLineage | BuildMultiSelectLineage | None = None,
 ) -> str | None:
     """Compile the v4 strategy node to SQL. When `build_stmt` is supplied,
     apply HAVING / ORDER BY / hidden_concepts / LIMIT from the original
@@ -903,7 +922,7 @@ def compile_sql(
 
     node = info.strategy_node.copy()
 
-    if build_stmt is not None and getattr(build_stmt, "having_clause", None):
+    if build_stmt is not None and build_stmt.having_clause is not None:
         having = build_stmt.having_clause.conditional
         combined = (
             BuildConditional(
@@ -958,10 +977,16 @@ def compile_sql(
     # rendering. Without this the v4 SQL stays verbose — each scan in its
     # own CTE, no merging — which is correct but a lot bigger.
     if build_stmt is not None:
-        deduped = optimize_ctes(deduped, root_cte, build_stmt)
+        deduped = optimize_ctes(
+            deduped,
+            root_cte,
+            cast(SelectStatement | MultiSelectStatement, build_stmt),
+        )
 
     outputs = [c for c in node.output_concepts if c.address not in node.hidden_concepts]
-    pq = ProcessedQuery(output_columns=outputs, ctes=deduped, base=root_cte)
+    pq = ProcessedQuery(
+        output_columns=cast(list[ConceptRef], outputs), ctes=deduped, base=root_cte
+    )
     return DuckDBDialect().compile_statement(pq)
 
 

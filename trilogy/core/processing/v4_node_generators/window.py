@@ -1,5 +1,3 @@
-from typing import List
-
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import StrategyNode, WindowNode
@@ -8,8 +6,8 @@ from .common import parent_outputs_needed
 
 
 def gen_window(
-    outputs: List[BuildConcept],
-    parents: List[StrategyNode],
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     preexisting_conditions: BuildWhereClause | None = None,

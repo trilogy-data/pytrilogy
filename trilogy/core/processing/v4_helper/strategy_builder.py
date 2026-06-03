@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildFilterItem,
+    BuildGrain,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -29,7 +30,12 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.v4_node_generators import build_node
 
-from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
+from .constants import (
+    DEPENDENCY_EDGE_KINDS,
+    EDGE_KIND_EXISTENCE,
+    FINAL_NODE_ID,
+    GROUPING_DERIVATIONS,
+)
 from .models import GroupAttrs
 
 _AGGREGATING_DERIVATIONS = {
@@ -172,7 +178,7 @@ def _parent_nodes_for(
         # `_existence_for_group` wires them as side-channel parents post-
         # build. Including them here would put them in JOIN dedup and
         # mistakenly merge their row stream into this group's FROM.
-        if group_graph.edges[pgid, gid].get("kind") == "existence":
+        if group_graph.edges[pgid, gid].get("kind") == EDGE_KIND_EXISTENCE:
             continue
         node = built.get(pgid)
         if node is not None:
@@ -198,7 +204,9 @@ def _parent_nodes_for(
     return parents
 
 
-def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
+def _fold_passthrough_parents(
+    parents: list[StrategyNode], *, final: bool = False
+) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
     When a plain projection B (a non-grouping SelectNode) can render every one
@@ -208,6 +216,14 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     the same scan (q50: a `days_to_return` projection of the base merged back
     with the base on `1=1`; q62: two projections of one scan, one computing
     `days_to_ship`, the other `substring(warehouse.name)`, cross-joined).
+
+    `final=True` is the stricter FINAL-assembly mode, where the contributor set
+    also contains genuine GroupNode/Window/Filter barriers (not just sibling
+    projections of one scan). There it requires A to itself be a row-preserving
+    projection — dissolving a GroupNode would drop a real aggregation barrier.
+    This collapses the q77 catalog/store/web cross-joins (a grouping-key rename
+    or a coalesce of one aggregate that the sibling already sources) without
+    touching the per-group behavior.
 
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
@@ -219,6 +235,10 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         available = {o.address for p in b.parents for o in p.output_concepts}
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
+                continue
+            # FINAL mode: never dissolve a grouping/window/filter contributor —
+            # its rows are a real barrier, not a re-derivable projection.
+            if final and (not isinstance(a, SelectNode) or a.force_group):
                 continue
             if not all(
                 _arg_satisfiable(o, available, set(), {}) for o in a.output_concepts
@@ -363,7 +383,7 @@ def _topological_order(group_graph: nx.DiGraph) -> list[str]:
     dep_edges = [
         (u, v)
         for u, v, d in group_graph.edges(data=True)
-        if d.get("kind") in ("lineage", "constraint", "existence")
+        if d.get("kind") in DEPENDENCY_EDGE_KINDS
     ]
     dep_graph = group_graph.edge_subgraph(dep_edges).copy()
     for n in group_graph.nodes:
@@ -610,16 +630,43 @@ def _assemble_final_node(
         else:
             parents.append(node)
 
+    # Sibling contributors that descend from a common richer parent (e.g. q77
+    # catalog: `u_id_c` renames the aggregate's grouping key while
+    # `u_sales_c`/`u_profit_c` derive from that same aggregate) expose no shared
+    # output key — their declared grain is the lying source-row grain — so the
+    # merge would cross-join them ON 1=1. Fold any contributor whose outputs a
+    # row-preserving sibling already renders off its own parents, collapsing the
+    # columns into one projection instead of joining (same passthrough logic the
+    # per-group `_pre_merge_parents` uses, in stricter FINAL mode).
+    parents = _fold_passthrough_parents(parents, final=True)
+
     available: set[str] = set()
     for p in parents:
         for o in p.output_concepts:
             available.add(o.address)
     outputs = [c for c in mandatory_list if c.address in available]
+    # The merge grain is defined by its grouping (aggregate/window) contributors.
+    # A non-grouping dimension contributor only supplies FD attributes; if it
+    # sits at a finer (row-level) grain it must not widen the merge grain, or it
+    # fans the aggregate out (e.g. q81: customer-dims joined through
+    # catalog_returns lands at returns grain). Pinning the grain lets the merge's
+    # force_group collapse back to the aggregate grain. Left None when there is
+    # no grouping contributor, so plain row merges keep their current behavior.
+    grouping_grain_components: set[str] = set()
+    for gid in contributing:
+        if attrs[gid].derivation in GROUPING_DERIVATIONS:
+            grouping_grain_components |= set(attrs[gid].grain_components)
+    merge_grain = (
+        BuildGrain.from_concepts(grouping_grain_components, environment=environment)
+        if grouping_grain_components
+        else None
+    )
     return MergeNode(
         input_concepts=outputs,
         output_concepts=outputs,
         environment=environment,
         parents=parents,
+        grain=merge_grain,
         conditions=final_conditions.conditional if final_conditions else None,
     )
 

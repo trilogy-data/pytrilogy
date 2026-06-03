@@ -1,30 +1,26 @@
 # Query 95
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (1 rows) |
 | reference execution | OK (1 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 1 (1 distinct)
 ref rows: 1 (1 distinct)
-only in v4 (showing up to 5 of 1):
-  1x  (95, Decimal('-18202.90'), Decimal('100592.32'))
-only in ref (showing up to 5 of 1):
-  1x  (68, Decimal('-18202.90'), Decimal('100592.32'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3058 | 56 | 37.98 ms |
-| reference | 4030 | 76 | 58.35 ms |
-| v4 / ref | 0.76x | 0.74x | 0.65x |
+| v4 | 3932 | 91 | 29.95 ms |
+| reference | 4030 | 76 | 11.36 ms |
+| v4 / ref | 0.98x | 1.20x | 2.64x |
 
 ## Preql
 
@@ -69,11 +65,12 @@ GROUP BY
 uneven as (
 SELECT
     "questionable"."web_sales_order_number" as "web_sales_order_number",
-    count("questionable"."web_sales_warehouse_id") as "_virt_agg_count_2435454530783120"
+    "questionable"."web_sales_warehouse_id" as "web_sales_warehouse_id"
 FROM
     "questionable"
 GROUP BY
-    1),
+    1,
+    2),
 abundant as (
 SELECT
     CASE WHEN "questionable"."web_sales_is_returned" is True THEN "questionable"."web_sales_order_number" ELSE NULL END as "returned_orders"
@@ -81,9 +78,17 @@ FROM
     "questionable"),
 yummy as (
 SELECT
-    CASE WHEN "uneven"."_virt_agg_count_2435454530783120" > 1 THEN "uneven"."web_sales_order_number" ELSE NULL END as "multi_warehouse_order"
+    "uneven"."web_sales_order_number" as "web_sales_order_number",
+    count("uneven"."web_sales_warehouse_id") as "_virt_agg_count_2435454530783120"
 FROM
-    "uneven"),
+    "uneven"
+GROUP BY
+    1),
+juicy as (
+SELECT
+    CASE WHEN "yummy"."_virt_agg_count_2435454530783120" > 1 THEN "yummy"."web_sales_order_number" ELSE NULL END as "multi_warehouse_order"
+FROM
+    "yummy"),
 thoughtful as (
 SELECT
     "web_sales_web_sales"."WS_EXT_SHIP_COST" as "web_sales_ext_ship_cost",
@@ -95,19 +100,45 @@ FROM
     INNER JOIN "memory"."date_dim" as "web_sales_ship_date_date" on "web_sales_web_sales"."WS_SHIP_DATE_SK" = "web_sales_ship_date_date"."D_DATE_SK"
     INNER JOIN "memory"."customer_address" as "web_sales_ship_address_customer_address" on "web_sales_web_sales"."WS_SHIP_ADDR_SK" = "web_sales_ship_address_customer_address"."CA_ADDRESS_SK"
 WHERE
-    cast("web_sales_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "web_sales_ship_address_customer_address"."CA_STATE" = 'IL' and "web_sales_web_site_web_site"."web_company_name" = 'pri' and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select yummy."multi_warehouse_order" from yummy where yummy."multi_warehouse_order" is not null) and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select abundant."returned_orders" from abundant where abundant."returned_orders" is not null)
-)
+    cast("web_sales_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "web_sales_ship_address_customer_address"."CA_STATE" = 'IL' and "web_sales_web_site_web_site"."web_company_name" = 'pri' and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select juicy."multi_warehouse_order" from juicy where juicy."multi_warehouse_order" is not null) and "web_sales_web_sales"."WS_ORDER_NUMBER" in (select abundant."returned_orders" from abundant where abundant."returned_orders" is not null)
+),
+vacuous as (
 SELECT
-    count("thoughtful"."web_sales_order_number") as "order_count",
-    sum("thoughtful"."web_sales_net_profit") as "total_net_profit",
-    sum("thoughtful"."web_sales_ext_ship_cost") as "total_shipping_cost"
+    "thoughtful"."web_sales_ext_ship_cost" as "web_sales_ext_ship_cost",
+    "thoughtful"."web_sales_net_profit" as "web_sales_net_profit",
+    "thoughtful"."web_sales_order_number" as "web_sales_order_number"
 FROM
     "thoughtful"
 WHERE
-    "thoughtful"."web_sales_order_number" in (select yummy."multi_warehouse_order" from yummy where yummy."multi_warehouse_order" is not null) and "thoughtful"."web_sales_order_number" in (select abundant."returned_orders" from abundant where abundant."returned_orders" is not null)
-
+    "thoughtful"."web_sales_order_number" in (select juicy."multi_warehouse_order" from juicy where juicy."multi_warehouse_order" is not null) and "thoughtful"."web_sales_order_number" in (select abundant."returned_orders" from abundant where abundant."returned_orders" is not null)
+),
+young as (
+SELECT
+    "vacuous"."web_sales_order_number" as "web_sales_order_number"
+FROM
+    "vacuous"
+GROUP BY
+    1),
+concerned as (
+SELECT
+    sum("vacuous"."web_sales_ext_ship_cost") as "total_shipping_cost",
+    sum("vacuous"."web_sales_net_profit") as "total_net_profit"
+FROM
+    "vacuous"),
+sparkling as (
+SELECT
+    count("young"."web_sales_order_number") as "order_count"
+FROM
+    "young")
+SELECT
+    coalesce("sparkling"."order_count",0) as "order_count",
+    "concerned"."total_shipping_cost" as "total_shipping_cost",
+    "concerned"."total_net_profit" as "total_net_profit"
+FROM
+    "concerned"
+    FULL JOIN "sparkling" on 1=1
 ORDER BY 
-    "order_count" desc
+    coalesce("sparkling"."order_count",0) desc
 LIMIT (100)
 ```
 

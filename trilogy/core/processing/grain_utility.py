@@ -257,12 +257,22 @@ def downgrade_join_for_condition(
     condition: BoolExpr | None,
     final_datasets: list[GrainSource],
 ) -> None:
+    if condition is None:
+        return
+    downgrade_join_for_proofs(join, non_null_proofs(condition), final_datasets)
+
+
+def downgrade_join_for_proofs(
+    join: BaseJoin | UnnestJoin,
+    proofs: set[str],
+    final_datasets: list[GrainSource],
+) -> None:
+    """Demote a FULL join when ``proofs`` (concepts forced non-null in any
+    surviving row) sit exclusively on one side: a FULL would null-extend the
+    opposite side and resurrect rows that violate the proof."""
     if not isinstance(join, BaseJoin):
         return
-    if join.join_type != JoinType.FULL or condition is None:
-        return
-    proofs = non_null_proofs(condition)
-    if not proofs:
+    if join.join_type != JoinType.FULL or not proofs:
         return
     if join.concept_pairs:
         left_keys = {pair.left.address for pair in join.concept_pairs}

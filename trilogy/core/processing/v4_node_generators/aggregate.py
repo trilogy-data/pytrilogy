@@ -1,5 +1,3 @@
-from typing import List
-
 from trilogy.core.enums import AggregateGroupingMode
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -13,8 +11,8 @@ from .common import parent_outputs_needed
 
 
 def gen_aggregate(
-    outputs: List[BuildConcept],
-    parents: List[StrategyNode],
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     preexisting_conditions: BuildWhereClause | None = None,

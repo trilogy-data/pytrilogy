@@ -17,6 +17,7 @@ lives next to its rule.
 """
 
 from collections import defaultdict
+from typing import cast
 
 import networkx as nx
 
@@ -25,7 +26,16 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.processing.condition_utility import decompose_condition
 
-from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
+from .constants import (
+    DEPENDENCY_EDGE_KINDS,
+    EDGE_KIND_CONSTRAINT,
+    EDGE_KIND_EXISTENCE,
+    EDGE_KIND_LINEAGE,
+    EDGE_KIND_MERGE,
+    FINAL_NODE_ID,
+    GROUPING_DERIVATIONS,
+    EdgeKind,
+)
 from .group_behaviors import behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import ConceptAttrs, GroupAttrs, GroupBucket
@@ -105,7 +115,7 @@ def _d1_calc_subgraph(
     d1_calc_roots: set[str] = set()
     for n in d1_subgraph:
         for pred, _, ed in concept_graph.in_edges(n, data=True):
-            if ed.get("kind") != "lineage":
+            if ed.get("kind") != EDGE_KIND_LINEAGE:
                 continue
             pa = concept_attrs[pred]
             if pa.derivation == Derivation.ROOT.value and pa.depth_label != "d1":
@@ -265,9 +275,10 @@ def _materialize_group_graph(
     d1_calc_roots = d1_calc_roots or set()
     d1_subgraph = d1_subgraph or set()
     for u, v, edata in concept_graph.edges(data=True):
-        edge_kind = edata.get("kind")
-        if edge_kind not in ("lineage", "constraint", "existence"):
+        raw_edge_kind = edata.get("kind")
+        if raw_edge_kind not in DEPENDENCY_EDGE_KINDS:
             continue
+        edge_kind = cast(EdgeKind, raw_edge_kind)
         if d1_root_gid is not None and u in d1_calc_roots and v in d1_subgraph:
             gu = d1_root_gid
         else:
@@ -284,11 +295,15 @@ def _materialize_group_graph(
         # ordered before the consumer, but never JOINed in or projected
         # for sibling JOIN keys. When edges collapse, the stronger
         # guarantee wins.
-        _PRIORITY = {"existence": 0, "constraint": 1, "lineage": 2}
+        priority: dict[EdgeKind, int] = {
+            EDGE_KIND_EXISTENCE: 0,
+            EDGE_KIND_CONSTRAINT: 1,
+            EDGE_KIND_LINEAGE: 2,
+        }
         existing = group_graph.get_edge_data(gu, gv)
         if existing is not None:
-            current = existing.get("kind", edge_kind)
-            if _PRIORITY[edge_kind] > _PRIORITY.get(current, 0):
+            current = cast(EdgeKind, existing.get("kind", edge_kind))
+            if priority[edge_kind] > priority.get(current, 0):
                 group_graph[gu][gv]["kind"] = edge_kind
         else:
             group_graph.add_edge(gu, gv, kind=edge_kind)
@@ -317,7 +332,7 @@ def _main_lineage_groups(
         [
             (u, v)
             for u, v, d in group_graph.edges(data=True)
-            if d.get("kind") == "lineage"
+            if d.get("kind") == EDGE_KIND_LINEAGE
         ]
     ).copy()
     for gid in buckets:
@@ -364,7 +379,7 @@ def _inject_conditions(
         [
             (u, v)
             for u, v, d in group_graph.edges(data=True)
-            if d.get("kind") in ("lineage", "constraint")
+            if d.get("kind") in (EDGE_KIND_LINEAGE, EDGE_KIND_CONSTRAINT)
         ]
     ).copy()
     for gid in buckets:
@@ -491,6 +506,85 @@ def _inject_conditions(
     return condition_group_ids
 
 
+def _propagate_raw_filters_to_d1_roots(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    datasource_columns: list[frozenset[str]],
+) -> set[str]:
+    """A `root_d1` bucket is a pristine DUPLICATE of a main fact scan, split off
+    so a d1 calc reads rows untouched by *sibling* WHERE atoms. That split is
+    right when the d1 calc is a separate population:
+
+    - a SEMIJOIN source — `week_seq in relevent_week_seq` (q02): the source
+      spans all channels, so the outer `sales_channel in (...)` must not narrow
+      it (and propagating there also cycles the CTE graph, since the existence
+      source feeds back into the main stream);
+    - an aggregate over a DIFFERENT table than the filter — `avg(item.price) by
+      category` filtered on `sales.date` (q06): the average is over the item
+      dimension, which the sales-grain date filter never touches.
+
+    But when the d1 aggregate reads the SAME fact the filter applies to —
+    `avg(ss.net_profit) by item` under `ss.store.id = 1` (q44) — the filter
+    belongs on its input too, or the avg covers the wrong population. So copy a
+    main root's atoms (all raw root-column filters by construction) onto a
+    `root_d1` only when (a) root_d1 feeds no existence source and (b) some
+    single datasource carries BOTH the atom's columns and all of root_d1's scan
+    columns — i.e. the filter and the aggregate genuinely share one table.
+    Returns the root_d1 gids that gained atoms."""
+    existence_sources = {
+        u
+        for u, _, d in group_graph.edges(data=True)
+        if d.get("kind") == EDGE_KIND_EXISTENCE
+    }
+    d1_roots = [
+        gid
+        for gid in group_graph.nodes
+        if gid in attrs and attrs[gid].depth_label == ROOT_D1_DEPTH
+    ]
+    main_roots = [
+        gid
+        for gid in group_graph.nodes
+        if gid in attrs
+        and attrs[gid].derivation == Derivation.ROOT.value
+        and attrs[gid].depth_label == "root"
+        and attrs[gid].condition_atoms
+    ]
+    touched: set[str] = set()
+    for d1_gid in d1_roots:
+        reach = nx.descendants(group_graph, d1_gid) | {d1_gid}
+        if reach & existence_sources:
+            continue
+        d1_members = set(attrs[d1_gid].primary_members)
+        # The datasource that supplies the MOST of root_d1's inputs is the table
+        # the d1 aggregate actually scans (q74 → the sales fact; q06 → the item
+        # table, whose `current_price` the per-category avg reads — NOT the fact,
+        # even though they share the `item.id` join key). Propagate a raw filter
+        # only when its columns live in THAT table — otherwise a filter on the
+        # fact (`customer.id is not null`) wrongly narrows an item-level avg
+        # (q06). Requiring all d1_members in one table fails for joined dim
+        # attributes that aren't base columns (q74's `date.year`), so pick the
+        # best-overlap table instead.
+        scan_cols: frozenset[str] = frozenset()
+        best = 0
+        for cols in datasource_columns:
+            overlap = len(d1_members & cols)
+            if overlap > best:
+                best = overlap
+                scan_cols = cols
+        if not scan_cols:
+            continue
+        for m_gid in main_roots:
+            for atom in attrs[m_gid].condition_atoms:
+                row_args = {a.address for a in atom.row_arguments}
+                if not row_args <= scan_cols:
+                    continue
+                if atom not in attrs[d1_gid].condition_atoms:
+                    attrs[d1_gid].condition_atoms.append(atom)
+                    attrs[d1_gid].conditions.append(str(atom))
+                    touched.add(d1_gid)
+    return touched
+
+
 def _color_phases(
     group_graph: nx.DiGraph,
     condition_group_ids: set[str],
@@ -532,7 +626,7 @@ def _add_final_node(
         conditions=[str(c) for c in conditions],
     )
     for gid in buckets:
-        group_graph.add_edge(gid, FINAL_NODE_ID, kind="merge")
+        group_graph.add_edge(gid, FINAL_NODE_ID, kind=EDGE_KIND_MERGE)
 
 
 def _compute_concept_sets(
@@ -580,7 +674,7 @@ def _compute_concept_sets(
     # address; with the @condition phase, [@condition]X != X.
     lineage_parents: dict[str, set[str]] = {}
     for u, v, ed in concept_graph.edges(data=True):
-        if ed.get("kind") != "lineage":
+        if ed.get("kind") != EDGE_KIND_LINEAGE:
             continue
         u_addr = concept_attrs[u].address
         v_addr = concept_attrs[v].address
@@ -636,7 +730,7 @@ def _compute_concept_sets(
         grouping_preds = [
             p
             for p in group_graph.predecessors(gid)
-            if group_graph.edges[p, gid].get("kind") == "lineage"
+            if group_graph.edges[p, gid].get("kind") == EDGE_KIND_LINEAGE
             and derivation_of[p] in GROUPING_DERIVATIONS
         ]
         # Same-grain grouping parents (e.g. q59's ratio reads both an aggregate
@@ -669,7 +763,7 @@ def _compute_concept_sets(
     dep_edges = [
         (u, v)
         for u, v, ed in group_graph.edges(data=True)
-        if ed.get("kind") in ("lineage", "constraint", "existence")
+        if ed.get("kind") in DEPENDENCY_EDGE_KINDS
     ]
     dep_graph = group_graph.edge_subgraph(dep_edges).copy()
     for n in group_graph.nodes:
@@ -732,7 +826,7 @@ def _compute_concept_sets(
     lineage_edges_only = [
         (u, v)
         for u, v, ed in group_graph.edges(data=True)
-        if ed.get("kind") == "lineage"
+        if ed.get("kind") == EDGE_KIND_LINEAGE
     ]
     lineage_sub = group_graph.edge_subgraph(lineage_edges_only).copy()
     for n in group_graph.nodes:
@@ -771,7 +865,7 @@ def _compute_concept_sets(
     # The source is a dedicated side-channel group; demand its own outputs so
     # it gets built and can back the `... IN (SELECT src FROM cte)` subselect.
     for src_gid, _, edata in group_graph.edges(data=True):
-        if edata.get("kind") == "existence":
+        if edata.get("kind") == EDGE_KIND_EXISTENCE:
             existence_demand[src_gid].update(attrs[src_gid].primary_members)
 
     for gid in reversed(topo):
@@ -817,12 +911,12 @@ def _compute_concept_sets(
                             outs |= my_grain & cap_gid
                             break
                 continue
-            edge_kind = group_graph.edges[gid, succ].get("kind", "lineage")
+            edge_kind = group_graph.edges[gid, succ].get("kind", EDGE_KIND_LINEAGE)
             # Existence siblings flow via subselect, not the row stream.
             # The source still needs to be built and ordered (topo above
             # handles that), but we don't pull row-stream demand from the
             # consumer or expose JOIN keys for sibling predecessors.
-            if edge_kind == "existence":
+            if edge_kind == EDGE_KIND_EXISTENCE:
                 continue
             outs |= input_concepts.get(succ, set()) & cap_gid
             # Sibling-grain JOIN keys: when this successor has another
@@ -836,8 +930,10 @@ def _compute_concept_sets(
             for sibling in group_graph.predecessors(succ):
                 if sibling == gid or sibling == FINAL_NODE_ID:
                     continue
-                sibling_kind = group_graph.edges[sibling, succ].get("kind", "lineage")
-                if sibling_kind == "existence":
+                sibling_kind = group_graph.edges[sibling, succ].get(
+                    "kind", EDGE_KIND_LINEAGE
+                )
+                if sibling_kind == EDGE_KIND_EXISTENCE:
                     continue
                 outs |= grain_of.get(sibling, frozenset()) & cap_gid
         # Grouping derivations: own grain components must be in the SELECT
@@ -912,6 +1008,7 @@ def build_group_graph(
     concept_attrs: dict[str, ConceptAttrs],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
+    datasource_columns: list[frozenset[str]] | None = None,
 ) -> tuple[nx.DiGraph, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
@@ -945,6 +1042,9 @@ def build_group_graph(
     )
     condition_group_ids = _inject_conditions(
         group_graph, attrs, buckets, conditions, mandatory_list
+    )
+    condition_group_ids |= _propagate_raw_filters_to_d1_roots(
+        group_graph, attrs, datasource_columns or []
     )
     _color_phases(group_graph, condition_group_ids)
     if mandatory_list is not None:
@@ -1013,7 +1113,7 @@ def _route_dimension_enrichments(
         lineage_preds = [
             p
             for p in group_graph.predecessors(bgid)
-            if group_graph.edges[p, bgid].get("kind") == "lineage"
+            if group_graph.edges[p, bgid].get("kind") == EDGE_KIND_LINEAGE
         ]
         # Pure dimension lookup: every row-stream source is a root scan. A
         # non-root lineage parent means the basic also rides a transform
@@ -1048,7 +1148,7 @@ def _route_dimension_enrichments(
             )
             dim_bucket.primary_members = list(inputs)
             buckets[rdim_gid] = dim_bucket
-        group_graph.add_edge(rdim_gid, bgid, kind="lineage")
+        group_graph.add_edge(rdim_gid, bgid, kind=EDGE_KIND_LINEAGE)
         for rp in root_preds:
             group_graph.remove_edge(rp, bgid)
         changed = True
@@ -1113,6 +1213,6 @@ def _route_basics_through_richer_siblings(
                 best_depth = depth
                 best_gid = ogid
         if best_gid is not None and not group_graph.has_edge(best_gid, bgid):
-            group_graph.add_edge(best_gid, bgid, kind="lineage")
+            group_graph.add_edge(best_gid, bgid, kind=EDGE_KIND_LINEAGE)
             changed = True
     return changed

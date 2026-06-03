@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10669 | 230 | 96.80 ms |
-| reference | 10731 | 230 | 97.31 ms |
-| v4 / ref | 0.99x | 1.00x | 0.99x |
+| v4 | 10669 | 230 | 24.95 ms |
+| reference | 10731 | 230 | 24.20 ms |
+| v4 / ref | 0.99x | 1.00x | 1.03x |
 
 ## Preql
 
@@ -298,11 +298,11 @@ FROM
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    coalesce("young"."returns_total_b",0.0) as "returns_metric",
     coalesce("charming"."channel","young"."channel") as "channel",
-    coalesce("charming"."sales_total_a",0.0) as "sales_metric",
+    coalesce("young"."returns_total_b",0.0) as "returns_metric",
     coalesce("charming"."profit_only_a",0.0) - coalesce("young"."loss_only_b",0.0) as "profit_metric",
-    coalesce("charming"."id","young"."id") as "id"
+    coalesce("charming"."id","young"."id") as "id",
+    coalesce("charming"."sales_total_a",0.0) as "sales_metric"
 FROM
     "charming"
     FULL JOIN "young" on "charming"."channel" is not distinct from "young"."channel" AND "charming"."id" is not distinct from "young"."id"

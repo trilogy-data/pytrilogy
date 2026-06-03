@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
-| reference execution | OK (100 rows) |
+| v4 execution | OK (24 rows) |
+| reference execution | OK (24 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (100 distinct)
-ref rows: 100 (100 distinct)
+v4 rows: 24 (24 distinct)
+ref rows: 24 (24 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2457 | 59 | 27.79 ms |
-| reference | 1996 | 48 | 24.71 ms |
-| v4 / ref | 1.23x | 1.23x | 1.12x |
+| v4 | 2417 | 59 | 17.40 ms |
+| reference | 1916 | 48 | 16.48 ms |
+| v4 / ref | 1.26x | 1.23x | 1.06x |
 
 ## Preql
 
@@ -87,12 +87,12 @@ GROUP BY
 questionable as (
 SELECT
     "cheerful"."cs_item_category" as "cs_item_category",
+    "cheerful"."cs_item_class" as "cs_item_class",
     "cheerful"."cs_item_current_price" as "cs_item_current_price",
     "cheerful"."cs_item_desc" as "cs_item_desc",
     "cheerful"."cs_item_text_id" as "cs_item_text_id",
     "cheerful"."revenue" as "revenue",
-    "cooperative"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792",
-    coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") as "cs_item_class"
+    "cooperative"."_virt_agg_sum_9832457364876792" as "_virt_agg_sum_9832457364876792"
 FROM
     "cheerful"
     INNER JOIN "cooperative" on "cheerful"."cs_item_class" is not distinct from "cooperative"."cs_item_class")
@@ -152,7 +152,7 @@ SELECT
     "cheerful"."cs_item_text_id" as "cs_item_text_id",
     "cheerful"."cs_item_desc" as "cs_item_desc",
     "cheerful"."cs_item_category" as "cs_item_category",
-    coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") as "cs_item_class",
+    "cheerful"."cs_item_class" as "cs_item_class",
     "cheerful"."cs_item_current_price" as "cs_item_current_price",
     "cheerful"."revenue" as "revenue",
     ( "cheerful"."revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9832457364876792") as "revenue_ratio"
@@ -161,7 +161,7 @@ FROM
     INNER JOIN "cooperative" on "cheerful"."cs_item_class" is not distinct from "cooperative"."cs_item_class"
 ORDER BY 
     "cheerful"."cs_item_category" asc nulls first,
-    coalesce("cheerful"."cs_item_class","cooperative"."cs_item_class") asc nulls first,
+    "cheerful"."cs_item_class" asc nulls first,
     "cheerful"."cs_item_text_id" asc nulls first,
     "cheerful"."cs_item_desc" asc nulls first,
     "revenue_ratio" asc nulls first

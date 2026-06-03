@@ -16,22 +16,28 @@ API and the History cache wiring.
 """
 
 from dataclasses import dataclass, field
-from typing import List
 
 import networkx as nx
 
 from trilogy.constants import logger
 from trilogy.core.enums import BooleanOperator
+from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
+from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
+    BuildGrain,
+    BuildHavingClause,
     BuildMultiSelectLineage,
+    BuildRowsetItem,
+    BuildSelectLineage,
     BuildWhereClause,
     Factory,
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import strip_tautological_not_null
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
@@ -46,6 +52,7 @@ from trilogy.core.processing.v4_helper import (
     build_group_graph,
     build_strategy_node,
 )
+from trilogy.utility import unique
 
 __all__ = [
     "BuildInfo",
@@ -96,9 +103,66 @@ class V4History(History):
         self.build_history[self._v4_key(search, accept_partial, conditions)] = output
 
 
+def _factory_for_history(history: "V4History") -> Factory:
+    author_env = history.base_environment
+    caches = history.build_caches
+    if caches.pseudonym_map is None:
+        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
+    return Factory(
+        environment=author_env,
+        build_cache=caches.build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        grain_build_cache=caches.grain_build_cache,
+        pseudonym_map=caches.pseudonym_map,
+    )
+
+
+def _protected_addresses(
+    statement: BuildSelectLineage | BuildMultiSelectLineage,
+) -> set[str]:
+    protected: set[str] = set()
+    for component in statement.output_components:
+        protected.add(component.address)
+        protected.add(component.canonical_address)
+    order_by = statement.order_by
+    if order_by is not None:
+        for item in order_by.items:
+            for arg in item.concept_arguments:
+                protected.add(arg.address)
+                protected.add(arg.canonical_address)
+    return protected
+
+
+def _build_nested_select(
+    select: SelectLineage | MultiSelectLineage,
+    history: "V4History",
+) -> tuple[
+    BuildSelectLineage | BuildMultiSelectLineage,
+    BuildEnvironment,
+    BuildWhereClause | None,
+]:
+    """Build and materialize one nested select in its own build environment."""
+    author_env = history.base_environment
+    caches = history.build_caches
+    factory = _factory_for_history(history)
+    built: BuildSelectLineage | BuildMultiSelectLineage = factory.build(select)
+    build_env = author_env.materialize_for_select(
+        built.local_concepts,
+        build_cache=caches.build_cache,
+        pseudonym_map=factory.pseudonym_map,
+        grain_build_cache=caches.grain_build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        datasource_build_cache=caches.datasource_build_cache,
+    )
+    where_clause = strip_tautological_not_null(
+        built.where_clause, build_env, _protected_addresses(built)
+    )
+    return built, build_env, where_clause
+
+
 def _resolve_multiselect(
     ms_concept: BuildConcept,
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
@@ -115,21 +179,6 @@ def _resolve_multiselect(
     lineage = ms_concept.lineage
     assert isinstance(lineage, BuildMultiSelectLineage)
 
-    # Arms are stored as AUTHOR SelectLineage (built lazily during discovery);
-    # build each one against the author environment to recover its outputs and
-    # WHERE, then plan those through v4.
-    author_env = history.base_environment
-    caches = history.build_caches
-    if caches.pseudonym_map is None:
-        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
-    factory = Factory(
-        environment=author_env,
-        build_cache=caches.build_cache,
-        canonical_build_cache=caches.canonical_build_cache,
-        grain_build_cache=caches.grain_build_cache,
-        pseudonym_map=caches.pseudonym_map,
-    )
-
     def _empty() -> BuildInfo:
         return BuildInfo(
             concept_graph=nx.DiGraph(),
@@ -140,14 +189,14 @@ def _resolve_multiselect(
 
     arm_nodes: list[StrategyNode] = []
     for arm in lineage.selects:
-        built_arm = factory.build(arm)
-        arm_conditions = [built_arm.where_clause] if built_arm.where_clause else []
+        built_arm, arm_env, arm_where = _build_nested_select(arm, history)
+        arm_conditions = [arm_where] if arm_where else []
         arm_info = search_concepts(
             mandatory_list=list(built_arm.output_components),
             history=history,
-            environment=environment,
+            environment=arm_env,
             depth=depth + 1,
-            g=g,
+            g=generate_graph(arm_env),
             conditions=arm_conditions,
         )
         arm_node = arm_info.strategy_node
@@ -208,8 +257,212 @@ def _resolve_multiselect(
     )
 
 
+def _merge_external_having_args(
+    inner_node: StrategyNode,
+    having: BuildHavingClause,
+    inner_env: BuildEnvironment,
+    inner_g: ReferenceGraph,
+    history: "V4History",
+    depth: int,
+) -> StrategyNode:
+    """Cross-join in any HAVING arg the inner producer doesn't already expose.
+
+    A HAVING can compare against a SEPARATE scalar rowset (q14 `bucket_sum_l0 >
+    avg_sales.average_sales`). Plan those external args on their own and
+    cross-join them in on their (empty) grain — folding them into the main
+    search would pull the scalar into this rowset's grain and mis-bucket it, so
+    each stays a self-contained sub-plan. Returns `inner_node` unchanged when
+    every HAVING arg is already produced (or the external args don't resolve)."""
+    produced_addrs = {o.address for o in inner_node.output_concepts}
+    extra_args = [
+        c for c in having.concept_arguments if c.address not in produced_addrs
+    ]
+    if not extra_args:
+        return inner_node
+    extra_info = search_concepts(
+        mandatory_list=extra_args,
+        history=history,
+        environment=inner_env,
+        depth=depth + 1,
+        g=inner_g,
+        conditions=[],
+    )
+    if extra_info.strategy_node is None:
+        return inner_node
+    merged_outputs = unique(
+        list(inner_node.output_concepts)
+        + list(extra_info.strategy_node.output_concepts),
+        "address",
+    )
+    return MergeNode(
+        input_concepts=merged_outputs,
+        output_concepts=merged_outputs,
+        environment=inner_env,
+        parents=[inner_node, extra_info.strategy_node],
+    )
+
+
+def resolve_rowset(
+    outputs: list[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+    g: ReferenceGraph,
+    history: "V4History",
+    conditions: BuildWhereClause | None = None,
+) -> StrategyNode | None:
+    """Plan a rowset boundary node by recursively planning its inner select
+    through v4, then projecting that producer under the outer handle addresses.
+
+    The rowset's inner select is a self-contained sub-query (the same shape v3
+    planned via `get_query_node`): we build its author lineage against the base
+    environment, materialize a FRESH build environment + graph for it (the
+    outer environment classifies the inner's concepts under rowset aliasing —
+    a plain root reads back as `derivation=rowset` there — so reusing it
+    mis-buckets the inner plan; q14's nested rowsets), plan its outputs + WHERE
+    through `search_concepts`, apply the inner HAVING as a post-aggregate
+    filter, then re-expose the producer's columns under the outer rowset
+    handles. Each handle is a ROWSET concept whose `lineage.content` is the
+    inner column it wraps — the renderer emits the handle as that content, so
+    the boundary is a thin projection whose inputs are the content columns the
+    inner producer supplies.
+
+    `outputs` are all the same rowset (the rowset grouping rule buckets one
+    rowset's handles together), but a recursive nested-rowset search can hand a
+    bucket of plain roots here; bail to None so the caller treats it as a
+    normal group rather than asserting."""
+    rowset_outputs = [o for o in outputs if isinstance(o.lineage, BuildRowsetItem)]
+    if not rowset_outputs:
+        return None
+    lineage = rowset_outputs[0].lineage
+    assert isinstance(lineage, BuildRowsetItem)
+    select: SelectLineage | MultiSelectLineage = lineage.rowset.select
+
+    built, inner_env, inner_where = _build_nested_select(select, history)
+    inner_g = generate_graph(inner_env)
+
+    inner_info = search_concepts(
+        mandatory_list=list(built.output_components),
+        history=history,
+        environment=inner_env,
+        depth=depth + 1,
+        g=inner_g,
+        conditions=[inner_where] if inner_where else [],
+    )
+    inner_node = inner_info.strategy_node
+    if inner_node is None:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} rowset {lineage.rowset.name} "
+            f"inner select did not resolve"
+        )
+        return None
+
+    # Inner HAVING is a post-aggregate filter over the inner producer (mirrors
+    # the HAVING wrap in `get_query_node`).
+    having = built.having_clause
+    if having is not None:
+        base = _merge_external_having_args(
+            inner_node, having, inner_env, inner_g, history, depth
+        )
+        combined = (
+            BuildConditional(
+                left=base.conditions,
+                right=having.conditional,
+                operator=BooleanOperator.AND,
+            )
+            if base.conditions
+            else having.conditional
+        )
+        inner_node = SelectNode(
+            output_concepts=list(built.output_components),
+            input_concepts=list(base.usable_outputs),
+            parents=[base],
+            environment=inner_env,
+            partial_concepts=list(base.partial_concepts),
+            conditions=combined,
+        )
+
+    # Expose the demanded handles plus any rowset-derived handle that carries a
+    # PSEUDONYM — a cross-rowset merge (`merge X.a into Y.b`, q44/q54) links its
+    # two boundaries on the merged keys via the canonical-pseudonym map in
+    # `get_node_joins`, and those keys are rarely selected by the outer query,
+    # so projecting only the demanded handles would drop them and the FINAL
+    # merge would degrade to a `1=1` cross product. Pseudonyms are exactly what
+    # a `merge into` produces, so they single out the join keys without
+    # over-projecting unrelated internals — e.g. a rowset-wrapped multiselect's
+    # bare align inputs (q64 `item_sk_99`, no pseudonyms) must NOT leak out, or
+    # the outer FINAL has an output no parent can source.
+    produced = {o.address: o for o in inner_node.output_concepts}
+    derived = lineage.rowset.derived_concepts
+    demanded = {o.address for o in rowset_outputs}
+    handle_pool = list(environment.concepts.values()) + list(
+        environment.alias_origin_lookup.values()
+    )
+    handles: list[BuildConcept] = []
+    inputs: list[BuildConcept] = []
+    seen: set[str] = set()
+    for handle in [*rowset_outputs, *handle_pool]:
+        hlineage = handle.lineage
+        if handle.address in seen or handle.address not in derived:
+            continue
+        if not isinstance(hlineage, BuildRowsetItem):
+            continue
+        if hlineage.content.address not in produced:
+            continue
+        if handle.address not in demanded and not handle.pseudonyms:
+            continue
+        seen.add(handle.address)
+        handles.append(handle)
+        inputs.append(produced[hlineage.content.address])
+
+    # A rowset wrapping a multiselect (q64): an aligned handle's content is the
+    # multiselect concept (e.g. `s_name`), which the renderer resolves via
+    # `find_source` — it needs the arm concepts (`s_name_99`/`s_name_00`) in the
+    # SAME CTE's outputs. They're not handles, so carry them as HIDDEN outputs
+    # of this boundary; the aligned value is then materialized here and outer
+    # CTEs just reference the column (mirrors v3 `gen_rowset_node`, whose node
+    # kept the arm concepts as hidden outputs).
+    hidden: set[str] = set()
+    if isinstance(built, BuildMultiSelectLineage):
+        handle_addrs = {h.address for h in handles}
+        for item in built.align.items:
+            for arm in item.concepts:
+                if arm.address in produced and arm.address not in handle_addrs:
+                    arm_concept = produced[arm.address]
+                    handles.append(arm_concept)
+                    inputs.append(arm_concept)
+                    hidden.add(arm_concept.address)
+
+    boundary = SelectNode(
+        output_concepts=handles,
+        input_concepts=inputs,
+        parents=[inner_node],
+        environment=inner_env,
+        # Grain over the outer handles (mirrors v3 `gen_rowset_node`): lets the
+        # FINAL merge join two rowsets on their shared/pseudonym grain key
+        # instead of cross-joining when the boundary exposes no grain.
+        grain=BuildGrain.from_concepts([h for h in handles if h.address not in hidden]),
+        hidden_concepts=hidden,
+    )
+    # A filter the group graph injected at this boundary is a consumer-side
+    # predicate over the rowset's rows — e.g. a multiselect arm's per-arm
+    # `marital != ...` over the row-projection rowset it reads (q64). The inner
+    # plan didn't apply it (it's not part of the rowset's own select), so apply
+    # it here over the materialized rows.
+    if conditions is not None:
+        boundary = SelectNode(
+            output_concepts=list(handles),
+            input_concepts=list(boundary.usable_outputs),
+            parents=[boundary],
+            environment=inner_env,
+            conditions=conditions.conditional,
+            grain=boundary.grain,
+            hidden_concepts=hidden,
+        )
+    return boundary
+
+
 def _search_concepts(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
@@ -232,8 +485,12 @@ def _search_concepts(
     concept_graph, concept_attrs = build_concept_graph(
         mandatory_list, environment, conditions
     )
+    datasource_columns = [
+        frozenset(c.address for c in ds.output_concepts)
+        for ds in environment.datasources.values()
+    ]
     group_graph, group_attrs = build_group_graph(
-        concept_graph, concept_attrs, conditions, mandatory_list
+        concept_graph, concept_attrs, conditions, mandatory_list, datasource_columns
     )
     strategy_node = build_strategy_node(
         group_graph, group_attrs, mandatory_list, environment, g, history
@@ -248,7 +505,7 @@ def _search_concepts(
 
 
 def search_concepts(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     history: V4History,
     environment: BuildEnvironment,
     depth: int,
