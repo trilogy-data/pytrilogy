@@ -416,13 +416,15 @@ def test_write_preql_force_bypasses_validation(runner, tmp_path: Path):
 def test_validate_preql_syntax_wraps_unexpected_exception(monkeypatch):
     """A non-InvalidSyntaxException from the parser is wrapped as a typed
     string so a buggy parser never crashes the write surface."""
-    import trilogy.parsing.v2.lark_backend as lark_backend
+    import trilogy.parsing.parse_engine_v2 as parse_engine
     from trilogy.scripts.file_helpers import preql_validation
 
     def boom(_):
         raise RuntimeError("parser exploded")
 
-    monkeypatch.setattr(lark_backend, "parse_lark", boom)
+    # Validation runs through the configured backend via parse_syntax (pest by
+    # default); a bug there must be wrapped, not propagated.
+    monkeypatch.setattr(parse_engine, "parse_syntax", boom)
     msg = preql_validation.validate_preql_syntax("select 1 -> x;")
     assert msg is not None
     assert "RuntimeError" in msg

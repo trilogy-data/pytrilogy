@@ -382,6 +382,53 @@ SELECT avg(list_price) as b1;
     assert env.concepts["local.b1"].lineage is not None
 
 
+_BOOLEAN_DERIVATION_PRELUDE = """
+key id int;
+property id.d date;
+property id.flag int;
+property id.v int;
+"""
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "auto x <- flag = 1 and id = 1;",
+        "auto x <- flag = 1 or id = 1;",
+        "auto x <- d between '2020-01-01'::date and '2020-12-31'::date;",
+        "auto x <- (d between '2020-01-01'::date and '2020-12-31'::date) and flag is not null;",
+    ],
+)
+def test_parse_text_v2_derived_concept_accepts_compound_boolean(
+    backend: ParserBackend, body: str
+) -> None:
+    # A derived concept body must admit the same boolean grammar (`and`/`or`,
+    # `between`, `is null`) that `?`/`where` already accept, so a row predicate
+    # can be named once and reused. Regression for
+    # bug_compound_boolean_in_derived_concept.md.
+    from trilogy.core.models.core import DataType
+
+    with _using_backend(backend):
+        env, _ = parse_text(_BOOLEAN_DERIVATION_PRELUDE + body, Environment())
+    x = env.concepts["local.x"]
+    assert x.lineage is not None
+    assert x.datatype == DataType.BOOL
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+def test_parse_text_v2_named_predicate_usable_in_filter(backend: ParserBackend) -> None:
+    # The named predicate is reusable inside a `?` inline-aggregate filter.
+    with _using_backend(backend):
+        env, _ = parse_text(
+            _BOOLEAN_DERIVATION_PRELUDE + """
+auto in_window <- (d between '2020-01-01'::date and '2020-12-31'::date) and flag = 1;
+""",
+            Environment(),
+        )
+    assert env.concepts["local.in_window"].lineage is not None
+
+
 def test_parse_text_v2_duplicate_select_outputs_raise() -> None:
     with pytest.raises(InvalidSyntaxException, match="Duplicate select output"):
         parse_text(

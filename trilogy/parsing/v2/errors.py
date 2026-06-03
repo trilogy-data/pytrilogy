@@ -20,6 +20,15 @@ ERROR_CODES: dict[int, str] = {
         "at a different grain than the select, write `agg(x) by dim1, dim2` "
         "inline (e.g. `sum(sales.amount) by sales.store.id`)."
     ),
+    104: (
+        "Definition or statement after WHERE/SELECT? Concept definitions "
+        "(`auto`/`property`/`key`/`metric`/`rowset`), `def`, `datasource`, and "
+        "`import` are top-level statements and must appear BEFORE the "
+        "`where`/`select` block — they cannot sit inside a query. Move this "
+        "statement above your `where`, and make sure each statement ends with "
+        "`;`. Example: put `auto x <- sum(sales.amount) by store.id;` above "
+        "`where ... select ...`."
+    ),
     201: 'Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y`',
     202: "Missing closing semicolon? Statements must be terminated with a semicolon `;`.",
     203: "Missing assignment operator '<-' and expression in derivation. Write `auto X <- <expression>;` (also valid: `metric`, `property`, `rowset`). Example: `auto orders_per_customer <- count(orders.id) by customer.id;`.",
@@ -77,6 +86,34 @@ def detect_group_by(text: str, pos: int) -> int | None:
     if m is None:
         return None
     return max(0, pos - 2) + m.start()
+
+
+# Top-level statement keywords (followed by their name) that cannot appear
+# inside a query body — the most common is `auto NAME <- ...` placed after the
+# `where`. Both backends report the error at/just before the keyword.
+_DEFINITION_HEAD_RE = re.compile(
+    r"\b(auto|property|key|metric|rowset|def|datasource|import|persist)\b\s+[A-Za-z_.]",
+    re.IGNORECASE,
+)
+# A query clause; once one opens, we are inside a query statement.
+_QUERY_CLAUSE_RE = re.compile(
+    r"\b(where|select|having|order|limit|group|merge|align)\b", re.IGNORECASE
+)
+
+
+def detect_definition_after_clause(text: str, pos: int) -> int | None:
+    """Locate a top-level definition/statement keyword (`auto NAME`, `import …`,
+    etc.) that sits *inside* an already-opened query (after a `where`/`select`
+    in the same `;`-delimited statement). Returns the keyword position, or None.
+    Shared by both grammar backends; both report the error at or just before the
+    keyword, so scan a small window around ``pos``."""
+    m = _DEFINITION_HEAD_RE.search(text, max(0, pos - 2), pos + 14)
+    if m is None or m.start() > pos + 2:
+        return None
+    stmt_start = text.rfind(";", 0, m.start()) + 1
+    if _QUERY_CLAUSE_RE.search(text, stmt_start, m.start()) is None:
+        return None
+    return m.start()
 
 
 DEFAULT_ERROR_SPAN: int = 30

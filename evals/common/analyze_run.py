@@ -226,7 +226,7 @@ def _error_snippet(result: str, limit: int = 1200) -> str:
     if "--- stderr ---" in text:
         text = text.split("--- stderr ---", 1)[1]
     text = text.strip()
-    for marker in ("Unexpected error:", "Error:"):
+    for marker in ("Unexpected error:", "Syntax error:", "Error:"):
         if marker in text:
             text = text.split(marker, 1)[1].lstrip()
             break

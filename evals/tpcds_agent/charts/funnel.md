@@ -13,13 +13,13 @@
 
 | category | pass rate | total tokens |
 |---|---|---|
-| db-only | 0.00 | 359,833 |
-| db+schema | 0.00 | 376,117 |
-| ingest | 0.00 | 5,596,785 |
-| enriched | 0.00 | 637,632 |
+| db-only | 0.00 | 508,810 |
+| db+schema | 0.00 | 916,148 |
+| ingest | 0.00 | 9,446,857 |
+| enriched | 0.00 | 2,438,081 |
 
 ## Per-query matrix
 
 | query | db-only | db+schema | ingest | enriched |
 |---|---|---|---|---|
-| q05 | ❌ fail | ❌ fail | ❌ fail | ❌ fail |
+| q05 | ❌ fail | ❌ fail | ❌ exhausted | ❌ fail |

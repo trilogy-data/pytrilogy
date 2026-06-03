@@ -1105,6 +1105,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             SubselectItem,
             MultiSelectLineage,
             Comparison,
+            Conditional,
+            Between,
             "FunctionCallWrapper",
         ]
     ] = None
@@ -1454,6 +1456,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
                     SubselectItem,
                     MultiSelectLineage,
                     Comparison,
+                    Conditional,
+                    Between,
                     "FunctionCallWrapper",
                 ],
                 output: List[ConceptRef],
@@ -1481,7 +1485,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     def calculate_derivation(self, lineage, purpose: Purpose) -> Derivation:
         from trilogy.core.models.build import (
             BuildAggregateWrapper,
+            BuildBetween,
             BuildComparison,
+            BuildConditional,
             BuildFilterItem,
             BuildFunction,
             BuildMultiSelectLineage,
@@ -1506,7 +1512,21 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             return Derivation.ROWSET
         elif lineage and isinstance(lineage, (BuildSubselectItem, SubselectItem)):
             return Derivation.SUBSELECT
-        elif lineage and isinstance(lineage, BuildComparison):
+        # A boolean predicate (`a and b`, `between`) is a row-level basic
+        # derivation, just like a single comparison — its parents are sourced
+        # and the predicate is computed inline. Without this a Conditional/
+        # Between lineage falls through to ROOT and the planner can't source it.
+        elif lineage and isinstance(
+            lineage,
+            (
+                BuildComparison,
+                Comparison,
+                BuildConditional,
+                Conditional,
+                BuildBetween,
+                Between,
+            ),
+        ):
             return Derivation.BASIC
         elif lineage and isinstance(
             lineage, (BuildMultiSelectLineage, MultiSelectLineage)

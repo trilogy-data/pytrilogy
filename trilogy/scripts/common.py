@@ -615,7 +615,15 @@ def datetime_now_seconds() -> float:
 def handle_execution_exception(e: Exception, debug: bool = False) -> None:
     if isinstance(e, Exit):
         raise e
-    print_error(f"Unexpected error: {e}")
+    from trilogy.core.exceptions import InvalidSyntaxException
+
+    # Syntax/validation errors carry actionable, user-facing guidance; label them
+    # as such instead of "Unexpected error:" so the reader (or agent) treats them
+    # as a fixable mistake rather than an internal crash.
+    if isinstance(e, (SyntaxError, InvalidSyntaxException)):
+        print_error(f"Syntax error: {e}")
+    else:
+        print_error(f"Unexpected error: {e}")
     if debug:
         print_error(f"Full traceback:\n{traceback.format_exc()}")
     raise Exit(1) from e

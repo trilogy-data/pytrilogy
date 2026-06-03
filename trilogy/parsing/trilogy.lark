@@ -36,7 +36,11 @@
     UNIQUE: "UNIQUE"i
     concept_property_declaration: select_hide_modifier? UNIQUE? PROPERTY (prop_ident | prop_ident_wildcard | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  select_hide_modifier? (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" expr
+    // body is `conditional` (not `expr`) so a derived concept can name a full
+    // boolean predicate (`and`/`or`, `between`, `is null`) — the same grammar
+    // `?`/`where` accept. `conditional` collapses to a bare `expr` for the
+    // single-comparison/arithmetic cases, so prior derivations are unaffected.
+    concept_derivation:  select_hide_modifier? (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" conditional
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     

@@ -42,21 +42,29 @@ def case(label, select, expect):
     ex = Dialects.DUCK_DB.default_executor(environment=env)
     sql = ex.generate_sql(select)[-1]
     rows = [tuple(float(x) for x in r) for r in ex.execute_raw_sql(sql).fetchall()]
-    join = next((ln.strip() for ln in sql.splitlines() if "JOIN" in ln.upper()), "(no join)")
+    join = next(
+        (ln.strip() for ln in sql.splitlines() if "JOIN" in ln.upper()), "(no join)"
+    )
     flag = "OK " if rows == expect else "BUG"
     print(f"[{flag}] {label}\n      expect {expect}  got {rows}\n      {join}")
 
 
-case("1. two measures, no filter",
-     "select sum(sale_amount) as sales, sum(return_amount) as returns;",
-     [(600.0, 10.0)])
+case(
+    "1. two measures, no filter",
+    "select sum(sale_amount) as sales, sum(return_amount) as returns;",
+    [(600.0, 10.0)],
+)
 
-case("2. two measures, filter on a direct property of each side",
-     "select sum(sale_amount ? sale_flag = 1) as sales, "
-     "sum(return_amount ? return_flag = 1) as returns;",
-     [(600.0, 10.0)])
+case(
+    "2. two measures, filter on a direct property of each side",
+    "select sum(sale_amount ? sale_flag = 1) as sales, "
+    "sum(return_amount ? return_flag = 1) as returns;",
+    [(600.0, 10.0)],
+)
 
-case("3. filter on the RETURN side only",
-     "select sum(sale_amount) as sales, "
-     "sum(return_amount ? return_flag = 1) as returns;",
-     [(600.0, 10.0)])
+case(
+    "3. filter on the RETURN side only",
+    "select sum(sale_amount) as sales, "
+    "sum(return_amount ? return_flag = 1) as returns;",
+    [(600.0, 10.0)],
+)

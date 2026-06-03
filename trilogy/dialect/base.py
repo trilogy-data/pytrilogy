@@ -68,7 +68,6 @@ from trilogy.core.models.build import (
     BuildSubselectComparison,
     BuildSubselectItem,
     BuildWindowItem,
-    concepts_to_build_grain_concepts,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
@@ -1039,6 +1038,11 @@ class BaseDialect:
                 # the operand of another comparison (e.g. `flag = true` over
                 # `flag <- x > 5`), and `x > 5 = true` is a SQL precedence error.
                 rval = f"({self.render_expr(c.lineage.left, cte=cte, raise_invalid=raise_invalid)} {c.lineage.operator.value} {self.render_expr(c.lineage.right, cte=cte, raise_invalid=raise_invalid)})"
+            elif isinstance(c.lineage, (*CONDITIONAL_ITEMS, *BETWEEN_ITEMS)):
+                # A named boolean predicate (`auto x <- a and b`, `... between ...`)
+                # renders as its full expression; parenthesize for the same
+                # precedence reason as BuildComparison above.
+                rval = f"({self.render_expr(c.lineage, cte=cte, raise_invalid=raise_invalid)})"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)

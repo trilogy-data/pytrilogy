@@ -1,46 +1,50 @@
-import all_sales as sales;
+import all_sales as s;
 
 auto channel_label <- case
-    when sales.sales_channel = 'STORE' then 'store channel'
-    when sales.sales_channel = 'CATALOG' then 'catalog channel'
-    when sales.sales_channel = 'WEB' then 'web channel'
+    when s.sales_channel = 'STORE' then 'store channel'
+    when s.sales_channel = 'CATALOG' then 'catalog channel'
+    when s.sales_channel = 'WEB' then 'web channel'
     else null
 end;
 
 # Sale rows expose the entity via channel_dim_text_id; return rows via
 # return_channel_dim_text_id. Coalesce so sales roll up to the sale entity and
 # returns to the return entity (matching the reference's UNION-then-rollup).
-auto entity_text <- coalesce(sales.channel_dim_text_id, sales.return_channel_dim_text_id);
+auto entity_text <- coalesce(s.channel_dim_text_id, s.return_channel_dim_text_id);
 auto entity_id <- case
-    when sales.sales_channel = 'STORE' then concat('store', entity_text)
-    when sales.sales_channel = 'CATALOG' then concat('catalog_page', entity_text)
-    when sales.sales_channel = 'WEB' then concat('web_site', entity_text)
+    when s.sales_channel = 'STORE' then concat('store', entity_text)
+    when s.sales_channel = 'CATALOG' then concat('catalog_page', entity_text)
+    when s.sales_channel = 'WEB' then concat('web_site', entity_text)
     else null
 end;
 
-# Each measure is gated by its OWN dimension's presence (the reference inner-joins
-# sales to the sale entity and returns to the return entity separately): a sale
-# counts only with a sale entity in the sale window; a return only with a return
-# entity in the return window. Without the per-measure gate, a combined row whose
-# return entity is null but sale entity is valid would mis-count its return.
-auto net_contribution <-
-    coalesce(sales.net_profit ? sales.date.date between '2000-08-23'::date and '2000-09-06'::date and sales.channel_dim_text_id is not null, 0.0)
-    - coalesce(sales.return_net_loss ? sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date and sales.return_channel_dim_text_id is not null, 0.0);
+# Roll up `metric` over rows whose `date_field` falls in the [lo, hi] window and
+# whose `id_field` (the entity dim) is present, coalescing empty groups to 0.
+# Gating each measure by its OWN dim mirrors the reference's separate inner joins:
+# a sale counts only with a sale entity, a return only with a return entity, so a
+# combined row whose return entity is null but sale entity is valid can't
+# mis-count its return. (`by rollup ()` would infer the grain but recurses inside
+# a def, so the rollup keys are named explicitly.)
+def windowed(metric, date_field, id_field, lo='2000-08-23', hi='2000-09-06') ->
+    coalesce(
+        sum(metric ? date_field between lo::date and hi::date and id_field is not null)
+            by rollup channel_label, entity_id,
+        0.0
+    );
 
 where
     entity_text is not null
-    and (sales.date.date between '2000-08-23'::date and '2000-09-06'::date
-         or sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date)
-# `by rollup ()` rolls up over the inferred select grain (channel, id) — no need
-# to restate the grouping keys.
+    and (s.date.date between '2000-08-23'::date and '2000-09-06'::date
+         or s.return_date.date between '2000-08-23'::date and '2000-09-06'::date)
 select
-    channel_label as channel,
-    entity_id as id,
-    coalesce(sum(sales.ext_sales_price ? sales.date.date between '2000-08-23'::date and '2000-09-06'::date and sales.channel_dim_text_id is not null) by rollup (), 0.0) as sales,
-    coalesce(sum(sales.return_amount ? sales.return_date.date between '2000-08-23'::date and '2000-09-06'::date and sales.return_channel_dim_text_id is not null) by rollup (), 0.0) as returns,
-    coalesce(sum(net_contribution) by rollup (), 0.0) as profit
+    channel_label,
+    entity_id,
+    @windowed(s.ext_sales_price, s.date.date, s.channel_dim_text_id) as sales,
+    @windowed(s.return_amount, s.return_date.date, s.return_channel_dim_text_id) as returns,
+    @windowed(s.net_profit, s.date.date, s.channel_dim_text_id)
+        - @windowed(s.return_net_loss, s.return_date.date, s.return_channel_dim_text_id) as profit
 order by
-    channel asc nulls first,
-    id asc nulls first
+    channel_label NULLS FIRST,
+    entity_id NULLS FIRST
 limit 100
 ;

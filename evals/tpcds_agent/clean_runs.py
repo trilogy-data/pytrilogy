@@ -38,9 +38,7 @@ def clean(results_dir: Path, max_age_hours: float, dry_run: bool) -> int:
         print(f"no results dir: {results_dir}")
         return 0
     cutoff = time.time() - max_age_hours * 3600
-    stale = sorted(
-        p for p in results_dir.iterdir() if p.stat().st_mtime < cutoff
-    )
+    stale = sorted(p for p in results_dir.iterdir() if p.stat().st_mtime < cutoff)
     if not stale:
         print(f"nothing older than {max_age_hours}h in {results_dir}")
         return 0

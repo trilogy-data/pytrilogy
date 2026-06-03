@@ -26,12 +26,15 @@ query '''select 1 as id, date '2020-01-01' as d, 1 as flag, 10 as v''';
 """
 
 CASES = [
-    ("auto: arithmetic",            "auto x <- v + 1;\nselect x;"),
-    ("auto: single comparison",     "auto x <- flag = 1;\nselect x;"),
-    ("auto: compound bool (and)",   "auto x <- flag = 1 and id = 1;\nselect x;"),
-    ("auto: between",               "auto x <- d between '2020-01-01'::date and '2020-12-31'::date;\nselect x;"),
-    ("? filter: compound bool",     "select sum(v ? flag = 1 and id = 1) as s;"),
-    ("where: compound bool",        "where flag = 1 and id = 1 select id;"),
+    ("auto: arithmetic", "auto x <- v + 1;\nselect x;"),
+    ("auto: single comparison", "auto x <- flag = 1;\nselect x;"),
+    ("auto: compound bool (and)", "auto x <- flag = 1 and id = 1;\nselect x;"),
+    (
+        "auto: between",
+        "auto x <- d between '2020-01-01'::date and '2020-12-31'::date;\nselect x;",
+    ),
+    ("? filter: compound bool", "select sum(v ? flag = 1 and id = 1) as s;"),
+    ("where: compound bool", "where flag = 1 and id = 1 select id;"),
 ]
 
 

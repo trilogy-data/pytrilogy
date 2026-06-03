@@ -18,9 +18,11 @@ from trilogy.core.exceptions import MissingParameterException
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
     AggregateWrapper,
+    Between,
     Comparison,
     Concept,
     ConceptRef,
+    Conditional,
     FilterItem,
     Function,
     FunctionCallWrapper,
@@ -288,6 +290,8 @@ def concept_derivation(
             Function,
             FunctionCallWrapper,
             Comparison,
+            Conditional,
+            Between,
             SubselectItem,
         ),
     ):

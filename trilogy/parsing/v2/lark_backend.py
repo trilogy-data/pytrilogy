@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from trilogy.parsing.v2.errors import (
     create_generic_syntax_error,
     create_syntax_error,
+    detect_definition_after_clause,
     detect_group_by,
     detect_subselect,
 )
@@ -140,6 +141,10 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     gb_pos = detect_group_by(text, pos)
     if gb_pos is not None:
         raise create_syntax_error(103, gb_pos, text)
+
+    def_pos = detect_definition_after_clause(text, pos)
+    if def_pos is not None:
+        raise create_syntax_error(104, def_pos, text)
 
     if last_token and e.token.type == "$END":
         try:
