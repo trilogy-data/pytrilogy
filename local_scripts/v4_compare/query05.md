@@ -1,26 +1,38 @@
 # Query 05
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | YES |
+| results identical | NO |
 
 ## Result comparison
 
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 76):
+  1x  (None, None, Decimal('-117154520373.96000000'), Decimal('419813322.41000000'), Decimal('275993099379.83000000'))
+  1x  ('catalog channel', None, Decimal('-198540682.83000000'), Decimal('3342410.40000000'), Decimal('2010930095.81000000'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAAAABAAAA', Decimal('-2519049.95000000'), Decimal('9290.34000000'), Decimal('11626529.03000000'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAABABAAAA', Decimal('24328.10000000'), Decimal('0E-8'), Decimal('2528842.34000000'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAACABAAAA', Decimal('-272865.65000000'), Decimal('410.56000000'), Decimal('2254052.44000000'))
+only in ref (showing up to 5 of 76):
+  1x  (None, None, Decimal('-31584085.44000000'), Decimal('3255243.12000000'), Decimal('112458734.70000000'))
+  1x  ('catalog channel', None, Decimal('-4396139.07000000'), Decimal('1083573.98000000'), Decimal('38544639.28000000'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAAAABAAAA', Decimal('-36282.28000000'), Decimal('4645.17000000'), Decimal('163753.93000000'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAABABAAAA', Decimal('838.90000000'), Decimal('0E-8'), Decimal('87201.46000000'))
+  1x  ('catalog channel', 'catalog_pageAAAAAAAAACABAAAA', Decimal('-8354.81000000'), Decimal('410.56000000'), Decimal('66295.66000000'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10669 | 230 | 187.69 ms |
-| reference | 10731 | 230 | 166.47 ms |
-| v4 / ref | 0.99x | 1.00x | 1.13x |
+| v4 | 12010 | 266 | 1.439 s |
+| reference | 10731 | 230 | 114.52 ms |
+| v4 / ref | 1.12x | 1.16x | 12.57x |
 
 ## Preql
 
@@ -81,7 +93,7 @@ limit 100
 
 ```sql
 WITH 
-late as (
+macho as (
 SELECT
     "sales_catalog_dim_unified"."CP_CATALOG_PAGE_SK" as "sales_channel_dim_id",
     "sales_catalog_dim_unified"."CP_CATALOG_PAGE_ID" as "sales_channel_dim_text_id",
@@ -111,7 +123,7 @@ FROM
 WHERE
     "sales_web_dim_unified"."web_site_id" is not null
 ),
-friendly as (
+kaput as (
 SELECT
     "sales_catalog_sales_unified"."CS_CATALOG_PAGE_SK" as "sales_channel_dim_id",
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
@@ -231,44 +243,26 @@ SELECT
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"),
-divergent as (
+busy as (
 SELECT
-    "friendly"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "friendly"."sales_net_profit" as "sales_net_profit",
-    CASE
-	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN 'store channel'
-	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
-	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN 'web channel'
-	ELSE null
-	END as "channel_label",
-    CASE
-	WHEN "friendly"."sales_sales_channel" = 'STORE' THEN ('store' || "late"."sales_channel_dim_text_id")
-	WHEN "friendly"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "late"."sales_channel_dim_text_id")
-	WHEN "friendly"."sales_sales_channel" = 'WEB' THEN ('web_site' || "late"."sales_channel_dim_text_id")
-	ELSE null
-	END as "sales_id_label"
+    "kaput"."sales_channel_dim_id" as "sales_channel_dim_id",
+    "kaput"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "kaput"."sales_net_profit" as "sales_net_profit",
+    "kaput"."sales_sales_channel" as "sales_sales_channel",
+    "macho"."sales_channel_dim_text_id" as "sales_channel_dim_text_id"
 FROM
-    "friendly"
-    INNER JOIN "late" on "friendly"."sales_channel_dim_id" = "late"."sales_channel_dim_id" AND "friendly"."sales_sales_channel" = "late"."sales_sales_channel"
+    "kaput"
+    INNER JOIN "macho" on "kaput"."sales_channel_dim_id" = "macho"."sales_channel_dim_id" AND "kaput"."sales_sales_channel" = "macho"."sales_sales_channel"
 WHERE
-    "late"."sales_channel_dim_text_id" is not null
+    "macho"."sales_channel_dim_text_id" is not null
 ),
 vacuous as (
 SELECT
     "abundant"."sales_return_amount" as "sales_return_amount",
     "abundant"."sales_return_net_loss" as "sales_return_net_loss",
-    CASE
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'STORE' THEN 'store channel'
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'CATALOG' THEN 'catalog channel'
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'WEB' THEN 'web channel'
-	ELSE null
-	END as "channel_label",
-    CASE
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'STORE' THEN ('store' || "cheerful"."sales_return_channel_dim_text_id")
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'CATALOG' THEN ('catalog_page' || "cheerful"."sales_return_channel_dim_text_id")
-	WHEN coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") = 'WEB' THEN ('web_site' || "cheerful"."sales_return_channel_dim_text_id")
-	ELSE null
-	END as "return_id_label"
+    "cheerful"."sales_return_channel_dim_text_id" as "sales_return_channel_dim_text_id",
+    coalesce("abundant"."sales_sales_channel","cheerful"."sales_sales_channel","yummy"."sales_sales_channel") as "sales_sales_channel",
+    coalesce("cheerful"."sales_return_channel_dim_id","yummy"."sales_return_channel_dim_id") as "sales_return_channel_dim_id"
 FROM
     "yummy"
     INNER JOIN "abundant" on "yummy"."sales_item_id" = "abundant"."sales_item_id" AND "yummy"."sales_order_id" = "abundant"."sales_order_id" AND "yummy"."sales_sales_channel" = "abundant"."sales_sales_channel"
@@ -279,36 +273,90 @@ WHERE
 ),
 charming as (
 SELECT
-    "divergent"."channel_label" as "channel",
-    "divergent"."sales_id_label" as "id",
-    sum("divergent"."sales_ext_sales_price") as "sales_total_a",
-    sum("divergent"."sales_net_profit") as "profit_only_a"
+    "busy"."sales_channel_dim_id" as "sales_channel_dim_id",
+    "busy"."sales_sales_channel" as "sales_sales_channel",
+    CASE
+	WHEN "busy"."sales_sales_channel" = 'STORE' THEN 'store channel'
+	WHEN "busy"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
+	WHEN "busy"."sales_sales_channel" = 'WEB' THEN 'web channel'
+	ELSE null
+	END as "channel_label",
+    CASE
+	WHEN "busy"."sales_sales_channel" = 'STORE' THEN ('store' || "busy"."sales_channel_dim_text_id")
+	WHEN "busy"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "busy"."sales_channel_dim_text_id")
+	WHEN "busy"."sales_sales_channel" = 'WEB' THEN ('web_site' || "busy"."sales_channel_dim_text_id")
+	ELSE null
+	END as "sales_id_label"
 FROM
-    "divergent"
-GROUP BY
-    ROLLUP (1, 2)),
+    "busy"),
+concerned as (
+SELECT
+    "vacuous"."sales_return_channel_dim_id" as "sales_return_channel_dim_id",
+    "vacuous"."sales_sales_channel" as "sales_sales_channel",
+    CASE
+	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN 'store channel'
+	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN 'catalog channel'
+	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN 'web channel'
+	ELSE null
+	END as "channel_label",
+    CASE
+	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN ('store' || "vacuous"."sales_return_channel_dim_text_id")
+	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN ('catalog_page' || "vacuous"."sales_return_channel_dim_text_id")
+	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN ('web_site' || "vacuous"."sales_return_channel_dim_text_id")
+	ELSE null
+	END as "return_id_label"
+FROM
+    "vacuous"),
+protective as (
+SELECT
+    "busy"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "busy"."sales_net_profit" as "sales_net_profit",
+    "charming"."channel_label" as "channel_label",
+    "charming"."sales_id_label" as "sales_id_label"
+FROM
+    "busy"
+    FULL JOIN "charming" on "busy"."sales_channel_dim_id" is not distinct from "charming"."sales_channel_dim_id" AND "busy"."sales_sales_channel" = "charming"."sales_sales_channel"),
 young as (
 SELECT
-    "vacuous"."channel_label" as "channel",
-    "vacuous"."return_id_label" as "id",
-    sum(coalesce("vacuous"."sales_return_amount",0)) as "returns_total_b",
-    sum(coalesce("vacuous"."sales_return_net_loss",0)) as "loss_only_b"
+    "concerned"."channel_label" as "channel_label",
+    "concerned"."return_id_label" as "return_id_label",
+    "vacuous"."sales_return_amount" as "sales_return_amount",
+    "vacuous"."sales_return_net_loss" as "sales_return_net_loss"
 FROM
     "vacuous"
+    FULL JOIN "concerned" on "vacuous"."sales_return_channel_dim_id" is not distinct from "concerned"."sales_return_channel_dim_id" AND "vacuous"."sales_sales_channel" = "concerned"."sales_sales_channel"),
+premium as (
+SELECT
+    "protective"."channel_label" as "channel",
+    "protective"."sales_id_label" as "id",
+    sum("protective"."sales_ext_sales_price") as "sales_total_a",
+    sum("protective"."sales_net_profit") as "profit_only_a"
+FROM
+    "protective"
+GROUP BY
+    ROLLUP (1, 2)),
+sparkling as (
+SELECT
+    "young"."channel_label" as "channel",
+    "young"."return_id_label" as "id",
+    sum(coalesce("young"."sales_return_amount",0)) as "returns_total_b",
+    sum(coalesce("young"."sales_return_net_loss",0)) as "loss_only_b"
+FROM
+    "young"
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    coalesce("charming"."channel","young"."channel") as "channel",
-    coalesce("charming"."id","young"."id") as "id",
-    coalesce("charming"."sales_total_a",0.0) as "sales_metric",
-    coalesce("young"."returns_total_b",0.0) as "returns_metric",
-    coalesce("charming"."profit_only_a",0.0) - coalesce("young"."loss_only_b",0.0) as "profit_metric"
+    coalesce("premium"."channel","sparkling"."channel") as "channel",
+    coalesce("premium"."id","sparkling"."id") as "id",
+    coalesce("premium"."sales_total_a",0.0) as "sales_metric",
+    coalesce("sparkling"."returns_total_b",0.0) as "returns_metric",
+    coalesce("premium"."profit_only_a",0.0) - coalesce("sparkling"."loss_only_b",0.0) as "profit_metric"
 FROM
-    "charming"
-    FULL JOIN "young" on "charming"."channel" is not distinct from "young"."channel" AND "charming"."id" is not distinct from "young"."id"
+    "premium"
+    FULL JOIN "sparkling" on "premium"."channel" is not distinct from "sparkling"."channel" AND "premium"."id" is not distinct from "sparkling"."id"
 ORDER BY 
-    coalesce("charming"."channel","young"."channel") asc nulls first,
-    coalesce("charming"."id","young"."id") asc nulls first
+    coalesce("premium"."channel","sparkling"."channel") asc nulls first,
+    coalesce("premium"."id","sparkling"."id") asc nulls first
 LIMIT (100)
 ```
 

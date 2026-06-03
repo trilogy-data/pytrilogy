@@ -1,7 +1,7 @@
 # TPC-H v3-vs-v4 parity
 
-- match: 22
-- mismatch: 4
+- match: 21
+- mismatch: 5
 - v4_error: 1
 - v3_error: 1
 
@@ -15,7 +15,7 @@
 | 06 | match | 1 | 1 |
 | 07 | match | 4 | 4 |
 | 08 | match | 2 | 2 |
-| 09 | match | 175 | 175 |
+| 09 | mismatch | 175 | 175 |
 | 10 | v4_error | 20 | None |
 | 11 | match | 2541 | 2541 |
 | 12 | match | 2 | 2 |
@@ -28,7 +28,7 @@
 | 19 | match | 1 | 1 |
 | 20 | match | 9 | 9 |
 | 21 | match | 47 | 47 |
-| 22 | mismatch | 7 | 0 |
+| 22 | mismatch | 7 | 25 |
 | adhoc01 | mismatch | 100 | 100 |
 | adhoc02 | v3_error | None | None |
 | adhoc03 | mismatch | 1 | 1 |

@@ -1,26 +1,22 @@
 # Query 16
 
-**Status:** `match`
+**Status:** `gen_fail`
 
 | Stage | Result |
 | --- | --- |
-| v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
+| v4 SQL generation | FAILED |
 | reference execution | OK (1 rows) |
-| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+_at least one side did not produce rows._
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3203 | 81 | 105.88 ms |
-| reference | 3728 | 83 | 80.54 ms |
-| v4 / ref | 0.86x | 0.98x | 1.31x |
+| v4 | 0 | 0 | — |
+| reference | 3728 | 83 | 57.28 ms |
 
 ## Preql
 
@@ -48,89 +44,7 @@ limit 100
 
 ## v4 generated SQL
 
-```sql
-WITH 
-abundant as (
-SELECT
-    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
-    "cs_catalog_sales"."CS_WAREHOUSE_SK" as "cs_warehouse_id"
-FROM
-    "memory"."catalog_sales" as "cs_catalog_sales"
-GROUP BY
-    1,
-    2),
-quizzical as (
-SELECT
-    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_order_number"
-FROM
-    "memory"."catalog_returns" as "cr_catalog_returns"
-GROUP BY
-    1),
-uneven as (
-SELECT
-    "abundant"."cs_order_number" as "cs_order_number",
-    count("abundant"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
-FROM
-    "abundant"
-GROUP BY
-    1),
-juicy as (
-SELECT
-    CASE WHEN "uneven"."_virt_agg_count_7777088585630721" > 1 THEN "uneven"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
-FROM
-    "uneven"),
-questionable as (
-SELECT
-    "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
-    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
-    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
-FROM
-    "memory"."catalog_sales" as "cs_catalog_sales"
-    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
-    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
-    INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
-WHERE
-    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
-),
-vacuous as (
-SELECT
-    "questionable"."cs_ext_ship_cost" as "cs_ext_ship_cost",
-    "questionable"."cs_net_profit" as "cs_net_profit",
-    "questionable"."cs_order_number" as "cs_order_number"
-FROM
-    "questionable"
-WHERE
-    "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
-),
-young as (
-SELECT
-    "vacuous"."cs_order_number" as "cs_order_number"
-FROM
-    "vacuous"
-GROUP BY
-    1),
-concerned as (
-SELECT
-    sum("vacuous"."cs_ext_ship_cost") as "total_shipping_cost",
-    sum("vacuous"."cs_net_profit") as "total_net_profit"
-FROM
-    "vacuous"),
-sparkling as (
-SELECT
-    count("young"."cs_order_number") as "order_count"
-FROM
-    "young")
-SELECT
-    coalesce("sparkling"."order_count",0) as "order_count",
-    "concerned"."total_shipping_cost" as "total_shipping_cost",
-    "concerned"."total_net_profit" as "total_net_profit"
-FROM
-    "concerned"
-    FULL JOIN "sparkling" on 1=1
-ORDER BY 
-    coalesce("sparkling"."order_count",0) desc
-LIMIT (100)
-```
+_v4 did not produce SQL._
 
 ## Reference SQL (zquery log)
 
@@ -218,4 +132,103 @@ FROM
 ORDER BY 
     coalesce("vacuous"."order_count",0) desc
 LIMIT (100)
+```
+
+## v4 generation error
+
+```
+Traceback (most recent call last):
+  File "C:\Users\ethan\coding_projects\pytrilogy\local_scripts\discovery_v4_compare.py", line 256, in generate_v4_sql
+    statements = eng.generate_sql(preql_path.read_text())
+  File "C:\Program Files\Python313\Lib\functools.py", line 983, in _method
+    return dispatch(args[0].__class__).__get__(obj, cls)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\executor.py", line 663, in _
+    compiled_sql = self.generator.compile_statement(statement)
+  File "C:\Users\ethan\coding_projects\pytrilogy\trilogy\dialect\base.py", line 2306, in compile_statement
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: Invalid reference string found in query: 
+WITH 
+abundant as (
+SELECT
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
+    "cs_catalog_sales"."CS_WAREHOUSE_SK" as "cs_warehouse_id"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+GROUP BY
+    1,
+    2),
+quizzical as (
+SELECT
+    "cr_catalog_returns"."CR_ORDER_NUMBER" as "cr_order_number"
+FROM
+    "memory"."catalog_returns" as "cr_catalog_returns"
+GROUP BY
+    1),
+uneven as (
+SELECT
+    "abundant"."cs_order_number" as "cs_order_number",
+    count("abundant"."cs_warehouse_id") as "_virt_agg_count_7777088585630721"
+FROM
+    "abundant"
+GROUP BY
+    1),
+juicy as (
+SELECT
+    CASE WHEN "uneven"."_virt_agg_count_7777088585630721" > 1 THEN "uneven"."cs_order_number" ELSE NULL END as "multi_warehouse_sales"
+FROM
+    "uneven"),
+questionable as (
+SELECT
+    "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
+    "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_customer_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_customer_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_customer_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_catalog_sales"."CS_ORDER_NUMBER" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "cs_catalog_sales"."CS_ORDER_NUMBER" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
+),
+vacuous as (
+SELECT
+    "questionable"."cs_ext_ship_cost" as "cs_ext_ship_cost",
+    "questionable"."cs_net_profit" as "cs_net_profit",
+    "questionable"."cs_order_number" as "cs_order_number"
+FROM
+    "questionable"
+WHERE
+    cast(INVALID_REFERENCE_BUG as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and INVALID_REFERENCE_BUG = 'GA' and INVALID_REFERENCE_BUG = 'Williamson County' and "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
+),
+young as (
+SELECT
+    "vacuous"."cs_order_number" as "cs_order_number"
+FROM
+    "vacuous"
+GROUP BY
+    1),
+concerned as (
+SELECT
+    sum("vacuous"."cs_ext_ship_cost") as "total_shipping_cost",
+    sum("vacuous"."cs_net_profit") as "total_net_profit"
+FROM
+    "vacuous"),
+sparkling as (
+SELECT
+    count("young"."cs_order_number") as "order_count"
+FROM
+    "young")
+SELECT
+    coalesce("sparkling"."order_count",0) as "order_count",
+    "concerned"."total_shipping_cost" as "total_shipping_cost",
+    "concerned"."total_net_profit" as "total_net_profit"
+FROM
+    "concerned"
+    FULL JOIN "sparkling" on 1=1
+ORDER BY 
+    coalesce("sparkling"."order_count",0) desc
+LIMIT (100), this should never occur. Please create an issue to report this.
 ```

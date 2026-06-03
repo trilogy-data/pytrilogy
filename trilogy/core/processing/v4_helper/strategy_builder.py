@@ -42,6 +42,12 @@ from .constants import (
     GROUPING_DERIVATIONS,
 )
 from .models import GroupAttrs
+from .projection import (
+    concept_satisfiable,
+    parent_output_addresses,
+    satisfiable_outputs,
+    widen_projection,
+)
 
 _AGGREGATING_DERIVATIONS = {
     Derivation.AGGREGATE.value,
@@ -209,9 +215,7 @@ def _parent_nodes_for(
     return parents
 
 
-def _fold_passthrough_parents(
-    parents: list[StrategyNode], *, final: bool = False
-) -> list[StrategyNode]:
+def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
     When a plain projection B (a non-grouping SelectNode) can render every one
@@ -220,15 +224,16 @@ def _fold_passthrough_parents(
     takes A's columns and A is dropped, instead of cross-joining two views of
     the same scan (q50: a `days_to_return` projection of the base merged back
     with the base on `1=1`; q62: two projections of one scan, one computing
-    `days_to_ship`, the other `substring(warehouse.name)`, cross-joined).
+    `days_to_ship`, the other `substring(warehouse.name)`, cross-joined). This
+    also collapses the q77 catalog/store/web cross-joins (a grouping-key rename
+    or a coalesce of one aggregate the sibling already sources).
 
-    `final=True` is the stricter FINAL-assembly mode, where the contributor set
-    also contains genuine GroupNode/Window/Filter barriers (not just sibling
-    projections of one scan). There it requires A to itself be a row-preserving
-    projection — dissolving a GroupNode would drop a real aggregation barrier.
-    This collapses the q77 catalog/store/web cross-joins (a grouping-key rename
-    or a coalesce of one aggregate that the sibling already sources) without
-    touching the per-group behavior.
+    A grouping/window/filter contributor A is NEVER dissolved: its rows are a
+    real barrier (an aggregate / window / semijoin), not a row-wise re-derivable
+    projection. A finer-grain sibling can spuriously look able to "render" a
+    GLOBAL aggregate's output by recomputing the aggregate's inner expression
+    (q22: `avg(acctbal ? ...)` → the bare CASE, silently dropping `avg()`), so
+    only a row-preserving SelectNode A is foldable.
 
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
@@ -237,32 +242,21 @@ def _fold_passthrough_parents(
     for b in parents:
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
             continue
-        available = {o.address for p in b.parents for o in p.output_concepts}
+        available = parent_output_addresses(b)
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
                 continue
-            # FINAL mode: never dissolve a grouping/window/filter contributor —
-            # its rows are a real barrier, not a re-derivable projection.
-            if final and (not isinstance(a, SelectNode) or a.force_group):
+            # Never dissolve a grouping/window/filter barrier into a row sibling.
+            if not isinstance(a, SelectNode) or a.force_group:
                 continue
-            if not all(
-                _arg_satisfiable(o, available, set(), {}) for o in a.output_concepts
-            ):
+            if not all(concept_satisfiable(o, available) for o in a.output_concepts):
                 continue
-            in_addrs = {c.address for c in b.input_concepts}
-            out_addrs = {c.address for c in b.output_concepts}
-            # Source columns to read from B's parent: A's own inputs plus any
-            # of A's outputs that pass straight through. Restricted to what B's
-            # parent actually has so the projection renders.
-            for c in [*a.input_concepts, *a.output_concepts]:
-                if c.address in available and c.address not in in_addrs:
-                    b.input_concepts.append(c)
-                    in_addrs.add(c.address)
-            for o in a.output_concepts:
-                if o.address not in out_addrs:
-                    b.output_concepts.append(o)
-                    out_addrs.add(o.address)
-            b.rebuild_cache()
+            widen_projection(
+                b,
+                a.output_concepts,
+                input_candidates=[*a.input_concepts, *a.output_concepts],
+                available_addresses=available,
+            )
             dropped.add(id(a))
     return [p for p in parents if id(p) not in dropped]
 
@@ -299,47 +293,6 @@ def _pre_merge_parents(
     return [merged]
 
 
-def _arg_satisfiable(
-    concept: BuildConcept,
-    available: set[str],
-    keep_addrs: set[str],
-    cache: dict[str, bool],
-) -> bool:
-    """A concept renders if it's directly available, a kept sibling, or every
-    lineage arg is itself satisfiable. Recurses through *intermediate* derived
-    concepts that aren't group outputs (q49: `channel <- channel_label <-
-    sales_channel`; only `channel` and `sales_channel` exist as group/parent
-    concepts, but the SelectNode inlines `channel_label` from `sales_channel`).
-
-    `cache` memoizes results per traversal: a concept referenced more than
-    once in a lineage (q62: `days_to_ship > 30 and days_to_ship <= 60`) must
-    be evaluated on its merits each time, not rejected as already-seen. The
-    tentative `False` written before recursing also breaks any lineage cycle
-    conservatively."""
-    if concept.address in available or concept.address in keep_addrs:
-        return True
-    if concept.address in cache:
-        return cache[concept.address]
-    if concept.lineage is None:
-        cache[concept.address] = False
-        return False
-    cache[concept.address] = False
-    # A filter's semijoin RHS (existence arg) is reached via a side-channel
-    # subselect, not the row stream, so it doesn't have to be a row input for
-    # the filter to render (q08 `zips in substring(p_cust_zip,1,5)`).
-    args = list(concept.lineage.concept_arguments)
-    if isinstance(concept.lineage, BuildFilterItem):
-        existence = {
-            ec.address
-            for grp in (concept.lineage.where.existence_arguments or ())
-            for ec in grp
-        } - {r.address for r in concept.lineage.where.row_arguments}
-        args = [a for a in args if a.address not in existence]
-    result = all(_arg_satisfiable(a, available, keep_addrs, cache) for a in args)
-    cache[concept.address] = result
-    return result
-
-
 def _satisfiable_outputs(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -358,23 +311,7 @@ def _satisfiable_outputs(
     `filtered_lp <- bucket_id <- quantity`, q49 `channel <- channel_label <-
     sales_channel`). Run to a fixpoint so a kept sibling unlocks others
     regardless of iteration order."""
-    if not parents:
-        return outputs
-    available: set[str] = set()
-    for parent in parents:
-        for output in parent.output_concepts:
-            available.add(output.address)
-    keep_addrs: set[str] = set()
-    changed = True
-    while changed:
-        changed = False
-        for concept in outputs:
-            if concept.address in keep_addrs:
-                continue
-            if _arg_satisfiable(concept, available, keep_addrs, {}):
-                keep_addrs.add(concept.address)
-                changed = True
-    return [c for c in outputs if c.address in keep_addrs]
+    return satisfiable_outputs(outputs, parents)
 
 
 def _topological_order(group_graph: nx.DiGraph) -> list[str]:
@@ -461,21 +398,19 @@ def _fold_descendant_contributors(
             continue
         b_node = built[b_gid]
         b_ancestors = nx.ancestors(group_graph, b_gid)
-        available = {o.address for p in b_node.parents for o in p.output_concepts}
+        available = parent_output_addresses(b_node)
         for s_gid in b_ancestors:
             if s_gid not in per_group or s_gid == b_gid:
                 continue
             s_concepts = per_group[s_gid]
             if not all(c.address in available for c in s_concepts):
                 continue
-            in_addrs = {c.address for c in b_node.input_concepts}
-            out_addrs = {c.address for c in b_node.output_concepts}
-            for c in s_concepts:
-                if c.address not in in_addrs:
-                    b_node.input_concepts.append(c)
-                if c.address not in out_addrs:
-                    b_node.output_concepts.append(c)
-            b_node.rebuild_cache()
+            widen_projection(
+                b_node,
+                s_concepts,
+                input_candidates=s_concepts,
+                available_addresses=available,
+            )
             per_group[b_gid].extend(s_concepts)
             del per_group[s_gid]
             break
@@ -740,8 +675,8 @@ def _assemble_final_node(
     # merge would cross-join them ON 1=1. Fold any contributor whose outputs a
     # row-preserving sibling already renders off its own parents, collapsing the
     # columns into one projection instead of joining (same passthrough logic the
-    # per-group `_pre_merge_parents` uses, in stricter FINAL mode).
-    parents = _fold_passthrough_parents(parents, final=True)
+    # per-group `_pre_merge_parents` uses).
+    parents = _fold_passthrough_parents(parents)
 
     available: set[str] = set()
     for p in parents:
@@ -851,7 +786,7 @@ def build_strategy_node(
         # leaving the consumer with `INVALID_REFERENCE_BUG` against the
         # missing concepts (q11).
         if derivation != Derivation.ROOT.value:
-            outputs = _satisfiable_outputs(outputs, parents)
+            outputs = satisfiable_outputs(outputs, parents)
             if not outputs:
                 continue
         # For aggregating derivations, peel `injected` off into a pre-filter

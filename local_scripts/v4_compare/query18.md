@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5652 | 100 | 205.63 ms |
-| reference | 7254 | 111 | 140.26 ms |
-| v4 / ref | 0.78x | 0.90x | 1.47x |
+| v4 | 5218 | 88 | 90.99 ms |
+| reference | 7254 | 111 | 71.40 ms |
+| v4 / ref | 0.72x | 0.79x | 1.27x |
 
 ## Preql
 
@@ -103,13 +103,7 @@ FROM
 GROUP BY
     1,
     3,
-    4,
-    "questionable"."cs_coupon_amt",
-    "questionable"."cs_item_text_id",
-    "questionable"."cs_list_price",
-    "questionable"."cs_net_profit",
-    "questionable"."cs_quantity",
-    "questionable"."cs_sales_price"),
+    4),
 abundant as (
 SELECT
     "questionable"."cs_bill_customer_birth_year" as "row_birth_year",
@@ -120,13 +114,7 @@ FROM
 GROUP BY
     1,
     2,
-    3,
-    "questionable"."cs_coupon_amt",
-    "questionable"."cs_item_text_id",
-    "questionable"."cs_list_price",
-    "questionable"."cs_net_profit",
-    "questionable"."cs_quantity",
-    "questionable"."cs_sales_price"),
+    3),
 yummy as (
 SELECT
     "abundant"."row_birth_year" as "row_birth_year",

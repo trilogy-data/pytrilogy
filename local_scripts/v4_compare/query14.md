@@ -1,26 +1,38 @@
 # Query 14
 
-**Status:** `match`
+**Status:** `mismatch`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (100 rows) |
 | reference execution | OK (100 rows) |
-| results identical | YES |
+| results identical | NO |
 
 ## Result comparison
 
 v4 rows: 100 (100 distinct)
 ref rows: 100 (100 distinct)
+only in v4 (showing up to 5 of 99):
+  1x  (None, None, None, None, 1294902, Decimal('5301925397.80000000'))
+  1x  ('catalog', None, None, None, 288819, Decimal('1458006270.83000000'))
+  1x  ('catalog', 1001001, None, None, 2020, Decimal('8908176.70000000'))
+  1x  ('catalog', 1001001, None, 1, 844, Decimal('3854145.51000000'))
+  1x  ('catalog', 1001001, 1, 1, 102, Decimal('444095.42000000'))
+only in ref (showing up to 5 of 99):
+  1x  (None, None, None, None, 155567, Decimal('673409655.64000000'))
+  1x  ('catalog', None, None, None, 46359, Decimal('234830325.53000000'))
+  1x  ('catalog', 1001001, None, None, 341, Decimal('1549222.39000000'))
+  1x  ('catalog', 1001001, None, 1, 162, Decimal('742922.27000000'))
+  1x  ('catalog', 1001001, 1, 1, 20, Decimal('87409.20000000'))
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6997 | 180 | 381.46 ms |
-| reference | 6203 | 160 | 527.97 ms |
-| v4 / ref | 1.13x | 1.12x | 0.72x |
+| v4 | 8419 | 222 | 326.15 ms |
+| reference | 6203 | 160 | 240.15 ms |
+| v4 / ref | 1.36x | 1.39x | 1.36x |
 
 ## Preql
 
@@ -148,10 +160,13 @@ FROM
 WHERE
     "sales_date_date"."D_YEAR" BETWEEN 1999 AND 2001
 ),
-vacuous as (
+concerned as (
 SELECT
+    "cheerful"."sales_item_id" as "sales_item_id",
     "cheerful"."sales_sales_channel" as "sales_sales_channel",
-    (cast("sales_item_items"."I_BRAND_ID" as string) || '|' || cast("sales_item_items"."I_CLASS_ID" as string) || '|' || cast("sales_item_items"."I_CATEGORY_ID" as string)) as "tuple_key"
+    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
+    "sales_item_items"."I_CATEGORY_ID" as "sales_item_category_id",
+    "sales_item_items"."I_CLASS_ID" as "sales_item_class_id"
 FROM
     "cheerful"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
@@ -161,22 +176,20 @@ WHERE
 
 GROUP BY
     1,
-    2),
+    2,
+    3,
+    4,
+    5),
 yummy as (
 SELECT
+    "cheerful"."sales_item_id" as "sales_item_id",
     "cheerful"."sales_list_price" as "sales_list_price",
     "cheerful"."sales_quantity" as "sales_quantity",
     "cheerful"."sales_row_one" as "sales_row_one",
+    "cheerful"."sales_sales_channel" as "sales_sales_channel",
     "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
     "sales_item_items"."I_CATEGORY_ID" as "sales_item_category_id",
-    "sales_item_items"."I_CLASS_ID" as "sales_item_class_id",
-    (cast("sales_item_items"."I_BRAND_ID" as string) || '|' || cast("sales_item_items"."I_CLASS_ID" as string) || '|' || cast("sales_item_items"."I_CATEGORY_ID" as string)) as "tuple_key",
-    CASE
-	WHEN "cheerful"."sales_sales_channel" = 'STORE' THEN 'store'
-	WHEN "cheerful"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
-	WHEN "cheerful"."sales_sales_channel" = 'WEB' THEN 'web'
-	ELSE null
-	END as "channel_label"
+    "sales_item_items"."I_CLASS_ID" as "sales_item_class_id"
 FROM
     "cheerful"
     INNER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
@@ -189,59 +202,86 @@ SELECT
     "cooperative"."_avg_sales_average_sales" as "avg_sales_average_sales"
 FROM
     "cooperative"),
+young as (
+SELECT
+    "concerned"."sales_item_id" as "sales_item_id",
+    (cast("concerned"."sales_item_brand_id" as string) || '|' || cast("concerned"."sales_item_class_id" as string) || '|' || cast("concerned"."sales_item_category_id" as string)) as "tuple_key"
+FROM
+    "concerned"),
+juicy as (
+SELECT
+    "yummy"."sales_item_id" as "sales_item_id",
+    "yummy"."sales_sales_channel" as "sales_sales_channel",
+    (cast("yummy"."sales_item_brand_id" as string) || '|' || cast("yummy"."sales_item_class_id" as string) || '|' || cast("yummy"."sales_item_category_id" as string)) as "tuple_key",
+    CASE
+	WHEN "yummy"."sales_sales_channel" = 'STORE' THEN 'store'
+	WHEN "yummy"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
+	WHEN "yummy"."sales_sales_channel" = 'WEB' THEN 'web'
+	ELSE null
+	END as "channel_label"
+FROM
+    "yummy"),
 sparkling as (
 SELECT
-    "vacuous"."tuple_key" as "_cross_tuples_ci_tuple_key"
+    "concerned"."sales_sales_channel" as "sales_sales_channel",
+    "young"."tuple_key" as "tuple_key"
 FROM
-    "vacuous"
+    "concerned"
+    INNER JOIN "young" on "concerned"."sales_item_id" = "young"."sales_item_id"
+GROUP BY
+    1,
+    2),
+sweltering as (
+SELECT
+    "sparkling"."tuple_key" as "_cross_tuples_ci_tuple_key"
+FROM
+    "sparkling"
 GROUP BY
     1
 HAVING
-    count(distinct "vacuous"."sales_sales_channel") = 3
+    count(distinct "sparkling"."sales_sales_channel") = 3
 ),
-abhorrent as (
-SELECT
-    "sparkling"."_cross_tuples_ci_tuple_key" as "_cross_tuples_ci_tuple_key"
-FROM
-    "sparkling"),
-sweltering as (
-SELECT
-    "abhorrent"."_cross_tuples_ci_tuple_key" as "cross_tuples_ci_tuple_key"
-FROM
-    "abhorrent"),
 late as (
 SELECT
-    "yummy"."channel_label" as "_l0_filtered_channel_l0",
-    "yummy"."sales_item_brand_id" as "_l0_filtered_brand_l0",
-    "yummy"."sales_item_category_id" as "_l0_filtered_category_l0",
-    "yummy"."sales_item_class_id" as "_l0_filtered_class_l0",
-    sum("yummy"."sales_quantity" * "yummy"."sales_list_price") as "_l0_filtered_bucket_sum_l0",
-    sum("yummy"."sales_row_one") as "_l0_filtered_bucket_count_l0"
+    "sweltering"."_cross_tuples_ci_tuple_key" as "_cross_tuples_ci_tuple_key"
+FROM
+    "sweltering"),
+macho as (
+SELECT
+    "late"."_cross_tuples_ci_tuple_key" as "cross_tuples_ci_tuple_key"
+FROM
+    "late"),
+vacuous as (
+SELECT
+    "juicy"."channel_label" as "channel_label",
+    "yummy"."sales_item_brand_id" as "sales_item_brand_id",
+    "yummy"."sales_item_category_id" as "sales_item_category_id",
+    "yummy"."sales_item_class_id" as "sales_item_class_id",
+    "yummy"."sales_list_price" as "sales_list_price",
+    "yummy"."sales_quantity" as "sales_quantity",
+    "yummy"."sales_row_one" as "sales_row_one"
 FROM
     "yummy"
+    RIGHT OUTER JOIN "juicy" on "yummy"."sales_item_id" = "juicy"."sales_item_id" AND "yummy"."sales_sales_channel" = "juicy"."sales_sales_channel"
 WHERE
-    "yummy"."tuple_key" in (select sweltering."cross_tuples_ci_tuple_key" from sweltering where sweltering."cross_tuples_ci_tuple_key" is not null)
-
+    "juicy"."tuple_key" in (select macho."cross_tuples_ci_tuple_key" from macho where macho."cross_tuples_ci_tuple_key" is not null)
+),
+scrawny as (
+SELECT
+    "vacuous"."channel_label" as "_l0_filtered_channel_l0",
+    "vacuous"."sales_item_brand_id" as "_l0_filtered_brand_l0",
+    "vacuous"."sales_item_category_id" as "_l0_filtered_category_l0",
+    "vacuous"."sales_item_class_id" as "_l0_filtered_class_l0",
+    sum("vacuous"."sales_quantity" * "vacuous"."sales_list_price") as "_l0_filtered_bucket_sum_l0",
+    sum("vacuous"."sales_row_one") as "_l0_filtered_bucket_count_l0"
+FROM
+    "vacuous"
 GROUP BY
     1,
     2,
     3,
     4),
-scrawny as (
-SELECT
-    "late"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
-    "late"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
-    "late"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
-    "late"."_l0_filtered_category_l0" as "_l0_filtered_category_l0",
-    "late"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
-    "late"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
-FROM
-    "abundant"
-    INNER JOIN "late" on 1=1
-WHERE
-    "late"."_l0_filtered_bucket_sum_l0" > "abundant"."avg_sales_average_sales"
-),
-friendly as (
+kaput as (
 SELECT
     "scrawny"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
     "scrawny"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
@@ -250,38 +290,52 @@ SELECT
     "scrawny"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
     "scrawny"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
 FROM
-    "scrawny"),
-kaput as (
-SELECT
-    "friendly"."_l0_filtered_brand_l0" as "l0_filtered_brand_l0",
-    "friendly"."_l0_filtered_bucket_count_l0" as "l0_filtered_bucket_count_l0",
-    "friendly"."_l0_filtered_bucket_sum_l0" as "l0_filtered_bucket_sum_l0",
-    "friendly"."_l0_filtered_category_l0" as "l0_filtered_category_l0",
-    "friendly"."_l0_filtered_channel_l0" as "l0_filtered_channel_l0",
-    "friendly"."_l0_filtered_class_l0" as "l0_filtered_class_l0"
-FROM
-    "friendly"),
+    "abundant"
+    INNER JOIN "scrawny" on 1=1
+WHERE
+    "scrawny"."_l0_filtered_bucket_sum_l0" > "abundant"."avg_sales_average_sales"
+),
 divergent as (
 SELECT
-    "kaput"."l0_filtered_brand_l0" as "l0_filtered_brand_l0",
-    "kaput"."l0_filtered_category_l0" as "l0_filtered_category_l0",
-    "kaput"."l0_filtered_channel_l0" as "l0_filtered_channel_l0",
-    "kaput"."l0_filtered_class_l0" as "l0_filtered_class_l0",
-    sum("kaput"."l0_filtered_bucket_count_l0") as "sum_number_sales",
-    sum("kaput"."l0_filtered_bucket_sum_l0") as "sum_sales"
+    "kaput"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
+    "kaput"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
+    "kaput"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
+    "kaput"."_l0_filtered_category_l0" as "_l0_filtered_category_l0",
+    "kaput"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
+    "kaput"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
 FROM
-    "kaput"
+    "kaput"),
+busy as (
+SELECT
+    "divergent"."_l0_filtered_brand_l0" as "l0_filtered_brand_l0",
+    "divergent"."_l0_filtered_bucket_count_l0" as "l0_filtered_bucket_count_l0",
+    "divergent"."_l0_filtered_bucket_sum_l0" as "l0_filtered_bucket_sum_l0",
+    "divergent"."_l0_filtered_category_l0" as "l0_filtered_category_l0",
+    "divergent"."_l0_filtered_channel_l0" as "l0_filtered_channel_l0",
+    "divergent"."_l0_filtered_class_l0" as "l0_filtered_class_l0"
+FROM
+    "divergent"),
+charming as (
+SELECT
+    "busy"."l0_filtered_brand_l0" as "l0_filtered_brand_l0",
+    "busy"."l0_filtered_category_l0" as "l0_filtered_category_l0",
+    "busy"."l0_filtered_channel_l0" as "l0_filtered_channel_l0",
+    "busy"."l0_filtered_class_l0" as "l0_filtered_class_l0",
+    sum("busy"."l0_filtered_bucket_count_l0") as "sum_number_sales",
+    sum("busy"."l0_filtered_bucket_sum_l0") as "sum_sales"
+FROM
+    "busy"
 GROUP BY
     ROLLUP (3, 1, 4, 2))
 SELECT
-    "divergent"."l0_filtered_channel_l0" as "channel",
-    "divergent"."l0_filtered_brand_l0" as "i_brand_id",
-    "divergent"."l0_filtered_class_l0" as "i_class_id",
-    "divergent"."l0_filtered_category_l0" as "i_category_id",
-    "divergent"."sum_sales" as "sum_sales",
-    "divergent"."sum_number_sales" as "sum_number_sales"
+    "charming"."l0_filtered_channel_l0" as "channel",
+    "charming"."l0_filtered_brand_l0" as "i_brand_id",
+    "charming"."l0_filtered_class_l0" as "i_class_id",
+    "charming"."l0_filtered_category_l0" as "i_category_id",
+    "charming"."sum_sales" as "sum_sales",
+    "charming"."sum_number_sales" as "sum_number_sales"
 FROM
-    "divergent"
+    "charming"
 ORDER BY 
     "channel" asc nulls first,
     "i_brand_id" asc nulls first,

@@ -1084,7 +1084,24 @@ def _compute_concept_sets(
             # consumer or expose JOIN keys for sibling predecessors.
             if edge_kind == EDGE_KIND_EXISTENCE:
                 continue
-            outs |= input_concepts.get(succ, set()) & cap_gid
+            demanded = input_concepts.get(succ, set()) & cap_gid
+            # A GROUPING group must not pass through a non-grain, non-aggregate
+            # column that a row-preserving sibling predecessor of `succ` also
+            # supplies — exposing it forces the column into this group's GROUP BY
+            # (q22: `account_balance` threaded through `count(orders) by id` →
+            # `GROUP BY id, account_balance`). Keep our own aggregate outputs and
+            # grain keys; let the row sibling carry the rest.
+            if derivation_of[gid] in GROUPING_DERIVATIONS:
+                sibling_providable: set[str] = set()
+                for sib in group_graph.predecessors(succ):
+                    if sib in (gid, FINAL_NODE_ID):
+                        continue
+                    if derivation_of.get(sib) in GROUPING_DERIVATIONS:
+                        continue
+                    sibling_providable |= capability.get(sib, set())
+                keep = primary_of[gid] | grain_of[gid]
+                demanded -= sibling_providable - keep
+            outs |= demanded
             # Sibling-grain JOIN keys: when this successor has another
             # predecessor whose grain we also expose, project that key
             # so the downstream merge can JOIN us to the sibling on it.
