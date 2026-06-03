@@ -13,7 +13,11 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
-from trilogy.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
+from trilogy.core.processing.nodes.base_node import (
+    StrategyNode,
+    resolve_concept_map,
+    resolve_existence_map,
+)
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
@@ -205,6 +209,9 @@ class SelectNode(StrategyNode):
             for k, v in source_map.items():
                 if v and k not in resolution.source_map:
                     resolution.source_map[k] = v
+            resolution.existence_source_map.update(
+                resolve_existence_map(parent_sources, self.existence_concepts)
+            )
         if not resolution:
             raise ValueError(f"No select node could be generated for {self}")
         return resolution

@@ -555,6 +555,43 @@ def _wrap_for_grain(
     return wraps
 
 
+def _filter_arg_parents(
+    group_graph: nx.DiGraph,
+    built: dict[str, StrategyNode],
+    missing_addrs: set[str],
+) -> tuple[list[StrategyNode], list[BuildConcept]]:
+    """Built groups (most-downstream) producing each `missing_addr` — a
+    FINAL-deferred filter's row-arg that isn't a user output (q11's global
+    `germany_total_value`, compared against a per-id aggregate). Returned as
+    cross-join parents plus the concepts they supply, so the FINAL filter node
+    can pull them in as hidden inputs."""
+    nodes: list[StrategyNode] = []
+    concepts: list[BuildConcept] = []
+    seen: set[str] = set()
+    for addr in missing_addrs:
+        candidates = [
+            gid
+            for gid, node in built.items()
+            if any(o.address == addr for o in node.output_concepts)
+        ]
+        if not candidates:
+            continue
+        candidates.sort(
+            key=lambda gid: sum(
+                1 for a in nx.ancestors(group_graph, gid) if a in built
+            ),
+            reverse=True,
+        )
+        gid = candidates[0]
+        concepts.append(
+            next(o for o in built[gid].output_concepts if o.address == addr)
+        )
+        if gid not in seen:
+            seen.add(gid)
+            nodes.append(built[gid])
+    return nodes, concepts
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -580,6 +617,13 @@ def _assemble_final_node(
     # as a WHERE over the assembled merge, where both columns coexist.
     final_conditions = _wrap_atoms(attrs[FINAL_NODE_ID].condition_atoms)
     mandatory_addresses = {c.address for c in mandatory_list}
+    # Row-args a FINAL-deferred filter needs that aren't user outputs (q11:
+    # global `germany_total_value`). Their producing groups get cross-joined in
+    # as hidden inputs below, else the WHERE dangles (INVALID_REFERENCE).
+    filter_only_addrs: set[str] = set()
+    for atom in attrs[FINAL_NODE_ID].condition_atoms:
+        filter_only_addrs |= {a.address for a in atom.row_arguments}
+    filter_only_addrs -= mandatory_addresses
 
     def _apply_final_conditions(node: StrategyNode) -> StrategyNode:
         if final_conditions is None:
@@ -588,6 +632,21 @@ def _assemble_final_node(
         # extra align inputs (item_sk_99/item_sk_00 folded into the align key)
         # that aren't mandatory and don't render at this layer.
         keep = [o for o in node.output_concepts if o.address in mandatory_addresses]
+        avail = {o.address for o in node.output_concepts}
+        arg_nodes, arg_concepts = _filter_arg_parents(
+            group_graph, built, filter_only_addrs - avail
+        )
+        if arg_nodes:
+            # Cross-join the filter-only arg producers (e.g. the global
+            # aggregate) in as hidden inputs so the WHERE can reference them.
+            return MergeNode(
+                input_concepts=list(node.output_concepts) + arg_concepts,
+                output_concepts=keep,
+                environment=environment,
+                parents=[node, *arg_nodes],
+                conditions=final_conditions.conditional,
+                hidden_concepts={c.address for c in arg_concepts} - mandatory_addresses,
+            )
         wrapped = SelectNode(
             input_concepts=list(node.output_concepts),
             output_concepts=keep,
@@ -678,6 +737,16 @@ def _assemble_final_node(
         for o in p.output_concepts:
             available.add(o.address)
     outputs = [c for c in mandatory_list if c.address in available]
+    # Pull in any filter-only condition arg (e.g. the global aggregate) not
+    # already supplied by a contributor, as a hidden cross-join input.
+    arg_nodes, arg_concepts = _filter_arg_parents(
+        group_graph, built, filter_only_addrs - available
+    )
+    parents = parents + arg_nodes
+    merge_inputs = outputs + [
+        c for c in arg_concepts if c.address not in {o.address for o in outputs}
+    ]
+    hidden = {c.address for c in arg_concepts} - mandatory_addresses
     # A non-grouping dimension contributor only supplies FD attributes; if it
     # sits at a finer (row-level) grain it must not widen the merge grain, or it
     # fans the aggregate out (e.g. q81: customer-dims joined through
@@ -690,12 +759,13 @@ def _assemble_final_node(
         else None
     )
     return MergeNode(
-        input_concepts=outputs,
+        input_concepts=merge_inputs,
         output_concepts=outputs,
         environment=environment,
         parents=parents,
         grain=merge_grain,
         conditions=final_conditions.conditional if final_conditions else None,
+        hidden_concepts=hidden or None,
     )
 
 

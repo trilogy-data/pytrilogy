@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (93 rows) |
-| reference execution | OK (93 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 93 (93 distinct)
-ref rows: 93 (93 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3724 | 71 | 7.29 ms |
-| reference | 2951 | 51 | 7.34 ms |
-| v4 / ref | 1.26x | 1.39x | 0.99x |
+| v4 | 3724 | 71 | 67.24 ms |
+| reference | 2951 | 51 | 66.18 ms |
+| v4 / ref | 1.26x | 1.39x | 1.02x |
 
 ## Preql
 

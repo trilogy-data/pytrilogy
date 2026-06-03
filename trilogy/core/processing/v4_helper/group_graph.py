@@ -58,6 +58,15 @@ _CANNOT_HOST_OWN_OUTPUT: set[str] = {
     Derivation.UNNEST.value,
 }
 
+# Derivations that emit a GROUP BY, so any column referenced in a HAVING there
+# must itself be grouped (a key) or aggregated. A cross-joined aggregate from a
+# *different* producer is neither, so such a group cannot host a HAVING that
+# references it. Window PARTITIONs rather than GROUP BYs, so it is excluded.
+_EMITS_GROUP_BY: set[str] = {
+    Derivation.AGGREGATE.value,
+    Derivation.GROUP_TO.value,
+}
+
 
 def _leaf_inputs(primaries: set[str], lineage_parents: dict[str, set[str]]) -> set[str]:
     """The first non-primary lineage ancestor of each primary — the columns a
@@ -520,6 +529,45 @@ def _inject_conditions(
                 for gid in candidates
                 if all(gid in reach for reach in producer_closures)
             ]
+            # An aggregate group self-hosts a HAVING only against its OWN
+            # aggregate outputs. If the atom also references an aggregate
+            # produced by a DIFFERENT group (q11: per-id `part_total_value` vs
+            # global `germany_total_value`), that column reaches this group only
+            # as a cross-joined, ungrouped value — illegal in a HAVING. Drop any
+            # grouping candidate that doesn't itself produce every aggregate
+            # output in the atom, so it defers to a shared non-grouping consumer
+            # (FINAL) where both aggregates are plain input columns. Pure
+            # consumers and single-producer self-HAVINGs are unaffected.
+            agg_outputs = {
+                addr
+                for addr in row_inputs
+                if any(
+                    b.derivation in _EMITS_GROUP_BY and addr in set(b.primary_members)
+                    for b in buckets.values()
+                )
+            }
+            # An atom comparing grouped aggregates of DIFFERENT grains (q11:
+            # per-id `part_total_value` at grain `id` vs global
+            # `germany_total_value` at grain ∅) has no single group whose row
+            # stream carries both: the finer aggregate only cross-joins the
+            # coarser one as an ungrouped value, which a HAVING there can't
+            # reference. They re-converge only at the FINAL merge — where both
+            # are plain input columns — so route the atom there (matching v3's
+            # post-aggregate WHERE). Same-grain comparisons (a self-HAVING, or a
+            # cross-arm HAVING whose counts share a grain) are unaffected and
+            # fall through to the producer-closure logic below.
+            if agg_outputs:
+                agg_grains = {
+                    frozenset(a.grain_components)
+                    for gid, a in attrs.items()
+                    if a.derivation in _EMITS_GROUP_BY
+                    and set(a.primary_members) & agg_outputs
+                }
+                if len(agg_grains) > 1:
+                    attrs[FINAL_NODE_ID].condition_atoms.append(atom)
+                    attrs[FINAL_NODE_ID].conditions.append(str(atom))
+                    condition_group_ids.add(FINAL_NODE_ID)
+                    continue
             if not restricted:
                 attrs[FINAL_NODE_ID].condition_atoms.append(atom)
                 attrs[FINAL_NODE_ID].conditions.append(str(atom))
@@ -572,9 +620,41 @@ def _inject_conditions(
     return condition_group_ids
 
 
+def _virtual_filter_scoped_columns(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
+    d1_gid: str,
+) -> set[str]:
+    """Columns already scoped by a `?` virtual-filter (`count(x ? a > b)`)
+    downstream of `d1_gid`. Such a predicate is the user's per-aggregate
+    selector — its source columns sit in `root_d1` only to feed that CASE-WHEN
+    — so a raw outer filter on those columns must NOT be propagated onto the
+    shared scan: doing so re-narrows a sibling aggregate that deliberately
+    omits the predicate (q21: the unfiltered `distinct_suppliers_per_order`
+    next to the late-only `late_suppliers_per_order`)."""
+    addr_to_nodes: dict[str, list[str]] = {}
+    for nid, ca in concept_attrs.items():
+        addr_to_nodes.setdefault(ca.address, []).append(nid)
+    scoped: set[str] = set()
+    for desc in nx.descendants(group_graph, d1_gid):
+        if attrs[desc].derivation != Derivation.FILTER.value:
+            continue
+        for addr in attrs[desc].primary_members:
+            for nid in addr_to_nodes.get(addr, []):
+                for parent in concept_graph.predecessors(nid):
+                    ed = concept_graph.edges[parent, nid]
+                    if ed.get("kind") == EDGE_KIND_LINEAGE:
+                        scoped.add(concept_attrs[parent].address)
+    return scoped
+
+
 def _propagate_raw_filters_to_d1_roots(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
+    concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
     datasource_columns: list[frozenset[str]],
 ) -> set[str]:
     """A `root_d1` bucket is a pristine DUPLICATE of a main fact scan, split off
@@ -639,10 +719,18 @@ def _propagate_raw_filters_to_d1_roots(
                 scan_cols = cols
         if not scan_cols:
             continue
+        filter_scoped = _virtual_filter_scoped_columns(
+            group_graph, attrs, concept_graph, concept_attrs, d1_gid
+        )
         for m_gid in main_roots:
             for atom in attrs[m_gid].condition_atoms:
                 row_args = {a.address for a in atom.row_arguments}
                 if not row_args <= scan_cols:
+                    continue
+                # A `?` virtual-filter downstream already scopes this predicate
+                # per-aggregate; propagating it to the shared scan would narrow a
+                # sibling aggregate that omits it (q21).
+                if row_args and row_args <= filter_scoped:
                     continue
                 if atom not in attrs[d1_gid].condition_atoms:
                     attrs[d1_gid].condition_atoms.append(atom)
@@ -899,8 +987,17 @@ def _compute_concept_sets(
         if n not in lineage_sub:
             lineage_sub.add_node(n)
 
+    # Row-args of a filter deferred onto FINAL (q11: a per-id aggregate vs a
+    # global one) aren't user outputs, so they aren't in mandatory — but they
+    # must still be demanded, or their producing group builds empty and the
+    # WHERE has nothing to reference. Demand them at FINAL and expose them from
+    # each contributing group below (hidden from the user projection).
+    final_condition_args: set[str] = set()
+    for atom in attrs[FINAL_NODE_ID].condition_atoms:
+        final_condition_args |= {a.address for a in atom.row_arguments}
+    final_condition_args -= mandatory_addresses
     output_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
-    input_concepts[FINAL_NODE_ID] = set(mandatory_addresses)
+    input_concepts[FINAL_NODE_ID] = set(mandatory_addresses) | final_condition_args
 
     # Pre-seed existence demand on each source bucket before the walk. An
     # atom like `x IN <subselect>` puts demand on the existence-arg's
@@ -952,6 +1049,9 @@ def _compute_concept_sets(
                     if derivation_of.get(desc) in GROUPING_DERIVATIONS:
                         mand -= output_concepts[desc]
                 outs |= mand
+                # Expose a FINAL-deferred filter's row-args from whichever group
+                # produces them (the global aggregate exposes its sum to FINAL).
+                outs |= cap_gid & final_condition_args
                 # Same-grain FINAL contributors must expose their shared grain
                 # so the merge joins on the grain key, not on whatever columns
                 # happen to be shared (q39: a cov basic and the aggregate are
@@ -1110,7 +1210,7 @@ def build_group_graph(
         group_graph, attrs, buckets, conditions, mandatory_list
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
-        group_graph, attrs, datasource_columns or []
+        group_graph, attrs, concept_graph, concept_attrs, datasource_columns or []
     )
     _color_phases(group_graph, condition_group_ids)
     if mandatory_list is not None:

@@ -30,6 +30,7 @@ from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
     StrategyNode,
     resolve_concept_map,
+    resolve_existence_map,
 )
 from trilogy.core.processing.utility import find_nullable_concepts
 from trilogy.utility import unique
@@ -513,6 +514,9 @@ class MergeNode(StrategyNode):
             datasources=final_datasets,
             source_type=self.source_type,
             source_map=source_map,
+            existence_source_map=resolve_existence_map(
+                final_datasets, self.existence_concepts
+            ),
             joins=qd_joins,
             grain=grain,
             nullable_concepts=[

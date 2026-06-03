@@ -1,14 +1,14 @@
 # TPC-H v3-vs-v4 parity
 
-- match: 17
-- mismatch: 6
-- v4_error: 4
+- match: 22
+- mismatch: 4
+- v4_error: 1
 - v3_error: 1
 
 | Query | Status | v3 rows | v4 rows |
 | --- | --- | --- | --- |
 | 01 | match | 4 | 4 |
-| 02 | v4_error | 44 | None |
+| 02 | match | 44 | 44 |
 | 03 | match | 10 | 10 |
 | 04 | match | 5 | 5 |
 | 05 | match | 5 | 5 |
@@ -17,7 +17,7 @@
 | 08 | match | 2 | 2 |
 | 09 | match | 175 | 175 |
 | 10 | v4_error | 20 | None |
-| 11 | v4_error | 2541 | None |
+| 11 | match | 2541 | 2541 |
 | 12 | match | 2 | 2 |
 | 13 | match | 37 | 37 |
 | 14 | match | 1 | 1 |
@@ -26,12 +26,12 @@
 | 17 | match | 1 | 1 |
 | 18 | mismatch | 5 | 100 |
 | 19 | match | 1 | 1 |
-| 20 | v4_error | 9 | None |
-| 21 | mismatch | 47 | 0 |
+| 20 | match | 9 | 9 |
+| 21 | match | 47 | 47 |
 | 22 | mismatch | 7 | 0 |
 | adhoc01 | mismatch | 100 | 100 |
 | adhoc02 | v3_error | None | None |
 | adhoc03 | mismatch | 1 | 1 |
 | adhoc04 | match | 122 | 122 |
 | adhoc05 | match | 1 | 1 |
-| adhoc07 | mismatch | 20 | 20 |
+| adhoc07 | match | 20 | 20 |

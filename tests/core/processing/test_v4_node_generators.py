@@ -16,12 +16,14 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.build import (
     BuildComparison,
     BuildHavingClause,
+    BuildSubselectComparison,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
-    _merge_external_having_args,
+    _resolve_and_inject_condition,
+    _resolve_condition_sources,
     resolve_rowset,
     search_concepts,
 )
@@ -289,17 +291,15 @@ class TestRowset:
         )
 
 
-class TestMergeExternalHavingArgs:
-    """`_merge_external_having_args` cross-joins in any inner-HAVING argument the
-    producer doesn't expose — a comparison against a SEPARATE scalar rowset
-    (q14 `bucket_sum_l0 > avg_sales.average_sales`)."""
+class TestConditionInjection:
+    """Condition injection keeps row args and existence args on distinct paths."""
 
     def _inner(self, env, benv):
         node = _search(env, benv, ["local.store_total", "local.store_id"]).strategy_node
         assert node is not None
         return node
 
-    def test_cross_joins_unproduced_scalar(self):
+    def test_row_args_are_merged_before_injection(self):
         env, benv = _build(HAVING_EXTERNAL_MODEL)
         inner = self._inner(env, benv)
         assert "local.avg_value" not in {c.address for c in inner.output_concepts}
@@ -310,19 +310,24 @@ class TestMergeExternalHavingArgs:
                 operator=ComparisonOperator.GT,
             )
         )
-        merged = _merge_external_having_args(
+        injected = _resolve_and_inject_condition(
             inner,
             having,
-            benv,
-            generate_graph(benv),
-            V4History(base_environment=env),
+            list(inner.output_concepts),
+            environment=benv,
+            graph=generate_graph(benv),
+            history=V4History(base_environment=env),
             depth=0,
         )
-        assert isinstance(merged, MergeNode)
-        assert inner in merged.parents
-        assert "local.avg_value" in {c.address for c in merged.output_concepts}
+        assert isinstance(injected, SelectNode)
+        assert injected.conditions is not None
+        assert isinstance(injected.parents[0], MergeNode)
+        assert inner in injected.parents[0].parents
+        assert "local.avg_value" in {
+            c.address for c in injected.parents[0].output_concepts
+        }
 
-    def test_noop_when_every_having_arg_produced(self):
+    def test_no_sources_when_row_args_already_produced(self):
         env, benv = _build(HAVING_EXTERNAL_MODEL)
         inner = self._inner(env, benv)
         having = BuildHavingClause(
@@ -332,19 +337,40 @@ class TestMergeExternalHavingArgs:
                 operator=ComparisonOperator.GT,
             )
         )
-        result = _merge_external_having_args(
+        sources = _resolve_condition_sources(
             inner,
             having,
-            benv,
-            generate_graph(benv),
-            V4History(base_environment=env),
+            environment=benv,
+            graph=generate_graph(benv),
+            history=V4History(base_environment=env),
             depth=0,
         )
-        assert result is inner
+        assert not sources.row_parents
+        assert not sources.existence_parents
 
-    def test_noop_when_external_args_do_not_resolve(self, monkeypatch):
-        """If the external-arg sub-plan resolves to no node, fall back to the
-        unmerged producer rather than dereferencing a missing strategy node."""
+    def test_existence_args_use_side_channel_sources(self):
+        env, benv = _build(HAVING_EXTERNAL_MODEL)
+        inner = self._inner(env, benv)
+        condition = BuildWhereClause(
+            conditional=BuildSubselectComparison(
+                left=benv.concepts["local.store_id"],
+                right=benv.concepts["local.avg_value"],
+                operator=ComparisonOperator.IN,
+            )
+        )
+        sources = _resolve_condition_sources(
+            inner,
+            condition,
+            environment=benv,
+            graph=generate_graph(benv),
+            history=V4History(base_environment=env),
+            depth=0,
+        )
+        assert not sources.row_parents
+        assert sources.existence_parents
+        assert [c.address for c in sources.existence_concepts] == ["local.avg_value"]
+
+    def test_unresolved_row_args_raise(self, monkeypatch):
         import types
 
         import trilogy.core.processing.concept_strategies_v4 as cs
@@ -361,15 +387,15 @@ class TestMergeExternalHavingArgs:
         monkeypatch.setattr(
             cs, "search_concepts", lambda **_: types.SimpleNamespace(strategy_node=None)
         )
-        result = _merge_external_having_args(
-            inner,
-            having,
-            benv,
-            generate_graph(benv),
-            V4History(base_environment=env),
-            depth=0,
-        )
-        assert result is inner
+        with pytest.raises(ValueError, match="condition row arguments"):
+            _resolve_condition_sources(
+                inner,
+                having,
+                environment=benv,
+                graph=generate_graph(benv),
+                history=V4History(base_environment=env),
+                depth=0,
+            )
 
 
 # ----- multi-group assembly (star enrichment / dedup / having) ---------

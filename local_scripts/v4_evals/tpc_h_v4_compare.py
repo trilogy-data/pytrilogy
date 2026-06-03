@@ -34,19 +34,20 @@ DATASET = TPCH_DIR / "memory"
 OUT_DIR = Path(__file__).resolve().parent / "tpc_h_compare"
 
 # v4-attributable parity failures (crash or wrong rows) — flagged with * in
-# the run output. adhoc01 + adhoc07 are fan-out bugs the targeted suite tests
-# don't catch; this row-level parity check does.
+# the run output. adhoc01 is a fan-out bug the targeted suite tests don't
+# catch; this row-level parity check does.
+#   10 = missing join source (nation.id)
+#   18 = fan-out + unapplied HAVING (qty>300)
+#   21 = outer filter pushed into shared by-order aggregate scan → contradiction
+#   22 = global conditional aggregate (avg ? ...) loses its avg() wrapper
+#   adhoc01 = window/ratio computed wrong; adhoc03 = count vs key
 KNOWN_FAILING = {
-    "02",
     "10",
-    "11",
     "18",
-    "20",
     "21",
     "22",
     "adhoc01",
     "adhoc03",
-    "adhoc07",
 }
 
 

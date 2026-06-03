@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (0 rows) |
-| reference execution | OK (0 rows) |
+| v4 execution | OK (92 rows) |
+| reference execution | OK (92 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 0 (0 distinct)
-ref rows: 0 (0 distinct)
+v4 rows: 92 (92 distinct)
+ref rows: 92 (92 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3239 | 69 | 8.02 ms |
-| reference | 3573 | 71 | 10.69 ms |
-| v4 / ref | 0.91x | 0.97x | 0.75x |
+| v4 | 3668 | 80 | 73.98 ms |
+| reference | 3573 | 71 | 87.99 ms |
+| v4 / ref | 1.03x | 1.13x | 0.84x |
 
 ## Preql
 
@@ -68,6 +68,17 @@ limit 100
 ```sql
 WITH 
 thoughtful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
+    "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
+     'CATALOG'  as "sales_sales_channel"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+WHERE
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" is not null
+
+UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",

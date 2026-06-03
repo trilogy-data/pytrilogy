@@ -1040,6 +1040,9 @@ class QueryDatasource:
         final_source_map: defaultdict[
             str, Set[Union[BuildDatasource, QueryDatasource, UnnestJoin]]
         ] = defaultdict(set)
+        final_existence_source_map: defaultdict[
+            str, Set[Union[BuildDatasource, QueryDatasource]]
+        ] = defaultdict(set)
 
         # add our sources
         for key in self.source_map:
@@ -1050,6 +1053,13 @@ class QueryDatasource:
         for key in other.source_map:
             if key not in final_source_map:
                 final_source_map[key] = other.source_map[key]
+        for key in self.existence_source_map:
+            final_existence_source_map[key] = self.existence_source_map[key].union(
+                other.existence_source_map.get(key, set())
+            )
+        for key in other.existence_source_map:
+            if key not in final_existence_source_map:
+                final_existence_source_map[key] = other.existence_source_map[key]
 
         # if a ds was merged (to combine columns), we need to update the source map
         # to use the merged item
@@ -1057,6 +1067,15 @@ class QueryDatasource:
             final_source_map[k] = set(
                 merged_datasources.get(x.safe_identifier, x) for x in list(v)
             )
+        for ex_key, ex_sources in final_existence_source_map.items():
+            updated_existence_sources: Set[Union[BuildDatasource, QueryDatasource]] = (
+                set()
+            )
+            for source in ex_sources:
+                updated_existence_sources.add(
+                    merged_datasources.get(source.safe_identifier, source)
+                )
+            final_existence_source_map[ex_key] = updated_existence_sources
         self_hidden: set[str] = self.hidden_concepts or set()
         other_hidden: set[str] = other.hidden_concepts or set()
         # hidden is the minimum overlapping set
@@ -1077,6 +1096,7 @@ class QueryDatasource:
                 self.output_concepts + other.output_concepts, "address"
             ),
             source_map=final_source_map,
+            existence_source_map=final_existence_source_map,
             datasources=list(merged_datasources.values()),
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),

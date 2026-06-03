@@ -1,0 +1,34 @@
+# Root cause: a `by`-aggregate used in WHERE alongside a sibling `by`-aggregate
+# whose `?` filter encodes the SAME predicate as an outer raw filter. v4's
+# `_propagate_raw_filters_to_d1_roots` pushed the raw `flag = true` onto the
+# shared pristine d1 scan, narrowing BOTH counts — so the unfiltered count and
+# the `? flag`-filtered count became equal and the `total > flagged` test was
+# never satisfiable (0 rows). v3 keeps the d1 scan pristine: the unfiltered
+# count sees all rows, the `?` count applies its own CASE-WHEN.
+# Source: tests/modeling/tpc_h/query21.preql (late vs distinct suppliers).
+key id int;
+key line int;
+property <id, line>.flag bool;
+
+datasource raw (
+    id: id,
+    line: line,
+    flag: flag
+)
+grain (id, line)
+query '''
+select 1 as id, 1 as line, true as flag
+union all
+select 1, 2, false
+union all
+select 2, 1, true
+union all
+select 3, 1, false
+''';
+
+auto total_lines <- count(line) by id;
+auto flagged_lines <- count(line ? flag = true) by id;
+
+WHERE flag = true and total_lines > flagged_lines
+SELECT id, count(line) -> numlines
+ORDER BY id asc;
