@@ -28,6 +28,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildGrain,
+    BuildHavingClause,
     BuildMultiSelectLineage,
     BuildRowsetItem,
     BuildSelectLineage,
@@ -256,6 +257,51 @@ def _resolve_multiselect(
     )
 
 
+def _merge_external_having_args(
+    inner_node: StrategyNode,
+    having: BuildHavingClause,
+    inner_env: BuildEnvironment,
+    inner_g: ReferenceGraph,
+    history: "V4History",
+    depth: int,
+) -> StrategyNode:
+    """Cross-join in any HAVING arg the inner producer doesn't already expose.
+
+    A HAVING can compare against a SEPARATE scalar rowset (q14 `bucket_sum_l0 >
+    avg_sales.average_sales`). Plan those external args on their own and
+    cross-join them in on their (empty) grain — folding them into the main
+    search would pull the scalar into this rowset's grain and mis-bucket it, so
+    each stays a self-contained sub-plan. Returns `inner_node` unchanged when
+    every HAVING arg is already produced (or the external args don't resolve)."""
+    produced_addrs = {o.address for o in inner_node.output_concepts}
+    extra_args = [
+        c for c in having.concept_arguments if c.address not in produced_addrs
+    ]
+    if not extra_args:
+        return inner_node
+    extra_info = search_concepts(
+        mandatory_list=extra_args,
+        history=history,
+        environment=inner_env,
+        depth=depth + 1,
+        g=inner_g,
+        conditions=[],
+    )
+    if extra_info.strategy_node is None:
+        return inner_node
+    merged_outputs = unique(
+        list(inner_node.output_concepts)
+        + list(extra_info.strategy_node.output_concepts),
+        "address",
+    )
+    return MergeNode(
+        input_concepts=merged_outputs,
+        output_concepts=merged_outputs,
+        environment=inner_env,
+        parents=[inner_node, extra_info.strategy_node],
+    )
+
+
 def resolve_rowset(
     outputs: list[BuildConcept],
     environment: BuildEnvironment,
@@ -312,39 +358,11 @@ def resolve_rowset(
 
     # Inner HAVING is a post-aggregate filter over the inner producer (mirrors
     # the HAVING wrap in `get_query_node`).
-    having = getattr(built, "having_clause", None)
+    having = built.having_clause
     if having is not None:
-        base = inner_node
-        # A HAVING can compare against a SEPARATE scalar rowset
-        # (q14 `bucket_sum_l0 > avg_sales.average_sales`). Plan those external
-        # args on their own and cross-join them in — folding them into the main
-        # search would pull the scalar into this rowset's grain and mis-bucket
-        # it. Each is a self-contained sub-plan, joined on its (empty) grain.
-        produced_addrs = {o.address for o in inner_node.output_concepts}
-        extra_args = [
-            c for c in having.concept_arguments if c.address not in produced_addrs
-        ]
-        if extra_args:
-            extra_info = search_concepts(
-                mandatory_list=extra_args,
-                history=history,
-                environment=inner_env,
-                depth=depth + 1,
-                g=inner_g,
-                conditions=[],
-            )
-            if extra_info.strategy_node is not None:
-                merged_outputs = unique(
-                    list(inner_node.output_concepts)
-                    + list(extra_info.strategy_node.output_concepts),
-                    "address",
-                )
-                base = MergeNode(
-                    input_concepts=merged_outputs,
-                    output_concepts=merged_outputs,
-                    environment=inner_env,
-                    parents=[inner_node, extra_info.strategy_node],
-                )
+        base = _merge_external_having_args(
+            inner_node, having, inner_env, inner_g, history, depth
+        )
         combined = (
             BuildConditional(
                 left=base.conditions,

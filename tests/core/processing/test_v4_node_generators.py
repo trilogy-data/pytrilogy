@@ -13,10 +13,15 @@ import pytest
 from trilogy import Environment
 from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models.build import BuildComparison, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildHavingClause,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
+    _merge_external_having_args,
     resolve_rowset,
     search_concepts,
 )
@@ -207,6 +212,20 @@ order by store_id desc;
 """
 
 
+HAVING_EXTERNAL_MODEL = """
+key order_id int;
+key store_id int;
+property order_id.value float;
+
+datasource orders (order_id:order_id, store_id:store_id, value:value)
+    grain (order_id)
+    query '''select 1 as order_id, 1 as store_id, 2.0 as value''';
+
+auto store_total <- sum(value) by store_id;
+auto avg_value <- avg(value);
+"""
+
+
 class TestRowset:
     def test_rowset_resolves_end_to_end(self):
         env, benv = _build(ROWSET_MODEL)
@@ -268,6 +287,89 @@ class TestRowset:
             )
             is None
         )
+
+
+class TestMergeExternalHavingArgs:
+    """`_merge_external_having_args` cross-joins in any inner-HAVING argument the
+    producer doesn't expose — a comparison against a SEPARATE scalar rowset
+    (q14 `bucket_sum_l0 > avg_sales.average_sales`)."""
+
+    def _inner(self, env, benv):
+        node = _search(env, benv, ["local.store_total", "local.store_id"]).strategy_node
+        assert node is not None
+        return node
+
+    def test_cross_joins_unproduced_scalar(self):
+        env, benv = _build(HAVING_EXTERNAL_MODEL)
+        inner = self._inner(env, benv)
+        assert "local.avg_value" not in {c.address for c in inner.output_concepts}
+        having = BuildHavingClause(
+            conditional=BuildComparison(
+                left=benv.concepts["local.store_total"],
+                right=benv.concepts["local.avg_value"],
+                operator=ComparisonOperator.GT,
+            )
+        )
+        merged = _merge_external_having_args(
+            inner,
+            having,
+            benv,
+            generate_graph(benv),
+            V4History(base_environment=env),
+            depth=0,
+        )
+        assert isinstance(merged, MergeNode)
+        assert inner in merged.parents
+        assert "local.avg_value" in {c.address for c in merged.output_concepts}
+
+    def test_noop_when_every_having_arg_produced(self):
+        env, benv = _build(HAVING_EXTERNAL_MODEL)
+        inner = self._inner(env, benv)
+        having = BuildHavingClause(
+            conditional=BuildComparison(
+                left=benv.concepts["local.store_total"],
+                right=5,
+                operator=ComparisonOperator.GT,
+            )
+        )
+        result = _merge_external_having_args(
+            inner,
+            having,
+            benv,
+            generate_graph(benv),
+            V4History(base_environment=env),
+            depth=0,
+        )
+        assert result is inner
+
+    def test_noop_when_external_args_do_not_resolve(self, monkeypatch):
+        """If the external-arg sub-plan resolves to no node, fall back to the
+        unmerged producer rather than dereferencing a missing strategy node."""
+        import types
+
+        import trilogy.core.processing.concept_strategies_v4 as cs
+
+        env, benv = _build(HAVING_EXTERNAL_MODEL)
+        inner = self._inner(env, benv)
+        having = BuildHavingClause(
+            conditional=BuildComparison(
+                left=benv.concepts["local.store_total"],
+                right=benv.concepts["local.avg_value"],
+                operator=ComparisonOperator.GT,
+            )
+        )
+        monkeypatch.setattr(
+            cs, "search_concepts", lambda **_: types.SimpleNamespace(strategy_node=None)
+        )
+        result = _merge_external_having_args(
+            inner,
+            having,
+            benv,
+            generate_graph(benv),
+            V4History(base_environment=env),
+            depth=0,
+        )
+        assert result is inner
 
 
 # ----- multi-group assembly (star enrichment / dedup / having) ---------

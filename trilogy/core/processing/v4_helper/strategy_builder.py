@@ -204,42 +204,6 @@ def _parent_nodes_for(
     return parents
 
 
-def _projectable(concept: BuildConcept, available: set[str]) -> bool:
-    """Renderable as a pure row-wise projection of `available` columns — i.e.
-    without re-aggregating or re-windowing.
-
-    Stricter than `_arg_satisfiable`: a grouping-derived concept (aggregate /
-    window / group_to) can only be used if a parent already exposes it. Its
-    *input* column being available is NOT enough — re-deriving it inline needs
-    a GROUP BY/OVER that a non-grouping projection doesn't have, which renders
-    as `INVALID_REFERENCE_BUG` (q54 absorbing `num_customers` off its raw
-    count input)."""
-    cache: dict[str, bool] = {}
-
-    def go(c: BuildConcept) -> bool:
-        if c.address in available:
-            return True
-        if c.address in cache:
-            return cache[c.address]
-        if c.derivation in GROUPING_DERIVATIONS or c.lineage is None:
-            cache[c.address] = False
-            return False
-        cache[c.address] = False  # break cycles conservatively
-        args = list(c.lineage.concept_arguments)
-        if isinstance(c.lineage, BuildFilterItem):
-            existence = {
-                ec.address
-                for grp in (c.lineage.where.existence_arguments or ())
-                for ec in grp
-            } - {r.address for r in c.lineage.where.row_arguments}
-            args = [a for a in args if a.address not in existence]
-        result = all(go(a) for a in args)
-        cache[c.address] = result
-        return result
-
-    return go(concept)
-
-
 def _fold_passthrough_parents(
     parents: list[StrategyNode], *, final: bool = False
 ) -> list[StrategyNode]:
@@ -255,22 +219,15 @@ def _fold_passthrough_parents(
 
     `final=True` is the stricter FINAL-assembly mode, where the contributor set
     also contains genuine GroupNode/Window/Filter barriers (not just sibling
-    projections of one scan). There it (a) requires A to itself be a
-    row-preserving projection — dissolving a GroupNode would drop a real
-    aggregation barrier — and (b) checks renderability with `_projectable`, not
-    `_arg_satisfiable`, so an aggregate/window output is only foldable when a
-    parent already exposes it. This collapses the q77 catalog/store/web
-    cross-joins (a grouping-key rename or a coalesce of one aggregate that the
-    sibling already sources) without touching the per-group behavior.
+    projections of one scan). There it requires A to itself be a row-preserving
+    projection — dissolving a GroupNode would drop a real aggregation barrier.
+    This collapses the q77 catalog/store/web cross-joins (a grouping-key rename
+    or a coalesce of one aggregate that the sibling already sources) without
+    touching the per-group behavior.
 
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
     the parent (it's an input) and derives the rest inline from those inputs."""
-    satisfiable = (
-        (lambda o, avail: _projectable(o, avail))
-        if final
-        else (lambda o, avail: _arg_satisfiable(o, avail, set(), {}))
-    )
     dropped: set[int] = set()
     for b in parents:
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
@@ -283,7 +240,9 @@ def _fold_passthrough_parents(
             # its rows are a real barrier, not a re-derivable projection.
             if final and (not isinstance(a, SelectNode) or a.force_group):
                 continue
-            if not all(satisfiable(o, available) for o in a.output_concepts):
+            if not all(
+                _arg_satisfiable(o, available, set(), {}) for o in a.output_concepts
+            ):
                 continue
             in_addrs = {c.address for c in b.input_concepts}
             out_addrs = {c.address for c in b.output_concepts}
