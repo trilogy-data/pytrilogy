@@ -201,19 +201,17 @@ select enroll.student_id;
 # NULLs and gives the wrong count.
 import enrollments as enroll;
 
-# Presence of each (last_name, first_name, term) tuple within each campus.
-auto in_north <- sum(case when enroll.campus = 'north' then 1 else 0 end)
-    by enroll.student.last_name, enroll.student.first_name, enroll.term;
-auto in_south <- sum(case when enroll.campus = 'south' then 1 else 0 end)
-    by enroll.student.last_name, enroll.student.first_name, enroll.term;
-auto in_west <- sum(case when enroll.campus = 'west' then 1 else 0 end)
-    by enroll.student.last_name, enroll.student.first_name, enroll.term;
+# Presence of each (student_id, course) tuple among completed vs open enrollments.
+auto in_completed <- sum(case when enroll.completed = true then 1 else 0 end)
+    by enroll.student_id, enroll.course;
+auto in_open <- sum(case when enroll.completed = false then 1 else 0 end)
+    by enroll.student_id, enroll.course;
 
 select
-    # intersection: tuples appearing in ALL three campuses
-    sum(case when in_north > 0 and in_south > 0 and in_west > 0 then 1 else 0 end) as in_all_three,
-    # difference: tuples in north but NEITHER south nor west (north EXCEPT others)
-    sum(case when in_north > 0 and in_south = 0 and in_west = 0 then 1 else 0 end) as north_only,
+    # intersection: tuples appearing in BOTH sets
+    sum(case when in_completed > 0 and in_open > 0 then 1 else 0 end) as in_both,
+    # difference: tuples completed but never open (completed EXCEPT open)
+    sum(case when in_completed > 0 and in_open = 0 then 1 else 0 end) as completed_only,
 ;
 """,
     ),
@@ -231,20 +229,18 @@ select
 # emitting one row per distinct tuple. Then aggregate over the rowset's columns.
 import enrollments as enroll;
 
-# Collapse duplicate (student, course, term, credits) rows to one each.
-rowset unique_enroll <- where enroll.year = 2020
-select
-    enroll.student_id,
-    enroll.course,
-    enroll.term,
-    enroll.credits,
+# Collapse repeat (student, course) enrollments to one row each (a student who
+# took a course in multiple years counts once).
+rowset unique_sc <- select
+    enroll.student_id as sid,
+    enroll.course as course,
 ;
 
-# Sum over the deduplicated rows — identical tuples counted once.
+# Count over the deduplicated rows — identical (student, course) pairs counted once.
 select
-    unique_enroll.term,
-    sum(unique_enroll.credits) as total_credits,
-order by unique_enroll.term asc;
+    unique_sc.course,
+    count(unique_sc.sid) as distinct_students,
+order by unique_sc.course asc;
 """,
     ),
     SyntaxExample(
@@ -262,19 +258,20 @@ order by unique_enroll.term asc;
 # concepts per level (they mis-rank across the wrong row set).
 import enrollments as enroll;
 
-auto total <- sum(enroll.credits) by rollup enroll.department, enroll.course;
-auto g_dept <- grouping(enroll.department) by rollup enroll.department, enroll.course;
-auto g_course <- grouping(enroll.course) by rollup enroll.department, enroll.course;
-auto level <- g_dept + g_course;   # 0 = leaf, 1 = dept subtotal, 2 = grand total
-auto parent <- case when g_course = 0 then enroll.department else null end;
-auto rnk <- rank(enroll.department, enroll.course)
+auto total <- count(enroll.id) by rollup enroll.course, enroll.year;
+auto g_course <- grouping(enroll.course) by rollup enroll.course, enroll.year;
+auto g_year <- grouping(enroll.year) by rollup enroll.course, enroll.year;
+auto level <- g_course + g_year;   # 0 = leaf, 1 = course subtotal, 2 = grand total
+auto parent <- case when g_year = 0 then enroll.course else null end;
+auto rnk <- rank(enroll.course, enroll.year)
     over (partition by level, parent order by total desc);
 
 select
-    enroll.department,
     enroll.course,
+    enroll.year,
     total,
     level,
+    --parent,
     rnk,
 order by level desc nulls first, parent asc nulls first, rnk asc nulls first
 limit 100;
@@ -289,25 +286,25 @@ limit 100;
         ),
         body="""\
 # When a query filters on a condition computed at a COARSER grain (e.g. "items
-# sold in all 3 channels", "courses offered in every term"), compute that
+# sold in all 3 channels", "courses offered in more than one year"), compute that
 # membership set in its own `rowset` and filter the fine-grain query with `in`.
 # Staging keeps the coarse aggregate from entangling with the fine-grain
 # aggregates (which otherwise re-aggregate / over-count).
 import enrollments as enroll;
 
-# Coarse stage: courses offered in all 3 terms.
-rowset multi_term <- select
-    enroll.course,
-    --count_distinct(enroll.term) as term_count,
-having term_count = 3
+# Coarse stage: courses offered in more than one year.
+rowset multi_year <- select
+    enroll.course as course,
+    --count_distinct(enroll.year) as year_count,
+having year_count > 1
 ;
 
-# Fine stage: total credits per department, only for those courses.
-where enroll.course in multi_term.course
+# Fine stage: enrollments per course, only for those courses.
+where enroll.course in multi_year.course
 select
-    enroll.department,
-    sum(enroll.credits) as total_credits,
-order by total_credits desc
+    enroll.course,
+    count(enroll.id) as enrollments,
+order by enrollments desc
 limit 100;
 """,
     ),
