@@ -22,6 +22,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import combine_condition_atoms
 from trilogy.core.processing.nodes import (
+    FilterNode,
     GroupNode,
     History,
     MergeNode,
@@ -228,15 +229,19 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     also collapses the q77 catalog/store/web cross-joins (a grouping-key rename
     or a coalesce of one aggregate the sibling already sources).
 
-    A grouping/window/filter contributor A is NEVER dissolved: its rows are a
-    real barrier (an aggregate / window / semijoin), not a row-wise re-derivable
-    projection. A finer-grain sibling can spuriously look able to "render" a
-    GLOBAL aggregate's output by recomputing the aggregate's inner expression
-    (q22: `avg(acctbal ? ...)` → the bare CASE, silently dropping `avg()`). Only
-    a row-preserving contributor — a SelectNode, or a plain (non-grouping)
-    MergeNode such as a multi-table root scan — is foldable (q09: the root scan
-    folds into the `o_year` projection instead of self-joining on `order_id`
-    and fanning the per-order sum out by lineitem count).
+    A real row-shape barrier A is NEVER dissolved: its rows are an aggregate,
+    window, or row-reducing semijoin, not a row-wise re-derivable projection. A
+    finer-grain sibling can spuriously look able to "render" a GLOBAL aggregate's
+    output by recomputing the aggregate's inner expression (q22:
+    `avg(acctbal ? ...)` → the bare CASE, silently dropping `avg()`). Only a
+    row-PRESERVING contributor is foldable: a SelectNode, a plain (non-grouping)
+    MergeNode such as a multi-table root scan (q09: the root scan folds into the
+    `o_year` projection instead of self-joining on `order_id` and fanning the
+    per-order sum out by lineitem count), or a virt-filter FilterNode — a
+    CASE-WHEN projection with no row-reducing WHERE/semijoin (q62:
+    `sum(filter row_counter where days_to_ship <= 30)`, whose `w_substr`
+    dimension projection otherwise joins back on `warehouse_id` alone and fans
+    out the bucket sums).
 
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
@@ -249,9 +254,17 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
                 continue
-            # Never dissolve a grouping/window/filter barrier into a row sibling;
-            # a row-preserving SelectNode or non-grouping MergeNode is foldable.
-            if not isinstance(a, (SelectNode, MergeNode)) or a.force_group:
+            # Never dissolve a row-shape barrier into a row sibling. Foldable:
+            # SelectNode, non-grouping MergeNode, or a row-preserving FilterNode
+            # (a CASE-WHEN virt-filter — no row-reducing WHERE or semijoin).
+            row_preserving_filter = (
+                isinstance(a, FilterNode)
+                and a.conditions is None
+                and not a.existence_concepts
+            )
+            if a.force_group or not (
+                isinstance(a, (SelectNode, MergeNode)) or row_preserving_filter
+            ):
                 continue
             if not all(concept_satisfiable(o, available) for o in a.output_concepts):
                 continue

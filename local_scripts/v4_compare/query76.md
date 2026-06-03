@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9082 | 194 | 174.18 ms |
-| reference | 7468 | 176 | 248.70 ms |
-| v4 / ref | 1.22x | 1.10x | 0.70x |
+| v4 | 10217 | 227 | 178.62 ms |
+| reference | 7468 | 176 | 187.52 ms |
+| v4 / ref | 1.37x | 1.29x | 0.95x |
 
 ## Preql
 
@@ -118,7 +118,7 @@ limit 100
 
 ```sql
 WITH 
-kaput as (
+divergent as (
 SELECT
     "ws_date_date"."D_QOY" as "ws_date_quarter",
     "ws_date_date"."D_YEAR" as "ws_date_year",
@@ -134,7 +134,7 @@ FROM
 WHERE
     "ws_web_sales"."WS_SHIP_CUSTOMER_SK" is null and "ws_web_sales"."WS_ORDER_NUMBER" is not null and "ws_web_sales"."WS_SOLD_DATE_SK" is not null
 ),
-concerned as (
+young as (
 SELECT
     "ss_date_date"."D_QOY" as "ss_date_quarter",
     "ss_date_date"."D_YEAR" as "ss_date_year",
@@ -166,34 +166,37 @@ FROM
 WHERE
     "cs_catalog_sales"."CS_SHIP_ADDR_SK" is null and "cs_catalog_sales"."CS_ORDER_NUMBER" is not null and "cs_catalog_sales"."CS_SOLD_DATE_SK" is not null
 ),
-divergent as (
+uneven as (
 SELECT
-    "kaput"."ws_ext_sales_price" as "ws_ext_sales_price",
-    "kaput"."ws_item_category" as "ws_item_category",
-    "kaput"."ws_item_id" as "ws_item_id",
-    "kaput"."ws_order_number" as "ws_order_number",
+    :_q76_results_channel_a as "_q76_results_channel_a",
+    :_q76_results_channel_b as "_q76_results_channel_b",
+    :_q76_results_channel_c as "_q76_results_channel_c",
+    :_q76_results_col_name_a as "_q76_results_col_name_a",
+    :_q76_results_col_name_b as "_q76_results_col_name_b",
+    :_q76_results_col_name_c as "_q76_results_col_name_c"
+),
+busy as (
+SELECT
+    "divergent"."ws_item_id" as "ws_item_id",
+    "divergent"."ws_order_number" as "ws_order_number",
     CASE
-	WHEN "kaput"."ws_ship_customer_id" is null THEN 1
+	WHEN "divergent"."ws_ship_customer_id" is null THEN 1
 	ELSE 0
 	END as "ws_row_flag"
 FROM
-    "kaput"),
-young as (
+    "divergent"),
+sparkling as (
 SELECT
-    "concerned"."ss_ext_sales_price" as "ss_ext_sales_price",
-    "concerned"."ss_item_category" as "ss_item_category",
-    "concerned"."ss_item_id" as "ss_item_id",
-    "concerned"."ss_ticket_number" as "ss_ticket_number",
+    "young"."ss_item_id" as "ss_item_id",
+    "young"."ss_ticket_number" as "ss_ticket_number",
     CASE
-	WHEN "concerned"."ss_store_id" is null THEN 1
+	WHEN "young"."ss_store_id" is null THEN 1
 	ELSE 0
 	END as "ss_row_flag"
 FROM
-    "concerned"),
+    "young"),
 thoughtful as (
 SELECT
-    "cheerful"."cs_ext_sales_price" as "cs_ext_sales_price",
-    "cheerful"."cs_item_category" as "cs_item_category",
     "cheerful"."cs_item_id" as "cs_item_id",
     "cheerful"."cs_order_number" as "cs_order_number",
     CASE
@@ -202,30 +205,30 @@ SELECT
 	END as "cs_row_flag"
 FROM
     "cheerful"),
-busy as (
+charming as (
 SELECT
+    "divergent"."ws_date_quarter" as "ws_date_quarter",
+    "divergent"."ws_date_year" as "ws_date_year",
     "divergent"."ws_item_category" as "ws_item_category",
-    "kaput"."ws_date_quarter" as "ws_date_quarter",
-    "kaput"."ws_date_year" as "ws_date_year",
-    sum("divergent"."ws_ext_sales_price") as "_q76_results_amt_b",
-    sum("divergent"."ws_row_flag") as "_q76_results_cnt_b"
+    sum("busy"."ws_row_flag") as "_q76_results_cnt_b",
+    sum("divergent"."ws_ext_sales_price") as "_q76_results_amt_b"
 FROM
-    "divergent"
-    FULL JOIN "kaput" on "divergent"."ws_item_id" = "kaput"."ws_item_id" AND "divergent"."ws_order_number" = "kaput"."ws_order_number"
+    "busy"
+    INNER JOIN "divergent" on "busy"."ws_item_id" = "divergent"."ws_item_id" AND "busy"."ws_order_number" = "divergent"."ws_order_number"
 GROUP BY
     1,
     2,
     3),
-sparkling as (
+abhorrent as (
 SELECT
-    "concerned"."ss_date_quarter" as "ss_date_quarter",
-    "concerned"."ss_date_year" as "ss_date_year",
+    "young"."ss_date_quarter" as "ss_date_quarter",
+    "young"."ss_date_year" as "ss_date_year",
     "young"."ss_item_category" as "ss_item_category",
-    sum("young"."ss_ext_sales_price") as "_q76_results_amt_a",
-    sum("young"."ss_row_flag") as "_q76_results_cnt_a"
+    sum("sparkling"."ss_row_flag") as "_q76_results_cnt_a",
+    sum("young"."ss_ext_sales_price") as "_q76_results_amt_a"
 FROM
-    "young"
-    FULL JOIN "concerned" on "young"."ss_item_id" = "concerned"."ss_item_id" AND "young"."ss_ticket_number" = "concerned"."ss_ticket_number"
+    "sparkling"
+    INNER JOIN "young" on "sparkling"."ss_item_id" = "young"."ss_item_id" AND "sparkling"."ss_ticket_number" = "young"."ss_ticket_number"
 GROUP BY
     1,
     2,
@@ -234,76 +237,106 @@ cooperative as (
 SELECT
     "cheerful"."cs_date_quarter" as "cs_date_quarter",
     "cheerful"."cs_date_year" as "cs_date_year",
-    "thoughtful"."cs_item_category" as "cs_item_category",
-    sum("thoughtful"."cs_ext_sales_price") as "_q76_results_amt_c",
+    "cheerful"."cs_item_category" as "cs_item_category",
+    sum("cheerful"."cs_ext_sales_price") as "_q76_results_amt_c",
     sum("thoughtful"."cs_row_flag") as "_q76_results_cnt_c"
 FROM
     "thoughtful"
-    FULL JOIN "cheerful" on "thoughtful"."cs_item_id" = "cheerful"."cs_item_id" AND "thoughtful"."cs_order_number" = "cheerful"."cs_order_number"
+    INNER JOIN "cheerful" on "thoughtful"."cs_item_id" = "cheerful"."cs_item_id" AND "thoughtful"."cs_order_number" = "cheerful"."cs_order_number"
 GROUP BY
     1,
     2,
     3),
-protective as (
+premium as (
 SELECT
-    "busy"."_q76_results_amt_b" as "_q76_results_amt_b",
-    "busy"."_q76_results_cnt_b" as "_q76_results_cnt_b",
-    "busy"."ws_date_quarter" as "_q76_results_qoy_b",
-    "busy"."ws_date_quarter" as "d_qoy",
-    "busy"."ws_date_year" as "_q76_results_year_b",
-    "busy"."ws_date_year" as "d_year",
-    "busy"."ws_item_category" as "_q76_results_category_b",
-    "busy"."ws_item_category" as "i_category",
-    :_q76_results_channel_b as "_q76_results_channel_b",
-    :_q76_results_channel_b as "channel",
-    :_q76_results_col_name_b as "_q76_results_col_name_b",
-    :_q76_results_col_name_b as "col_name"
+    "charming"."_q76_results_amt_b" as "_q76_results_amt_b",
+    "charming"."_q76_results_cnt_b" as "_q76_results_cnt_b",
+    "charming"."ws_date_quarter" as "_q76_results_qoy_b",
+    "charming"."ws_date_year" as "_q76_results_year_b",
+    "charming"."ws_item_category" as "_q76_results_category_b"
 FROM
-    "busy"),
-sweltering as (
+    "charming"),
+late as (
 SELECT
-    "sparkling"."_q76_results_amt_a" as "_q76_results_amt_a",
-    "sparkling"."_q76_results_cnt_a" as "_q76_results_cnt_a",
-    "sparkling"."ss_date_quarter" as "_q76_results_qoy_a",
-    "sparkling"."ss_date_quarter" as "d_qoy",
-    "sparkling"."ss_date_year" as "_q76_results_year_a",
-    "sparkling"."ss_date_year" as "d_year",
-    "sparkling"."ss_item_category" as "_q76_results_category_a",
-    "sparkling"."ss_item_category" as "i_category",
-    :_q76_results_channel_a as "_q76_results_channel_a",
-    :_q76_results_channel_a as "channel",
-    :_q76_results_col_name_a as "_q76_results_col_name_a",
-    :_q76_results_col_name_a as "col_name"
+    "abhorrent"."_q76_results_amt_a" as "_q76_results_amt_a",
+    "abhorrent"."_q76_results_cnt_a" as "_q76_results_cnt_a",
+    "abhorrent"."ss_date_quarter" as "_q76_results_qoy_a",
+    "abhorrent"."ss_date_year" as "_q76_results_year_a",
+    "abhorrent"."ss_item_category" as "_q76_results_category_a"
 FROM
-    "sparkling"),
+    "abhorrent"),
 abundant as (
 SELECT
     "cooperative"."_q76_results_amt_c" as "_q76_results_amt_c",
     "cooperative"."_q76_results_cnt_c" as "_q76_results_cnt_c",
     "cooperative"."cs_date_quarter" as "_q76_results_qoy_c",
-    "cooperative"."cs_date_quarter" as "d_qoy",
     "cooperative"."cs_date_year" as "_q76_results_year_c",
-    "cooperative"."cs_date_year" as "d_year",
-    "cooperative"."cs_item_category" as "_q76_results_category_c",
-    "cooperative"."cs_item_category" as "i_category",
-    :_q76_results_channel_c as "_q76_results_channel_c",
-    :_q76_results_channel_c as "channel",
-    :_q76_results_col_name_c as "_q76_results_col_name_c",
-    :_q76_results_col_name_c as "col_name"
+    "cooperative"."cs_item_category" as "_q76_results_category_c"
 FROM
-    "cooperative")
+    "cooperative"),
+puzzled as (
 SELECT
-    coalesce("abundant"."channel","protective"."channel","sweltering"."channel") as "q76_results_channel",
-    coalesce("abundant"."col_name","protective"."col_name","sweltering"."col_name") as "q76_results_col_name",
-    coalesce("abundant"."d_year","protective"."d_year","sweltering"."d_year") as "q76_results_d_year",
-    coalesce("abundant"."d_qoy","protective"."d_qoy","sweltering"."d_qoy") as "q76_results_d_qoy",
-    coalesce("abundant"."i_category","protective"."i_category","sweltering"."i_category") as "q76_results_i_category",
-    coalesce("sweltering"."_q76_results_cnt_a","protective"."_q76_results_cnt_b","abundant"."_q76_results_cnt_c") as "q76_results_sales_cnt",
-    coalesce("sweltering"."_q76_results_amt_a","protective"."_q76_results_amt_b","abundant"."_q76_results_amt_c") as "q76_results_sales_amt"
+    "premium"."_q76_results_amt_b" as "_q76_results_amt_b",
+    "premium"."_q76_results_category_b" as "_q76_results_category_b",
+    "premium"."_q76_results_category_b" as "i_category",
+    "premium"."_q76_results_cnt_b" as "_q76_results_cnt_b",
+    "premium"."_q76_results_qoy_b" as "_q76_results_qoy_b",
+    "premium"."_q76_results_qoy_b" as "d_qoy",
+    "premium"."_q76_results_year_b" as "_q76_results_year_b",
+    "premium"."_q76_results_year_b" as "d_year",
+    "uneven"."_q76_results_channel_b" as "_q76_results_channel_b",
+    "uneven"."_q76_results_channel_b" as "channel",
+    "uneven"."_q76_results_col_name_b" as "_q76_results_col_name_b",
+    "uneven"."_q76_results_col_name_b" as "col_name"
 FROM
-    "sweltering"
-    FULL JOIN "protective" on "sweltering"."channel" is not distinct from "protective"."channel" AND "sweltering"."col_name" is not distinct from "protective"."col_name" AND "sweltering"."d_qoy" is not distinct from "protective"."d_qoy" AND "sweltering"."d_year" is not distinct from "protective"."d_year" AND "sweltering"."i_category" is not distinct from "protective"."i_category"
-    FULL JOIN "abundant" on coalesce("sweltering"."channel", "protective"."channel") = "abundant"."channel" AND coalesce("sweltering"."col_name", "protective"."col_name") = "abundant"."col_name" AND coalesce("sweltering"."d_qoy", "protective"."d_qoy") = "abundant"."d_qoy" AND coalesce("sweltering"."d_year", "protective"."d_year") = "abundant"."d_year" AND coalesce("sweltering"."i_category", "protective"."i_category") = "abundant"."i_category"
+    "premium"
+    FULL JOIN "uneven" on 1=1),
+macho as (
+SELECT
+    "late"."_q76_results_amt_a" as "_q76_results_amt_a",
+    "late"."_q76_results_category_a" as "_q76_results_category_a",
+    "late"."_q76_results_category_a" as "i_category",
+    "late"."_q76_results_cnt_a" as "_q76_results_cnt_a",
+    "late"."_q76_results_qoy_a" as "_q76_results_qoy_a",
+    "late"."_q76_results_qoy_a" as "d_qoy",
+    "late"."_q76_results_year_a" as "_q76_results_year_a",
+    "late"."_q76_results_year_a" as "d_year",
+    "uneven"."_q76_results_channel_a" as "_q76_results_channel_a",
+    "uneven"."_q76_results_channel_a" as "channel",
+    "uneven"."_q76_results_col_name_a" as "_q76_results_col_name_a",
+    "uneven"."_q76_results_col_name_a" as "col_name"
+FROM
+    "late"
+    FULL JOIN "uneven" on 1=1),
+yummy as (
+SELECT
+    "abundant"."_q76_results_amt_c" as "_q76_results_amt_c",
+    "abundant"."_q76_results_category_c" as "_q76_results_category_c",
+    "abundant"."_q76_results_category_c" as "i_category",
+    "abundant"."_q76_results_cnt_c" as "_q76_results_cnt_c",
+    "abundant"."_q76_results_qoy_c" as "_q76_results_qoy_c",
+    "abundant"."_q76_results_qoy_c" as "d_qoy",
+    "abundant"."_q76_results_year_c" as "_q76_results_year_c",
+    "abundant"."_q76_results_year_c" as "d_year",
+    "uneven"."_q76_results_channel_c" as "_q76_results_channel_c",
+    "uneven"."_q76_results_channel_c" as "channel",
+    "uneven"."_q76_results_col_name_c" as "_q76_results_col_name_c",
+    "uneven"."_q76_results_col_name_c" as "col_name"
+FROM
+    "abundant"
+    FULL JOIN "uneven" on 1=1)
+SELECT
+    coalesce("macho"."channel","puzzled"."channel","yummy"."channel") as "q76_results_channel",
+    coalesce("macho"."col_name","puzzled"."col_name","yummy"."col_name") as "q76_results_col_name",
+    coalesce("macho"."d_year","puzzled"."d_year","yummy"."d_year") as "q76_results_d_year",
+    coalesce("macho"."d_qoy","puzzled"."d_qoy","yummy"."d_qoy") as "q76_results_d_qoy",
+    coalesce("macho"."i_category","puzzled"."i_category","yummy"."i_category") as "q76_results_i_category",
+    coalesce("macho"."_q76_results_cnt_a","puzzled"."_q76_results_cnt_b","yummy"."_q76_results_cnt_c") as "q76_results_sales_cnt",
+    coalesce("macho"."_q76_results_amt_a","puzzled"."_q76_results_amt_b","yummy"."_q76_results_amt_c") as "q76_results_sales_amt"
+FROM
+    "macho"
+    FULL JOIN "puzzled" on "macho"."channel" is not distinct from "puzzled"."channel" AND "macho"."col_name" is not distinct from "puzzled"."col_name" AND "macho"."d_qoy" is not distinct from "puzzled"."d_qoy" AND "macho"."d_year" is not distinct from "puzzled"."d_year" AND "macho"."i_category" is not distinct from "puzzled"."i_category"
+    FULL JOIN "yummy" on coalesce("macho"."channel", "puzzled"."channel") = "yummy"."channel" AND coalesce("macho"."col_name", "puzzled"."col_name") = "yummy"."col_name" AND coalesce("macho"."d_qoy", "puzzled"."d_qoy") = "yummy"."d_qoy" AND coalesce("macho"."d_year", "puzzled"."d_year") = "yummy"."d_year" AND coalesce("macho"."i_category", "puzzled"."i_category") = "yummy"."i_category"
 ORDER BY 
     "q76_results_channel" asc nulls first,
     "q76_results_col_name" asc nulls first,

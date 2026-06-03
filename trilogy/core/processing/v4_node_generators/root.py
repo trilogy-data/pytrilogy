@@ -64,6 +64,12 @@ def gen_root(
     # side has no source CTE and the renderer emits INVALID_REFERENCE_BUG).
     # The wrapper projects only the originally-requested `outputs` — the
     # extra row args we added for v3 stay in the inner CTE.
+    #
+    # `combine_existing=False`: the inner `node` ALREADY applied `row_conditions`
+    # (year/quarter etc.) and need not re-expose those filter-only columns. The
+    # wrapper must emit ONLY the existence atom — re-AND-ing the row conditions
+    # here references columns the inner CTE consumed and dropped (q45: a scalar
+    # `date.year = 2001` next to an `item IN <rowset>`, INVALID_REFERENCE_BUG).
     return inject_condition_at_node(
         node,
         existence_conditions,
@@ -71,4 +77,5 @@ def gen_root(
         environment=environment,
         sources=ConditionSources(),
         input_concepts=list(node.output_concepts),
+        combine_existing=False,
     )

@@ -18,9 +18,9 @@ ref rows: 44 (44 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9232 | 215 | 52.74 ms |
-| reference | 7495 | 166 | 57.44 ms |
-| v4 / ref | 1.23x | 1.30x | 0.92x |
+| v4 | 10413 | 248 | 45.34 ms |
+| reference | 7495 | 166 | 43.90 ms |
+| v4 / ref | 1.39x | 1.49x | 1.03x |
 
 ## Preql
 
@@ -145,7 +145,7 @@ limit 100
 
 ```sql
 WITH 
-cool as (
+elated as (
 SELECT
     "ws_web_sales"."WS_WEB_PAGE_SK" as "ws_web_page_id",
     sum("ws_web_sales"."WS_EXT_SALES_PRICE") as "_ws_grouped_ws_sales",
@@ -158,7 +158,7 @@ WHERE
 
 GROUP BY
     1),
-sedate as (
+yellow as (
 SELECT
     "wr_web_returns"."WR_WEB_PAGE_SK" as "wr_web_page_id",
     sum("wr_web_returns"."WR_NET_LOSS") as "_wr_grouped_wr_loss",
@@ -171,7 +171,7 @@ WHERE
 
 GROUP BY
     1),
-busy as (
+charming as (
 SELECT
     "ss_store_returns"."SR_STORE_SK" as "ss_return_store_id",
     sum("ss_store_returns"."SR_NET_LOSS") as "_sr_grouped_sr_loss",
@@ -185,7 +185,7 @@ WHERE
 
 GROUP BY
     1),
-late as (
+macho as (
 SELECT
     "ss_store_sales"."SS_STORE_SK" as "ss_store_id",
     sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "_ss_grouped_ss_sales",
@@ -224,34 +224,40 @@ WHERE
 
 GROUP BY
     1),
-wary as (
+sparkling as (
 SELECT
-    "cool"."_ws_grouped_ws_profit" as "_ws_grouped_ws_profit",
-    "cool"."_ws_grouped_ws_sales" as "_ws_grouped_ws_sales",
-    "cool"."ws_web_page_id" as "_ws_grouped_ws_wp_id"
-FROM
-    "cool"),
-resonant as (
+    :_l0_union_u_channel_c as "_l0_union_u_channel_c",
+    :_l0_union_u_channel_s as "_l0_union_u_channel_s",
+    :_l0_union_u_channel_w as "_l0_union_u_channel_w"
+),
+bewildered as (
 SELECT
-    "sedate"."_wr_grouped_wr_loss" as "_wr_grouped_wr_loss",
-    "sedate"."_wr_grouped_wr_returns" as "_wr_grouped_wr_returns",
-    "sedate"."wr_web_page_id" as "_wr_grouped_wr_wp_id"
+    "elated"."_ws_grouped_ws_profit" as "_ws_grouped_ws_profit",
+    "elated"."_ws_grouped_ws_sales" as "_ws_grouped_ws_sales",
+    "elated"."ws_web_page_id" as "_ws_grouped_ws_wp_id"
 FROM
-    "sedate"),
-protective as (
+    "elated"),
+dapper as (
 SELECT
-    "busy"."_sr_grouped_sr_loss" as "_sr_grouped_sr_loss",
-    "busy"."_sr_grouped_sr_returns" as "_sr_grouped_sr_returns",
-    "busy"."ss_return_store_id" as "_sr_grouped_sr_store_id"
+    "yellow"."_wr_grouped_wr_loss" as "_wr_grouped_wr_loss",
+    "yellow"."_wr_grouped_wr_returns" as "_wr_grouped_wr_returns",
+    "yellow"."wr_web_page_id" as "_wr_grouped_wr_wp_id"
 FROM
-    "busy"),
-scrawny as (
+    "yellow"),
+premium as (
 SELECT
-    "late"."_ss_grouped_ss_profit" as "_ss_grouped_ss_profit",
-    "late"."_ss_grouped_ss_sales" as "_ss_grouped_ss_sales",
-    "late"."ss_store_id" as "_ss_grouped_ss_store_id"
+    "charming"."_sr_grouped_sr_loss" as "_sr_grouped_sr_loss",
+    "charming"."_sr_grouped_sr_returns" as "_sr_grouped_sr_returns",
+    "charming"."ss_return_store_id" as "_sr_grouped_sr_store_id"
 FROM
-    "late"),
+    "charming"),
+friendly as (
+SELECT
+    "macho"."_ss_grouped_ss_profit" as "_ss_grouped_ss_profit",
+    "macho"."_ss_grouped_ss_sales" as "_ss_grouped_ss_sales",
+    "macho"."ss_store_id" as "_ss_grouped_ss_store_id"
+FROM
+    "macho"),
 cooperative as (
 SELECT
     count("wakeful"."_cr_grouped_cr_cc_key") as "_cr_totals_cr_n_groups",
@@ -259,34 +265,34 @@ SELECT
     sum("wakeful"."_cr_grouped_cr_returns_per_cc") as "_cr_totals_cr_total_returns"
 FROM
     "wakeful"),
-bewildered as (
+level as (
 SELECT
-    "wary"."_ws_grouped_ws_profit" as "ws_grouped_ws_profit",
-    "wary"."_ws_grouped_ws_sales" as "ws_grouped_ws_sales",
-    "wary"."_ws_grouped_ws_wp_id" as "ws_grouped_ws_wp_id"
+    "bewildered"."_ws_grouped_ws_profit" as "ws_grouped_ws_profit",
+    "bewildered"."_ws_grouped_ws_sales" as "ws_grouped_ws_sales",
+    "bewildered"."_ws_grouped_ws_wp_id" as "ws_grouped_ws_wp_id"
 FROM
-    "wary"),
-dapper as (
+    "bewildered"),
+courageous as (
 SELECT
-    "resonant"."_wr_grouped_wr_loss" as "wr_grouped_wr_loss",
-    "resonant"."_wr_grouped_wr_returns" as "wr_grouped_wr_returns",
-    "resonant"."_wr_grouped_wr_wp_id" as "wr_grouped_wr_wp_id"
+    "dapper"."_wr_grouped_wr_loss" as "wr_grouped_wr_loss",
+    "dapper"."_wr_grouped_wr_returns" as "wr_grouped_wr_returns",
+    "dapper"."_wr_grouped_wr_wp_id" as "wr_grouped_wr_wp_id"
 FROM
-    "resonant"),
-premium as (
+    "dapper"),
+puzzled as (
 SELECT
-    "protective"."_sr_grouped_sr_loss" as "sr_grouped_sr_loss",
-    "protective"."_sr_grouped_sr_returns" as "sr_grouped_sr_returns",
-    "protective"."_sr_grouped_sr_store_id" as "sr_grouped_sr_store_id"
+    "premium"."_sr_grouped_sr_loss" as "sr_grouped_sr_loss",
+    "premium"."_sr_grouped_sr_returns" as "sr_grouped_sr_returns",
+    "premium"."_sr_grouped_sr_store_id" as "sr_grouped_sr_store_id"
 FROM
-    "protective"),
-friendly as (
+    "premium"),
+kaput as (
 SELECT
-    "scrawny"."_ss_grouped_ss_profit" as "ss_grouped_ss_profit",
-    "scrawny"."_ss_grouped_ss_sales" as "ss_grouped_ss_sales",
-    "scrawny"."_ss_grouped_ss_store_id" as "ss_grouped_ss_store_id"
+    "friendly"."_ss_grouped_ss_profit" as "ss_grouped_ss_profit",
+    "friendly"."_ss_grouped_ss_sales" as "ss_grouped_ss_sales",
+    "friendly"."_ss_grouped_ss_store_id" as "ss_grouped_ss_store_id"
 FROM
-    "scrawny"),
+    "friendly"),
 abundant as (
 SELECT
     "cooperative"."_cr_totals_cr_n_groups" as "cr_totals_cr_n_groups",
@@ -294,70 +300,97 @@ SELECT
     "cooperative"."_cr_totals_cr_total_returns" as "cr_totals_cr_total_returns"
 FROM
     "cooperative"),
-level as (
+wooden as (
 SELECT
-    "bewildered"."ws_grouped_ws_profit" - cast(coalesce("dapper"."wr_grouped_wr_loss",0) as numeric(15,2)) as "u_profit",
-    "bewildered"."ws_grouped_ws_wp_id" as "u_id",
-    :_l0_union_u_channel_w as "u_channel",
-    cast("bewildered"."ws_grouped_ws_sales" as numeric(15,2)) as "u_sales",
-    cast(coalesce("dapper"."wr_grouped_wr_returns",0) as numeric(15,2)) as "u_returns"
+    "level"."ws_grouped_ws_profit" - cast(coalesce("courageous"."wr_grouped_wr_loss",0) as numeric(15,2)) as "_l0_union_u_profit_w",
+    "level"."ws_grouped_ws_wp_id" as "_l0_union_u_id_w",
+    cast("level"."ws_grouped_ws_sales" as numeric(15,2)) as "_l0_union_u_sales_w",
+    cast(coalesce("courageous"."wr_grouped_wr_returns",0) as numeric(15,2)) as "_l0_union_u_returns_w"
 FROM
-    "bewildered"
-    INNER JOIN "dapper" on "bewildered"."ws_grouped_ws_wp_id" = "dapper"."wr_grouped_wr_wp_id"),
-puzzled as (
+    "level"
+    INNER JOIN "courageous" on "level"."ws_grouped_ws_wp_id" = "courageous"."wr_grouped_wr_wp_id"),
+waggish as (
 SELECT
-    "friendly"."ss_grouped_ss_profit" - cast(coalesce("premium"."sr_grouped_sr_loss",0) as numeric(15,2)) as "u_profit",
-    "friendly"."ss_grouped_ss_store_id" as "u_id",
-    :_l0_union_u_channel_s as "u_channel",
-    cast("friendly"."ss_grouped_ss_sales" as numeric(15,2)) as "u_sales",
-    cast(coalesce("premium"."sr_grouped_sr_returns",0) as numeric(15,2)) as "u_returns"
+    "kaput"."ss_grouped_ss_profit" - cast(coalesce("puzzled"."sr_grouped_sr_loss",0) as numeric(15,2)) as "_l0_union_u_profit_s",
+    "kaput"."ss_grouped_ss_store_id" as "_l0_union_u_id_s",
+    cast("kaput"."ss_grouped_ss_sales" as numeric(15,2)) as "_l0_union_u_sales_s",
+    cast(coalesce("puzzled"."sr_grouped_sr_returns",0) as numeric(15,2)) as "_l0_union_u_returns_s"
 FROM
-    "premium"
-    INNER JOIN "friendly" on "premium"."sr_grouped_sr_store_id" = "friendly"."ss_grouped_ss_store_id"),
+    "puzzled"
+    INNER JOIN "kaput" on "puzzled"."sr_grouped_sr_store_id" = "kaput"."ss_grouped_ss_store_id"),
 concerned as (
 SELECT
-    "juicy"."_virt_agg_sum_6520591768854391" * cast("abundant"."cr_totals_cr_n_groups" as numeric(15,2)) as "u_sales",
-    "juicy"."cs_call_center_id" as "u_id",
-    ( "juicy"."_virt_agg_sum_6226990944561419" * "abundant"."cr_totals_cr_n_groups" ) - cast("abundant"."cr_totals_cr_total_loss" as numeric(15,2)) as "u_profit",
-    :_l0_union_u_channel_c as "u_channel",
-    cast("abundant"."cr_totals_cr_total_returns" as numeric(15,2)) as "u_returns"
+    "juicy"."_virt_agg_sum_6520591768854391" * cast("abundant"."cr_totals_cr_n_groups" as numeric(15,2)) as "_l0_union_u_sales_c",
+    "juicy"."cs_call_center_id" as "_l0_union_u_id_c",
+    ( "juicy"."_virt_agg_sum_6226990944561419" * "abundant"."cr_totals_cr_n_groups" ) - cast("abundant"."cr_totals_cr_total_loss" as numeric(15,2)) as "_l0_union_u_profit_c",
+    cast("abundant"."cr_totals_cr_total_returns" as numeric(15,2)) as "_l0_union_u_returns_c"
 FROM
     "abundant"
     FULL JOIN "juicy" on 1=1),
 tearful as (
 SELECT
-    coalesce("concerned"."u_channel","level"."u_channel","puzzled"."u_channel") as "l0_union_u_channel",
-    coalesce("concerned"."u_id","level"."u_id","puzzled"."u_id") as "l0_union_u_id",
-    coalesce("concerned"."u_profit","level"."u_profit","puzzled"."u_profit") as "l0_union_u_profit",
-    coalesce("concerned"."u_returns","level"."u_returns","puzzled"."u_returns") as "l0_union_u_returns",
-    coalesce("concerned"."u_sales","level"."u_sales","puzzled"."u_sales") as "l0_union_u_sales"
+    "sparkling"."_l0_union_u_channel_w" as "u_channel",
+    "wooden"."_l0_union_u_id_w" as "u_id",
+    "wooden"."_l0_union_u_profit_w" as "u_profit",
+    "wooden"."_l0_union_u_returns_w" as "u_returns",
+    "wooden"."_l0_union_u_sales_w" as "u_sales"
+FROM
+    "sparkling"
+    FULL JOIN "wooden" on 1=1),
+puffy as (
+SELECT
+    "sparkling"."_l0_union_u_channel_s" as "u_channel",
+    "waggish"."_l0_union_u_id_s" as "u_id",
+    "waggish"."_l0_union_u_profit_s" as "u_profit",
+    "waggish"."_l0_union_u_returns_s" as "u_returns",
+    "waggish"."_l0_union_u_sales_s" as "u_sales"
+FROM
+    "sparkling"
+    FULL JOIN "waggish" on 1=1),
+abhorrent as (
+SELECT
+    "concerned"."_l0_union_u_id_c" as "u_id",
+    "concerned"."_l0_union_u_profit_c" as "u_profit",
+    "concerned"."_l0_union_u_returns_c" as "u_returns",
+    "concerned"."_l0_union_u_sales_c" as "u_sales",
+    "sparkling"."_l0_union_u_channel_c" as "u_channel"
 FROM
     "concerned"
-    FULL JOIN "puzzled" on "concerned"."u_channel" is not distinct from "puzzled"."u_channel" AND "concerned"."u_id" is not distinct from "puzzled"."u_id" AND "concerned"."u_profit" is not distinct from "puzzled"."u_profit" AND "concerned"."u_returns" is not distinct from "puzzled"."u_returns" AND "concerned"."u_sales" is not distinct from "puzzled"."u_sales"
-    FULL JOIN "level" on coalesce("concerned"."u_channel", "puzzled"."u_channel") = "level"."u_channel" AND coalesce("concerned"."u_id", "puzzled"."u_id") = "level"."u_id" AND coalesce("concerned"."u_profit", "puzzled"."u_profit") = "level"."u_profit" AND coalesce("concerned"."u_returns", "puzzled"."u_returns") = "level"."u_returns" AND coalesce("concerned"."u_sales", "puzzled"."u_sales") = "level"."u_sales"),
-gullible as (
+    FULL JOIN "sparkling" on 1=1),
+cloudy as (
 SELECT
-    "tearful"."l0_union_u_channel" as "l0_union_u_channel",
-    "tearful"."l0_union_u_id" as "l0_union_u_id",
-    sum("tearful"."l0_union_u_profit") as "profit",
-    sum("tearful"."l0_union_u_returns") as "returns_",
-    sum("tearful"."l0_union_u_sales") as "sales"
+    coalesce("abhorrent"."u_channel","puffy"."u_channel","tearful"."u_channel") as "l0_union_u_channel",
+    coalesce("abhorrent"."u_id","puffy"."u_id","tearful"."u_id") as "l0_union_u_id",
+    coalesce("abhorrent"."u_profit","puffy"."u_profit","tearful"."u_profit") as "l0_union_u_profit",
+    coalesce("abhorrent"."u_returns","puffy"."u_returns","tearful"."u_returns") as "l0_union_u_returns",
+    coalesce("abhorrent"."u_sales","puffy"."u_sales","tearful"."u_sales") as "l0_union_u_sales"
 FROM
-    "tearful"
+    "abhorrent"
+    FULL JOIN "puffy" on "abhorrent"."u_channel" is not distinct from "puffy"."u_channel" AND "abhorrent"."u_id" is not distinct from "puffy"."u_id" AND "abhorrent"."u_profit" is not distinct from "puffy"."u_profit" AND "abhorrent"."u_returns" is not distinct from "puffy"."u_returns" AND "abhorrent"."u_sales" is not distinct from "puffy"."u_sales"
+    FULL JOIN "tearful" on coalesce("abhorrent"."u_channel", "puffy"."u_channel") = "tearful"."u_channel" AND coalesce("abhorrent"."u_id", "puffy"."u_id") = "tearful"."u_id" AND coalesce("abhorrent"."u_profit", "puffy"."u_profit") = "tearful"."u_profit" AND coalesce("abhorrent"."u_returns", "puffy"."u_returns") = "tearful"."u_returns" AND coalesce("abhorrent"."u_sales", "puffy"."u_sales") = "tearful"."u_sales"),
+flashy as (
+SELECT
+    "cloudy"."l0_union_u_channel" as "l0_union_u_channel",
+    "cloudy"."l0_union_u_id" as "l0_union_u_id",
+    sum("cloudy"."l0_union_u_profit") as "profit",
+    sum("cloudy"."l0_union_u_returns") as "returns_",
+    sum("cloudy"."l0_union_u_sales") as "sales"
+FROM
+    "cloudy"
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    "gullible"."l0_union_u_channel" as "channel",
-    "gullible"."l0_union_u_id" as "id",
-    "gullible"."sales" as "sales",
-    "gullible"."returns_" as "returns_",
-    "gullible"."profit" as "profit"
+    "flashy"."l0_union_u_channel" as "channel",
+    "flashy"."l0_union_u_id" as "id",
+    "flashy"."sales" as "sales",
+    "flashy"."returns_" as "returns_",
+    "flashy"."profit" as "profit"
 FROM
-    "gullible"
+    "flashy"
 ORDER BY 
     "channel" asc nulls first,
     "id" asc nulls first,
-    "gullible"."returns_" desc
+    "flashy"."returns_" desc
 LIMIT (100)
 ```
 
