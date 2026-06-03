@@ -16,7 +16,7 @@ _at least one side did not produce rows._
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
 | v4 | 0 | 0 | — |
-| reference | 2224 | 44 | 17.47 ms |
+| reference | 2224 | 44 | 25.86 ms |
 
 ## Preql
 

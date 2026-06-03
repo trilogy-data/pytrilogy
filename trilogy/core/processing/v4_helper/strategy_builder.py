@@ -232,8 +232,11 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     real barrier (an aggregate / window / semijoin), not a row-wise re-derivable
     projection. A finer-grain sibling can spuriously look able to "render" a
     GLOBAL aggregate's output by recomputing the aggregate's inner expression
-    (q22: `avg(acctbal ? ...)` → the bare CASE, silently dropping `avg()`), so
-    only a row-preserving SelectNode A is foldable.
+    (q22: `avg(acctbal ? ...)` → the bare CASE, silently dropping `avg()`). Only
+    a row-preserving contributor — a SelectNode, or a plain (non-grouping)
+    MergeNode such as a multi-table root scan — is foldable (q09: the root scan
+    folds into the `o_year` projection instead of self-joining on `order_id`
+    and fanning the per-order sum out by lineitem count).
 
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
@@ -246,8 +249,9 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
                 continue
-            # Never dissolve a grouping/window/filter barrier into a row sibling.
-            if not isinstance(a, SelectNode) or a.force_group:
+            # Never dissolve a grouping/window/filter barrier into a row sibling;
+            # a row-preserving SelectNode or non-grouping MergeNode is foldable.
+            if not isinstance(a, (SelectNode, MergeNode)) or a.force_group:
                 continue
             if not all(concept_satisfiable(o, available) for o in a.output_concepts):
                 continue

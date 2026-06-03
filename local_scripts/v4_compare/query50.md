@@ -14,11 +14,11 @@
 v4 rows: 6 (6 distinct)
 ref rows: 6 (6 distinct)
 only in v4 (showing up to 5 of 6):
-  1x  (240408, 164430, 121716, 114156, 113022, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
-  1x  (236592, 161820, 119784, 112344, 111228, 'Midway', 1, 'Williamson County', 'ation', 'TN', 'Lee ', '811', 'Circle', 'Suite T', '31904')
-  1x  (240408, 164430, 121716, 114156, 113022, 'Midway', 1, 'Williamson County', 'bar', 'TN', '4th ', '175', 'Court', 'Suite C', '31904')
-  1x  (239772, 163995, 121394, 113854, 112723, 'Fairview', 1, 'Williamson County', 'eing', 'TN', '12th ', '226', 'Lane', 'Suite D', '35709')
-  1x  (230868, 157905, 116886, 109626, 108537, 'Midway', 1, 'Williamson County', 'ese', 'TN', 'Lake ', '27', 'Ln', 'Suite 260', '31904')
+  1x  (120, 65, 62, 67, 60, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
+  1x  (110, 87, 65, 60, 43, 'Midway', 1, 'Williamson County', 'ation', 'TN', 'Lee ', '811', 'Circle', 'Suite T', '31904')
+  1x  (122, 86, 54, 53, 60, 'Midway', 1, 'Williamson County', 'bar', 'TN', '4th ', '175', 'Court', 'Suite C', '31904')
+  1x  (123, 87, 51, 52, 57, 'Fairview', 1, 'Williamson County', 'eing', 'TN', '12th ', '226', 'Lane', 'Suite D', '35709')
+  1x  (123, 85, 48, 57, 43, 'Midway', 1, 'Williamson County', 'ese', 'TN', 'Lake ', '27', 'Ln', 'Suite 260', '31904')
 only in ref (showing up to 5 of 6):
   1x  (108, 64, 61, 58, 56, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
   1x  (99, 75, 57, 55, 41, 'Midway', 1, 'Williamson County', 'ation', 'TN', 'Lee ', '811', 'Circle', 'Suite T', '31904')
@@ -30,9 +30,9 @@ only in ref (showing up to 5 of 6):
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6023 | 105 | 94.23 ms |
-| reference | 4728 | 75 | 24.46 ms |
-| v4 / ref | 1.27x | 1.40x | 3.85x |
+| v4 | 6361 | 99 | 100.92 ms |
+| reference | 4728 | 75 | 38.46 ms |
+| v4 / ref | 1.35x | 1.32x | 2.62x |
 
 ## Preql
 
@@ -131,21 +131,15 @@ GROUP BY
     15),
 cooperative as (
 SELECT
-    "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" as "days_to_return"
-FROM
-    "thoughtful"),
-questionable as (
-SELECT
     "thoughtful"."physical_sales_store_id" as "physical_sales_store_id",
     "thoughtful"."physical_sales_ticket_number" as "physical_sales_ticket_number",
-    count(CASE WHEN "cooperative"."days_to_return" > -1 and "cooperative"."days_to_return" <= 30 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_6396225769465204",
-    count(CASE WHEN "cooperative"."days_to_return" > 120 and "cooperative"."days_to_return" <= 99999 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_6261479071707891",
-    count(CASE WHEN "cooperative"."days_to_return" > 30 and "cooperative"."days_to_return" <= 60 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_1754169376042040",
-    count(CASE WHEN "cooperative"."days_to_return" > 60 and "cooperative"."days_to_return" <= 90 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_9524432267113409",
-    count(CASE WHEN "cooperative"."days_to_return" > 90 and "cooperative"."days_to_return" <= 120 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_5608833957360839"
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > -1 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 30 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_6396225769465204",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 120 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 99999 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_6261479071707891",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 30 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 60 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_1754169376042040",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 60 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 90 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_9524432267113409",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 90 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 120 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_5608833957360839"
 FROM
-    "cooperative"
-    FULL JOIN "thoughtful" on 1=1
+    "thoughtful"
 GROUP BY
     1,
     2)
@@ -160,14 +154,14 @@ SELECT
     "thoughtful"."physical_sales_store_county" as "physical_sales_store_county",
     "thoughtful"."physical_sales_store_state" as "physical_sales_store_state",
     "thoughtful"."physical_sales_store_zip" as "physical_sales_store_zip",
-    sum("questionable"."_virt_agg_count_6396225769465204") as "days_30",
-    sum("questionable"."_virt_agg_count_1754169376042040") as "days_31_60",
-    sum("questionable"."_virt_agg_count_9524432267113409") as "days_61_90",
-    sum("questionable"."_virt_agg_count_5608833957360839") as "days_91_120",
-    sum("questionable"."_virt_agg_count_6261479071707891") as "days_120_plus"
+    sum("cooperative"."_virt_agg_count_6396225769465204") as "days_30",
+    sum("cooperative"."_virt_agg_count_1754169376042040") as "days_31_60",
+    sum("cooperative"."_virt_agg_count_9524432267113409") as "days_61_90",
+    sum("cooperative"."_virt_agg_count_5608833957360839") as "days_91_120",
+    sum("cooperative"."_virt_agg_count_6261479071707891") as "days_120_plus"
 FROM
     "thoughtful"
-    FULL JOIN "questionable" on "thoughtful"."physical_sales_store_id" = "questionable"."physical_sales_store_id" AND "thoughtful"."physical_sales_ticket_number" = "questionable"."physical_sales_ticket_number"
+    FULL JOIN "cooperative" on "thoughtful"."physical_sales_store_id" = "cooperative"."physical_sales_store_id" AND "thoughtful"."physical_sales_ticket_number" = "cooperative"."physical_sales_ticket_number"
 GROUP BY
     1,
     2,
@@ -179,7 +173,7 @@ GROUP BY
     8,
     9,
     10,
-    coalesce("questionable"."physical_sales_store_id","thoughtful"."physical_sales_store_id")
+    coalesce("cooperative"."physical_sales_store_id","thoughtful"."physical_sales_store_id")
 ORDER BY 
     "thoughtful"."physical_sales_store_name" asc nulls first,
     "thoughtful"."physical_sales_store_company_id" asc nulls first,

@@ -18,9 +18,9 @@ ref rows: 243 (243 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2091 | 53 | 23.47 ms |
-| reference | 2041 | 36 | 24.59 ms |
-| v4 / ref | 1.02x | 1.47x | 0.95x |
+| v4 | 2864 | 82 | 39.88 ms |
+| reference | 2041 | 36 | 39.69 ms |
+| v4 / ref | 1.40x | 2.28x | 1.00x |
 
 ## Preql
 
@@ -93,42 +93,71 @@ WHERE
 
 GROUP BY
     1,
-    2)
+    2),
+questionable as (
 SELECT
-    "wakeful"."inventory_warehouse_id" as "wsk1",
-    "wakeful"."inventory_item_id" as "isk1",
     1 as "dmoy1",
+    2 as "dmoy2"
+),
+cooperative as (
+SELECT
+    "wakeful"."inventory_item_id" as "isk1",
+    "wakeful"."inventory_item_id" as "isk2",
+    "wakeful"."inventory_warehouse_id" as "wsk1",
+    "wakeful"."inventory_warehouse_id" as "wsk2",
     "wakeful"."mean1" as "mean1",
+    "wakeful"."mean2" as "mean2",
     CASE
 	WHEN "wakeful"."mean1" = 0 THEN null
 	ELSE "wakeful"."stdev1" / "wakeful"."mean1"
 	END as "cov1",
-    "wakeful"."inventory_warehouse_id" as "wsk2",
-    "wakeful"."inventory_item_id" as "isk2",
-    2 as "dmoy2",
-    "wakeful"."mean2" as "mean2",
     CASE
 	WHEN "wakeful"."mean2" = 0 THEN null
 	ELSE "wakeful"."stdev2" / "wakeful"."mean2"
 	END as "cov2"
 FROM
-    "wakeful"
+    "wakeful"),
+abundant as (
+SELECT
+    "cooperative"."cov1" as "cov1",
+    "cooperative"."cov2" as "cov2",
+    "cooperative"."isk1" as "isk1",
+    "cooperative"."isk2" as "isk2",
+    "cooperative"."mean1" as "mean1",
+    "cooperative"."mean2" as "mean2",
+    "cooperative"."wsk1" as "wsk1",
+    "cooperative"."wsk2" as "wsk2",
+    "questionable"."dmoy1" as "dmoy1",
+    "questionable"."dmoy2" as "dmoy2"
+FROM
+    "cooperative"
+    LEFT OUTER JOIN "questionable" on 1=1
 WHERE
-    CASE
-	WHEN "wakeful"."mean1" = 0 THEN null
-	ELSE "wakeful"."stdev1" / "wakeful"."mean1"
-	END > 1 and CASE
-	WHEN "wakeful"."mean2" = 0 THEN null
-	ELSE "wakeful"."stdev2" / "wakeful"."mean2"
-	END > 1
+    "cooperative"."cov1" > 1
+)
+SELECT
+    "abundant"."wsk1" as "wsk1",
+    "abundant"."isk1" as "isk1",
+    "abundant"."dmoy1" as "dmoy1",
+    "abundant"."mean1" as "mean1",
+    "abundant"."cov1" as "cov1",
+    "abundant"."wsk2" as "wsk2",
+    "abundant"."isk2" as "isk2",
+    "abundant"."dmoy2" as "dmoy2",
+    "abundant"."mean2" as "mean2",
+    "abundant"."cov2" as "cov2"
+FROM
+    "abundant"
+WHERE
+    "abundant"."cov2" > 1
 
 ORDER BY 
-    "wsk1" asc nulls first,
-    "isk1" asc nulls first,
-    "wakeful"."mean1" asc nulls first,
-    "cov1" asc nulls first,
-    "wakeful"."mean2" asc nulls first,
-    "cov2" asc nulls first
+    "abundant"."wsk1" asc nulls first,
+    "abundant"."isk1" asc nulls first,
+    "abundant"."mean1" asc nulls first,
+    "abundant"."cov1" asc nulls first,
+    "abundant"."mean2" asc nulls first,
+    "abundant"."cov2" asc nulls first
 ```
 
 ## Reference SQL (zquery log)
