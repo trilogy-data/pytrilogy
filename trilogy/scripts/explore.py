@@ -20,7 +20,7 @@ from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Concept
 from trilogy.core.models.environment import Environment
 from trilogy.parser import parse_text
-from trilogy.scripts.display import print_error, print_info
+from trilogy.scripts.display import emit_event, is_json_mode, print_error, print_info
 
 _CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
 
@@ -358,6 +358,66 @@ def _emit_namespace(ns: str, items: list[tuple[str, Concept]]) -> None:
         _emit_flat_line(concept.purpose.value, fmt(leaf), concept)
 
 
+def _concept_json(address: str, concept: Concept) -> dict:
+    """Structured form of one concept for JSON output — same fields the rich
+    flat-line view shows (address, role, type, grain, description), minus the
+    layout."""
+    key_addrs = tuple(sorted(concept.keys or []))
+    entry: dict[str, object] = {
+        "address": _display_address(address),
+        "purpose": concept.purpose.value,
+        "derivation": concept.derivation.value,
+        "datatype": _compact_datatype(str(concept.datatype)),
+        "namespace": concept.namespace,
+        "local": concept.namespace == DEFAULT_NAMESPACE,
+    }
+    grain = [_grain_display(a) for a in key_addrs]
+    if grain:
+        entry["grain"] = grain
+    desc = _concept_description(concept)
+    if desc:
+        entry["description"] = desc
+    return entry
+
+
+def _emit_explore_json(
+    env: Environment,
+    concept_items: list[tuple[str, Concept]],
+    show: str,
+    import_descriptions: dict[str, str],
+) -> None:
+    """Emit the explore results as NDJSON events, honoring ``--show``. One
+    event per section (concepts / datasources / imports) so a caller can pick
+    the slice it needs."""
+    if show in ("all", "groups", "concepts"):
+        emit_event(
+            "concepts",
+            count=len(concept_items),
+            concepts=[_concept_json(k, v) for k, v in sorted(concept_items)],
+            import_descriptions=import_descriptions or None,
+        )
+    if show in ("all", "datasources"):
+        datasources = [
+            {
+                "address": name,
+                "grain": sorted(ds.grain.components),
+            }
+            for name, ds in sorted(env.datasources.items())
+        ]
+        emit_event("datasources", count=len(datasources), datasources=datasources)
+    if show in ("all", "imports"):
+        imports = [
+            {
+                "alias": alias,
+                "path": str(stmt.path),
+                "description": (stmt.description or "").strip() or None,
+            }
+            for alias, stmts in sorted(env.imports.items())
+            for stmt in stmts
+        ]
+        emit_event("imports", count=len(imports), imports=imports)
+
+
 @click.command("explore")
 @click.argument(
     "path",
@@ -479,6 +539,10 @@ def explore(
         for imp in imps
         if imp.description
     }
+
+    if is_json_mode():
+        _emit_explore_json(env, concept_items, show, import_descriptions)
+        return
 
     if show in ("all", "groups"):
         # `--regex` is a deliberate filter — show matches in full even if

@@ -10,7 +10,13 @@ from urllib.request import Request, urlopen
 
 import click
 
-from trilogy.scripts.display import print_error, print_info, print_success
+from trilogy.scripts.display import (
+    emit_event,
+    is_json_mode,
+    print_error,
+    print_info,
+    print_success,
+)
 from trilogy.scripts.file_helpers import (
     FileNotFoundError,
     FileOperationError,
@@ -111,6 +117,27 @@ def list_cmd(path: str, recursive: bool, long_format: bool, show_all: bool) -> N
     if not show_all:
         entries = [e for e in entries if e.is_dir or e.path.endswith(".preql")]
 
+    if is_json_mode():
+        emit_event(
+            "entries",
+            path=path,
+            count=len(entries),
+            entries=[
+                {
+                    "path": entry.path,
+                    "is_dir": entry.is_dir,
+                    "size": entry.size,
+                    "description": (
+                        None
+                        if entry.is_dir
+                        else preql_description.read_preql_description(Path(entry.path))
+                    ),
+                }
+                for entry in entries
+            ],
+        )
+        return
+
     if not entries:
         print_info(f"No entries at {path}")
         return
@@ -139,6 +166,15 @@ def read_cmd(path: str) -> None:
         _fail(exc, code=1)
     except FileOperationError as exc:
         _fail(exc, code=2)
+
+    if is_json_mode():
+        emit_event(
+            "file",
+            path=path,
+            bytes=len(data),
+            content=data.decode("utf-8", errors="replace"),
+        )
+        return
 
     sys.stdout.buffer.write(data)
     if data and not data.endswith(b"\n"):
@@ -263,7 +299,11 @@ def write_cmd(
     except FileOperationError as exc:
         _fail(exc, code=2)
 
-    if not quiet:
+    if quiet:
+        return
+    if is_json_mode():
+        emit_event("write", path=path, bytes=len(data))
+    else:
         print_success(f"Wrote {len(data)} byte(s) to {path}")
 
 
@@ -321,8 +361,10 @@ def move_cmd(src: str, dst: str) -> None:
 def exists_cmd(path: str) -> None:
     """Exit 0 if PATH exists, 1 otherwise."""
     backend = _resolve(path)
-    if backend.exists(path):
-        click.echo("true")
-        return
-    click.echo("false")
-    raise click.exceptions.Exit(1)
+    found = backend.exists(path)
+    if is_json_mode():
+        emit_event("exists", path=path, exists=found)
+    else:
+        click.echo("true" if found else "false")
+    if not found:
+        raise click.exceptions.Exit(1)

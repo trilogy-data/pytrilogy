@@ -4,7 +4,7 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 import trilogy.scripts.display_core as _core
-from trilogy.scripts.display_core import _FdStderrCapture
+from trilogy.scripts.display_core import _FdStderrCapture, emit_event, is_json_mode
 
 if TYPE_CHECKING:
     from trilogy.scripts.parallel_execution import (
@@ -29,6 +29,15 @@ def show_parallel_execution_start(
     num_files: int, num_edges: int, parallelism: int, strategy: str = "eager_bfs"
 ) -> None:
     """Display parallel execution start information."""
+    if is_json_mode():
+        emit_event(
+            "parallel_start",
+            files=num_files,
+            dependencies=num_edges,
+            parallelism=parallelism,
+            strategy=strategy,
+        )
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         _core.console.print("\n[bold blue]Starting parallel execution:[/bold blue]")
         _core.console.print(f"  Files: {num_files}")
@@ -53,6 +62,32 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
         if result.stats:
             total_stats = total_stats + result.stats
 
+    if is_json_mode():
+        failed = [
+            {
+                "node": (
+                    str(result.node.path)
+                    if isinstance(result.node, ScriptNode)
+                    else result.node.address
+                ),
+                "error": str(result.error) if result.error else None,
+            }
+            for result in summary.results
+            if not result.success
+        ]
+        emit_event(
+            "parallel_summary",
+            total_scripts=summary.total_scripts,
+            successful=summary.successful,
+            failed=summary.failed,
+            skipped=summary.skipped or None,
+            duration_ms=round(summary.total_duration * 1000, 3),
+            datasources_updated=total_stats.update_count or None,
+            datasources_validated=total_stats.validate_count or None,
+            tables_persisted=total_stats.persist_count or None,
+            failures=failed or None,
+        )
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         table = Table(title="Execution Summary", show_header=False)
         table.add_column("Metric", style=_core.COL_CYAN)
@@ -125,6 +160,20 @@ def show_script_result(
         if formatted:
             stats_str = f" [{formatted}]"
 
+    if is_json_mode():
+        node_label = (
+            str(result.node.path)
+            if isinstance(result.node, ScriptNode)
+            else getattr(result.node, "address", str(result.node))
+        )
+        emit_event(
+            "script_result",
+            node=node_label,
+            success=result.success,
+            duration_ms=round(result.duration * 1000, 3),
+            error=str(result.error) if result.error else None,
+        )
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         if result.success:
             if isinstance(result.node, ScriptNode):
@@ -198,7 +247,7 @@ class ParallelProgressTracker:
         )
 
     def __enter__(self) -> "ParallelProgressTracker":
-        if _core.RICH_AVAILABLE and _core.console is not None:
+        if not is_json_mode() and _core.RICH_AVAILABLE and _core.console is not None:
             self._progress = Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -234,6 +283,8 @@ class ParallelProgressTracker:
                 self._task_ids[id(node)] = task_id
                 self._in_progress_labels[id(node)] = label
                 self._base_labels[id(node)] = label
+        elif is_json_mode():
+            emit_event("script_start", node=label)
         else:
             print(f"  \u2192 {label}")
 
@@ -271,6 +322,15 @@ def show_execution_plan(
 ) -> None:
     """Display execution plan in human-readable format."""
     required_files = required_files or []
+    if is_json_mode():
+        emit_event(
+            "plan",
+            scripts=nodes,
+            dependencies=[{"from": a, "to": b} for a, b in edges],
+            execution_order=execution_order,
+            required_files=[str(p) for p in required_files],
+        )
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         from rich.panel import Panel
 

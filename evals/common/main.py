@@ -381,7 +381,7 @@ def _run_categories(
 
     if len(reports_by_key) >= 2:
         ordered = {k: reports_by_key[k] for k in FUNNEL_ORDER if k in reports_by_key}
-        png = analyze_run.render_funnel(ordered, spec.charts_dir / "funnel.png")
+        png = analyze_run.render_funnel(ordered, spec.charts_dir / "funnel_v2.png")
         md = analyze_run.write_funnel_report(ordered, spec.charts_dir / "funnel.md")
         print(f"[categories] wrote {png} and {md}")
     else:
@@ -587,7 +587,7 @@ def run(spec: BenchmarkSpec) -> int:
                 analyze_run.render(
                     partial_report,
                     events,
-                    spec.charts_dir / f"dashboard{suffix}.png",
+                    spec.charts_dir / f"dashboard{suffix}_v2.png",
                 )
             except Exception as exc:
                 print(
@@ -840,7 +840,7 @@ def run(spec: BenchmarkSpec) -> int:
         dashboard = analyze_run.render(
             report,
             events,
-            spec.charts_dir / f"dashboard{suffix}.png",
+            spec.charts_dir / f"dashboard{suffix}_v2.png",
         )
         failures = analyze_run.collect_failures(events)
         failures_md = analyze_run.write_failures_report(

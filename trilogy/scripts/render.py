@@ -39,7 +39,7 @@ def render(input: str, output_format: str, theme: str, output: str | None) -> No
     Executes embedded ```trilogy code blocks: chart statements become charts
     and select statements become tables.
     """
-    from trilogy.scripts.display import print_error
+    from trilogy.scripts.display import emit_event, is_json_mode, print_error
 
     try:
         result = render_report(
@@ -51,4 +51,7 @@ def render(input: str, output_format: str, theme: str, output: str | None) -> No
     except Exception as e:  # surface a clean CLI error
         print_error(str(e))
         raise Exit(1)
-    click.secho(f"Rendered report -> {result}", fg="green")
+    if is_json_mode():
+        emit_event("rendered", input=input, output=str(result), format=output_format)
+    else:
+        click.secho(f"Rendered report -> {result}", fg="green")

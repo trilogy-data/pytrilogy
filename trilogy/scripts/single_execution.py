@@ -21,6 +21,7 @@ from trilogy.scripts.display import (
     RICH_AVAILABLE,
     ResultSet,
     create_progress_context,
+    is_json_mode,
     print_chart_terminal,
     print_error,
     print_info,
@@ -191,7 +192,7 @@ def execute_queries_simple(
             if isinstance(results, ChartResult):
                 print_chart_terminal(results.data, results.statement)
             else:
-                print_results_table(results)
+                print_results_table(results, row_limit=row_limit)
 
     return exception
 
@@ -205,8 +206,12 @@ def execute_run_mode(
     start = datetime.now()
     show_execution_start(len(queries))
 
+    # The rich progress bar is chrome that would corrupt the NDJSON stream, so
+    # JSON mode always takes the simple (no-progress) execution path.
     progress = (
-        create_progress_context() if len(queries) > 1 and RICH_AVAILABLE else None
+        create_progress_context()
+        if len(queries) > 1 and RICH_AVAILABLE and not is_json_mode()
+        else None
     )
 
     if progress:

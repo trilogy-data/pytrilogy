@@ -9,13 +9,24 @@ from click import echo
 
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import (
+    emit_event,
     format_duration,
+    is_json_mode,
     print_error,
     print_info,
     print_success,
     print_warning,
 )
 from trilogy.scripts.display_models import ResultSet
+
+
+def _duration_ms(duration: object) -> "float | None":
+    """Best-effort milliseconds from a timedelta-like duration for JSON events."""
+    total = getattr(duration, "total_seconds", None)
+    if callable(total):
+        return round(total() * 1000, 3)
+    return None
+
 
 try:
     from rich import box
@@ -41,6 +52,17 @@ def show_execution_info(
     debug_file: str | None = None,
 ) -> None:
     """Display execution information in a clean format."""
+    if is_json_mode():
+        emit_event(
+            "execution_info",
+            input_type=input_type,
+            input_name=input_name,
+            dialect=dialect,
+            debug=debug or None,
+            config_path=config_path,
+            debug_file=debug_file,
+        )
+        return
     debug_str = (
         f"enabled (file: {debug_file})"
         if debug and debug_file
@@ -68,6 +90,9 @@ def show_execution_info(
 def show_environment_params(env_params: dict) -> None:
     """Display environment parameters if any."""
     if env_params:
+        if is_json_mode():
+            emit_event("environment_params", params=env_params)
+            return
         if _core.RICH_AVAILABLE and _core.console is not None:
             _core.console.print(
                 f"Environment parameters: {env_params}", style="dim cyan"
@@ -80,6 +105,9 @@ def show_environment_params(env_params: dict) -> None:
 
 def show_debug_mode() -> None:
     """Show debug mode indicator."""
+    if is_json_mode():
+        emit_event("debug_mode", enabled=True)
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         panel = Panel.fit("Debug mode enabled", style="yellow", title="Debug")
         _core.console.print(panel)
@@ -91,6 +119,11 @@ def show_debug_mode() -> None:
 
 def show_statement_type(idx: int, total: int, statement_type: str) -> None:
     """Show the type of statement before execution."""
+    if is_json_mode():
+        emit_event(
+            "statement_type", index=idx, total=total, statement_type=statement_type
+        )
+        return
     statement_num = f"Statement {idx+1}"
     if total > 1:
         statement_num += f"/{total}"
@@ -107,6 +140,9 @@ def show_statement_type(idx: int, total: int, statement_type: str) -> None:
 
 def show_execution_start(num_queries: int) -> None:
     """Show execution start message."""
+    if is_json_mode():
+        emit_event("execution_start", statements=num_queries)
+        return
     statement_word = "statement" if num_queries == 1 else "statements"
     if _core.RICH_AVAILABLE and _core.console is not None:
         _core.console.print(
@@ -136,6 +172,18 @@ def show_statement_result(
     exception_type: type | None = None,
 ) -> None:
     """Show result of individual statement execution."""
+    if is_json_mode():
+        emit_event(
+            "statement_result",
+            index=idx,
+            total=total,
+            duration_ms=_duration_ms(duration),
+            success=error is None,
+            has_results=has_results or None,
+            error=str(error).strip() if error is not None else None,
+            error_type=exception_type.__name__ if exception_type else None,
+        )
+        return
     statement_num = f"Statement {idx+1}"
     if total > 1:
         statement_num += f"/{total}"
@@ -177,6 +225,14 @@ def show_execution_summary(
     num_queries: int, total_duration: object, all_succeeded: bool
 ) -> None:
     """Show final execution summary."""
+    if is_json_mode():
+        emit_event(
+            "summary",
+            statements=num_queries,
+            duration_ms=_duration_ms(total_duration),
+            ok=all_succeeded,
+        )
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         if all_succeeded:
             rich_style = "green"
@@ -208,11 +264,46 @@ def show_formatting_result(
     file_path: str | None = None,
     error: str | None = None,
 ) -> None:
+    if is_json_mode():
+        emit_event(
+            "format_result",
+            statements=num_queries,
+            duration_ms=_duration_ms(duration),
+            file=file_path,
+            ok=error is None,
+            error=error,
+        )
+        return
     if error is not None:
         location = f" {file_path}" if file_path else ""
         print_error(f"Failed to format{location}: {error}")
         return
     print_success(f"Formatted {num_queries} statements in {format_duration(duration)}")
+
+
+def _emit_results_json(results: ResultSet, cap: int) -> None:
+    """Emit a query result set as a single ``result`` NDJSON event.
+
+    Mirrors the rich table's display contract: the full result is fetched (so
+    ``row_count`` is exact) but only ``cap`` rows are emitted, middle-truncated
+    head+tail, with ``displayed``/``truncated``/``omitted`` reporting the gap.
+    Rows are plain lists; non-JSON cell values fall back to ``str`` via the
+    event serializer."""
+    rows = results.rows
+    total = len(rows)
+    hit_fetch_ceiling = total >= _core.DISPLAY_FETCH_CEILING
+    head, tail, omitted = _slice_for_middle_truncation(rows, cap)
+    shown = [list(r) for r in head] + [list(r) for r in tail]
+    emit_event(
+        "result",
+        columns=list(results.columns),
+        rows=shown,
+        row_count=total,
+        displayed=len(shown),
+        truncated=omitted > 0 or None,
+        omitted=omitted or None,
+        fetch_ceiling_hit=hit_fetch_ceiling or None,
+    )
 
 
 def print_results_table(results: ResultSet, row_limit: int | None = None) -> None:
@@ -221,6 +312,9 @@ def print_results_table(results: ResultSet, row_limit: int | None = None) -> Non
     ``row_limit`` is the displayed-rows ceiling. ``None`` keeps the legacy
     default (50 rows shown, one extra fetched as a "more exist" sentinel)."""
     cap = _core.FETCH_LIMIT - 1 if row_limit is None else row_limit
+    if is_json_mode():
+        _emit_results_json(results, cap)
+        return
     if _core.RICH_AVAILABLE and _core.console is not None:
         _print_rich_table(results.rows, headers=results.columns, row_limit=cap)
     else:
@@ -231,6 +325,15 @@ def print_chart_terminal(
     layer_data: list[list[dict]], statement: "ProcessedChartStatement"
 ) -> bool:
     """Render chart to terminal using plotext. Returns True if rendered."""
+    if is_json_mode():
+        # Charts are inherently visual; in JSON mode surface the underlying
+        # per-layer data rows so the information is still available.
+        emit_event(
+            "chart",
+            layers=layer_data,
+            chart_type=getattr(statement, "chart_type", None),
+        )
+        return True
     from trilogy.rendering.terminal_renderer import PLOTEXT_AVAILABLE
 
     if not PLOTEXT_AVAILABLE:

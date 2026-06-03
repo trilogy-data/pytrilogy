@@ -1,6 +1,7 @@
 """Core display infrastructure: Rich mode, console, shared constants and print helpers."""
 
 import io
+import json
 import os
 import sys
 import threading
@@ -95,6 +96,57 @@ COL_CYAN = "cyan"
 COL_WHITE = "white"
 COL_DIM = "dim"
 COL_GREEN = "green"
+
+
+# --- Output format ----------------------------------------------------------
+# Two modes: "rich" (the default human-facing rendering) and "json" (a stream
+# of newline-delimited JSON events — one object per line — emitted to stdout).
+# JSON mode strips all decorative formatting (panels, tables, progress bars,
+# colors) so an agent consuming the CLI as a subprocess gets the same
+# information with no token-wasting chrome. The env var lets the agent
+# subprocess opt in transparently; the CLI ``--format`` flag overrides it.
+_ENV_OUTPUT_FORMAT = "TRILOGY_OUTPUT_FORMAT"
+_VALID_OUTPUT_FORMATS = ("rich", "json")
+
+
+def _initial_output_format() -> str:
+    raw = (os.environ.get(_ENV_OUTPUT_FORMAT) or "rich").strip().lower()
+    return raw if raw in _VALID_OUTPUT_FORMATS else "rich"
+
+
+OUTPUT_FORMAT = _initial_output_format()
+
+
+def set_output_format(fmt: "str | None") -> None:
+    """Set the active output format. ``None`` re-resolves from the
+    ``TRILOGY_OUTPUT_FORMAT`` env var (the default when no CLI flag is passed),
+    so each CLI invocation establishes the format fresh rather than inheriting
+    whatever a prior in-process invocation left behind."""
+    global OUTPUT_FORMAT
+    if fmt is None:
+        OUTPUT_FORMAT = _initial_output_format()
+        return
+    fmt = fmt.strip().lower()
+    OUTPUT_FORMAT = fmt if fmt in _VALID_OUTPUT_FORMATS else "rich"
+
+
+def is_json_mode() -> bool:
+    return OUTPUT_FORMAT == "json"
+
+
+def emit_event(event: str, **fields: Any) -> None:
+    """Write one NDJSON event line to stdout in JSON mode; no-op otherwise.
+
+    ``None``-valued fields are dropped to keep the stream compact. Non-JSON
+    values (datetimes, Decimals, paths) fall back to ``str`` so an event never
+    fails to serialize and silently swallows output."""
+    if not is_json_mode():
+        return
+    payload: dict[str, Any] = {"event": event}
+    for key, value in fields.items():
+        if value is not None:
+            payload[key] = value
+    echo(json.dumps(payload, default=str))
 
 
 class SetRichMode:
@@ -194,24 +246,36 @@ def _print_styled(
         echo(safe, err=err)
 
 
+def _emit_or_style(
+    level: str, message: str, rich_style: str, click_fg: str, err: bool = False
+) -> None:
+    """In JSON mode emit the message as a ``{event: level, message}`` line;
+    otherwise fall back to the styled rich/click rendering. Leading/trailing
+    blank lines used for rich spacing are stripped from the JSON message."""
+    if is_json_mode():
+        emit_event(level, message=message.strip())
+        return
+    _print_styled(message, rich_style, click_fg, err=err)
+
+
 def print_success(message: str) -> None:
-    _print_styled(message, STYLE_SUCCESS, "green")
+    _emit_or_style("success", message, STYLE_SUCCESS, "green")
 
 
 def print_info(message: str) -> None:
-    _print_styled(message, STYLE_INFO, "blue")
+    _emit_or_style("info", message, STYLE_INFO, "blue")
 
 
 def print_warning(message: str) -> None:
-    _print_styled(message, STYLE_WARNING, "yellow", err=True)
+    _emit_or_style("warning", message, STYLE_WARNING, "yellow", err=True)
 
 
 def print_error(message: str) -> None:
-    _print_styled(message, STYLE_ERROR, "red", err=True)
+    _emit_or_style("error", message, STYLE_ERROR, "red", err=True)
 
 
 def print_header(message: str) -> None:
-    _print_styled(message, STYLE_HEADER, "magenta")
+    _emit_or_style("header", message, STYLE_HEADER, "magenta")
 
 
 def format_duration(duration: Any) -> str:
@@ -229,6 +293,9 @@ def format_duration(duration: Any) -> str:
 
 def with_status(message: str) -> Any:
     """Context manager for showing status."""
+    if is_json_mode():
+        # Transient status spinners are pure chrome — drop them in JSON mode.
+        return _DummyContext()
     if RICH_AVAILABLE and console is not None:
         return console.status(f"[bold green]{message}...")
     else:

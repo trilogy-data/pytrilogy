@@ -248,6 +248,18 @@ for the full schema and API-key conventions. before making edits.
 - **ETL / directory runs**: `trilogy run jobs/ <dialect> -p N`.
 - **Test before deploy**: `trilogy unit .` (mocked) and `trilogy integration . <dialect> <conn>` (real connection).
 
+## Output Format
+
+Commands emit **newline-delimited JSON** (one event object per line) when
+invoked with `--format json` or the `TRILOGY_OUTPUT_FORMAT=json` env var — this
+is the default when the CLI is driven by an agent. Every line is a JSON object
+with an `event` field: query output arrives as
+`{"event":"result","columns":[...],"rows":[...],"row_count":N}`, schema
+discovery as `{"event":"concepts","concepts":[...]}`, failures as
+`{"event":"error","message":...}` (alongside a non-zero exit code). Parse the
+events; there is no decorative formatting to scrape. Pass `--format rich` to
+force the human-readable tables/panels instead.
+
 ## Debug Mode
 
 Add `--debug` flag to any command for verbose output:

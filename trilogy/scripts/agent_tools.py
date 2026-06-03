@@ -83,7 +83,11 @@ TRILOGY_TOOL = LLMToolDefinition(
     name="trilogy",
     description=(
         "Invoke the trilogy CLI as a subprocess. Returns captured stdout, stderr, "
-        "and exit code. Large outputs are truncated from the middle."
+        "and exit code. Large outputs are truncated from the middle. stdout is "
+        "structured NDJSON — one JSON event per line, e.g. "
+        '{"event":"result","columns":[...],"rows":[...],"row_count":N} for query '
+        'output, {"event":"error","message":...} for failures. Read the events; '
+        "there is no decorative formatting."
     ),
     input_schema={
         "type": "object",
@@ -401,7 +405,15 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
             "imported dimensions too). Do not list raw database tables."
         )
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
-    child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    # Agents consume the CLI as structured NDJSON (one JSON event per line) —
+    # same information as the rich view, none of the formatting chrome that
+    # wastes tokens. A flag in `raw_args` (e.g. `--format rich`) still wins,
+    # since group-level flags are parsed after the env default is applied.
+    child_env = {
+        **os.environ,
+        "PYTHONIOENCODING": "utf-8",
+        "TRILOGY_OUTPUT_FORMAT": "json",
+    }
     try:
         completed = subprocess.run(
             cmd,
