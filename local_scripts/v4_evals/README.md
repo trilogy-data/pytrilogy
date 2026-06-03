@@ -48,5 +48,11 @@ structure: it stops using the precomputed cache table).
 
 ### Generic cases
 
-- `filter_past_unnest` — filter over an unnested-const value: v3 → 5 rows, v4 → 10 (filter dropped past the unnest barrier).
-- `global_aggregate_filter` — `max(date) by *` filter + global aggregate in output: v4 emits ambiguous-alias SQL (BinderError).
+- `cross_grain_aggregate_filter` — per-key vs global aggregate compared in a WHERE (q11 shrink): v4 used to emit an ungrouped HAVING (BinderError); now matches v3 (post-aggregate WHERE over a cross-join). PASSES.
+- `filter_past_unnest` — filter over an unnested-const value: now matches (filter no longer dropped past the unnest barrier). PASSES.
+- `global_aggregate_filter` — `max(date) by *` filter + global aggregate in output: v4 emits ambiguous-alias SQL (BinderError). STILL FAILING (root cause E).
+
+q21's fix has no generic case: a flat single-table shrink makes v3 push the
+filter too (its correctness depends on the multi-table structure), so v3 isn't
+a valid oracle. Guarded by `test_virtual_filter_scoped_columns_*` unit tests +
+the TPC-H q21 harness match instead.

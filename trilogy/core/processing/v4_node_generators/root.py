@@ -6,42 +6,13 @@ and datasource scoring lives there."""
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing import concept_strategies_v3 as v3
-from trilogy.core.processing.condition_utility import (
-    combine_condition_atoms,
-    decompose_condition,
+from trilogy.core.processing.condition_utility import decompose_condition
+from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.v4_helper.condition_injection import (
+    ConditionSources,
+    inject_condition_at_node,
+    split_existence_atoms,
 )
-from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
-
-
-def _split_existence_atoms(
-    conditions: BuildWhereClause | None,
-) -> tuple[BuildWhereClause | None, BuildWhereClause | None]:
-    """Split a clause into (row_only, existence_bearing). The existence half
-    carries atoms whose RHS is a side-channel subselect (e.g. `x IN <feeder>`);
-    v3 would walk those args' lineage and re-materialize them inline, while v4
-    has already built that feeder as a separate group and is providing it via
-    `existence_concepts`. Keep them out of v3's view so v3 only joins what it
-    truly needs for the scan itself."""
-    if conditions is None:
-        return None, None
-    row_atoms: list = []
-    existence_atoms: list = []
-    for atom in decompose_condition(conditions.conditional):
-        ex_args = getattr(atom, "existence_arguments", None)
-        if ex_args and any(ex_args):
-            existence_atoms.append(atom)
-        else:
-            row_atoms.append(atom)
-    row_combined = combine_condition_atoms(row_atoms) if row_atoms else None
-    ex_combined = combine_condition_atoms(existence_atoms) if existence_atoms else None
-    return (
-        (
-            BuildWhereClause(conditional=row_combined)
-            if row_combined is not None
-            else None
-        ),
-        BuildWhereClause(conditional=ex_combined) if ex_combined is not None else None,
-    )
 
 
 def gen_root(
@@ -60,7 +31,7 @@ def gen_root(
     a SelectNode wrapper around the v3 result — without this, v3 walks the
     existence arg's lineage and inlines the whole feeder chain, duplicating
     work the d1 group already does."""
-    row_conditions, existence_conditions = _split_existence_atoms(conditions)
+    row_conditions, existence_conditions = split_existence_atoms(conditions)
     # When we peel an existence atom off the condition, v3 doesn't see its
     # row args either — but the wrapper still needs them in the row stream to
     # apply the IN's LHS (e.g. `substring(store.zip) IN <feeder>` requires
@@ -93,10 +64,11 @@ def gen_root(
     # side has no source CTE and the renderer emits INVALID_REFERENCE_BUG).
     # The wrapper projects only the originally-requested `outputs` — the
     # extra row args we added for v3 stay in the inner CTE.
-    return SelectNode(
-        input_concepts=list(node.output_concepts),
-        output_concepts=list(outputs),
+    return inject_condition_at_node(
+        node,
+        existence_conditions,
+        list(outputs),
         environment=environment,
-        parents=[node],
-        conditions=existence_conditions.conditional,
+        sources=ConditionSources(),
+        input_concepts=list(node.output_concepts),
     )

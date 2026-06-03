@@ -2,6 +2,7 @@
 
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.processing.nodes import StrategyNode
+from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 
 
 def parent_outputs_needed(
@@ -19,9 +20,8 @@ def parent_outputs_needed(
                 referenced.add(arg.address)
         # Also pass-through: an output may be a direct parent output.
         referenced.add(c.address)
-    if conditions is not None:
-        for arg in conditions.concept_arguments:
-            referenced.add(arg.address)
+    for arg in condition_row_args(conditions):
+        referenced.add(arg.address)
 
     result: list[BuildConcept] = []
     seen: set[str] = set()

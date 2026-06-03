@@ -8,7 +8,7 @@
  [    match] 08  (v3=2 v4=2)
  [    match] 09  (v3=175 v4=175)
 *[ v4_error] 10  (v3=20 v4=None)
-   v4: ValueError: Invalid input concepts to node! ['order.customer.nation.id'] are missing non-hidden parent nodes; have {'order.customer.name', 'local.discount', 'order.id', 'order.customer.nation.name', 'local.extended_price', 'order.customer.comment', 'order.customer.id', 'order.customer.account_balance', 'order.customer.phone', 'local.line_no', 'order.customer.address'} and hidden set() from root {'order.customer.name', 'local.discount', 'order.id', 'order.customer.nation.name', 'local.extended_price', 'order.customer.comment', 'order.customer.id', 'order.customer.account_balance', 'order.customer.phone', 'local.line_no', 'order.customer.address'}
+   v4: ValueError: Invalid input concepts to node! ['order.customer.nation.id'] are missing non-hidden parent nodes; have {'order.customer.phone', 'local.discount', 'local.line_no', 'order.customer.comment', 'order.customer.nation.name', 'order.customer.id', 'order.id', 'order.customer.address', 'order.customer.account_balance', 'order.customer.name', 'local.extended_price'} and hidden set() from root {'order.customer.phone', 'local.discount', 'local.line_no', 'order.customer.comment', 'order.customer.nation.name', 'order.customer.id', 'order.id', 'order.customer.address', 'order.customer.account_balance', 'order.customer.name', 'local.extended_price'}
  [    match] 11  (v3=2541 v4=2541)
  [    match] 12  (v3=2 v4=2)
  [    match] 13  (v3=37 v4=37)
@@ -17,11 +17,10 @@
  [    match] 16  (v3=2762 v4=2762)
  [    match] 17  (v3=1 v4=1)
 *[ mismatch] 18  (v3=5 v4=100)
-  only in v4: 1x(7856, 'Customer#000007856', None, None, None, None); 1x(4796, 'Customer#000004796', None, None, None, None); 1x(6673, 'Customer#000006673', None, None, None, None); 1x(3259, 'Customer#000003259', None, None, None, None)
+  only in v4: 1x(13945, 'Customer#000013945', None, None, None, None); 1x(14557, 'Customer#000014557', None, None, None, None); 1x(12040, 'Customer#000012040', None, None, None, None); 1x(13226, 'Customer#000013226', None, None, None, None)
  [    match] 19  (v3=1 v4=1)
  [    match] 20  (v3=9 v4=9)
-*[ mismatch] 21  (v3=47 v4=0)
-  only in v3: 1x(16, 'Supplier#000000445'); 1x(16, 'Supplier#000000825'); 1x(15, 'Supplier#000000709'); 1x(15, 'Supplier#000000762')
+ [    match] 21  (v3=47 v4=47)
 *[ mismatch] 22  (v3=7 v4=0)
   only in v3: 1x('13', 94, Decimal('714035.050000')); 1x('17', 96, Decimal('722560.150000')); 1x('18', 99, Decimal('738012.520000')); 1x('23', 93, Decimal('708285.250000'))
 *[ mismatch] adhoc01  (v3=100 v4=100)
@@ -37,4 +36,4 @@
 [skip] adhoc06 (cache-dependent)
  [    match] adhoc07  (v3=20 v4=20)
 
-21/28 parity  ->  C:\Users\ethan\coding_projects\pytrilogy\local_scripts\v4_evals\tpc_h_compare\SUMMARY.md
+22/28 parity  ->  C:\Users\ethan\coding_projects\pytrilogy\local_scripts\v4_evals\tpc_h_compare\SUMMARY.md

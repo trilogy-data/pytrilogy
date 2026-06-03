@@ -50,6 +50,10 @@ from trilogy.core.processing.v4_helper import (
     build_group_graph,
     build_strategy_node,
 )
+from trilogy.core.processing.v4_helper.condition_injection import (
+    ConditionSources,
+    inject_condition_at_node,
+)
 from trilogy.utility import unique
 
 __all__ = [
@@ -99,14 +103,6 @@ class V4History(History):
         conditions: list[BuildWhereClause],
     ) -> None:
         self.build_history[self._v4_key(search, accept_partial, conditions)] = output
-
-
-@dataclass
-class _ConditionSources:
-    row_concepts: list[BuildConcept] = field(default_factory=list)
-    row_parents: list[StrategyNode] = field(default_factory=list)
-    existence_concepts: list[BuildConcept] = field(default_factory=list)
-    existence_parents: list[StrategyNode] = field(default_factory=list)
 
 
 def _factory_for_history(history: "V4History") -> Factory:
@@ -253,9 +249,9 @@ def _resolve_condition_sources(
     graph: ReferenceGraph,
     history: "V4History",
     depth: int,
-) -> _ConditionSources:
+) -> ConditionSources:
     """Resolve condition row inputs and existence inputs without mixing them."""
-    sources = _ConditionSources()
+    sources = ConditionSources()
     produced_addrs = {o.address for o in node.usable_outputs}
     row_args = unique(
         [c for c in condition.row_arguments if c.address not in produced_addrs],
@@ -307,75 +303,6 @@ def _resolve_condition_sources(
     return sources
 
 
-def _inject_condition_at_node(
-    node: StrategyNode,
-    condition: BuildWhereClause,
-    output_concepts: list[BuildConcept],
-    environment: BuildEnvironment,
-    sources: _ConditionSources,
-    *,
-    partial_concepts: list[BuildConcept] | None = None,
-    grain: BuildGrain | None = None,
-    hidden_concepts: set[str] | None = None,
-) -> StrategyNode:
-    """Apply a WHERE/HAVING condition at a fixed node boundary."""
-    base = node
-    if sources.row_parents:
-        merged_outputs = unique(
-            list(base.output_concepts)
-            + [
-                output
-                for parent in sources.row_parents
-                for output in parent.output_concepts
-            ],
-            "address",
-        )
-        base = MergeNode(
-            input_concepts=merged_outputs,
-            output_concepts=merged_outputs,
-            environment=environment,
-            parents=[base, *sources.row_parents],
-        )
-
-    combined = (
-        BuildConditional(
-            left=base.conditions,
-            right=condition.conditional,
-            operator=BooleanOperator.AND,
-        )
-        if base.conditions
-        else condition.conditional
-    )
-    input_concepts = unique(list(base.usable_outputs) + sources.row_concepts, "address")
-    node_partials = (
-        partial_concepts
-        if partial_concepts is not None
-        else list(base.partial_concepts)
-    )
-    if sources.existence_parents:
-        return MergeNode(
-            input_concepts=input_concepts,
-            output_concepts=output_concepts,
-            environment=environment,
-            parents=[base, *sources.existence_parents],
-            partial_concepts=node_partials,
-            grain=grain,
-            conditions=combined,
-            hidden_concepts=hidden_concepts,
-            existence_concepts=sources.existence_concepts,
-        )
-    return SelectNode(
-        output_concepts=output_concepts,
-        input_concepts=input_concepts,
-        parents=[base],
-        environment=environment,
-        partial_concepts=node_partials,
-        conditions=combined,
-        grain=grain,
-        hidden_concepts=hidden_concepts,
-    )
-
-
 def _resolve_and_inject_condition(
     node: StrategyNode,
     condition: BuildWhereClause,
@@ -392,7 +319,7 @@ def _resolve_and_inject_condition(
     sources = _resolve_condition_sources(
         node, condition, environment, graph, history, depth
     )
-    return _inject_condition_at_node(
+    return inject_condition_at_node(
         node,
         condition,
         output_concepts,

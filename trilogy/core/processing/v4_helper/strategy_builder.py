@@ -30,6 +30,11 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.v4_node_generators import build_node
 
+from .condition_injection import (
+    ConditionSources,
+    condition_row_args,
+    inject_condition_at_node,
+)
 from .constants import (
     DEPENDENCY_EDGE_KINDS,
     EDGE_KIND_EXISTENCE,
@@ -636,25 +641,31 @@ def _assemble_final_node(
         arg_nodes, arg_concepts = _filter_arg_parents(
             group_graph, built, filter_only_addrs - avail
         )
-        if arg_nodes:
-            # Cross-join the filter-only arg producers (e.g. the global
-            # aggregate) in as hidden inputs so the WHERE can reference them.
-            return MergeNode(
-                input_concepts=list(node.output_concepts) + arg_concepts,
-                output_concepts=keep,
-                environment=environment,
-                parents=[node, *arg_nodes],
-                conditions=final_conditions.conditional,
-                hidden_concepts={c.address for c in arg_concepts} - mandatory_addresses,
-            )
-        wrapped = SelectNode(
-            input_concepts=list(node.output_concepts),
-            output_concepts=keep,
-            environment=environment,
-            parents=[node],
-            conditions=final_conditions.conditional,
+        row_arg_addrs = {c.address for c in condition_row_args(final_conditions)}
+        row_concepts = [
+            concept
+            for concept in node.output_concepts
+            if concept.address in row_arg_addrs
+        ]
+        sources = ConditionSources(
+            row_concepts=row_concepts + arg_concepts,
+            row_parents=arg_nodes,
         )
-        return wrapped
+        return inject_condition_at_node(
+            node,
+            final_conditions,
+            keep,
+            environment,
+            sources,
+            hidden_concepts=(
+                {c.address for c in arg_concepts} - mandatory_addresses
+                if arg_nodes
+                else None
+            ),
+            input_concepts=list(node.output_concepts) + arg_concepts,
+            condition_on_merge=bool(arg_nodes),
+            combine_existing=False,
+        )
 
     per_group = _cover_groups_for_mandatory(group_graph, built, mandatory_list)
     if not per_group:
