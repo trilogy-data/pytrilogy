@@ -29,18 +29,18 @@ These complement `../discovery_v4_compare.py` (TPC-DS vs v3 reference logs).
 
 ## Current state
 
-### TPC-H — 17/28 parity (10 v4-attributable failures)
+### TPC-H — 22/28 parity (5 v4-attributable failures)
+
+Fixed: 02/20 (filter past barrier), 11 (cross-grain agg HAVING → FINAL WHERE),
+21 (raw filter wrongly propagated past a `?` virtual-filter), adhoc07.
 
 | Query | Failure | Root cause |
 | --- | --- | --- |
-| 02, 20 | crash: "… not reachable from any group" | filter inputs only exist past a row-shape barrier |
 | 10 | crash: "Invalid input concepts to node" (nation.id) | missing parent node |
-| 11 | crash: duckdb "must appear in GROUP BY" | invalid SQL emitted |
-| 18 | 5 → 100 rows | fan-out (many customers per order) |
-| 21, 22 | → 0 rows | filter drops everything |
-| adhoc01 | first cols 100.0 vs 0.19 | wrong aggregate value |
-| adhoc03 | 333 → 150000 | wrong value |
-| adhoc07 | custkey fan-out | many customers per order_key |
+| 18 | 5 → 100 rows | fan-out (many customers per order) + unapplied qty>300 HAVING |
+| 22 | → 0 rows | global conditional aggregate `avg(? …)` loses its avg() wrapper |
+| adhoc01 | first cols 100.0 vs 0.19 | wrong aggregate value (window/ratio) |
+| adhoc03 | 333 → 150000 | wrong value (count vs key) |
 
 Not v4: adhoc02 (v3 also errors — self-referencing aggregate); adhoc06
 (cache-dependent skip — v4 returns the correct answer, its suite failure is

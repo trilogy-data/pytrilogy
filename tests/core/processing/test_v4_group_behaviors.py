@@ -24,7 +24,14 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
     native_grain_declared,
     native_grain_root,
 )
-from trilogy.core.processing.v4_helper.models import ConceptAttrs, GroupBucket
+from trilogy.core.processing.v4_helper.group_graph import (
+    _virtual_filter_scoped_columns,
+)
+from trilogy.core.processing.v4_helper.models import (
+    ConceptAttrs,
+    GroupAttrs,
+    GroupBucket,
+)
 
 
 def _attrs(address: str, spec: dict) -> ConceptAttrs:
@@ -482,3 +489,53 @@ def test_partition_roots_buckets_per_label():
     buckets = partition_roots(items, cg, ca, {}, _noop_ensure)
     assert len(buckets) == 2
     assert {b.label for b in buckets} == {"", "q5_results"}
+
+
+def test_virtual_filter_scoped_columns_collects_condition_args():
+    # root_d1 feeds a FILTER group whose virt-filter output derives from the
+    # `?` condition's columns (q21's `count(supplier ? receipt > commit)`).
+    cg, ca = _cg(
+        {
+            "local.supplier_id": {},
+            "local.receipt": {},
+            "local.commit": {},
+            "local._virt_filter": {
+                "parents": ["local.supplier_id", "local.receipt", "local.commit"]
+            },
+        }
+    )
+    gg: nx.DiGraph = nx.DiGraph()
+    gg.add_edge("root_d1", "filt", kind="lineage")
+    attrs = {
+        "root_d1": GroupAttrs(
+            depth_label="root_d1",
+            derivation=Derivation.ROOT.value,
+            primary_members=("local.receipt", "local.commit", "local.supplier_id"),
+        ),
+        "filt": GroupAttrs(
+            depth_label="d1",
+            derivation=Derivation.FILTER.value,
+            primary_members=("local._virt_filter",),
+        ),
+    }
+    scoped = _virtual_filter_scoped_columns(gg, attrs, cg, ca, "root_d1")
+    assert scoped == {"local.supplier_id", "local.receipt", "local.commit"}
+
+
+def test_virtual_filter_scoped_columns_empty_without_filter_group():
+    cg, ca = _cg({"local.x": {}, "local.cnt": {"parents": ["local.x"]}})
+    gg: nx.DiGraph = nx.DiGraph()
+    gg.add_edge("root_d1", "agg", kind="lineage")
+    attrs = {
+        "root_d1": GroupAttrs(
+            depth_label="root_d1",
+            derivation=Derivation.ROOT.value,
+            primary_members=("local.x",),
+        ),
+        "agg": GroupAttrs(
+            depth_label="d0",
+            derivation=Derivation.AGGREGATE.value,
+            primary_members=("local.cnt",),
+        ),
+    }
+    assert _virtual_filter_scoped_columns(gg, attrs, cg, ca, "root_d1") == set()

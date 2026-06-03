@@ -38,13 +38,11 @@ OUT_DIR = Path(__file__).resolve().parent / "tpc_h_compare"
 # catch; this row-level parity check does.
 #   10 = missing join source (nation.id)
 #   18 = fan-out + unapplied HAVING (qty>300)
-#   21 = outer filter pushed into shared by-order aggregate scan → contradiction
 #   22 = global conditional aggregate (avg ? ...) loses its avg() wrapper
 #   adhoc01 = window/ratio computed wrong; adhoc03 = count vs key
 KNOWN_FAILING = {
     "10",
     "18",
-    "21",
     "22",
     "adhoc01",
     "adhoc03",
