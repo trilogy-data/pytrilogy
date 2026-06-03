@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6369 | 125 | 55.57 ms |
-| reference | 6303 | 109 | 55.94 ms |
-| v4 / ref | 1.01x | 1.15x | 0.99x |
+| v4 | 6361 | 128 | 38.50 ms |
+| reference | 6303 | 109 | 38.44 ms |
+| v4 / ref | 1.01x | 1.17x | 1.00x |
 
 ## Preql
 
@@ -183,7 +183,10 @@ WHERE
 GROUP BY
     1,
     2,
-    3)
+    3
+HAVING
+    ( coalesce("ws_qty",0) > 0 or coalesce("cs_qty",0) > 0 )
+)
 SELECT
     "yummy"."sales_date_year" as "ss_sold_year",
     "yummy"."sales_item_id" as "ss_item_sk",
@@ -198,7 +201,7 @@ SELECT
 FROM
     "yummy"
 WHERE
-    "yummy"."ss_qty" > 0 and ( coalesce("yummy"."ws_qty",0) > 0 or coalesce("yummy"."cs_qty",0) > 0 )
+    "yummy"."ss_qty" > 0
 
 ORDER BY 
     "ss_sold_year" asc nulls first,

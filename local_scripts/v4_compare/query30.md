@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8732 | 122 | 18.94 ms |
-| reference | 7151 | 99 | 34.30 ms |
-| v4 / ref | 1.22x | 1.23x | 0.55x |
+| v4 | 8732 | 122 | 13.41 ms |
+| reference | 7151 | 99 | 16.55 ms |
+| v4 / ref | 1.22x | 1.23x | 0.81x |
 
 ## Preql
 
@@ -149,19 +149,19 @@ SELECT
 FROM
     "juicy")
 SELECT
-    "abundant"."customer_state_returns_2002" as "customer_state_returns_2002",
-    "questionable"."web_returns_billing_customer_birth_country" as "web_returns_billing_customer_birth_country",
+    "questionable"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id",
+    "questionable"."web_returns_billing_customer_salutation" as "web_returns_billing_customer_salutation",
+    "questionable"."web_returns_billing_customer_first_name" as "web_returns_billing_customer_first_name",
+    "questionable"."web_returns_billing_customer_last_name" as "web_returns_billing_customer_last_name",
+    "questionable"."web_returns_billing_customer_preferred_cust_flag" as "web_returns_billing_customer_preferred_cust_flag",
     "questionable"."web_returns_billing_customer_birth_day" as "web_returns_billing_customer_birth_day",
     "questionable"."web_returns_billing_customer_birth_month" as "web_returns_billing_customer_birth_month",
     "questionable"."web_returns_billing_customer_birth_year" as "web_returns_billing_customer_birth_year",
-    "questionable"."web_returns_billing_customer_email_address" as "web_returns_billing_customer_email_address",
-    "questionable"."web_returns_billing_customer_first_name" as "web_returns_billing_customer_first_name",
-    "questionable"."web_returns_billing_customer_last_name" as "web_returns_billing_customer_last_name",
-    "questionable"."web_returns_billing_customer_last_review_date" as "web_returns_billing_customer_last_review_date",
+    "questionable"."web_returns_billing_customer_birth_country" as "web_returns_billing_customer_birth_country",
     "questionable"."web_returns_billing_customer_login" as "web_returns_billing_customer_login",
-    "questionable"."web_returns_billing_customer_preferred_cust_flag" as "web_returns_billing_customer_preferred_cust_flag",
-    "questionable"."web_returns_billing_customer_salutation" as "web_returns_billing_customer_salutation",
-    "questionable"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id"
+    "questionable"."web_returns_billing_customer_email_address" as "web_returns_billing_customer_email_address",
+    "questionable"."web_returns_billing_customer_last_review_date" as "web_returns_billing_customer_last_review_date",
+    "abundant"."customer_state_returns_2002" as "customer_state_returns_2002"
 FROM
     "questionable"
     RIGHT OUTER JOIN "abundant" on "questionable"."web_returns_billing_customer_id" = "abundant"."web_returns_billing_customer_id" AND "questionable"."web_returns_return_address_state" is not distinct from "abundant"."web_returns_return_address_state"

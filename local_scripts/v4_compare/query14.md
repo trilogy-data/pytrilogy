@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7060 | 181 | 41.13 ms |
-| reference | 6203 | 160 | 61.76 ms |
-| v4 / ref | 1.14x | 1.13x | 0.67x |
+| v4 | 6997 | 180 | 29.64 ms |
+| reference | 6203 | 160 | 35.53 ms |
+| v4 / ref | 1.13x | 1.12x | 0.83x |
 
 ## Preql
 
@@ -191,20 +191,19 @@ FROM
     "cooperative"),
 sparkling as (
 SELECT
-    "vacuous"."tuple_key" as "_cross_tuples_ci_tuple_key",
-    count(distinct "vacuous"."sales_sales_channel") as "cross_channel_count"
+    "vacuous"."tuple_key" as "_cross_tuples_ci_tuple_key"
 FROM
     "vacuous"
 GROUP BY
-    1),
+    1
+HAVING
+    count(distinct "vacuous"."sales_sales_channel") = 3
+),
 abhorrent as (
 SELECT
     "sparkling"."_cross_tuples_ci_tuple_key" as "_cross_tuples_ci_tuple_key"
 FROM
-    "sparkling"
-WHERE
-    "sparkling"."cross_channel_count" = 3
-),
+    "sparkling"),
 sweltering as (
 SELECT
     "abhorrent"."_cross_tuples_ci_tuple_key" as "cross_tuples_ci_tuple_key"
@@ -277,10 +276,10 @@ GROUP BY
 SELECT
     "divergent"."l0_filtered_channel_l0" as "channel",
     "divergent"."l0_filtered_brand_l0" as "i_brand_id",
-    "divergent"."l0_filtered_category_l0" as "i_category_id",
     "divergent"."l0_filtered_class_l0" as "i_class_id",
-    "divergent"."sum_number_sales" as "sum_number_sales",
-    "divergent"."sum_sales" as "sum_sales"
+    "divergent"."l0_filtered_category_l0" as "i_category_id",
+    "divergent"."sum_sales" as "sum_sales",
+    "divergent"."sum_number_sales" as "sum_number_sales"
 FROM
     "divergent"
 ORDER BY 

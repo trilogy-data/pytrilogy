@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2317 | 55 | 8.55 ms |
-| reference | 2309 | 55 | 8.34 ms |
-| v4 / ref | 1.00x | 1.00x | 1.02x |
+| v4 | 2317 | 55 | 5.47 ms |
+| reference | 2309 | 55 | 5.85 ms |
+| v4 / ref | 1.00x | 1.00x | 0.93x |
 
 ## Preql
 
@@ -118,17 +118,17 @@ GROUP BY
     "cheerful"."sales_item_id")
 SELECT
     sum(CASE
-	WHEN "cooperative"."_pair_presence_store_present" >= 1 and "cooperative"."_pair_presence_catalog_present" >= 1 THEN 1
+	WHEN "cooperative"."_pair_presence_store_present" >= 1 and "cooperative"."_pair_presence_catalog_present" = 0 THEN 1
 	ELSE 0
-	END) as "both_sale_count",
+	END) as "store_sale_count",
     sum(CASE
 	WHEN "cooperative"."_pair_presence_store_present" = 0 and "cooperative"."_pair_presence_catalog_present" >= 1 THEN 1
 	ELSE 0
 	END) as "catalog_sale_count",
     sum(CASE
-	WHEN "cooperative"."_pair_presence_store_present" >= 1 and "cooperative"."_pair_presence_catalog_present" = 0 THEN 1
+	WHEN "cooperative"."_pair_presence_store_present" >= 1 and "cooperative"."_pair_presence_catalog_present" >= 1 THEN 1
 	ELSE 0
-	END) as "store_sale_count"
+	END) as "both_sale_count"
 FROM
     "cooperative"
 ```

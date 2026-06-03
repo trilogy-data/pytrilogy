@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5197 | 99 | 34.94 ms |
-| reference | 5955 | 135 | 70.17 ms |
-| v4 / ref | 0.87x | 0.73x | 0.50x |
+| v4 | 4845 | 92 | 31.20 ms |
+| reference | 5955 | 135 | 52.13 ms |
+| v4 / ref | 0.81x | 0.68x | 0.60x |
 
 ## Preql
 
@@ -122,7 +122,6 @@ WHERE
 uneven as (
 SELECT
     "cooperative"."sales_order_id" as "sales_order_id",
-    "cooperative"."sales_return_date_week_seq" as "sales_return_date_week_seq",
     "cooperative"."sales_return_quantity" as "sales_return_quantity",
     "cooperative"."sales_sales_channel" as "sales_sales_channel",
     "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
@@ -137,24 +136,21 @@ GROUP BY
     2,
     3,
     4,
-    5,
+    "cooperative"."sales_return_date_week_seq",
     "sales_item_items"."I_ITEM_SK"),
 yummy as (
 SELECT
     "uneven"."sales_item_text_id" as "sales_item_text_id",
-    count(CASE WHEN "uneven"."sales_sales_channel" = 'CATALOG' THEN "uneven"."sales_order_id" ELSE NULL END) as "cr_item_present",
-    count(CASE WHEN "uneven"."sales_sales_channel" = 'STORE' THEN "uneven"."sales_order_id" ELSE NULL END) as "sr_item_present",
-    count(CASE WHEN "uneven"."sales_sales_channel" = 'WEB' THEN "uneven"."sales_order_id" ELSE NULL END) as "wr_item_present",
     sum(CASE WHEN "uneven"."sales_sales_channel" = 'CATALOG' THEN "uneven"."sales_return_quantity" ELSE NULL END) as "cr_item_qty",
     sum(CASE WHEN "uneven"."sales_sales_channel" = 'STORE' THEN "uneven"."sales_return_quantity" ELSE NULL END) as "sr_item_qty",
     sum(CASE WHEN "uneven"."sales_sales_channel" = 'WEB' THEN "uneven"."sales_return_quantity" ELSE NULL END) as "wr_item_qty"
 FROM
     "uneven"
-WHERE
-    "uneven"."sales_return_date_week_seq" in (select highfalutin."target_week_seqs" from highfalutin where highfalutin."target_week_seqs" is not null)
-
 GROUP BY
-    1)
+    1
+HAVING
+    count(CASE WHEN "uneven"."sales_sales_channel" = 'STORE' THEN "uneven"."sales_order_id" ELSE NULL END) > 0 and count(CASE WHEN "uneven"."sales_sales_channel" = 'CATALOG' THEN "uneven"."sales_order_id" ELSE NULL END) > 0 and count(CASE WHEN "uneven"."sales_sales_channel" = 'WEB' THEN "uneven"."sales_order_id" ELSE NULL END) > 0
+)
 SELECT
     "yummy"."sales_item_text_id" as "item_id",
     "yummy"."sr_item_qty" as "sr_item_qty",
@@ -166,9 +162,6 @@ SELECT
     ( ( "yummy"."sr_item_qty" + "yummy"."cr_item_qty" ) + "yummy"."wr_item_qty" ) / 3.0 as "average"
 FROM
     "yummy"
-WHERE
-    "yummy"."sr_item_present" > 0 and "yummy"."cr_item_present" > 0 and "yummy"."wr_item_present" > 0
-
 ORDER BY 
     "item_id" asc nulls first,
     "yummy"."sr_item_qty" asc nulls first

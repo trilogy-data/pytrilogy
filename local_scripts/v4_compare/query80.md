@@ -18,9 +18,9 @@ ref rows: 30 (30 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7450 | 144 | 25.73 ms |
-| reference | 7450 | 144 | 27.22 ms |
-| v4 / ref | 1.00x | 1.00x | 0.95x |
+| v4 | 7450 | 144 | 18.87 ms |
+| reference | 7450 | 144 | 18.71 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -196,9 +196,9 @@ WHERE
 SELECT
     "abhorrent"."channel_label" as "channel",
     "abhorrent"."id_label" as "id",
-    sum("abhorrent"."profit_minus_loss") as "profit_total",
+    sum("abhorrent"."sales_ext_sales_price") as "sales_total",
     sum(coalesce("abhorrent"."sales_return_amount",0)) as "returns_total",
-    sum("abhorrent"."sales_ext_sales_price") as "sales_total"
+    sum("abhorrent"."profit_minus_loss") as "profit_total"
 FROM
     "abhorrent"
 GROUP BY

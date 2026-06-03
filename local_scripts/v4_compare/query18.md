@@ -18,8 +18,8 @@ ref rows: 45 (45 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5652 | 100 | 38.25 ms |
-| reference | 7254 | 111 | 34.20 ms |
+| v4 | 5652 | 100 | 17.32 ms |
+| reference | 7254 | 111 | 15.41 ms |
 | v4 / ref | 0.78x | 0.90x | 1.12x |
 
 ## Preql
@@ -145,10 +145,10 @@ FROM
     RIGHT OUTER JOIN "questionable" on "abundant"."cs_item_id" = "questionable"."cs_item_id" AND "abundant"."cs_order_number" = "questionable"."cs_order_number"
     LEFT OUTER JOIN "uneven" on "questionable"."cs_bill_customer_demographic_dependent_count" is not distinct from "uneven"."cs_bill_customer_demographic_dependent_count" AND "questionable"."cs_item_id" = "uneven"."cs_item_id" AND "questionable"."cs_order_number" = "uneven"."cs_order_number")
 SELECT
-    "yummy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
-    "yummy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
-    "yummy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
     "yummy"."cs_item_text_id" as "cs_item_text_id",
+    "yummy"."cs_bill_customer_address_country" as "cs_bill_customer_address_country",
+    "yummy"."cs_bill_customer_address_state" as "cs_bill_customer_address_state",
+    "yummy"."cs_bill_customer_address_county" as "cs_bill_customer_address_county",
     avg(cast("yummy"."cs_quantity" as numeric(12,2))) as "agg1",
     avg(cast("yummy"."cs_list_price" as numeric(12,2))) as "agg2",
     avg(cast("yummy"."cs_coupon_amt" as numeric(12,2))) as "agg3",
@@ -159,7 +159,7 @@ SELECT
 FROM
     "yummy"
 GROUP BY
-    ROLLUP (4, 1, 3, 2)
+    ROLLUP (1, 2, 3, 4)
 ORDER BY 
     "yummy"."cs_bill_customer_address_country" asc nulls first,
     "yummy"."cs_bill_customer_address_state" asc nulls first,

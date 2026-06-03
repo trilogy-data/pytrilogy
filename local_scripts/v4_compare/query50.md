@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7010 | 117 | 46.28 ms |
-| reference | 4728 | 75 | 11.15 ms |
-| v4 / ref | 1.48x | 1.56x | 4.15x |
+| v4 | 7005 | 117 | 31.51 ms |
+| reference | 4728 | 75 | 7.39 ms |
+| v4 / ref | 1.48x | 1.56x | 4.26x |
 
 ## Preql
 
@@ -151,34 +151,34 @@ GROUP BY
     11,
     "thoughtful"."physical_sales_ticket_number")
 SELECT
-    sum("cooperative"."_virt_agg_count_6261479071707891") as "days_120_plus",
+    "cooperative"."physical_sales_store_name" as "physical_sales_store_name",
+    "cooperative"."physical_sales_store_company_id" as "physical_sales_store_company_id",
+    "cooperative"."physical_sales_store_street_number" as "physical_sales_store_street_number",
+    "cooperative"."physical_sales_store_street_name" as "physical_sales_store_street_name",
+    "cooperative"."physical_sales_store_street_type" as "physical_sales_store_street_type",
+    "cooperative"."physical_sales_store_suite_number" as "physical_sales_store_suite_number",
+    "cooperative"."physical_sales_store_city" as "physical_sales_store_city",
+    "cooperative"."physical_sales_store_county" as "physical_sales_store_county",
+    "cooperative"."physical_sales_store_state" as "physical_sales_store_state",
+    "cooperative"."physical_sales_store_zip" as "physical_sales_store_zip",
     sum("cooperative"."_virt_agg_count_6396225769465204") as "days_30",
     sum("cooperative"."_virt_agg_count_1754169376042040") as "days_31_60",
     sum("cooperative"."_virt_agg_count_9524432267113409") as "days_61_90",
     sum("cooperative"."_virt_agg_count_5608833957360839") as "days_91_120",
-    "cooperative"."physical_sales_store_city" as "physical_sales_store_city",
-    "cooperative"."physical_sales_store_company_id" as "physical_sales_store_company_id",
-    "cooperative"."physical_sales_store_county" as "physical_sales_store_county",
-    "cooperative"."physical_sales_store_name" as "physical_sales_store_name",
-    "cooperative"."physical_sales_store_state" as "physical_sales_store_state",
-    "cooperative"."physical_sales_store_street_name" as "physical_sales_store_street_name",
-    "cooperative"."physical_sales_store_street_number" as "physical_sales_store_street_number",
-    "cooperative"."physical_sales_store_street_type" as "physical_sales_store_street_type",
-    "cooperative"."physical_sales_store_suite_number" as "physical_sales_store_suite_number",
-    "cooperative"."physical_sales_store_zip" as "physical_sales_store_zip"
+    sum("cooperative"."_virt_agg_count_6261479071707891") as "days_120_plus"
 FROM
     "cooperative"
 GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
     6,
     7,
     8,
     9,
     10,
-    11,
-    12,
-    13,
-    14,
-    15,
     "cooperative"."physical_sales_store_id"
 ORDER BY 
     "cooperative"."physical_sales_store_name" asc nulls first,

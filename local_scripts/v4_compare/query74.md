@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3218 | 69 | 11.60 ms |
-| reference | 3573 | 71 | 16.75 ms |
-| v4 / ref | 0.90x | 0.97x | 0.69x |
+| v4 | 3239 | 69 | 8.02 ms |
+| reference | 3573 | 71 | 10.69 ms |
+| v4 / ref | 0.91x | 0.97x | 0.75x |
 
 ## Preql
 
@@ -100,7 +100,10 @@ FROM
     "thoughtful"
     LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
 GROUP BY
-    1),
+    1
+HAVING
+    "store_first_year" > 0
+),
 yummy as (
 SELECT
     "questionable"."store_first_year" as "store_first_year",
@@ -113,18 +116,15 @@ SELECT
     "sales_billing_customer_customers"."C_LAST_NAME" as "sales_billing_customer_last_name"
 FROM
     "questionable"
-    INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "questionable"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
-WHERE
-    "questionable"."store_first_year" > 0
-)
+    INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "questionable"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK")
 SELECT
-    "yummy"."sales_billing_customer_first_name" as "customer_first_name",
     "yummy"."sales_billing_customer_text_id" as "customer_id",
+    "yummy"."sales_billing_customer_first_name" as "customer_first_name",
     "yummy"."sales_billing_customer_last_name" as "customer_last_name"
 FROM
     "yummy"
 WHERE
-    "yummy"."web_first_year" > 0 and ( CASE
+    "yummy"."store_first_year" > 0 and "yummy"."web_first_year" > 0 and ( CASE
 	WHEN "yummy"."web_first_year" > 0 THEN "yummy"."web_second_year" / "yummy"."web_first_year"
 	ELSE null
 	END ) > ( CASE

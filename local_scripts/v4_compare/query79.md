@@ -18,9 +18,9 @@ ref rows: 84 (84 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2751 | 42 | 22.99 ms |
-| reference | 2520 | 38 | 10.86 ms |
-| v4 / ref | 1.09x | 1.11x | 2.12x |
+| v4 | 2751 | 42 | 15.52 ms |
+| reference | 2520 | 38 | 7.53 ms |
+| v4 / ref | 1.09x | 1.11x | 2.06x |
 
 ## Preql
 
@@ -86,12 +86,12 @@ GROUP BY
     5,
     "physical_sales_store_sales"."SS_ADDR_SK")
 SELECT
-    "cooperative"."amt" as "amt",
-    SUBSTRING("cooperative"."physical_sales_store_city",1,30) as "city_short",
-    "cooperative"."profit" as "profit",
-    "cooperative"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
     "cooperative"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
-    "cooperative"."physical_sales_ticket_number" as "physical_sales_ticket_number"
+    "cooperative"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
+    SUBSTRING("cooperative"."physical_sales_store_city",1,30) as "city_short",
+    "cooperative"."physical_sales_ticket_number" as "physical_sales_ticket_number",
+    "cooperative"."amt" as "amt",
+    "cooperative"."profit" as "profit"
 FROM
     "cooperative"
 ORDER BY 

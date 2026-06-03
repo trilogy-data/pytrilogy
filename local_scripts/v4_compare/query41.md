@@ -18,9 +18,9 @@ ref rows: 3 (3 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2186 | 30 | 8.10 ms |
-| reference | 2112 | 42 | 7.87 ms |
-| v4 / ref | 1.04x | 0.71x | 1.03x |
+| v4 | 2184 | 33 | 4.70 ms |
+| reference | 2112 | 42 | 4.33 ms |
+| v4 / ref | 1.03x | 0.79x | 1.09x |
 
 ## Preql
 
@@ -70,14 +70,17 @@ SELECT
 FROM
     "highfalutin"
 GROUP BY
-    1)
+    1
+HAVING
+    "manufact_matches" > 0
+)
 SELECT
     "highfalutin"."filtered_product_name" as "filtered_product_name"
 FROM
     "wakeful"
     INNER JOIN "highfalutin" on "wakeful"."item_manufact" is not distinct from "highfalutin"."item_manufact"
 WHERE
-    "highfalutin"."filtered_product_name" is not null and "wakeful"."manufact_matches" > 0
+    "highfalutin"."filtered_product_name" is not null
 
 GROUP BY
     1,

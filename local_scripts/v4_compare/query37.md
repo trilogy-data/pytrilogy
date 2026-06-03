@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1865 | 52 | 16.71 ms |
-| reference | 1434 | 42 | 11.81 ms |
-| v4 / ref | 1.30x | 1.24x | 1.41x |
+| v4 | 1865 | 52 | 9.94 ms |
+| reference | 1434 | 42 | 6.83 ms |
+| v4 / ref | 1.30x | 1.24x | 1.46x |
 
 ## Preql
 
@@ -91,9 +91,9 @@ WHERE
     "items_items"."I_CURRENT_PRICE" BETWEEN 68 AND 98 and "items_items"."I_MANUFACT_ID" in (677,940,694,808) and "items_items"."I_ITEM_SK" in (select thoughtful."inv_item_ids" from thoughtful where thoughtful."inv_item_ids" is not null)
 )
 SELECT
-    "cooperative"."items_current_price" as "items_current_price",
+    "cooperative"."items_text_id" as "items_text_id",
     "cooperative"."items_desc" as "items_desc",
-    "cooperative"."items_text_id" as "items_text_id"
+    "cooperative"."items_current_price" as "items_current_price"
 FROM
     "cooperative"
 WHERE

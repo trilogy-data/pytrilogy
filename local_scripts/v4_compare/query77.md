@@ -18,8 +18,8 @@ ref rows: 8 (8 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9232 | 215 | 29.29 ms |
-| reference | 7495 | 166 | 28.09 ms |
+| v4 | 9232 | 215 | 20.54 ms |
+| reference | 7495 | 166 | 19.74 ms |
 | v4 / ref | 1.23x | 1.30x | 1.04x |
 
 ## Preql
@@ -349,9 +349,9 @@ GROUP BY
 SELECT
     "gullible"."l0_union_u_channel" as "channel",
     "gullible"."l0_union_u_id" as "id",
-    "gullible"."profit" as "profit",
+    "gullible"."sales" as "sales",
     "gullible"."returns_" as "returns_",
-    "gullible"."sales" as "sales"
+    "gullible"."profit" as "profit"
 FROM
     "gullible"
 ORDER BY 

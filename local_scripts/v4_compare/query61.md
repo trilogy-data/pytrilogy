@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1815 | 26 | 7.26 ms |
-| reference | 3540 | 59 | 13.38 ms |
-| v4 / ref | 0.51x | 0.44x | 0.54x |
+| v4 | 1815 | 26 | 4.51 ms |
+| reference | 3540 | 59 | 9.65 ms |
+| v4 / ref | 0.51x | 0.44x | 0.47x |
 
 ## Preql
 
@@ -72,8 +72,8 @@ WHERE
 )
 SELECT
     "abundant"."promotional_sales" as "promotions",
-    ( cast("abundant"."promotional_sales" as numeric(15,4)) / cast("abundant"."total" as numeric(15,4)) ) * 100 as "ratio",
-    "abundant"."total" as "total"
+    "abundant"."total" as "total",
+    ( cast("abundant"."promotional_sales" as numeric(15,4)) / cast("abundant"."total" as numeric(15,4)) ) * 100 as "ratio"
 FROM
     "abundant"
 ORDER BY 

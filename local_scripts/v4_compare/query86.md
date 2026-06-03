@@ -18,9 +18,9 @@ ref rows: 65 (65 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2111 | 52 | 35.22 ms |
-| reference | 2138 | 52 | 28.45 ms |
-| v4 / ref | 0.99x | 1.00x | 1.24x |
+| v4 | 2111 | 52 | 31.39 ms |
+| reference | 2138 | 52 | 32.79 ms |
+| v4 / ref | 0.99x | 1.00x | 0.96x |
 
 ## Preql
 
@@ -99,11 +99,11 @@ SELECT
 FROM
     "thoughtful")
 SELECT
+    "cooperative"."total_sum" as "total_sum",
     "cooperative"."web_sales_item_category" as "i_category",
     "cooperative"."web_sales_item_class" as "i_class",
     "cooperative"."lochierarchy" as "lochierarchy",
-    "cooperative"."rank_within_parent" as "rank_within_parent",
-    "cooperative"."total_sum" as "total_sum"
+    "cooperative"."rank_within_parent" as "rank_within_parent"
 FROM
     "cooperative"
 ORDER BY 

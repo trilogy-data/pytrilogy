@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 15862 | 212 | 61.81 ms |
-| reference | 15862 | 212 | 63.00 ms |
-| v4 / ref | 1.00x | 1.00x | 0.98x |
+| v4 | 15862 | 212 | 18.45 ms |
+| reference | 15862 | 212 | 19.55 ms |
+| v4 / ref | 1.00x | 1.00x | 0.94x |
 
 ## Preql
 
@@ -304,24 +304,24 @@ WHERE
 GROUP BY
     1)
 SELECT
+    max(CASE WHEN "quizzical"."bucket_id" = 1 THEN "quizzical"."lp_avg" ELSE NULL END) as "B1_LP",
     max(CASE WHEN "quizzical"."bucket_id" = 1 THEN "quizzical"."lp_cnt" ELSE NULL END) as "B1_CNT",
     max(CASE WHEN "quizzical"."bucket_id" = 1 THEN "quizzical"."lp_cntd" ELSE NULL END) as "B1_CNTD",
-    max(CASE WHEN "quizzical"."bucket_id" = 1 THEN "quizzical"."lp_avg" ELSE NULL END) as "B1_LP",
+    max(CASE WHEN "quizzical"."bucket_id" = 2 THEN "quizzical"."lp_avg" ELSE NULL END) as "B2_LP",
     max(CASE WHEN "quizzical"."bucket_id" = 2 THEN "quizzical"."lp_cnt" ELSE NULL END) as "B2_CNT",
     max(CASE WHEN "quizzical"."bucket_id" = 2 THEN "quizzical"."lp_cntd" ELSE NULL END) as "B2_CNTD",
-    max(CASE WHEN "quizzical"."bucket_id" = 2 THEN "quizzical"."lp_avg" ELSE NULL END) as "B2_LP",
+    max(CASE WHEN "quizzical"."bucket_id" = 3 THEN "quizzical"."lp_avg" ELSE NULL END) as "B3_LP",
     max(CASE WHEN "quizzical"."bucket_id" = 3 THEN "quizzical"."lp_cnt" ELSE NULL END) as "B3_CNT",
     max(CASE WHEN "quizzical"."bucket_id" = 3 THEN "quizzical"."lp_cntd" ELSE NULL END) as "B3_CNTD",
-    max(CASE WHEN "quizzical"."bucket_id" = 3 THEN "quizzical"."lp_avg" ELSE NULL END) as "B3_LP",
+    max(CASE WHEN "quizzical"."bucket_id" = 4 THEN "quizzical"."lp_avg" ELSE NULL END) as "B4_LP",
     max(CASE WHEN "quizzical"."bucket_id" = 4 THEN "quizzical"."lp_cnt" ELSE NULL END) as "B4_CNT",
     max(CASE WHEN "quizzical"."bucket_id" = 4 THEN "quizzical"."lp_cntd" ELSE NULL END) as "B4_CNTD",
-    max(CASE WHEN "quizzical"."bucket_id" = 4 THEN "quizzical"."lp_avg" ELSE NULL END) as "B4_LP",
+    max(CASE WHEN "quizzical"."bucket_id" = 5 THEN "quizzical"."lp_avg" ELSE NULL END) as "B5_LP",
     max(CASE WHEN "quizzical"."bucket_id" = 5 THEN "quizzical"."lp_cnt" ELSE NULL END) as "B5_CNT",
     max(CASE WHEN "quizzical"."bucket_id" = 5 THEN "quizzical"."lp_cntd" ELSE NULL END) as "B5_CNTD",
-    max(CASE WHEN "quizzical"."bucket_id" = 5 THEN "quizzical"."lp_avg" ELSE NULL END) as "B5_LP",
+    max(CASE WHEN "quizzical"."bucket_id" = 6 THEN "quizzical"."lp_avg" ELSE NULL END) as "B6_LP",
     max(CASE WHEN "quizzical"."bucket_id" = 6 THEN "quizzical"."lp_cnt" ELSE NULL END) as "B6_CNT",
-    max(CASE WHEN "quizzical"."bucket_id" = 6 THEN "quizzical"."lp_cntd" ELSE NULL END) as "B6_CNTD",
-    max(CASE WHEN "quizzical"."bucket_id" = 6 THEN "quizzical"."lp_avg" ELSE NULL END) as "B6_LP"
+    max(CASE WHEN "quizzical"."bucket_id" = 6 THEN "quizzical"."lp_cntd" ELSE NULL END) as "B6_CNTD"
 FROM
     "quizzical"
 LIMIT (100)

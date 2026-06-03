@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4633 | 85 | 31.03 ms |
-| reference | 5253 | 81 | 59.34 ms |
-| v4 / ref | 0.88x | 1.05x | 0.52x |
+| v4 | 4275 | 81 | 28.05 ms |
+| reference | 5253 | 81 | 34.78 ms |
+| v4 / ref | 0.81x | 1.00x | 0.81x |
 
 ## Preql
 
@@ -113,7 +113,6 @@ WHERE
 ),
 uneven as (
 SELECT
-    "cooperative"."sales_date_week_seq" as "sales_date_week_seq",
     "cooperative"."sales_ext_sales_price" as "sales_ext_sales_price",
     "cooperative"."sales_sales_channel" as "sales_sales_channel",
     "sales_item_items"."I_ITEM_ID" as "sales_item_text_id"
@@ -131,11 +130,11 @@ SELECT
     sum(CASE WHEN "uneven"."sales_sales_channel" = 'WEB' THEN "uneven"."sales_ext_sales_price" ELSE NULL END) as "ws_item_rev"
 FROM
     "uneven"
-WHERE
-    "uneven"."sales_date_week_seq" in (select highfalutin."target_week_seq" from highfalutin where highfalutin."target_week_seq" is not null)
-
 GROUP BY
-    1)
+    1
+HAVING
+    "ss_item_rev" BETWEEN 0.9 * "cs_item_rev" AND 1.1 * "cs_item_rev" and "ss_item_rev" BETWEEN 0.9 * "ws_item_rev" AND 1.1 * "ws_item_rev" and "cs_item_rev" BETWEEN 0.9 * "ss_item_rev" AND 1.1 * "ss_item_rev" and "cs_item_rev" BETWEEN 0.9 * "ws_item_rev" AND 1.1 * "ws_item_rev" and "ws_item_rev" BETWEEN 0.9 * "ss_item_rev" AND 1.1 * "ss_item_rev" and "ws_item_rev" BETWEEN 0.9 * "cs_item_rev" AND 1.1 * "cs_item_rev"
+)
 SELECT
     "yummy"."sales_item_text_id" as "item_id",
     "yummy"."ss_item_rev" as "ss_item_rev",
@@ -147,9 +146,6 @@ SELECT
     (( "yummy"."ss_item_rev" + "yummy"."cs_item_rev" ) + "yummy"."ws_item_rev") / 3 as "avg_rev"
 FROM
     "yummy"
-WHERE
-    "yummy"."ss_item_rev" BETWEEN 0.9 * "yummy"."cs_item_rev" AND 1.1 * "yummy"."cs_item_rev" and "yummy"."ss_item_rev" BETWEEN 0.9 * "yummy"."ws_item_rev" AND 1.1 * "yummy"."ws_item_rev" and "yummy"."cs_item_rev" BETWEEN 0.9 * "yummy"."ss_item_rev" AND 1.1 * "yummy"."ss_item_rev" and "yummy"."cs_item_rev" BETWEEN 0.9 * "yummy"."ws_item_rev" AND 1.1 * "yummy"."ws_item_rev" and "yummy"."ws_item_rev" BETWEEN 0.9 * "yummy"."ss_item_rev" AND 1.1 * "yummy"."ss_item_rev" and "yummy"."ws_item_rev" BETWEEN 0.9 * "yummy"."cs_item_rev" AND 1.1 * "yummy"."cs_item_rev"
-
 ORDER BY 
     "item_id" asc nulls first,
     "yummy"."ss_item_rev" asc nulls first

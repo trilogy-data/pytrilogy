@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2393 | 31 | 12.21 ms |
-| reference | 6893 | 114 | 20.42 ms |
-| v4 / ref | 0.35x | 0.27x | 0.60x |
+| v4 | 2393 | 31 | 7.67 ms |
+| reference | 6893 | 114 | 14.75 ms |
+| v4 / ref | 0.35x | 0.27x | 0.52x |
 
 ## Preql
 
@@ -56,13 +56,13 @@ limit 100
 
 ```sql
 SELECT
-    "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
     "analysis_item_items"."I_ITEM_ID" as "analysis_item_text_id",
-    "analysis_store_store"."S_STORE_NAME" as "analysis_store_name",
+    "analysis_item_items"."I_ITEM_DESC" as "analysis_item_desc",
     "analysis_store_store"."S_STORE_ID" as "analysis_store_text_id",
-    sum("analysis_catalog_sales"."CS_NET_PROFIT") as "catalog_sales_profit",
+    "analysis_store_store"."S_STORE_NAME" as "analysis_store_name",
+    sum("analysis_store_sales"."SS_NET_PROFIT") as "store_sales_profit",
     sum("analysis_store_returns"."SR_NET_LOSS") as "store_returns_loss",
-    sum("analysis_store_sales"."SS_NET_PROFIT") as "store_sales_profit"
+    sum("analysis_catalog_sales"."CS_NET_PROFIT") as "catalog_sales_profit"
 FROM
     "memory"."store_sales" as "analysis_store_sales"
     LEFT OUTER JOIN "memory"."store" as "analysis_store_store" on "analysis_store_sales"."SS_STORE_SK" = "analysis_store_store"."S_STORE_SK"

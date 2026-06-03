@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2831 | 40 | 21.11 ms |
-| reference | 2162 | 27 | 21.20 ms |
-| v4 / ref | 1.31x | 1.48x | 1.00x |
+| v4 | 2831 | 40 | 15.57 ms |
+| reference | 2162 | 27 | 15.80 ms |
+| v4 / ref | 1.31x | 1.48x | 0.99x |
 
 ## Preql
 
@@ -74,14 +74,14 @@ GROUP BY
     2,
     3)
 SELECT
-    coalesce("cooperative"."_virt_agg_sum_1591163926846168",0) as "days_120_plus",
+    "cooperative"."w_substr" as "w_substr",
+    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
+    "cooperative"."ws_web_site_name" as "ws_web_site_name",
     coalesce("cooperative"."_virt_agg_sum_532447299563042",0) as "days_30",
     coalesce("cooperative"."_virt_agg_sum_3972236993249717",0) as "days_31_60",
     coalesce("cooperative"."_virt_agg_sum_1757493792246964",0) as "days_61_90",
     coalesce("cooperative"."_virt_agg_sum_9896727465284234",0) as "days_91_120",
-    "cooperative"."w_substr" as "w_substr",
-    "cooperative"."ws_ship_mode_type" as "ws_ship_mode_type",
-    "cooperative"."ws_web_site_name" as "ws_web_site_name"
+    coalesce("cooperative"."_virt_agg_sum_1591163926846168",0) as "days_120_plus"
 FROM
     "cooperative"
 ORDER BY 

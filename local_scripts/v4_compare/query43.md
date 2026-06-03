@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2006 | 31 | 22.02 ms |
-| reference | 2006 | 31 | 20.06 ms |
-| v4 / ref | 1.00x | 1.00x | 1.10x |
+| v4 | 2006 | 31 | 10.31 ms |
+| reference | 2006 | 31 | 11.42 ms |
+| v4 / ref | 1.00x | 1.00x | 0.90x |
 
 ## Preql
 
@@ -57,15 +57,15 @@ limit 100
 
 ```sql
 SELECT
-    sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Friday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "fri_sales",
-    sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Monday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "mon_sales",
-    sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Saturday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sat_sales",
+    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name",
+    "physical_sales_store_store"."S_STORE_ID" as "physical_sales_store_text_id",
     sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Sunday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sun_sales",
-    sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Thursday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "thu_sales",
+    sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Monday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "mon_sales",
     sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Tuesday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "tue_sales",
     sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Wednesday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "wed_sales",
-    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name",
-    "physical_sales_store_store"."S_STORE_ID" as "physical_sales_store_text_id"
+    sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Thursday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "thu_sales",
+    sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Friday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "fri_sales",
+    sum(CASE WHEN "physical_sales_date_date"."D_DAY_NAME" = 'Saturday' THEN "physical_sales_store_sales"."SS_SALES_PRICE" ELSE NULL END) as "sat_sales"
 FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
@@ -74,8 +74,8 @@ WHERE
     "physical_sales_store_store"."S_GMT_OFFSET" = -5 and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
-    8,
-    9
+    1,
+    2
 ORDER BY 
     "physical_sales_store_store"."S_STORE_NAME" asc,
     "physical_sales_store_store"."S_STORE_ID" asc,

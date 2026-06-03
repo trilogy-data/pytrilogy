@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2721 | 63 | 8.61 ms |
-| reference | 2479 | 61 | 8.64 ms |
-| v4 / ref | 1.10x | 1.03x | 1.00x |
+| v4 | 2721 | 63 | 6.24 ms |
+| reference | 2479 | 61 | 5.57 ms |
+| v4 / ref | 1.10x | 1.03x | 1.12x |
 
 ## Preql
 
@@ -507,12 +507,12 @@ WHERE
     "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select vacuous."final_zips" from vacuous where vacuous."final_zips" is not null)
 )
 SELECT
-    sum("abhorrent"."physical_sales_net_profit") as "store_net_profit",
-    "abhorrent"."physical_sales_store_name" as "physical_sales_store_name"
+    "abhorrent"."physical_sales_store_name" as "physical_sales_store_name",
+    sum("abhorrent"."physical_sales_net_profit") as "store_net_profit"
 FROM
     "abhorrent"
 GROUP BY
-    2
+    1
 ORDER BY 
     "abhorrent"."physical_sales_store_name" asc
 LIMIT (100)

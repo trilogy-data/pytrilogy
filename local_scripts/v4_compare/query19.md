@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1944 | 28 | 5.18 ms |
-| reference | 1944 | 28 | 5.69 ms |
-| v4 / ref | 1.00x | 1.00x | 0.91x |
+| v4 | 1944 | 28 | 3.97 ms |
+| reference | 1944 | 28 | 3.31 ms |
+| v4 / ref | 1.00x | 1.00x | 1.20x |
 
 ## Preql
 
@@ -52,11 +52,11 @@ limit 100
 
 ```sql
 SELECT
-    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price",
     "physical_sales_item_items"."I_BRAND_ID" as "physical_sales_item_brand_id",
     "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name",
+    "physical_sales_item_items"."I_MANUFACT_ID" as "physical_sales_item_manufacturer_id",
     "physical_sales_item_items"."I_MANUFACT" as "physical_sales_item_manufact",
-    "physical_sales_item_items"."I_MANUFACT_ID" as "physical_sales_item_manufacturer_id"
+    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price"
 FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
@@ -68,10 +68,10 @@ WHERE
     "physical_sales_item_items"."I_MANAGER_ID" = 8 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) != SUBSTRING("physical_sales_store_store"."S_ZIP",1,5)
 
 GROUP BY
+    1,
     2,
     3,
-    4,
-    5
+    4
 ORDER BY 
     "ext_price" desc,
     "physical_sales_item_items"."I_BRAND" asc,

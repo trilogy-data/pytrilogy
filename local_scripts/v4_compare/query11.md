@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3782 | 63 | 11.40 ms |
-| reference | 5425 | 97 | 19.88 ms |
-| v4 / ref | 0.70x | 0.65x | 0.57x |
+| v4 | 4191 | 59 | 9.22 ms |
+| reference | 5425 | 97 | 12.05 ms |
+| v4 / ref | 0.77x | 0.61x | 0.76x |
 
 ## Preql
 
@@ -112,33 +112,29 @@ FROM
     "memory"."web_sales" as "sales_web_sales_unified"),
 questionable as (
 SELECT
-    "thoughtful"."sales_billing_customer_id" as "sales_billing_customer_id",
-    sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) as "store_first_year",
-    sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2002 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) as "store_second_year",
-    sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) as "web_first_year",
-    sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2002 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) as "web_second_year"
+    "thoughtful"."sales_billing_customer_id" as "sales_billing_customer_id"
 FROM
     "thoughtful"
     LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
 GROUP BY
-    1)
+    1
+HAVING
+    sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) > 0 and sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) > 0 and ( CASE
+	WHEN sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) > 0 THEN (sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2002 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) * 1.0) / sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END)
+	ELSE 0.0
+	END ) > ( CASE
+	WHEN sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) > 0 THEN (sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2002 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END) * 1.0) / sum("thoughtful"."sales_ext_list_price" - CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN "thoughtful"."sales_ext_discount_amount" ELSE NULL END)
+	ELSE 0.0
+	END )
+)
 SELECT
+    "sales_billing_customer_customers"."C_CUSTOMER_ID" as "sales_billing_customer_text_id",
     "sales_billing_customer_customers"."C_FIRST_NAME" as "sales_billing_customer_first_name",
     "sales_billing_customer_customers"."C_LAST_NAME" as "sales_billing_customer_last_name",
-    "sales_billing_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_billing_customer_preferred_cust_flag",
-    "sales_billing_customer_customers"."C_CUSTOMER_ID" as "sales_billing_customer_text_id"
+    "sales_billing_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_billing_customer_preferred_cust_flag"
 FROM
     "questionable"
     LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "questionable"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
-WHERE
-    "questionable"."store_first_year" > 0 and "questionable"."web_first_year" > 0 and ( CASE
-	WHEN "questionable"."web_first_year" > 0 THEN ("questionable"."web_second_year" * 1.0) / "questionable"."web_first_year"
-	ELSE 0.0
-	END ) > ( CASE
-	WHEN "questionable"."store_first_year" > 0 THEN ("questionable"."store_second_year" * 1.0) / "questionable"."store_first_year"
-	ELSE 0.0
-	END )
-
 ORDER BY 
     "sales_billing_customer_customers"."C_CUSTOMER_ID" asc nulls first,
     "sales_billing_customer_customers"."C_FIRST_NAME" asc nulls first,

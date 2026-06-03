@@ -18,9 +18,9 @@ ref rows: 24 (24 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3006 | 59 | 16.51 ms |
-| reference | 3517 | 70 | 16.95 ms |
-| v4 / ref | 0.85x | 0.84x | 0.97x |
+| v4 | 3006 | 59 | 16.92 ms |
+| reference | 3517 | 70 | 16.54 ms |
+| v4 / ref | 0.85x | 0.84x | 1.02x |
 
 ## Preql
 
@@ -94,13 +94,13 @@ GROUP BY
     5,
     "cheerful"."physical_sales_item_id")
 SELECT
-    "thoughtful"."item_revenue" as "item_revenue",
-    ( "thoughtful"."item_revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9925573558789696") as "revenueratio",
+    "thoughtful"."physical_sales_item_text_id" as "physical_sales_item_text_id",
+    "thoughtful"."physical_sales_item_desc" as "physical_sales_item_desc",
     "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
     "thoughtful"."physical_sales_item_class" as "physical_sales_item_class",
     "thoughtful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
-    "thoughtful"."physical_sales_item_desc" as "physical_sales_item_desc",
-    "thoughtful"."physical_sales_item_text_id" as "physical_sales_item_text_id"
+    "thoughtful"."item_revenue" as "item_revenue",
+    ( "thoughtful"."item_revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9925573558789696") as "revenueratio"
 FROM
     "cooperative"
     RIGHT OUTER JOIN "thoughtful" on "cooperative"."physical_sales_item_class" is not distinct from "thoughtful"."physical_sales_item_class"

@@ -18,9 +18,9 @@ ref rows: 3 (3 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3270 | 46 | 21.77 ms |
-| reference | 3863 | 63 | 22.89 ms |
-| v4 / ref | 0.85x | 0.73x | 0.95x |
+| v4 | 3262 | 46 | 14.35 ms |
+| reference | 3863 | 63 | 15.25 ms |
+| v4 / ref | 0.84x | 0.73x | 0.94x |
 
 ## Preql
 
@@ -113,7 +113,10 @@ GROUP BY
     1,
     2,
     3,
-    4)
+    4
+HAVING
+    "catalog_sales_quantity" > 0
+)
 SELECT
     "uneven"."correlated_physical_sales_item_text_id" as "store_sales_item_name",
     "uneven"."correlated_physical_sales_item_desc" as "store_sales_item_desc",
@@ -124,9 +127,6 @@ SELECT
     "uneven"."catalog_sales_quantity" as "catalog_sales_quantity"
 FROM
     "uneven"
-WHERE
-    "uneven"."catalog_sales_quantity" > 0
-
 ORDER BY 
     "store_sales_item_name" asc,
     "store_sales_item_desc" asc,

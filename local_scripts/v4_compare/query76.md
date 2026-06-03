@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9082 | 194 | 58.40 ms |
-| reference | 7468 | 176 | 63.29 ms |
-| v4 / ref | 1.22x | 1.10x | 0.92x |
+| v4 | 9082 | 194 | 45.22 ms |
+| reference | 7468 | 176 | 44.12 ms |
+| v4 / ref | 1.22x | 1.10x | 1.02x |
 
 ## Preql
 
@@ -295,11 +295,11 @@ FROM
 SELECT
     coalesce("abundant"."channel","protective"."channel","sweltering"."channel") as "q76_results_channel",
     coalesce("abundant"."col_name","protective"."col_name","sweltering"."col_name") as "q76_results_col_name",
-    coalesce("abundant"."d_qoy","protective"."d_qoy","sweltering"."d_qoy") as "q76_results_d_qoy",
     coalesce("abundant"."d_year","protective"."d_year","sweltering"."d_year") as "q76_results_d_year",
+    coalesce("abundant"."d_qoy","protective"."d_qoy","sweltering"."d_qoy") as "q76_results_d_qoy",
     coalesce("abundant"."i_category","protective"."i_category","sweltering"."i_category") as "q76_results_i_category",
-    coalesce("sweltering"."_q76_results_amt_a","protective"."_q76_results_amt_b","abundant"."_q76_results_amt_c") as "q76_results_sales_amt",
-    coalesce("sweltering"."_q76_results_cnt_a","protective"."_q76_results_cnt_b","abundant"."_q76_results_cnt_c") as "q76_results_sales_cnt"
+    coalesce("sweltering"."_q76_results_cnt_a","protective"."_q76_results_cnt_b","abundant"."_q76_results_cnt_c") as "q76_results_sales_cnt",
+    coalesce("sweltering"."_q76_results_amt_a","protective"."_q76_results_amt_b","abundant"."_q76_results_amt_c") as "q76_results_sales_amt"
 FROM
     "sweltering"
     FULL JOIN "protective" on "sweltering"."channel" is not distinct from "protective"."channel" AND "sweltering"."col_name" is not distinct from "protective"."col_name" AND "sweltering"."d_qoy" is not distinct from "protective"."d_qoy" AND "sweltering"."d_year" is not distinct from "protective"."d_year" AND "sweltering"."i_category" is not distinct from "protective"."i_category"

@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2597 | 28 | 18.52 ms |
-| reference | 2597 | 28 | 17.47 ms |
-| v4 / ref | 1.00x | 1.00x | 1.06x |
+| v4 | 2597 | 28 | 14.17 ms |
+| reference | 2597 | 28 | 13.60 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -66,14 +66,14 @@ limit 100
 
 ```sql
 SELECT
+    SUBSTRING("warehouse_warehouse"."w_warehouse_name",1,20) as "warehouse_short_name",
+    "ship_mode_ship_mode"."SM_TYPE" as "ship_mode_type",
+    LOWER("call_center_call_center"."CC_NAME")  as "cc_name_lower",
+    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 30 THEN 1 ELSE NULL END) as "less_than_30_days",
     count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 30 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 60 THEN 1 ELSE NULL END) as "between_31_and_60_days",
     count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 60 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 90 THEN 1 ELSE NULL END) as "between_61_and_90_days",
     count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 90 and date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 120 THEN 1 ELSE NULL END) as "between_91_and_120_days",
-    LOWER("call_center_call_center"."CC_NAME")  as "cc_name_lower",
-    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) <= 30 THEN 1 ELSE NULL END) as "less_than_30_days",
-    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 120 THEN 1 ELSE NULL END) as "over_120_days",
-    SUBSTRING("warehouse_warehouse"."w_warehouse_name",1,20) as "warehouse_short_name",
-    "ship_mode_ship_mode"."SM_TYPE" as "ship_mode_type"
+    count(CASE WHEN date_diff('day', cast("sold_date_date"."D_DATE" as date), cast("ship_date_date"."D_DATE" as date)) > 120 THEN 1 ELSE NULL END) as "over_120_days"
 FROM
     "memory"."catalog_sales" as "catalog_sales"
     INNER JOIN "memory"."date_dim" as "ship_date_date" on "catalog_sales"."CS_SHIP_DATE_SK" = "ship_date_date"."D_DATE_SK"
@@ -85,9 +85,9 @@ WHERE
     "ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "catalog_sales"."CS_ORDER_NUMBER" is not null and "catalog_sales"."CS_CALL_CENTER_SK" is not null and "catalog_sales"."CS_WAREHOUSE_SK" is not null and "catalog_sales"."CS_SHIP_MODE_SK" is not null
 
 GROUP BY
-    4,
-    7,
-    8
+    1,
+    2,
+    3
 ORDER BY 
     "warehouse_short_name" asc nulls first,
     "ship_mode_ship_mode"."SM_TYPE" asc nulls first,

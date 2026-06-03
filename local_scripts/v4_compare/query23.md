@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8495 | 207 | 65.19 ms |
-| reference | 7843 | 178 | 51.12 ms |
-| v4 / ref | 1.08x | 1.16x | 1.28x |
+| v4 | 8220 | 210 | 30.96 ms |
+| reference | 7843 | 178 | 26.61 ms |
+| v4 / ref | 1.05x | 1.18x | 1.16x |
 
 ## Preql
 
@@ -179,14 +179,16 @@ FROM
     "yummy"),
 busy as (
 SELECT
-    "kaput"."sales_item_id" as "_frequent_items_frequent_item_id",
-    count("kaput"."sales_order_id") as "ss_combo_count"
+    "kaput"."sales_item_id" as "_frequent_items_frequent_item_id"
 FROM
     "kaput"
 GROUP BY
     1,
     "kaput"."sales_date_date",
-    "kaput"."sales_item_desc_truncated"),
+    "kaput"."sales_item_desc_truncated"
+HAVING
+    count("kaput"."sales_order_id") > 4
+),
 concerned as (
 SELECT
     "vacuous"."_max_total_cmax" as "max_total_cmax"
@@ -196,10 +198,7 @@ charming as (
 SELECT
     "busy"."_frequent_items_frequent_item_id" as "_frequent_items_frequent_item_id"
 FROM
-    "busy"
-WHERE
-    "busy"."ss_combo_count" > 4
-),
+    "busy"),
 abhorrent as (
 SELECT
     "sparkling"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
@@ -227,41 +226,41 @@ FROM
 thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
     "sales_catalog_sales_unified"."CS_LIST_PRICE" as "sales_list_price",
     "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
      'CATALOG'  as "sales_sales_channel"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null)
 
 UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_LIST_PRICE" as "sales_list_price",
     "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
      'STORE'  as "sales_sales_channel"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_store_sales_unified"."SS_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_store_sales_unified"."SS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_store_sales_unified"."SS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null)
 
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
     "sales_web_sales_unified"."WS_LIST_PRICE" as "sales_list_price",
     "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
      'WEB'  as "sales_sales_channel"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
-    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
 WHERE
-    "sales_web_sales_unified"."WS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null) and "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+    "sales_web_sales_unified"."WS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null)
 ),
 questionable as (
 SELECT
@@ -272,7 +271,11 @@ SELECT
     "thoughtful"."sales_sales_channel" as "sales_sales_channel"
 FROM
     "thoughtful"
-    LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "thoughtful"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK"),
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "thoughtful"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
+WHERE
+    "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
+),
 premium as (
 SELECT
     "questionable"."sales_billing_customer_first_name" as "sales_billing_customer_first_name",
@@ -282,16 +285,16 @@ FROM
     "questionable"
 GROUP BY
     1,
-    2)
+    2
+HAVING
+    "sales_total" > 0
+)
 SELECT
     "premium"."sales_billing_customer_last_name" as "c_last_name",
     "premium"."sales_billing_customer_first_name" as "c_first_name",
     "premium"."sales_total" as "sales_total"
 FROM
     "premium"
-WHERE
-    "premium"."sales_total" > 0
-
 ORDER BY 
     "c_last_name" asc nulls first,
     "c_first_name" asc nulls first,

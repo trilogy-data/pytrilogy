@@ -18,9 +18,9 @@ ref rows: 16 (16 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4687 | 80 | 14.59 ms |
-| reference | 3158 | 50 | 13.58 ms |
-| v4 / ref | 1.48x | 1.60x | 1.07x |
+| v4 | 4687 | 80 | 11.56 ms |
+| reference | 3158 | 50 | 10.59 ms |
+| v4 / ref | 1.48x | 1.60x | 1.09x |
 
 ## Preql
 
@@ -141,14 +141,14 @@ SELECT
 FROM
     "juicy")
 SELECT
-    "vacuous"."customer_address_city" as "dn_customer_address_city",
-    "vacuous"."customer_first_name" as "dn_customer_first_name",
     "vacuous"."customer_last_name" as "dn_customer_last_name",
+    "vacuous"."customer_first_name" as "dn_customer_first_name",
+    "vacuous"."customer_address_city" as "dn_customer_address_city",
+    "vacuous"."physical_sales_sale_address_city" as "dn_physical_sales_sale_address_city",
+    "vacuous"."physical_sales_ticket_number" as "dn_physical_sales_ticket_number",
     "vacuous"."_dn_extended_price" as "dn_extended_price",
     "vacuous"."_dn_extended_tax" as "dn_extended_tax",
-    "vacuous"."_dn_list_price" as "dn_list_price",
-    "vacuous"."physical_sales_sale_address_city" as "dn_physical_sales_sale_address_city",
-    "vacuous"."physical_sales_ticket_number" as "dn_physical_sales_ticket_number"
+    "vacuous"."_dn_list_price" as "dn_list_price"
 FROM
     "vacuous"
 ORDER BY 

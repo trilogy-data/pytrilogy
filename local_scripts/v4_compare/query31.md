@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3784 | 72 | 15.86 ms |
-| reference | 5451 | 57 | 15.09 ms |
-| v4 / ref | 0.69x | 1.26x | 1.05x |
+| v4 | 3510 | 69 | 10.52 ms |
+| reference | 5451 | 57 | 10.13 ms |
+| v4 / ref | 0.64x | 1.21x | 1.04x |
 
 ## Preql
 
@@ -128,12 +128,24 @@ SELECT
 FROM
     "thoughtful"
     LEFT OUTER JOIN "memory"."customer_address" as "sales_bill_address_customer_address" on "thoughtful"."sales_bill_address_id" = "sales_bill_address_customer_address"."CA_ADDRESS_SK"
-WHERE
-    "thoughtful"."sales_sales_channel" in ('STORE','WEB')
-
 GROUP BY
     1,
-    2)
+    2
+HAVING
+    "ss_q1" > 0 and "ss_q2" > 0 and ( CASE
+	WHEN "ws_q1" > 0 THEN "ws_q2" / "ws_q1"
+	ELSE null
+	END > CASE
+	WHEN "ss_q1" > 0 THEN "ss_q2" / "ss_q1"
+	ELSE null
+	END ) and ( CASE
+	WHEN "ws_q2" > 0 THEN "ws_q3" / "ws_q2"
+	ELSE null
+	END > CASE
+	WHEN "ss_q2" > 0 THEN "ss_q3" / "ss_q2"
+	ELSE null
+	END )
+)
 SELECT
     "questionable"."sales_bill_address_county" as "sales_bill_address_county",
     "questionable"."sales_date_year" as "sales_date_year",
@@ -143,21 +155,6 @@ SELECT
     "questionable"."ss_q3" / "questionable"."ss_q2" as "store_q2_q3_increase"
 FROM
     "questionable"
-WHERE
-    "questionable"."ss_q1" > 0 and "questionable"."ss_q2" > 0 and ( CASE
-	WHEN "questionable"."ws_q1" > 0 THEN "questionable"."ws_q2" / "questionable"."ws_q1"
-	ELSE null
-	END > CASE
-	WHEN "questionable"."ss_q1" > 0 THEN "questionable"."ss_q2" / "questionable"."ss_q1"
-	ELSE null
-	END ) and ( CASE
-	WHEN "questionable"."ws_q2" > 0 THEN "questionable"."ws_q3" / "questionable"."ws_q2"
-	ELSE null
-	END > CASE
-	WHEN "questionable"."ss_q2" > 0 THEN "questionable"."ss_q3" / "questionable"."ss_q2"
-	ELSE null
-	END )
-
 ORDER BY 
     "questionable"."sales_bill_address_county" asc nulls first
 ```

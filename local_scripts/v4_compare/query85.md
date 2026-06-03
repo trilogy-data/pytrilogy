@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4022 | 33 | 9.49 ms |
-| reference | 3830 | 25 | 9.16 ms |
-| v4 / ref | 1.05x | 1.32x | 1.04x |
+| v4 | 4022 | 33 | 6.72 ms |
+| reference | 3830 | 25 | 6.31 ms |
+| v4 / ref | 1.05x | 1.32x | 1.06x |
 
 ## Preql
 
@@ -108,10 +108,10 @@ WHERE
 GROUP BY
     1)
 SELECT
+    SUBSTRING("abundant"."wr_reason_desc",1,20) as "reason_desc",
     "abundant"."avg1" as "avg1",
     "abundant"."avg2" as "avg2",
-    "abundant"."avg3" as "avg3",
-    SUBSTRING("abundant"."wr_reason_desc",1,20) as "reason_desc"
+    "abundant"."avg3" as "avg3"
 FROM
     "abundant"
 ORDER BY 

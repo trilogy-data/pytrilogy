@@ -18,9 +18,9 @@ ref rows: 3 (3 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3907 | 68 | 14.01 ms |
-| reference | 3316 | 58 | 12.72 ms |
-| v4 / ref | 1.18x | 1.17x | 1.10x |
+| v4 | 3907 | 68 | 8.08 ms |
+| reference | 3316 | 58 | 7.94 ms |
+| v4 / ref | 1.18x | 1.17x | 1.02x |
 
 ## Preql
 
@@ -102,15 +102,15 @@ FROM
     "thoughtful"
     INNER JOIN "memory"."item" as "sales_item_items" on "thoughtful"."sales_item_id" = "sales_item_items"."I_ITEM_SK")
 SELECT
-    sum("abundant"."sales_ext_sales_price") as "total_sales",
-    "abundant"."sales_item_text_id" as "sales_item_text_id"
+    "abundant"."sales_item_text_id" as "sales_item_text_id",
+    sum("abundant"."sales_ext_sales_price") as "total_sales"
 FROM
     "abundant"
 WHERE
     "abundant"."sales_item_text_id" in (select uneven."color_ids" from uneven where uneven."color_ids" is not null)
 
 GROUP BY
-    2
+    1
 ORDER BY 
     "total_sales" asc nulls first,
     "abundant"."sales_item_text_id" asc nulls first

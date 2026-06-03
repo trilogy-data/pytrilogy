@@ -18,9 +18,9 @@ ref rows: 8 (8 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4808 | 103 | 21.36 ms |
-| reference | 4137 | 80 | 22.73 ms |
-| v4 / ref | 1.16x | 1.29x | 0.94x |
+| v4 | 4808 | 103 | 14.63 ms |
+| reference | 4137 | 80 | 18.20 ms |
+| v4 / ref | 1.16x | 1.29x | 0.80x |
 
 ## Preql
 
@@ -166,13 +166,13 @@ WHERE
     "customer_address_customer_address"."CA_STATE" in ('KY','GA','NM') and "customer_customers"."C_CUSTOMER_SK" in (select sparkling."store_buyers_store_cust_id" from sparkling where sparkling."store_buyers_store_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select scrawny."web_buyers_web_cust_id" from scrawny where scrawny."web_buyers_web_cust_id" is not null) and "customer_customers"."C_CUSTOMER_SK" not in (select yummy."catalog_buyers_cat_cust_id" from yummy where yummy."catalog_buyers_cat_cust_id" is not null)
 )
 SELECT
-    "cheerful"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
-    "cheerful"."customer_demographics_education_status" as "customer_demographics_education_status",
     "cheerful"."customer_demographics_gender" as "customer_demographics_gender",
     "cheerful"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    "cheerful"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
+    "cheerful"."customer_demographics_education_status" as "customer_demographics_education_status",
     count("cheerful"."customer_id") as "cnt1",
+    "cheerful"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
     count("cheerful"."customer_id") as "cnt2",
+    "cheerful"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
     count("cheerful"."customer_id") as "cnt3"
 FROM
     "cheerful"
@@ -180,8 +180,8 @@ GROUP BY
     1,
     2,
     3,
-    4,
-    5
+    5,
+    7
 ORDER BY 
     "cheerful"."customer_demographics_gender" asc,
     "cheerful"."customer_demographics_marital_status" asc,

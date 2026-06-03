@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6849 | 98 | 77.29 ms |
-| reference | 5356 | 83 | 74.07 ms |
-| v4 / ref | 1.28x | 1.18x | 1.04x |
+| v4 | 6846 | 101 | 60.04 ms |
+| reference | 5356 | 83 | 56.32 ms |
+| v4 / ref | 1.28x | 1.22x | 1.07x |
 
 ## Preql
 
@@ -126,7 +126,10 @@ GROUP BY
     1,
     2,
     3,
-    4),
+    4
+HAVING
+    "avg_monthly_sales" > 0
+),
 questionable as (
 SELECT
     "thoughtful"."catalog_sales_call_center_name" as "catalog_sales_call_center_name",
@@ -152,7 +155,7 @@ FROM
     "thoughtful"
     RIGHT OUTER JOIN "abundant" on "thoughtful"."catalog_sales_call_center_name" is not distinct from "abundant"."catalog_sales_call_center_name" AND "thoughtful"."catalog_sales_date_year" = "abundant"."catalog_sales_date_year" AND "thoughtful"."catalog_sales_item_brand_name" = "abundant"."catalog_sales_item_brand_name" AND "thoughtful"."catalog_sales_item_category" is not distinct from "abundant"."catalog_sales_item_category"
 WHERE
-    coalesce("abundant"."catalog_sales_date_year","thoughtful"."catalog_sales_date_year") = 1999 and "abundant"."avg_monthly_sales" > 0
+    coalesce("abundant"."catalog_sales_date_year","thoughtful"."catalog_sales_date_year") = 1999
 )
 SELECT
     coalesce("questionable"."catalog_sales_item_category","uneven"."catalog_sales_item_category") as "catalog_sales_item_category",

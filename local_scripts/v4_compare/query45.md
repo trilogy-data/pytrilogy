@@ -18,9 +18,9 @@ ref rows: 17 (17 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2510 | 37 | 13.46 ms |
-| reference | 2224 | 44 | 13.20 ms |
-| v4 / ref | 1.13x | 0.84x | 1.02x |
+| v4 | 2510 | 37 | 7.61 ms |
+| reference | 2224 | 44 | 8.59 ms |
+| v4 / ref | 1.13x | 0.84x | 0.89x |
 
 ## Preql
 
@@ -73,17 +73,17 @@ WHERE
     "web_sales_date_date"."D_QOY" = 2 and "web_sales_date_date"."D_YEAR" = 2001 and ( SUBSTRING("web_sales_billing_customer_address_customer_address"."CA_ZIP",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "web_sales_item_items"."I_ITEM_ID" in (select highfalutin."special_item_ids" from highfalutin where highfalutin."special_item_ids" is not null) )
 )
 SELECT
-    sum("abundant"."web_sales_sales_price") as "total_sales",
+    "abundant"."web_sales_billing_customer_address_zip" as "web_sales_billing_customer_address_zip",
     "abundant"."web_sales_billing_customer_address_city" as "web_sales_billing_customer_address_city",
-    "abundant"."web_sales_billing_customer_address_zip" as "web_sales_billing_customer_address_zip"
+    sum("abundant"."web_sales_sales_price") as "total_sales"
 FROM
     "abundant"
 WHERE
     ( SUBSTRING("abundant"."web_sales_billing_customer_address_zip",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') or "abundant"."web_sales_item_text_id" in (select highfalutin."special_item_ids" from highfalutin where highfalutin."special_item_ids" is not null) )
 
 GROUP BY
-    2,
-    3
+    1,
+    2
 ORDER BY 
     "abundant"."web_sales_billing_customer_address_zip" asc,
     "abundant"."web_sales_billing_customer_address_city" asc

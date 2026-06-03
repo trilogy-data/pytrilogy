@@ -18,9 +18,9 @@ ref rows: 3 (3 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3079 | 96 | 15.31 ms |
-| reference | 2979 | 86 | 21.23 ms |
-| v4 / ref | 1.03x | 1.12x | 0.72x |
+| v4 | 3079 | 96 | 12.41 ms |
+| reference | 2979 | 86 | 16.04 ms |
+| v4 / ref | 1.03x | 1.12x | 0.77x |
 
 ## Preql
 
@@ -159,11 +159,11 @@ SELECT
 FROM
     "vacuous")
 SELECT
-    "concerned"."lochierarchy" as "lochierarchy",
-    "concerned"."rank_within_parent" as "rank_within_parent",
-    "concerned"."ss_store_county" as "s_county",
+    "concerned"."total_sum" as "total_sum",
     "concerned"."ss_store_state" as "s_state",
-    "concerned"."total_sum" as "total_sum"
+    "concerned"."ss_store_county" as "s_county",
+    "concerned"."lochierarchy" as "lochierarchy",
+    "concerned"."rank_within_parent" as "rank_within_parent"
 FROM
     "concerned"
 ORDER BY 

@@ -18,9 +18,9 @@ ref rows: 18 (18 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3905 | 68 | 17.69 ms |
-| reference | 3304 | 58 | 19.72 ms |
-| v4 / ref | 1.18x | 1.17x | 0.90x |
+| v4 | 3905 | 68 | 12.11 ms |
+| reference | 3304 | 58 | 12.33 ms |
+| v4 / ref | 1.18x | 1.17x | 0.98x |
 
 ## Preql
 
@@ -102,15 +102,15 @@ FROM
     "thoughtful"
     INNER JOIN "memory"."item" as "sales_item_items" on "thoughtful"."sales_item_id" = "sales_item_items"."I_ITEM_SK")
 SELECT
-    sum("abundant"."sales_ext_sales_price") as "total_sales",
-    "abundant"."sales_item_text_id" as "sales_item_text_id"
+    "abundant"."sales_item_text_id" as "sales_item_text_id",
+    sum("abundant"."sales_ext_sales_price") as "total_sales"
 FROM
     "abundant"
 WHERE
     "abundant"."sales_item_text_id" in (select uneven."music_item_ids" from uneven where uneven."music_item_ids" is not null)
 
 GROUP BY
-    2
+    1
 ORDER BY 
     "abundant"."sales_item_text_id" asc,
     "total_sales" asc

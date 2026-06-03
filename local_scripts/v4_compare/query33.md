@@ -18,9 +18,9 @@ ref rows: 12 (12 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3995 | 65 | 10.69 ms |
-| reference | 4269 | 79 | 11.35 ms |
-| v4 / ref | 0.94x | 0.82x | 0.94x |
+| v4 | 3995 | 65 | 6.70 ms |
+| reference | 4269 | 79 | 5.74 ms |
+| v4 / ref | 0.94x | 0.82x | 1.17x |
 
 ## Preql
 
@@ -100,15 +100,15 @@ WHERE
     "questionable"."sales_item_manufacturer_id" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
 )
 SELECT
-    sum("yummy"."sales_ext_sales_price") as "total_sales",
-    "yummy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
+    "yummy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
+    sum("yummy"."sales_ext_sales_price") as "total_sales"
 FROM
     "yummy"
 WHERE
     "yummy"."sales_item_manufacturer_id" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
 
 GROUP BY
-    2
+    1
 ORDER BY 
     "total_sales" asc nulls first,
     "yummy"."sales_item_manufacturer_id" asc nulls first

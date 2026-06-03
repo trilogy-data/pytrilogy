@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7418 | 139 | 38.71 ms |
-| reference | 4875 | 84 | 18.46 ms |
-| v4 / ref | 1.52x | 1.65x | 2.10x |
+| v4 | 7420 | 139 | 31.98 ms |
+| reference | 4875 | 84 | 15.92 ms |
+| v4 / ref | 1.52x | 1.65x | 2.01x |
 
 ## Preql
 
@@ -183,19 +183,19 @@ GROUP BY
     8,
     9)
 SELECT
-    "abhorrent"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
-    "abhorrent"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
-    "abhorrent"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
-    "abhorrent"."customer_demographics_education_status" as "customer_demographics_education_status",
-    "abhorrent"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
     "abhorrent"."customer_demographics_gender" as "customer_demographics_gender",
     "abhorrent"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    "abhorrent"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
+    "abhorrent"."customer_demographics_education_status" as "customer_demographics_education_status",
     count("abhorrent"."customer_id") as "cnt1",
+    "abhorrent"."customer_demographics_purchase_estimate" as "customer_demographics_purchase_estimate",
     count("abhorrent"."customer_id") as "cnt2",
+    "abhorrent"."customer_demographics_credit_rating" as "customer_demographics_credit_rating",
     count("abhorrent"."customer_id") as "cnt3",
+    "abhorrent"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
     count("abhorrent"."customer_id") as "cnt4",
+    "abhorrent"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
     count("abhorrent"."customer_id") as "cnt5",
+    "abhorrent"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
     count("abhorrent"."customer_id") as "cnt6"
 FROM
     "abhorrent"
@@ -203,11 +203,11 @@ GROUP BY
     1,
     2,
     3,
-    4,
     5,
-    6,
     7,
-    8
+    9,
+    11,
+    13
 ORDER BY 
     "abhorrent"."customer_demographics_gender" asc,
     "abhorrent"."customer_demographics_marital_status" asc,

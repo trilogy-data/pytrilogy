@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7815 | 106 | 84.86 ms |
-| reference | 6059 | 90 | 79.37 ms |
-| v4 / ref | 1.29x | 1.18x | 1.07x |
+| v4 | 7812 | 109 | 57.77 ms |
+| reference | 6059 | 90 | 50.33 ms |
+| v4 / ref | 1.29x | 1.21x | 1.15x |
 
 ## Preql
 
@@ -134,7 +134,10 @@ GROUP BY
     2,
     3,
     4,
-    5),
+    5
+HAVING
+    "avg_monthly_sales" > 0
+),
 questionable as (
 SELECT
     "thoughtful"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
@@ -162,7 +165,7 @@ FROM
     "thoughtful"
     RIGHT OUTER JOIN "abundant" on "thoughtful"."physical_sales_date_year" = "abundant"."physical_sales_date_year" AND "thoughtful"."physical_sales_item_brand_name" = "abundant"."physical_sales_item_brand_name" AND "thoughtful"."physical_sales_item_category" is not distinct from "abundant"."physical_sales_item_category" AND "thoughtful"."physical_sales_store_company_name" is not distinct from "abundant"."physical_sales_store_company_name" AND "thoughtful"."physical_sales_store_name" is not distinct from "abundant"."physical_sales_store_name"
 WHERE
-    coalesce("abundant"."physical_sales_date_year","thoughtful"."physical_sales_date_year") = 1999 and "abundant"."avg_monthly_sales" > 0
+    coalesce("abundant"."physical_sales_date_year","thoughtful"."physical_sales_date_year") = 1999
 )
 SELECT
     coalesce("questionable"."physical_sales_item_category","uneven"."physical_sales_item_category") as "physical_sales_item_category",

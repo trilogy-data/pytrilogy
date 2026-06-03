@@ -18,9 +18,9 @@ ref rows: 0 (0 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 31402 | 488 | 42.94 ms |
-| reference | 16331 | 244 | 44.22 ms |
-| v4 / ref | 1.92x | 2.00x | 0.97x |
+| v4 | 31311 | 486 | 27.24 ms |
+| reference | 16331 | 244 | 29.00 ms |
+| v4 / ref | 1.92x | 1.99x | 0.94x |
 
 ## Preql
 
@@ -180,22 +180,20 @@ order by
 WITH 
 wakeful as (
 SELECT
-    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id",
-    sum("cr_sales_catalog_sales"."CS_EXT_LIST_PRICE") as "cs_ui_sale",
-    sum(( coalesce("cr_catalog_returns"."CR_REFUNDED_CASH",0) + coalesce("cr_catalog_returns"."CR_REVERSED_CHARGE",0) ) + coalesce("cr_catalog_returns"."CR_STORE_CREDIT",0)) as "cs_ui_refund"
+    "cr_sales_catalog_sales"."CS_ITEM_SK" as "cr_sales_item_id"
 FROM
     "memory"."catalog_sales" as "cr_sales_catalog_sales"
     INNER JOIN "memory"."catalog_returns" as "cr_catalog_returns" on "cr_sales_catalog_sales"."CS_ORDER_NUMBER" = "cr_catalog_returns"."CR_ORDER_NUMBER"
 GROUP BY
-    1),
+    1
+HAVING
+    sum("cr_sales_catalog_sales"."CS_EXT_LIST_PRICE") > 2 * sum(( coalesce("cr_catalog_returns"."CR_REFUNDED_CASH",0) + coalesce("cr_catalog_returns"."CR_REVERSED_CHARGE",0) ) + coalesce("cr_catalog_returns"."CR_STORE_CREDIT",0))
+),
 cooperative as (
 SELECT
     "wakeful"."cr_sales_item_id" as "_cs_ui_cs_ui_item_id"
 FROM
-    "wakeful"
-WHERE
-    "wakeful"."cs_ui_sale" > 2 * "wakeful"."cs_ui_refund"
-),
+    "wakeful"),
 questionable as (
 SELECT
     "cooperative"."_cs_ui_cs_ui_item_id" as "cs_ui_cs_ui_item_id"
@@ -633,27 +631,27 @@ FROM
     "puzzled"
     FULL JOIN "courageous" on "puzzled"."item_sk" is not distinct from "courageous"."item_sk" AND "puzzled"."s_name" is not distinct from "courageous"."s_name" AND "puzzled"."s_zip" is not distinct from "courageous"."s_zip")
 SELECT
-    "vast"."_q64_results_b_city_99" as "q64_results_b_city_99",
-    "vast"."_q64_results_b_sn_99" as "q64_results_b_sn_99",
-    "vast"."_q64_results_b_str_99" as "q64_results_b_str_99",
-    "vast"."_q64_results_b_zip_99" as "q64_results_b_zip_99",
-    "vast"."_q64_results_c_city_99" as "q64_results_c_city_99",
-    "vast"."_q64_results_c_sn_99" as "q64_results_c_sn_99",
-    "vast"."_q64_results_c_str_99" as "q64_results_c_str_99",
-    "vast"."_q64_results_c_zip_99" as "q64_results_c_zip_99",
-    "vast"."_q64_results_cnt_00" as "q64_results_cnt_00",
-    "vast"."_q64_results_cnt_99" as "q64_results_cnt_99",
     "vast"."_q64_results_p_name_99" as "q64_results_p_name_99",
-    "vast"."_q64_results_s1_00" as "q64_results_s1_00",
-    "vast"."_q64_results_s1_99" as "q64_results_s1_99",
-    "vast"."_q64_results_s2_00" as "q64_results_s2_00",
-    "vast"."_q64_results_s2_99" as "q64_results_s2_99",
-    "vast"."_q64_results_s3_00" as "q64_results_s3_00",
-    "vast"."_q64_results_s3_99" as "q64_results_s3_99",
     "vast"."s_name" as "q64_results_s_name",
     "vast"."s_zip" as "q64_results_s_zip",
+    "vast"."_q64_results_b_sn_99" as "q64_results_b_sn_99",
+    "vast"."_q64_results_b_str_99" as "q64_results_b_str_99",
+    "vast"."_q64_results_b_city_99" as "q64_results_b_city_99",
+    "vast"."_q64_results_b_zip_99" as "q64_results_b_zip_99",
+    "vast"."_q64_results_c_sn_99" as "q64_results_c_sn_99",
+    "vast"."_q64_results_c_str_99" as "q64_results_c_str_99",
+    "vast"."_q64_results_c_city_99" as "q64_results_c_city_99",
+    "vast"."_q64_results_c_zip_99" as "q64_results_c_zip_99",
+    "vast"."_q64_results_syear_99" as "q64_results_syear_99",
+    "vast"."_q64_results_cnt_99" as "q64_results_cnt_99",
+    "vast"."_q64_results_s1_99" as "q64_results_s1_99",
+    "vast"."_q64_results_s2_99" as "q64_results_s2_99",
+    "vast"."_q64_results_s3_99" as "q64_results_s3_99",
+    "vast"."_q64_results_s1_00" as "q64_results_s1_00",
+    "vast"."_q64_results_s2_00" as "q64_results_s2_00",
+    "vast"."_q64_results_s3_00" as "q64_results_s3_00",
     "vast"."_q64_results_syear_00" as "q64_results_syear_00",
-    "vast"."_q64_results_syear_99" as "q64_results_syear_99"
+    "vast"."_q64_results_cnt_00" as "q64_results_cnt_00"
 FROM
     "vast"
 WHERE
