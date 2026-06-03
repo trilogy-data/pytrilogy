@@ -1,0 +1,28 @@
+# Root cause E: filtering on a global aggregate (`max(date) by *`) alongside a
+# key filter. v3 returns 1 row (avg_id=35); v4 raises IndexError in
+# query_processor (list index out of range).
+# Source: tests/engine/test_duckdb.py::test_global_aggregate_inclusion
+key id int;
+key date date;
+property <id, date>.score int;
+
+datasource raw (
+    id: id,
+    date: date,
+    score: score
+)
+grain (id, date)
+query '''
+select 1 as id, '2023-01-01' as date, 10 as score
+union all
+select 2, '2023-01-02', 20
+union all
+select 3, '2023-01-03', 30
+union all
+select 4, '2023-01-03', 40
+''';
+
+auto max_date <- max(date) by *;
+
+WHERE date = max_date and id > 2
+SELECT max_date, date, avg(score) as avg_id;

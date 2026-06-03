@@ -3,6 +3,7 @@ from pathlib import Path
 
 from pytest import fixture
 
+from trilogy.constants import CONFIG
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -24,6 +25,19 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
+
+
+@fixture(scope="session", autouse=True)
+def _maybe_enable_v4_discovery():
+    """Opt-in v4 discovery for a full-suite parity sweep:
+    `TRILOGY_V4_DISCOVERY=1 pytest ...`. Default off, so normal runs are v3."""
+    if os.environ.get("TRILOGY_V4_DISCOVERY") == "1":
+        prior = CONFIG.use_v4_discovery
+        CONFIG.use_v4_discovery = True
+        yield
+        CONFIG.use_v4_discovery = prior
+    else:
+        yield
 
 
 def load_secret(key: str) -> str | None:

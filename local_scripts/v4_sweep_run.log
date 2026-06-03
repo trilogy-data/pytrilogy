@@ -1,0 +1,260 @@
+. ai/test_prompt.py
+. ai/test_conversation.py
+. ai/test_provider_units.py
+. ai/test_utils.py
+. charts/test_altair_rendering.py
+. charts/test_chart_parsing.py
+. charts/test_terminal_rendering.py
+. cli/test_display.py
+. cli/test_display_parallel.py
+. cli/test_display_refresh.py
+. charts/test_chart_execution.py
+. complex/test_aggregate_at_grain.py
+. complex/test_aggregate_by_expression.py
+. complex/test_aggregate_of_aggregate.py
+F complex/test_bound_conversion_existence.py (1 failed)
+. complex/test_complex_source_fetching.py
+. complex/test_dataset_merge.py
+. complex/test_derivation_missing_arrow.py
+. complex/test_group_by_error.py
+- complex/test_query_datasources.py
+. complex/test_missing_alias_error.py
+F complex/test_rowset.py (2 failed)
+. core/processing/test_condition_disposition.py
+. complex/test_structs.py
+. complex/test_subselect_error.py
+. core/processing/test_condition_null_utils.py
+F complex/test_window_function_parsing.py (1 failed)
+. core/processing/test_condition_utils.py
+. core/processing/test_discovery_validation.py
+. core/processing/test_grain_utility.py
+. core/processing/test_join_concept_injection.py
+. core/processing/test_v4_concept_graph.py
+. core/processing/test_v4_concept_sets.py
+. core/processing/test_v4_group_behaviors.py
+. core/processing/test_v4_node_generators.py
+. core/test_between.py
+. core/test_environment_helpers.py
+. core/test_graph_runtime.py
+. core/test_reference_graph_runtime.py
+. core/validation/test_fix.py
+. ai/test_providers_basic.py
+. custom/test_custom_types.py
+. discovery/test_abstract_property.py
+F discovery/test_aggregate_handling.py (7 failed)
+. discovery/test_build_models.py
+F discovery/test_aggregates_comprehensive.py (13 failed)
+F discovery/test_aggregate_resolution_coverage.py (15 failed)
+F discovery/test_discovery.py (2 failed)
+F discovery/test_primary_source_aggregate_fallback.py (3 failed)
+F discovery/test_year_alias_resolution.py (1 failed)
+. engine/duckdb/test_duckdb_metadata.py
+F engine/demo/test_demo_duckdb.py (2 failed)
+F engine/demo/test_demo_duckdb_multi_table.py (1 failed)
+F engine/demo/test_demo_duckdb_subselect.py (3 failed)
+F engine/demo/test_demo_duckdb_import.py (1 failed)
+. engine/demo/test_reference.py
+. engine/duckdb/test_duckdb_python_datasource.py
+. engine/duckdb/test_duckdb_spatial_setup.py
+. engine/postgres/test_postgres_metadata.py
+. engine/presto/test_presto_metadata.py
+. engine/scripts/test_csv_source.py
+. engine/scripts/test_file_sources.py
+. engine/test_base.py
+. engine/test_clickhouse.py
+- engine/test_clickhouse_chdb.py
+. engine/test_clickhouse_config.py
+. engine/test_dialects.py
+F engine/test_dataframe.py (1 failed)
+F engine/test_clickhouse_server.py (82 failed)
+. engine/scripts/test_script_source.py
+. engine/test_duckdb_complex_types.py
+. engine/test_duckdb_case.py
+. engine/test_duckdb_file_source.py
+F engine/test_duckdb.py (10 failed)
+. engine/test_duckdb_rowset.py
+. engine/test_duckdb_systemic.py
+. engine/test_enum_unions.py
+F engine/test_duckdb_filter.py (7 failed)
+. engine/test_postgres.py
+. engine/test_presto.py
+F engine/test_sqlite.py (1 failed)
+. engine/test_trino.py
+. engine/test_duckdb_validate.py
+. evals/test_analyze_run.py
+. evals/test_both_modes_argv.py
+. evals/test_prompts_helpers.py
+. etl/test_bigquery.py
+. evals/test_tpcds_agent_prompts.py
+. execution/state/test_column_cache.py
+. execution/state/test_refreshable_roots.py
+. execution/state/test_schema_refresh.py
+. generators/test_condition_routing.py
+. execution/state/test_union_refresh.py
+. execution/state/test_watermarks.py
+. generators/test_datasource_scoring.py
+. generators/test_enrichment_node_generators.py
+. generators/test_filter_node_generator.py
+. generators/test_group_generator.py
+. engine/test_snowflake.py
+. generators/test_merge_concept_node.py
+. generators/test_merge_node.py
+. generators/test_rowset_node_generator.py
+. generators/test_multiselect_node_generator.py
+. generators/test_partial_key_join_order.py
+F engine/test_bigquery.py (1 failed)
+. generators/test_select_node_generator.py
+. generators/test_synonym_node_generator.py
+. generators/test_unnest_node_generator.py
+. generators/test_utility.py
+. hooks/test_hooks.py
+F modeling/aggregates/test_cardinality.py (1 failed)
+F modeling/aggregates/test_group_by.py (1 failed)
+. modeling/faa/test_faa.py
+. modeling/funnel_analysis/test_funnel_analysis.py
+. modeling/geography/test_proper_resolution.py
+F modeling/google_analytics/test_sane_ga_rendering.py (1 failed)
+. modeling/gcat/gcat2/test_gcat_two.py
+. modeling/faa/test_llm.py
+F modeling/join_resolution/test_join_resolution.py (2 failed)
+F modeling/hackernews/test_hackernews_queries.py (2 failed)
+. modeling/iris/test_iris.py
+. modeling/mobs/test_mobs.py
+. modeling/nyc_citibike/test_nyc.py
+F modeling/rides_example/test_ride_example.py (1 failed)
+. modeling/geography/test_landmark_updates.py
+F modeling/stocks/test_stocks.py (1 failed)
+F modeling/ncaa/test_ncaa.py (3 failed)
+. modeling/test_arrays.py
+F modeling/test_core_concepts.py (2 failed)
+F modeling/test_complex.py (2 failed)
+. modeling/test_merge_discovery.py
+. modeling/test_nullability.py
+F modeling/tpc_ds/test_queries.py (1 failed)
+. modeling/the_look/test_the_look.py
+. modeling/tpc_ds_duckdb/aggregates/test_agg_queries.py
+. modeling/tpc_ds_duckdb/test_query_size.py
+F modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py (1 failed)
+F modeling/tpc_ds_duckdb/test_non_benchmark_queries.py (4 failed)
+. modeling/trilogyt/test_modeling.py
+. nodes/test_base_node.py
+F modeling/usa_names/test_names.py (6 failed)
+- nodes/test_filter_node.py
+. nodes/test_union_node.py
+. nodes/test_window_node.py
+. nodes/utility/test_joins.py
+. nodes/utility/test_joins_pseudonyms.py
+. nodes/utility/test_nullability.py
+. optimization/test_hide_unused_concept.py
+F optimization/test_constant_optimization.py (3 failed)
+F modeling/tpc_h/test_tpch_queries.py (9 failed)
+F optimization/test_inlining.py (1 failed)
+F optimization/test_join_hoist.py (1 failed)
+. optimization/test_join_upgrade.py
+. optimization/test_merge_aggregate.py
+F optimization/test_merge_basic.py (1 failed)
+. optimization/test_merge_coalesce_impute.py
+. optimization/test_merge_irrelevant_group_by.py
+. optimization/test_null_safe_join.py
+. optimization/test_missing_cte_reference.py
+. optimization/test_optimization.py
+. optimization/test_optimization_pipeline.py
+. optimization/test_pushdown_optimization.py
+. optimization/test_union_dim_pushdown.py
+. optimization/test_value_set_join_upgrade.py
+. persistence/test_complex_persistence.py
+F persistence/test_basic_persistence.py (3 failed)
+. rendering/test_ergonomics.py
+. rendering/test_grammar_coverage.py
+. rendering/test_formatting.py
+. rendering/test_rendering.py
+. rendering/test_rich_types.py
+. scripts/ingest_helpers/test_foreign_keys.py
+. scripts/serve_helpers/test_file_discovery.py
+. scripts/serve_helpers/test_index_generation.py
+. report/test_report.py
+. scripts/serve_helpers/test_models.py
+. scripts/test_agent_info.py
+. scripts/test_click_utils.py
+. scripts/test_agent.py
+. scripts/test_common.py
+. scripts/test_cwd_defaults.py
+T etl/test_duckdb.py
+. scripts/test_config.py
+. scripts/test_database.py
+. scripts/test_dependency.py
+. scripts/test_display_ingest.py
+. scripts/test_explore_layout.py
+. scripts/test_explore.py
+. scripts/test_cli_consistency.py
+. scripts/test_file.py
+. scripts/test_fk_inference.py
+T modeling/gcat/test_gcat.py
+. scripts/test_init.py
+. scripts/test_jobs.py
+. scripts/test_format.py
+. scripts/test_parallel.py
+. scripts/test_ingest.py
+. scripts/test_plan.py
+. scripts/test_public.py
+. scripts/test_run_cli.py
+. scripts/test_render.py
+F scripts/test_refresh.py (1 failed)
+T modeling/tpc_ds_duckdb/test_queries.py
+. scripts/test_state_computation.py
+. scripts/test_testing.py
+. stack_overflow/test_aggregate_grain.py
+. scripts/test_readme_quickstart.py
+. stack_overflow/test_cross_model_additive_grain.py
+. stack_overflow/test_import_rendering.py
+. stack_overflow/test_filtering_reduction.py
+. stdlib/test_basic_import.py
+. stdlib/test_money.py
+. stdlib/test_display.py
+. stdlib/test_ranking.py
+. stdlib/test_report.py
+. test_build_backend.py
+. test_declarations.py
+. test_datatypes.py
+. test_derived_concepts.py
+. scripts/test_serve.py
+. test_discovery_nodes.py
+. test_enums.py
+. test_execute_models.py
+. test_environment.py
+. test_executor.py
+. scripts/test_trilogy.py
+. test_failure.py
+. test_hydration_phases.py
+. test_force_group_merge_repro.py
+. test_metadata.py
+. test_imports.py
+. test_functions.py
+. test_multi_join_assignments.py
+. test_models.py
+. test_parse_engine.py
+. test_mocking.py
+. test_parsing_failures.py
+. test_parsing.py
+. test_partial_datasource.py
+. test_partial_handling.py
+. test_patch_wheels.py
+F test_query_processing.py (1 failed)
+. test_query_render.py
+. test_retry_config.py
+. test_select.py
+F test_show.py (1 failed)
+. test_parse_engine_v2.py
+. test_staging.py
+. test_subselect.py
+. test_type_checking_e2e.py
+. test_undefined_concept.py
+. test_statements.py
+. test_typing.py
+. test_v2_symbol_scope.py
+F test_user_functions.py (1 failed)
+. test_where_clause.py
+. test_validators.py
+. vscode/test_vscode_test_cases.py
+
+Wrote C:\Users\ethan\coding_projects\pytrilogy\local_scripts\v4_sweep\SUMMARY.md (204 failing nodes)

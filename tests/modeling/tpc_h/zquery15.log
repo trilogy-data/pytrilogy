@@ -5,8 +5,17 @@ comp_size = 560
 generated_sql = """
 
 WITH 
-quizzical as (
+highfalutin as (
 SELECT
+    \"lineitem\".\"l_linenumber\" as \"line_no\",
+    \"lineitem\".\"l_orderkey\" as \"order_id\",
+    CASE WHEN \"lineitem\".\"l_shipdate\" >= date '1996-01-01' and \"lineitem\".\"l_shipdate\" < date '1996-04-01' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END as \"_virt_filter_revenue_6893837512415319\"
+FROM
+    \"memory\".\"lineitem\" as \"lineitem\"),
+abundant as (
+SELECT
+    \"lineitem\".\"l_linenumber\" as \"line_no\",
+    \"lineitem\".\"l_orderkey\" as \"order_id\",
     \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
     sum(CASE WHEN \"lineitem\".\"l_shipdate\" >= date '1996-01-01' and \"lineitem\".\"l_shipdate\" < date '1996-04-01' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) as \"supplier_rev\"
 FROM
@@ -22,23 +31,58 @@ cooperative as (
 SELECT
     \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
-    \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
-    \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"quizzical\".\"supplier_rev\" as \"supplier_rev\"
+    \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\"
 FROM
-    \"memory\".\"supplier\" as \"part_supplier_supplier\"
-    INNER JOIN \"quizzical\" on \"part_supplier_supplier\".\"s_suppkey\" = \"quizzical\".\"part_supplier_id\")
+    \"memory\".\"lineitem\" as \"lineitem\"
+    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"lineitem\".\"l_suppkey\" = \"part_supplier_supplier\".\"s_suppkey\"),
+cheerful as (
 SELECT
-    \"cooperative\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"cooperative\".\"part_supplier_name\" as \"part_supplier_name\",
-    \"cooperative\".\"part_supplier_address\" as \"part_supplier_address\",
-    \"cooperative\".\"part_supplier_phone\" as \"part_supplier_phone\",
-    \"cooperative\".\"supplier_rev\" as \"total_revenue\"
+    \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
+    sum(\"highfalutin\".\"_virt_filter_revenue_6893837512415319\") as \"supplier_rev\"
 FROM
-    \"cheerful\"
+    \"highfalutin\"
+    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"highfalutin\".\"line_no\" = \"lineitem\".\"l_linenumber\" AND \"highfalutin\".\"order_id\" = \"lineitem\".\"l_orderkey\"
+GROUP BY
+    1),
+uneven as (
+SELECT
+    \"abundant\".\"line_no\" as \"line_no\",
+    \"abundant\".\"order_id\" as \"order_id\"
+FROM
+    \"abundant\"),
+cooperative as (
+SELECT
+    max(\"cheerful\".\"supplier_rev\") as \"max_supplier_rev\"
+FROM
+    \"cheerful\"),
+juicy as (
+SELECT
+    \"abundant\".\"part_supplier_address\" as \"part_supplier_address\",
+    \"abundant\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"abundant\".\"part_supplier_name\" as \"part_supplier_name\",
+    \"abundant\".\"part_supplier_phone\" as \"part_supplier_phone\",
+    \"cheerful\".\"supplier_rev\" as \"supplier_rev\"
+FROM
+    \"uneven\"
+    INNER JOIN \"abundant\" on \"uneven\".\"line_no\" = \"abundant\".\"line_no\" AND \"uneven\".\"order_id\" = \"abundant\".\"order_id\"
+    INNER JOIN \"cheerful\" on \"abundant\".\"part_supplier_id\" = \"cheerful\".\"part_supplier_id\"
     INNER JOIN \"cooperative\" on 1=1
 WHERE
-    \"cooperative\".\"supplier_rev\" = \"cheerful\".\"max_supplier_rev\"
+    \"cheerful\".\"supplier_rev\" = \"cooperative\".\"max_supplier_rev\"
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5)
+SELECT
+    \"juicy\".\"part_supplier_id\" as \"part_supplier_id\",
+    \"juicy\".\"part_supplier_name\" as \"part_supplier_name\",
+    \"juicy\".\"part_supplier_address\" as \"part_supplier_address\",
+    \"juicy\".\"part_supplier_phone\" as \"part_supplier_phone\",
+    \"juicy\".\"supplier_rev\" as \"total_revenue\"
+FROM
+    \"juicy\"
 ORDER BY 
-    \"cooperative\".\"part_supplier_id\" asc"""
+    \"juicy\".\"part_supplier_id\" asc"""
