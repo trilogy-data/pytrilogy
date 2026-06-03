@@ -192,3 +192,142 @@
 [ingest]   [q06] starting (worker _worker_1)
 [enriched]   [q08] done in 188s (exit 0, score=pass)
 [enriched]   [q09] starting (worker _worker_0)
+[enriched]   [q05] done in 900s (exit -1, score=timeout)
+[ingest]   [q06] done in 142s (exit 0, score=fail)
+[enriched]   [q10] starting (worker _worker_1)
+[ingest]   [q07] starting (worker _worker_1)
+[enriched]   [q09] done in 133s (exit 0, score=pass)
+[ingest]   [q07] done in 54s (exit 0, score=pass)
+[ingest]   [q08] starting (worker _worker_1)
+[enriched]   [q10] done in 121s (exit 0, score=pass)
+[enriched] [4/5] Finalising scores for 10 queries ...
+[enriched]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_enriched_v2.png  (23 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_enriched.md)
+[enriched] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260603-144030_enriched
+[enriched] 
+[enriched] # TPC-DS Agent Eval — 20260603-144033
+[enriched] 
+[enriched] - Model: `deepseek/deepseek-chat`
+[enriched] - Scale factor: 1  |  Queries: 10  |  Trilogy: 0.3.277
+[enriched] 
+[enriched] ## Result
+[enriched] 
+[enriched] - **Pass rate: 7/10** (70%)
+[enriched] - Status breakdown: {'pass': 7, 'fail': 2, 'timeout': 1}
+[enriched] - Wall time: 1410.9s  (TIMED OUT)  |  Agent time: 2621.4s  |  Avg/query: 262.1s
+[enriched] - Agent exit code: 1
+[enriched] 
+[enriched] ## Agent harness metrics
+[enriched] 
+[enriched] - LLM iterations: 201
+[enriched] - Tool calls: 247  →  {'trilogy': 227, 'list_files': 11, 'return_control_to_user': 9}
+[enriched] - `trilogy` subcommands: {'agent-info': 13, 'explore': 65, 'file': 66, 'run': 82}
+[enriched] - Tool success rate: 91% (223/246 ok)
+[enriched] - Tokens: 7544550 total (7466332 prompt + 78218 completion)
+[enriched] 
+[enriched] ## Tool-output sizes
+[enriched] 
+[enriched] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[enriched] |---|---:|---:|---:|---:|---:|
+[enriched] | `trilogy` | 226 | 3350 | 31457 | 0 | 0% |
+[enriched] | `list_files` | 11 | 6984 | 7010 | 0 | 0% |
+[enriched] | `return_control_to_user` | 9 | 26 | 26 | 0 | 0% |
+[enriched] 
+[enriched] - Repeated calls (same args seen earlier in same query): {'trilogy': 46} — total 46
+[enriched] 
+[enriched] ## Per-query
+[enriched] 
+[enriched] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[enriched] |------:|:-------|---------:|----------:|--------:|:-------|
+[enriched] | 01 | pass | 100 | 100 | 2052 |  |
+[enriched] | 02 | fail | 53 | 70 | 1683 | result set differs from reference |
+[enriched] | 03 | pass | 89 | 89 | 894 |  |
+[enriched] | 04 | fail | 6 | 6 | 6379 | result set differs from reference |
+[enriched] | 05 | timeout | 100 | 100 | 11310 | agent timed out (was: fail) — result set differs from reference |
+[enriched] | 06 | pass | 46 | 46 | 2583 |  |
+[enriched] | 07 | pass | 100 | 100 | 1538 |  |
+[enriched] | 08 | pass | 5 | 5 | 2544 |  |
+[enriched] | 09 | pass | 1 | 1 | 4653 |  |
+[enriched] | 10 | pass | 6 | 6 | 7191 |  |
+[enriched] 
+[enriched] ## Agent final message
+[enriched] 
+[enriched] > Successfully created and ran query10.preql. The query returns 6 rows of customer demographic breakdowns for customers whose current home address is in one of the five specified counties, who made store sales in Jan-Apr 2002 and either web or catalog sales in the same period. The output has the required 14 columns (gender, marital status, education status, customer count, purchase estimate, customer count, credit rating, customer count, dependent count, customer count, employed dependent count, customer count, college dependent count, customer count) ordered as specified, with all 6 customer count columns matching per row. Limited to 100 rows as required.
+[enriched] 
+[ingest]   [q08] done in 136s (exit 0, score=pass)
+[ingest]   [q09] starting (worker _worker_1)
+[ingest]   [q09] done in 77s (exit 0, score=pass)
+[ingest]   [q10] starting (worker _worker_1)
+[ingest]   [q10] done in 158s (exit 0, score=pass)
+[ingest]   [q05] done in 900s (exit -1, score=timeout)
+[ingest] [4/5] Finalising scores for 10 queries ...
+[ingest]   wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\dashboard_ingest_v2.png  (55 trilogy failures -> C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\trilogy_failures_ingest.md)
+[ingest] [5/5] Done. Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\20260603-144030_ingest
+[ingest] 
+[ingest] # TPC-DS Agent Eval — 20260603-144034
+[ingest] 
+[ingest] - Model: `deepseek/deepseek-chat`
+[ingest] - Scale factor: 1  |  Queries: 10  |  Trilogy: 0.3.277
+[ingest] 
+[ingest] ## Result
+[ingest] 
+[ingest] - **Pass rate: 6/10** (60%)
+[ingest] - Status breakdown: {'pass': 6, 'timeout': 3, 'fail': 1}
+[ingest] - Wall time: 1815.0s  (TIMED OUT)  |  Agent time: 3446.1s  |  Avg/query: 344.6s
+[ingest] - Agent exit code: 1
+[ingest] 
+[ingest] ## Agent harness metrics
+[ingest] 
+[ingest] - LLM iterations: 274
+[ingest] - Tool calls: 334  →  {'trilogy': 316, 'list_files': 10, 'return_control_to_user': 7, 'explore': 1}
+[ingest] - `trilogy` subcommands: {'agent-info': 12, 'explore': 65, 'file': 95, 'run': 143, 'fmt': 1}
+[ingest] - Tool success rate: 83% (277/333 ok)
+[ingest] - Tokens: 12129707 total (12027357 prompt + 102350 completion)
+[ingest] 
+[ingest] ## Tool-output sizes
+[ingest] 
+[ingest] | Tool | calls | avg chars | max chars | truncated | trunc-rate |
+[ingest] |---|---:|---:|---:|---:|---:|
+[ingest] | `trilogy` | 315 | 2464 | 31457 | 0 | 0% |
+[ingest] | `list_files` | 10 | 2717 | 2785 | 0 | 0% |
+[ingest] | `return_control_to_user` | 7 | 26 | 26 | 0 | 0% |
+[ingest] | `explore` | 1 | 99 | 99 | 0 | 0% |
+[ingest] 
+[ingest] - Repeated calls (same args seen earlier in same query): {'trilogy': 68} — total 68
+[ingest] 
+[ingest] ## Per-query
+[ingest] 
+[ingest] | Query | Status | Ref rows | Cand rows | SQL len | Detail |
+[ingest] |------:|:-------|---------:|----------:|--------:|:-------|
+[ingest] | 01 | pass | 100 | 100 | 2147 |  |
+[ingest] | 02 | timeout | 53 | 53 | 34482 | agent timed out (was: fail) — result set differs from reference |
+[ingest] | 03 | pass | 89 | 89 | 817 |  |
+[ingest] | 04 | timeout | 6 | 0 | 14164 | agent timed out (was: fail) — result set differs from reference |
+[ingest] | 05 | timeout | 100 | 100 | 7145 | agent timed out (was: fail) — result set differs from reference |
+[ingest] | 06 | fail | 46 | 41 | 2081 | result set differs from reference |
+[ingest] | 07 | pass | 100 | 100 | 1564 |  |
+[ingest] | 08 | pass | 5 | 5 | 2904 |  |
+[ingest] | 09 | pass | 1 | 1 | 6673 |  |
+[ingest] | 10 | pass | 6 | 6 | 7888 |  |
+[ingest] 
+[ingest] ## Agent final message
+[ingest] 
+[ingest] > Successfully wrote and validated `query10.preql`. The query:
+[ingest] > 
+[ingest] > 1. **Imports** the three fact tables: `store_sales`, `web_sales`, `catalog_sales`.
+[ingest] > 2. **Defines membership sets** for customers with web sales (`web_cust`) and catalog sales (`cat_cust`) in Jan-Apr 2002, filtered with the `?` inline filter syntax.
+[ingest] > 3. **Filters** store_sales customers to:
+[ingest] >    - Home county in the 5 specified counties
+[ingest] >    - Store sale in Jan-Apr 2002
+[ingest] >    - Has a current customer_demographics record (`demo_sk is not null`)
+[ingest] >    - Customer key matches `web_cust` OR `cat_cust` (semi-join via `in`)
+[ingest] > 4. **Groups by** the 8 demographic dimensions (gender, marital_status, education_status, purchase_estimate, credit_rating, dep_count, dep_employed_count, dep_college_count)
+[ingest] > 5. **Outputs** the exact column sequence with 6 identical customer count columns
+[ingest] > 6. **Orders** by all 8 grouping dimensions and limits to 100 rows
+[ingest] > 
+[ingest] > Ran cleanly — 6 result rows.
+[ingest] 
+[categories] sql_bare leg exit=0
+[categories] sql_schema leg exit=0
+[categories] ingest leg exit=0
+[categories] enriched leg exit=0
+[categories] wrote C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\funnel_v2.png and C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\charts\funnel.md
