@@ -45,6 +45,19 @@ from .models import ConceptAttrs, GroupAttrs, GroupBucket
 # gets its own group id and doesn't collide with the main root bucket.
 ROOT_D1_DEPTH = "root_d1"
 
+# Row-shape barriers whose own output can NOT be filtered in place: a window
+# `rank() < 10` needs QUALIFY and an unnest `not value` needs a wrapping
+# select, so a WHERE on their output must live at a downstream consumer (or
+# FINAL). Such an output can also look spuriously "reachable" at the barrier
+# via a back-edge constraint from its condition-phase duplicate, so we drop
+# these as candidate hosts. Aggregate/group_to self-host via HAVING, and
+# rowset/union/recursive are CTE-like (their output is filterable in a
+# wrapping select that the planner already builds) — none are excluded.
+_CANNOT_HOST_OWN_OUTPUT: set[str] = {
+    Derivation.WINDOW.value,
+    Derivation.UNNEST.value,
+}
+
 
 def _leaf_inputs(primaries: set[str], lineage_parents: dict[str, set[str]]) -> set[str]:
     """The first non-primary lineage ancestor of each primary — the columns a
@@ -396,19 +409,33 @@ def _inject_conditions(
     #     datasource scan IS its input)
     #   - for any other group: the union of its ancestors' members (its
     #     parents' CTEs feed its FROM)
-    # NOT including its own primaries — those are the *outputs* of this
-    # group's derivation. You can't WHERE on `avg(price)` inside the same
-    # SELECT that computes it; that filter must live downstream where
-    # `avg(price)` is an input column. The "ancestors-only" rule below
-    # forces those atoms to land on a consumer. Existence edges are excluded
-    # — they're side-channel (the d1 filter back-edges into its main-graph
-    # consumer); counting them as ancestry falsely demotes a true source
-    # group like root and excludes its own scan columns from candidacy.
+    # NOT including its own primaries (for a *derived* group) — those are the
+    # *outputs* of this group's derivation. You can't WHERE on `avg(price)`
+    # inside the same SELECT that computes it; that filter must live
+    # downstream where `avg(price)` is an input column. The "ancestors-only"
+    # rule below forces those atoms to land on a consumer. Existence edges are
+    # excluded — they're side-channel (the d1 filter back-edges into its
+    # main-graph consumer); counting them as ancestry falsely demotes a true
+    # source group like root and excludes its own scan columns from candidacy.
+    #
+    # A ROOT scan is the exception: its primaries are raw columns the FROM
+    # supplies, so they're inputs, not derived outputs. A WHERE on a raw column
+    # (`size = 15`) belongs on the scan even when the root also has a
+    # constraint-edge ancestor (a d1 aggregate feeding a HAVING-style filter)
+    # that would otherwise flip it out of the "no ancestors" branch and hide
+    # its own columns (q02 / q20).
+    root_derivations = {Derivation.ROOT.value}
+
     def _reachable_input(gid: str) -> set[str]:
+        own = (
+            set(group_members.get(gid, set()))
+            if buckets.get(gid) and buckets[gid].derivation in root_derivations
+            else set()
+        )
         ancestors = nx.ancestors(lineage_ancestors_graph, gid)
         if not ancestors:
-            return set(group_members.get(gid, set()))
-        reachable: set[str] = set()
+            return own | set(group_members.get(gid, set()))
+        reachable: set[str] = set(own)
         for anc in ancestors:
             reachable |= group_members.get(anc, set())
         return reachable
@@ -437,6 +464,21 @@ def _inject_conditions(
                     f"Could not place condition atom {atom}: row inputs "
                     f"{sorted(row_inputs)} not reachable from any group."
                 )
+            # A window/unnest barrier can NOT host a row WHERE on its own output
+            # in place (a `rank() < 10` / `not value` needs QUALIFY or a
+            # wrapping select), and a back-edge constraint from a condition-phase
+            # duplicate can make such an output look "reachable" at the barrier
+            # (`prime_cubed_plus_one` at the unnest). Drop those barriers as
+            # hosts — the filter belongs at a downstream consumer (or FINAL).
+            # Aggregates stay eligible (they self-host a HAVING); rowset/union/
+            # recursive are CTE-like and filterable in a wrapping select. If
+            # this empties the set the atom defers to FINAL below.
+            candidates = [
+                gid
+                for gid in candidates
+                if buckets.get(gid) is None
+                or buckets[gid].derivation not in _CANNOT_HOST_OWN_OUTPUT
+            ]
             # An input that is the primary OUTPUT of a d0 group (an aggregate /
             # row-shape barrier produces it) only exists as a column at that
             # group and below. Keep only candidates at-or-downstream of every
@@ -459,6 +501,20 @@ def _inject_conditions(
                     for p in producers:
                         reach |= nx.descendants(group_graph, p)
                     producer_closures.append(reach)
+            # Main-pipeline producers of the atom's inputs (any derivation) —
+            # used only to tell, below, which d0 barriers the atom legitimately
+            # consumes from (so they aren't flagged as an illegal push-past).
+            producer_groups: set[str] = set()
+            for addr in row_inputs:
+                producers = [
+                    gid for gid, b in buckets.items() if addr in set(b.primary_members)
+                ]
+                main_producers = [
+                    gid
+                    for gid in producers
+                    if buckets[gid].depth_label not in ("d1", ROOT_D1_DEPTH)
+                ]
+                producer_groups.update(main_producers or producers)
             restricted = [
                 gid
                 for gid in candidates
@@ -492,7 +548,17 @@ def _inject_conditions(
             else:
                 chosen = candidates[0]
             chosen_ancestors = nx.ancestors(group_graph, chosen)
-            offending = d0_group_ids & chosen_ancestors
+            # A barrier that PRODUCES (or transitively derives) this atom's own
+            # inputs is legitimately consumed below it — `rank() < 10`,
+            # `unnest(...)→f(x) % 7 = 0`, `cumulative_a > cumulative_b` all read
+            # a barrier's output and must live downstream of it. That is not
+            # "pushing past" the barrier. Only barriers the atom is independent
+            # of represent an illegal push-past, so exclude the consumed ones
+            # (producers + their upstream lineage) from the guard.
+            consumed_barriers: set[str] = set(producer_groups)
+            for p in producer_groups:
+                consumed_barriers |= nx.ancestors(group_graph, p)
+            offending = (d0_group_ids & chosen_ancestors) - consumed_barriers
             if offending:
                 raise ValueError(
                     f"Atom {atom} would be injected at {chosen}, which is "

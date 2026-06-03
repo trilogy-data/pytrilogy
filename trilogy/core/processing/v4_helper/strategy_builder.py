@@ -480,6 +480,7 @@ def _wrap_for_grain(
     parent_node: StrategyNode,
     needed_concepts: list[BuildConcept],
     environment: BuildEnvironment,
+    merge_grain_components: frozenset[str] = frozenset(),
 ) -> list[StrategyNode]:
     """When a parent feeds a merge edge, its grain may be wider than the
     natural grain of the concepts the merge actually wants — joining the
@@ -506,11 +507,28 @@ def _wrap_for_grain(
     # {customer.id}). `BuildGrain.from_concepts([c])` is the wrong helper
     # here — that asks "what grain do these concepts collectively require"
     # which can include the concept itself as a self-key.
+    parent_outputs = {o.address for o in parent_node.output_concepts}
     by_grain: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
     for concept in needed_concepts:
         grain_components = (
             frozenset(concept.grain.components) if concept.grain else frozenset()
         )
+        # A dimension reached *through* the merge grain key (its `keys` are the
+        # merge grain) is functionally determined by it and already lives in
+        # this parent at that grain — e.g. `order.customer.id` (keys={order.id})
+        # selected next to `sum(...) by order.id`. Deduping it to its own
+        # key-grain ({order.customer.id}) drops `order.id`, so the FINAL merge
+        # loses its join key and degrades to `ON 1=1` (fan-out). Project it at
+        # the merge grain instead, keeping the join key.
+        concept_keys = frozenset(concept.keys or set())
+        if (
+            merge_grain_components
+            and grain_components.isdisjoint(merge_grain_components)
+            and concept_keys
+            and concept_keys <= merge_grain_components
+            and merge_grain_components <= parent_outputs
+        ):
+            grain_components = merge_grain_components
         by_grain[grain_components].append(concept)
 
     wraps: list[StrategyNode] = []
@@ -621,12 +639,27 @@ def _assemble_final_node(
     # wrong for AVG/STDDEV), and intermediate aggregates often don't even
     # expose the requested grain key (their GROUP BY is their grain, not the
     # downstream's). Q17 surfaced both pathologies when this was generalized.
+    # Merge grain is defined by the grouping (aggregate/window) contributors;
+    # compute it up front so root-scan wrapping can project an FD dimension at
+    # this grain (keeping the join key) instead of its own key-grain.
+    grouping_grain_components: set[str] = set()
+    for gid in contributing:
+        if attrs[gid].derivation in GROUPING_DERIVATIONS:
+            grouping_grain_components |= set(attrs[gid].grain_components)
+
     parents: list[StrategyNode] = []
     for gid in contributing:
         node = built[gid]
         is_root = attrs[gid].derivation == "root"
         if is_root:
-            parents.extend(_wrap_for_grain(node, per_group[gid], environment))
+            parents.extend(
+                _wrap_for_grain(
+                    node,
+                    per_group[gid],
+                    environment,
+                    frozenset(grouping_grain_components),
+                )
+            )
         else:
             parents.append(node)
 
@@ -645,17 +678,12 @@ def _assemble_final_node(
         for o in p.output_concepts:
             available.add(o.address)
     outputs = [c for c in mandatory_list if c.address in available]
-    # The merge grain is defined by its grouping (aggregate/window) contributors.
     # A non-grouping dimension contributor only supplies FD attributes; if it
     # sits at a finer (row-level) grain it must not widen the merge grain, or it
     # fans the aggregate out (e.g. q81: customer-dims joined through
     # catalog_returns lands at returns grain). Pinning the grain lets the merge's
     # force_group collapse back to the aggregate grain. Left None when there is
     # no grouping contributor, so plain row merges keep their current behavior.
-    grouping_grain_components: set[str] = set()
-    for gid in contributing:
-        if attrs[gid].derivation in GROUPING_DERIVATIONS:
-            grouping_grain_components |= set(attrs[gid].grain_components)
     merge_grain = (
         BuildGrain.from_concepts(grouping_grain_components, environment=environment)
         if grouping_grain_components
