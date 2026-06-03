@@ -250,15 +250,10 @@ for the full schema and API-key conventions. before making edits.
 
 ## Output Format
 
-Commands emit **newline-delimited JSON** (one event object per line) when
-invoked with `--format json` or the `TRILOGY_OUTPUT_FORMAT=json` env var — this
-is the default when the CLI is driven by an agent. Every line is a JSON object
-with an `event` field: query output arrives as
-`{"event":"result","columns":[...],"rows":[...],"row_count":N}`, schema
-discovery as `{"event":"concepts","concepts":[...]}`, failures as
-`{"event":"error","message":...}` (alongside a non-zero exit code). Parse the
-events; there is no decorative formatting to scrape. Pass `--format rich` to
-force the human-readable tables/panels instead.
+Commands emit human formatting (rich if installed, plain text otherwise) by default.
+Use the --format flag to control; agentic access will default to --format json
+which will be JSON event objects.
+. Pass `--format rich` for explicit human formatting.
 
 ## Debug Mode
 

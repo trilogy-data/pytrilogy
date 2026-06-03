@@ -100,7 +100,7 @@ COL_GREEN = "green"
 
 # --- Output format ----------------------------------------------------------
 # Two modes: "rich" (the default human-facing rendering) and "json" (a stream
-# of newline-delimited JSON events — one object per line — emitted to stdout).
+# of pretty-printed JSON event objects, newline-separated, emitted to stdout).
 # JSON mode strips all decorative formatting (panels, tables, progress bars,
 # colors) so an agent consuming the CLI as a subprocess gets the same
 # information with no token-wasting chrome. The env var lets the agent
@@ -134,19 +134,66 @@ def is_json_mode() -> bool:
     return OUTPUT_FORMAT == "json"
 
 
-def emit_event(event: str, **fields: Any) -> None:
-    """Write one NDJSON event line to stdout in JSON mode; no-op otherwise.
+def _is_scalar(value: Any) -> bool:
+    return not isinstance(value, (list, dict))
 
-    ``None``-valued fields are dropped to keep the stream compact. Non-JSON
-    values (datetimes, Decimals, paths) fall back to ``str`` so an event never
-    fails to serialize and silently swallows output."""
+
+def _is_row_table(value: Any) -> bool:
+    """A 2-D table: a non-empty list whose every element is a flat list of
+    scalars (a result row). These are rendered one compact row per line rather
+    than exploded cell-by-cell, so a 50-row result stays readable instead of
+    ballooning to hundreds of lines."""
+    return (
+        isinstance(value, list)
+        and len(value) > 0
+        and all(isinstance(e, list) and all(_is_scalar(c) for c in e) for e in value)
+    )
+
+
+def _pretty(obj: Any, level: int = 0) -> str:
+    """Pretty-print JSON for agent consumption: objects and 1-D lists expand
+    one item per line; 2-D row tables stay compact (one row per line). Falls
+    back to ``str`` for non-JSON scalars (datetimes, Decimals, paths) so an
+    event never fails to serialize."""
+    pad, pad2 = "  " * level, "  " * (level + 1)
+    if isinstance(obj, dict):
+        if not obj:
+            return "{}"
+        items = [
+            f"{pad2}{json.dumps(k)}: {_pretty(v, level + 1)}" for k, v in obj.items()
+        ]
+        return "{\n" + ",\n".join(items) + f"\n{pad}}}"
+    if isinstance(obj, list):
+        if not obj:
+            return "[]"
+        if _is_row_table(obj):
+            # Compact separators inside each row — they're already one-per-line,
+            # so dropping the ", "/": " padding trims the heaviest response
+            # (result rows) with no readability cost.
+            rows = [
+                f"{pad2}{json.dumps(r, default=str, separators=(',', ':'))}"
+                for r in obj
+            ]
+            return "[\n" + ",\n".join(rows) + f"\n{pad}]"
+        items = [f"{pad2}{_pretty(e, level + 1)}" for e in obj]
+        return "[\n" + ",\n".join(items) + f"\n{pad}]"
+    return json.dumps(obj, default=str)
+
+
+def emit_event(event: str, **fields: Any) -> None:
+    """Write one pretty-printed JSON event object to stdout in JSON mode;
+    no-op otherwise. Successive events are newline-separated, so a consumer
+    reads them with a streaming decoder (``json.JSONDecoder().raw_decode`` in
+    a loop), not by splitting on lines.
+
+    ``None``-valued fields are dropped to keep the stream compact."""
     if not is_json_mode():
         return
     payload: dict[str, Any] = {"event": event}
     for key, value in fields.items():
         if value is not None:
             payload[key] = value
-    echo(json.dumps(payload, default=str))
+    echo(_pretty(payload))
 
 
 class SetRichMode:

@@ -92,32 +92,90 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
     return report, events
 
 
-def tool_outcomes(events: list[dict]) -> dict[str, list[int]]:
-    """tool name -> [ok_count, error_count], pairing each call with its result.
+def _tool_label(name: str, arguments: dict | None) -> str:
+    """Bar/table bucket for a tool call. ``trilogy`` is split by subcommand
+    (``trilogy <args[0]>``) — half the iteration budget on exhausted runs goes
+    to ``trilogy explore``, so a single rolled-up ``trilogy`` bucket hides where
+    the cost lives. Other tools keep their flat name."""
+    if name == "trilogy":
+        args = (arguments or {}).get("args") or []
+        sub = (str(args[0]) if isinstance(args, list) and args else "").strip()
+        # `file` splits one level deeper — read (pulls content into context) and
+        # write (a tiny ack) have very different response-size profiles, so a
+        # single `trilogy file` bucket would hide the distinction.
+        if sub == "file" and isinstance(args, list) and len(args) > 1:
+            return f"trilogy file {str(args[1]).strip()}"
+        return f"trilogy {sub}" if sub else "trilogy"
+    return str(name)
 
-    ``trilogy`` is bucketed by subcommand (``trilogy <args[0]>``) instead of
-    rolled up — half the iteration budget on exhausted runs goes to
-    ``trilogy explore``, so a single ``trilogy`` bar hides where the cost
-    actually lives. Other tools (``read_file``, ``todo``, ...) keep their
-    flat name."""
+
+def tool_outcomes(events: list[dict]) -> dict[str, list[int]]:
+    """tool label -> [ok_count, error_count], pairing each call with its
+    result."""
     outcomes: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     pending: tuple[str, str] | None = None
     for e in events:
         if e.get("type") == "tool_call":
             name = str(e.get("name", "?"))
-            if name == "trilogy":
-                args = (e.get("arguments") or {}).get("args") or []
-                sub = (str(args[0]) if isinstance(args, list) and args else "").strip()
-                label = f"trilogy {sub}" if sub else "trilogy"
-            else:
-                label = name
-            pending = (name, label)
+            pending = (name, _tool_label(name, e.get("arguments")))
         elif e.get("type") == "tool_result" and pending is not None:
             tool_name, label = pending
             is_err = scoring._is_error_result(tool_name, str(e.get("result") or ""))
             outcomes[label][1 if is_err else 0] += 1
             pending = None
     return outcomes
+
+
+def tool_response_tokens(events: list[dict]) -> dict[str, list[float]]:
+    """tool label -> list of per-call RESPONSE token costs: how many tokens each
+    call's *result* added to the conversation. This is the actionable number —
+    a turn's total tokens are dominated by accumulated prior context and hide
+    which tool's output is actually heavy.
+
+    Measured as the real growth in ``prompt_tokens`` from the calling turn to
+    the next, minus that turn's own assistant message (its completion) — what's
+    left is the tokens the tool result(s) injected. A multi-call turn splits the
+    growth across its calls by result size. Computed per query, since each query
+    is a fresh agent whose prompt resets. The final turn of a query has no
+    successor to diff against, so its result is estimated from text length
+    (~4 chars/token)."""
+    by_query: dict[object, list[dict]] = defaultdict(list)
+    for e in events:
+        by_query[e.get("_query_id")].append(e)
+
+    credits: dict[str, list[float]] = defaultdict(list)
+    for evs in by_query.values():
+        turns: list[dict] = []
+        cur: dict | None = None
+        pending: str | None = None
+        for e in evs:
+            t = e.get("type")
+            if t == "llm_response":
+                u = e.get("usage") or {}
+                cur = {
+                    "prompt": u.get("prompt_tokens") or 0,
+                    "completion": u.get("completion_tokens") or 0,
+                    "calls": [],  # (label, result_chars)
+                }
+                turns.append(cur)
+                pending = None
+            elif t == "tool_call" and cur is not None:
+                pending = _tool_label(str(e.get("name", "?")), e.get("arguments"))
+            elif t == "tool_result" and cur is not None and pending is not None:
+                cur["calls"].append((pending, len(str(e.get("result") or ""))))
+                pending = None
+        for i, turn in enumerate(turns):
+            if not turn["calls"]:
+                continue
+            nxt = turns[i + 1] if i + 1 < len(turns) else None
+            if nxt is not None:
+                added = max(0.0, nxt["prompt"] - turn["prompt"] - turn["completion"])
+            else:
+                added = sum(c for _, c in turn["calls"]) / 4.0
+            total_chars = sum(c for _, c in turn["calls"]) or 1
+            for label, chars in turn["calls"]:
+                credits[label].append(added * chars / total_chars)
+    return credits
 
 
 def _is_db_read_call(name: str, args: dict) -> bool:
@@ -341,21 +399,99 @@ def _short_tool_label(name: str) -> str:
     return name[: _TOOL_LABEL_MAX - 1] + "…"
 
 
-def _plot_tool_calls(ax, outcomes: dict[str, list[int]]) -> None:
+def _plot_tool_calls(
+    ax, outcomes: dict[str, list[int]], credits: dict[str, list[float]] | None = None
+) -> None:
+    """Per-tool call counts (ok/error stacked) sorted by total calls. When
+    ``credits`` is given (per-call RESPONSE token costs), a faint-blue
+    total-response-token bar sits beside each call bar on a 2nd y-axis."""
     tools = sorted(outcomes, key=lambda t: -sum(outcomes[t]))
     labels = [_short_tool_label(t) for t in tools]
+    xs = list(range(len(tools)))
     ok = [outcomes[t][0] for t in tools]
     err = [outcomes[t][1] for t in tools]
-    ax.bar(labels, ok, color=OK_COLOR, label="ok")
-    ax.bar(labels, err, bottom=ok, color=ERR_COLOR, label="error")
-    for i in range(len(tools)):
+    w = 0.4 if credits else 0.8
+    xc = [x - w / 2 for x in xs] if credits else xs
+    ax.bar(xc, ok, width=w, color=OK_COLOR, label="ok")
+    ax.bar(xc, err, width=w, bottom=ok, color=ERR_COLOR, label="error")
+    for i, x in enumerate(xc):
         total = ok[i] + err[i]
         rate = ok[i] / total * 100 if total else 0
-        ax.text(i, total, f"{rate:.0f}%", ha="center", va="bottom", fontsize=8)
-    ax.set_title("Tool calls — success / error")
+        ax.text(x, total, f"{rate:.0f}%", ha="center", va="bottom", fontsize=8)
+    ax.set_title(
+        "Tool calls — success / error" + (" + response tokens" if credits else "")
+    )
     ax.set_ylabel("calls")
+    ax.set_xticks(xs)
+    ax.set_xticklabels(labels)
     ax.tick_params(axis="x", rotation=25)
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=8, loc="upper right")
+    if credits:
+        ax_tok = ax.twinx()
+        toks = [sum(credits.get(t, [])) for t in tools]
+        ax_tok.bar([x + w / 2 for x in xs], toks, width=w, color=TOKEN_COLOR, alpha=0.4)
+        ax_tok.set_ylabel("response tokens (faint)", color=TOKEN_COLOR)
+        ax_tok.tick_params(axis="y", labelcolor=TOKEN_COLOR)
+        ax_tok.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+
+
+def _plot_tool_token_table(
+    ax, outcomes: dict[str, list[int]], credits: dict[str, list[float]]
+) -> None:
+    """Full-width per-tool table: calls, success rate, and the per-call RESPONSE
+    token distribution (P5/P50/P95/AVG/TOTAL) — tokens each call's result adds
+    to context, not the turn total. Rows sorted by total calls to match the bar
+    order above."""
+    ax.axis("off")
+    tools = sorted(outcomes, key=lambda t: -sum(outcomes[t]))
+    rows = []
+    for t in tools:
+        ok, err = outcomes[t]
+        calls = ok + err
+        rate = ok / calls if calls else 1.0
+        vals = sorted(credits.get(t, []))
+        avg = sum(vals) / len(vals) if vals else 0.0
+        rows.append(
+            [
+                _short_tool_label(t),
+                f"{calls:,}",
+                f"{rate * 100:.0f}%",
+                f"{_pct(vals, 5):,.0f}",
+                f"{_pct(vals, 50):,.0f}",
+                f"{_pct(vals, 95):,.0f}",
+                f"{avg:,.0f}",
+                f"{sum(vals):,.0f}",
+            ]
+        )
+    ax.set_title(
+        "Per-tool cost — response tokens each call adds to context "
+        "(not the turn total)",
+        fontsize=10,
+    )
+    tbl = ax.table(
+        cellText=rows,
+        colLabels=[
+            "tool",
+            "calls",
+            "success",
+            "resp P5",
+            "resp P50",
+            "resp P95",
+            "resp AVG",
+            "resp TOTAL",
+        ],
+        loc="center",
+        cellLoc="right",
+        bbox=[0.0, 0.0, 1.0, 0.92],
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(8)
+    tbl.scale(1, 1.3)
+    for (r, c), cell in tbl.get_celld().items():
+        if r == 0:
+            cell.set_text_props(fontweight="bold")
+        if c == 0:
+            cell.set_text_props(ha="left")
 
 
 def _token_background(
@@ -750,9 +886,13 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.gridspec import GridSpec
 
     meta, summary = report["meta"], report["summary"]
-    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+    fig = plt.figure(figsize=(14, 12))
+    gs = GridSpec(
+        3, 2, figure=fig, height_ratios=[1.15, 1.15, 0.95], hspace=0.5, wspace=0.22
+    )
     fig.suptitle(
         f"tpcds_agent eval — {meta['timestamp']}  |  "
         f"{meta['provider']}/{meta['model']}  |  sf={meta['scale_factor']:g}  |  "
@@ -760,15 +900,20 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
         fontsize=13,
         fontweight="bold",
     )
-    _plot_tool_calls(axes[0][0], tool_outcomes(events))
+    outcomes = tool_outcomes(events)
+    credits = tool_response_tokens(events)
+    _plot_tool_calls(fig.add_subplot(gs[0, 0]), outcomes, credits)
     v = _per_query_metric_vectors(report, events)
     tokens_by_id = dict(zip(v["qids"], v["tokens"]))
     _plot_per_query(
-        axes[0][1], report["queries"], query_run_attempts(events), tokens_by_id
+        fig.add_subplot(gs[0, 1]),
+        report["queries"],
+        query_run_attempts(events),
+        tokens_by_id,
     )
-    _plot_outcomes(axes[1][0], summary["status_breakdown"])
-    _plot_metrics(axes[1][1], report, events)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    _plot_outcomes(fig.add_subplot(gs[1, 0]), summary["status_breakdown"])
+    _plot_metrics(fig.add_subplot(gs[1, 1]), report, events)
+    _plot_tool_token_table(fig.add_subplot(gs[2, :]), outcomes, credits)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -827,9 +972,13 @@ def render_comparison(
 
     ax_tools_a = fig.add_subplot(gs[1, 0])
     ax_tools_b = fig.add_subplot(gs[1, 1])
-    _plot_tool_calls(ax_tools_a, tool_outcomes(events_a))
+    _plot_tool_calls(
+        ax_tools_a, tool_outcomes(events_a), tool_response_tokens(events_a)
+    )
     ax_tools_a.set_title(f"Tool calls — {label_a}")
-    _plot_tool_calls(ax_tools_b, tool_outcomes(events_b))
+    _plot_tool_calls(
+        ax_tools_b, tool_outcomes(events_b), tool_response_tokens(events_b)
+    )
     ax_tools_b.set_title(f"Tool calls — {label_b}")
 
     ax_out_a = fig.add_subplot(gs[2, 0])

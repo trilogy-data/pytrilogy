@@ -177,6 +177,138 @@ select students.major, count(students.id) as enrolled_students;
 # anti-join: students who never enrolled in ANY course
 where students.id not in enroll.student_id
 select students.major, count(students.id) as never_enrolled;
+
+# NULLABLE FLAG: a flag that is true only when a match exists and NULL otherwise
+# (e.g. `enroll.completed` set only for graded rows) needs `is null` for the
+# "never matched" case — `not flag` evaluates NULL→dropped, losing those rows.
+where enroll.completed is null
+select enroll.student_id;
+""",
+    ),
+    SyntaxExample(
+        name="set-intersect-difference",
+        title="Set intersection / difference on a multi-column key (presence per group)",
+        summary=(
+            "count tuples present in / absent from other groups via per-group "
+            "presence flags — the multi-column INTERSECT/EXCEPT idiom (NOT concat + `in`)"
+        ),
+        body="""\
+# To intersect or difference rows on a MULTI-COLUMN key (the SQL INTERSECT /
+# EXCEPT of several columns), group by the full key tuple and build a presence
+# flag per set with `sum(case when <set> then 1 else 0 end)`. Grouping keeps
+# NULL key parts as their own group (correct INTERSECT/EXCEPT semantics).
+# Do NOT concat the columns into one string and use `in`/`not in` — concat drops
+# NULLs and gives the wrong count.
+import enrollments as enroll;
+
+# Presence of each (last_name, first_name, term) tuple within each campus.
+auto in_north <- sum(case when enroll.campus = 'north' then 1 else 0 end)
+    by enroll.student.last_name, enroll.student.first_name, enroll.term;
+auto in_south <- sum(case when enroll.campus = 'south' then 1 else 0 end)
+    by enroll.student.last_name, enroll.student.first_name, enroll.term;
+auto in_west <- sum(case when enroll.campus = 'west' then 1 else 0 end)
+    by enroll.student.last_name, enroll.student.first_name, enroll.term;
+
+select
+    # intersection: tuples appearing in ALL three campuses
+    sum(case when in_north > 0 and in_south > 0 and in_west > 0 then 1 else 0 end) as in_all_three,
+    # difference: tuples in north but NEITHER south nor west (north EXCEPT others)
+    sum(case when in_north > 0 and in_south = 0 and in_west = 0 then 1 else 0 end) as north_only,
+;
+""",
+    ),
+    SyntaxExample(
+        name="dedup-before-aggregate",
+        title="Deduplicate identical rows before aggregating (UNION DISTINCT)",
+        summary=(
+            "a `rowset <- select <cols>` collapses identical tuples to one row "
+            "(SELECT-grain group by) before a downstream sum — the `distinct`/UNION substitute"
+        ),
+        body="""\
+# `distinct` and UNION are not available. To collapse identical tuples to one
+# row BEFORE aggregating (so duplicates don't double-count), materialize the
+# tuple in a `rowset <- select <cols>`: a rowset select groups at its own grain,
+# emitting one row per distinct tuple. Then aggregate over the rowset's columns.
+import enrollments as enroll;
+
+# Collapse duplicate (student, course, term, credits) rows to one each.
+rowset unique_enroll <- where enroll.year = 2020
+select
+    enroll.student_id,
+    enroll.course,
+    enroll.term,
+    enroll.credits,
+;
+
+# Sum over the deduplicated rows — identical tuples counted once.
+select
+    unique_enroll.term,
+    sum(unique_enroll.credits) as total_credits,
+order by unique_enroll.term asc;
+""",
+    ),
+    SyntaxExample(
+        name="rank-over-rollup",
+        title="Rank within each rollup level (one window over the rollup)",
+        summary=(
+            "rank rollup subtotals/leaves with a SINGLE `rank(a,b) over (partition by "
+            "level, parent ...)` — not separate ranks per level"
+        ),
+        body="""\
+# When ranking the rows of a ROLLUP within each hierarchy level, use ONE
+# multi-key window over the rollup output. `grouping()` gives the level; the
+# window partitions by (level, parent) so leaves rank within their parent and
+# subtotals rank among themselves — all in one pass. Do NOT write separate rank
+# concepts per level (they mis-rank across the wrong row set).
+import enrollments as enroll;
+
+auto total <- sum(enroll.credits) by rollup enroll.department, enroll.course;
+auto g_dept <- grouping(enroll.department) by rollup enroll.department, enroll.course;
+auto g_course <- grouping(enroll.course) by rollup enroll.department, enroll.course;
+auto level <- g_dept + g_course;   # 0 = leaf, 1 = dept subtotal, 2 = grand total
+auto parent <- case when g_course = 0 then enroll.department else null end;
+auto rnk <- rank(enroll.department, enroll.course)
+    over (partition by level, parent order by total desc);
+
+select
+    enroll.department,
+    enroll.course,
+    total,
+    level,
+    rnk,
+order by level desc nulls first, parent asc nulls first, rnk asc nulls first
+limit 100;
+""",
+    ),
+    SyntaxExample(
+        name="staged-membership",
+        title="Stage a coarse-grain membership set, then filter a fine-grain query",
+        summary=(
+            "compute a membership set in a `rowset` (keys meeting a count/HAVING), "
+            "then filter the main query with `<key> in <rowset>.<col>`"
+        ),
+        body="""\
+# When a query filters on a condition computed at a COARSER grain (e.g. "items
+# sold in all 3 channels", "courses offered in every term"), compute that
+# membership set in its own `rowset` and filter the fine-grain query with `in`.
+# Staging keeps the coarse aggregate from entangling with the fine-grain
+# aggregates (which otherwise re-aggregate / over-count).
+import enrollments as enroll;
+
+# Coarse stage: courses offered in all 3 terms.
+rowset multi_term <- select
+    enroll.course,
+    --count_distinct(enroll.term) as term_count,
+having term_count = 3
+;
+
+# Fine stage: total credits per department, only for those courses.
+where enroll.course in multi_term.course
+select
+    enroll.department,
+    sum(enroll.credits) as total_credits,
+order by total_credits desc
+limit 100;
 """,
     ),
 ]

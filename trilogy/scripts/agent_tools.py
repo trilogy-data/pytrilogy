@@ -8,6 +8,7 @@ conversation loop and CLI entrypoint live in ``agent.py``.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from trilogy.ai.models import LLMToolDefinition
-from trilogy.scripts.display_core import print_info
+from trilogy.scripts.display_core import _pretty, print_info
 from trilogy.scripts.file_helpers import preql_description
 
 MARKER_TEMPLATE = "\n...[truncated {n} bytes]...\n"
@@ -40,6 +41,53 @@ def truncate_middle(text: str, limit: int) -> str:
     head = budget // 2
     tail = budget - head
     return f"{text[:head]}{marker}{text[-tail:]}" if tail else f"{text[:head]}{marker}"
+
+
+def truncate_json_events(text: str, limit: int) -> str:
+    """Cap a stream of concatenated JSON events at ``limit`` bytes WITHOUT
+    slicing through an object — middle-truncating a JSON document hands the
+    agent invalid JSON it can't parse. Keep whole leading events until the
+    budget is hit (always at least the first, even if it alone exceeds the
+    cap), drop the rest, and append a synthetic ``output_truncated`` event so
+    the agent knows to narrow the call. Non-JSON text (e.g. ``--format rich``)
+    falls back to the byte-level middle truncation."""
+    if len(text) <= limit:
+        return text
+    decoder = json.JSONDecoder()
+    raws: list[str] = []
+    idx, n = 0, len(text)
+    while idx < n:
+        while idx < n and text[idx].isspace():
+            idx += 1
+        if idx >= n:
+            break
+        try:
+            _, end = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            return truncate_middle(text, limit)
+        raws.append(text[idx:end])
+        idx = end
+    kept: list[str] = []
+    used = 0
+    for raw in raws:
+        if kept and used + len(raw) > limit:
+            break
+        kept.append(raw)
+        used += len(raw) + 1
+    dropped = len(raws) - len(kept)
+    if dropped:
+        note = _pretty(
+            {
+                "event": "output_truncated",
+                "dropped_events": dropped,
+                "note": (
+                    "Output exceeded the tool cap; trailing events dropped. "
+                    "Narrow the call (--regex, --show, fewer rows) to see the rest."
+                ),
+            }
+        )
+        kept.append(note)
+    return "\n".join(kept)
 
 
 @dataclass
@@ -83,11 +131,13 @@ TRILOGY_TOOL = LLMToolDefinition(
     name="trilogy",
     description=(
         "Invoke the trilogy CLI as a subprocess. Returns captured stdout, stderr, "
-        "and exit code. Large outputs are truncated from the middle. stdout is "
-        "structured NDJSON — one JSON event per line, e.g. "
+        "and exit code. stdout is a stream of pretty-printed JSON event objects "
+        "(newline-separated, parse successively), e.g. "
         '{"event":"result","columns":[...],"rows":[...],"row_count":N} for query '
-        'output, {"event":"error","message":...} for failures. Read the events; '
-        "there is no decorative formatting."
+        'output, {"event":"concepts","namespaces":{...}} for explore, '
+        '{"event":"error","message":...} for failures. Read the events; there is '
+        "no decorative formatting. Oversized output is capped on event "
+        "boundaries (a trailing output_truncated event flags it)."
     ),
     input_schema={
         "type": "object",
@@ -117,8 +167,8 @@ LIST_FILES_TOOL = LLMToolDefinition(
         "List files in the workspace (default: current directory, recursive). "
         "Use this when unsure what files exist — for example, before assuming "
         "a path like './store_sales.preql' (the model files live under raw/). "
-        "For .preql files, a leading `#` comment block at the top of the file "
-        "is shown beneath the path as a one-line description (truncated)."
+        "Returns a JSON `files` event with an `entries` array; each .preql "
+        "entry carries a `description` from its leading `#` comment block."
     ),
     input_schema={
         "type": "object",
@@ -255,10 +305,17 @@ def _should_skip_entry(name: str) -> bool:
     return False
 
 
-def _append_preql_description(entries: list[str], path: Path) -> None:
-    line = preql_description.format_preql_description(path)
-    if line:
-        entries.append(line)
+def _file_entry(display_path: str, abs_path: Path) -> dict:
+    """One structured listing entry. For ``.preql`` files the leading comment
+    block is surfaced as a truncated ``description`` (same text the rich
+    listing shows beneath the path), so the agent can route to the right model
+    without opening each file."""
+    entry: dict[str, object] = {"path": display_path}
+    if display_path.endswith(".preql"):
+        desc = preql_description.read_preql_description(abs_path)
+        if desc:
+            entry["description"] = preql_description.truncate_description(desc)
+    return entry
 
 
 def handle_list_files(state: AgentState, args: dict) -> str:
@@ -273,8 +330,7 @@ def handle_list_files(state: AgentState, args: dict) -> str:
         return f"list_files error: no such path: {path}"
     if not root.is_dir():
         return f"list_files error: not a directory: {path}"
-    entries: list[str] = []
-    file_count = 0
+    entries: list[dict] = []
     truncated = False
     if recursive:
         for current, dirs, files in os.walk(root):
@@ -284,27 +340,31 @@ def handle_list_files(state: AgentState, args: dict) -> str:
                 if _should_skip_entry(name):
                     continue
                 rel_path = (rel / name).as_posix() if str(rel) != "." else name
-                entries.append(rel_path)
-                _append_preql_description(entries, Path(current) / name)
-                file_count += 1
-                if file_count >= _LIST_FILES_MAX_ENTRIES:
+                entries.append(_file_entry(rel_path, Path(current) / name))
+                if len(entries) >= _LIST_FILES_MAX_ENTRIES:
                     truncated = True
                     break
             if truncated:
                 break
     else:
+        # Non-recursive: surface subdirectories (trailing `/`) so the agent
+        # knows where to descend; recursive listings show the full path instead.
         for child in sorted(root.iterdir()):
             if _should_skip_entry(child.name):
                 continue
-            suffix = "/" if child.is_dir() else ""
-            entries.append(child.name + suffix)
-            if child.is_file():
-                _append_preql_description(entries, child)
-            file_count += 1
-    if file_count == 0:
-        return f"(no files under {path})"
-    header = f"files under {path} ({file_count}{'+' if truncated else ''}):\n"
-    return header + "\n".join(entries)
+            if child.is_dir():
+                entries.append({"path": child.name + "/"})
+            else:
+                entries.append(_file_entry(child.name, child))
+    payload: dict[str, object] = {
+        "event": "files",
+        "path": path,
+        "count": len(entries),
+    }
+    if truncated:
+        payload["truncated"] = True
+    payload["entries"] = entries
+    return _pretty(payload)
 
 
 def _first_non_flag_arg(raw_args: list[str]) -> str | None:
@@ -439,7 +499,9 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
         stderr = completed.stderr or ""
     else:
         out_limit = _explore_output_cap(subcommand, raw_args, state.tool_output_limit)
-        stdout = truncate_middle(completed.stdout or "", out_limit)
+        # stdout is structured JSON events — truncate on event boundaries so the
+        # agent never receives a sliced, unparseable object. stderr is free text.
+        stdout = truncate_json_events(completed.stdout or "", out_limit)
         stderr = truncate_middle(completed.stderr or "", state.tool_output_limit)
     return (
         f"exit_code: {completed.returncode}\n"

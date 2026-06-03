@@ -1,0 +1,50 @@
+[1/3] Building TPC-DS DuckDB (sf=1) ...
+[2/3] Category 'enriched': setting up workspace ...
+[3/3] Running q68 x10 (concurrency=2) ...
+  [r01] fail      iters=6   prompt_tok=101792   explore=5   wrote=True (28s)
+  [r00] fail      iters=6   prompt_tok=101956   explore=5   wrote=True (29s)
+  [r03] fail      iters=6   prompt_tok=83236    explore=2   wrote=True (25s)
+  [r02] fail      iters=5   prompt_tok=74166    explore=6   wrote=True (27s)
+  [r04] fail      iters=5   prompt_tok=74600    explore=6   wrote=True (29s)
+  [r05] fail      iters=9   prompt_tok=134616   explore=3   wrote=True (35s)
+  [r06] fail      iters=6   prompt_tok=91572    explore=6   wrote=True (29s)
+  [r07] fail      iters=6   prompt_tok=84919    explore=2   wrote=True (25s)
+  [r09] fail      iters=6   prompt_tok=91431    explore=6   wrote=True (28s)
+  [r08] fail      iters=9   prompt_tok=155712   explore=6   wrote=True (40s)
+
+=== SUMMARY ===
+{
+  "repeats": 10,
+  "status_breakdown": {
+    "fail": 10
+  },
+  "pass_rate": 0.0,
+  "exhausted_rate": 0.0,
+  "wrote_query_rate": 1.0,
+  "iterations": {
+    "mean": 6.4,
+    "median": 6.0,
+    "min": 5,
+    "max": 9
+  },
+  "prompt_tokens": {
+    "mean": 99400,
+    "median": 91501.5,
+    "min": 74166,
+    "max": 155712
+  },
+  "explore_calls": {
+    "mean": 4.7,
+    "median": 5.5,
+    "min": 2,
+    "max": 6
+  },
+  "duration_seconds": {
+    "mean": 29.6,
+    "median": 28.4,
+    "min": 24.9,
+    "max": 40.0
+  }
+}
+
+Artifacts in C:\Users\ethan\coding_projects\pytrilogy_two\evals\tpcds_agent\results\repeat_q68_20260603-125329_enriched

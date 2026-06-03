@@ -1,10 +1,11 @@
-"""NDJSON output-format tests for the Trilogy CLI.
+"""JSON output-format tests for the Trilogy CLI.
 
 `--format json` (and the `TRILOGY_OUTPUT_FORMAT=json` env var the agent
 subprocess sets) makes every agent-facing command emit a stream of
-newline-delimited JSON events instead of rich-formatted text — same
-information, none of the formatting chrome.
-"""
+pretty-printed JSON event objects instead of rich-formatted text — same
+information, none of the formatting chrome. Events are newline-separated and
+read with a streaming decoder (not line-by-line, since each object spans
+multiple lines)."""
 
 import json
 from pathlib import Path
@@ -23,16 +24,33 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _reset_output_format():
+    """Each ``--format json`` invocation flips the process-global output format;
+    restore ``rich`` after every test so we don't leak JSON mode into unrelated
+    tests that assume the default rendering."""
+    from trilogy.scripts import display_core
+
+    yield
+    display_core.set_output_format("rich")
+
+
 def parse_events(output: str) -> list[dict]:
-    """Every non-empty stdout line must be a JSON object carrying an ``event``."""
+    """Decode successive pretty-printed JSON objects from stdout, each carrying
+    an ``event`` field. Raises ``json.JSONDecodeError`` on non-JSON (rich)
+    output."""
+    decoder = json.JSONDecoder()
     events = []
-    for line in output.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        payload = json.loads(line)
+    idx, n = 0, len(output)
+    while idx < n:
+        while idx < n and output[idx].isspace():
+            idx += 1
+        if idx >= n:
+            break
+        payload, end = decoder.raw_decode(output, idx)
         assert "event" in payload, payload
         events.append(payload)
+        idx = end
     return events
 
 
@@ -125,9 +143,10 @@ def test_explore_emits_concepts(runner, tmp_path):
     )
     assert result.exit_code == 0, result.output
     events = parse_events(result.output)
-    concepts = events_of(events, "concepts")[0]["concepts"]
-    addresses = {c["address"] for c in concepts}
-    assert {"id", "carrier"} <= addresses
+    concepts = events_of(events, "concepts")[0]
+    decls = [d for ns in concepts["namespaces"].values() for d in ns]
+    assert any("id int" in d for d in decls)
+    assert any("carrier" in d for d in decls)
     assert events_of(events, "datasources")[0]["count"] == 1
 
 

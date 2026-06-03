@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -427,14 +428,21 @@ def test_dispatch_catches_handler_exceptions(monkeypatch):
 # --- Additional coverage for handlers and helpers ---
 
 
+def _list_entries(out: str) -> dict[str, dict]:
+    """Parse a handle_list_files JSON payload into a path -> entry map."""
+    payload = json.loads(out)
+    assert payload["event"] == "files"
+    return {e["path"]: e for e in payload["entries"]}
+
+
 def test_list_files_truncates_at_max_entries(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(agent_tools_mod, "_LIST_FILES_MAX_ENTRIES", 3)
     for i in range(10):
         (tmp_path / f"f{i:02d}.preql").write_text("x", encoding="utf-8")
-    out = handle_list_files(AgentState(), {"path": "."})
-    # Header carries the `+` truncation marker.
-    assert "+" in out.splitlines()[0]
+    payload = json.loads(handle_list_files(AgentState(), {"path": "."}))
+    assert payload["truncated"] is True
+    assert payload["count"] == 3
 
 
 def test_list_files_non_recursive_marks_directories(tmp_path, monkeypatch):
@@ -442,15 +450,18 @@ def test_list_files_non_recursive_marks_directories(tmp_path, monkeypatch):
     (tmp_path / "raw").mkdir()
     (tmp_path / "__pycache__").mkdir()  # exercises the skip-continue branch
     (tmp_path / "q.preql").write_text("x", encoding="utf-8")
-    out = handle_list_files(AgentState(), {"path": ".", "recursive": False})
-    assert "raw/" in out
-    assert "q.preql" in out
-    assert "__pycache__" not in out
+    entries = _list_entries(
+        handle_list_files(AgentState(), {"path": ".", "recursive": False})
+    )
+    assert "raw/" in entries
+    assert "q.preql" in entries
+    assert "__pycache__/" not in entries
 
 
 def test_list_files_reports_empty_directory(tmp_path):
-    out = handle_list_files(AgentState(), {"path": str(tmp_path)})
-    assert "no files under" in out
+    payload = json.loads(handle_list_files(AgentState(), {"path": str(tmp_path)}))
+    assert payload["count"] == 0
+    assert payload["entries"] == []
 
 
 def test_list_files_shows_preql_header_description(tmp_path, monkeypatch):
@@ -462,23 +473,19 @@ def test_list_files_shows_preql_header_description(tmp_path, monkeypatch):
         "key ticket_number int;\n",
         encoding="utf-8",
     )
-    out = handle_list_files(AgentState(), {"path": "."})
-    lines = out.splitlines()
-    idx = lines.index("store_sales.preql")
-    desc = lines[idx + 1]
-    assert agent_tools_mod._LIST_FILES_DESC_PREFIX in desc
+    payload = json.loads(handle_list_files(AgentState(), {"path": "."}))
+    entries = {e["path"]: e for e in payload["entries"]}
+    desc = entries["store_sales.preql"]["description"]
     assert "Store channel sales" in desc
     assert "store_returns" in desc
-    # File count in the header counts files only, not the trailing desc line.
-    assert "(1)" in lines[0]
+    assert payload["count"] == 1
 
 
 def test_list_files_skips_description_when_no_header_comment(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "bare.preql").write_text("key id int;\n", encoding="utf-8")
-    out = handle_list_files(AgentState(), {"path": "."})
-    assert "bare.preql" in out
-    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+    entries = _list_entries(handle_list_files(AgentState(), {"path": "."}))
+    assert "description" not in entries["bare.preql"]
 
 
 def test_list_files_ignores_comments_not_at_top(tmp_path, monkeypatch):
@@ -487,8 +494,8 @@ def test_list_files_ignores_comments_not_at_top(tmp_path, monkeypatch):
         "key id int;\n# this comment is not the leading block\n",
         encoding="utf-8",
     )
-    out = handle_list_files(AgentState(), {"path": "."})
-    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+    entries = _list_entries(handle_list_files(AgentState(), {"path": "."}))
+    assert "description" not in entries["midcomment.preql"]
 
 
 def test_list_files_truncates_long_descriptions(tmp_path, monkeypatch):
@@ -497,18 +504,10 @@ def test_list_files_truncates_long_descriptions(tmp_path, monkeypatch):
     (tmp_path / "wordy.preql").write_text(
         f"# {long_desc}\nkey id int;\n", encoding="utf-8"
     )
-    out = handle_list_files(AgentState(), {"path": "."})
-    desc_lines = [
-        ln for ln in out.splitlines() if agent_tools_mod._LIST_FILES_DESC_PREFIX in ln
-    ]
-    assert len(desc_lines) == 1
-    assert "…" in desc_lines[0]
-    # Truncated body is bounded by the configured limit + a tiny prefix/marker.
-    assert (
-        len(desc_lines[0])
-        <= len(agent_tools_mod._LIST_FILES_DESC_PREFIX)
-        + agent_tools_mod._LIST_FILES_DESC_LIMIT
-    )
+    entries = _list_entries(handle_list_files(AgentState(), {"path": "."}))
+    desc = entries["wordy.preql"]["description"]
+    assert desc.endswith("…")
+    assert len(desc) <= agent_tools_mod._LIST_FILES_DESC_LIMIT
 
 
 def test_list_files_skips_description_for_non_preql(tmp_path, monkeypatch):
@@ -516,9 +515,8 @@ def test_list_files_skips_description_for_non_preql(tmp_path, monkeypatch):
     (tmp_path / "notes.md").write_text(
         "# Markdown header that is not a preql description\n", encoding="utf-8"
     )
-    out = handle_list_files(AgentState(), {"path": "."})
-    assert "notes.md" in out
-    assert agent_tools_mod._LIST_FILES_DESC_PREFIX not in out
+    entries = _list_entries(handle_list_files(AgentState(), {"path": "."}))
+    assert "description" not in entries["notes.md"]
 
 
 def test_list_files_shows_description_in_non_recursive_mode(tmp_path, monkeypatch):

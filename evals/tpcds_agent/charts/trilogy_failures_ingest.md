@@ -1,209 +1,137 @@
-# Trilogy failure analysis — 20260603-005054
+# Trilogy failure analysis — 20260603-134731
 
-- Run `20260603-005045_ingest` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 97 | failed: 12 (12%)
+- Run `20260603-134730_ingest` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 240 | failed: 20 (8%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 6 | 50% |
-| `undefined-concept` | 4 | 33% |
-| `syntax-parse` | 2 | 17% |
+| `other` | 7 | 35% |
+| `syntax-parse` | 6 | 30% |
+| `undefined-concept` | 5 | 25% |
+| `join-resolution` | 2 | 10% |
 
 ## Detail
 
 ### `other`
 
-- `trilogy run query05.preql`
+- `trilogy run query01.preql`
 
   ```text
-  Datatypes do not align for merged statements returns, have
-  {<DataType.NUMERIC: 'numeric'>, <DataType.UNKNOWN: 'unknown'>}
+
   ```
-- `trilogy run query05.preql`
+- `trilogy run --import raw/catalog_sales:cs --import raw/web_sales:ws merge cs.sold_date.date_sk into ~ws.sold_date.date_sk; select cs.sold_date.week_seq where cs.sold_date.week_seq between 5269 and 5275 having cs.sold_date.year = 2001 order by cs.sold_date.week_seq;`
 
   ```text
-  Datatypes do not align for merged statements returns, have
-  {<DataType.NUMERIC: 'numeric'>, <DataType.FLOAT: 'float'>}
+
   ```
-- `trilogy run query05.preql`
+- `trilogy file write --content import raw.store_sales as ss;
+import raw.store_returns as sr;
+import raw.store as s;
+
+where ss.date_dim.date between '2000-08-23…t
+    'store channel' as channel,
+    concat('store', ss.store.store_id) as entity_id,
+    sum(ss.net_profit) as gross_sales
+limit 100; query05.preql`
 
   ```text
-  Invalid derive expression ref:local.ch, must be a function or
-  conditional
+  trilogy file write: `--content` takes a SINGLE string argument. Your args list put 2 separate tokens after --content (treating it like a shell command). In a tool call, pass the entire file body as one string element after --content, with newlines embedded literally — e.g.
+    {"args": ["file", "write", "query70.preql", "--content", "import raw.store_sales as store_sales;\n\nselect ..."]}
+  Alternatively use `--escapes` with a single-line `\n`-escaped string.
   ```
-- `trilogy run query05.preql`
+- `trilogy run query05.preql duckdb`
 
   ```text
-  (_duckdb.BinderException) Binder Error: GROUP BY clause
-  cannot contain aggregates!
 
-  LINE 58:     coalesce(sum("ws_web_sales"."ws_net_paid"),0) as "gsales",
-                        ^
-  [SQL:
-  WITH
-  abhorrent as (
-  SELECT
-      "ss_store_sales"."ss_sold_date_sk" as "ss_date_dim_date_sk",
-      "ss_store_sales"."ss_store_sk" as "ss_store_store_sk"
-  FROM
-      "store_sales" as "ss_store_sales"
-  GROUP BY
-      1,
-      2),
-  thoughtful as (
-  SELECT
-      "cs_catalog_sales"."cs_catalog_page_sk" as
-  "cs_catalog_page_catalog_page_sk",
-      "cs_catalog_sales"."cs_sold_date_sk" as "cs_sold_date_date_sk"
-  FROM
-      "catalog_sa
-  …
-  riendly"."profit" is not distinct from "juicy"."profit" AND
-  "friendly"."returns" is not distinct from "juicy"."returns"
-      FULL JOIN "charming" on coalesce("friendly"."channel", "juicy"."channel") =
-  "charming"."channel" AND coalesce("friendly"."entity", "juicy"."entity") =
-  "charming"."entity" AND coalesce("friendly"."gsales", "juicy"."gsales") =
-  "charming"."gsales" AND coalesce("friendly"."profit", "juicy"."profit") =
-  "charming"."profit" AND coalesce("friendly"."returns", "juicy"."returns") =
-  "charming"."returns"
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-- `trilogy run query05.preql`
+- `trilogy run query05.preql duckdb`
 
   ```text
-  Invalid derive expression ref:local.channel, must be a
-  function or conditional
+
   ```
-- `trilogy run query05.preql`
+- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
   ```text
-  (_duckdb.BinderException) Binder Error: GROUP BY clause
-  cannot contain aggregates!
 
-  LINE 58:     coalesce(sum("ws_web_sales"."ws_net_paid"),0) as "gsales",
-                        ^
-  [SQL:
-  WITH
-  abhorrent as (
-  SELECT
-      "ss_store_sales"."ss_sold_date_sk" as "ss_date_dim_date_sk",
-      "ss_store_sales"."ss_store_sk" as "ss_store_store_sk"
-  FROM
-      "store_sales" as "ss_store_sales"
-  GROUP BY
-      1,
-      2),
-  thoughtful as (
-  SELECT
-      "cs_catalog_sales"."cs_catalog_page_sk" as
-  "cs_catalog_page_catalog_page_sk",
-      "cs_catalog_sales"."cs_sold_date_sk" as "cs_sold_date_date_sk"
-  FROM
-      "catalog_sa
-  …
-  riendly"."profit" is not distinct from "juicy"."profit" AND
-  "friendly"."returns" is not distinct from "juicy"."returns"
-      FULL JOIN "charming" on coalesce("friendly"."channel", "juicy"."channel") =
-  "charming"."channel" AND coalesce("friendly"."entity", "juicy"."entity") =
-  "charming"."entity" AND coalesce("friendly"."gsales", "juicy"."gsales") =
-  "charming"."gsales" AND coalesce("friendly"."profit", "juicy"."profit") =
-  "charming"."profit" AND coalesce("friendly"."returns", "juicy"."returns") =
-  "charming"."returns"
-  LIMIT (100)]
-
-  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
-
-### `undefined-concept`
-
-- `trilogy run query05.preql`
+- `trilogy run query10.preql`
 
   ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  channel_type.')
-  ```
-- `trilogy run query05.preql`
 
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  channel_type.')
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  channel_type.')
-  ```
-- `trilogy run query05.preql`
-
-  ```text
-  (UndefinedConceptException(...), 'Undefined concept:
-  channel_type.')
   ```
 
 ### `syntax-parse`
 
-- `trilogy file write query05.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw.catalog_r… -> entity_id,
-    gsales -> gross_sales,
-    returns -> total_returns,
-    profit -> net_profit
-order by channel_type asc, entity_id asc
-limit 100;
-`
+- `trilogy run --import raw/catalog_sales:cs --import raw/web_sales:ws merge cs.sold_date.date_sk into ~ws.sold_date.date_sk; select cs.sold_date.week_seq, cs.s…s cs_total, sum(ws.ext_sales_price) as ws_total, cs_total + ws_total as combined_total group by cs.sold_date.week_seq, cs.sold_date.day_name limit 5;`
 
   ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
 
-  Parse error:
-  Unexpected token Token('DOUBLE_STRING_CHARS', ': eid_s, eid_c, eid_w,\n
-  gsales: gs_s, gs_c, gs_w,\n    returns: ret_s, ret_c, ret_w,\n    profit: np_s,
-  np_c, np_w\nderive\n    channel -> channel_type,\n    entity -> entity_id,\n
-  gsales -> gross_sales,\n    returns -> total_returns,\n    profit ->
-  net_profit\norder by channel_type asc, entity_id asc\nlimit 100;\n') at line
-  42, column 11.
-  Expected one of:
-          * LIMIT
-          * DERIVE
-          * COMMA
-          * WHERE
-          * ORDER
-          * AND
-          * _TERMINATOR
-  Previous tokens: [Token('IDENTIFIER', 'entity')]
-
-  Location:
-  ...: ch_s, ch_c, ch_w,     entity ??? : eid_s, eid_c, eid_w,     gsa...
-
-  Write stats: received 1811 chars / 1811 bytes; tail: …'_profit\\norder by
-  channel_type asc, entity_id asc\\nlimit 100;\\n'.
   ```
-- `trilogy file write query05.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw.catalog_r….web_site.site_id;
-auto w_profit <- w_sales;  # no web returns with site_id
-
-select coalesce(s_returns, c_returns, 0::numeric) as x from ss limit 1;
-`
+- `trilogy run --import raw/catalog_sales:cs select cs.sold_date.year, cs.sold_date.week_seq, sum(cs.ext_sales_price) as total where cs.sold_date.year in (2000,2001,2002) and cs.sold_date.day_name='Sunday' group by cs.sold_date.year, cs.sold_date.week_seq order by cs.sold_date.week_seq limit 20;`
 
   ```text
-  refused to write 'query05.preql': not syntactically valid Trilogy.
 
-  Parse error:
-  Unexpected token Token('__ANON_7', 'by') at line 13, column 150.
-  Expected one of:
-          * _TERMINATOR
+  ```
+- `trilogy run --import raw/catalog_sales:cs --import raw/web_sales:ws merge cs.sold_date.date_sk into ~ws.sold_date.date_sk; auto sales_by_wd <- coalesce(sum(c…e; select cs.sold_date.week_seq, cs.sold_date.day_name, sales_by_wd where cs.sold_date.week_seq between 5270 and 5280 order by cs.sold_date.week_seq;`
 
-  Location:
-  ...ore.store_id is not null), 0) ??? by ss.store.store_id; auto s_r...
+  ```text
 
-  Write stats: received 1572 chars / 1572 bytes; tail: …'sce(s_returns,
-  c_returns, 0::numeric) as x from ss limit 1;\\n'.
+  ```
+- `trilogy run --import raw/catalog_sales:cs --import raw/web_sales:ws merge cs.sold_date.date_sk into ~ws.sold_date.date_sk; auto sun_total <- coalesce(sum(cs.…old_date.week_seq; select cs.sold_date.week_seq, sun_total where cs.sold_date.week_seq between 5270 and 5323 order by cs.sold_date.week_seq limit 60;`
+
+  ```text
+
+  ```
+- `trilogy run --import raw/catalog_sales:cs --import raw/web_sales:ws merge cs.sold_date.date_sk into ~ws.sold_date.date_sk; select cs.sold_date.week_seq, min(…yr, max(cs.sold_date.year) as max_yr where cs.sold_date.week_seq between 5269 and 5271 group by cs.sold_date.week_seq order by cs.sold_date.week_seq;`
+
+  ```text
+
+  ```
+- `trilogy file write query04.preql`
+
+  ```text
+
+  ```
+
+### `undefined-concept`
+
+- `trilogy run --import raw/date_dim select date_dim.year, date_dim.week_seq where date_dim.year in (2000,2001,2002) and date_dim.day_name = 'Sunday' order by date_dim.week_seq limit 20;`
+
+  ```text
+
+  ```
+- `trilogy run query03.preql`
+
+  ```text
+
+  ```
+- `trilogy run query03.preql`
+
+  ```text
+
+  ```
+- `trilogy run query06.preql`
+
+  ```text
+
+  ```
+- `trilogy run query08.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,84093,2857…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+
+  ```text
+
+  ```
+
+### `join-resolution`
+
+- `trilogy run query05.preql duckdb`
+
+  ```text
+
+  ```
+- `trilogy run query05.preql duckdb`
+
+  ```text
+
   ```

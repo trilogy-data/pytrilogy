@@ -15,11 +15,11 @@ import time as return_time;
 import customer as customer; # the customer account tied to the order
 import customer as return_customer; # the customer account tied to the return
 import promotion as promotion;
-import customer_demographic as customer_demographic; # The sale time (PIT) customer demographic info 
-import household_demographic as household_demographic; # The sale time (PIT) household demographic info
+import customer_demographic as customer_demographic; # the customer demographics recorded on this sale (the buyer's demographic profile at the time of purchase)
+import household_demographic as household_demographic; # the household demographics recorded on this sale (the buyer's household at the time of purchase)
 import store as store;
 import store as return_store;
-import address as sale_address;
+import address as sale_address; # the customer's address as recorded on the sale (the purchase-time address)
 import reason as return_reason;
 
 key ticket_number int; # Store-sale ticket (receipt) number identifying a single in-store transaction.

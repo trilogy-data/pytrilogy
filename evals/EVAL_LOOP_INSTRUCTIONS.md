@@ -149,9 +149,6 @@ are Trilogy-specific and do not apply to `sql_bare`/`sql_schema`.
   the line's amount null; the customer's sum is null and sorts first). Agents `coalesce(...,0)`
   defensively → mismatch. Reframe the population so the agent writes the clean formula and
   doesn't coalesce (e.g. "where we have a recorded return quantity"). (q93.)
-- **Spurious LIMIT.** The agent system prompt says "Always use a reasonable LIMIT", so it caps
-  full-report queries (e.g. at 1000). For exhaustive outputs, state it in the QUESTION: "return
-  every qualifying row; do not cap or limit the number of rows". (q98.)
 - **Multi-branch formula — describe EVERY branch.** A "(qty - return_qty)*price, otherwise
   qty*price" formula has a LIVE else branch (there are reason-28 lines with null return_quantity).
   Don't let the question collapse it to one branch — the agent then coalesces or filters and the
@@ -210,12 +207,6 @@ are Trilogy-specific and do not apply to `sql_bare`/`sql_schema`.
 - **Identity = surrogate id, not name (q39; also q77/q80 outlet, q58 item).** When the reference groups/
   reports by `w_warehouse_sk`/`i_item_sk` etc., say "(identified by its surrogate id / internal row key)".
   Agents default to the name, which both mislabels and changes grain (distinct sks share a name).
-- **item/store CODE = `text_id`, not surrogate `id` — SYSTEMIC fix applied (q20/q21/q29; also q58/q39).**
-  Agents GROUP BY `item.id` (surrogate) when the reference groups by `i_item_id` (business code = `text_id`).
-  Item is an SCD: several `id`s share one `text_id`, so `by item.id` SPLITS an item across versions and
-  under-counts. Fix applied: sharpened `item.preql`/`store.preql` id-vs-text_id descriptions ("id = SCD
-  version key, do NOT group per-item by it; text_id = THE per-item code, GROUP BY this"). Questions saying
-  "item code"/"store code" then resolve to text_id. (Parallel to the per-unit systemic fix.)
 - **Returning vs refunded customer/address — add model descriptions (q30, q81).** web_returns &
   catalog_returns name the RETURNING customer `billing_customer` (confusing) vs `refunded_customer`, and
   `return_address` vs `refunded_address`. Added trailing-comment descriptions to the imports so explore

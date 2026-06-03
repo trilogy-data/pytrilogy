@@ -53,15 +53,8 @@ def show_execution_info(
 ) -> None:
     """Display execution information in a clean format."""
     if is_json_mode():
-        emit_event(
-            "execution_info",
-            input_type=input_type,
-            input_name=input_name,
-            dialect=dialect,
-            debug=debug or None,
-            config_path=config_path,
-            debug_file=debug_file,
-        )
+        # Chrome for an agent: it already knows the input/dialect it passed.
+        # The result/error + summary events carry everything actionable.
         return
     debug_str = (
         f"enabled (file: {debug_file})"
@@ -120,10 +113,7 @@ def show_debug_mode() -> None:
 def show_statement_type(idx: int, total: int, statement_type: str) -> None:
     """Show the type of statement before execution."""
     if is_json_mode():
-        emit_event(
-            "statement_type", index=idx, total=total, statement_type=statement_type
-        )
-        return
+        return  # chrome; statement type isn't actionable for the caller
     statement_num = f"Statement {idx+1}"
     if total > 1:
         statement_num += f"/{total}"
@@ -141,8 +131,7 @@ def show_statement_type(idx: int, total: int, statement_type: str) -> None:
 def show_execution_start(num_queries: int) -> None:
     """Show execution start message."""
     if is_json_mode():
-        emit_event("execution_start", statements=num_queries)
-        return
+        return  # chrome; the summary event reports the statement count
     statement_word = "statement" if num_queries == 1 else "statements"
     if _core.RICH_AVAILABLE and _core.console is not None:
         _core.console.print(
@@ -173,16 +162,20 @@ def show_statement_result(
 ) -> None:
     """Show result of individual statement execution."""
     if is_json_mode():
-        emit_event(
-            "statement_result",
-            index=idx,
-            total=total,
-            duration_ms=_duration_ms(duration),
-            success=error is None,
-            has_results=has_results or None,
-            error=str(error).strip() if error is not None else None,
-            error_type=exception_type.__name__ if exception_type else None,
-        )
+        # Success is pure chrome — the `result` event + exit code already convey
+        # it. Only surface a per-statement FAILURE (carries the error detail);
+        # the top-level `error` event covers it too, this just keeps the
+        # statement index for multi-statement runs.
+        if error is not None:
+            emit_event(
+                "statement_result",
+                index=idx,
+                total=total,
+                duration_ms=_duration_ms(duration),
+                success=False,
+                error=str(error).strip(),
+                error_type=exception_type.__name__ if exception_type else None,
+            )
         return
     statement_num = f"Statement {idx+1}"
     if total > 1:
@@ -222,15 +215,21 @@ def show_statement_result(
 
 
 def show_execution_summary(
-    num_queries: int, total_duration: object, all_succeeded: bool
+    num_queries: int,
+    total_duration: object,
+    all_succeeded: bool,
+    total_rows: int | None = None,
 ) -> None:
-    """Show final execution summary."""
+    """Show final execution summary. In JSON mode this is the run's "info"
+    section — duration, statement count, ok flag, and total result rows — the
+    bits worth keeping after the per-statement chrome is dropped."""
     if is_json_mode():
         emit_event(
             "summary",
             statements=num_queries,
             duration_ms=_duration_ms(total_duration),
             ok=all_succeeded,
+            rows=total_rows,
         )
         return
     if _core.RICH_AVAILABLE and _core.console is not None:

@@ -111,11 +111,13 @@ def execute_queries_with_progress(
     exec: Executor,
     queries: list[PROCESSED_STATEMENT_TYPES],
     row_limit: int | None = None,
-) -> Exception | None:
-    """Execute queries with Rich progress bar. Returns True if all succeeded, False if any failed."""
+) -> tuple[Exception | None, int]:
+    """Execute queries with a Rich progress bar. Returns ``(exception, total
+    result rows)`` — the row total feeds the JSON summary's ``rows`` field."""
     progress = create_progress_context()
     results_to_print = []
     exception = None
+    total_rows = 0
 
     with progress:
         task = progress.add_task("Executing statements...", total=len(queries))
@@ -160,17 +162,20 @@ def execute_queries_with_progress(
                     print_chart_terminal(results.data, results.statement)
                 else:
                     print_results_table(results, row_limit=row_limit)
+                    total_rows += len(results.rows)
 
-    return exception
+    return exception, total_rows
 
 
 def execute_queries_simple(
     exec: Executor,
     queries: list[PROCESSED_STATEMENT_TYPES],
     row_limit: int | None = None,
-) -> Exception | None:
-    """Execute queries with simple output. Returns True if all succeeded, False if any failed."""
+) -> tuple[Exception | None, int]:
+    """Execute queries with simple output. Returns ``(exception, total result
+    rows)`` — the row total feeds the JSON summary's ``rows`` field."""
     exception = None
+    total_rows = 0
 
     for idx, query in enumerate(queries):
         if len(queries) > 1:
@@ -193,8 +198,9 @@ def execute_queries_simple(
                 print_chart_terminal(results.data, results.statement)
             else:
                 print_results_table(results, row_limit=row_limit)
+                total_rows += len(results.rows)
 
-    return exception
+    return exception, total_rows
 
 
 def execute_run_mode(
@@ -215,12 +221,16 @@ def execute_run_mode(
     )
 
     if progress:
-        exception = execute_queries_with_progress(exec, queries, row_limit=row_limit)
+        exception, total_rows = execute_queries_with_progress(
+            exec, queries, row_limit=row_limit
+        )
     else:
-        exception = execute_queries_simple(exec, queries, row_limit=row_limit)
+        exception, total_rows = execute_queries_simple(
+            exec, queries, row_limit=row_limit
+        )
 
     total_duration = datetime.now() - start
-    show_execution_summary(len(queries), total_duration, exception is None)
+    show_execution_summary(len(queries), total_duration, exception is None, total_rows)
 
     if exception:
         raise exception

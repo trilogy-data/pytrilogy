@@ -358,26 +358,30 @@ def _emit_namespace(ns: str, items: list[tuple[str, Concept]]) -> None:
         _emit_flat_line(concept.purpose.value, fmt(leaf), concept)
 
 
-def _concept_json(address: str, concept: Concept) -> dict:
-    """Structured form of one concept for JSON output — same fields the rich
-    flat-line view shows (address, role, type, grain, description), minus the
-    layout."""
-    key_addrs = tuple(sorted(concept.keys or []))
-    entry: dict[str, object] = {
-        "address": _display_address(address),
-        "purpose": concept.purpose.value,
-        "derivation": concept.derivation.value,
-        "datatype": _compact_datatype(str(concept.datatype)),
-        "namespace": concept.namespace,
-        "local": concept.namespace == DEFAULT_NAMESPACE,
-    }
-    grain = [_grain_display(a) for a in key_addrs]
-    if grain:
-        entry["grain"] = grain
-    desc = _concept_description(concept)
-    if desc:
-        entry["description"] = desc
-    return entry
+# Within a namespace, render keys first, then properties, then metrics, then
+# everything else — keys anchor the grain the rest hang off, so leading with
+# them reads the way the model is authored.
+_PURPOSE_ORDER = {"key": 0, "property": 1, "metric": 2}
+
+
+def _render_decls(
+    env: Environment, items: list[tuple[str, Concept]]
+) -> dict[str, list[str]]:
+    """Group concepts by namespace, each rendered as its canonical Trilogy
+    declaration (``key customer.id int;``, ``property <customer.id>.name string;
+    #desc``) via the shared Renderer — same syntax the agent writes, so no
+    parallel concept-shape to learn. Description rides as the trailing ``#``
+    comment the renderer already emits. Keys lead each namespace."""
+    from trilogy.core.statements.author import ConceptDeclarationStatement
+    from trilogy.parsing.render import Renderer
+
+    renderer = Renderer(environment=env)
+    grouped: dict[str, list[tuple[int, str, str]]] = defaultdict(list)
+    for addr, concept in items:
+        decl = renderer.to_string(ConceptDeclarationStatement(concept=concept))
+        rank = _PURPOSE_ORDER.get(concept.purpose.value, 3)
+        grouped[concept.namespace].append((rank, addr, decl))
+    return {ns: [decl for _, _, decl in sorted(grouped[ns])] for ns in sorted(grouped)}
 
 
 def _emit_explore_json(
@@ -385,15 +389,39 @@ def _emit_explore_json(
     concept_items: list[tuple[str, Concept]],
     show: str,
     import_descriptions: dict[str, str],
+    expand_imports: bool,
 ) -> None:
-    """Emit the explore results as NDJSON events, honoring ``--show``. One
-    event per section (concepts / datasources / imports) so a caller can pick
-    the slice it needs."""
+    """Emit the explore results as a stream of pretty-printed JSON events,
+    honoring ``--show``. Concepts are grouped by namespace; the local ones are
+    rendered in full Trilogy declaration syntax, imported namespaces collapse
+    to a name-only list (unless ``--expand-imports``/``--regex``) so a fact
+    file's dozens of inherited dimensions don't drown the local declarations."""
     if show in ("all", "groups", "concepts"):
+        if expand_imports:
+            local_items, imported_items = concept_items, []
+        else:
+            local_items = [
+                (a, c) for a, c in concept_items if c.namespace == DEFAULT_NAMESPACE
+            ]
+            imported_items = [
+                (a, c) for a, c in concept_items if c.namespace != DEFAULT_NAMESPACE
+            ]
+        # Imported namespaces collapse to ONE comma-joined line of bare leaf
+        # names (the `<ns>.` prefix is in the key, so repeating it per leaf —
+        # let alone one leaf per pretty-printed line — just burns tokens). The
+        # agent reaches a concept as `<ns>.<leaf>`; drill in with --regex.
+        imported: dict[str, list[str]] = defaultdict(list)
+        for addr, c in sorted(imported_items, key=lambda kc: kc[0]):
+            disp = _display_address(addr)
+            prefix = f"{c.namespace}."
+            leaf = disp[len(prefix) :] if disp.startswith(prefix) else disp
+            imported[c.namespace].append(leaf)
+        imported_joined = {ns: ", ".join(imported[ns]) for ns in sorted(imported)}
         emit_event(
             "concepts",
             count=len(concept_items),
-            concepts=[_concept_json(k, v) for k, v in sorted(concept_items)],
+            namespaces=_render_decls(env, local_items) or None,
+            imported=imported_joined or None,
             import_descriptions=import_descriptions or None,
         )
     if show in ("all", "datasources"):
@@ -540,14 +568,15 @@ def explore(
         if imp.description
     }
 
+    # `--regex` is a deliberate filter — show matches in full even if imported,
+    # so the agent doesn't have to re-issue with --expand-imports.
+    expand = expand_imports or bool(regex_patterns)
+
     if is_json_mode():
-        _emit_explore_json(env, concept_items, show, import_descriptions)
+        _emit_explore_json(env, concept_items, show, import_descriptions, expand)
         return
 
     if show in ("all", "groups"):
-        # `--regex` is a deliberate filter — show matches in full even if
-        # imported, so the agent doesn't have to re-issue with --expand-imports.
-        expand = expand_imports or bool(regex_patterns)
         _emit_groups(
             concept_items,
             expand_imports=expand,
