@@ -12,8 +12,8 @@ across the query shapes that suite already exercises.
     python local_scripts/discovery_v4.py --query 01
     python local_scripts/discovery_v4.py --query query01.preql
 
-Outputs go to local_scripts/<stem>.png and <stem>_groups.png. Pass --no-sql
-to skip the SQL compile step.
+Outputs go to local_scripts/<stem>.png, <stem>_groups.png, and
+<stem>_groups_reordered.png. Pass --no-sql to skip the SQL compile step.
 """
 
 from __future__ import annotations
@@ -521,7 +521,8 @@ def render_group_digraph(
 ) -> None:
     """Group graph: top-down by lineage generation, FINAL pinned to the
     bottom. Conditions show inline so the place where each WHERE atom lands
-    is obvious at a glance."""
+    is obvious at a glance. Edge line style encodes edge kind; edge color
+    encodes condition phase where present."""
 
     def _edge_color(data: dict) -> str:
         phase = data.get("phase")
@@ -620,7 +621,6 @@ def render_group_digraph(
             style="dotted",
             arrows=True,
             arrowsize=14,
-            connectionstyle="arc3,rad=0.12",
             node_size=3200,
             width=0.9,
         )
@@ -634,7 +634,6 @@ def render_group_digraph(
             style="dashed",
             arrows=True,
             arrowsize=14,
-            connectionstyle="arc3,rad=0.25",
             node_size=3200,
             width=1.0,
         )
@@ -648,7 +647,6 @@ def render_group_digraph(
             style="dashdot",
             arrows=True,
             arrowsize=14,
-            connectionstyle="arc3,rad=0.18",
             node_size=3200,
             width=1.0,
         )
@@ -699,19 +697,30 @@ def render_group_digraph(
             markersize=12,
             label="FINAL (sink)",
         ),
-        plt.Line2D([0], [0], color="#555555", label="lineage edge"),
-        plt.Line2D([0], [0], color="#c62828", label="pre-condition phase"),
-        plt.Line2D([0], [0], color="#2e7d32", label="post-condition phase"),
+        plt.Line2D([0], [0], color="#555555", label="gray = no condition phase"),
+        plt.Line2D([0], [0], color="#c62828", label="red = pre-condition phase"),
+        plt.Line2D([0], [0], color="#2e7d32", label="green = post-condition phase"),
+        plt.Line2D([0], [0], color="#555555", label="solid = lineage parent"),
+        plt.Line2D(
+            [0],
+            [0],
+            color="#555555",
+            linestyle="dotted",
+            label="dotted = merge to FINAL",
+        ),
         plt.Line2D(
             [0],
             [0],
             color="#6a1b9a",
             linestyle="dashed",
-            label="existence (side-channel)",
+            label="dashed purple = existence subselect source",
         ),
-        plt.Line2D([0], [0], color="#ef6c00", linestyle="dashdot", label="constraint"),
         plt.Line2D(
-            [0], [0], color="#555555", linestyle="dotted", label="merge → FINAL"
+            [0],
+            [0],
+            color="#ef6c00",
+            linestyle="dashdot",
+            label="dash-dot orange = constraint sibling",
         ),
         plt.Line2D(
             [0],
@@ -1005,10 +1014,18 @@ def main() -> None:
 
     concept_out = OUT_DIR / f"{stem}.png"
     group_out = OUT_DIR / f"{stem}_groups.png"
+    reordered_group_out = OUT_DIR / f"{stem}_groups_reordered.png"
     render_digraph(info.concept_graph, info.concept_attrs, concept_out)
-    render_group_digraph(info.group_graph, info.group_attrs, group_out)
+    merged_group_graph = (
+        info.merged_group_graph
+        if info.merged_group_graph.number_of_nodes()
+        else info.group_graph
+    )
+    render_group_digraph(merged_group_graph, info.group_attrs, group_out)
+    render_group_digraph(info.group_graph, info.group_attrs, reordered_group_out)
     print(f"wrote {concept_out}")
     print(f"wrote {group_out}")
+    print(f"wrote {reordered_group_out}")
 
     if not args.no_sql:
         sql = compile_sql(info, build_env, build_stmt)

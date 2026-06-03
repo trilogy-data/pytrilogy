@@ -75,6 +75,7 @@ class BuildInfo:
     walking the group graph."""
 
     concept_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
+    merged_group_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     group_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     group_attrs: dict[str, GroupAttrs] = field(default_factory=dict)
     concept_attrs: dict[str, ConceptAttrs] = field(default_factory=dict)
@@ -83,6 +84,7 @@ class BuildInfo:
     def copy(self) -> "BuildInfo":
         return BuildInfo(
             concept_graph=self.concept_graph.copy(),
+            merged_group_graph=self.merged_group_graph.copy(),
             group_graph=self.group_graph.copy(),
             group_attrs={k: _copy_attrs(v) for k, v in self.group_attrs.items()},
             concept_attrs={

@@ -527,14 +527,20 @@ def _search_concepts(
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()
     ]
-    group_graph, group_attrs = build_group_graph(
-        concept_graph, concept_attrs, conditions, mandatory_list, datasource_columns
+    group_graph, group_attrs, merged_group_graph = build_group_graph(
+        concept_graph,
+        concept_attrs,
+        conditions,
+        mandatory_list,
+        datasource_columns,
+        return_merged_graph=True,
     )
     strategy_node = build_strategy_node(
         group_graph, group_attrs, mandatory_list, environment, g, history
     )
     return BuildInfo(
         concept_graph=concept_graph,
+        merged_group_graph=merged_group_graph,
         group_graph=group_graph,
         group_attrs=group_attrs,
         concept_attrs=concept_attrs,
