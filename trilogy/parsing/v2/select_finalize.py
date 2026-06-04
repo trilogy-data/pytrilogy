@@ -39,7 +39,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from trilogy.constants import CONFIG
-from trilogy.core.enums import ConceptSource, FunctionClass
+from trilogy.core.enums import ConceptSource, FunctionClass, FunctionType
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -389,8 +389,6 @@ def _alias_rename_map(select: SelectStatement) -> dict[str, ConceptRef]:
     `f(x, y) as z`, references to `x` in HAVING/ORDER BY are not synonyms
     of `z` and must not be rewritten.
     """
-    from trilogy.core.enums import FunctionType
-
     rename_map: dict[str, ConceptRef] = {}
     for item in select.selection:
         if not isinstance(item.content, ConceptTransform):
@@ -558,8 +556,18 @@ def finalize_select_statement(
             # instead — renaming the output is the fix (the alias stays visible
             # to sibling calculations, so renaming the input is not an option).
             out_addr = x.concept.address
-            if any(
-                arg.address == out_addr for arg in x.content.function.concept_arguments
+            # A pure rename to the same name (`foo as foo`) is an identity
+            # pass-through, not a recursive computation — the output IS the
+            # input concept, so there's nothing for the planner to disambiguate.
+            fn = x.content.function
+            is_identity_alias = (
+                isinstance(fn, Function)
+                and fn.operator == FunctionType.ALIAS
+                and len(fn.concept_arguments) == 1
+                and fn.concept_arguments[0].address == out_addr
+            )
+            if not is_identity_alias and any(
+                arg.address == out_addr for arg in fn.concept_arguments
             ):
                 raise InvalidSyntaxException(
                     f"SELECT output '{out_addr}' is defined by an expression that "
