@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3932 | 91 | 56.66 ms |
-| reference | 4030 | 76 | 50.87 ms |
-| v4 / ref | 0.98x | 1.20x | 1.11x |
+| v4 | 3944 | 91 | 67.44 ms |
+| reference | 4030 | 76 | 69.90 ms |
+| v4 / ref | 0.98x | 1.20x | 0.96x |
 
 ## Preql
 
@@ -112,7 +112,7 @@ FROM
 WHERE
     "thoughtful"."web_sales_order_number" in (select juicy."multi_warehouse_order" from juicy where juicy."multi_warehouse_order" is not null) and "thoughtful"."web_sales_order_number" in (select abundant."returned_orders" from abundant where abundant."returned_orders" is not null)
 ),
-young as (
+sparkling as (
 SELECT
     "vacuous"."web_sales_order_number" as "web_sales_order_number"
 FROM
@@ -125,20 +125,20 @@ SELECT
     sum("vacuous"."web_sales_net_profit") as "total_net_profit"
 FROM
     "vacuous"),
-sparkling as (
+abhorrent as (
 SELECT
-    count("young"."web_sales_order_number") as "order_count"
+    count("sparkling"."web_sales_order_number") as "order_count"
 FROM
-    "young")
+    "sparkling")
 SELECT
-    coalesce("sparkling"."order_count",0) as "order_count",
+    coalesce("abhorrent"."order_count",0) as "order_count",
     "concerned"."total_shipping_cost" as "total_shipping_cost",
     "concerned"."total_net_profit" as "total_net_profit"
 FROM
     "concerned"
-    FULL JOIN "sparkling" on 1=1
+    FULL JOIN "abhorrent" on 1=1
 ORDER BY 
-    coalesce("sparkling"."order_count",0) desc
+    coalesce("abhorrent"."order_count",0) desc
 LIMIT (100)
 ```
 

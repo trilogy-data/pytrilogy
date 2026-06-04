@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2609 | 48 | 14.04 ms |
-| reference | 2609 | 48 | 14.52 ms |
-| v4 / ref | 1.00x | 1.00x | 0.97x |
+| v4 | 2569 | 48 | 13.06 ms |
+| reference | 2609 | 48 | 14.21 ms |
+| v4 / ref | 0.98x | 1.00x | 0.92x |
 
 ## Preql
 
@@ -81,7 +81,7 @@ WHERE
 GROUP BY
     1,
     "physical_sales_date_date"."D_MOY"),
-cooperative as (
+questionable as (
 SELECT
     "cheerful"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
     avg("cheerful"."sum_sales") as "avg_monthly_sales"
@@ -89,30 +89,30 @@ FROM
     "cheerful"
 GROUP BY
     1),
-questionable as (
+uneven as (
 SELECT
     "cheerful"."sum_sales" as "sum_sales",
-    "cooperative"."avg_monthly_sales" as "avg_monthly_sales",
-    coalesce("cheerful"."physical_sales_item_manager_id","cooperative"."physical_sales_item_manager_id") as "physical_sales_item_manager_id"
+    "questionable"."avg_monthly_sales" as "avg_monthly_sales",
+    coalesce("cheerful"."physical_sales_item_manager_id","questionable"."physical_sales_item_manager_id") as "physical_sales_item_manager_id"
 FROM
     "cheerful"
-    INNER JOIN "cooperative" on "cheerful"."physical_sales_item_manager_id" is not distinct from "cooperative"."physical_sales_item_manager_id"
+    INNER JOIN "questionable" on "cheerful"."physical_sales_item_manager_id" is not distinct from "questionable"."physical_sales_item_manager_id"
 WHERE
     CASE
-	WHEN "cooperative"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_monthly_sales") / "cooperative"."avg_monthly_sales"
+	WHEN "questionable"."avg_monthly_sales" > 0 THEN abs("cheerful"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 )
 SELECT
-    "questionable"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
-    "questionable"."sum_sales" as "sum_sales",
-    "questionable"."avg_monthly_sales" as "avg_monthly_sales"
+    "uneven"."physical_sales_item_manager_id" as "physical_sales_item_manager_id",
+    "uneven"."sum_sales" as "sum_sales",
+    "uneven"."avg_monthly_sales" as "avg_monthly_sales"
 FROM
-    "questionable"
+    "uneven"
 ORDER BY 
-    "questionable"."physical_sales_item_manager_id" asc,
-    "questionable"."avg_monthly_sales" asc,
-    "questionable"."sum_sales" asc
+    "uneven"."physical_sales_item_manager_id" asc,
+    "uneven"."avg_monthly_sales" asc,
+    "uneven"."sum_sales" asc
 LIMIT (100)
 ```
 

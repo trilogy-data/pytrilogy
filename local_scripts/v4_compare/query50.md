@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7134 | 125 | 125.26 ms |
-| reference | 4728 | 75 | 36.15 ms |
-| v4 / ref | 1.51x | 1.67x | 3.46x |
+| v4 | 7110 | 125 | 126.98 ms |
+| reference | 4728 | 75 | 37.74 ms |
+| v4 / ref | 1.50x | 1.67x | 3.36x |
 
 ## Preql
 
@@ -117,7 +117,7 @@ GROUP BY
     13,
     14,
     15),
-uneven as (
+yummy as (
 SELECT
     "thoughtful"."physical_sales_store_city" as "physical_sales_store_city",
     "thoughtful"."physical_sales_store_company_id" as "physical_sales_store_company_id",
@@ -158,24 +158,24 @@ GROUP BY
     1,
     "thoughtful"."physical_sales_ticket_number")
 SELECT
-    "uneven"."physical_sales_store_name" as "physical_sales_store_name",
-    "uneven"."physical_sales_store_company_id" as "physical_sales_store_company_id",
-    "uneven"."physical_sales_store_street_number" as "physical_sales_store_street_number",
-    "uneven"."physical_sales_store_street_name" as "physical_sales_store_street_name",
-    "uneven"."physical_sales_store_street_type" as "physical_sales_store_street_type",
-    "uneven"."physical_sales_store_suite_number" as "physical_sales_store_suite_number",
-    "uneven"."physical_sales_store_city" as "physical_sales_store_city",
-    "uneven"."physical_sales_store_county" as "physical_sales_store_county",
-    "uneven"."physical_sales_store_state" as "physical_sales_store_state",
-    "uneven"."physical_sales_store_zip" as "physical_sales_store_zip",
+    "yummy"."physical_sales_store_name" as "physical_sales_store_name",
+    "yummy"."physical_sales_store_company_id" as "physical_sales_store_company_id",
+    "yummy"."physical_sales_store_street_number" as "physical_sales_store_street_number",
+    "yummy"."physical_sales_store_street_name" as "physical_sales_store_street_name",
+    "yummy"."physical_sales_store_street_type" as "physical_sales_store_street_type",
+    "yummy"."physical_sales_store_suite_number" as "physical_sales_store_suite_number",
+    "yummy"."physical_sales_store_city" as "physical_sales_store_city",
+    "yummy"."physical_sales_store_county" as "physical_sales_store_county",
+    "yummy"."physical_sales_store_state" as "physical_sales_store_state",
+    "yummy"."physical_sales_store_zip" as "physical_sales_store_zip",
     sum("cooperative"."_virt_agg_count_6396225769465204") as "days_30",
     sum("cooperative"."_virt_agg_count_1754169376042040") as "days_31_60",
     sum("cooperative"."_virt_agg_count_9524432267113409") as "days_61_90",
     sum("cooperative"."_virt_agg_count_5608833957360839") as "days_91_120",
     sum("cooperative"."_virt_agg_count_6261479071707891") as "days_120_plus"
 FROM
-    "uneven"
-    INNER JOIN "cooperative" on "uneven"."physical_sales_store_id" = "cooperative"."physical_sales_store_id"
+    "yummy"
+    INNER JOIN "cooperative" on "yummy"."physical_sales_store_id" = "cooperative"."physical_sales_store_id"
 GROUP BY
     1,
     2,
@@ -187,18 +187,18 @@ GROUP BY
     8,
     9,
     10,
-    "uneven"."physical_sales_store_id"
+    "yummy"."physical_sales_store_id"
 ORDER BY 
-    "uneven"."physical_sales_store_name" asc nulls first,
-    "uneven"."physical_sales_store_company_id" asc nulls first,
-    "uneven"."physical_sales_store_street_number" asc nulls first,
-    "uneven"."physical_sales_store_street_name" asc nulls first,
-    "uneven"."physical_sales_store_street_type" asc nulls first,
-    "uneven"."physical_sales_store_suite_number" asc nulls first,
-    "uneven"."physical_sales_store_city" asc nulls first,
-    "uneven"."physical_sales_store_county" asc nulls first,
-    "uneven"."physical_sales_store_state" asc nulls first,
-    "uneven"."physical_sales_store_zip" asc nulls first
+    "yummy"."physical_sales_store_name" asc nulls first,
+    "yummy"."physical_sales_store_company_id" asc nulls first,
+    "yummy"."physical_sales_store_street_number" asc nulls first,
+    "yummy"."physical_sales_store_street_name" asc nulls first,
+    "yummy"."physical_sales_store_street_type" asc nulls first,
+    "yummy"."physical_sales_store_suite_number" asc nulls first,
+    "yummy"."physical_sales_store_city" asc nulls first,
+    "yummy"."physical_sales_store_county" asc nulls first,
+    "yummy"."physical_sales_store_state" asc nulls first,
+    "yummy"."physical_sales_store_zip" asc nulls first
 LIMIT (100)
 ```
 

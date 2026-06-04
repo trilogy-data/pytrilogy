@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4687 | 80 | 66.62 ms |
-| reference | 3158 | 50 | 64.16 ms |
-| v4 / ref | 1.48x | 1.60x | 1.04x |
+| v4 | 4731 | 80 | 72.82 ms |
+| reference | 3158 | 50 | 65.32 ms |
+| v4 / ref | 1.50x | 1.60x | 1.11x |
 
 ## Preql
 
@@ -108,7 +108,7 @@ GROUP BY
     1,
     3,
     4),
-juicy as (
+vacuous as (
 SELECT
     "uneven"."_dn_extended_price" as "_dn_extended_price",
     "uneven"."_dn_extended_tax" as "_dn_extended_tax",
@@ -126,31 +126,31 @@ FROM
 WHERE
     "wakeful"."customer_address_city" != "uneven"."physical_sales_sale_address_city"
 ),
-vacuous as (
+concerned as (
 SELECT
-    "juicy"."_dn_extended_price" as "_dn_extended_price",
-    "juicy"."_dn_extended_tax" as "_dn_extended_tax",
-    "juicy"."_dn_list_price" as "_dn_list_price",
-    "juicy"."customer_address_city" as "customer_address_city",
-    "juicy"."customer_first_name" as "customer_first_name",
-    "juicy"."customer_id" as "customer_id",
-    "juicy"."customer_last_name" as "customer_last_name",
-    "juicy"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
-    "juicy"."physical_sales_sale_address_city" as "physical_sales_sale_address_city",
-    "juicy"."physical_sales_ticket_number" as "physical_sales_ticket_number"
+    "vacuous"."_dn_extended_price" as "_dn_extended_price",
+    "vacuous"."_dn_extended_tax" as "_dn_extended_tax",
+    "vacuous"."_dn_list_price" as "_dn_list_price",
+    "vacuous"."customer_address_city" as "customer_address_city",
+    "vacuous"."customer_first_name" as "customer_first_name",
+    "vacuous"."customer_id" as "customer_id",
+    "vacuous"."customer_last_name" as "customer_last_name",
+    "vacuous"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
+    "vacuous"."physical_sales_sale_address_city" as "physical_sales_sale_address_city",
+    "vacuous"."physical_sales_ticket_number" as "physical_sales_ticket_number"
 FROM
-    "juicy")
+    "vacuous")
 SELECT
-    "vacuous"."customer_last_name" as "dn_customer_last_name",
-    "vacuous"."customer_first_name" as "dn_customer_first_name",
-    "vacuous"."customer_address_city" as "dn_customer_address_city",
-    "vacuous"."physical_sales_sale_address_city" as "dn_physical_sales_sale_address_city",
-    "vacuous"."physical_sales_ticket_number" as "dn_physical_sales_ticket_number",
-    "vacuous"."_dn_extended_price" as "dn_extended_price",
-    "vacuous"."_dn_extended_tax" as "dn_extended_tax",
-    "vacuous"."_dn_list_price" as "dn_list_price"
+    "concerned"."customer_last_name" as "dn_customer_last_name",
+    "concerned"."customer_first_name" as "dn_customer_first_name",
+    "concerned"."customer_address_city" as "dn_customer_address_city",
+    "concerned"."physical_sales_sale_address_city" as "dn_physical_sales_sale_address_city",
+    "concerned"."physical_sales_ticket_number" as "dn_physical_sales_ticket_number",
+    "concerned"."_dn_extended_price" as "dn_extended_price",
+    "concerned"."_dn_extended_tax" as "dn_extended_tax",
+    "concerned"."_dn_list_price" as "dn_list_price"
 FROM
-    "vacuous"
+    "concerned"
 ORDER BY 
     "dn_customer_last_name" asc nulls first,
     "dn_physical_sales_ticket_number" asc nulls first

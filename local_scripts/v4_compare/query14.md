@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7563 | 202 | 351.02 ms |
-| reference | 6203 | 160 | 350.73 ms |
-| v4 / ref | 1.22x | 1.26x | 1.00x |
+| v4 | 9385 | 237 | 464.95 ms |
+| reference | 6203 | 160 | 352.60 ms |
+| v4 / ref | 1.51x | 1.48x | 1.32x |
 
 ## Preql
 
@@ -233,77 +233,112 @@ FROM
     "sweltering"),
 macho as (
 SELECT
-    "yummy"."channel_label" as "_l0_filtered_channel_l0",
-    "yummy"."sales_item_brand_id" as "_l0_filtered_brand_l0",
-    "yummy"."sales_item_category_id" as "_l0_filtered_category_l0",
-    "yummy"."sales_item_class_id" as "_l0_filtered_class_l0",
-    sum("yummy"."sales_quantity" * "yummy"."sales_list_price") as "_l0_filtered_bucket_sum_l0",
-    sum("yummy"."sales_row_one") as "_l0_filtered_bucket_count_l0"
+    "yummy"."channel_label" as "channel_label",
+    "yummy"."sales_item_brand_id" as "sales_item_brand_id",
+    "yummy"."sales_item_category_id" as "sales_item_category_id",
+    "yummy"."sales_item_class_id" as "sales_item_class_id",
+    "yummy"."sales_list_price" as "sales_list_price",
+    "yummy"."sales_quantity" as "sales_quantity",
+    "yummy"."sales_row_one" as "sales_row_one"
 FROM
     "yummy"
 WHERE
     "yummy"."tuple_key" in (select late."cross_tuples_ci_tuple_key" from late where late."cross_tuples_ci_tuple_key" is not null)
-
+),
+kaput as (
+SELECT
+    "macho"."channel_label" as "_l0_filtered_channel_l0",
+    "macho"."sales_item_brand_id" as "_l0_filtered_brand_l0",
+    "macho"."sales_item_category_id" as "_l0_filtered_category_l0",
+    "macho"."sales_item_class_id" as "_l0_filtered_class_l0",
+    sum("macho"."sales_quantity" * "macho"."sales_list_price") as "_l0_filtered_bucket_sum_l0"
+FROM
+    "macho"
 GROUP BY
     1,
     2,
     3,
     4),
-friendly as (
+scrawny as (
 SELECT
-    "macho"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
-    "macho"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
-    "macho"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
-    "macho"."_l0_filtered_category_l0" as "_l0_filtered_category_l0",
-    "macho"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
-    "macho"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
+    "macho"."channel_label" as "_l0_filtered_channel_l0",
+    "macho"."sales_item_brand_id" as "_l0_filtered_brand_l0",
+    "macho"."sales_item_category_id" as "_l0_filtered_category_l0",
+    "macho"."sales_item_class_id" as "_l0_filtered_class_l0",
+    sum("macho"."sales_row_one") as "_l0_filtered_bucket_count_l0"
 FROM
-    "abundant"
-    INNER JOIN "macho" on 1=1
-WHERE
-    "macho"."_l0_filtered_bucket_sum_l0" > "abundant"."avg_sales_average_sales"
-),
-kaput as (
-SELECT
-    "friendly"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
-    "friendly"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
-    "friendly"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
-    "friendly"."_l0_filtered_category_l0" as "_l0_filtered_category_l0",
-    "friendly"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
-    "friendly"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
-FROM
-    "friendly"),
+    "macho"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
 divergent as (
 SELECT
-    "kaput"."_l0_filtered_brand_l0" as "l0_filtered_brand_l0",
-    "kaput"."_l0_filtered_bucket_count_l0" as "l0_filtered_bucket_count_l0",
-    "kaput"."_l0_filtered_bucket_sum_l0" as "l0_filtered_bucket_sum_l0",
-    "kaput"."_l0_filtered_category_l0" as "l0_filtered_category_l0",
-    "kaput"."_l0_filtered_channel_l0" as "l0_filtered_channel_l0",
-    "kaput"."_l0_filtered_class_l0" as "l0_filtered_class_l0"
+    "kaput"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
+    "scrawny"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
+    coalesce("kaput"."_l0_filtered_brand_l0","scrawny"."_l0_filtered_brand_l0") as "_l0_filtered_brand_l0",
+    coalesce("kaput"."_l0_filtered_category_l0","scrawny"."_l0_filtered_category_l0") as "_l0_filtered_category_l0",
+    coalesce("kaput"."_l0_filtered_channel_l0","scrawny"."_l0_filtered_channel_l0") as "_l0_filtered_channel_l0",
+    coalesce("kaput"."_l0_filtered_class_l0","scrawny"."_l0_filtered_class_l0") as "_l0_filtered_class_l0"
 FROM
-    "kaput"),
+    "kaput"
+    INNER JOIN "scrawny" on "kaput"."_l0_filtered_brand_l0" = "scrawny"."_l0_filtered_brand_l0" AND "kaput"."_l0_filtered_category_l0" is not distinct from "scrawny"."_l0_filtered_category_l0" AND "kaput"."_l0_filtered_channel_l0" is not distinct from "scrawny"."_l0_filtered_channel_l0" AND "kaput"."_l0_filtered_class_l0" is not distinct from "scrawny"."_l0_filtered_class_l0"),
 busy as (
 SELECT
-    "divergent"."l0_filtered_brand_l0" as "l0_filtered_brand_l0",
-    "divergent"."l0_filtered_category_l0" as "l0_filtered_category_l0",
-    "divergent"."l0_filtered_channel_l0" as "l0_filtered_channel_l0",
-    "divergent"."l0_filtered_class_l0" as "l0_filtered_class_l0",
-    sum("divergent"."l0_filtered_bucket_count_l0") as "sum_number_sales",
-    sum("divergent"."l0_filtered_bucket_sum_l0") as "sum_sales"
+    "divergent"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
+    "divergent"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
+    "divergent"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
+    "divergent"."_l0_filtered_category_l0" as "_l0_filtered_category_l0",
+    "divergent"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
+    "divergent"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
 FROM
-    "divergent"
+    "abundant"
+    INNER JOIN "divergent" on 1=1
+WHERE
+    "divergent"."_l0_filtered_bucket_sum_l0" > "abundant"."avg_sales_average_sales"
+),
+charming as (
+SELECT
+    "busy"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
+    "busy"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
+    "busy"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
+    "busy"."_l0_filtered_category_l0" as "_l0_filtered_category_l0",
+    "busy"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
+    "busy"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
+FROM
+    "busy"),
+protective as (
+SELECT
+    "charming"."_l0_filtered_brand_l0" as "l0_filtered_brand_l0",
+    "charming"."_l0_filtered_bucket_count_l0" as "l0_filtered_bucket_count_l0",
+    "charming"."_l0_filtered_bucket_sum_l0" as "l0_filtered_bucket_sum_l0",
+    "charming"."_l0_filtered_category_l0" as "l0_filtered_category_l0",
+    "charming"."_l0_filtered_channel_l0" as "l0_filtered_channel_l0",
+    "charming"."_l0_filtered_class_l0" as "l0_filtered_class_l0"
+FROM
+    "charming"),
+premium as (
+SELECT
+    "protective"."l0_filtered_brand_l0" as "l0_filtered_brand_l0",
+    "protective"."l0_filtered_category_l0" as "l0_filtered_category_l0",
+    "protective"."l0_filtered_channel_l0" as "l0_filtered_channel_l0",
+    "protective"."l0_filtered_class_l0" as "l0_filtered_class_l0",
+    sum("protective"."l0_filtered_bucket_count_l0") as "sum_number_sales",
+    sum("protective"."l0_filtered_bucket_sum_l0") as "sum_sales"
+FROM
+    "protective"
 GROUP BY
     ROLLUP (3, 1, 4, 2))
 SELECT
-    "busy"."l0_filtered_channel_l0" as "channel",
-    "busy"."l0_filtered_brand_l0" as "i_brand_id",
-    "busy"."l0_filtered_class_l0" as "i_class_id",
-    "busy"."l0_filtered_category_l0" as "i_category_id",
-    "busy"."sum_sales" as "sum_sales",
-    "busy"."sum_number_sales" as "sum_number_sales"
+    "premium"."l0_filtered_channel_l0" as "channel",
+    "premium"."l0_filtered_brand_l0" as "i_brand_id",
+    "premium"."l0_filtered_class_l0" as "i_class_id",
+    "premium"."l0_filtered_category_l0" as "i_category_id",
+    "premium"."sum_sales" as "sum_sales",
+    "premium"."sum_number_sales" as "sum_number_sales"
 FROM
-    "busy"
+    "premium"
 ORDER BY 
     "channel" asc nulls first,
     "i_brand_id" asc nulls first,

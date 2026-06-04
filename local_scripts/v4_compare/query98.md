@@ -18,9 +18,9 @@ ref rows: 2521 (2521 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3006 | 59 | 104.89 ms |
-| reference | 3517 | 70 | 88.28 ms |
-| v4 / ref | 0.85x | 0.84x | 1.19x |
+| v4 | 3643 | 70 | 46.88 ms |
+| reference | 3517 | 70 | 42.04 ms |
+| v4 / ref | 1.04x | 1.00x | 1.12x |
 
 ## Preql
 
@@ -68,47 +68,58 @@ FROM
 WHERE
     "physical_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home') and cast("physical_sales_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
 ),
-cooperative as (
-SELECT
-    "cheerful"."physical_sales_item_class" as "physical_sales_item_class",
-    sum("cheerful"."physical_sales_ext_sales_price") as "_virt_agg_sum_9925573558789696"
-FROM
-    "cheerful"
-GROUP BY
-    1),
 thoughtful as (
 SELECT
+    "cheerful"."physical_sales_ext_sales_price" as "physical_sales_ext_sales_price",
     "cheerful"."physical_sales_item_category" as "physical_sales_item_category",
     "cheerful"."physical_sales_item_class" as "physical_sales_item_class",
     "cheerful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
     "cheerful"."physical_sales_item_desc" as "physical_sales_item_desc",
-    "cheerful"."physical_sales_item_text_id" as "physical_sales_item_text_id",
-    sum("cheerful"."physical_sales_ext_sales_price") as "item_revenue"
+    "cheerful"."physical_sales_item_id" as "physical_sales_item_id",
+    "cheerful"."physical_sales_item_text_id" as "physical_sales_item_text_id"
 FROM
-    "cheerful"
+    "cheerful"),
+questionable as (
+SELECT
+    "thoughtful"."physical_sales_item_class" as "physical_sales_item_class",
+    sum("thoughtful"."physical_sales_ext_sales_price") as "_virt_agg_sum_9925573558789696"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
+cooperative as (
+SELECT
+    "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
+    "thoughtful"."physical_sales_item_class" as "physical_sales_item_class",
+    "thoughtful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "thoughtful"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "thoughtful"."physical_sales_item_text_id" as "physical_sales_item_text_id",
+    sum("thoughtful"."physical_sales_ext_sales_price") as "item_revenue"
+FROM
+    "thoughtful"
 GROUP BY
     1,
     2,
     3,
     4,
     5,
-    "cheerful"."physical_sales_item_id")
+    "thoughtful"."physical_sales_item_id")
 SELECT
-    "thoughtful"."physical_sales_item_text_id" as "physical_sales_item_text_id",
-    "thoughtful"."physical_sales_item_desc" as "physical_sales_item_desc",
-    "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
-    "thoughtful"."physical_sales_item_class" as "physical_sales_item_class",
-    "thoughtful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
-    "thoughtful"."item_revenue" as "item_revenue",
-    ( "thoughtful"."item_revenue" * 100.0 ) / ("cooperative"."_virt_agg_sum_9925573558789696") as "revenueratio"
+    "cooperative"."physical_sales_item_text_id" as "physical_sales_item_text_id",
+    "cooperative"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "cooperative"."physical_sales_item_category" as "physical_sales_item_category",
+    "cooperative"."physical_sales_item_class" as "physical_sales_item_class",
+    "cooperative"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "cooperative"."item_revenue" as "item_revenue",
+    ( "cooperative"."item_revenue" * 100.0 ) / ("questionable"."_virt_agg_sum_9925573558789696") as "revenueratio"
 FROM
-    "cooperative"
-    RIGHT OUTER JOIN "thoughtful" on "cooperative"."physical_sales_item_class" is not distinct from "thoughtful"."physical_sales_item_class"
+    "questionable"
+    RIGHT OUTER JOIN "cooperative" on "questionable"."physical_sales_item_class" is not distinct from "cooperative"."physical_sales_item_class"
 ORDER BY 
-    "thoughtful"."physical_sales_item_category" asc nulls first,
-    "thoughtful"."physical_sales_item_class" asc nulls first,
-    "thoughtful"."physical_sales_item_text_id" asc nulls first,
-    "thoughtful"."physical_sales_item_desc" asc nulls first,
+    "cooperative"."physical_sales_item_category" asc nulls first,
+    "cooperative"."physical_sales_item_class" asc nulls first,
+    "cooperative"."physical_sales_item_text_id" asc nulls first,
+    "cooperative"."physical_sales_item_desc" asc nulls first,
     "revenueratio" asc nulls first
 ```
 

@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2412 | 34 | 70.25 ms |
-| reference | 2412 | 34 | 74.32 ms |
-| v4 / ref | 1.00x | 1.00x | 0.95x |
+| v4 | 2510 | 42 | 120.27 ms |
+| reference | 2412 | 34 | 63.71 ms |
+| v4 / ref | 1.04x | 1.24x | 1.89x |
 
 ## Preql
 
@@ -72,7 +72,15 @@ FROM
     INNER JOIN "memory"."customer_demographics" as "physical_sales_customer_demographic_customer_demographics" on "physical_sales_store_sales"."SS_CDEMO_SK" = "physical_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
     "physical_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "physical_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "physical_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and "physical_sales_date_date"."D_YEAR" = 2002 and "physical_sales_store_store"."S_STATE" = 'TN'
-)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "physical_sales_store_sales"."SS_STORE_SK")
 SELECT
     "cooperative"."physical_sales_item_text_id" as "physical_sales_item_text_id",
     "cooperative"."physical_sales_store_state" as "physical_sales_store_state",

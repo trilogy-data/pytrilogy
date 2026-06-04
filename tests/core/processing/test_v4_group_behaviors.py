@@ -12,7 +12,11 @@ topology + lineage edges. ``_cg`` builds both from a compact spec.
 import networkx as nx
 import pytest
 
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.models.build import BuildConcept, BuildGrain
+from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.core import DataType
+from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.group_behaviors import (
     GROUP_BEHAVIORS,
     _lineage_parent_addrs,
@@ -86,6 +90,29 @@ def _bucket(
 
 def _noop_ensure(derivation: str) -> None:
     pass
+
+
+def _build_concept(
+    name: str,
+    purpose: Purpose,
+    *,
+    datatype: DataType = DataType.INTEGER,
+    derivation: Derivation = Derivation.ROOT,
+    grain: set[str] | None = None,
+    keys: set[str] | None = None,
+    is_aggregate: bool = False,
+) -> BuildConcept:
+    return BuildConcept(
+        name=name,
+        canonical_name=name,
+        datatype=datatype,
+        purpose=purpose,
+        build_is_aggregate=is_aggregate,
+        derivation=derivation,
+        grain=BuildGrain(components=grain or set()),
+        keys=keys,
+        namespace="local",
+    )
 
 
 # ----- can_preserve_grain_subset --------------------------------------
@@ -504,6 +531,149 @@ def test_partition_aggregates_uses_input_grain():
     ]
     assert len(buckets) == 2
     assert len(merged) == 1
+
+
+def test_partition_rollup_aggregates_share_bucket():
+    from trilogy.core.processing.v4_helper.group_rules import partition_aggregates
+
+    items = [
+        _item(
+            "local.total_sum",
+            derivation=Derivation.AGGREGATE.value,
+            grain={"local.category", "local.class"},
+            grouping_mode="rollup",
+            aggregate_input_grain={
+                "local.category",
+                "local.class",
+                "local.item_id",
+                "local.ticket_number",
+            },
+        ),
+        _item(
+            "local.g_class",
+            derivation=Derivation.AGGREGATE.value,
+            grain={"local.category", "local.class"},
+            grouping_mode="rollup",
+            aggregate_input_grain={"local.category", "local.class", "local.item_id"},
+        ),
+    ]
+    cg, ca = _cg({node: {} for node, _ in items})
+    buckets = partition_aggregates(items, cg, ca, {}, _noop_ensure)
+
+    assert len(buckets) == 1
+    assert set(buckets[0].primary_members) == {"local.total_sum", "local.g_class"}
+    assert buckets[0].aggregate_input_grain == frozenset(
+        {"local.category", "local.class", "local.item_id", "local.ticket_number"}
+    )
+
+
+def test_partition_rollup_aggregates_split_by_source_signature():
+    from trilogy.core.processing.v4_helper.group_rules import (
+        partition_aggregates,
+        partition_roots,
+    )
+
+    items = [
+        _item(
+            "local.store_total",
+            derivation=Derivation.AGGREGATE.value,
+            grain={"local.category", "local.class"},
+            grouping_mode="rollup",
+            aggregate_input_grain={"local.category", "local.class", "store.line_id"},
+        ),
+        _item(
+            "local.web_total",
+            derivation=Derivation.AGGREGATE.value,
+            grain={"local.category", "local.class"},
+            grouping_mode="rollup",
+            aggregate_input_grain={"local.category", "local.class", "web.line_id"},
+        ),
+    ]
+    cg, ca = _cg(
+        {
+            "store.line_id": {"derivation": Derivation.ROOT.value},
+            "web.line_id": {"derivation": Derivation.ROOT.value},
+            "local.store_total": {
+                "derivation": Derivation.AGGREGATE.value,
+                "parents": ["store.line_id"],
+            },
+            "local.web_total": {
+                "derivation": Derivation.AGGREGATE.value,
+                "parents": ["web.line_id"],
+            },
+        }
+    )
+    root_items = [
+        ("store.line_id", ca["store.line_id"]),
+        ("web.line_id", ca["web.line_id"]),
+    ]
+    primary_group: dict[str, str] = {}
+
+    def ensure_assigned(derivation: str) -> None:
+        if derivation != Derivation.ROOT.value or primary_group:
+            return
+        for bucket in partition_roots(root_items, cg, ca, primary_group, _noop_ensure):
+            gid = f"root:{'|'.join(bucket.primary_members)}"
+            for node_id in bucket.primary_node_ids:
+                primary_group[node_id] = gid
+
+    buckets = partition_aggregates(items, cg, ca, primary_group, ensure_assigned)
+
+    assert len(buckets) == 2
+    assert {tuple(bucket.primary_members) for bucket in buckets} == {
+        ("local.store_total",),
+        ("local.web_total",),
+    }
+
+
+def test_pre_merge_carries_sibling_join_keys_without_metrics():
+    from trilogy.core.processing.v4_helper.strategy_builder import _pre_merge_parents
+
+    env = BuildEnvironment()
+    part_name = _build_concept(
+        "part.name",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        grain={"local.part.id"},
+        keys={"local.part.id"},
+    )
+    order_id = _build_concept("order.id", Purpose.KEY)
+    charge_price = _build_concept("charge_price", Purpose.METRIC)
+    charge_percent = _build_concept(
+        "charge_percent",
+        Purpose.METRIC,
+        derivation=Derivation.BASIC,
+    )
+    row_source = StrategyNode(
+        input_concepts=[],
+        output_concepts=[part_name, order_id, charge_price],
+        environment=env,
+    )
+    row_projection = SelectNode(
+        input_concepts=[charge_price],
+        output_concepts=[charge_price],
+        parents=[row_source],
+        environment=env,
+    )
+    ratio_source = StrategyNode(
+        input_concepts=[],
+        output_concepts=[part_name, charge_percent],
+        environment=env,
+    )
+    ratio_projection = SelectNode(
+        input_concepts=[part_name, charge_percent],
+        output_concepts=[part_name, charge_percent],
+        parents=[ratio_source],
+        environment=env,
+    )
+
+    merged = _pre_merge_parents([row_projection, ratio_projection], env)
+
+    assert len(merged) == 1
+    assert isinstance(merged[0], MergeNode)
+    row_outputs = {concept.address for concept in row_projection.output_concepts}
+    assert "local.part.name" in row_outputs
+    assert "local.charge_percent" not in row_outputs
 
 
 def test_partition_roots_buckets_per_label():

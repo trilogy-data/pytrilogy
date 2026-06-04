@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3203 | 81 | 91.02 ms |
-| reference | 3728 | 83 | 83.02 ms |
-| v4 / ref | 0.86x | 0.98x | 1.10x |
+| v4 | 3538 | 94 | 87.76 ms |
+| reference | 3728 | 83 | 79.47 ms |
+| v4 / ref | 0.95x | 1.13x | 1.10x |
 
 ## Preql
 
@@ -82,6 +82,7 @@ FROM
 questionable as (
 SELECT
     "cs_catalog_sales"."CS_EXT_SHIP_COST" as "cs_ext_ship_cost",
+    "cs_catalog_sales"."CS_ITEM_SK" as "cs_item_id",
     "cs_catalog_sales"."CS_NET_PROFIT" as "cs_net_profit",
     "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
 FROM
@@ -95,6 +96,7 @@ WHERE
 vacuous as (
 SELECT
     "questionable"."cs_ext_ship_cost" as "cs_ext_ship_cost",
+    "questionable"."cs_item_id" as "cs_item_id",
     "questionable"."cs_net_profit" as "cs_net_profit",
     "questionable"."cs_order_number" as "cs_order_number"
 FROM
@@ -102,7 +104,7 @@ FROM
 WHERE
     "questionable"."cs_order_number" not in (select quizzical."cr_order_number" from quizzical where quizzical."cr_order_number" is not null) and "questionable"."cs_order_number" in (select juicy."multi_warehouse_sales" from juicy where juicy."multi_warehouse_sales" is not null)
 ),
-young as (
+sparkling as (
 SELECT
     "vacuous"."cs_order_number" as "cs_order_number"
 FROM
@@ -111,24 +113,35 @@ GROUP BY
     1),
 concerned as (
 SELECT
-    sum("vacuous"."cs_ext_ship_cost") as "total_shipping_cost",
-    sum("vacuous"."cs_net_profit") as "total_net_profit"
+    "vacuous"."cs_ext_ship_cost" as "cs_ext_ship_cost",
+    "vacuous"."cs_net_profit" as "cs_net_profit"
 FROM
-    "vacuous"),
-sparkling as (
+    "vacuous"
+GROUP BY
+    1,
+    2,
+    "vacuous"."cs_item_id",
+    "vacuous"."cs_order_number"),
+abhorrent as (
 SELECT
-    count("young"."cs_order_number") as "order_count"
+    count("sparkling"."cs_order_number") as "order_count"
 FROM
-    "young")
+    "sparkling"),
+young as (
 SELECT
-    coalesce("sparkling"."order_count",0) as "order_count",
-    "concerned"."total_shipping_cost" as "total_shipping_cost",
-    "concerned"."total_net_profit" as "total_net_profit"
+    sum("concerned"."cs_ext_ship_cost") as "total_shipping_cost",
+    sum("concerned"."cs_net_profit") as "total_net_profit"
 FROM
-    "concerned"
-    FULL JOIN "sparkling" on 1=1
+    "concerned")
+SELECT
+    coalesce("abhorrent"."order_count",0) as "order_count",
+    "young"."total_shipping_cost" as "total_shipping_cost",
+    "young"."total_net_profit" as "total_net_profit"
+FROM
+    "young"
+    FULL JOIN "abhorrent" on 1=1
 ORDER BY 
-    coalesce("sparkling"."order_count",0) desc
+    coalesce("abhorrent"."order_count",0) desc
 LIMIT (100)
 ```
 

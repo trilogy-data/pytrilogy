@@ -10,7 +10,7 @@ from collections import defaultdict
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
@@ -47,6 +47,7 @@ from .models import GroupAttrs
 from .projection import (
     concept_satisfiable,
     parent_output_addresses,
+    row_lineage_arguments,
     satisfiable_outputs,
     widen_projection,
 )
@@ -54,6 +55,12 @@ from .projection import (
 _AGGREGATING_DERIVATIONS = {
     Derivation.AGGREGATE.value,
     Derivation.GROUP_TO.value,
+}
+
+_MERGE_JOIN_PURPOSES = {
+    Purpose.KEY,
+    Purpose.PROPERTY,
+    Purpose.UNIQUE_PROPERTY,
 }
 
 
@@ -247,6 +254,23 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
     the parent (it's an input) and derives the rest inline from those inputs."""
+
+    def crosses_unsourced_aggregate(
+        concept: BuildConcept, available: set[str], seen: set[str] | None = None
+    ) -> bool:
+        if concept.address in available:
+            return False
+        seen = seen or set()
+        if concept.address in seen:
+            return False
+        seen.add(concept.address)
+        if concept.derivation == Derivation.AGGREGATE:
+            return True
+        return any(
+            crosses_unsourced_aggregate(arg, available, seen)
+            for arg in row_lineage_arguments(concept)
+        )
+
     dropped: set[int] = set()
     for b in parents:
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
@@ -267,6 +291,10 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
                 isinstance(a, (SelectNode, MergeNode)) or row_preserving_filter
             ):
                 continue
+            if any(
+                crosses_unsourced_aggregate(o, available) for o in a.output_concepts
+            ):
+                continue
             if not all(concept_satisfiable(o, available) for o in a.output_concepts):
                 continue
             widen_projection(
@@ -277,6 +305,68 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             )
             dropped.add(id(a))
     return [p for p in parents if id(p) not in dropped]
+
+
+def _merge_join_key_candidate(concept: BuildConcept) -> bool:
+    if concept.purpose == Purpose.KEY:
+        return True
+    if concept.purpose not in _MERGE_JOIN_PURPOSES:
+        return False
+    if concept.keys:
+        return True
+    if concept.grain and concept.grain.components:
+        return True
+    return False
+
+
+def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
+    seen: set[str] = set()
+    output: list[BuildConcept] = []
+    stack = [concept]
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        output.append(current)
+        stack.extend(row_lineage_arguments(current))
+    return output
+
+
+def _widen_merge_join_keys(parents: list[StrategyNode]) -> None:
+    if len(parents) <= 1:
+        return
+
+    sibling_outputs: dict[str, BuildConcept] = {}
+    for parent in parents:
+        for concept in parent.output_concepts:
+            sibling_outputs.setdefault(concept.address, concept)
+
+    for parent in parents:
+        if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
+            continue
+        available = parent_output_addresses(parent)
+        if not available:
+            continue
+        parent_outputs = {concept.address for concept in parent.output_concepts}
+        carried: list[BuildConcept] = []
+        input_candidates: list[BuildConcept] = []
+        for concept in sibling_outputs.values():
+            if concept.address in parent_outputs:
+                continue
+            if not _merge_join_key_candidate(concept):
+                continue
+            if not concept_satisfiable(concept, available):
+                continue
+            carried.append(concept)
+            input_candidates.extend(_row_lineage_closure(concept))
+        if carried:
+            widen_projection(
+                parent,
+                carried,
+                input_candidates=input_candidates,
+                available_addresses=available,
+            )
 
 
 def _pre_merge_parents(
@@ -295,6 +385,7 @@ def _pre_merge_parents(
     parents = _fold_passthrough_parents(parents)
     if len(parents) <= 1:
         return parents
+    _widen_merge_join_keys(parents)
     seen: set[str] = set()
     all_outputs: list[BuildConcept] = []
     for p in parents:
@@ -917,7 +1008,12 @@ def build_strategy_node(
         # has no source CTE and we emit INVALID_REFERENCE_BUG.
         condition_host_node: StrategyNode | None = None
         if injected is not None and derivation in _AGGREGATING_DERIVATIONS and parents:
-            parent_outputs = list(parents[0].output_concepts)
+            parent_output_by_addr = {
+                output.address: output
+                for parent in parents
+                for output in parent.output_concepts
+            }
+            parent_outputs = list(parent_output_by_addr.values())
             wrapper = SelectNode(
                 input_concepts=parent_outputs,
                 output_concepts=parent_outputs,
@@ -940,22 +1036,20 @@ def build_strategy_node(
         ):
             normalize_addrs = set(a.aggregate_input_grain)
             for c in outputs:
+                normalize_addrs.add(c.address)
                 if c.address not in primary_addrs or c.lineage is None:
                     continue
                 normalize_addrs.update(
                     arg.address for arg in c.lineage.concept_arguments
                 )
-            parent_output_by_addr: dict[str, BuildConcept] = {}
+            normalize_parent_output_by_addr: dict[str, BuildConcept] = {}
             for parent in parents:
                 for output in parent.output_concepts:
-                    parent_output_by_addr.setdefault(output.address, output)
+                    normalize_parent_output_by_addr.setdefault(output.address, output)
             normalize_concepts: list[BuildConcept] = []
-            for addr, concept in parent_output_by_addr.items():
+            for addr, concept in normalize_parent_output_by_addr.items():
                 if addr in normalize_addrs:
                     normalize_concepts.append(concept)
-            for addr in sorted(normalize_addrs):
-                if addr not in parent_output_by_addr and addr in environment.concepts:
-                    normalize_concepts.append(environment.concepts[addr])
             if normalize_concepts:
                 parents = [
                     GroupNode(

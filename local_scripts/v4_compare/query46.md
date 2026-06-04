@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3724 | 71 | 96.43 ms |
-| reference | 2951 | 51 | 94.48 ms |
-| v4 / ref | 1.26x | 1.39x | 1.02x |
+| v4 | 3768 | 71 | 101.13 ms |
+| reference | 2951 | 51 | 95.70 ms |
+| v4 / ref | 1.28x | 1.39x | 1.06x |
 
 ## Preql
 
@@ -95,7 +95,7 @@ SELECT
 FROM
     "memory"."customer" as "customer_customers"
     INNER JOIN "memory"."customer_address" as "customer_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_address_customer_address"."CA_ADDRESS_SK"),
-juicy as (
+vacuous as (
 SELECT
     "uneven"."amt" as "amt",
     "uneven"."physical_sales_billing_customer_id" as "customer_id",
@@ -104,37 +104,37 @@ SELECT
     "uneven"."profit" as "profit"
 FROM
     "uneven"),
-vacuous as (
+concerned as (
 SELECT
-    "juicy"."amt" as "amt",
-    "juicy"."bought_city" as "bought_city",
-    "juicy"."physical_sales_ticket_number" as "physical_sales_ticket_number",
-    "juicy"."profit" as "profit",
+    "vacuous"."amt" as "amt",
+    "vacuous"."bought_city" as "bought_city",
+    "vacuous"."physical_sales_ticket_number" as "physical_sales_ticket_number",
+    "vacuous"."profit" as "profit",
     "wakeful"."customer_address_city" as "customer_address_city",
     "wakeful"."customer_first_name" as "customer_first_name",
     "wakeful"."customer_last_name" as "customer_last_name"
 FROM
     "wakeful"
-    INNER JOIN "juicy" on "wakeful"."customer_id" = "juicy"."customer_id"
+    INNER JOIN "vacuous" on "wakeful"."customer_id" = "vacuous"."customer_id"
 WHERE
-    "wakeful"."customer_address_city" != "juicy"."bought_city"
+    "wakeful"."customer_address_city" != "vacuous"."bought_city"
 )
 SELECT
-    "vacuous"."customer_last_name" as "customer_last_name",
-    "vacuous"."customer_first_name" as "customer_first_name",
-    "vacuous"."customer_address_city" as "customer_address_city",
-    "vacuous"."bought_city" as "bought_city",
-    "vacuous"."physical_sales_ticket_number" as "physical_sales_ticket_number",
-    "vacuous"."amt" as "amt",
-    "vacuous"."profit" as "profit"
+    "concerned"."customer_last_name" as "customer_last_name",
+    "concerned"."customer_first_name" as "customer_first_name",
+    "concerned"."customer_address_city" as "customer_address_city",
+    "concerned"."bought_city" as "bought_city",
+    "concerned"."physical_sales_ticket_number" as "physical_sales_ticket_number",
+    "concerned"."amt" as "amt",
+    "concerned"."profit" as "profit"
 FROM
-    "vacuous"
+    "concerned"
 ORDER BY 
-    "vacuous"."customer_last_name" asc nulls first,
-    "vacuous"."customer_first_name" asc nulls first,
-    "vacuous"."customer_address_city" asc nulls first,
-    "vacuous"."bought_city" asc nulls first,
-    "vacuous"."physical_sales_ticket_number" asc nulls first
+    "concerned"."customer_last_name" asc nulls first,
+    "concerned"."customer_first_name" asc nulls first,
+    "concerned"."customer_address_city" asc nulls first,
+    "concerned"."bought_city" asc nulls first,
+    "concerned"."physical_sales_ticket_number" asc nulls first
 LIMIT (100)
 ```
 

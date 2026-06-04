@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2382 | 55 | 135.30 ms |
-| reference | 2332 | 60 | 143.53 ms |
-| v4 / ref | 1.02x | 0.92x | 0.94x |
+| v4 | 2634 | 63 | 117.64 ms |
+| reference | 2332 | 60 | 109.73 ms |
+| v4 / ref | 1.13x | 1.05x | 1.07x |
 
 ## Preql
 
@@ -82,43 +82,51 @@ WHERE
 ),
 cooperative as (
 SELECT
+    "thoughtful"."ss_ext_sales_price" as "ss_ext_sales_price",
     "thoughtful"."ss_item_category" as "ss_item_category",
     "thoughtful"."ss_item_class" as "ss_item_class",
-    grouping("thoughtful"."ss_item_category") as "g_cat",
-    grouping("thoughtful"."ss_item_class") as "g_class",
-    sum("thoughtful"."ss_ext_sales_price") as "sales_sum",
-    sum("thoughtful"."ss_net_profit") as "profit_sum"
+    "thoughtful"."ss_net_profit" as "ss_net_profit"
 FROM
-    "thoughtful"
-GROUP BY
-    ROLLUP (1, 2)),
+    "thoughtful"),
 questionable as (
 SELECT
-    "cooperative"."g_cat" + "cooperative"."g_class" as "lochierarchy",
     "cooperative"."ss_item_category" as "ss_item_category",
     "cooperative"."ss_item_class" as "ss_item_class",
-    cast("cooperative"."profit_sum" as numeric(15,4)) / cast("cooperative"."sales_sum" as numeric(15,4)) as "gross_margin",
-    rank() over (partition by "cooperative"."g_cat" + "cooperative"."g_class",CASE
-	WHEN "cooperative"."g_class" = 0 THEN "cooperative"."ss_item_category"
-	ELSE null
-	END order by cast("cooperative"."profit_sum" as numeric(15,4)) / cast("cooperative"."sales_sum" as numeric(15,4)) asc ) as "rank_within_parent"
+    grouping("cooperative"."ss_item_category") as "g_cat",
+    grouping("cooperative"."ss_item_class") as "g_class",
+    sum("cooperative"."ss_ext_sales_price") as "sales_sum",
+    sum("cooperative"."ss_net_profit") as "profit_sum"
 FROM
-    "cooperative")
+    "cooperative"
+GROUP BY
+    ROLLUP (1, 2)),
+abundant as (
 SELECT
-    "questionable"."gross_margin" as "gross_margin",
-    "questionable"."ss_item_category" as "i_category",
-    "questionable"."ss_item_class" as "i_class",
-    "questionable"."lochierarchy" as "lochierarchy",
-    "questionable"."rank_within_parent" as "rank_within_parent"
+    "questionable"."g_cat" + "questionable"."g_class" as "lochierarchy",
+    "questionable"."ss_item_category" as "ss_item_category",
+    "questionable"."ss_item_class" as "ss_item_class",
+    cast("questionable"."profit_sum" as numeric(15,4)) / cast("questionable"."sales_sum" as numeric(15,4)) as "gross_margin",
+    rank() over (partition by "questionable"."g_cat" + "questionable"."g_class",CASE
+	WHEN "questionable"."g_class" = 0 THEN "questionable"."ss_item_category"
+	ELSE null
+	END order by cast("questionable"."profit_sum" as numeric(15,4)) / cast("questionable"."sales_sum" as numeric(15,4)) asc ) as "rank_within_parent"
 FROM
-    "questionable"
+    "questionable")
+SELECT
+    "abundant"."gross_margin" as "gross_margin",
+    "abundant"."ss_item_category" as "i_category",
+    "abundant"."ss_item_class" as "i_class",
+    "abundant"."lochierarchy" as "lochierarchy",
+    "abundant"."rank_within_parent" as "rank_within_parent"
+FROM
+    "abundant"
 ORDER BY 
-    "questionable"."lochierarchy" desc nulls first,
+    "abundant"."lochierarchy" desc nulls first,
     CASE
-	WHEN "questionable"."lochierarchy" = 0 THEN "questionable"."ss_item_category"
+	WHEN "abundant"."lochierarchy" = 0 THEN "abundant"."ss_item_category"
 	ELSE null
 	END asc nulls first,
-    "questionable"."rank_within_parent" asc nulls first
+    "abundant"."rank_within_parent" asc nulls first
 LIMIT (100)
 ```
 

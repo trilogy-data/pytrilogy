@@ -18,9 +18,9 @@ ref rows: 46 (46 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3342 | 62 | 62.99 ms |
-| reference | 2439 | 44 | 38.78 ms |
-| v4 / ref | 1.37x | 1.41x | 1.62x |
+| v4 | 3739 | 75 | 70.33 ms |
+| reference | 2439 | 44 | 37.20 ms |
+| v4 / ref | 1.53x | 1.70x | 1.89x |
 
 ## Preql
 
@@ -81,10 +81,12 @@ WHERE
 
 GROUP BY
     1),
-uneven as (
+yummy as (
 SELECT
     "cooperative"."physical_sales_billing_customer_address_state" as "physical_sales_billing_customer_address_state",
-    "cooperative"."physical_sales_row_counter" as "physical_sales_row_counter"
+    "cooperative"."physical_sales_item_id" as "physical_sales_item_id",
+    "cooperative"."physical_sales_row_counter" as "physical_sales_row_counter",
+    "cooperative"."physical_sales_ticket_number" as "physical_sales_ticket_number"
 FROM
     "cooperative"
     INNER JOIN "questionable" on "cooperative"."physical_sales_item_category" is not distinct from "questionable"."physical_sales_item_category"
@@ -94,17 +96,28 @@ WHERE
 GROUP BY
     1,
     2,
+    3,
+    4,
     "cooperative"."physical_sales_billing_customer_address_id",
     "cooperative"."physical_sales_item_current_price",
-    "cooperative"."physical_sales_item_id",
-    "cooperative"."physical_sales_ticket_number",
     "questionable"."_virt_agg_avg_8857095867163344",
-    coalesce("cooperative"."physical_sales_item_category","questionable"."physical_sales_item_category"))
+    coalesce("cooperative"."physical_sales_item_category","questionable"."physical_sales_item_category")),
+juicy as (
 SELECT
-    "uneven"."physical_sales_billing_customer_address_state" as "physical_sales_billing_customer_address_state",
-    sum("uneven"."physical_sales_row_counter") as "physical_sales_line_item_count"
+    "yummy"."physical_sales_billing_customer_address_state" as "physical_sales_billing_customer_address_state",
+    "yummy"."physical_sales_row_counter" as "physical_sales_row_counter"
 FROM
-    "uneven"
+    "yummy"
+GROUP BY
+    1,
+    2,
+    "yummy"."physical_sales_item_id",
+    "yummy"."physical_sales_ticket_number")
+SELECT
+    "juicy"."physical_sales_billing_customer_address_state" as "physical_sales_billing_customer_address_state",
+    sum("juicy"."physical_sales_row_counter") as "physical_sales_line_item_count"
+FROM
+    "juicy"
 GROUP BY
     1
 HAVING
@@ -112,7 +125,7 @@ HAVING
 
 ORDER BY 
     "physical_sales_line_item_count" asc nulls first,
-    "uneven"."physical_sales_billing_customer_address_state" asc nulls first
+    "juicy"."physical_sales_billing_customer_address_state" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

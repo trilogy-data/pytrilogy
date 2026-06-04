@@ -18,9 +18,9 @@ ref rows: 4 (4 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 8220 | 210 | 717.00 ms |
-| reference | 7843 | 178 | 619.31 ms |
-| v4 / ref | 1.05x | 1.18x | 1.16x |
+| v4 | 8246 | 210 | 628.95 ms |
+| reference | 7843 | 178 | 705.26 ms |
+| v4 / ref | 1.05x | 1.18x | 0.89x |
 
 ## Preql
 
@@ -111,7 +111,7 @@ FROM
 WHERE
     "sales_date_date"."D_YEAR" in (2000,2001,2002,2003)
 ),
-macho as (
+scrawny as (
 SELECT
     "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
     "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
@@ -127,13 +127,13 @@ GROUP BY
     2,
     3,
     "sales_date_date"."D_DATE_SK"),
-scrawny as (
+friendly as (
 SELECT
     "sales_item_items"."I_ITEM_SK" as "sales_item_id",
     SUBSTRING("sales_item_items"."I_ITEM_DESC",1,30) as "sales_item_desc_truncated"
 FROM
     "memory"."item" as "sales_item_items"),
-young as (
+sparkling as (
 SELECT
     "uneven"."sales_billing_customer_id" as "sales_billing_customer_id",
     sum("uneven"."sales_quantity" * "uneven"."sales_sales_price") as "customer_total_overall"
@@ -152,77 +152,77 @@ WHERE
 
 GROUP BY
     "uneven"."sales_billing_customer_id"),
-kaput as (
+divergent as (
 SELECT
-    "macho"."sales_date_date" as "sales_date_date",
-    "macho"."sales_order_id" as "sales_order_id",
-    "scrawny"."sales_item_desc_truncated" as "sales_item_desc_truncated",
-    "scrawny"."sales_item_id" as "sales_item_id"
+    "friendly"."sales_item_desc_truncated" as "sales_item_desc_truncated",
+    "friendly"."sales_item_id" as "sales_item_id",
+    "scrawny"."sales_date_date" as "sales_date_date",
+    "scrawny"."sales_order_id" as "sales_order_id"
 FROM
-    "scrawny"
-    LEFT OUTER JOIN "macho" on "scrawny"."sales_item_id" = "macho"."sales_item_id"
+    "friendly"
+    LEFT OUTER JOIN "scrawny" on "friendly"."sales_item_id" = "scrawny"."sales_item_id"
 GROUP BY
     1,
     2,
     3,
     4),
-sparkling as (
+abhorrent as (
 SELECT
-    "young"."customer_total_overall" as "customer_total_overall",
-    "young"."sales_billing_customer_id" as "_best_customers_best_customer_id"
+    "sparkling"."customer_total_overall" as "customer_total_overall",
+    "sparkling"."sales_billing_customer_id" as "_best_customers_best_customer_id"
 FROM
-    "young"),
+    "sparkling"),
 vacuous as (
 SELECT
     max("yummy"."customer_total_in_window") as "_max_total_cmax"
 FROM
     "yummy"),
-busy as (
+charming as (
 SELECT
-    "kaput"."sales_item_id" as "_frequent_items_frequent_item_id"
+    "divergent"."sales_item_id" as "_frequent_items_frequent_item_id"
 FROM
-    "kaput"
+    "divergent"
 GROUP BY
     1,
-    "kaput"."sales_date_date",
-    "kaput"."sales_item_desc_truncated"
+    "divergent"."sales_date_date",
+    "divergent"."sales_item_desc_truncated"
 HAVING
-    count("kaput"."sales_order_id") > 4
+    count("divergent"."sales_order_id") > 4
 ),
-concerned as (
+young as (
 SELECT
     "vacuous"."_max_total_cmax" as "max_total_cmax"
 FROM
     "vacuous"),
-charming as (
-SELECT
-    "busy"."_frequent_items_frequent_item_id" as "_frequent_items_frequent_item_id"
-FROM
-    "busy"),
-abhorrent as (
-SELECT
-    "sparkling"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
-FROM
-    "sparkling"
-    INNER JOIN "concerned" on 1=1
-WHERE
-    "sparkling"."customer_total_overall" > 0.5 * "concerned"."max_total_cmax"
-),
 protective as (
 SELECT
-    "charming"."_frequent_items_frequent_item_id" as "frequent_items_frequent_item_id"
+    "charming"."_frequent_items_frequent_item_id" as "_frequent_items_frequent_item_id"
 FROM
     "charming"),
 sweltering as (
 SELECT
     "abhorrent"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
 FROM
-    "abhorrent"),
+    "abhorrent"
+    INNER JOIN "young" on 1=1
+WHERE
+    "abhorrent"."customer_total_overall" > 0.5 * "young"."max_total_cmax"
+),
+premium as (
+SELECT
+    "protective"."_frequent_items_frequent_item_id" as "frequent_items_frequent_item_id"
+FROM
+    "protective"),
 late as (
 SELECT
-    "sweltering"."_best_customers_best_customer_id" as "best_customers_best_customer_id"
+    "sweltering"."_best_customers_best_customer_id" as "_best_customers_best_customer_id"
 FROM
     "sweltering"),
+macho as (
+SELECT
+    "late"."_best_customers_best_customer_id" as "best_customers_best_customer_id"
+FROM
+    "late"),
 thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
@@ -234,7 +234,7 @@ FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null)
+    "sales_catalog_sales_unified"."CS_ITEM_SK" in (select premium."frequent_items_frequent_item_id" from premium where premium."frequent_items_frequent_item_id" is not null) and "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null)
 
 UNION ALL
 SELECT
@@ -247,7 +247,7 @@ FROM
     "memory"."store_sales" as "sales_store_sales_unified"
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_store_sales_unified"."SS_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "sales_store_sales_unified"."SS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null)
+    "sales_store_sales_unified"."SS_ITEM_SK" in (select premium."frequent_items_frequent_item_id" from premium where premium."frequent_items_frequent_item_id" is not null) and "sales_store_sales_unified"."SS_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null)
 
 UNION ALL
 SELECT
@@ -260,7 +260,7 @@ FROM
     "memory"."web_sales" as "sales_web_sales_unified"
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
 WHERE
-    "sales_web_sales_unified"."WS_ITEM_SK" in (select protective."frequent_items_frequent_item_id" from protective where protective."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select late."best_customers_best_customer_id" from late where late."best_customers_best_customer_id" is not null)
+    "sales_web_sales_unified"."WS_ITEM_SK" in (select premium."frequent_items_frequent_item_id" from premium where premium."frequent_items_frequent_item_id" is not null) and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" in (select macho."best_customers_best_customer_id" from macho where macho."best_customers_best_customer_id" is not null)
 ),
 questionable as (
 SELECT
@@ -276,7 +276,7 @@ FROM
 WHERE
     "sales_date_date"."D_YEAR" = 2000 and "sales_date_date"."D_MOY" = 2
 ),
-premium as (
+puzzled as (
 SELECT
     "questionable"."sales_billing_customer_first_name" as "sales_billing_customer_first_name",
     "questionable"."sales_billing_customer_last_name" as "sales_billing_customer_last_name",
@@ -290,15 +290,15 @@ HAVING
     "sales_total" > 0
 )
 SELECT
-    "premium"."sales_billing_customer_last_name" as "c_last_name",
-    "premium"."sales_billing_customer_first_name" as "c_first_name",
-    "premium"."sales_total" as "sales_total"
+    "puzzled"."sales_billing_customer_last_name" as "c_last_name",
+    "puzzled"."sales_billing_customer_first_name" as "c_first_name",
+    "puzzled"."sales_total" as "sales_total"
 FROM
-    "premium"
+    "puzzled"
 ORDER BY 
     "c_last_name" asc nulls first,
     "c_first_name" asc nulls first,
-    "premium"."sales_total" asc nulls first
+    "puzzled"."sales_total" asc nulls first
 LIMIT (100)
 ```
 

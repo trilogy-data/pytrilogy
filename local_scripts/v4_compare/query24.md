@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3890 | 67 | 41.05 ms |
-| reference | 4127 | 52 | 75.90 ms |
-| v4 / ref | 0.94x | 1.29x | 0.54x |
+| v4 | 4610 | 79 | 38.71 ms |
+| reference | 4127 | 52 | 66.48 ms |
+| v4 / ref | 1.12x | 1.52x | 0.58x |
 
 ## Preql
 
@@ -72,52 +72,64 @@ FROM
 WHERE
     "physical_sales_store_store"."S_MARKET_ID" = 8 and "physical_sales_billing_customer_customers"."C_BIRTH_COUNTRY" != UPPER("physical_sales_billing_customer_address_customer_address"."CA_COUNTRY")  and SR_RETURN_TIME_SK IS NOT NULL is True and "physical_sales_store_store"."S_ZIP" = "physical_sales_billing_customer_address_customer_address"."CA_ZIP"
 ),
-juicy as (
+vacuous as (
 SELECT
     1 as "__preql_internal_all_rows"
 ),
-yummy as (
-SELECT
-    sum("questionable"."physical_sales_net_paid") as "_virt_agg_sum_9743820591646949"
-FROM
-    "questionable"
-GROUP BY
-    "questionable"."physical_sales_billing_customer_first_name",
-    "questionable"."physical_sales_billing_customer_id",
-    "questionable"."physical_sales_billing_customer_last_name",
-    "questionable"."physical_sales_item_id",
-    "questionable"."physical_sales_store_id",
-    "questionable"."physical_sales_store_name"),
 abundant as (
 SELECT
     "questionable"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
+    "questionable"."physical_sales_billing_customer_id" as "physical_sales_billing_customer_id",
     "questionable"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
+    "questionable"."physical_sales_item_id" as "physical_sales_item_id",
+    "questionable"."physical_sales_net_paid" as "physical_sales_net_paid",
+    "questionable"."physical_sales_store_id" as "physical_sales_store_id",
     "questionable"."physical_sales_store_name" as "physical_sales_store_name",
-    sum(CASE WHEN "questionable"."physical_sales_item_color" = 'peach' THEN "questionable"."physical_sales_net_paid" ELSE NULL END) as "peach_sales"
+    CASE WHEN "questionable"."physical_sales_item_color" = 'peach' THEN "questionable"."physical_sales_net_paid" ELSE NULL END as "_virt_filter_net_paid_6433461400918323"
 FROM
-    "questionable"
+    "questionable"),
+juicy as (
+SELECT
+    sum("abundant"."physical_sales_net_paid") as "_virt_agg_sum_9743820591646949"
+FROM
+    "abundant"
+GROUP BY
+    "abundant"."physical_sales_billing_customer_first_name",
+    "abundant"."physical_sales_billing_customer_id",
+    "abundant"."physical_sales_billing_customer_last_name",
+    "abundant"."physical_sales_item_id",
+    "abundant"."physical_sales_store_id",
+    "abundant"."physical_sales_store_name"),
+uneven as (
+SELECT
+    "abundant"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
+    "abundant"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
+    "abundant"."physical_sales_store_name" as "physical_sales_store_name",
+    sum("abundant"."_virt_filter_net_paid_6433461400918323") as "peach_sales"
+FROM
+    "abundant"
 GROUP BY
     1,
     2,
     3),
-vacuous as (
+concerned as (
 SELECT
-    avg("yummy"."_virt_agg_sum_9743820591646949") as "avg_store_customer_sales"
-FROM
-    "juicy"
-    FULL JOIN "yummy" on 1=1
-GROUP BY
-    "juicy"."__preql_internal_all_rows")
-SELECT
-    "abundant"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
-    "abundant"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
-    "abundant"."physical_sales_store_name" as "physical_sales_store_name",
-    "abundant"."peach_sales" as "peach_sales"
+    avg("juicy"."_virt_agg_sum_9743820591646949") as "avg_store_customer_sales"
 FROM
     "vacuous"
-    INNER JOIN "abundant" on 1=1
+    FULL JOIN "juicy" on 1=1
+GROUP BY
+    "vacuous"."__preql_internal_all_rows")
+SELECT
+    "uneven"."physical_sales_billing_customer_last_name" as "physical_sales_billing_customer_last_name",
+    "uneven"."physical_sales_billing_customer_first_name" as "physical_sales_billing_customer_first_name",
+    "uneven"."physical_sales_store_name" as "physical_sales_store_name",
+    "uneven"."peach_sales" as "peach_sales"
+FROM
+    "concerned"
+    INNER JOIN "uneven" on 1=1
 WHERE
-    "abundant"."peach_sales" > 0.05 * "vacuous"."avg_store_customer_sales"
+    "uneven"."peach_sales" > 0.05 * "concerned"."avg_store_customer_sales"
 ```
 
 ## Reference SQL (zquery log)

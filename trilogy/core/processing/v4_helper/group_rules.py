@@ -126,7 +126,14 @@ def partition_aggregates(
     latter needs line-grain rows.
     """
     by_key: dict[
-        tuple[str, str, frozenset[str], str | None, frozenset[str]],
+        tuple[
+            str,
+            str,
+            frozenset[str],
+            str | None,
+            frozenset[str],
+            frozenset[str],
+        ],
         GroupBucket,
     ] = {}
     for node, data in items:
@@ -136,19 +143,50 @@ def partition_aggregates(
         label = data.label
         grouping_mode = data.grouping_mode
         input_grain = data.aggregate_input_grain
-        key = (label, depth_label, grain, grouping_mode, input_grain)
+        source_sig = (
+            _stop_signature(
+                node,
+                Derivation.AGGREGATE.value,
+                concept_graph,
+                concept_attrs,
+                primary_group,
+                ensure_assigned,
+            )
+            if grouping_mode and grouping_mode != "standard"
+            else frozenset()
+        )
+        key_input_grain = (
+            input_grain if not grouping_mode or grouping_mode == "standard" else grain
+        )
+        key = (
+            label,
+            depth_label,
+            grain,
+            grouping_mode,
+            key_input_grain,
+            source_sig,
+        )
         bucket = by_key.get(key)
         if bucket is None:
             bucket = _bucket_for(depth_label, derivation, grain, label=label)
             disc: list[str] = []
             if grouping_mode and grouping_mode != "standard":
                 disc.append(f"grp:{grouping_mode}")
-            if input_grain and input_grain != grain:
+                sig_repr = "|".join(sorted(source_sig)) or "none"
+                disc.append(f"sig:{abs(hash(sig_repr)) % (16**6):06x}")
+            if (
+                (not grouping_mode or grouping_mode == "standard")
+                and input_grain
+                and input_grain != grain
+            ):
                 disc.append("input:" + "|".join(sorted(input_grain)))
-                bucket.aggregate_input_grain = input_grain
             if disc:
                 bucket.discriminator = ":".join(disc)
             by_key[key] = bucket
+        if input_grain:
+            bucket.aggregate_input_grain = frozenset(
+                set(bucket.aggregate_input_grain) | set(input_grain)
+            )
         _add_member(bucket, node, data)
     return list(by_key.values())
 

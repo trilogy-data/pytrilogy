@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6679 | 101 | 106.16 ms |
-| reference | 7151 | 99 | 75.85 ms |
-| v4 / ref | 0.93x | 1.02x | 1.40x |
+| v4 | 6767 | 104 | 105.92 ms |
+| reference | 7151 | 99 | 78.76 ms |
+| v4 / ref | 0.95x | 1.05x | 1.34x |
 
 ## Preql
 
@@ -88,6 +88,9 @@ FROM
     "memory"."web_returns" as "web_returns_web_returns"
     INNER JOIN "memory"."date_dim" as "web_returns_return_date_date" on "web_returns_web_returns"."WR_RETURNED_DATE_SK" = "web_returns_return_date_date"."D_DATE_SK"
     INNER JOIN "memory"."customer_address" as "web_returns_return_address_customer_address" on "web_returns_web_returns"."WR_RETURNING_ADDR_SK" = "web_returns_return_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "web_returns_return_address_customer_address"."CA_STATE" is not null
+
 GROUP BY
     1,
     2),
@@ -129,7 +132,7 @@ GROUP BY
     11,
     12,
     13),
-vacuous as (
+concerned as (
 SELECT
     "uneven"."web_returns_return_address_state" as "web_returns_return_address_state",
     avg("uneven"."customer_state_returns_2002") as "_virt_agg_avg_3885168128306444"
@@ -137,12 +140,12 @@ FROM
     "uneven"
 GROUP BY
     1),
-concerned as (
+sparkling as (
 SELECT
-    "vacuous"."web_returns_return_address_state" as "web_returns_return_address_state",
-    1.2 * "vacuous"."_virt_agg_avg_3885168128306444" as "scaled_state_returns_2002"
+    "concerned"."web_returns_return_address_state" as "web_returns_return_address_state",
+    1.2 * "concerned"."_virt_agg_avg_3885168128306444" as "scaled_state_returns_2002"
 FROM
-    "vacuous")
+    "concerned")
 SELECT
     "cooperative"."web_returns_billing_customer_text_id" as "web_returns_billing_customer_text_id",
     "cooperative"."web_returns_billing_customer_salutation" as "web_returns_billing_customer_salutation",
@@ -160,9 +163,9 @@ SELECT
 FROM
     "uneven"
     INNER JOIN "cooperative" on "uneven"."web_returns_billing_customer_id" = "cooperative"."web_returns_billing_customer_id"
-    INNER JOIN "concerned" on "uneven"."web_returns_return_address_state" is not distinct from "concerned"."web_returns_return_address_state"
+    INNER JOIN "sparkling" on "uneven"."web_returns_return_address_state" is not distinct from "sparkling"."web_returns_return_address_state"
 WHERE
-    "uneven"."customer_state_returns_2002" > "concerned"."scaled_state_returns_2002"
+    "uneven"."customer_state_returns_2002" > "sparkling"."scaled_state_returns_2002"
 
 ORDER BY 
     "cooperative"."web_returns_billing_customer_text_id" asc nulls first,

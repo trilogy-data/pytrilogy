@@ -18,9 +18,9 @@ ref rows: 3 (3 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3079 | 96 | 48.27 ms |
-| reference | 2979 | 86 | 89.87 ms |
-| v4 / ref | 1.03x | 1.12x | 0.54x |
+| v4 | 3252 | 103 | 32.61 ms |
+| reference | 2979 | 86 | 56.81 ms |
+| v4 / ref | 1.09x | 1.20x | 0.57x |
 
 ## Preql
 
@@ -100,32 +100,32 @@ FROM
     "cheerful"
 GROUP BY
     1),
-questionable as (
+abundant as (
 SELECT
     "thoughtful"."ss_store_state" as "ss_store_state",
     rank() over (order by "thoughtful"."state_total" desc ) as "state_rnk"
 FROM
     "thoughtful"),
-abundant as (
-SELECT
-    "questionable"."ss_store_state" as "_top_states_ts_state",
-    "questionable"."state_rnk" as "state_rnk"
-FROM
-    "questionable"),
 uneven as (
 SELECT
-    "abundant"."_top_states_ts_state" as "_top_states_ts_state"
+    "abundant"."ss_store_state" as "_top_states_ts_state",
+    "abundant"."state_rnk" as "state_rnk"
 FROM
-    "abundant"
-WHERE
-    "abundant"."state_rnk" <= 5
-),
+    "abundant"),
 yummy as (
 SELECT
-    "uneven"."_top_states_ts_state" as "top_states_ts_state"
+    "uneven"."_top_states_ts_state" as "_top_states_ts_state"
 FROM
-    "uneven"),
+    "uneven"
+WHERE
+    "uneven"."state_rnk" <= 5
+),
 juicy as (
+SELECT
+    "yummy"."_top_states_ts_state" as "top_states_ts_state"
+FROM
+    "yummy"),
+vacuous as (
 SELECT
     "cheerful"."ss_net_profit" as "ss_net_profit",
     "cheerful"."ss_store_county" as "ss_store_county",
@@ -133,46 +133,53 @@ SELECT
 FROM
     "cheerful"
 WHERE
-    "cheerful"."ss_store_state" in (select yummy."top_states_ts_state" from yummy where yummy."top_states_ts_state" is not null)
+    "cheerful"."ss_store_state" in (select juicy."top_states_ts_state" from juicy where juicy."top_states_ts_state" is not null)
 ),
-vacuous as (
-SELECT
-    "juicy"."ss_store_county" as "ss_store_county",
-    "juicy"."ss_store_state" as "ss_store_state",
-    grouping("juicy"."ss_store_county") as "g_county",
-    grouping("juicy"."ss_store_state") as "g_state",
-    sum("juicy"."ss_net_profit") as "total_sum"
-FROM
-    "juicy"
-GROUP BY
-    ROLLUP (2, 1)),
 concerned as (
 SELECT
-    "vacuous"."g_state" + "vacuous"."g_county" as "lochierarchy",
+    "vacuous"."ss_net_profit" as "ss_net_profit",
     "vacuous"."ss_store_county" as "ss_store_county",
-    "vacuous"."ss_store_state" as "ss_store_state",
-    "vacuous"."total_sum" as "total_sum",
-    rank() over (partition by "vacuous"."g_state" + "vacuous"."g_county",CASE
-	WHEN "vacuous"."g_county" = 0 THEN "vacuous"."ss_store_state"
-	ELSE null
-	END order by "vacuous"."total_sum" desc ) as "rank_within_parent"
+    "vacuous"."ss_store_state" as "ss_store_state"
 FROM
-    "vacuous")
+    "vacuous"),
+young as (
 SELECT
-    "concerned"."total_sum" as "total_sum",
-    "concerned"."ss_store_state" as "s_state",
-    "concerned"."ss_store_county" as "s_county",
-    "concerned"."lochierarchy" as "lochierarchy",
-    "concerned"."rank_within_parent" as "rank_within_parent"
+    "concerned"."ss_store_county" as "ss_store_county",
+    "concerned"."ss_store_state" as "ss_store_state",
+    grouping("concerned"."ss_store_county") as "g_county",
+    grouping("concerned"."ss_store_state") as "g_state",
+    sum("concerned"."ss_net_profit") as "total_sum"
 FROM
     "concerned"
+GROUP BY
+    ROLLUP (2, 1)),
+sparkling as (
+SELECT
+    "young"."g_state" + "young"."g_county" as "lochierarchy",
+    "young"."ss_store_county" as "ss_store_county",
+    "young"."ss_store_state" as "ss_store_state",
+    "young"."total_sum" as "total_sum",
+    rank() over (partition by "young"."g_state" + "young"."g_county",CASE
+	WHEN "young"."g_county" = 0 THEN "young"."ss_store_state"
+	ELSE null
+	END order by "young"."total_sum" desc ) as "rank_within_parent"
+FROM
+    "young")
+SELECT
+    "sparkling"."total_sum" as "total_sum",
+    "sparkling"."ss_store_state" as "s_state",
+    "sparkling"."ss_store_county" as "s_county",
+    "sparkling"."lochierarchy" as "lochierarchy",
+    "sparkling"."rank_within_parent" as "rank_within_parent"
+FROM
+    "sparkling"
 ORDER BY 
-    "concerned"."lochierarchy" desc nulls first,
+    "sparkling"."lochierarchy" desc nulls first,
     CASE
-	WHEN "concerned"."lochierarchy" = 0 THEN "concerned"."ss_store_state"
+	WHEN "sparkling"."lochierarchy" = 0 THEN "sparkling"."ss_store_state"
 	ELSE null
 	END asc nulls first,
-    "concerned"."rank_within_parent" asc nulls first
+    "sparkling"."rank_within_parent" asc nulls first
 LIMIT (100)
 ```
 

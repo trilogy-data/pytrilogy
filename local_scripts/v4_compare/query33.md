@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3995 | 65 | 28.93 ms |
-| reference | 4269 | 79 | 26.89 ms |
-| v4 / ref | 0.94x | 0.82x | 1.08x |
+| v4 | 4993 | 89 | 31.77 ms |
+| reference | 4269 | 79 | 30.41 ms |
+| v4 / ref | 1.17x | 1.13x | 1.04x |
 
 ## Preql
 
@@ -57,6 +57,9 @@ FROM
 questionable as (
 SELECT
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_id",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+     'CATALOG'  as "sales_sales_channel",
     "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
@@ -69,6 +72,9 @@ WHERE
 UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_id",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+     'STORE'  as "sales_sales_channel",
     "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
@@ -81,6 +87,9 @@ WHERE
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_id",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+     'WEB'  as "sales_sales_channel",
     "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
 FROM
     "memory"."web_sales" as "sales_web_sales_unified"
@@ -93,25 +102,40 @@ WHERE
 yummy as (
 SELECT
     "questionable"."sales_ext_sales_price" as "sales_ext_sales_price",
-    "questionable"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
+    "questionable"."sales_item_id" as "sales_item_id",
+    "questionable"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
+    "questionable"."sales_order_id" as "sales_order_id",
+    "questionable"."sales_sales_channel" as "sales_sales_channel"
 FROM
     "questionable"
 WHERE
     "questionable"."sales_item_manufacturer_id" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
-)
+),
+juicy as (
 SELECT
-    "yummy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
-    sum("yummy"."sales_ext_sales_price") as "total_sales"
+    "yummy"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "yummy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
 FROM
     "yummy"
 WHERE
     "yummy"."sales_item_manufacturer_id" in (select highfalutin."electronics_manuf_ids" from highfalutin where highfalutin."electronics_manuf_ids" is not null)
 
 GROUP BY
+    1,
+    2,
+    "yummy"."sales_item_id",
+    "yummy"."sales_order_id",
+    "yummy"."sales_sales_channel")
+SELECT
+    "juicy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
+    sum("juicy"."sales_ext_sales_price") as "total_sales"
+FROM
+    "juicy"
+GROUP BY
     1
 ORDER BY 
     "total_sales" asc nulls first,
-    "yummy"."sales_item_manufacturer_id" asc nulls first
+    "juicy"."sales_item_manufacturer_id" asc nulls first
 LIMIT (100)
 ```
 

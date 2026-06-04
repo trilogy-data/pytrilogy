@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3033 | 77 | 242.30 ms |
-| reference | 3934 | 107 | 354.11 ms |
-| v4 / ref | 0.77x | 0.72x | 0.68x |
+| v4 | 3874 | 103 | 295.58 ms |
+| reference | 3934 | 107 | 425.01 ms |
+| v4 / ref | 0.98x | 0.96x | 0.70x |
 
 ## Preql
 
@@ -122,50 +122,76 @@ WHERE
 cooperative as (
 SELECT
     "cheerful"."sales_item_id" as "sales_item_id",
-    cast("sales_date_date"."D_DATE" as date) as "sales_date_date",
-    max(CASE
-	WHEN "cheerful"."sales_sales_channel" = 'STORE' THEN 1
-	ELSE 0
-	END) as "store_has_row",
-    max(CASE
-	WHEN "cheerful"."sales_sales_channel" = 'WEB' THEN 1
-	ELSE 0
-	END) as "web_has_row",
-    sum(CASE WHEN "cheerful"."sales_sales_channel" = 'STORE' THEN "cheerful"."sales_sales_price" ELSE NULL END) as "store_daily",
-    sum(CASE WHEN "cheerful"."sales_sales_channel" = 'WEB' THEN "cheerful"."sales_sales_price" ELSE NULL END) as "web_daily"
+    "cheerful"."sales_sales_channel" as "sales_sales_channel",
+    "cheerful"."sales_sales_price" as "sales_sales_price",
+    cast("sales_date_date"."D_DATE" as date) as "sales_date_date"
 FROM
     "cheerful"
-    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
-GROUP BY
-    1,
-    2),
-uneven as (
+    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "cheerful"."sales_date_id" = "sales_date_date"."D_DATE_SK"),
+juicy as (
 SELECT
     "cooperative"."sales_date_date" as "sales_date_date",
     "cooperative"."sales_item_id" as "sales_item_id",
-    "cooperative"."store_has_row" as "store_has_row",
-    "cooperative"."web_has_row" as "web_has_row",
-    sum("cooperative"."store_daily") over (partition by "cooperative"."sales_item_id" order by "cooperative"."sales_date_date" asc ) as "store_cume",
-    sum("cooperative"."web_daily") over (partition by "cooperative"."sales_item_id" order by "cooperative"."sales_date_date" asc ) as "web_cume"
+    max(CASE
+	WHEN "cooperative"."sales_sales_channel" = 'STORE' THEN 1
+	ELSE 0
+	END) as "store_has_row",
+    max(CASE
+	WHEN "cooperative"."sales_sales_channel" = 'WEB' THEN 1
+	ELSE 0
+	END) as "web_has_row"
 FROM
-    "cooperative")
+    "cooperative"
+GROUP BY
+    1,
+    2),
+questionable as (
 SELECT
-    "uneven"."sales_item_id" as "item_sk",
-    "uneven"."sales_date_date" as "d_date",
+    "cooperative"."sales_date_date" as "sales_date_date",
+    "cooperative"."sales_item_id" as "sales_item_id",
+    sum(CASE WHEN "cooperative"."sales_sales_channel" = 'STORE' THEN "cooperative"."sales_sales_price" ELSE NULL END) as "store_daily",
+    sum(CASE WHEN "cooperative"."sales_sales_channel" = 'WEB' THEN "cooperative"."sales_sales_price" ELSE NULL END) as "web_daily"
+FROM
+    "cooperative"
+GROUP BY
+    1,
+    2),
+yummy as (
+SELECT
+    "questionable"."sales_date_date" as "sales_date_date",
+    "questionable"."sales_item_id" as "sales_item_id",
+    sum("questionable"."store_daily") over (partition by "questionable"."sales_item_id" order by "questionable"."sales_date_date" asc ) as "store_cume",
+    sum("questionable"."web_daily") over (partition by "questionable"."sales_item_id" order by "questionable"."sales_date_date" asc ) as "web_cume"
+FROM
+    "questionable"),
+vacuous as (
+SELECT
+    "juicy"."sales_date_date" as "sales_date_date",
+    "juicy"."sales_item_id" as "sales_item_id",
+    "juicy"."store_has_row" as "store_has_row",
+    "juicy"."web_has_row" as "web_has_row",
+    "yummy"."store_cume" as "store_cume",
+    "yummy"."web_cume" as "web_cume"
+FROM
+    "juicy"
+    LEFT OUTER JOIN "yummy" on "juicy"."sales_date_date" = "yummy"."sales_date_date" AND "juicy"."sales_item_id" = "yummy"."sales_item_id")
+SELECT
+    "vacuous"."sales_item_id" as "item_sk",
+    "vacuous"."sales_date_date" as "d_date",
     CASE
-	WHEN "uneven"."web_has_row" = 1 THEN "uneven"."web_cume"
+	WHEN "vacuous"."web_has_row" = 1 THEN "vacuous"."web_cume"
 	ELSE null
 	END as "web_sales",
     CASE
-	WHEN "uneven"."store_has_row" = 1 THEN "uneven"."store_cume"
+	WHEN "vacuous"."store_has_row" = 1 THEN "vacuous"."store_cume"
 	ELSE null
 	END as "store_sales",
-    "uneven"."web_cume" as "web_cumulative",
-    "uneven"."store_cume" as "store_cumulative"
+    "vacuous"."web_cume" as "web_cumulative",
+    "vacuous"."store_cume" as "store_cumulative"
 FROM
-    "uneven"
+    "vacuous"
 WHERE
-    "uneven"."web_cume" > "uneven"."store_cume"
+    "vacuous"."web_cume" > "vacuous"."store_cume"
 
 ORDER BY 
     "item_sk" asc nulls first,

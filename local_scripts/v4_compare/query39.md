@@ -18,9 +18,9 @@ ref rows: 243 (243 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2864 | 82 | 35.96 ms |
-| reference | 2041 | 36 | 35.60 ms |
-| v4 / ref | 1.40x | 2.28x | 1.01x |
+| v4 | 2821 | 82 | 35.36 ms |
+| reference | 2041 | 36 | 33.56 ms |
+| v4 / ref | 1.38x | 2.28x | 1.05x |
 
 ## Preql
 
@@ -94,12 +94,12 @@ WHERE
 GROUP BY
     1,
     2),
-questionable as (
+abundant as (
 SELECT
     1 as "dmoy1",
     2 as "dmoy2"
 ),
-cooperative as (
+questionable as (
 SELECT
     "wakeful"."inventory_item_id" as "isk1",
     "wakeful"."inventory_item_id" as "isk2",
@@ -117,47 +117,47 @@ SELECT
 	END as "cov2"
 FROM
     "wakeful"),
-abundant as (
+uneven as (
 SELECT
-    "cooperative"."cov1" as "cov1",
-    "cooperative"."cov2" as "cov2",
-    "cooperative"."isk1" as "isk1",
-    "cooperative"."isk2" as "isk2",
-    "cooperative"."mean1" as "mean1",
-    "cooperative"."mean2" as "mean2",
-    "cooperative"."wsk1" as "wsk1",
-    "cooperative"."wsk2" as "wsk2",
-    "questionable"."dmoy1" as "dmoy1",
-    "questionable"."dmoy2" as "dmoy2"
+    "abundant"."dmoy1" as "dmoy1",
+    "abundant"."dmoy2" as "dmoy2",
+    "questionable"."cov1" as "cov1",
+    "questionable"."cov2" as "cov2",
+    "questionable"."isk1" as "isk1",
+    "questionable"."isk2" as "isk2",
+    "questionable"."mean1" as "mean1",
+    "questionable"."mean2" as "mean2",
+    "questionable"."wsk1" as "wsk1",
+    "questionable"."wsk2" as "wsk2"
 FROM
-    "cooperative"
-    LEFT OUTER JOIN "questionable" on 1=1
+    "questionable"
+    LEFT OUTER JOIN "abundant" on 1=1
 WHERE
-    "cooperative"."cov1" > 1
+    "questionable"."cov1" > 1
 )
 SELECT
-    "abundant"."wsk1" as "wsk1",
-    "abundant"."isk1" as "isk1",
-    "abundant"."dmoy1" as "dmoy1",
-    "abundant"."mean1" as "mean1",
-    "abundant"."cov1" as "cov1",
-    "abundant"."wsk2" as "wsk2",
-    "abundant"."isk2" as "isk2",
-    "abundant"."dmoy2" as "dmoy2",
-    "abundant"."mean2" as "mean2",
-    "abundant"."cov2" as "cov2"
+    "uneven"."wsk1" as "wsk1",
+    "uneven"."isk1" as "isk1",
+    "uneven"."dmoy1" as "dmoy1",
+    "uneven"."mean1" as "mean1",
+    "uneven"."cov1" as "cov1",
+    "uneven"."wsk2" as "wsk2",
+    "uneven"."isk2" as "isk2",
+    "uneven"."dmoy2" as "dmoy2",
+    "uneven"."mean2" as "mean2",
+    "uneven"."cov2" as "cov2"
 FROM
-    "abundant"
+    "uneven"
 WHERE
-    "abundant"."cov2" > 1
+    "uneven"."cov2" > 1
 
 ORDER BY 
-    "abundant"."wsk1" asc nulls first,
-    "abundant"."isk1" asc nulls first,
-    "abundant"."mean1" asc nulls first,
-    "abundant"."cov1" asc nulls first,
-    "abundant"."mean2" asc nulls first,
-    "abundant"."cov2" asc nulls first
+    "uneven"."wsk1" asc nulls first,
+    "uneven"."isk1" asc nulls first,
+    "uneven"."mean1" asc nulls first,
+    "uneven"."cov1" asc nulls first,
+    "uneven"."mean2" asc nulls first,
+    "uneven"."cov2" asc nulls first
 ```
 
 ## Reference SQL (zquery log)

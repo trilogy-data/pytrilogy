@@ -18,9 +18,9 @@ ref rows: 92 (92 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3668 | 80 | 99.39 ms |
-| reference | 3573 | 71 | 118.82 ms |
-| v4 / ref | 1.03x | 1.13x | 0.84x |
+| v4 | 3239 | 69 | 92.27 ms |
+| reference | 3573 | 71 | 119.15 ms |
+| v4 / ref | 0.91x | 0.97x | 0.77x |
 
 ## Preql
 
@@ -69,17 +69,6 @@ limit 100
 WITH 
 thoughtful as (
 SELECT
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
-    "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
-     'CATALOG'  as "sales_sales_channel"
-FROM
-    "memory"."catalog_sales" as "sales_catalog_sales_unified"
-WHERE
-    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" is not null
-
-UNION ALL
-SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
     "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
@@ -115,7 +104,7 @@ GROUP BY
 HAVING
     "store_first_year" > 0
 ),
-yummy as (
+juicy as (
 SELECT
     "questionable"."store_first_year" as "store_first_year",
     "questionable"."store_second_year" as "store_second_year",
@@ -129,17 +118,17 @@ FROM
     "questionable"
     INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "questionable"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK")
 SELECT
-    "yummy"."sales_billing_customer_text_id" as "customer_id",
-    "yummy"."sales_billing_customer_first_name" as "customer_first_name",
-    "yummy"."sales_billing_customer_last_name" as "customer_last_name"
+    "juicy"."sales_billing_customer_text_id" as "customer_id",
+    "juicy"."sales_billing_customer_first_name" as "customer_first_name",
+    "juicy"."sales_billing_customer_last_name" as "customer_last_name"
 FROM
-    "yummy"
+    "juicy"
 WHERE
-    "yummy"."store_first_year" > 0 and "yummy"."web_first_year" > 0 and ( CASE
-	WHEN "yummy"."web_first_year" > 0 THEN "yummy"."web_second_year" / "yummy"."web_first_year"
+    "juicy"."store_first_year" > 0 and "juicy"."web_first_year" > 0 and ( CASE
+	WHEN "juicy"."web_first_year" > 0 THEN "juicy"."web_second_year" / "juicy"."web_first_year"
 	ELSE null
 	END ) > ( CASE
-	WHEN "yummy"."store_first_year" > 0 THEN "yummy"."store_second_year" / "yummy"."store_first_year"
+	WHEN "juicy"."store_first_year" > 0 THEN "juicy"."store_second_year" / "juicy"."store_first_year"
 	ELSE null
 	END )
 

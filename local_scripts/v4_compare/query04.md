@@ -18,9 +18,9 @@ ref rows: 6 (6 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6246 | 95 | 127.27 ms |
-| reference | 13006 | 278 | 538.54 ms |
-| v4 / ref | 0.48x | 0.34x | 0.24x |
+| v4 | 6678 | 109 | 93.76 ms |
+| reference | 13006 | 278 | 622.62 ms |
+| v4 / ref | 0.51x | 0.39x | 0.15x |
 
 ## Preql
 
@@ -82,48 +82,59 @@ WITH
 thoughtful as (
 SELECT
     "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
-    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_date_id",
     "sales_catalog_sales_unified"."CS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
     "sales_catalog_sales_unified"."CS_EXT_LIST_PRICE" as "sales_ext_list_price",
     "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_catalog_sales_unified"."CS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-     'CATALOG'  as "sales_sales_channel"
+     'CATALOG'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
     "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002)
+
 UNION ALL
 SELECT
     "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_id",
-    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_date_id",
     "sales_store_sales_unified"."SS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
     "sales_store_sales_unified"."SS_EXT_LIST_PRICE" as "sales_ext_list_price",
     "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_store_sales_unified"."SS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-     'STORE'  as "sales_sales_channel"
+     'STORE'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
     "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002)
+
 UNION ALL
 SELECT
     "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_id",
-    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_date_id",
     "sales_web_sales_unified"."WS_EXT_DISCOUNT_AMT" as "sales_ext_discount_amount",
     "sales_web_sales_unified"."WS_EXT_LIST_PRICE" as "sales_ext_list_price",
     "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
     "sales_web_sales_unified"."WS_EXT_WHOLESALE_COST" as "sales_ext_wholesale_cost",
-     'WEB'  as "sales_sales_channel"
+     'WEB'  as "sales_sales_channel",
+    "sales_date_date"."D_YEAR" as "sales_date_year"
 FROM
-    "memory"."web_sales" as "sales_web_sales_unified"),
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_date_date"."D_DATE_SK"
+WHERE
+    "sales_date_date"."D_YEAR" in (2001,2002)
+),
 questionable as (
 SELECT
     "thoughtful"."sales_billing_customer_id" as "sales_billing_customer_id",
-    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'CATALOG' and "sales_date_date"."D_YEAR" = 2001 THEN 2 ELSE NULL END) as "catalog_first_year",
-    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'CATALOG' and "sales_date_date"."D_YEAR" = 2002 THEN 2 ELSE NULL END) as "catalog_second_year",
-    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2001 THEN 2 ELSE NULL END) as "store_first_year",
-    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "sales_date_date"."D_YEAR" = 2002 THEN 2 ELSE NULL END) as "store_second_year",
-    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2001 THEN 2 ELSE NULL END) as "web_first_year",
-    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "sales_date_date"."D_YEAR" = 2002 THEN 2 ELSE NULL END) as "web_second_year"
+    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'CATALOG' and "thoughtful"."sales_date_year" = 2001 THEN 2 ELSE NULL END) as "catalog_first_year",
+    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'CATALOG' and "thoughtful"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "catalog_second_year",
+    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_year" = 2001 THEN 2 ELSE NULL END) as "store_first_year",
+    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'STORE' and "thoughtful"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "store_second_year",
+    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_year" = 2001 THEN 2 ELSE NULL END) as "web_first_year",
+    sum((( ( "thoughtful"."sales_ext_list_price" - "thoughtful"."sales_ext_wholesale_cost" ) - "thoughtful"."sales_ext_discount_amount" ) + "thoughtful"."sales_ext_sales_price") / CASE WHEN "thoughtful"."sales_sales_channel" = 'WEB' and "thoughtful"."sales_date_year" = 2002 THEN 2 ELSE NULL END) as "web_second_year"
 FROM
     "thoughtful"
-    LEFT OUTER JOIN "memory"."date_dim" as "sales_date_date" on "thoughtful"."sales_date_id" = "sales_date_date"."D_DATE_SK"
 GROUP BY
     1
 HAVING
@@ -144,7 +155,10 @@ SELECT
     "sales_billing_customer_customers"."C_PREFERRED_CUST_FLAG" as "sales_billing_customer_preferred_cust_flag"
 FROM
     "questionable"
-    LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "questionable"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK")
+    LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "questionable"."sales_billing_customer_id" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
+WHERE
+    "questionable"."store_first_year" > 0
+)
 SELECT
     "yummy"."sales_billing_customer_text_id" as "customer_id",
     "yummy"."sales_billing_customer_first_name" as "customer_first_name",
@@ -153,7 +167,7 @@ SELECT
 FROM
     "yummy"
 WHERE
-    "yummy"."store_first_year" > 0 and "yummy"."catalog_first_year" > 0 and "yummy"."web_first_year" > 0 and ( CASE
+    "yummy"."catalog_first_year" > 0 and "yummy"."web_first_year" > 0 and ( CASE
 	WHEN "yummy"."catalog_first_year" > 0 THEN "yummy"."catalog_second_year" / "yummy"."catalog_first_year"
 	ELSE null
 	END ) > ( CASE

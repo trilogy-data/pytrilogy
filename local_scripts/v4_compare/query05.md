@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 10669 | 230 | 171.41 ms |
-| reference | 10731 | 230 | 172.33 ms |
-| v4 / ref | 0.99x | 1.00x | 0.99x |
+| v4 | 10689 | 230 | 151.88 ms |
+| reference | 10731 | 230 | 151.42 ms |
+| v4 / ref | 1.00x | 1.00x | 1.00x |
 
 ## Preql
 
@@ -277,7 +277,7 @@ FROM
 WHERE
     "cheerful"."sales_return_channel_dim_text_id" is not null and cast("sales_return_date_date"."D_DATE" as date) BETWEEN date '2000-08-23' AND date '2000-09-06'
 ),
-charming as (
+protective as (
 SELECT
     "divergent"."channel_label" as "channel",
     "divergent"."sales_id_label" as "id",
@@ -298,17 +298,17 @@ FROM
 GROUP BY
     ROLLUP (1, 2))
 SELECT
-    coalesce("charming"."channel","young"."channel") as "channel",
-    coalesce("charming"."id","young"."id") as "id",
-    coalesce("charming"."sales_total_a",0.0) as "sales_metric",
+    coalesce("protective"."channel","young"."channel") as "channel",
+    coalesce("protective"."id","young"."id") as "id",
+    coalesce("protective"."sales_total_a",0.0) as "sales_metric",
     coalesce("young"."returns_total_b",0.0) as "returns_metric",
-    coalesce("charming"."profit_only_a",0.0) - coalesce("young"."loss_only_b",0.0) as "profit_metric"
+    coalesce("protective"."profit_only_a",0.0) - coalesce("young"."loss_only_b",0.0) as "profit_metric"
 FROM
-    "charming"
-    FULL JOIN "young" on "charming"."channel" is not distinct from "young"."channel" AND "charming"."id" is not distinct from "young"."id"
+    "protective"
+    FULL JOIN "young" on "protective"."channel" is not distinct from "young"."channel" AND "protective"."id" is not distinct from "young"."id"
 ORDER BY 
-    coalesce("charming"."channel","young"."channel") asc nulls first,
-    coalesce("charming"."id","young"."id") asc nulls first
+    coalesce("protective"."channel","young"."channel") asc nulls first,
+    coalesce("protective"."id","young"."id") asc nulls first
 LIMIT (100)
 ```
 

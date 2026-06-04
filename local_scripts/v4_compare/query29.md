@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3262 | 46 | 47.34 ms |
-| reference | 3863 | 63 | 52.86 ms |
-| v4 / ref | 0.84x | 0.73x | 0.90x |
+| v4 | 8999 | 155 | 103.20 ms |
+| reference | 3863 | 63 | 59.85 ms |
+| v4 / ref | 2.33x | 2.46x | 1.72x |
 
 ## Preql
 
@@ -90,13 +90,16 @@ limit 100
 WITH 
 uneven as (
 SELECT
-    "physical_sales_item_items"."I_ITEM_DESC" as "correlated_physical_sales_item_desc",
-    "physical_sales_item_items"."I_ITEM_ID" as "correlated_physical_sales_item_text_id",
-    "physical_sales_store_store"."S_STORE_ID" as "correlated_physical_sales_store_text_id",
-    "physical_sales_store_store"."S_STORE_NAME" as "correlated_physical_sales_store_name",
-    sum("catalog_sales_catalog_sales"."CS_QUANTITY") as "catalog_sales_quantity",
-    sum("physical_sales_store_returns"."SR_RETURN_QUANTITY") as "store_returns_quantity",
-    sum("physical_sales_store_sales"."SS_QUANTITY") as "store_sales_quantity"
+    "catalog_sales_catalog_sales"."CS_ORDER_NUMBER" as "catalog_sales_order_number",
+    "catalog_sales_catalog_sales"."CS_QUANTITY" as "catalog_sales_quantity",
+    "physical_sales_item_items"."I_ITEM_DESC" as "physical_sales_item_desc",
+    "physical_sales_item_items"."I_ITEM_ID" as "physical_sales_item_text_id",
+    "physical_sales_store_returns"."SR_RETURN_QUANTITY" as "physical_sales_return_quantity",
+    "physical_sales_store_sales"."SS_QUANTITY" as "physical_sales_quantity",
+    "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
+    "physical_sales_store_store"."S_STORE_ID" as "physical_sales_store_text_id",
+    "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name",
+    coalesce("catalog_sales_catalog_sales"."CS_ITEM_SK","physical_sales_item_items"."I_ITEM_SK","physical_sales_store_returns"."SR_ITEM_SK","physical_sales_store_sales"."SS_ITEM_SK") as "physical_sales_item_id"
 FROM
     "memory"."catalog_sales" as "catalog_sales_catalog_sales"
     INNER JOIN "memory"."date_dim" as "catalog_sales_date_date" on "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" = "catalog_sales_date_date"."D_DATE_SK"
@@ -108,7 +111,81 @@ FROM
     LEFT OUTER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
 WHERE
     "physical_sales_date_date"."D_MOY" = 9 and "physical_sales_date_date"."D_YEAR" = 1999 and "physical_sales_return_date_date"."D_MOY" BETWEEN 9 AND 12 and "physical_sales_return_date_date"."D_YEAR" = 1999 and "catalog_sales_date_date"."D_YEAR" in (1999,2000,2001) and "catalog_sales_catalog_sales"."CS_QUANTITY" > 0 and SR_RETURN_TIME_SK IS NOT NULL and "physical_sales_store_sales"."SS_CUSTOMER_SK" = "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK"
-
+),
+yummy as (
+SELECT
+    "uneven"."catalog_sales_order_number" as "correlated_catalog_sales_order_number",
+    "uneven"."catalog_sales_quantity" as "correlated_catalog_sales_quantity",
+    "uneven"."physical_sales_item_desc" as "correlated_physical_sales_item_desc",
+    "uneven"."physical_sales_item_id" as "correlated_physical_sales_item_id",
+    "uneven"."physical_sales_item_text_id" as "correlated_physical_sales_item_text_id",
+    "uneven"."physical_sales_quantity" as "correlated_physical_sales_quantity",
+    "uneven"."physical_sales_return_quantity" as "correlated_physical_sales_return_quantity",
+    "uneven"."physical_sales_store_name" as "correlated_physical_sales_store_name",
+    "uneven"."physical_sales_store_text_id" as "correlated_physical_sales_store_text_id",
+    "uneven"."physical_sales_ticket_number" as "correlated_physical_sales_ticket_number"
+FROM
+    "uneven"),
+concerned as (
+SELECT
+    "yummy"."correlated_physical_sales_item_desc" as "correlated_physical_sales_item_desc",
+    "yummy"."correlated_physical_sales_item_text_id" as "correlated_physical_sales_item_text_id",
+    "yummy"."correlated_physical_sales_quantity" as "correlated_physical_sales_quantity",
+    "yummy"."correlated_physical_sales_return_quantity" as "correlated_physical_sales_return_quantity",
+    "yummy"."correlated_physical_sales_store_name" as "correlated_physical_sales_store_name",
+    "yummy"."correlated_physical_sales_store_text_id" as "correlated_physical_sales_store_text_id"
+FROM
+    "yummy"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "yummy"."correlated_physical_sales_item_id",
+    "yummy"."correlated_physical_sales_ticket_number"),
+juicy as (
+SELECT
+    "yummy"."correlated_catalog_sales_quantity" as "correlated_catalog_sales_quantity",
+    "yummy"."correlated_physical_sales_item_desc" as "correlated_physical_sales_item_desc",
+    "yummy"."correlated_physical_sales_item_text_id" as "correlated_physical_sales_item_text_id",
+    "yummy"."correlated_physical_sales_store_name" as "correlated_physical_sales_store_name",
+    "yummy"."correlated_physical_sales_store_text_id" as "correlated_physical_sales_store_text_id"
+FROM
+    "yummy"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    "yummy"."correlated_catalog_sales_order_number",
+    "yummy"."correlated_physical_sales_item_id"),
+young as (
+SELECT
+    "concerned"."correlated_physical_sales_item_desc" as "correlated_physical_sales_item_desc",
+    "concerned"."correlated_physical_sales_item_text_id" as "correlated_physical_sales_item_text_id",
+    "concerned"."correlated_physical_sales_store_name" as "correlated_physical_sales_store_name",
+    "concerned"."correlated_physical_sales_store_text_id" as "correlated_physical_sales_store_text_id",
+    sum("concerned"."correlated_physical_sales_quantity") as "store_sales_quantity",
+    sum("concerned"."correlated_physical_sales_return_quantity") as "store_returns_quantity"
+FROM
+    "concerned"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+vacuous as (
+SELECT
+    "juicy"."correlated_physical_sales_item_desc" as "correlated_physical_sales_item_desc",
+    "juicy"."correlated_physical_sales_item_text_id" as "correlated_physical_sales_item_text_id",
+    "juicy"."correlated_physical_sales_store_name" as "correlated_physical_sales_store_name",
+    "juicy"."correlated_physical_sales_store_text_id" as "correlated_physical_sales_store_text_id",
+    sum("juicy"."correlated_catalog_sales_quantity") as "catalog_sales_quantity"
+FROM
+    "juicy"
 GROUP BY
     1,
     2,
@@ -116,22 +193,54 @@ GROUP BY
     4
 HAVING
     "catalog_sales_quantity" > 0
+),
+sparkling as (
+SELECT
+    "young"."correlated_physical_sales_item_desc" as "correlated_physical_sales_item_desc",
+    "young"."correlated_physical_sales_item_desc" as "store_sales_item_desc",
+    "young"."correlated_physical_sales_item_text_id" as "correlated_physical_sales_item_text_id",
+    "young"."correlated_physical_sales_item_text_id" as "store_sales_item_name",
+    "young"."correlated_physical_sales_store_name" as "correlated_physical_sales_store_name",
+    "young"."correlated_physical_sales_store_name" as "store_name",
+    "young"."correlated_physical_sales_store_text_id" as "correlated_physical_sales_store_text_id",
+    "young"."correlated_physical_sales_store_text_id" as "store_sales_store_text_id",
+    "young"."store_returns_quantity" as "store_returns_quantity",
+    "young"."store_sales_quantity" as "store_sales_quantity"
+FROM
+    "young"),
+abhorrent as (
+SELECT
+    "sparkling"."store_name" as "store_name",
+    "sparkling"."store_returns_quantity" as "store_returns_quantity",
+    "sparkling"."store_sales_item_desc" as "store_sales_item_desc",
+    "sparkling"."store_sales_item_name" as "store_sales_item_name",
+    "sparkling"."store_sales_quantity" as "store_sales_quantity",
+    "sparkling"."store_sales_store_text_id" as "store_sales_store_text_id",
+    "vacuous"."catalog_sales_quantity" as "catalog_sales_quantity"
+FROM
+    "sparkling"
+    INNER JOIN "vacuous" on "sparkling"."correlated_physical_sales_item_desc" = "vacuous"."correlated_physical_sales_item_desc" AND "sparkling"."correlated_physical_sales_item_text_id" = "vacuous"."correlated_physical_sales_item_text_id" AND "sparkling"."correlated_physical_sales_store_name" = "vacuous"."correlated_physical_sales_store_name" AND "sparkling"."correlated_physical_sales_store_text_id" = "vacuous"."correlated_physical_sales_store_text_id"
+WHERE
+    "vacuous"."catalog_sales_quantity" > 0
 )
 SELECT
-    "uneven"."correlated_physical_sales_item_text_id" as "store_sales_item_name",
-    "uneven"."correlated_physical_sales_item_desc" as "store_sales_item_desc",
-    "uneven"."correlated_physical_sales_store_text_id" as "store_sales_store_text_id",
-    "uneven"."correlated_physical_sales_store_name" as "store_name",
-    "uneven"."store_sales_quantity" as "store_sales_quantity",
-    "uneven"."store_returns_quantity" as "store_returns_quantity",
-    "uneven"."catalog_sales_quantity" as "catalog_sales_quantity"
+    "abhorrent"."store_sales_item_name" as "store_sales_item_name",
+    "abhorrent"."store_sales_item_desc" as "store_sales_item_desc",
+    "abhorrent"."store_sales_store_text_id" as "store_sales_store_text_id",
+    "abhorrent"."store_name" as "store_name",
+    "abhorrent"."store_sales_quantity" as "store_sales_quantity",
+    "abhorrent"."store_returns_quantity" as "store_returns_quantity",
+    "abhorrent"."catalog_sales_quantity" as "catalog_sales_quantity"
 FROM
-    "uneven"
+    "abhorrent"
+WHERE
+    "abhorrent"."catalog_sales_quantity" > 0
+
 ORDER BY 
-    "store_sales_item_name" asc,
-    "store_sales_item_desc" asc,
-    "store_sales_store_text_id" asc,
-    "store_name" asc
+    "abhorrent"."store_sales_item_name" asc,
+    "abhorrent"."store_sales_item_desc" asc,
+    "abhorrent"."store_sales_store_text_id" asc,
+    "abhorrent"."store_name" asc
 LIMIT (100)
 ```
 

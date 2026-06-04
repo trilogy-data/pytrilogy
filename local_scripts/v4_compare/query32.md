@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1396 | 36 | 28.28 ms |
-| reference | 1241 | 33 | 12.38 ms |
-| v4 / ref | 1.12x | 1.09x | 2.28x |
+| v4 | 1388 | 36 | 31.49 ms |
+| reference | 1241 | 33 | 12.66 ms |
+| v4 / ref | 1.12x | 1.09x | 2.49x |
 
 ## Preql
 
@@ -66,7 +66,7 @@ FROM
 WHERE
     "item_items"."I_MANUFACT_ID" = 48 and cast("sold_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 ),
-abundant as (
+uneven as (
 SELECT
     "thoughtful"."item_id" as "item_id",
     1.3 * "thoughtful"."_virt_agg_avg_5510773609506287" as "avg_item_disc"
@@ -76,9 +76,9 @@ SELECT
     sum("cheerful"."discount_amount") as "total_discount"
 FROM
     "cheerful"
-    INNER JOIN "abundant" on "cheerful"."item_id" = "abundant"."item_id"
+    INNER JOIN "uneven" on "cheerful"."item_id" = "uneven"."item_id"
 WHERE
-    "cheerful"."discount_amount" > "abundant"."avg_item_disc"
+    "cheerful"."discount_amount" > "uneven"."avg_item_disc"
 
 LIMIT (100)
 ```

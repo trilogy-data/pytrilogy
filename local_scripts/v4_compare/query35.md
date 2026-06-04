@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 9370 | 167 | 96.22 ms |
-| reference | 10103 | 157 | 120.01 ms |
-| v4 / ref | 0.93x | 1.06x | 0.80x |
+| v4 | 10281 | 187 | 117.36 ms |
+| reference | 10103 | 157 | 126.88 ms |
+| v4 / ref | 1.02x | 1.19x | 0.92x |
 
 ## Preql
 
@@ -163,6 +163,7 @@ FROM
 cheerful as (
 SELECT
     "customer_address_customer_address"."CA_STATE" as "customer_address_state",
+    "customer_customers"."C_CURRENT_CDEMO_SK" as "customer_demographics_id",
     "customer_customers"."C_CUSTOMER_SK" as "customer_id",
     "customer_demographics_customer_demographics"."CD_DEP_COLLEGE_COUNT" as "customer_demographics_college_dependent_count",
     "customer_demographics_customer_demographics"."CD_DEP_COUNT" as "customer_demographics_dependent_count",
@@ -183,6 +184,7 @@ SELECT
     "cheerful"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
     "cheerful"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
     "cheerful"."customer_demographics_gender" as "customer_demographics_gender",
+    "cheerful"."customer_demographics_id" as "customer_demographics_id",
     "cheerful"."customer_demographics_marital_status" as "customer_demographics_marital_status",
     "cheerful"."customer_id" as "customer_id"
 FROM
@@ -194,16 +196,7 @@ SELECT
     "friendly"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
     "friendly"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
     "friendly"."customer_demographics_gender" as "customer_demographics_gender",
-    "friendly"."customer_demographics_marital_status" as "customer_demographics_marital_status",
-    avg("friendly"."customer_demographics_college_dependent_count") as "avg3",
-    avg("friendly"."customer_demographics_dependent_count") as "avg1",
-    avg("friendly"."customer_demographics_employed_dependent_count") as "avg2",
-    max("friendly"."customer_demographics_college_dependent_count") as "max3",
-    max("friendly"."customer_demographics_dependent_count") as "max1",
-    max("friendly"."customer_demographics_employed_dependent_count") as "max2",
-    min("friendly"."customer_demographics_college_dependent_count") as "min3",
-    min("friendly"."customer_demographics_dependent_count") as "min1",
-    min("friendly"."customer_demographics_employed_dependent_count") as "min2"
+    "friendly"."customer_demographics_marital_status" as "customer_demographics_marital_status"
 FROM
     "friendly"
 GROUP BY
@@ -212,7 +205,8 @@ GROUP BY
     3,
     4,
     5,
-    6),
+    6,
+    "friendly"."customer_demographics_id"),
 kaput as (
 SELECT
     "friendly"."customer_address_state" as "customer_address_state",
@@ -232,36 +226,62 @@ GROUP BY
     3,
     4,
     5,
-    6)
+    6),
+charming as (
 SELECT
-    coalesce("busy"."customer_address_state","kaput"."customer_address_state") as "customer_address_state",
-    coalesce("busy"."customer_demographics_gender","kaput"."customer_demographics_gender") as "customer_demographics_gender",
-    coalesce("busy"."customer_demographics_marital_status","kaput"."customer_demographics_marital_status") as "customer_demographics_marital_status",
-    coalesce("busy"."customer_demographics_dependent_count","kaput"."customer_demographics_dependent_count") as "customer_demographics_dependent_count",
-    coalesce("kaput"."cnt1",0) as "cnt1",
-    "busy"."min1" as "min1",
-    "busy"."max1" as "max1",
-    "busy"."avg1" as "avg1",
-    coalesce("busy"."customer_demographics_employed_dependent_count","kaput"."customer_demographics_employed_dependent_count") as "customer_demographics_employed_dependent_count",
-    coalesce("kaput"."cnt2",0) as "cnt2",
-    "busy"."min2" as "min2",
-    "busy"."max2" as "max2",
-    "busy"."avg2" as "avg2",
-    coalesce("busy"."customer_demographics_college_dependent_count","kaput"."customer_demographics_college_dependent_count") as "customer_demographics_college_dependent_count",
-    coalesce("kaput"."cnt3",0) as "cnt3",
-    "busy"."min3" as "min3",
-    "busy"."max3" as "max3",
-    "busy"."avg3" as "avg3"
+    "busy"."customer_address_state" as "customer_address_state",
+    "busy"."customer_demographics_college_dependent_count" as "customer_demographics_college_dependent_count",
+    "busy"."customer_demographics_dependent_count" as "customer_demographics_dependent_count",
+    "busy"."customer_demographics_employed_dependent_count" as "customer_demographics_employed_dependent_count",
+    "busy"."customer_demographics_gender" as "customer_demographics_gender",
+    "busy"."customer_demographics_marital_status" as "customer_demographics_marital_status",
+    avg("busy"."customer_demographics_college_dependent_count") as "avg3",
+    avg("busy"."customer_demographics_dependent_count") as "avg1",
+    avg("busy"."customer_demographics_employed_dependent_count") as "avg2",
+    max("busy"."customer_demographics_college_dependent_count") as "max3",
+    max("busy"."customer_demographics_dependent_count") as "max1",
+    max("busy"."customer_demographics_employed_dependent_count") as "max2",
+    min("busy"."customer_demographics_college_dependent_count") as "min3",
+    min("busy"."customer_demographics_dependent_count") as "min1",
+    min("busy"."customer_demographics_employed_dependent_count") as "min2"
 FROM
     "busy"
-    INNER JOIN "kaput" on "busy"."customer_address_state" is not distinct from "kaput"."customer_address_state" AND "busy"."customer_demographics_college_dependent_count" = "kaput"."customer_demographics_college_dependent_count" AND "busy"."customer_demographics_dependent_count" = "kaput"."customer_demographics_dependent_count" AND "busy"."customer_demographics_employed_dependent_count" = "kaput"."customer_demographics_employed_dependent_count" AND "busy"."customer_demographics_gender" = "kaput"."customer_demographics_gender" AND "busy"."customer_demographics_marital_status" = "kaput"."customer_demographics_marital_status"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6)
+SELECT
+    coalesce("charming"."customer_address_state","kaput"."customer_address_state") as "customer_address_state",
+    coalesce("charming"."customer_demographics_gender","kaput"."customer_demographics_gender") as "customer_demographics_gender",
+    coalesce("charming"."customer_demographics_marital_status","kaput"."customer_demographics_marital_status") as "customer_demographics_marital_status",
+    coalesce("charming"."customer_demographics_dependent_count","kaput"."customer_demographics_dependent_count") as "customer_demographics_dependent_count",
+    coalesce("kaput"."cnt1",0) as "cnt1",
+    "charming"."min1" as "min1",
+    "charming"."max1" as "max1",
+    "charming"."avg1" as "avg1",
+    coalesce("charming"."customer_demographics_employed_dependent_count","kaput"."customer_demographics_employed_dependent_count") as "customer_demographics_employed_dependent_count",
+    coalesce("kaput"."cnt2",0) as "cnt2",
+    "charming"."min2" as "min2",
+    "charming"."max2" as "max2",
+    "charming"."avg2" as "avg2",
+    coalesce("charming"."customer_demographics_college_dependent_count","kaput"."customer_demographics_college_dependent_count") as "customer_demographics_college_dependent_count",
+    coalesce("kaput"."cnt3",0) as "cnt3",
+    "charming"."min3" as "min3",
+    "charming"."max3" as "max3",
+    "charming"."avg3" as "avg3"
+FROM
+    "charming"
+    INNER JOIN "kaput" on "charming"."customer_address_state" is not distinct from "kaput"."customer_address_state" AND "charming"."customer_demographics_college_dependent_count" = "kaput"."customer_demographics_college_dependent_count" AND "charming"."customer_demographics_dependent_count" = "kaput"."customer_demographics_dependent_count" AND "charming"."customer_demographics_employed_dependent_count" = "kaput"."customer_demographics_employed_dependent_count" AND "charming"."customer_demographics_gender" = "kaput"."customer_demographics_gender" AND "charming"."customer_demographics_marital_status" = "kaput"."customer_demographics_marital_status"
 ORDER BY 
-    coalesce("busy"."customer_address_state","kaput"."customer_address_state") asc nulls first,
-    coalesce("busy"."customer_demographics_gender","kaput"."customer_demographics_gender") asc nulls first,
-    coalesce("busy"."customer_demographics_marital_status","kaput"."customer_demographics_marital_status") asc nulls first,
-    coalesce("busy"."customer_demographics_dependent_count","kaput"."customer_demographics_dependent_count") asc nulls first,
-    coalesce("busy"."customer_demographics_employed_dependent_count","kaput"."customer_demographics_employed_dependent_count") asc nulls first,
-    coalesce("busy"."customer_demographics_college_dependent_count","kaput"."customer_demographics_college_dependent_count") asc nulls first
+    coalesce("charming"."customer_address_state","kaput"."customer_address_state") asc nulls first,
+    coalesce("charming"."customer_demographics_gender","kaput"."customer_demographics_gender") asc nulls first,
+    coalesce("charming"."customer_demographics_marital_status","kaput"."customer_demographics_marital_status") asc nulls first,
+    coalesce("charming"."customer_demographics_dependent_count","kaput"."customer_demographics_dependent_count") asc nulls first,
+    coalesce("charming"."customer_demographics_employed_dependent_count","kaput"."customer_demographics_employed_dependent_count") asc nulls first,
+    coalesce("charming"."customer_demographics_college_dependent_count","kaput"."customer_demographics_college_dependent_count") asc nulls first
 LIMIT (100)
 ```
 

@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2977 | 72 | 62.25 ms |
-| reference | 2479 | 61 | 76.29 ms |
-| v4 / ref | 1.20x | 1.18x | 0.82x |
+| v4 | 3372 | 85 | 75.77 ms |
+| reference | 2479 | 61 | 64.21 ms |
+| v4 / ref | 1.36x | 1.39x | 1.18x |
 
 ## Preql
 
@@ -472,7 +472,7 @@ SELECT
     SUBSTRING(cast("quizzical"."zips_pre" as string),1,5) as "zips"
 FROM
     "quizzical"),
-abundant as (
+uneven as (
 SELECT
     "thoughtful"."customer_address_zip" as "customer_address_zip"
 FROM
@@ -488,42 +488,55 @@ FROM
     "thoughtful"
 GROUP BY
     1),
-uneven as (
+yummy as (
 SELECT
     SUBSTRING(CASE WHEN "cooperative"."zip_p_count" > 10 THEN "cooperative"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
 FROM
-    "abundant"
-    INNER JOIN "cooperative" on "abundant"."customer_address_zip" = "cooperative"."customer_address_zip"),
-vacuous as (
-SELECT
-    CASE WHEN "highfalutin"."zips" in (select uneven."_virt_func_substring_4293448550966409" from uneven where uneven."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END as "_virt_filter_zips_2159288073185462"
-FROM
-    "highfalutin"),
+    "uneven"
+    INNER JOIN "cooperative" on "uneven"."customer_address_zip" = "cooperative"."customer_address_zip"),
 concerned as (
 SELECT
-    SUBSTRING("vacuous"."_virt_filter_zips_2159288073185462",1,2) as "final_zips"
+    CASE WHEN "highfalutin"."zips" in (select yummy."_virt_func_substring_4293448550966409" from yummy where yummy."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END as "_virt_filter_zips_2159288073185462"
 FROM
-    "vacuous"),
-sweltering as (
+    "highfalutin"),
+young as (
 SELECT
+    SUBSTRING("concerned"."_virt_filter_zips_2159288073185462",1,2) as "final_zips"
+FROM
+    "concerned"),
+late as (
+SELECT
+    "physical_sales_store_sales"."SS_ITEM_SK" as "physical_sales_item_id",
     "physical_sales_store_sales"."SS_NET_PROFIT" as "physical_sales_net_profit",
+    "physical_sales_store_sales"."SS_TICKET_NUMBER" as "physical_sales_ticket_number",
     "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name"
 FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
 WHERE
-    "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select concerned."final_zips" from concerned where concerned."final_zips" is not null)
-)
+    "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select young."final_zips" from young where young."final_zips" is not null)
+),
+macho as (
 SELECT
-    "sweltering"."physical_sales_store_name" as "physical_sales_store_name",
-    sum("sweltering"."physical_sales_net_profit") as "store_net_profit"
+    "late"."physical_sales_net_profit" as "physical_sales_net_profit",
+    "late"."physical_sales_store_name" as "physical_sales_store_name"
 FROM
-    "sweltering"
+    "late"
+GROUP BY
+    1,
+    2,
+    "late"."physical_sales_item_id",
+    "late"."physical_sales_ticket_number")
+SELECT
+    "macho"."physical_sales_store_name" as "physical_sales_store_name",
+    sum("macho"."physical_sales_net_profit") as "store_net_profit"
+FROM
+    "macho"
 GROUP BY
     1
 ORDER BY 
-    "sweltering"."physical_sales_store_name" asc
+    "macho"."physical_sales_store_name" asc
 LIMIT (100)
 ```
 

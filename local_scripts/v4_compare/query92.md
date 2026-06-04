@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1479 | 38 | 19.68 ms |
-| reference | 1318 | 35 | 9.86 ms |
-| v4 / ref | 1.12x | 1.09x | 1.99x |
+| v4 | 1471 | 38 | 22.74 ms |
+| reference | 1318 | 35 | 13.15 ms |
+| v4 / ref | 1.12x | 1.09x | 1.73x |
 
 ## Preql
 
@@ -67,7 +67,7 @@ FROM
 WHERE
     "ws_item_items"."I_MANUFACT_ID" = 350 and cast("ws_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 ),
-abundant as (
+uneven as (
 SELECT
     "thoughtful"."ws_item_id" as "ws_item_id",
     1.3 * "thoughtful"."_virt_agg_avg_5364249642270353" as "avg_item_disc"
@@ -77,9 +77,9 @@ SELECT
     sum("cheerful"."ws_ext_discount_amount") as "excess_discount_amount"
 FROM
     "cheerful"
-    INNER JOIN "abundant" on "cheerful"."ws_item_id" = "abundant"."ws_item_id"
+    INNER JOIN "uneven" on "cheerful"."ws_item_id" = "uneven"."ws_item_id"
 WHERE
-    "cheerful"."ws_ext_discount_amount" > "abundant"."avg_item_disc"
+    "cheerful"."ws_ext_discount_amount" > "uneven"."avg_item_disc"
 
 ORDER BY 
     "excess_discount_amount" asc nulls first

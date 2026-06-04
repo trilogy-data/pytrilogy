@@ -18,9 +18,9 @@ ref rows: 34 (34 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 5732 | 124 | 40.91 ms |
-| reference | 5628 | 128 | 43.14 ms |
-| v4 / ref | 1.02x | 0.97x | 0.95x |
+| v4 | 5758 | 124 | 42.31 ms |
+| reference | 5628 | 128 | 39.71 ms |
+| v4 / ref | 1.02x | 0.97x | 1.07x |
 
 ## Preql
 
@@ -167,7 +167,7 @@ WHERE
 GROUP BY
     1,
     2),
-vacuous as (
+concerned as (
 SELECT
     "yummy"."sales_item_id" as "sales_item_id",
     "yummy"."sales_sales_channel" as "sales_sales_channel",
@@ -178,24 +178,24 @@ FROM
     "yummy")
 SELECT
     CASE
-	WHEN "vacuous"."sales_sales_channel" = 'WEB' THEN 'web'
-	WHEN "vacuous"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
-	WHEN "vacuous"."sales_sales_channel" = 'STORE' THEN 'store'
+	WHEN "concerned"."sales_sales_channel" = 'WEB' THEN 'web'
+	WHEN "concerned"."sales_sales_channel" = 'CATALOG' THEN 'catalog'
+	WHEN "concerned"."sales_sales_channel" = 'STORE' THEN 'store'
 	ELSE null
 	END as "channel",
-    "vacuous"."sales_item_id" as "item",
-    "vacuous"."return_ratio" as "return_ratio",
-    "vacuous"."return_rank" as "return_rank",
-    "vacuous"."currency_rank" as "currency_rank"
+    "concerned"."sales_item_id" as "item",
+    "concerned"."return_ratio" as "return_ratio",
+    "concerned"."return_rank" as "return_rank",
+    "concerned"."currency_rank" as "currency_rank"
 FROM
-    "vacuous"
+    "concerned"
 WHERE
-    "vacuous"."return_rank" <= 10 or "vacuous"."currency_rank" <= 10
+    "concerned"."return_rank" <= 10 or "concerned"."currency_rank" <= 10
 
 ORDER BY 
     "channel" asc nulls first,
-    "vacuous"."return_rank" asc nulls first,
-    "vacuous"."currency_rank" asc nulls first,
+    "concerned"."return_rank" asc nulls first,
+    "concerned"."currency_rank" asc nulls first,
     "item" asc nulls first
 LIMIT (100)
 ```

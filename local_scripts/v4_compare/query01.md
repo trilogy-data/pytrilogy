@@ -18,9 +18,9 @@ ref rows: 100 (92 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1652 | 42 | 101.28 ms |
-| reference | 1652 | 42 | 98.90 ms |
-| v4 / ref | 1.00x | 1.00x | 1.02x |
+| v4 | 1632 | 42 | 86.45 ms |
+| reference | 1652 | 42 | 91.17 ms |
+| v4 / ref | 0.99x | 1.00x | 0.95x |
 
 ## Preql
 
@@ -64,7 +64,7 @@ GROUP BY
     1,
     2,
     "returns_billing_customer_customers"."C_CUSTOMER_SK"),
-questionable as (
+abundant as (
 SELECT
     "thoughtful"."returns_store_id" as "returns_store_id",
     avg("thoughtful"."total_returns") as "avg_store_returns"
@@ -76,13 +76,13 @@ SELECT
     "thoughtful"."returns_billing_customer_text_id" as "returns_billing_customer_text_id"
 FROM
     "thoughtful"
-    INNER JOIN "questionable" on "thoughtful"."returns_store_id" = "questionable"."returns_store_id"
+    INNER JOIN "abundant" on "thoughtful"."returns_store_id" = "abundant"."returns_store_id"
 WHERE
-    "thoughtful"."total_returns" > ( 1.2 * "questionable"."avg_store_returns" )
+    "thoughtful"."total_returns" > ( 1.2 * "abundant"."avg_store_returns" )
 
 GROUP BY
     1,
-    "questionable"."avg_store_returns",
+    "abundant"."avg_store_returns",
     "thoughtful"."returns_store_id",
     "thoughtful"."total_returns"
 ORDER BY 
