@@ -43,7 +43,7 @@ def find_preql_files(path: PathLib) -> list[str]:
 
 @argument("input", type=Path(exists=True))
 @pass_context
-def fmt(ctx, input):
+def fmt(ctx, input) -> None:
     """Format a Trilogy script file or directory."""
     start = datetime.now()
     input_path = PathLib(input)

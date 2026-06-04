@@ -1117,7 +1117,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     pseudonyms: set[str] = dc_field(default_factory=set)
     address: str = dc_field(init=False, repr=False, compare=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.namespace = self.namespace or DEFAULT_NAMESPACE
         self.address = f"{self.namespace}.{self.name}"
         self.metadata = self.metadata or Metadata()
