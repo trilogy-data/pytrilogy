@@ -1409,3 +1409,322 @@ def test_tool_schemas_are_valid_json_schema_objects():
     for tool in ALL_TOOLS:
         assert tool.input_schema["type"] == "object"
         assert "properties" in tool.input_schema
+
+
+# --- --toolset sql ---
+
+
+def test_toolset_sql_swaps_tools_and_prompt(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    captured: dict = {}
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **kw):
+        captured["tool_names"] = {t.name for t in (tools or [])}
+        captured["system_prompt"] = conv.messages[0].content
+        captured["handlers"] = kw.get("handlers")
+        state.done = True
+        state.farewell = "done"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+
+    result = CliRunner().invoke(cli, ["agent", "--toolset", "sql", "answer q01"])
+    assert result.exit_code == 0, result.output
+    assert captured["tool_names"] == {
+        "write_file",
+        "read_file",
+        "list_files",
+        "run_file",
+        "run_query",
+        "return_control_to_user",
+    }
+    assert "plain DuckDB" in captured["system_prompt"]
+    assert captured["handlers"] is not None
+
+
+def _agent_toml(tmp_path, body: str) -> None:
+    (tmp_path / "trilogy.toml").write_text(
+        f'[engine]\ndialect = "duck_db"\n\n[agent]\n{body}\n', encoding="utf-8"
+    )
+
+
+def test_disable_todo_drops_todo_tool_and_switches_prompt(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    _agent_toml(tmp_path, "disable_todo = true")
+    captured: dict = {}
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **kw):
+        captured["tool_names"] = {t.name for t in (tools or [])}
+        captured["system_prompt"] = conv.messages[0].content
+        state.done = True
+        state.farewell = "done"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+    result = CliRunner().invoke(cli, ["agent", "do thing"])
+    assert result.exit_code == 0, result.output
+    assert "todo" not in captured["tool_names"]
+    assert captured["system_prompt"] == agent_mod.NO_TODO_SYSTEM_PROMPT
+
+
+def test_quiet_and_disable_todo_uses_combined_prompt(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    _agent_toml(tmp_path, "disable_todo = true\nquiet = true")
+    captured: dict = {}
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **kw):
+        captured["system_prompt"] = conv.messages[0].content
+        state.done = True
+        state.farewell = "done"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+    result = CliRunner().invoke(cli, ["agent", "do thing"])
+    assert result.exit_code == 0, result.output
+    assert captured["system_prompt"] == agent_mod.QUIET_NO_TODO_SYSTEM_PROMPT
+
+
+def test_disable_db_introspection_drops_database_bullet(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    _agent_toml(tmp_path, "allow_database_introspection = false")
+    captured: dict = {}
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **kw):
+        captured["system_prompt"] = conv.messages[0].content
+        captured["allow_db"] = state.allow_db_introspection
+        state.done = True
+        state.farewell = "done"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+    result = CliRunner().invoke(cli, ["agent", "do thing"])
+    assert result.exit_code == 0, result.output
+    assert captured["allow_db"] is False
+    # The database introspection bullet is dropped from the instructions.
+    assert "list the tables in the configured database" not in captured["system_prompt"]
+    assert captured["system_prompt"] == agent_mod.get_agent_instructions(
+        include_show=True, include_todo=True, include_database=False
+    )
+
+
+def test_interactive_followup_dumps_conversation_log(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from trilogy.scripts.trilogy import cli
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    log_path = tmp_path / "trace.jsonl"
+
+    def fake_run_turn(conv, state, max_iterations, log_path=None, tools=None, **kw):
+        state.done = True
+        state.farewell = "done"
+
+    monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
+    result = CliRunner().invoke(
+        cli,
+        ["agent", "-i", "--log-file", str(log_path), "first"],
+        input="follow up\nexit\n",
+    )
+    assert result.exit_code == 0, result.output
+    # The interactive followup path dumps a sidecar conversation file.
+    assert (tmp_path / "trace.conversation.txt").exists()
+
+
+# --- reviewer fall-open on failure ---
+
+
+def test_validate_completion_falls_open_when_reviewer_errors():
+    from trilogy.scripts.agent import _validate_completion
+
+    class BoomProvider(LLMProvider):
+        def __init__(self):
+            super().__init__("boom", "k", "m", Provider.OPENAI)
+
+        def generate_completion(self, options, history):
+            raise RuntimeError("reviewer down")
+
+    is_done, note = _validate_completion(
+        BoomProvider(), "do the thing", [LLMMessage(role="user", content="hi")]
+    )
+    assert is_done is True
+    assert "reviewer unavailable" in note
+
+
+# --- force_return bypasses the reviewer ---
+
+
+def test_run_turn_force_return_bypasses_reviewer():
+    from trilogy.scripts.agent_sql_tools import SQL_TOOL_HANDLERS
+
+    class AlwaysNotDoneReviewer(LLMProvider):
+        def __init__(self):
+            super().__init__("rev", "k", "m", Provider.OPENAI)
+
+        def generate_completion(self, options, history):
+            return LLMResponse(
+                text="NOT_DONE",
+                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            )
+
+    provider = ScriptedProvider(
+        responses=[
+            make_response(call("return_control_to_user", message="x", force=True))
+        ]
+    )
+    conv = make_conv(provider)
+    state = AgentState()
+    _run_turn(
+        conv,
+        state,
+        max_iterations=5,
+        provider=AlwaysNotDoneReviewer(),
+        original_task="do the thing",
+        handlers=SQL_TOOL_HANDLERS,
+    )
+    assert state.done is True
+    assert state.force_return is True
+    # Reviewer never got a chance to kick back.
+    assert state.submit_kickbacks == 0
+
+
+# --- dump formatting helpers ---
+
+
+def test_format_arg_empty_list_and_dict():
+    assert agent_mod._format_arg("xs", [], 0) == ["xs: []"]
+    assert agent_mod._format_arg("d", {}, 0) == ["d: {}"]
+
+
+def test_format_arg_nested_dict_expands_per_key():
+    out = agent_mod._format_arg("opts", {"a": 1, "b": 2}, 0)
+    assert out[0] == "opts:"
+    assert any("a: 1" in ln for ln in out)
+    assert any("b: 2" in ln for ln in out)
+
+
+def test_format_tool_call_non_dict_arguments():
+    lines = agent_mod._format_tool_call({"name": "todo", "arguments": ["a", "b"]})
+    assert lines[0] == "[tool_call] todo"
+    assert any("a" in ln for ln in lines[1:])
+
+
+def test_try_parse_tool_result_rejects_bad_json_and_wrong_shape():
+    assert agent_mod._try_parse_tool_result("not json") is None
+    assert agent_mod._try_parse_tool_result("{bad json}") is None
+    assert agent_mod._try_parse_tool_result('{"tool": "x"}') is None
+    assert agent_mod._try_parse_tool_result('{"tool": "trilogy", "result": "ok"}') == {
+        "tool": "trilogy",
+        "result": "ok",
+    }
+
+
+def test_dump_conversation_block_wraps_single_long_line(tmp_path):
+    from trilogy.ai.conversation import Conversation
+    from trilogy.scripts.agent import _dump_conversation
+
+    provider = ScriptedProvider(responses=[])
+    conv = Conversation.create(provider, model_prompt="sys")
+    conv.add_message("hi", role="user")
+    long_line = "word " * 60
+    msg = LLMMessage(role="assistant", content="")
+    msg.model_info = {
+        "tool_calls": [{"name": "trilogy", "arguments": {"args": [long_line]}}]
+    }
+    conv.messages.append(msg)
+    log_path = tmp_path / "session.log"
+    log_path.write_text("", encoding="utf-8")
+    _dump_conversation(conv, log_path)
+    dump = (tmp_path / "session.conversation.txt").read_text(encoding="utf-8")
+    # A single long line must wrap across multiple <=80-col lines.
+    assert all(len(line) <= 80 for line in dump.splitlines())
+    assert sum("word" in line for line in dump.splitlines()) > 1
+
+
+# --- truncate_json_events ---
+
+
+def test_truncate_json_events_passthrough_under_limit():
+    text = '{"a": 1}\n{"b": 2}'
+    assert agent_tools_mod.truncate_json_events(text, 1000) == text
+
+
+def test_truncate_json_events_keeps_whole_events_and_appends_note():
+    text = "\n".join('{"event": %d}' % i for i in range(20))
+    out = agent_tools_mod.truncate_json_events(text, 40)
+    # Only whole leading events survive, then a synthetic truncation event.
+    assert '{"event": 0}' in out
+    assert "output_truncated" in out
+    assert "dropped_events" in out
+    # The tail events must have been dropped.
+    assert '{"event": 19}' not in out
+
+
+def test_truncate_json_events_handles_trailing_whitespace():
+    text = "\n".join('{"event": %d}' % i for i in range(20)) + "\n  \n"
+    out = agent_tools_mod.truncate_json_events(text, 40)
+    assert '{"event": 0}' in out
+    assert "output_truncated" in out
+
+
+def test_truncate_json_events_keeps_at_least_first_event():
+    text = '{"big": "%s"}' % ("x" * 200)
+    out = agent_tools_mod.truncate_json_events(text + '\n{"second": 1}', 10)
+    assert '"big"' in out
+    assert "output_truncated" in out
+
+
+def test_truncate_json_events_non_json_falls_back_to_middle():
+    text = "plain rich output " * 50
+    out = agent_tools_mod.truncate_json_events(text, 80)
+    assert "truncated" in out
+    assert "output_truncated" not in out
+
+
+# --- _explore_output_cap ---
+
+
+def test_explore_output_cap_non_explore_uses_general():
+    assert agent_tools_mod._explore_output_cap("run", [], 50000) == 50000
+
+
+def test_explore_output_cap_narrow_regex_uses_general():
+    args = ["explore", "raw/sales.preql", "--regex", "price"]
+    assert agent_tools_mod._explore_output_cap("explore", args, 50000) == 50000
+
+
+def test_explore_output_cap_broad_call_uses_tighter_cap():
+    args = ["explore", "raw/sales.preql"]
+    cap = agent_tools_mod._explore_output_cap("explore", args, 50000)
+    assert cap == agent_tools_mod._TRILOGY_EXPLORE_BROAD_CAP
+
+
+def test_explore_output_cap_show_all_is_broad_even_with_regex():
+    args = ["explore", "f.preql", "--regex", "x", "--show", "all"]
+    cap = agent_tools_mod._explore_output_cap("explore", args, 50000)
+    assert cap == agent_tools_mod._TRILOGY_EXPLORE_BROAD_CAP
+
+
+# --- database introspection gate ---
+
+
+def test_handle_trilogy_blocks_database_when_introspection_disabled():
+    state = AgentState(allow_db_introspection=False)
+    out = handle_trilogy(state, {"args": ["database", "tables"]})
+    assert "introspection is disabled" in out
+    assert "explore" in out

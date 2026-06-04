@@ -118,3 +118,22 @@ def test_syntax_example_compiles_and_runs(name, executor, model_dir):
     assert statements, f"{name}: produced no executable SQL"
     for sql in statements:
         executor.execute_raw_sql(sql)
+
+
+def test_example_index_lists_every_example():
+    from trilogy.ai.syntax_examples import example_index
+
+    index = example_index()
+    assert "trilogy agent-info syntax example <name>" in index
+    for name in available_names():
+        assert name in index
+
+
+def test_render_example_returns_titled_body_or_none():
+    from trilogy.ai.syntax_examples import render_example
+
+    name = available_names()[0]
+    body = render_example(name)
+    assert body is not None
+    assert body.startswith("# ")
+    assert render_example("not-a-real-example") is None

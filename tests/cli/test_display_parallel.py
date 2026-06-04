@@ -314,6 +314,111 @@ class TestShowScriptResultWithStats:
         assert "a.preql" in captured
 
 
+@pytest.fixture
+def json_mode():
+    display_core.set_output_format("json")
+    try:
+        yield
+    finally:
+        display_core.set_output_format("rich")
+
+
+def _parse_events(text):
+    import json
+
+    decoder = json.JSONDecoder()
+    events, idx, n = [], 0, len(text)
+    while idx < n:
+        while idx < n and text[idx].isspace():
+            idx += 1
+        if idx >= n:
+            break
+        obj, idx = decoder.raw_decode(text, idx)
+        events.append(obj)
+    return events
+
+
+class TestParallelJsonMode:
+    def test_start_emits_event(self, json_mode):
+        with capture_stdout() as buf:
+            show_parallel_execution_start(num_files=4, num_edges=3, parallelism=2)
+        ev = _parse_events(buf.getvalue())[0]
+        assert ev["event"] == "parallel_start"
+        assert ev["files"] == 4
+        assert ev["dependencies"] == 3
+
+    def test_summary_emits_event_with_failures(self, json_mode):
+        from trilogy.scripts.common import ExecutionStats
+
+        results = [
+            _make_result(
+                _make_script_node("ok.preql"),
+                success=True,
+                stats=ExecutionStats(update_count=2, validate_count=1, persist_count=1),
+            ),
+            _make_result(_make_managed_node("schema.t"), success=False, error="boom"),
+        ]
+        with capture_stdout() as buf:
+            show_parallel_execution_summary(_make_summary(results))
+        ev = _parse_events(buf.getvalue())[0]
+        assert ev["event"] == "parallel_summary"
+        assert ev["failed"] == 1
+        assert ev["datasources_updated"] == 2
+        failures = ev["failures"]
+        assert failures[0]["node"] == "schema.t"
+        assert failures[0]["error"] == "boom"
+
+    def test_script_result_emits_event(self, json_mode):
+        node = _make_script_node("a.preql")
+        with capture_stdout() as buf:
+            show_script_result(_make_result(node, success=True))
+        ev = _parse_events(buf.getvalue())[0]
+        assert ev["event"] == "script_result"
+        assert ev["node"].endswith("a.preql")
+        assert ev["success"] is True
+
+    def test_progress_tracker_emits_script_start(self, json_mode):
+        node = _make_script_node("work.preql")
+        tracker = ParallelProgressTracker()
+        with capture_stdout() as buf:
+            with tracker:
+                tracker.on_start(node)
+        ev = _parse_events(buf.getvalue())[0]
+        assert ev["event"] == "script_start"
+        assert ev["node"] == "work.preql"
+
+
+def test_update_node_label_is_noop_without_progress():
+    original = display_core.RICH_AVAILABLE
+    orig_console = display_core.console
+    display_core.RICH_AVAILABLE = False
+    display_core.console = None
+    try:
+        tracker = ParallelProgressTracker()
+        with tracker:
+            # No Rich progress → updating a label is a safe no-op (no raise).
+            tracker.update_node_label(_make_script_node("x.preql"), "sub")
+    finally:
+        display_core.RICH_AVAILABLE = original
+        display_core.console = orig_console
+
+
+def test_on_start_unknown_node_type_uses_str_fallback():
+    original = display_core.RICH_AVAILABLE
+    orig_console = display_core.console
+    display_core.RICH_AVAILABLE = False
+    display_core.console = None
+    try:
+        tracker = ParallelProgressTracker()
+        with capture_stdout() as buf:
+            with tracker:
+                tracker.on_start("bare-node-label")
+        assert "bare-node-label" in buf.getvalue()
+    finally:
+        display_core.RICH_AVAILABLE = original
+        display_core.console = orig_console
+
+
 @pytest.mark.skipif(not RICH_AVAILABLE, reason="Rich not available")
 class TestParallelProgressTrackerRich:
     def test_enter_exit_with_rich(self):

@@ -118,6 +118,88 @@ class TestIngestProgress:
             progress.advance()
 
 
+class TestIngestJsonMode:
+    @pytest.fixture(autouse=True)
+    def _json(self):
+        from trilogy.scripts import display_core
+
+        display_core.set_output_format("json")
+        try:
+            yield
+        finally:
+            display_core.set_output_format("rich")
+
+    @staticmethod
+    def _events(text):
+        import json
+
+        decoder = json.JSONDecoder()
+        events, idx, n = [], 0, len(text)
+        while idx < n:
+            while idx < n and text[idx].isspace():
+                idx += 1
+            if idx >= n:
+                break
+            obj, idx = decoder.raw_decode(text, idx)
+            events.append(obj)
+        return events
+
+    def test_header_emits_event(self, capsys):
+        show_ingest_header(["a.csv", "b.csv"], "raw/", "duck_db", "trilogy.toml")
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["event"] == "ingest_start"
+        assert ev["count"] == 2
+        assert ev["dialect"] == "duck_db"
+
+    def test_progress_is_silent(self, capsys):
+        with ingest_progress(total=2) as progress:
+            progress.step("a.csv", "introspecting")
+            progress.advance()
+        assert capsys.readouterr().out == ""
+
+    def test_summary_emits_event(self, capsys):
+        show_ingest_summary(
+            [
+                IngestSummaryRow("a.csv", "raw/a.preql", "3", "id", "ok"),
+                IngestSummaryRow("b.csv", "-", "-", "-", "failed: IOError"),
+            ]
+        )
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["event"] == "ingest_summary"
+        assert ev["total"] == 2
+        assert ev["successful"] == 1
+        assert ev["sources"][0]["source"] == "a.csv"
+
+    def test_fk_summary_emits_event(self, capsys):
+        from trilogy.scripts.display_ingest import show_fk_summary
+        from trilogy.scripts.ingest_helpers.fk_inference import FKBinding, InferredFK
+
+        inferred = [
+            InferredFK(
+                from_table="orders",
+                from_column="customer_id",
+                to_table="customers",
+                to_column="id",
+                match_kind="name",
+                overlap=0.95,
+            )
+        ]
+        explicit = {"orders": {"store_id": FKBinding(target_ref="stores.id")}}
+        show_fk_summary(inferred, explicit)
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["event"] == "foreign_keys"
+        assert ev["count"] == 2
+        origins = {fk["origin"] for fk in ev["foreign_keys"]}
+        assert any("inferred" in o for o in origins)
+        assert "explicit" in origins
+
+    def test_fk_summary_empty_short_circuits(self, capsys):
+        from trilogy.scripts.display_ingest import show_fk_summary
+
+        show_fk_summary([], {})
+        assert capsys.readouterr().out == ""
+
+
 class TestPlainIngestProgressDirect:
     """Cover the no-Rich progress class directly (Rich may be installed in CI)."""
 

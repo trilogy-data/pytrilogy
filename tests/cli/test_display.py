@@ -1240,3 +1240,90 @@ class TestNonCp1252Encoding:
         decoded = cp1252_buffer.getvalue().decode("cp1252", errors="replace")
         assert "Unexpected error" in decoded
         assert "→" not in decoded
+
+
+class TestExecutionJsonMode:
+    @pytest.fixture(autouse=True)
+    def _json(self):
+        display_core.set_output_format("json")
+        try:
+            yield
+        finally:
+            display_core.set_output_format("rich")
+
+    @staticmethod
+    def _events(text):
+        import json
+
+        decoder = json.JSONDecoder()
+        events, idx, n = [], 0, len(text)
+        while idx < n:
+            while idx < n and text[idx].isspace():
+                idx += 1
+            if idx >= n:
+                break
+            obj, idx = decoder.raw_decode(text, idx)
+            events.append(obj)
+        return events
+
+    def test_duration_ms_handles_non_timedelta(self):
+        from trilogy.scripts.display_execution import _duration_ms
+
+        assert _duration_ms(None) is None
+        assert _duration_ms(timedelta(seconds=2)) == 2000.0
+
+    def test_environment_params_emits_event(self, capsys):
+        display.show_environment_params({"region": "us"})
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["event"] == "environment_params"
+        assert ev["params"] == {"region": "us"}
+
+    def test_debug_mode_emits_event(self, capsys):
+        display.show_debug_mode()
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["event"] == "debug_mode"
+        assert ev["enabled"] is True
+
+    def test_statement_result_emits_only_on_failure(self, capsys):
+        display.show_statement_result(
+            0, 2, timedelta(seconds=1), has_results=True, error=None
+        )
+        assert capsys.readouterr().out == ""
+        display.show_statement_result(
+            1,
+            2,
+            timedelta(seconds=1),
+            has_results=False,
+            error="boom",
+            exception_type=ValueError,
+        )
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["event"] == "statement_result"
+        assert ev["success"] is False
+        assert ev["error"] == "boom"
+        assert ev["error_type"] == "ValueError"
+
+    def test_formatting_result_emits_event(self, capsys):
+        display.show_formatting_result(3, timedelta(seconds=1), file_path="q.preql")
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["event"] == "format_result"
+        assert ev["statements"] == 3
+        assert ev["ok"] is True
+
+    def test_chart_terminal_emits_event(self, capsys):
+        layers = [[{"x": 1, "y": 2}]]
+        assert display.print_chart_terminal(layers, object()) is True
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["event"] == "chart"
+        assert ev["layers"] == layers
+
+
+def test_print_chart_terminal_no_data_returns_true(capsys, monkeypatch):
+    """In non-JSON mode with plotext present, empty layer data reports and
+    returns True rather than attempting to render an empty chart."""
+    import trilogy.rendering.terminal_renderer as tr
+
+    if not getattr(tr, "PLOTEXT_AVAILABLE", False):
+        monkeypatch.setattr(tr, "PLOTEXT_AVAILABLE", True)
+    assert display.print_chart_terminal([[], []], object()) is True
+    assert "produced no data" in capsys.readouterr().out

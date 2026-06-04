@@ -150,6 +150,53 @@ def test_explore_emits_concepts(runner, tmp_path):
     assert events_of(events, "datasources")[0]["count"] == 1
 
 
+def _import_workspace(tmp_path):
+    (tmp_path / "dem.preql").write_text(
+        "key cd_id int;\nproperty cd_id.edu string;\n"
+        "datasource cd (cd_id, edu) grain(cd_id) "
+        "query '''select 1 as cd_id, 'College' as edu''';\n",
+        encoding="utf-8",
+    )
+    parent = tmp_path / "sales.preql"
+    parent.write_text("import dem as dem;\nkey ticket int;\n", encoding="utf-8")
+    return parent
+
+
+def test_explore_json_collapses_imported_namespaces(runner, tmp_path):
+    parent = _import_workspace(tmp_path)
+    result = runner.invoke(
+        cli, ["--format", "json", "explore", str(parent), "--show", "all"]
+    )
+    assert result.exit_code == 0, result.output
+    concepts = events_of(parse_events(result.output), "concepts")[0]
+    # Imported namespace collapses to a comma-joined leaf list, local stays full.
+    assert "dem" in concepts["imported"]
+    assert "edu" in concepts["imported"]["dem"]
+
+
+def test_explore_json_expand_imports_renders_everything_local(runner, tmp_path):
+    parent = _import_workspace(tmp_path)
+    result = runner.invoke(
+        cli,
+        [
+            "--format",
+            "json",
+            "explore",
+            str(parent),
+            "--show",
+            "all",
+            "--expand-imports",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    concepts = events_of(parse_events(result.output), "concepts")[0]
+    # With --expand-imports there is no collapsed `imported` block; the imported
+    # concepts render in full alongside the local declarations.
+    assert concepts.get("imported") is None
+    decls = [d for ns in concepts["namespaces"].values() for d in ns]
+    assert any("edu" in d for d in decls)
+
+
 def test_file_roundtrip_events(runner, tmp_path):
     target = tmp_path / "q.preql"
     body = "key id int;\n"
