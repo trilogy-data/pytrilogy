@@ -1,33 +1,26 @@
 # Query 66
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (100 rows) |
+| v4 execution | OK (5 rows) |
 | reference execution | OK (5 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
-v4 rows: 100 (1 distinct)
+v4 rows: 5 (5 distinct)
 ref rows: 5 (5 distinct)
-only in v4 (showing up to 5 of 1):
-  99x  (Decimal('26299715.83000000'), Decimal('7638050.53000000'), None, Decimal('54868079.17000000'), Decimal('22641510.44000000'), None, Decimal('106225508.71000000'), Decimal('41657522.60000000'), None, Decimal('23475492.56000000'), Decimal('8662936.12000000'), None, Decimal('33568345.58000000'), Decimal('10548090.79000000'), None, Decimal('32021210.46000000'), Decimal('10693665.44000000'), None, Decimal('18959386.83000000'), Decimal('5855507.54000000'), None, Decimal('32584257.34000000'), Decimal('10093543.12000000'), None, Decimal('26922303.63000000'), Decimal('10971533.79000000'), None, Decimal('71629295.33000000'), Decimal('22053508.40000000'), None, Decimal('64473214.71000000'), Decimal('25375939.36000000'), None, Decimal('58899426.26000000'), Decimal('21388170.51000000'), None, 'DHL,BARIAN', 'Fairview', 'United States', 'Williamson County', 'TN', None, None, 2001)
-only in ref (showing up to 5 of 4):
-  1x  (Decimal('21861711.42000000'), Decimal('11435192.44000000'), 11.69497287, Decimal('46001656.08000000'), Decimal('19480887.65000000'), 19.92344718, Decimal('80833778.46000000'), Decimal('26034826.13000000'), 26.62627559, Decimal('21536958.51000000'), Decimal('9895277.02000000'), 10.12007423, Decimal('25436288.73000000'), Decimal('9076582.12000000'), 9.28278052, Decimal('18571774.48000000'), Decimal('9728950.13000000'), 9.94996879, Decimal('24387204.30000000'), Decimal('7425990.18000000'), 7.59469105, Decimal('21455013.31000000'), Decimal('10149201.72000000'), 10.3797675, Decimal('27855660.62000000'), Decimal('12140480.46000000'), 12.41628336, Decimal('85849337.50000000'), Decimal('34761135.80000000'), 35.5508263, Decimal('65397947.70000000'), Decimal('26633229.62000000'), 27.23827339, Decimal('52571404.42000000'), Decimal('15926790.81000000'), 16.2886097, 'DHL,BARIAN', 'Fairview', 'United States', 'Williamson County', 'TN', 'Conventional childr', 977787, 2001)
-  1x  (Decimal('23715815.35000000'), Decimal('8458512.50000000'), 61.07052865, Decimal('54327446.24000000'), Decimal('19653688.19000000'), 141.89978766, Decimal('93172545.66000000'), Decimal('36466206.13000000'), 263.28630314, Decimal('18171403.56000000'), Decimal('7089060.25000000'), 51.18307233, Decimal('22661846.38000000'), Decimal('8252040.77000000'), 59.57980109, Decimal('26900204.08000000'), Decimal('9849325.60000000'), 71.11221048, Decimal('26899586.32000000'), Decimal('8963040.01000000'), 64.71322135, Decimal('23810925.02000000'), Decimal('11453853.25000000'), 82.69691309, Decimal('18522938.63000000'), Decimal('5983962.36000000'), 43.20425663, Decimal('82941970.54000000'), Decimal('32941535.20000000'), 237.83815052, Decimal('65974565.30000000'), Decimal('24149164.06000000'), 174.35715979, Decimal('61151375.34000000'), Decimal('21168252.88000000'), 152.83495697, 'DHL,BARIAN', 'Fairview', 'United States', 'Williamson County', 'TN', 'Of course ot', 138504, 2001)
-  1x  (Decimal('25089244.62000000'), Decimal('11993334.38000000'), 40.76010352, Decimal('64424128.56000000'), Decimal('28757671.52000000'), 97.73476091, Decimal('83800658.75000000'), Decimal('29098121.13000000'), 98.89180039, Decimal('22618273.54000000'), Decimal('7551129.58000000'), 25.66299026, Decimal('28126416.02000000'), Decimal('14432988.09000000'), 49.05142057, Decimal('29163328.04000000'), Decimal('11299132.32000000'), 38.40081402, Decimal('28649511.95000000'), Decimal('12757632.53000000'), 43.357619, Decimal('26969264.36000000'), Decimal('7497389.58000000'), 25.48035148, Decimal('21815906.75000000'), Decimal('9927074.85000000'), 33.73779015, Decimal('74438918.97000000'), Decimal('30986289.21000000'), 105.30885873, Decimal('68410689.03000000'), Decimal('28160781.49000000'), 95.70619249, Decimal('51095094.08000000'), Decimal('20570121.48000000'), 69.90885557, 'DHL,BARIAN', 'Fairview', 'United States', 'Williamson County', 'TN', 'Social, royal laws m', 294242, 2001)
-  1x  (Decimal('22635230.80000000'), Decimal('11646382.41000000'), 18.74717483, Decimal('55269874.94000000'), Decimal('24439140.08000000'), 39.33966924, Decimal('94051489.09000000'), Decimal('31249597.42000000'), 50.30245837, Decimal('27408635.46000000'), Decimal('11147987.33000000'), 17.94490857, Decimal('26907031.85000000'), Decimal('12492732.00000000'), 20.10954326, Decimal('25294787.05000000'), Decimal('7394966.12000000'), 11.90367256, Decimal('26540617.96000000'), Decimal('10114697.80000000'), 16.28162303, Decimal('27974558.66000000'), Decimal('9799455.06000000'), 15.77417698, Decimal('29024201.67000000'), Decimal('8347273.55000000'), 13.43660126, Decimal('70730359.69000000'), Decimal('22915920.29000000'), 36.88774325, Decimal('72545003.35000000'), Decimal('24006772.50000000'), 38.6436874, Decimal('56838368.21000000'), Decimal('24775048.26000000'), 39.88038044, 'DHL,BARIAN', 'Fairview', 'United States', 'Williamson County', 'TN', 'Terms overcome instr', 621234, 2001)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 23565 | 226 | 107.00 ms |
-| reference | 20171 | 147 | 53.86 ms |
-| v4 / ref | 1.17x | 1.54x | 1.99x |
+| v4 | 23642 | 235 | 71.41 ms |
+| reference | 20171 | 147 | 54.96 ms |
+| v4 / ref | 1.17x | 1.60x | 1.30x |
 
 ## Preql
 
@@ -157,7 +150,7 @@ quizzical as (
 SELECT
     :ship_carriers as "ship_carriers"
 ),
-sparkling as (
+abhorrent as (
 SELECT
     "sales_warehouse_warehouse"."w_city" as "w_city",
     "sales_warehouse_warehouse"."w_country" as "w_country",
@@ -187,6 +180,15 @@ FROM
 WHERE
     "thoughtful"."sales_sales_channel" in ('WEB','CATALOG')
 ),
+concerned as (
+SELECT
+    "yummy"."sales_warehouse_id" as "sales_warehouse_id",
+    "yummy"."sales_warehouse_square_feet" as "sales_warehouse_square_feet"
+FROM
+    "yummy"
+GROUP BY
+    1,
+    2),
 juicy as (
 SELECT
     "yummy"."sales_date_year" as "sales_date_year",
@@ -244,22 +246,22 @@ FROM
 GROUP BY
     1,
     2),
-concerned as (
+young as (
 SELECT
-    "yummy"."sales_date_year" as "year_",
-    "yummy"."sales_warehouse_id" as "sales_warehouse_id",
-    ( coalesce("juicy"."_virt_agg_sum_1390508309586151",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8249258081069440",0) / "yummy"."sales_warehouse_square_feet" ) as "oct_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_2677729335671306",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8705688610121203",0) / "yummy"."sales_warehouse_square_feet" ) as "jun_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_3143814459304520",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_5462539112795867",0) / "yummy"."sales_warehouse_square_feet" ) as "aug_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_319471464519035",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_9999335580544067",0) / "yummy"."sales_warehouse_square_feet" ) as "sep_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_3260910144583005",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_6555636113729081",0) / "yummy"."sales_warehouse_square_feet" ) as "may_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_3934334814385891",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_2253606158097547",0) / "yummy"."sales_warehouse_square_feet" ) as "mar_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_41039473777436",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_7001288178406415",0) / "yummy"."sales_warehouse_square_feet" ) as "apr_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_4811909514398360",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_7368404058205523",0) / "yummy"."sales_warehouse_square_feet" ) as "nov_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_6761496736742249",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_2212485246453036",0) / "yummy"."sales_warehouse_square_feet" ) as "jan_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_7452893998515823",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8526672017232138",0) / "yummy"."sales_warehouse_square_feet" ) as "dec_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_7614936436189749",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_6541755364775288",0) / "yummy"."sales_warehouse_square_feet" ) as "jul_sales_per_sq_foot",
-    ( coalesce("juicy"."_virt_agg_sum_7927419533353604",0) / "yummy"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_3341659793105746",0) / "yummy"."sales_warehouse_square_feet" ) as "feb_sales_per_sq_foot",
+    "concerned"."sales_warehouse_id" as "sales_warehouse_id",
+    "juicy"."sales_date_year" as "year_",
+    ( coalesce("juicy"."_virt_agg_sum_1390508309586151",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8249258081069440",0) / "concerned"."sales_warehouse_square_feet" ) as "oct_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_2677729335671306",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8705688610121203",0) / "concerned"."sales_warehouse_square_feet" ) as "jun_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_3143814459304520",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_5462539112795867",0) / "concerned"."sales_warehouse_square_feet" ) as "aug_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_319471464519035",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_9999335580544067",0) / "concerned"."sales_warehouse_square_feet" ) as "sep_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_3260910144583005",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_6555636113729081",0) / "concerned"."sales_warehouse_square_feet" ) as "may_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_3934334814385891",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_2253606158097547",0) / "concerned"."sales_warehouse_square_feet" ) as "mar_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_41039473777436",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_7001288178406415",0) / "concerned"."sales_warehouse_square_feet" ) as "apr_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_4811909514398360",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_7368404058205523",0) / "concerned"."sales_warehouse_square_feet" ) as "nov_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_6761496736742249",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_2212485246453036",0) / "concerned"."sales_warehouse_square_feet" ) as "jan_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_7452893998515823",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_8526672017232138",0) / "concerned"."sales_warehouse_square_feet" ) as "dec_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_7614936436189749",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_6541755364775288",0) / "concerned"."sales_warehouse_square_feet" ) as "jul_sales_per_sq_foot",
+    ( coalesce("juicy"."_virt_agg_sum_7927419533353604",0) / "concerned"."sales_warehouse_square_feet" ) + ( coalesce("juicy"."_virt_agg_sum_3341659793105746",0) / "concerned"."sales_warehouse_square_feet" ) as "feb_sales_per_sq_foot",
     coalesce("juicy"."_virt_agg_sum_1390508309586151",0) + coalesce("juicy"."_virt_agg_sum_8249258081069440",0) as "oct_sales",
     coalesce("juicy"."_virt_agg_sum_188554763413587",0) + coalesce("juicy"."_virt_agg_sum_8113055632855599",0) as "jun_net",
     coalesce("juicy"."_virt_agg_sum_2061365433549155",0) + coalesce("juicy"."_virt_agg_sum_7961556681450013",0) as "aug_net",
@@ -285,60 +287,60 @@ SELECT
     coalesce("juicy"."_virt_agg_sum_9519241847948353",0) + coalesce("juicy"."_virt_agg_sum_4042597010133309",0) as "jul_net",
     coalesce("juicy"."_virt_agg_sum_9573906931545777",0) + coalesce("juicy"."_virt_agg_sum_2520745984741884",0) as "dec_net"
 FROM
-    "yummy"
-    LEFT OUTER JOIN "juicy" on "yummy"."sales_date_year" = "juicy"."sales_date_year" AND "yummy"."sales_warehouse_id" = "juicy"."sales_warehouse_id")
-SELECT
-    "sparkling"."w_warehouse_name" as "w_warehouse_name",
-    "sparkling"."w_warehouse_sq_ft" as "w_warehouse_sq_ft",
-    "sparkling"."w_city" as "w_city",
-    "sparkling"."w_county" as "w_county",
-    "sparkling"."w_state" as "w_state",
-    "sparkling"."w_country" as "w_country",
-    "quizzical"."ship_carriers" as "ship_carriers",
-    "concerned"."year_" as "year_",
-    "concerned"."jan_sales" as "jan_sales",
-    "concerned"."feb_sales" as "feb_sales",
-    "concerned"."mar_sales" as "mar_sales",
-    "concerned"."apr_sales" as "apr_sales",
-    "concerned"."may_sales" as "may_sales",
-    "concerned"."jun_sales" as "jun_sales",
-    "concerned"."jul_sales" as "jul_sales",
-    "concerned"."aug_sales" as "aug_sales",
-    "concerned"."sep_sales" as "sep_sales",
-    "concerned"."oct_sales" as "oct_sales",
-    "concerned"."nov_sales" as "nov_sales",
-    "concerned"."dec_sales" as "dec_sales",
-    "concerned"."jan_sales_per_sq_foot" as "jan_sales_per_sq_foot",
-    "concerned"."feb_sales_per_sq_foot" as "feb_sales_per_sq_foot",
-    "concerned"."mar_sales_per_sq_foot" as "mar_sales_per_sq_foot",
-    "concerned"."apr_sales_per_sq_foot" as "apr_sales_per_sq_foot",
-    "concerned"."may_sales_per_sq_foot" as "may_sales_per_sq_foot",
-    "concerned"."jun_sales_per_sq_foot" as "jun_sales_per_sq_foot",
-    "concerned"."jul_sales_per_sq_foot" as "jul_sales_per_sq_foot",
-    "concerned"."aug_sales_per_sq_foot" as "aug_sales_per_sq_foot",
-    "concerned"."sep_sales_per_sq_foot" as "sep_sales_per_sq_foot",
-    "concerned"."oct_sales_per_sq_foot" as "oct_sales_per_sq_foot",
-    "concerned"."nov_sales_per_sq_foot" as "nov_sales_per_sq_foot",
-    "concerned"."dec_sales_per_sq_foot" as "dec_sales_per_sq_foot",
-    "concerned"."jan_net" as "jan_net",
-    "concerned"."feb_net" as "feb_net",
-    "concerned"."mar_net" as "mar_net",
-    "concerned"."apr_net" as "apr_net",
-    "concerned"."may_net" as "may_net",
-    "concerned"."jun_net" as "jun_net",
-    "concerned"."jul_net" as "jul_net",
-    "concerned"."aug_net" as "aug_net",
-    "concerned"."sep_net" as "sep_net",
-    "concerned"."oct_net" as "oct_net",
-    "concerned"."nov_net" as "nov_net",
-    "concerned"."dec_net" as "dec_net"
-FROM
     "concerned"
-    INNER JOIN "sparkling" on "concerned"."sales_warehouse_id" = "sparkling"."sales_warehouse_id"
+    INNER JOIN "juicy" on "concerned"."sales_warehouse_id" = "juicy"."sales_warehouse_id")
+SELECT
+    "abhorrent"."w_warehouse_name" as "w_warehouse_name",
+    "abhorrent"."w_warehouse_sq_ft" as "w_warehouse_sq_ft",
+    "abhorrent"."w_city" as "w_city",
+    "abhorrent"."w_county" as "w_county",
+    "abhorrent"."w_state" as "w_state",
+    "abhorrent"."w_country" as "w_country",
+    "quizzical"."ship_carriers" as "ship_carriers",
+    "young"."year_" as "year_",
+    "young"."jan_sales" as "jan_sales",
+    "young"."feb_sales" as "feb_sales",
+    "young"."mar_sales" as "mar_sales",
+    "young"."apr_sales" as "apr_sales",
+    "young"."may_sales" as "may_sales",
+    "young"."jun_sales" as "jun_sales",
+    "young"."jul_sales" as "jul_sales",
+    "young"."aug_sales" as "aug_sales",
+    "young"."sep_sales" as "sep_sales",
+    "young"."oct_sales" as "oct_sales",
+    "young"."nov_sales" as "nov_sales",
+    "young"."dec_sales" as "dec_sales",
+    "young"."jan_sales_per_sq_foot" as "jan_sales_per_sq_foot",
+    "young"."feb_sales_per_sq_foot" as "feb_sales_per_sq_foot",
+    "young"."mar_sales_per_sq_foot" as "mar_sales_per_sq_foot",
+    "young"."apr_sales_per_sq_foot" as "apr_sales_per_sq_foot",
+    "young"."may_sales_per_sq_foot" as "may_sales_per_sq_foot",
+    "young"."jun_sales_per_sq_foot" as "jun_sales_per_sq_foot",
+    "young"."jul_sales_per_sq_foot" as "jul_sales_per_sq_foot",
+    "young"."aug_sales_per_sq_foot" as "aug_sales_per_sq_foot",
+    "young"."sep_sales_per_sq_foot" as "sep_sales_per_sq_foot",
+    "young"."oct_sales_per_sq_foot" as "oct_sales_per_sq_foot",
+    "young"."nov_sales_per_sq_foot" as "nov_sales_per_sq_foot",
+    "young"."dec_sales_per_sq_foot" as "dec_sales_per_sq_foot",
+    "young"."jan_net" as "jan_net",
+    "young"."feb_net" as "feb_net",
+    "young"."mar_net" as "mar_net",
+    "young"."apr_net" as "apr_net",
+    "young"."may_net" as "may_net",
+    "young"."jun_net" as "jun_net",
+    "young"."jul_net" as "jul_net",
+    "young"."aug_net" as "aug_net",
+    "young"."sep_net" as "sep_net",
+    "young"."oct_net" as "oct_net",
+    "young"."nov_net" as "nov_net",
+    "young"."dec_net" as "dec_net"
+FROM
+    "young"
+    INNER JOIN "abhorrent" on "young"."sales_warehouse_id" = "abhorrent"."sales_warehouse_id"
     FULL JOIN "quizzical" on 1=1
 ORDER BY 
-    "sparkling"."w_warehouse_name" asc nulls first,
-    "concerned"."year_" asc nulls first
+    "abhorrent"."w_warehouse_name" asc nulls first,
+    "young"."year_" asc nulls first
 LIMIT (100)
 ```
 

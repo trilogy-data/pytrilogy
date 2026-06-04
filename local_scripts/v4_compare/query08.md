@@ -18,9 +18,9 @@ ref rows: 5 (5 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2721 | 63 | 57.28 ms |
-| reference | 2479 | 61 | 56.04 ms |
-| v4 / ref | 1.10x | 1.03x | 1.02x |
+| v4 | 2977 | 72 | 62.25 ms |
+| reference | 2479 | 61 | 76.29 ms |
+| v4 / ref | 1.20x | 1.18x | 0.82x |
 
 ## Preql
 
@@ -460,6 +460,7 @@ SELECT
 ),
 thoughtful as (
 SELECT
+    "customer_address_customer_address"."CA_ADDRESS_SK" as "customer_address_id",
     "customer_address_customer_address"."CA_ZIP" as "customer_address_zip",
     "customer_customers"."C_CUSTOMER_SK" as "customer_id",
     "customer_customers"."C_PREFERRED_CUST_FLAG" as "customer_preferred_cust_flag"
@@ -471,6 +472,14 @@ SELECT
     SUBSTRING(cast("quizzical"."zips_pre" as string),1,5) as "zips"
 FROM
     "quizzical"),
+abundant as (
+SELECT
+    "thoughtful"."customer_address_zip" as "customer_address_zip"
+FROM
+    "thoughtful"
+GROUP BY
+    1,
+    "thoughtful"."customer_address_id"),
 cooperative as (
 SELECT
     "thoughtful"."customer_address_zip" as "customer_address_zip",
@@ -479,23 +488,23 @@ FROM
     "thoughtful"
 GROUP BY
     1),
-abundant as (
+uneven as (
 SELECT
-    SUBSTRING(CASE WHEN "cooperative"."zip_p_count" > 10 THEN "thoughtful"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
+    SUBSTRING(CASE WHEN "cooperative"."zip_p_count" > 10 THEN "cooperative"."customer_address_zip" ELSE NULL END,1,5) as "_virt_func_substring_4293448550966409"
 FROM
-    "cooperative"
-    INNER JOIN "thoughtful" on "cooperative"."customer_address_zip" = "thoughtful"."customer_address_zip"),
-juicy as (
-SELECT
-    CASE WHEN "highfalutin"."zips" in (select abundant."_virt_func_substring_4293448550966409" from abundant where abundant."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END as "_virt_filter_zips_2159288073185462"
-FROM
-    "highfalutin"),
+    "abundant"
+    INNER JOIN "cooperative" on "abundant"."customer_address_zip" = "cooperative"."customer_address_zip"),
 vacuous as (
 SELECT
-    SUBSTRING("juicy"."_virt_filter_zips_2159288073185462",1,2) as "final_zips"
+    CASE WHEN "highfalutin"."zips" in (select uneven."_virt_func_substring_4293448550966409" from uneven where uneven."_virt_func_substring_4293448550966409" is not null) THEN "highfalutin"."zips" ELSE NULL END as "_virt_filter_zips_2159288073185462"
 FROM
-    "juicy"),
-abhorrent as (
+    "highfalutin"),
+concerned as (
+SELECT
+    SUBSTRING("vacuous"."_virt_filter_zips_2159288073185462",1,2) as "final_zips"
+FROM
+    "vacuous"),
+sweltering as (
 SELECT
     "physical_sales_store_sales"."SS_NET_PROFIT" as "physical_sales_net_profit",
     "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name"
@@ -504,17 +513,17 @@ FROM
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
     INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
 WHERE
-    "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select vacuous."final_zips" from vacuous where vacuous."final_zips" is not null)
+    "physical_sales_date_date"."D_QOY" = 2 and "physical_sales_date_date"."D_YEAR" = 1998 and SUBSTRING("physical_sales_store_store"."S_ZIP",1,2) in (select concerned."final_zips" from concerned where concerned."final_zips" is not null)
 )
 SELECT
-    "abhorrent"."physical_sales_store_name" as "physical_sales_store_name",
-    sum("abhorrent"."physical_sales_net_profit") as "store_net_profit"
+    "sweltering"."physical_sales_store_name" as "physical_sales_store_name",
+    sum("sweltering"."physical_sales_net_profit") as "store_net_profit"
 FROM
-    "abhorrent"
+    "sweltering"
 GROUP BY
     1
 ORDER BY 
-    "abhorrent"."physical_sales_store_name" asc
+    "sweltering"."physical_sales_store_name" asc
 LIMIT (100)
 ```
 

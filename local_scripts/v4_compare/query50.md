@@ -1,38 +1,26 @@
 # Query 50
 
-**Status:** `mismatch`
+**Status:** `match`
 
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
 | v4 execution | OK (6 rows) |
 | reference execution | OK (6 rows) |
-| results identical | NO |
+| results identical | YES |
 
 ## Result comparison
 
 v4 rows: 6 (6 distinct)
 ref rows: 6 (6 distinct)
-only in v4 (showing up to 5 of 6):
-  1x  (120, 65, 62, 67, 60, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
-  1x  (110, 87, 65, 60, 43, 'Midway', 1, 'Williamson County', 'ation', 'TN', 'Lee ', '811', 'Circle', 'Suite T', '31904')
-  1x  (122, 86, 54, 53, 60, 'Midway', 1, 'Williamson County', 'bar', 'TN', '4th ', '175', 'Court', 'Suite C', '31904')
-  1x  (123, 87, 51, 52, 57, 'Fairview', 1, 'Williamson County', 'eing', 'TN', '12th ', '226', 'Lane', 'Suite D', '35709')
-  1x  (123, 85, 48, 57, 43, 'Midway', 1, 'Williamson County', 'ese', 'TN', 'Lake ', '27', 'Ln', 'Suite 260', '31904')
-only in ref (showing up to 5 of 6):
-  1x  (108, 64, 61, 58, 56, 'Midway', 1, 'Williamson County', 'able', 'TN', 'Sycamore ', '255', 'Dr.', 'Suite 410', '31904')
-  1x  (99, 75, 57, 55, 41, 'Midway', 1, 'Williamson County', 'ation', 'TN', 'Lee ', '811', 'Circle', 'Suite T', '31904')
-  1x  (108, 73, 51, 46, 55, 'Midway', 1, 'Williamson County', 'bar', 'TN', '4th ', '175', 'Court', 'Suite C', '31904')
-  1x  (113, 81, 46, 44, 50, 'Fairview', 1, 'Williamson County', 'eing', 'TN', '12th ', '226', 'Lane', 'Suite D', '35709')
-  1x  (108, 73, 42, 44, 41, 'Midway', 1, 'Williamson County', 'ese', 'TN', 'Lake ', '27', 'Ln', 'Suite 260', '31904')
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 6361 | 99 | 100.70 ms |
-| reference | 4728 | 75 | 29.45 ms |
-| v4 / ref | 1.35x | 1.32x | 3.42x |
+| v4 | 7134 | 125 | 125.26 ms |
+| reference | 4728 | 75 | 36.15 ms |
+| v4 / ref | 1.51x | 1.67x | 3.46x |
 
 ## Preql
 
@@ -129,39 +117,21 @@ GROUP BY
     13,
     14,
     15),
-cooperative as (
+uneven as (
 SELECT
-    "thoughtful"."physical_sales_store_id" as "physical_sales_store_id",
-    "thoughtful"."physical_sales_ticket_number" as "physical_sales_ticket_number",
-    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > -1 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 30 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_6396225769465204",
-    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 120 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 99999 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_6261479071707891",
-    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 30 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 60 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_1754169376042040",
-    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 60 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 90 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_9524432267113409",
-    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 90 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 120 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_5608833957360839"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    2)
-SELECT
-    "thoughtful"."physical_sales_store_name" as "physical_sales_store_name",
+    "thoughtful"."physical_sales_store_city" as "physical_sales_store_city",
     "thoughtful"."physical_sales_store_company_id" as "physical_sales_store_company_id",
-    "thoughtful"."physical_sales_store_street_number" as "physical_sales_store_street_number",
+    "thoughtful"."physical_sales_store_county" as "physical_sales_store_county",
+    "thoughtful"."physical_sales_store_id" as "physical_sales_store_id",
+    "thoughtful"."physical_sales_store_name" as "physical_sales_store_name",
+    "thoughtful"."physical_sales_store_state" as "physical_sales_store_state",
     "thoughtful"."physical_sales_store_street_name" as "physical_sales_store_street_name",
+    "thoughtful"."physical_sales_store_street_number" as "physical_sales_store_street_number",
     "thoughtful"."physical_sales_store_street_type" as "physical_sales_store_street_type",
     "thoughtful"."physical_sales_store_suite_number" as "physical_sales_store_suite_number",
-    "thoughtful"."physical_sales_store_city" as "physical_sales_store_city",
-    "thoughtful"."physical_sales_store_county" as "physical_sales_store_county",
-    "thoughtful"."physical_sales_store_state" as "physical_sales_store_state",
-    "thoughtful"."physical_sales_store_zip" as "physical_sales_store_zip",
-    sum("cooperative"."_virt_agg_count_6396225769465204") as "days_30",
-    sum("cooperative"."_virt_agg_count_1754169376042040") as "days_31_60",
-    sum("cooperative"."_virt_agg_count_9524432267113409") as "days_61_90",
-    sum("cooperative"."_virt_agg_count_5608833957360839") as "days_91_120",
-    sum("cooperative"."_virt_agg_count_6261479071707891") as "days_120_plus"
+    "thoughtful"."physical_sales_store_zip" as "physical_sales_store_zip"
 FROM
     "thoughtful"
-    FULL JOIN "cooperative" on "thoughtful"."physical_sales_store_id" = "cooperative"."physical_sales_store_id" AND "thoughtful"."physical_sales_ticket_number" = "cooperative"."physical_sales_ticket_number"
 GROUP BY
     1,
     2,
@@ -173,18 +143,62 @@ GROUP BY
     8,
     9,
     10,
-    coalesce("cooperative"."physical_sales_store_id","thoughtful"."physical_sales_store_id")
+    11),
+cooperative as (
+SELECT
+    "thoughtful"."physical_sales_store_id" as "physical_sales_store_id",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > -1 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 30 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_6396225769465204",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 120 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 99999 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_6261479071707891",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 30 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 60 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_1754169376042040",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 60 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 90 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_9524432267113409",
+    count(CASE WHEN "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" > 90 and "thoughtful"."physical_sales_return_date_id" - "thoughtful"."physical_sales_date_id" <= 120 THEN "thoughtful"."physical_sales_item_id" ELSE NULL END) as "_virt_agg_count_5608833957360839"
+FROM
+    "thoughtful"
+GROUP BY
+    1,
+    "thoughtful"."physical_sales_ticket_number")
+SELECT
+    "uneven"."physical_sales_store_name" as "physical_sales_store_name",
+    "uneven"."physical_sales_store_company_id" as "physical_sales_store_company_id",
+    "uneven"."physical_sales_store_street_number" as "physical_sales_store_street_number",
+    "uneven"."physical_sales_store_street_name" as "physical_sales_store_street_name",
+    "uneven"."physical_sales_store_street_type" as "physical_sales_store_street_type",
+    "uneven"."physical_sales_store_suite_number" as "physical_sales_store_suite_number",
+    "uneven"."physical_sales_store_city" as "physical_sales_store_city",
+    "uneven"."physical_sales_store_county" as "physical_sales_store_county",
+    "uneven"."physical_sales_store_state" as "physical_sales_store_state",
+    "uneven"."physical_sales_store_zip" as "physical_sales_store_zip",
+    sum("cooperative"."_virt_agg_count_6396225769465204") as "days_30",
+    sum("cooperative"."_virt_agg_count_1754169376042040") as "days_31_60",
+    sum("cooperative"."_virt_agg_count_9524432267113409") as "days_61_90",
+    sum("cooperative"."_virt_agg_count_5608833957360839") as "days_91_120",
+    sum("cooperative"."_virt_agg_count_6261479071707891") as "days_120_plus"
+FROM
+    "uneven"
+    INNER JOIN "cooperative" on "uneven"."physical_sales_store_id" = "cooperative"."physical_sales_store_id"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    "uneven"."physical_sales_store_id"
 ORDER BY 
-    "thoughtful"."physical_sales_store_name" asc nulls first,
-    "thoughtful"."physical_sales_store_company_id" asc nulls first,
-    "thoughtful"."physical_sales_store_street_number" asc nulls first,
-    "thoughtful"."physical_sales_store_street_name" asc nulls first,
-    "thoughtful"."physical_sales_store_street_type" asc nulls first,
-    "thoughtful"."physical_sales_store_suite_number" asc nulls first,
-    "thoughtful"."physical_sales_store_city" asc nulls first,
-    "thoughtful"."physical_sales_store_county" asc nulls first,
-    "thoughtful"."physical_sales_store_state" asc nulls first,
-    "thoughtful"."physical_sales_store_zip" asc nulls first
+    "uneven"."physical_sales_store_name" asc nulls first,
+    "uneven"."physical_sales_store_company_id" asc nulls first,
+    "uneven"."physical_sales_store_street_number" asc nulls first,
+    "uneven"."physical_sales_store_street_name" asc nulls first,
+    "uneven"."physical_sales_store_street_type" asc nulls first,
+    "uneven"."physical_sales_store_suite_number" asc nulls first,
+    "uneven"."physical_sales_store_city" asc nulls first,
+    "uneven"."physical_sales_store_county" asc nulls first,
+    "uneven"."physical_sales_store_state" asc nulls first,
+    "uneven"."physical_sales_store_zip" asc nulls first
 LIMIT (100)
 ```
 

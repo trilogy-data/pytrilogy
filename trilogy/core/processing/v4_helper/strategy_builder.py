@@ -28,6 +28,7 @@ from trilogy.core.processing.nodes import (
     MergeNode,
     SelectNode,
     StrategyNode,
+    WindowNode,
 )
 from trilogy.core.processing.v4_node_generators import build_node
 
@@ -310,6 +311,90 @@ def _pre_merge_parents(
     return [merged]
 
 
+def _contains_shape_barrier(node: StrategyNode) -> bool:
+    if isinstance(node, (GroupNode, WindowNode)):
+        return True
+    if node.force_group:
+        return True
+    return any(_contains_shape_barrier(parent) for parent in node.parents)
+
+
+def _fd_at_grain(concept: BuildConcept, grain_components: frozenset[str]) -> bool:
+    if concept.address in grain_components:
+        return True
+    concept_grain = (
+        frozenset(concept.grain.components) if concept.grain else frozenset()
+    )
+    if concept_grain and concept_grain <= grain_components:
+        return True
+    concept_keys = frozenset(concept.keys or set())
+    return bool(concept_keys) and concept_keys <= grain_components
+
+
+def _project_dimension_parents_to_group_grain(
+    parents: list[StrategyNode],
+    needed: set[str],
+    group_grain_components: frozenset[str],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """Dedup dimension-side parents before they merge into a narrower group.
+
+    A group can consume an aggregate parent plus a detail/root parent that only
+    contributes FD attributes like store.name or warehouse.square_feet. If the
+    detail parent is merged at row grain first, the aggregate fans out. Project
+    that parent to the group's key grain before the merge; leave shape-changing
+    parents and row-grain facts untouched.
+    """
+    if len(parents) <= 1 or not group_grain_components:
+        return parents
+
+    # Pre-grouping a dimension parent to the group grain only makes sense to
+    # protect an ALREADY-grouped sibling (an aggregate at the group grain) from
+    # being fanned out by a row-grain detail merge (q81: dims join the aggregate
+    # on store_id). When every parent is a row-grain scan feeding INTO this
+    # aggregate, there is no such sibling — projecting one to the group grain
+    # just strips its finer row-grain join key (order.id) and the merge degrades
+    # to a 1=1 cross product (q10: revenue joins root on order.id, not
+    # customer.id, then the group aggregates).
+    if not any(_contains_shape_barrier(parent) for parent in parents):
+        return parents
+
+    outputs_by_parent = [parent_output_addresses(parent) for parent in parents]
+    projected: list[StrategyNode] = []
+    for idx, parent in enumerate(parents):
+        if _contains_shape_barrier(parent):
+            projected.append(parent)
+            continue
+        parent_needed = outputs_by_parent[idx] & needed
+        other_outputs = set().union(
+            *(outputs for j, outputs in enumerate(outputs_by_parent) if j != idx)
+        )
+        fd_candidates = {
+            addr
+            for addr in parent_needed
+            if addr in environment.concepts
+            and _fd_at_grain(environment.concepts[addr], group_grain_components)
+        }
+        fd_needed = {
+            addr
+            for addr in fd_candidates
+            if not (addr in group_grain_components and addr in other_outputs)
+        }
+        non_fd_needed = parent_needed - fd_candidates
+        concepts = [
+            environment.concepts[addr]
+            for addr in sorted(fd_needed)
+            if addr in environment.concepts
+        ]
+        if not concepts or non_fd_needed:
+            projected.append(parent)
+            continue
+        projected.extend(
+            _wrap_for_grain(parent, concepts, environment, group_grain_components)
+        )
+    return projected
+
+
 def _satisfiable_outputs(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -491,6 +576,9 @@ def _wrap_for_grain(
     wraps: list[StrategyNode] = []
     for grain_comps, concepts in by_grain.items():
         if grain_comps == parent_grain_components or not grain_comps:
+            wraps.append(parent_node)
+            continue
+        if not grain_comps <= parent_outputs:
             wraps.append(parent_node)
             continue
         grain_concepts = [
@@ -793,6 +881,12 @@ def build_strategy_node(
             for arg in injected.concept_arguments:
                 needed.add(arg.address)
         parents = _parent_nodes_for(group_graph, built, gid, needed=needed)
+        parents = _project_dimension_parents_to_group_grain(
+            parents,
+            needed,
+            a.grain_components,
+            environment,
+        )
         parents = _pre_merge_parents(parents, environment)
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
