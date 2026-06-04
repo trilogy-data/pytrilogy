@@ -556,18 +556,8 @@ def finalize_select_statement(
             # instead — renaming the output is the fix (the alias stays visible
             # to sibling calculations, so renaming the input is not an option).
             out_addr = x.concept.address
-            # A pure rename to the same name (`foo as foo`) is an identity
-            # pass-through, not a recursive computation — the output IS the
-            # input concept, so there's nothing for the planner to disambiguate.
-            fn = x.content.function
-            is_identity_alias = (
-                isinstance(fn, Function)
-                and fn.operator == FunctionType.ALIAS
-                and len(fn.concept_arguments) == 1
-                and fn.concept_arguments[0].address == out_addr
-            )
-            if not is_identity_alias and any(
-                arg.address == out_addr for arg in fn.concept_arguments
+            if any(
+                arg.address == out_addr for arg in x.content.function.concept_arguments
             ):
                 raise InvalidSyntaxException(
                     f"SELECT output '{out_addr}' is defined by an expression that "

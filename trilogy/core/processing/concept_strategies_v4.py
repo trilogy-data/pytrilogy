@@ -37,7 +37,6 @@ from trilogy.core.models.build import (
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import strip_tautological_not_null
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
@@ -117,22 +116,6 @@ def _factory_for_history(history: "V4History") -> Factory:
     )
 
 
-def _protected_addresses(
-    statement: BuildSelectLineage | BuildMultiSelectLineage,
-) -> set[str]:
-    protected: set[str] = set()
-    for component in statement.output_components:
-        protected.add(component.address)
-        protected.add(component.canonical_address)
-    order_by = statement.order_by
-    if order_by is not None:
-        for item in order_by.items:
-            for arg in item.concept_arguments:
-                protected.add(arg.address)
-                protected.add(arg.canonical_address)
-    return protected
-
-
 def _build_nested_select(
     select: SelectLineage | MultiSelectLineage,
     history: "V4History",
@@ -154,10 +137,7 @@ def _build_nested_select(
         canonical_build_cache=caches.canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
     )
-    where_clause = strip_tautological_not_null(
-        built.where_clause, build_env, _protected_addresses(built)
-    )
-    return built, build_env, where_clause
+    return built, build_env, built.where_clause
 
 
 def _resolve_multiselect(

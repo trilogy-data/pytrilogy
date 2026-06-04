@@ -391,8 +391,8 @@ def test_complex_multi_dimensional_query():
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
-    customer_name as customer_name,
-    product_name as product_name,
+    customer_name,
+    product_name,
     sum(order_value) as total_spent,
     count(order_id) as order_count,
     max(order_date) as last_order_date

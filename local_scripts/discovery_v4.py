@@ -49,7 +49,6 @@ from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     search_concepts,
 )
-from trilogy.core.processing.condition_utility import strip_tautological_not_null
 from trilogy.core.processing.v4_helper.constants import (
     EDGE_KIND_CONSTRAINT,
     EDGE_KIND_EXISTENCE,
@@ -773,20 +772,7 @@ def _materialize_for_query(
         datasource_build_cache=caches.datasource_build_cache,
     )
 
-    protected: set[str] = set()
-    for component in build_statement.output_components:
-        protected.add(component.address)
-        protected.add(component.canonical_address)
-    order_by = build_statement.order_by
-    if order_by is not None:
-        for item in order_by.items:
-            for arg in item.concept_arguments:
-                protected.add(arg.address)
-                protected.add(arg.canonical_address)
-    conditions = strip_tautological_not_null(
-        build_statement.where_clause, build_env, protected
-    )
-    return build_statement, build_env, conditions
+    return build_statement, build_env, build_statement.where_clause
 
 
 def _find_select(queries: list) -> SelectStatement | MultiSelectStatement:
