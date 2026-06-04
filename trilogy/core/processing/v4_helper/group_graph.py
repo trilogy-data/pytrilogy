@@ -278,7 +278,7 @@ def _materialize_group_graph(
             primary_members=tuple(bucket.primary_members),
             secondary_members=tuple(bucket.secondary_members),
             member_depths=dict(bucket.member_depths),
-            dedup_grain=bucket.dedup_grain,
+            aggregate_input_grain=bucket.aggregate_input_grain,
         )
         group_graph.add_node(gid)
 
@@ -378,10 +378,12 @@ def _inject_conditions(
     mandatory_list: list[BuildConcept] | None = None,
 ) -> set[str]:
     """Decompose each clause into AND-atoms (via `decompose_condition`) and
-    place each atom *independently* at the furthest-upstream group that can
+    place each atom *independently* at every furthest-upstream group that can
     serve its inputs. An atom like `state='TN'` can fly all the way up to
     ROOT even if its sibling atom needs a downstream group — the two no
-    longer share fate.
+    longer share fate. When the row stream has split into sibling sources that
+    later reconverge, every upstream-most sibling gets the atom so all
+    downstream consumers see the same filtered population.
 
     Errors out if a chosen group sits downstream of a d0 barrier (a filter
     cannot be pushed past a row-shape change). Returns the set of groups
@@ -593,14 +595,13 @@ def _inject_conditions(
             main_upstream = [gid for gid in upstream_most if gid in main_lineage]
             main_cands = [gid for gid in candidates if gid in main_lineage]
             if main_upstream:
-                chosen = main_upstream[0]
+                chosen_groups = main_upstream
             elif upstream_most:
-                chosen = upstream_most[0]
+                chosen_groups = upstream_most
             elif main_cands:
-                chosen = main_cands[0]
+                chosen_groups = main_cands
             else:
-                chosen = candidates[0]
-            chosen_ancestors = nx.ancestors(group_graph, chosen)
+                chosen_groups = candidates
             # A barrier that PRODUCES (or transitively derives) this atom's own
             # inputs is legitimately consumed below it — `rank() < 10`,
             # `unnest(...)→f(x) % 7 = 0`, `cumulative_a > cumulative_b` all read
@@ -611,16 +612,19 @@ def _inject_conditions(
             consumed_barriers: set[str] = set(producer_groups)
             for p in producer_groups:
                 consumed_barriers |= nx.ancestors(group_graph, p)
-            offending = (d0_group_ids & chosen_ancestors) - consumed_barriers
-            if offending:
-                raise ValueError(
-                    f"Atom {atom} would be injected at {chosen}, which is "
-                    f"downstream of d0 barrier(s) {sorted(offending)}; "
-                    f"conditions cannot be pushed past row-shape changes."
-                )
-            attrs[chosen].condition_atoms.append(atom)
-            attrs[chosen].conditions.append(str(atom))
-            condition_group_ids.add(chosen)
+            for chosen in chosen_groups:
+                chosen_ancestors = nx.ancestors(group_graph, chosen)
+                offending = (d0_group_ids & chosen_ancestors) - consumed_barriers
+                if offending:
+                    raise ValueError(
+                        f"Atom {atom} would be injected at {chosen}, which is "
+                        f"downstream of d0 barrier(s) {sorted(offending)}; "
+                        f"conditions cannot be pushed past row-shape changes."
+                    )
+                if atom not in attrs[chosen].condition_atoms:
+                    attrs[chosen].condition_atoms.append(atom)
+                    attrs[chosen].conditions.append(str(atom))
+                condition_group_ids.add(chosen)
 
     return condition_group_ids
 

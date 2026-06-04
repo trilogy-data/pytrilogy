@@ -460,10 +460,9 @@ class TestMultiGroupAssembly:
         out = {c.address for c in info.strategy_node.output_concepts}
         assert {"local.value_per_store", "local.store_name"} <= out
 
-    def test_count_distinct_inserts_dedup_grain(self):
-        """`count(customer_id) by store_id` counts DISTINCT customers, so the
-        builder inserts a dedup GroupNode at {customer_id, store_id} below the
-        count."""
+    def test_aggregate_normalizes_input_grain(self):
+        """The builder normalizes aggregate inputs to argument grain before
+        aggregating."""
         env, benv = _build(STAR_MODEL)
         info = _search(env, benv, ["local.customers_per_store", "local.store_id"])
         assert info.strategy_node is not None

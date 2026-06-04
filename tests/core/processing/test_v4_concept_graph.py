@@ -1,7 +1,7 @@
 """Tests for the v4 concept-graph helpers and the top-level multiselect
 resolver.
 
-The pure-graph helpers (`_filter_existence_only`, `_count_dedup_grain`) are
+The pure-graph helpers (`_filter_existence_only`, `_aggregate_input_grain`) are
 exercised on real build concepts pulled from a tiny inline environment — they
 isinstance-check Build* lineage, so synthetic fakes don't reach the branches.
 The end-to-end cases drive `search_concepts` (v4) so the build_concept_graph
@@ -21,7 +21,7 @@ from trilogy.core.processing import concept_strategies_v4 as v4
 from trilogy.core.processing.concept_strategies_v4 import V4History, search_concepts
 from trilogy.core.processing.nodes import MergeNode, SelectNode
 from trilogy.core.processing.v4_helper.concept_graph import (
-    _count_dedup_grain,
+    _aggregate_input_grain,
     _filter_existence_only,
     _upstream_window,
     build_concept_graph,
@@ -118,42 +118,37 @@ auto filtered <- id ? id in other;
 """
 
 
-# ----- _count_dedup_grain ---------------------------------------------
+# ----- _aggregate_input_grain -----------------------------------------
 
 
-class TestCountDedupGrain:
-    def test_count_over_key_at_coarser_grain_needs_dedup(self):
-        """count(customer_id) by store_id counts DISTINCT customers — the
-        input has to dedup to {customer_id, store_id} first, not count the
-        finer order rows."""
+class TestAggregateInputGrain:
+    def test_count_over_key_at_coarser_grain_uses_argument_grain(self):
         _, benv = _build(COUNT_MODEL)
         m = benv.concepts["local.customers_per_store"]
         out_grain = frozenset(m.grain.components)
-        assert _count_dedup_grain(m, out_grain) == frozenset(
+        assert _aggregate_input_grain(m, benv, out_grain) == frozenset(
             {"local.customer_id", "local.store_id"}
         )
 
-    def test_count_with_key_grain_already_pinned_needs_no_dedup(self):
-        """count(customer_id) by customer_id, store_id: the output grain
-        already pins customer_id's grain, so there's nothing to dedup —
-        returns empty."""
+    def test_count_with_key_grain_already_pinned_matches_output_grain(self):
         _, benv = _build(COUNT_MODEL)
         m = benv.concepts["local.customers_by_self"]
         out_grain = frozenset(m.grain.components)
-        assert _count_dedup_grain(m, out_grain) == frozenset()
+        assert _aggregate_input_grain(m, benv, out_grain) == out_grain
 
     def test_non_aggregate_returns_empty(self):
         _, benv = _build(COUNT_MODEL)
-        assert _count_dedup_grain(benv.concepts["local.store_id"], frozenset()) == (
-            frozenset()
-        )
+        assert _aggregate_input_grain(
+            benv.concepts["local.store_id"], benv, frozenset()
+        ) == (frozenset())
 
-    def test_non_count_aggregate_returns_empty(self):
-        """A SUM is additive — it doesn't dedup its input, so no discriminator."""
+    def test_sum_uses_argument_grain(self):
         _, benv = _build(COUNT_MODEL)
         m = benv.concepts["local.value_per_store"]
         out_grain = frozenset(m.grain.components)
-        assert _count_dedup_grain(m, out_grain) == frozenset()
+        assert _aggregate_input_grain(m, benv, out_grain) == frozenset(
+            {"local.order_id", "local.store_id"}
+        )
 
     def test_count_metric_resolves_end_to_end(self):
         env, benv = _build(COUNT_MODEL)
@@ -168,7 +163,7 @@ class TestCountDedupGrain:
             [],
         )
         addr = "local.customers_per_store"
-        assert cattrs[addr].agg_dedup_grain == frozenset(
+        assert cattrs[addr].aggregate_input_grain == frozenset(
             {"local.customer_id", "local.store_id"}
         )
 

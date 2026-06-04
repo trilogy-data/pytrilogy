@@ -45,7 +45,7 @@ def _attrs(address: str, spec: dict) -> ConceptAttrs:
         grain_components=frozenset(spec.get("grain", ())),
         grouping_mode=spec.get("grouping_mode"),
         rowset_name=spec.get("rowset_name"),
-        agg_dedup_grain=frozenset(spec.get("agg_dedup_grain", ())),
+        aggregate_input_grain=frozenset(spec.get("aggregate_input_grain", ())),
         existence_only=spec.get("existence_only", False),
     )
 
@@ -469,6 +469,41 @@ def test_partition_basics_does_merge_within_label():
         "local.customer_id",
         "local.customer_first_name",
     }
+
+
+def test_partition_aggregates_uses_input_grain():
+    from trilogy.core.processing.v4_helper.group_rules import partition_aggregates
+
+    items = [
+        _item(
+            "local.numcust",
+            derivation=Derivation.AGGREGATE.value,
+            grain={"local.cntrycode"},
+            aggregate_input_grain={"local.cntrycode", "local.id"},
+        ),
+        _item(
+            "local.totacctbal",
+            derivation=Derivation.AGGREGATE.value,
+            grain={"local.cntrycode"},
+            aggregate_input_grain={"local.cntrycode", "local.id"},
+        ),
+        _item(
+            "local.line_total",
+            derivation=Derivation.AGGREGATE.value,
+            grain={"local.cntrycode"},
+            aggregate_input_grain={"local.cntrycode", "line.id"},
+        ),
+    ]
+    cg, ca = _cg({node: {} for node, _ in items})
+    buckets = partition_aggregates(items, cg, ca, {}, _noop_ensure)
+
+    merged = [
+        bucket
+        for bucket in buckets
+        if set(bucket.primary_members) == {"local.numcust", "local.totacctbal"}
+    ]
+    assert len(buckets) == 2
+    assert len(merged) == 1
 
 
 def test_partition_roots_buckets_per_label():

@@ -928,29 +928,39 @@ def build_strategy_node(
             parents = [wrapper]
             condition_for_generator = None
             condition_host_node = wrapper
-        # A count of distinct entities (`count(order_number)`) must count over
-        # rows reduced to the entity's grain, not the (filtered) source row
-        # grain. Insert a dedup GroupNode at `dedup_grain` between the filtered
-        # input and the count, so the count collapses one row per entity (q16).
-        # Done after the condition wrapper so the WHERE applies before the
-        # dedup, and only when the reduction grain differs from this group's
-        # own (output) grain.
+        # Normalize aggregate inputs to the row grain implied by their
+        # arguments before the aggregate runs. This is generic across aggregate
+        # functions: the normalization preserves both the input-grain keys and
+        # the argument columns the aggregate will read.
         if (
             derivation == Derivation.AGGREGATE.value
-            and a.dedup_grain
-            and a.dedup_grain != a.grain_components
+            and a.aggregate_input_grain
+            and a.aggregate_input_grain != a.grain_components
             and parents
         ):
-            dedup_concepts = [
-                environment.concepts[addr]
-                for addr in a.dedup_grain
-                if addr in environment.concepts
-            ]
-            if dedup_concepts:
+            normalize_addrs = set(a.aggregate_input_grain)
+            for c in outputs:
+                if c.address not in primary_addrs or c.lineage is None:
+                    continue
+                normalize_addrs.update(
+                    arg.address for arg in c.lineage.concept_arguments
+                )
+            parent_output_by_addr: dict[str, BuildConcept] = {}
+            for parent in parents:
+                for output in parent.output_concepts:
+                    parent_output_by_addr.setdefault(output.address, output)
+            normalize_concepts: list[BuildConcept] = []
+            for addr, concept in parent_output_by_addr.items():
+                if addr in normalize_addrs:
+                    normalize_concepts.append(concept)
+            for addr in sorted(normalize_addrs):
+                if addr not in parent_output_by_addr and addr in environment.concepts:
+                    normalize_concepts.append(environment.concepts[addr])
+            if normalize_concepts:
                 parents = [
                     GroupNode(
-                        output_concepts=dedup_concepts,
-                        input_concepts=dedup_concepts,
+                        output_concepts=normalize_concepts,
+                        input_concepts=normalize_concepts,
                         environment=environment,
                         parents=parents,
                     )

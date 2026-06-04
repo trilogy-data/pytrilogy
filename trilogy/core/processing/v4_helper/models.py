@@ -22,11 +22,10 @@ class GroupAttrs:
     primary_members: tuple[str, ...] = ()
     secondary_members: tuple[str, ...] = ()
     member_depths: dict[str, str] = field(default_factory=dict)
-    # For an aggregate group whose count(s) must count distinct entities, the
-    # grain its input is reduced to before aggregating (e.g. {order_number} for
-    # `count(order_number)`). Empty when no reduction is needed. Drives an
-    # intermediate dedup GroupNode in the strategy builder.
-    dedup_grain: frozenset[str] = frozenset()
+    # For an aggregate group, the row grain its inputs must be normalized to
+    # before aggregation. This is the grouping grain plus the natural grain of
+    # the aggregate arguments.
+    aggregate_input_grain: frozenset[str] = frozenset()
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently — so a single clause may live at
@@ -61,7 +60,7 @@ class ConceptAttrs:
     grain_components: frozenset[str] = frozenset()
     grouping_mode: str | None = None
     rowset_name: str | None = None
-    agg_dedup_grain: frozenset[str] = frozenset()
+    aggregate_input_grain: frozenset[str] = frozenset()
     # Tagged post-build for a concept that appears ONLY as an existence arg
     # (semijoin RHS) and never as a row arg — `partition_roots` places such a
     # node in its own scan bucket (side-channel subselect source).
@@ -109,7 +108,7 @@ def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
         output_concepts=a.output_concepts,
         hidden_concepts=a.hidden_concepts,
         input_concepts=a.input_concepts,
-        dedup_grain=a.dedup_grain,
+        aggregate_input_grain=a.aggregate_input_grain,
     )
 
 
@@ -124,7 +123,7 @@ def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
         grain_components=a.grain_components,
         grouping_mode=a.grouping_mode,
         rowset_name=a.rowset_name,
-        agg_dedup_grain=a.agg_dedup_grain,
+        aggregate_input_grain=a.aggregate_input_grain,
         existence_only=a.existence_only,
     )
 
@@ -158,6 +157,5 @@ class GroupBucket:
     # split, which can land two co-grain buckets with disjoint upstream
     # sources. Empty string for rules that don't need it.
     discriminator: str = ""
-    # Grain to reduce this aggregate's input to before aggregating (a count of
-    # distinct entities); empty when no reduction is needed. See GroupAttrs.
-    dedup_grain: frozenset[str] = frozenset()
+    # Grain to normalize this aggregate's inputs to before aggregating.
+    aggregate_input_grain: frozenset[str] = frozenset()

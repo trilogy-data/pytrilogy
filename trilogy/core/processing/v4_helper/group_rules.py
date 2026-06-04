@@ -117,16 +117,14 @@ def partition_aggregates(
     ensure_assigned: EnsureAssignedFn,
     output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
-    """Like the default rule, but also splits on a count's dedup grain.
+    """Partition aggregates by output grain and required input grain.
 
-    A `count(<key>)` must count over rows reduced to the key's grain (see
-    `_count_dedup_grain`). Two aggregates at the same output grain that need
-    DIFFERENT input grains — e.g. `count(order_number)` (dedup to {order}) and
-    `sum(ext_ship_cost)` (over line grain) — can't share one input scan, so we
-    bucket them separately. Each then sources its own scan at its own grain;
-    the count's collapses to one row per key and counts entities, the sum's
-    stays at line grain (q16). Additive aggregates carry an empty dedup grain
-    and collapse to the default keying."""
+    Two aggregates at the same output grain can share one input stream only
+    when their arguments are valid at the same row grain. For example,
+    `count(customer_id)` and `sum(account_balance)` both read customer-grain
+    rows and can share; `count(order_id)` and `sum(line_amount)` split when the
+    latter needs line-grain rows.
+    """
     by_key: dict[
         tuple[str, str, frozenset[str], str | None, frozenset[str]],
         GroupBucket,
@@ -137,17 +135,17 @@ def partition_aggregates(
         grain = data.grain_components
         label = data.label
         grouping_mode = data.grouping_mode
-        dedup = data.agg_dedup_grain
-        key = (label, depth_label, grain, grouping_mode, dedup)
+        input_grain = data.aggregate_input_grain
+        key = (label, depth_label, grain, grouping_mode, input_grain)
         bucket = by_key.get(key)
         if bucket is None:
             bucket = _bucket_for(depth_label, derivation, grain, label=label)
             disc: list[str] = []
             if grouping_mode and grouping_mode != "standard":
                 disc.append(f"grp:{grouping_mode}")
-            if dedup and dedup != grain:
-                disc.append("dedup:" + "|".join(sorted(dedup)))
-                bucket.dedup_grain = dedup
+            if input_grain and input_grain != grain:
+                disc.append("input:" + "|".join(sorted(input_grain)))
+                bucket.aggregate_input_grain = input_grain
             if disc:
                 bucket.discriminator = ":".join(disc)
             by_key[key] = bucket

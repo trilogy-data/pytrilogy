@@ -20,7 +20,7 @@ from typing import Callable
 
 import networkx as nx
 
-from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -258,34 +258,28 @@ def node_id(label: str, address: str) -> str:
     return f"[{label}]{address}" if label else address
 
 
-def _count_dedup_grain(
-    concept: BuildConcept, out_grain: frozenset[str]
+def _aggregate_input_grain(
+    concept: BuildConcept, environment: BuildEnvironment, out_grain: frozenset[str]
 ) -> frozenset[str]:
-    """The grain a COUNT must dedup its input to before counting.
+    """The row grain an aggregate's inputs must have before aggregation.
 
-    `count(<key>)` means "how many distinct entities" — it has to count over
-    rows reduced to that key's grain, not the (finer) source row grain, or it
-    counts source rows instead of entities (q16: `count(cs.order_number)` over
-    catalog_sales lines = line count, not order count). Returns `out_grain ∪
-    {arg key grains not already in out_grain}` when the count is over a key
-    whose grain the output grain doesn't already pin; empty otherwise (no dedup
-    needed — additive aggregates, or a count already at its key's grain).
-
-    Drives a partition discriminator so such a count lands in its own bucket
-    with its own (deduppable) input scan, instead of sharing the line-grain
-    scan that the additive sums need."""
+    Every aggregate has one: the aggregate's output grouping grain plus the
+    natural grain of each aggregate argument. Aggregates sharing this grain can
+    share one input stream; aggregates with different input grains need
+    separate streams.
+    """
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return frozenset()
-    fn = concept.lineage.function
-    if fn.operator not in (FunctionType.COUNT, FunctionType.COUNT_DISTINCT):
-        return frozenset()
-    extra: set[str] = set()
-    for arg in fn.arguments:
-        if isinstance(arg, BuildConcept) and arg.purpose == Purpose.KEY and arg.grain:
-            arg_grain = set(arg.grain.components)
-            if not arg_grain <= out_grain:
-                extra |= arg_grain
-    return frozenset(out_grain | extra) if extra else frozenset()
+    input_grain: set[str] = set(out_grain)
+    for arg in concept.lineage.function.arguments:
+        if not isinstance(arg, BuildConcept):
+            continue
+        grain_inputs = _walk_aggregate_grain_inputs(arg, environment)
+        if grain_inputs:
+            input_grain.update(c.address for c in grain_inputs)
+        elif arg.grain:
+            input_grain.update(arg.grain.components)
+    return frozenset(input_grain)
 
 
 def _add_concept(
@@ -339,7 +333,7 @@ def _add_concept(
         grain_components=out_grain,
         grouping_mode=grouping_mode,
         rowset_name=rowset_name,
-        agg_dedup_grain=_count_dedup_grain(concept, out_grain),
+        aggregate_input_grain=_aggregate_input_grain(concept, environment, out_grain),
     )
 
     # Rowset boundary: a ROWSET concept is the outer's "handle" on a
