@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 1040
+gen_length = 858
 preql_size = 230
 comp_size = 328
 generated_sql = """
@@ -9,32 +9,25 @@ wakeful as (
 SELECT
     \"lineitem\".\"l_extendedprice\" as \"extended_price\",
     \"lineitem\".\"l_quantity\" as \"quantity\",
+    \"part_part\".\"p_brand\" as \"part_brand\",
+    \"part_part\".\"p_container\" as \"part_container\",
     \"part_part\".\"p_partkey\" as \"part_id\"
 FROM
     \"memory\".\"part\" as \"part_part\"
-    LEFT OUTER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
-WHERE
-    \"part_part\".\"p_brand\" = 'Brand#23' and \"part_part\".\"p_container\" = 'MED BOX'
-),
+    LEFT OUTER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"),
 cheerful as (
 SELECT
-    \"part_part\".\"p_partkey\" as \"part_id\",
-    avg(\"lineitem\".\"l_quantity\") as \"avg_qty_per_part\"
+    \"wakeful\".\"part_id\" as \"part_id\",
+    avg(\"wakeful\".\"quantity\") as \"avg_qty_per_part\"
 FROM
-    \"memory\".\"part\" as \"part_part\"
-    LEFT OUTER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
+    \"wakeful\"
 GROUP BY
-    1),
-cooperative as (
+    1)
 SELECT
-    sum(\"wakeful\".\"extended_price\") as \"_virt_agg_sum_5592368918008795\"
+    sum(\"wakeful\".\"extended_price\") / 7.0 as \"avg_yearly\"
 FROM
     \"wakeful\"
     INNER JOIN \"cheerful\" on \"wakeful\".\"part_id\" = \"cheerful\".\"part_id\"
 WHERE
-    \"wakeful\".\"quantity\" < 0.2 * \"cheerful\".\"avg_qty_per_part\"
-)
-SELECT
-    \"cooperative\".\"_virt_agg_sum_5592368918008795\" / 7.0 as \"avg_yearly\"
-FROM
-    \"cooperative\""""
+    \"wakeful\".\"part_brand\" = 'Brand#23' and \"wakeful\".\"part_container\" = 'MED BOX' and \"wakeful\".\"quantity\" < 0.2 * \"cheerful\".\"avg_qty_per_part\"
+"""

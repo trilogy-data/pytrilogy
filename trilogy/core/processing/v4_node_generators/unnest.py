@@ -2,7 +2,7 @@ from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import StrategyNode, UnnestNode
 
-from .common import parent_outputs_needed
+from .common import parent_outputs_needed, passthrough_if_materialized
 
 
 def gen_unnest(
@@ -15,6 +15,11 @@ def gen_unnest(
     """Unnest an array-valued parent column into rows. The unnested concepts
     are passed as `unnest_concepts`; everything in `outputs` that isn't
     unnested is a pass-through projection."""
+    passthrough = passthrough_if_materialized(
+        outputs, parents, environment, conditions, preexisting_conditions
+    )
+    if passthrough is not None:
+        return passthrough
     inputs = parent_outputs_needed(outputs, parents, conditions)
     unnest_concepts = [c for c in outputs if c.lineage is not None]
     return UnnestNode(

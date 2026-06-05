@@ -1,3 +1,4 @@
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildConcept,
     BuildFilterItem,
@@ -87,6 +88,34 @@ def gen_filter(
         cond = where.conditional
         if not where.existence_arguments and is_scalar_condition(cond):
             intrinsic_atoms = [cond]
+
+    # Aggregate predicate (`filter X where count(...) by X > 1`): can't push as a
+    # row WHERE, but when the parent already groups to the content's grain and
+    # exposes the aggregate as a column, the predicate is a post-group HAVING.
+    # Push it referencing the precomputed column instead of rendering a
+    # `CASE WHEN agg THEN X ELSE NULL` projection, which leaks non-matching
+    # groups as NULL rows. Gated: single predicate, no existence/semijoin arg,
+    # every referenced concept already a parent output (so we never re-aggregate),
+    # every aggregate grouped at the content grain (a true HAVING), and the
+    # non-filter siblings all at that group grain.
+    if not intrinsic_atoms and intrinsic_filter_pushdown and len(distinct) == 1:
+        where = next(iter(distinct.values()))
+        cond = where.conditional
+        parent_outputs = {c.address for p in parents for c in p.output_concepts}
+        agg_args = [
+            r for r in where.row_arguments if r.derivation == Derivation.AGGREGATE
+        ]
+        if (
+            not where.existence_arguments
+            and agg_args
+            and all(r.address in parent_outputs for r in where.row_arguments)
+            and all(
+                a.grain and set(a.grain.components) == content_grain for a in agg_args
+            )
+            and non_filter_addrs <= (content_grain | content_args)
+        ):
+            intrinsic_atoms = [cond]
+
     combined = conditions.conditional if conditions else None
     if intrinsic_atoms:
         intrinsic = combine_condition_atoms(intrinsic_atoms)

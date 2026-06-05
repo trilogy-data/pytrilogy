@@ -1,13 +1,14 @@
 query_id = "03"
-gen_length = 807
+gen_length = 1304
 preql_size = 298
 comp_size = 467
 generated_sql = """
+
+WITH 
+cheerful as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
-    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\",
-    \"order_orders\".\"o_orderdate\" as \"order_date\",
-    \"order_orders\".\"o_shippriority\" as \"order_ship_priority\"
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
@@ -16,10 +17,26 @@ WHERE
     \"order_customer_customers\".\"c_mktsegment\" = 'BUILDING' and \"order_orders\".\"o_orderdate\" < date '1995-03-15' and \"lineitem\".\"l_shipdate\" > date '1995-03-15'
 
 GROUP BY
-    1,
-    3,
-    4
+    1),
+cooperative as (
+SELECT
+    \"order_orders\".\"o_orderdate\" as \"order_date\",
+    \"order_orders\".\"o_orderkey\" as \"order_id\",
+    \"order_orders\".\"o_shippriority\" as \"order_ship_priority\"
+FROM
+    \"memory\".\"orders\" as \"order_orders\"
+WHERE
+    \"order_orders\".\"o_orderdate\" < date '1995-03-15'
+)
+SELECT
+    \"cheerful\".\"order_id\" as \"order_id\",
+    \"cheerful\".\"q_revenue\" as \"q_revenue\",
+    \"cooperative\".\"order_date\" as \"order_date\",
+    \"cooperative\".\"order_ship_priority\" as \"order_ship_priority\"
+FROM
+    \"cooperative\"
+    INNER JOIN \"cheerful\" on \"cooperative\".\"order_id\" = \"cheerful\".\"order_id\"
 ORDER BY 
-    \"q_revenue\" desc,
-    \"order_orders\".\"o_orderdate\" asc
+    \"cheerful\".\"q_revenue\" desc,
+    \"cooperative\".\"order_date\" asc
 LIMIT (10)"""

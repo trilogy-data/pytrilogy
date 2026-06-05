@@ -457,7 +457,18 @@ class CTE:
             ):
                 return True
 
-            if c.derivation in (Derivation.BASIC, Derivation.FILTER) and c.lineage:
+            if (
+                c.derivation
+                in (Derivation.BASIC, Derivation.FILTER, Derivation.GROUP_TO)
+                and c.lineage
+            ):
+                # A GROUP_TO (`group(agg, key)`) renders as its inner aggregate
+                # value, so it follows that aggregate — never a group key here.
+                if (
+                    isinstance(c.lineage, BuildFunction)
+                    and c.lineage.operator == FunctionType.GROUP
+                ):
+                    return check_is_not_in_group(c.lineage.concept_arguments[0])
                 if all(
                     [
                         check_is_not_in_group(x)
@@ -465,11 +476,6 @@ class CTE:
                     ]
                 ):
                     return True
-                if (
-                    isinstance(c.lineage, BuildFunction)
-                    and c.lineage.operator == FunctionType.GROUP
-                ):
-                    return check_is_not_in_group(c.lineage.concept_arguments[0])
                 # a basic expression mixing a group key with a locally-computed
                 # aggregate (e.g. a ratio `a / sum(x)`) contains an aggregate and
                 # cannot appear in GROUP BY
