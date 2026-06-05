@@ -1,3 +1,4 @@
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import StrategyNode, UnnestNode
@@ -20,8 +21,14 @@ def gen_unnest(
     )
     if passthrough is not None:
         return passthrough
+    parent_addrs = {c.address for parent in parents for c in parent.output_concepts}
+    outputs = [
+        c
+        for c in outputs
+        if c.derivation == Derivation.UNNEST or c.address in parent_addrs
+    ]
     inputs = parent_outputs_needed(outputs, parents, conditions)
-    unnest_concepts = [c for c in outputs if c.lineage is not None]
+    unnest_concepts = [c for c in outputs if c.derivation == Derivation.UNNEST]
     return UnnestNode(
         unnest_concepts=unnest_concepts,
         input_concepts=inputs,

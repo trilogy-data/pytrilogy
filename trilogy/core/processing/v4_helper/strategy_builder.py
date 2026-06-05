@@ -195,6 +195,22 @@ def _parent_nodes_for(
     for pgid in group_graph.predecessors(gid):
         if pgid == FINAL_NODE_ID:
             continue
+        if attrs[pgid].depth_label == "d1" and (
+            (
+                attrs[gid].derivation == Derivation.UNNEST.value
+                and attrs[pgid].derivation
+                in (
+                    Derivation.BASIC.value,
+                    Derivation.FILTER.value,
+                    Derivation.WINDOW.value,
+                )
+            )
+            or (
+                attrs[gid].derivation == Derivation.WINDOW.value
+                and attrs[pgid].derivation == Derivation.WINDOW.value
+            )
+        ):
+            continue
         # Existence-kind edges feed a subselect, not the row stream —
         # `_existence_for_group` wires them as side-channel parents post-
         # build. Including them here would put them in JOIN dedup and
@@ -295,6 +311,10 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             ):
                 continue
             if any(
+                o.derivation == Derivation.ROWSET for o in b.output_concepts
+            ) and any(o.derivation != Derivation.ROWSET for o in a.output_concepts):
+                continue
+            if any(
                 crosses_unsourced_aggregate(o, available) for o in a.output_concepts
             ):
                 continue
@@ -370,6 +390,17 @@ def _widen_merge_join_keys(parents: list[StrategyNode]) -> None:
                 input_candidates=input_candidates,
                 available_addresses=available,
             )
+            if any(o.derivation == Derivation.ROWSET for o in parent.output_concepts):
+                existing_partials = {c.address for c in parent.partial_concepts}
+                parent.partial_concepts.extend(
+                    [
+                        c
+                        for c in carried
+                        if c.derivation != Derivation.ROWSET
+                        and c.address not in existing_partials
+                    ]
+                )
+                parent.rebuild_cache()
 
 
 def _filter_intrinsic_pushdown_safe(group_graph: nx.DiGraph, gid: str) -> bool:
@@ -551,6 +582,7 @@ def _topological_order(group_graph: nx.DiGraph) -> list[str]:
 
 def _cover_groups_for_mandatory(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
 ) -> dict[str, list[BuildConcept]]:
@@ -569,8 +601,10 @@ def _cover_groups_for_mandatory(
         if not candidates:
             continue
         candidates.sort(
-            key=lambda gid: sum(
-                1 for a in nx.ancestors(group_graph, gid) if a in built
+            key=lambda gid: (
+                addr in set(attrs[gid].primary_members)
+                or addr in set(attrs[gid].secondary_members),
+                sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
             ),
             reverse=True,
         )
@@ -621,7 +655,6 @@ def _fold_descendant_contributors(
             )
             per_group[b_gid].extend(s_concepts)
             del per_group[s_gid]
-            break
 
 
 def _wrap_for_grain(
@@ -808,12 +841,15 @@ def _assemble_final_node(
                 if arg_nodes
                 else None
             ),
-            input_concepts=list(node.output_concepts) + arg_concepts,
+            input_concepts=[
+                c for c in node.output_concepts if c.address not in node.hidden_concepts
+            ]
+            + arg_concepts,
             condition_on_merge=bool(arg_nodes),
             combine_existing=False,
         )
 
-    per_group = _cover_groups_for_mandatory(group_graph, built, mandatory_list)
+    per_group = _cover_groups_for_mandatory(group_graph, attrs, built, mandatory_list)
     if not per_group:
         return _apply_final_conditions(next(iter(built.values())))
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
@@ -888,6 +924,7 @@ def _assemble_final_node(
     # columns into one projection instead of joining (same passthrough logic the
     # per-group `_pre_merge_parents` uses).
     parents = _fold_passthrough_parents(parents)
+    _widen_merge_join_keys(parents)
 
     available: set[str] = set()
     for p in parents:
@@ -1002,7 +1039,11 @@ def build_strategy_node(
         # there strips every requested column and the root never builds —
         # leaving the consumer with `INVALID_REFERENCE_BUG` against the
         # missing concepts (q11).
-        if derivation != Derivation.ROOT.value:
+        if derivation not in (
+            Derivation.ROOT.value,
+            Derivation.UNION.value,
+            Derivation.UNNEST.value,
+        ):
             outputs = satisfiable_outputs(outputs, parents)
             if not outputs:
                 continue

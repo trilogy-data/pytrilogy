@@ -18,7 +18,7 @@ import networkx as nx
 from trilogy.core.enums import Derivation
 
 from .concept_graph import _scope_and_phase
-from .constants import EDGE_KIND_LINEAGE
+from .constants import EDGE_KIND_EXISTENCE, EDGE_KIND_LINEAGE
 from .models import ConceptAttrs, GroupBucket
 
 NodeItem = tuple[str, ConceptAttrs]
@@ -377,6 +377,7 @@ def _partition_by_signature_and_grain(
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     ensure_assigned: EnsureAssignedFn,
+    extra_signature: Callable[[str], frozenset[str]] | None = None,
 ) -> list[GroupBucket]:
     """Generic signature+grain bucketing. Used for derivations whose
     upstream identity should split buckets even when row-shape (depth /
@@ -395,17 +396,21 @@ def _partition_by_signature_and_grain(
         n = len(sub_items)
         if not n:
             continue
-        sigs = [
-            _stop_signature(
-                node,
-                own_derivation,
-                concept_graph,
-                concept_attrs,
-                primary_group,
-                ensure_assigned,
+        sigs = []
+        for node, _ in sub_items:
+            sig = set(
+                _stop_signature(
+                    node,
+                    own_derivation,
+                    concept_graph,
+                    concept_attrs,
+                    primary_group,
+                    ensure_assigned,
+                )
             )
-            for node, _ in sub_items
-        ]
+            if extra_signature is not None:
+                sig |= set(extra_signature(node))
+            sigs.append(frozenset(sig))
         grains = [sub_items[i][1].grain_components for i in range(n)]
         uf = list(range(n))
 
@@ -494,6 +499,14 @@ def partition_filters_by_signature(
     chain vs. `_virt_filter_id` over customer roots) should not be
     co-sourced; their disjoint parent groups would form a back-edge
     through any shared downstream consumer."""
+
+    def existence_signature(node: str) -> frozenset[str]:
+        return frozenset(
+            f"exist:{concept_attrs[pred].address}"
+            for pred, _, ed in concept_graph.in_edges(node, data=True)
+            if ed.get("kind") == EDGE_KIND_EXISTENCE
+        )
+
     return _partition_by_signature_and_grain(
         items,
         Derivation.FILTER.value,
@@ -501,6 +514,7 @@ def partition_filters_by_signature(
         concept_attrs,
         primary_group,
         ensure_assigned,
+        extra_signature=existence_signature,
     )
 
 

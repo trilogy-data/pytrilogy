@@ -71,7 +71,11 @@ def build_node(
             f"No v4 node generator for derivation {derivation!r}; "
             f"known: {sorted(_GENERATORS)}"
         )
-    if derivation in (Derivation.ROOT.value, Derivation.ROWSET.value):
+    if derivation in (
+        Derivation.ROOT.value,
+        Derivation.ROWSET.value,
+        Derivation.UNION.value,
+    ):
         return fn(outputs, parents, environment, conditions, history=history, g=g)
     if derivation == Derivation.FILTER.value:
         return fn(
