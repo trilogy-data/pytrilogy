@@ -18,9 +18,9 @@ ref rows: 1 (1 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1479 | 38 | 4.85 ms |
-| reference | 1318 | 35 | 4.78 ms |
-| v4 / ref | 1.12x | 1.09x | 1.02x |
+| v4 | 1471 | 38 | 15.52 ms |
+| reference | 1471 | 38 | 13.15 ms |
+| v4 / ref | 1.00x | 1.00x | 1.18x |
 
 ## Preql
 
@@ -67,7 +67,7 @@ FROM
 WHERE
     "ws_item_items"."I_MANUFACT_ID" = 350 and cast("ws_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 ),
-abundant as (
+uneven as (
 SELECT
     "thoughtful"."ws_item_id" as "ws_item_id",
     1.3 * "thoughtful"."_virt_agg_avg_5364249642270353" as "avg_item_disc"
@@ -77,9 +77,9 @@ SELECT
     sum("cheerful"."ws_ext_discount_amount") as "excess_discount_amount"
 FROM
     "cheerful"
-    INNER JOIN "abundant" on "cheerful"."ws_item_id" = "abundant"."ws_item_id"
+    INNER JOIN "uneven" on "cheerful"."ws_item_id" = "uneven"."ws_item_id"
 WHERE
-    "cheerful"."ws_ext_discount_amount" > "abundant"."avg_item_disc"
+    "cheerful"."ws_ext_discount_amount" > "uneven"."avg_item_disc"
 
 ORDER BY 
     "excess_discount_amount" asc nulls first
@@ -90,6 +90,15 @@ LIMIT (100)
 
 ```sql
 WITH 
+thoughtful as (
+SELECT
+    "ws_web_sales"."WS_ITEM_SK" as "ws_item_id",
+    avg(CASE WHEN cast("ws_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date THEN "ws_web_sales"."WS_EXT_DISCOUNT_AMT" ELSE NULL END) as "_virt_agg_avg_5364249642270353"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    LEFT OUTER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
+GROUP BY
+    1),
 cheerful as (
 SELECT
     "ws_item_items"."I_ITEM_SK" as "ws_item_id",
@@ -101,25 +110,19 @@ FROM
 WHERE
     "ws_item_items"."I_MANUFACT_ID" = 350 and cast("ws_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
 ),
-thoughtful as (
+uneven as (
 SELECT
-    "ws_web_sales"."WS_ITEM_SK" as "ws_item_id",
-    avg("ws_web_sales"."WS_EXT_DISCOUNT_AMT") as "_virt_agg_avg_5364249642270353"
+    "thoughtful"."ws_item_id" as "ws_item_id",
+    1.3 * "thoughtful"."_virt_agg_avg_5364249642270353" as "avg_item_disc"
 FROM
-    "memory"."web_sales" as "ws_web_sales"
-    INNER JOIN "memory"."date_dim" as "ws_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_date_date"."D_DATE_SK"
-WHERE
-    cast("ws_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
-
-GROUP BY
-    1)
+    "thoughtful")
 SELECT
     sum("cheerful"."ws_ext_discount_amount") as "excess_discount_amount"
 FROM
     "cheerful"
-    INNER JOIN "thoughtful" on "cheerful"."ws_item_id" = "thoughtful"."ws_item_id"
+    INNER JOIN "uneven" on "cheerful"."ws_item_id" = "uneven"."ws_item_id"
 WHERE
-    "cheerful"."ws_ext_discount_amount" > 1.3 * "thoughtful"."_virt_agg_avg_5364249642270353"
+    "cheerful"."ws_ext_discount_amount" > "uneven"."avg_item_disc"
 
 ORDER BY 
     "excess_discount_amount" asc nulls first

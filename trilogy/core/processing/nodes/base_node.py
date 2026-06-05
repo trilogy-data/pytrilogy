@@ -83,6 +83,29 @@ def resolve_concept_map(
     return concept_map
 
 
+def resolve_existence_map(
+    inputs: List[QueryDatasource | BuildDatasource],
+    existence_concepts: List[BuildConcept],
+) -> dict[str, set[BuildDatasource | QueryDatasource]]:
+    existence_addresses = {c.address for c in existence_concepts}
+    if not existence_addresses:
+        return {}
+    raw = resolve_concept_map(
+        inputs,
+        targets=[],
+        inherited_inputs=existence_concepts,
+    )
+    return {
+        address: {
+            source
+            for source in sources
+            if isinstance(source, BuildDatasource | QueryDatasource)
+        }
+        for address, sources in raw.items()
+        if address in existence_addresses
+    }
+
+
 def get_all_parent_partial(
     all_concepts: List[BuildConcept], parents: List["StrategyNode"]
 ) -> List[BuildConcept]:
@@ -421,6 +444,9 @@ class StrategyNode:
             datasources=parent_sources,
             source_type=self.source_type,
             source_map=source_map,
+            existence_source_map=resolve_existence_map(
+                parent_sources, self.existence_concepts
+            ),
             joins=[],
             grain=grain,
             condition=self.conditions,

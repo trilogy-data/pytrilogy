@@ -525,6 +525,67 @@ auto sale_count <- count(sale_id);
     )
 
 
+def test_having_pushup_keeps_consumer_filter_across_full_join():
+    env = Environment()
+    env.parse(
+        """
+key order_id int;
+key customer_id int;
+auto qty_per_order <- sum(order_id);
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    qty_per_order = build_env.concepts["qty_per_order"]
+    customer_id = build_env.concepts["customer_id"]
+    condition = BuildComparison(
+        left=qty_per_order,
+        right=300,
+        operator=ComparisonOperator.GT,
+    )
+    rule = PredicatePushdown(having_alias=True)
+    group_parent = _simple_cte(
+        "grouped",
+        [qty_per_order],
+        condition=None,
+        group_to_grain=True,
+    )
+    customer_parent = _simple_cte("customers", [customer_id])
+    consumer = _simple_cte(
+        "consumer",
+        [qty_per_order, customer_id],
+        condition=condition,
+        source_map={
+            qty_per_order.address: [group_parent.name],
+            customer_id.address: [customer_parent.name],
+        },
+        parent_ctes=[group_parent, customer_parent],
+    )
+    consumer.joins = [
+        Join(
+            right_cte=customer_parent,
+            jointype=JoinType.FULL,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=customer_id,
+                    right=customer_id,
+                    existing_datasource=consumer.source,
+                    cte=customer_parent,
+                )
+            ],
+        )
+    ]
+
+    assert rule._push_having_into_group_parent(
+        consumer,
+        group_parent,
+        condition,
+        {group_parent.name: [consumer]},
+    )
+    assert is_child_of(condition, group_parent.condition)
+    assert is_child_of(condition, consumer.condition)
+
+
 def test_child_of_complex():
     #   monitor."customer_count" > 10 and monitor."store_sales_date_year" = 2001 and monitor."store_sales_date_month_of_year" = 1 and monitor."store_sales_item_current_price" > 1.2 * monitor."_virtual_6264207893106521"
     env, _ = parse("""

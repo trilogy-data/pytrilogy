@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (7 rows) |
-| reference execution | OK (7 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 7 (7 distinct)
-ref rows: 7 (7 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1846 | 27 | 10.30 ms |
-| reference | 1846 | 27 | 10.44 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 1846 | 27 | 12.97 ms |
+| reference | 1846 | 27 | 13.45 ms |
+| v4 / ref | 1.00x | 1.00x | 0.96x |
 
 ## Preql
 
@@ -64,16 +64,16 @@ limit 100
 
 ```sql
 SELECT
-    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_text_id",
     "catalog_sales_warehouse_warehouse"."w_state" as "catalog_sales_warehouse_state",
-    sum(CASE
-	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) >= :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
-	ELSE cast(0.0 as numeric)
-	END) as "sales_after",
+    "catalog_sales_item_items"."I_ITEM_ID" as "catalog_sales_item_text_id",
     sum(CASE
 	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) < :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
 	ELSE cast(0.0 as numeric)
-	END) as "sales_before"
+	END) as "sales_before",
+    sum(CASE
+	WHEN cast("catalog_sales_sold_date_date"."D_DATE" as date) >= :cutoff THEN "catalog_sales_catalog_sales"."CS_SALES_PRICE" - coalesce("catalog_returns_catalog_returns"."CR_REFUNDED_CASH",0.0)
+	ELSE cast(0.0 as numeric)
+	END) as "sales_after"
 FROM
     "memory"."catalog_sales" as "catalog_sales_catalog_sales"
     LEFT OUTER JOIN "memory"."catalog_returns" as "catalog_returns_catalog_returns" on "catalog_sales_catalog_sales"."CS_ITEM_SK" = "catalog_returns_catalog_returns"."CR_ITEM_SK" AND "catalog_sales_catalog_sales"."CS_ORDER_NUMBER" = "catalog_returns_catalog_returns"."CR_ORDER_NUMBER"

@@ -50,11 +50,7 @@ SELECT
     CASE WHEN \"questionable\".\"sales_sales_channel\" = 'WEB' THEN \"questionable\".\"sales_order_id\" ELSE NULL END as \"_virt_filter_order_id_4128599423878258\"
 FROM
     \"memory\".\"item\" as \"sales_item_items\"
-    INNER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
-WHERE
-    \"sales_return_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null)
-
+    LEFT OUTER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
 GROUP BY
     1,
     2,
@@ -79,6 +75,35 @@ GROUP BY
     3,
     \"questionable\".\"sales_order_id\",
     \"sales_item_items\".\"I_ITEM_SK\"),
+yummy as (
+SELECT
+    \"uneven\".\"sales_item_text_id\" as \"sales_item_text_id\",
+    \"uneven\".\"sales_order_id\" as \"sales_order_id\",
+    \"uneven\".\"sales_return_quantity\" as \"sales_return_quantity\",
+    \"uneven\".\"sales_sales_channel\" as \"sales_sales_channel\"
+FROM
+    \"memory\".\"item\" as \"sales_item_items\"
+    INNER JOIN \"questionable\" on \"sales_item_items\".\"I_ITEM_SK\" = \"questionable\".\"sales_item_id\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_id\" = \"sales_return_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_return_date_date\".\"D_WEEK_SEQ\" in (select quizzical.\"target_week_seqs\" from quizzical where quizzical.\"target_week_seqs\" is not null)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    \"juicy\".\"sales_order_id\"),
+vacuous as (
+SELECT
+    \"juicy\".\"sales_item_text_id\" as \"sales_item_text_id\",
+    sum(\"juicy\".\"_virt_filter_return_quantity_1904161637839137\") as \"cr_item_qty\",
+    sum(\"juicy\".\"_virt_filter_return_quantity_6234128225083739\") as \"wr_item_qty\",
+    sum(\"juicy\".\"_virt_filter_return_quantity_6293408465554798\") as \"sr_item_qty\"
+FROM
+    \"juicy\"
+GROUP BY
+    1),
 abhorrent as (
 SELECT
     \"concerned\".\"sales_item_text_id\" as \"sales_item_text_id\",

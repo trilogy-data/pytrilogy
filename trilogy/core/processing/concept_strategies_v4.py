@@ -17,9 +17,8 @@ API and the History cache wiring.
 
 from dataclasses import dataclass, field
 
-import networkx as nx
-
 from trilogy.constants import logger
+from trilogy.core import graph as nx
 from trilogy.core.enums import BooleanOperator
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
@@ -28,7 +27,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildGrain,
-    BuildHavingClause,
     BuildMultiSelectLineage,
     BuildRowsetItem,
     BuildSelectLineage,
@@ -50,6 +48,10 @@ from trilogy.core.processing.v4_helper import (
     build_concept_graph,
     build_group_graph,
     build_strategy_node,
+)
+from trilogy.core.processing.v4_helper.condition_injection import (
+    ConditionSources,
+    inject_condition_at_node,
 )
 from trilogy.utility import unique
 
@@ -219,12 +221,14 @@ def _resolve_multiselect(
             combined = BuildConditional(
                 left=combined, right=extra.conditional, operator=BooleanOperator.AND
             )
-        node = SelectNode(
-            output_concepts=list(mandatory_list),
-            input_concepts=list(node.usable_outputs),
-            parents=[node],
+        node = _resolve_and_inject_condition(
+            node,
+            BuildWhereClause(conditional=combined),
+            list(mandatory_list),
             environment=environment,
-            conditions=combined,
+            graph=g,
+            history=history,
+            depth=depth,
         )
 
     node.set_output_concepts(list(mandatory_list))
@@ -237,48 +241,92 @@ def _resolve_multiselect(
     )
 
 
-def _merge_external_having_args(
-    inner_node: StrategyNode,
-    having: BuildHavingClause,
-    inner_env: BuildEnvironment,
-    inner_g: ReferenceGraph,
+def _resolve_condition_sources(
+    node: StrategyNode,
+    condition: BuildWhereClause,
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
     history: "V4History",
     depth: int,
-) -> StrategyNode:
-    """Cross-join in any HAVING arg the inner producer doesn't already expose.
-
-    A HAVING can compare against a SEPARATE scalar rowset (q14 `bucket_sum_l0 >
-    avg_sales.average_sales`). Plan those external args on their own and
-    cross-join them in on their (empty) grain — folding them into the main
-    search would pull the scalar into this rowset's grain and mis-bucket it, so
-    each stays a self-contained sub-plan. Returns `inner_node` unchanged when
-    every HAVING arg is already produced (or the external args don't resolve)."""
-    produced_addrs = {o.address for o in inner_node.output_concepts}
-    extra_args = [
-        c for c in having.concept_arguments if c.address not in produced_addrs
-    ]
-    if not extra_args:
-        return inner_node
-    extra_info = search_concepts(
-        mandatory_list=extra_args,
-        history=history,
-        environment=inner_env,
-        depth=depth + 1,
-        g=inner_g,
-        conditions=[],
-    )
-    if extra_info.strategy_node is None:
-        return inner_node
-    merged_outputs = unique(
-        list(inner_node.output_concepts)
-        + list(extra_info.strategy_node.output_concepts),
+) -> ConditionSources:
+    """Resolve condition row inputs and existence inputs without mixing them."""
+    sources = ConditionSources()
+    produced_addrs = {o.address for o in node.usable_outputs}
+    row_args = unique(
+        [c for c in condition.row_arguments if c.address not in produced_addrs],
         "address",
     )
-    return MergeNode(
-        input_concepts=merged_outputs,
-        output_concepts=merged_outputs,
-        environment=inner_env,
-        parents=[inner_node, extra_info.strategy_node],
+    if row_args:
+        row_info = search_concepts(
+            mandatory_list=row_args,
+            history=history,
+            environment=environment,
+            depth=depth + 1,
+            g=graph,
+            conditions=[],
+        )
+        if row_info.strategy_node is None:
+            raise ValueError(
+                "Could not resolve condition row arguments "
+                f"{[c.address for c in row_args]}"
+            )
+        sources.row_concepts = row_args
+        sources.row_parents.append(row_info.strategy_node)
+
+    seen_existence_addrs: set[str] = set()
+    seen_parent_ids: set[int] = set()
+    for arg_group in condition.existence_arguments or ():
+        existence_args = unique(list(arg_group), "address")
+        if not existence_args:
+            continue
+        ex_info = search_concepts(
+            mandatory_list=existence_args,
+            history=history,
+            environment=environment,
+            depth=depth + 1,
+            g=graph,
+            conditions=[],
+        )
+        if ex_info.strategy_node is None:
+            raise ValueError(
+                "Could not resolve condition existence arguments "
+                f"{[c.address for c in existence_args]}"
+            )
+        for concept in existence_args:
+            if concept.address not in seen_existence_addrs:
+                seen_existence_addrs.add(concept.address)
+                sources.existence_concepts.append(concept)
+        if id(ex_info.strategy_node) not in seen_parent_ids:
+            seen_parent_ids.add(id(ex_info.strategy_node))
+            sources.existence_parents.append(ex_info.strategy_node)
+    return sources
+
+
+def _resolve_and_inject_condition(
+    node: StrategyNode,
+    condition: BuildWhereClause,
+    output_concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    history: "V4History",
+    depth: int,
+    *,
+    partial_concepts: list[BuildConcept] | None = None,
+    grain: BuildGrain | None = None,
+    hidden_concepts: set[str] | None = None,
+) -> StrategyNode:
+    sources = _resolve_condition_sources(
+        node, condition, environment, graph, history, depth
+    )
+    return inject_condition_at_node(
+        node,
+        condition,
+        output_concepts,
+        environment,
+        sources,
+        partial_concepts=partial_concepts,
+        grain=grain,
+        hidden_concepts=hidden_concepts,
     )
 
 
@@ -340,25 +388,15 @@ def resolve_rowset(
     # the HAVING wrap in `get_query_node`).
     having = built.having_clause
     if having is not None:
-        base = _merge_external_having_args(
-            inner_node, having, inner_env, inner_g, history, depth
-        )
-        combined = (
-            BuildConditional(
-                left=base.conditions,
-                right=having.conditional,
-                operator=BooleanOperator.AND,
-            )
-            if base.conditions
-            else having.conditional
-        )
-        inner_node = SelectNode(
-            output_concepts=list(built.output_components),
-            input_concepts=list(base.usable_outputs),
-            parents=[base],
+        inner_node = _resolve_and_inject_condition(
+            inner_node,
+            having,
+            list(built.output_components),
             environment=inner_env,
-            partial_concepts=list(base.partial_concepts),
-            conditions=combined,
+            graph=inner_g,
+            history=history,
+            depth=depth,
+            partial_concepts=list(inner_node.partial_concepts),
         )
 
     # Expose the demanded handles plus any rowset-derived handle that carries a
@@ -380,6 +418,11 @@ def resolve_rowset(
     handles: list[BuildConcept] = []
     inputs: list[BuildConcept] = []
     seen: set[str] = set()
+    condition_row_addresses = (
+        {c.address for c in conditions.row_arguments}
+        if conditions is not None
+        else set()
+    )
     for handle in [*rowset_outputs, *handle_pool]:
         hlineage = handle.lineage
         if handle.address in seen or handle.address not in derived:
@@ -388,7 +431,11 @@ def resolve_rowset(
             continue
         if hlineage.content.address not in produced:
             continue
-        if handle.address not in demanded and not handle.pseudonyms:
+        if (
+            handle.address not in demanded
+            and handle.address not in condition_row_addresses
+            and not handle.pseudonyms
+        ):
             continue
         seen.add(handle.address)
         handles.append(handle)
@@ -412,7 +459,7 @@ def resolve_rowset(
                     inputs.append(arm_concept)
                     hidden.add(arm_concept.address)
 
-    boundary = SelectNode(
+    boundary: StrategyNode = SelectNode(
         output_concepts=handles,
         input_concepts=inputs,
         parents=[inner_node],
@@ -429,12 +476,22 @@ def resolve_rowset(
     # plan didn't apply it (it's not part of the rowset's own select), so apply
     # it here over the materialized rows.
     if conditions is not None:
-        boundary = SelectNode(
-            output_concepts=list(handles),
-            input_concepts=list(boundary.usable_outputs),
-            parents=[boundary],
+        condition_outputs = [
+            h
+            for h in handles
+            if h.address not in condition_row_addresses
+            or h.address in demanded
+            or h.address in hidden
+            or h.pseudonyms
+        ]
+        boundary = _resolve_and_inject_condition(
+            boundary,
+            conditions,
+            list(condition_outputs),
             environment=inner_env,
-            conditions=conditions.conditional,
+            graph=inner_g,
+            history=history,
+            depth=depth,
             grain=boundary.grain,
             hidden_concepts=hidden,
         )
@@ -462,24 +519,40 @@ def _search_concepts(
         return _resolve_multiselect(
             ms_concept, mandatory_list, environment, depth, g, history, conditions
         )
-    concept_graph, concept_attrs = build_concept_graph(
+    concept_graph, concept_attrs, concept_edges = build_concept_graph(
         mandatory_list, environment, conditions
     )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()
     ]
-    group_graph, group_attrs = build_group_graph(
-        concept_graph, concept_attrs, conditions, mandatory_list, datasource_columns
+    (
+        group_graph,
+        group_edges,
+        group_attrs,
+        merged_group_graph,
+        merged_group_edges,
+    ) = build_group_graph(
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        conditions,
+        mandatory_list,
+        datasource_columns,
+        return_merged_graph=True,
     )
     strategy_node = build_strategy_node(
-        group_graph, group_attrs, mandatory_list, environment, g, history
+        group_graph, group_edges, group_attrs, mandatory_list, environment, g, history
     )
     return BuildInfo(
         concept_graph=concept_graph,
+        merged_group_graph=merged_group_graph,
         group_graph=group_graph,
         group_attrs=group_attrs,
         concept_attrs=concept_attrs,
+        concept_edges=concept_edges,
+        merged_group_edges=merged_group_edges,
+        group_edges=group_edges,
         strategy_node=strategy_node,
     )
 

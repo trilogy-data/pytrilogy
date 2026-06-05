@@ -1,0 +1,38 @@
+key shot_id int;
+key player_id int;
+property shot_id.points int;
+property shot_id.kind string;
+
+datasource shots (
+    shot_id: shot_id,
+    player_id: player_id,
+    points: points,
+    kind: kind,
+)
+grain (shot_id)
+query '''
+select 1 shot_id, 1 player_id, 3 points, 'three' kind
+union all select 2, 1, 2, 'two'
+union all select 3, 1, 1, 'free'
+union all select 4, 2, 3, 'three'
+union all select 5, 2, 2, 'two'
+''';
+
+# A CASE dimension that is NULL for 'two' shots, then a windowed rank filtered
+# by HAVING and selected beside a conditional count over that dimension. Player
+# 1 (6 pts) ranks first and has 2 shots with a non-null shot_display (the
+# 'three' and 'free' shots; the 'two' shot is NULL). v4 ignores the `?
+# shot_display is not null` predicate in the window-HAVING context and counts
+# all 3 of player 1's shots. Expected: [(1, 2)].
+auto shot_display <- case
+    when kind = 'three' then 'made-three'
+    when kind = 'free' then 'free-throw'
+    end;
+auto player_rank <- rank player_id by sum(points) by player_id desc;
+
+select
+    player_rank,
+    count(shot_id ? shot_display is not null) as shots_taken,
+having
+    player_rank = 1
+;

@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (0 rows) |
-| reference execution | OK (0 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 0 (0 distinct)
-ref rows: 0 (0 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 3110 | 71 | 13.80 ms |
-| reference | 2581 | 61 | 7.80 ms |
-| v4 / ref | 1.20x | 1.16x | 1.77x |
+| v4 | 3095 | 72 | 58.36 ms |
+| reference | 3095 | 72 | 56.19 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -81,15 +81,7 @@ GROUP BY
     "physical_sales_item_items"."I_ITEM_SK"),
 abundant as (
 SELECT
-    "thoughtful"."physical_sales_store_id" as "physical_sales_store_id",
-    avg("thoughtful"."item_revenue") as "store_avg_revenue"
-FROM
-    "thoughtful"
-GROUP BY
-    1,
-    "thoughtful"."physical_sales_store_name"),
-questionable as (
-SELECT
+    "thoughtful"."item_revenue" as "item_revenue",
     "thoughtful"."item_revenue" as "revenue",
     "thoughtful"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
     "thoughtful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
@@ -98,19 +90,28 @@ SELECT
     "thoughtful"."physical_sales_store_id" as "physical_sales_store_id",
     "thoughtful"."physical_sales_store_name" as "physical_sales_store_name"
 FROM
-    "thoughtful")
+    "thoughtful"),
+uneven as (
 SELECT
-    "questionable"."physical_sales_store_name" as "physical_sales_store_name",
-    "questionable"."physical_sales_item_desc" as "physical_sales_item_desc",
-    "questionable"."revenue" as "revenue",
-    "questionable"."physical_sales_item_current_price" as "physical_sales_item_current_price",
-    "questionable"."physical_sales_item_wholesale_cost" as "physical_sales_item_wholesale_cost",
-    "questionable"."physical_sales_item_brand_name" as "physical_sales_item_brand_name"
+    "abundant"."physical_sales_store_id" as "physical_sales_store_id",
+    avg("abundant"."item_revenue") as "store_avg_revenue"
 FROM
-    "questionable"
-    INNER JOIN "abundant" on "questionable"."physical_sales_store_id" = "abundant"."physical_sales_store_id"
+    "abundant"
+GROUP BY
+    1,
+    "abundant"."physical_sales_store_name")
+SELECT
+    "abundant"."physical_sales_store_name" as "physical_sales_store_name",
+    "abundant"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "abundant"."revenue" as "revenue",
+    "abundant"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "abundant"."physical_sales_item_wholesale_cost" as "physical_sales_item_wholesale_cost",
+    "abundant"."physical_sales_item_brand_name" as "physical_sales_item_brand_name"
+FROM
+    "abundant"
+    INNER JOIN "uneven" on "abundant"."physical_sales_store_id" = "uneven"."physical_sales_store_id"
 WHERE
-    "questionable"."revenue" <= 0.1 * "abundant"."store_avg_revenue"
+    "abundant"."revenue" <= 0.1 * "uneven"."store_avg_revenue"
 
 GROUP BY
     1,
@@ -119,10 +120,10 @@ GROUP BY
     4,
     5,
     6,
-    "abundant"."store_avg_revenue"
+    "uneven"."store_avg_revenue"
 ORDER BY 
-    "questionable"."physical_sales_store_name" asc nulls first,
-    "questionable"."physical_sales_item_desc" asc nulls first
+    "abundant"."physical_sales_store_name" asc nulls first,
+    "abundant"."physical_sales_item_desc" asc nulls first
 LIMIT (100)
 ```
 
@@ -130,53 +131,22 @@ LIMIT (100)
 
 ```sql
 WITH 
-wakeful as (
-SELECT
-    "physical_sales_store_sales"."SS_ITEM_SK" as "physical_sales_item_id",
-    "physical_sales_store_sales"."SS_STORE_SK" as "physical_sales_store_id",
-    sum("physical_sales_store_sales"."SS_SALES_PRICE") as "item_revenue"
-FROM
-    "memory"."store_sales" as "physical_sales_store_sales"
-    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
-WHERE
-    "physical_sales_date_date"."D_MONTH_SEQ" BETWEEN 1176 AND 1187 and "physical_sales_store_sales"."SS_STORE_SK" is not null
-
-GROUP BY
-    1,
-    2),
-abundant as (
+thoughtful as (
 SELECT
     "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name",
     "physical_sales_item_items"."I_CURRENT_PRICE" as "physical_sales_item_current_price",
     "physical_sales_item_items"."I_ITEM_DESC" as "physical_sales_item_desc",
     "physical_sales_item_items"."I_WHOLESALE_COST" as "physical_sales_item_wholesale_cost",
+    "physical_sales_store_sales"."SS_STORE_SK" as "physical_sales_store_id",
     "physical_sales_store_store"."S_STORE_NAME" as "physical_sales_store_name",
-    "wakeful"."item_revenue" as "item_revenue",
-    "wakeful"."physical_sales_store_id" as "physical_sales_store_id"
+    sum("physical_sales_store_sales"."SS_SALES_PRICE") as "item_revenue"
 FROM
-    "wakeful"
-    INNER JOIN "memory"."item" as "physical_sales_item_items" on "wakeful"."physical_sales_item_id" = "physical_sales_item_items"."I_ITEM_SK"
-    INNER JOIN "memory"."store" as "physical_sales_store_store" on "wakeful"."physical_sales_store_id" = "physical_sales_store_store"."S_STORE_SK"),
-thoughtful as (
-SELECT
-    "wakeful"."physical_sales_store_id" as "physical_sales_store_id",
-    avg("wakeful"."item_revenue") as "store_avg_revenue"
-FROM
-    "wakeful"
-GROUP BY
-    1)
-SELECT
-    "abundant"."physical_sales_store_name" as "physical_sales_store_name",
-    "abundant"."physical_sales_item_desc" as "physical_sales_item_desc",
-    "abundant"."item_revenue" as "revenue",
-    "abundant"."physical_sales_item_current_price" as "physical_sales_item_current_price",
-    "abundant"."physical_sales_item_wholesale_cost" as "physical_sales_item_wholesale_cost",
-    "abundant"."physical_sales_item_brand_name" as "physical_sales_item_brand_name"
-FROM
-    "abundant"
-    INNER JOIN "thoughtful" on "abundant"."physical_sales_store_id" = "thoughtful"."physical_sales_store_id"
+    "memory"."store_sales" as "physical_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "physical_sales_item_items" on "physical_sales_store_sales"."SS_ITEM_SK" = "physical_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "physical_sales_store_store" on "physical_sales_store_sales"."SS_STORE_SK" = "physical_sales_store_store"."S_STORE_SK"
 WHERE
-    "abundant"."item_revenue" <= 0.1 * "thoughtful"."store_avg_revenue"
+    "physical_sales_date_date"."D_MONTH_SEQ" BETWEEN 1176 AND 1187 and "physical_sales_store_sales"."SS_STORE_SK" is not null
 
 GROUP BY
     1,
@@ -185,7 +155,49 @@ GROUP BY
     4,
     5,
     6,
-    "thoughtful"."store_avg_revenue"
+    "physical_sales_item_items"."I_ITEM_SK"),
+abundant as (
+SELECT
+    "thoughtful"."item_revenue" as "item_revenue",
+    "thoughtful"."item_revenue" as "revenue",
+    "thoughtful"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
+    "thoughtful"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "thoughtful"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "thoughtful"."physical_sales_item_wholesale_cost" as "physical_sales_item_wholesale_cost",
+    "thoughtful"."physical_sales_store_id" as "physical_sales_store_id",
+    "thoughtful"."physical_sales_store_name" as "physical_sales_store_name"
+FROM
+    "thoughtful"),
+uneven as (
+SELECT
+    "abundant"."physical_sales_store_id" as "physical_sales_store_id",
+    avg("abundant"."item_revenue") as "store_avg_revenue"
+FROM
+    "abundant"
+GROUP BY
+    1,
+    "abundant"."physical_sales_store_name")
+SELECT
+    "abundant"."physical_sales_store_name" as "physical_sales_store_name",
+    "abundant"."physical_sales_item_desc" as "physical_sales_item_desc",
+    "abundant"."revenue" as "revenue",
+    "abundant"."physical_sales_item_current_price" as "physical_sales_item_current_price",
+    "abundant"."physical_sales_item_wholesale_cost" as "physical_sales_item_wholesale_cost",
+    "abundant"."physical_sales_item_brand_name" as "physical_sales_item_brand_name"
+FROM
+    "abundant"
+    INNER JOIN "uneven" on "abundant"."physical_sales_store_id" = "uneven"."physical_sales_store_id"
+WHERE
+    "abundant"."revenue" <= 0.1 * "uneven"."store_avg_revenue"
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "uneven"."store_avg_revenue"
 ORDER BY 
     "abundant"."physical_sales_store_name" asc nulls first,
     "abundant"."physical_sales_item_desc" asc nulls first

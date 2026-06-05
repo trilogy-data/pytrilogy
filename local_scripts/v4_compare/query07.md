@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (54 rows) |
-| reference execution | OK (54 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 54 (54 distinct)
-ref rows: 54 (54 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1698 | 20 | 8.07 ms |
-| reference | 1698 | 20 | 7.99 ms |
-| v4 / ref | 1.00x | 1.00x | 1.01x |
+| v4 | 1698 | 20 | 46.58 ms |
+| reference | 1698 | 20 | 47.57 ms |
+| v4 / ref | 1.00x | 1.00x | 0.98x |
 
 ## Preql
 
@@ -52,11 +52,11 @@ limit 100
 
 ```sql
 SELECT
-    avg("physical_sales_store_sales"."SS_COUPON_AMT") as "avg_coupon_amt",
-    avg("physical_sales_store_sales"."SS_LIST_PRICE") as "avg_list_price",
+    "physical_sales_item_items"."I_ITEM_ID" as "physical_sales_item_text_id",
     avg("physical_sales_store_sales"."SS_QUANTITY") as "avg_quantity",
-    avg("physical_sales_store_sales"."SS_SALES_PRICE") as "avg_sales_price",
-    "physical_sales_item_items"."I_ITEM_ID" as "physical_sales_item_text_id"
+    avg("physical_sales_store_sales"."SS_LIST_PRICE") as "avg_list_price",
+    avg("physical_sales_store_sales"."SS_COUPON_AMT") as "avg_coupon_amt",
+    avg("physical_sales_store_sales"."SS_SALES_PRICE") as "avg_sales_price"
 FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
@@ -67,7 +67,7 @@ WHERE
     "physical_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "physical_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "physical_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and ( "physical_sales_promotion_promotion"."P_CHANNEL_EMAIL" = 'N' or "physical_sales_promotion_promotion"."P_CHANNEL_EVENT" = 'N' ) and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
-    5
+    1
 ORDER BY 
     "physical_sales_item_items"."I_ITEM_ID" asc
 LIMIT (100)

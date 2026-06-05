@@ -33,6 +33,7 @@ import duckdb
 import tomllib
 
 from trilogy import Environment
+from trilogy.constants import CONFIG
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.author import Function
 from trilogy.core.models.build import BuildFunction
@@ -57,11 +58,7 @@ def _time(fn: Callable[[], _T]) -> tuple[float, _T]:
 # Make `discovery_v4` importable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from discovery_v4 import (  # noqa: E402
-    TPCDS_DIR,
-    compile_sql,
-    run_tpcds_query,
-)
+from discovery_v4 import TPCDS_DIR  # noqa: E402
 
 OUT_DIR = Path(__file__).parent / "v4_compare"
 DATASET_DIR = TPCDS_DIR / "memory"
@@ -244,18 +241,26 @@ def parse_env(query_id: str) -> Optional[Environment]:
 
 
 def generate_v4_sql(query_id: str) -> tuple[Optional[str], Optional[str]]:
-    """Run the v4 planner and return (sql, error). Either may be None."""
+    """Generate v4 SQL through the production entrypoint (the real Executor
+    path with CONFIG.use_v4_discovery on) rather than a hand-rolled compile, so
+    the comparison validates the shipped wiring. Returns (sql, error)."""
+    from trilogy import Dialects
+
+    preql_path = TPCDS_DIR / f"query{query_id}.preql"
+    if not preql_path.exists():
+        return None, f"no preql file for {query_id}"
+    env = Environment(working_path=TPCDS_DIR)
+    eng = Dialects.DUCK_DB.default_executor(environment=env)
+    CONFIG.use_v4_discovery = True
     try:
-        info, build_env, _, build_stmt = run_tpcds_query(query_id)
+        statements = eng.generate_sql(preql_path.read_text())
     except Exception:
         return None, traceback.format_exc()
-    if info.strategy_node is None:
-        return None, "v4 produced no strategy node"
-    try:
-        sql = compile_sql(info, build_env, build_stmt)
-    except Exception:
-        return None, traceback.format_exc()
-    return (sql.strip() if sql else None), None
+    finally:
+        CONFIG.use_v4_discovery = False
+    if not statements:
+        return None, "executor produced no statements"
+    return statements[-1].strip(), None
 
 
 def diff_summary(v4_rows: list[tuple], ref_rows: list[tuple]) -> list[str]:

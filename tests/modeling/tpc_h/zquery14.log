@@ -1,13 +1,32 @@
 query_id = "14"
-gen_length = 483
+gen_length = 971
 preql_size = 189
 comp_size = 363
 generated_sql = """
+
+WITH 
+wakeful as (
 SELECT
-    ( 100.0 * sum(CASE WHEN \"part_part\".\"p_type\" like 'PROMO%' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) ) / sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"promo_revenue\"
+    \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") as \"revenue\",
+    CASE WHEN \"part_part\".\"p_type\" like 'PROMO%' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END as \"_virt_filter_revenue_2969932475669591\"
 FROM
     \"memory\".\"part\" as \"part_part\"
     INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
 WHERE
     \"lineitem\".\"l_shipdate\" >= date '1995-09-01' and \"lineitem\".\"l_shipdate\" < date '1995-10-01'
-"""
+
+GROUP BY
+    1,
+    2,
+    \"lineitem\".\"l_linenumber\",
+    \"lineitem\".\"l_orderkey\"),
+questionable as (
+SELECT
+    sum(\"wakeful\".\"_virt_filter_revenue_2969932475669591\") as \"_virt_agg_sum_923544407546593\",
+    sum(\"wakeful\".\"revenue\") as \"_virt_agg_sum_1789203937951976\"
+FROM
+    \"wakeful\")
+SELECT
+    ( 100.0 * \"questionable\".\"_virt_agg_sum_923544407546593\" ) / \"questionable\".\"_virt_agg_sum_1789203937951976\" as \"promo_revenue\"
+FROM
+    \"questionable\""""

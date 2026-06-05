@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (0 rows) |
-| reference execution | OK (0 rows) |
+| v4 execution | OK (2 rows) |
+| reference execution | OK (2 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 0 (0 distinct)
-ref rows: 0 (0 distinct)
+v4 rows: 2 (2 distinct)
+ref rows: 2 (2 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2801 | 35 | 8.55 ms |
-| reference | 2371 | 24 | 8.19 ms |
-| v4 / ref | 1.18x | 1.46x | 1.04x |
+| v4 | 2801 | 35 | 22.33 ms |
+| reference | 2801 | 35 | 22.77 ms |
+| v4 / ref | 1.00x | 1.00x | 0.98x |
 
 ## Preql
 
@@ -96,10 +96,14 @@ ORDER BY
 ## Reference SQL (zquery log)
 
 ```sql
+WITH 
+abundant as (
 SELECT
-    "cr_call_center_call_center"."CC_CALL_CENTER_ID" as "call_center",
-    "cr_call_center_call_center"."CC_NAME" as "call_center_name",
-    "cr_call_center_call_center"."CC_MANAGER" as "manager",
+    "cr_billing_customer_demographics_customer_demographics"."CD_EDUCATION_STATUS" as "cr_billing_customer_demographics_education_status",
+    "cr_billing_customer_demographics_customer_demographics"."CD_MARITAL_STATUS" as "cr_billing_customer_demographics_marital_status",
+    "cr_call_center_call_center"."CC_CALL_CENTER_ID" as "cr_call_center_text_id",
+    "cr_call_center_call_center"."CC_MANAGER" as "cr_call_center_manager",
+    "cr_call_center_call_center"."CC_NAME" as "cr_call_center_name",
     sum("cr_catalog_returns"."CR_NET_LOSS") as "returns_loss"
 FROM
     "memory"."catalog_returns" as "cr_catalog_returns"
@@ -116,8 +120,15 @@ GROUP BY
     1,
     2,
     3,
-    "cr_billing_customer_demographics_customer_demographics"."CD_EDUCATION_STATUS",
-    "cr_billing_customer_demographics_customer_demographics"."CD_MARITAL_STATUS"
+    4,
+    5)
+SELECT
+    "abundant"."cr_call_center_text_id" as "call_center",
+    "abundant"."cr_call_center_name" as "call_center_name",
+    "abundant"."cr_call_center_manager" as "manager",
+    "abundant"."returns_loss" as "returns_loss"
+FROM
+    "abundant"
 ORDER BY 
-    "returns_loss" desc nulls first
+    "abundant"."returns_loss" desc nulls first
 ```

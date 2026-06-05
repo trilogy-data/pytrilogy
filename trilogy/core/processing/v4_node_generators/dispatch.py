@@ -31,30 +31,31 @@ GeneratorFn = Callable[..., "StrategyNode | None"]
 # multiselect is intercepted in `concept_strategies_v4._search_concepts`
 # (`_resolve_multiselect`), and a rowset-wrapped one is planned inside
 # `resolve_rowset`. An unknown derivation reaching `build_node` is a real bug.
-_GENERATORS: dict[str, GeneratorFn] = {
-    Derivation.ROOT.value: gen_root,
-    Derivation.BASIC.value: gen_basic,
-    Derivation.AGGREGATE.value: gen_aggregate,
-    Derivation.WINDOW.value: gen_window,
-    Derivation.FILTER.value: gen_filter,
-    Derivation.CONSTANT.value: gen_constant,
-    Derivation.UNNEST.value: gen_unnest,
-    Derivation.UNION.value: gen_union,
-    Derivation.SUBSELECT.value: gen_subselect,
-    Derivation.GROUP_TO.value: gen_group_to,
-    Derivation.ROWSET.value: gen_rowset,
-    Derivation.RECURSIVE.value: gen_recursive,
+_GENERATORS: dict[Derivation, GeneratorFn] = {
+    Derivation.ROOT: gen_root,
+    Derivation.BASIC: gen_basic,
+    Derivation.AGGREGATE: gen_aggregate,
+    Derivation.WINDOW: gen_window,
+    Derivation.FILTER: gen_filter,
+    Derivation.CONSTANT: gen_constant,
+    Derivation.UNNEST: gen_unnest,
+    Derivation.UNION: gen_union,
+    Derivation.SUBSELECT: gen_subselect,
+    Derivation.GROUP_TO: gen_group_to,
+    Derivation.ROWSET: gen_rowset,
+    Derivation.RECURSIVE: gen_recursive,
 }
 
 
 def build_node(
     *,
-    derivation: str,
+    derivation: Derivation,
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None,
     preexisting_conditions: BuildWhereClause | None = None,
+    intrinsic_filter_pushdown: bool = True,
     history: History,
     g: ReferenceGraph,
 ) -> StrategyNode | None:
@@ -68,10 +69,23 @@ def build_node(
     if fn is None:
         raise ValueError(
             f"No v4 node generator for derivation {derivation!r}; "
-            f"known: {sorted(_GENERATORS)}"
+            f"known: {sorted(d.value for d in _GENERATORS)}"
         )
-    if derivation in (Derivation.ROOT.value, Derivation.ROWSET.value):
+    if derivation in (
+        Derivation.ROOT,
+        Derivation.ROWSET,
+        Derivation.UNION,
+    ):
         return fn(outputs, parents, environment, conditions, history=history, g=g)
+    if derivation == Derivation.FILTER:
+        return fn(
+            outputs,
+            parents,
+            environment,
+            conditions,
+            preexisting_conditions=preexisting_conditions,
+            intrinsic_filter_pushdown=intrinsic_filter_pushdown,
+        )
     return fn(
         outputs,
         parents,

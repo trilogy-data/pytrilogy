@@ -9,6 +9,7 @@ NetworkXError = nx.NetworkXError
 NetworkXNoPath = nx.NetworkXNoPath
 NetworkXUnfeasible = nx.NetworkXUnfeasible
 NodeNotFound = nx.NodeNotFound
+NetworkXNoCycle = nx.NetworkXNoCycle
 
 exception = nx.exception
 
@@ -51,6 +52,18 @@ def all_neighbors(graph: GraphT, node: str):
 
 def connected_components(graph: GraphT):
     return nx.connected_components(graph)
+
+
+def ancestors(graph: GraphT, source: str):
+    return nx.ancestors(graph, source)
+
+
+def descendants(graph: GraphT, source: str):
+    return nx.descendants(graph, source)
+
+
+def find_cycle(graph: GraphT, source: str | None = None):
+    return nx.find_cycle(graph, source)
 
 
 def isolates(graph: GraphT):

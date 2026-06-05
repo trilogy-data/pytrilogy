@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (30 rows) |
-| reference execution | OK (30 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 30 (30 distinct)
-ref rows: 30 (30 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 7450 | 144 | 25.73 ms |
-| reference | 7450 | 144 | 27.22 ms |
-| v4 / ref | 1.00x | 1.00x | 0.95x |
+| v4 | 7450 | 144 | 38.28 ms |
+| reference | 7450 | 144 | 39.79 ms |
+| v4 / ref | 1.00x | 1.00x | 0.96x |
 
 ## Preql
 
@@ -196,9 +196,9 @@ WHERE
 SELECT
     "abhorrent"."channel_label" as "channel",
     "abhorrent"."id_label" as "id",
-    sum("abhorrent"."profit_minus_loss") as "profit_total",
+    sum("abhorrent"."sales_ext_sales_price") as "sales_total",
     sum(coalesce("abhorrent"."sales_return_amount",0)) as "returns_total",
-    sum("abhorrent"."sales_ext_sales_price") as "sales_total"
+    sum("abhorrent"."profit_minus_loss") as "profit_total"
 FROM
     "abhorrent"
 GROUP BY

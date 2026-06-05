@@ -1,0 +1,28 @@
+key event_id int;
+key device.id int;
+property device.id.category string;
+property event_id.uid int;
+
+# The datasource binds the namespaced PROPERTY `device.category` but never the
+# namespaced KEY `device.id` itself. v3 infers device.id's grain from the
+# property binding and groups by category fine; v4 demands a datasource for the
+# bare `device.id` root concept and raises NoDatasourceException. Distilled from
+# the google_analytics `all_sites.device.id` failure. Expected:
+# [('desktop', 1), ('mobile', 2)].
+datasource events (
+    event_id: event_id,
+    uid: uid,
+    category: device.category,
+)
+grain (event_id)
+query '''
+select 1 event_id, 100 uid, 'mobile' category
+union all select 2, 100, 'desktop'
+union all select 3, 200, 'mobile'
+''';
+
+select
+    device.category,
+    count(uid) as uid_count,
+order by device.category asc
+;

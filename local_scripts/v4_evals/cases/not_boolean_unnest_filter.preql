@@ -1,0 +1,9 @@
+# filter a boolean column with `where not value`. v4 renders invalid SQL
+# (a bare boolean predicate it can't bind). v3 is the reference for the rows.
+const value <- unnest([ true, null, false]);
+
+select
+    value
+where
+    not value
+;

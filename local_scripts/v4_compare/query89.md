@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (21 rows) |
-| reference execution | OK (21 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 21 (21 distinct)
-ref rows: 21 (21 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 4336 | 68 | 30.16 ms |
-| reference | 4336 | 68 | 27.76 ms |
-| v4 / ref | 1.00x | 1.00x | 1.09x |
+| v4 | 4256 | 68 | 68.29 ms |
+| reference | 4256 | 68 | 67.57 ms |
+| v4 / ref | 1.00x | 1.00x | 1.01x |
 
 ## Preql
 
@@ -102,7 +102,7 @@ GROUP BY
     4,
     5,
     6),
-questionable as (
+abundant as (
 SELECT
     "thoughtful"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
     "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
@@ -117,33 +117,33 @@ GROUP BY
     3,
     4)
 SELECT
-    coalesce("questionable"."physical_sales_item_category","thoughtful"."physical_sales_item_category") as "physical_sales_item_category",
+    coalesce("abundant"."physical_sales_item_category","thoughtful"."physical_sales_item_category") as "physical_sales_item_category",
     "thoughtful"."physical_sales_item_class" as "physical_sales_item_class",
-    coalesce("questionable"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
-    coalesce("questionable"."physical_sales_store_name","thoughtful"."physical_sales_store_name") as "physical_sales_store_name",
-    coalesce("questionable"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") as "physical_sales_store_company_name",
+    coalesce("abundant"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
+    coalesce("abundant"."physical_sales_store_name","thoughtful"."physical_sales_store_name") as "physical_sales_store_name",
+    coalesce("abundant"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") as "physical_sales_store_company_name",
     "thoughtful"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
     "thoughtful"."sum_sales" as "sum_sales",
-    "questionable"."avg_monthly_sales" as "avg_monthly_sales"
+    "abundant"."avg_monthly_sales" as "avg_monthly_sales"
 FROM
     "thoughtful"
-    INNER JOIN "questionable" on "thoughtful"."physical_sales_item_brand_name" = "questionable"."physical_sales_item_brand_name" AND "thoughtful"."physical_sales_item_category" is not distinct from "questionable"."physical_sales_item_category" AND "thoughtful"."physical_sales_store_company_name" is not distinct from "questionable"."physical_sales_store_company_name" AND "thoughtful"."physical_sales_store_name" is not distinct from "questionable"."physical_sales_store_name"
+    INNER JOIN "abundant" on "thoughtful"."physical_sales_item_brand_name" = "abundant"."physical_sales_item_brand_name" AND "thoughtful"."physical_sales_item_category" is not distinct from "abundant"."physical_sales_item_category" AND "thoughtful"."physical_sales_store_company_name" is not distinct from "abundant"."physical_sales_store_company_name" AND "thoughtful"."physical_sales_store_name" is not distinct from "abundant"."physical_sales_store_name"
 WHERE
     CASE
-	WHEN "questionable"."avg_monthly_sales" != 0 THEN abs("thoughtful"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"
+	WHEN "abundant"."avg_monthly_sales" != 0 THEN abs("thoughtful"."sum_sales" - "abundant"."avg_monthly_sales") / "abundant"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    "thoughtful"."sum_sales" - "questionable"."avg_monthly_sales" asc,
-    coalesce("questionable"."physical_sales_store_name","thoughtful"."physical_sales_store_name") asc,
-    coalesce("questionable"."physical_sales_item_category","thoughtful"."physical_sales_item_category") asc,
+    "thoughtful"."sum_sales" - "abundant"."avg_monthly_sales" asc,
+    coalesce("abundant"."physical_sales_store_name","thoughtful"."physical_sales_store_name") asc,
+    coalesce("abundant"."physical_sales_item_category","thoughtful"."physical_sales_item_category") asc,
     "thoughtful"."physical_sales_item_class" asc,
-    coalesce("questionable"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") asc,
-    coalesce("questionable"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") asc,
+    coalesce("abundant"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") asc,
+    coalesce("abundant"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") asc,
     "thoughtful"."physical_sales_date_month_of_year" asc,
     "thoughtful"."sum_sales" asc,
-    "questionable"."avg_monthly_sales" asc
+    "abundant"."avg_monthly_sales" asc
 LIMIT (100)
 ```
 
@@ -175,7 +175,7 @@ GROUP BY
     4,
     5,
     6),
-questionable as (
+abundant as (
 SELECT
     "thoughtful"."physical_sales_item_brand_name" as "physical_sales_item_brand_name",
     "thoughtful"."physical_sales_item_category" as "physical_sales_item_category",
@@ -190,32 +190,32 @@ GROUP BY
     3,
     4)
 SELECT
-    coalesce("questionable"."physical_sales_item_category","thoughtful"."physical_sales_item_category") as "physical_sales_item_category",
+    coalesce("abundant"."physical_sales_item_category","thoughtful"."physical_sales_item_category") as "physical_sales_item_category",
     "thoughtful"."physical_sales_item_class" as "physical_sales_item_class",
-    coalesce("questionable"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
-    coalesce("questionable"."physical_sales_store_name","thoughtful"."physical_sales_store_name") as "physical_sales_store_name",
-    coalesce("questionable"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") as "physical_sales_store_company_name",
+    coalesce("abundant"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") as "physical_sales_item_brand_name",
+    coalesce("abundant"."physical_sales_store_name","thoughtful"."physical_sales_store_name") as "physical_sales_store_name",
+    coalesce("abundant"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") as "physical_sales_store_company_name",
     "thoughtful"."physical_sales_date_month_of_year" as "physical_sales_date_month_of_year",
     "thoughtful"."sum_sales" as "sum_sales",
-    "questionable"."avg_monthly_sales" as "avg_monthly_sales"
+    "abundant"."avg_monthly_sales" as "avg_monthly_sales"
 FROM
     "thoughtful"
-    INNER JOIN "questionable" on "thoughtful"."physical_sales_item_brand_name" = "questionable"."physical_sales_item_brand_name" AND "thoughtful"."physical_sales_item_category" is not distinct from "questionable"."physical_sales_item_category" AND "thoughtful"."physical_sales_store_company_name" is not distinct from "questionable"."physical_sales_store_company_name" AND "thoughtful"."physical_sales_store_name" is not distinct from "questionable"."physical_sales_store_name"
+    INNER JOIN "abundant" on "thoughtful"."physical_sales_item_brand_name" = "abundant"."physical_sales_item_brand_name" AND "thoughtful"."physical_sales_item_category" is not distinct from "abundant"."physical_sales_item_category" AND "thoughtful"."physical_sales_store_company_name" is not distinct from "abundant"."physical_sales_store_company_name" AND "thoughtful"."physical_sales_store_name" is not distinct from "abundant"."physical_sales_store_name"
 WHERE
     CASE
-	WHEN "questionable"."avg_monthly_sales" != 0 THEN abs("thoughtful"."sum_sales" - "questionable"."avg_monthly_sales") / "questionable"."avg_monthly_sales"
+	WHEN "abundant"."avg_monthly_sales" != 0 THEN abs("thoughtful"."sum_sales" - "abundant"."avg_monthly_sales") / "abundant"."avg_monthly_sales"
 	ELSE null
 	END > 0.1
 
 ORDER BY 
-    "thoughtful"."sum_sales" - "questionable"."avg_monthly_sales" asc,
-    coalesce("questionable"."physical_sales_store_name","thoughtful"."physical_sales_store_name") asc,
-    coalesce("questionable"."physical_sales_item_category","thoughtful"."physical_sales_item_category") asc,
+    "thoughtful"."sum_sales" - "abundant"."avg_monthly_sales" asc,
+    coalesce("abundant"."physical_sales_store_name","thoughtful"."physical_sales_store_name") asc,
+    coalesce("abundant"."physical_sales_item_category","thoughtful"."physical_sales_item_category") asc,
     "thoughtful"."physical_sales_item_class" asc,
-    coalesce("questionable"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") asc,
-    coalesce("questionable"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") asc,
+    coalesce("abundant"."physical_sales_item_brand_name","thoughtful"."physical_sales_item_brand_name") asc,
+    coalesce("abundant"."physical_sales_store_company_name","thoughtful"."physical_sales_store_company_name") asc,
     "thoughtful"."physical_sales_date_month_of_year" asc,
     "thoughtful"."sum_sales" asc,
-    "questionable"."avg_monthly_sales" asc
+    "abundant"."avg_monthly_sales" asc
 LIMIT (100)
 ```

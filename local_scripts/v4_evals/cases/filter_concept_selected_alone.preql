@@ -1,0 +1,22 @@
+key order_id int;
+
+datasource orders (
+    order_id:order_id,
+)
+grain (order_id)
+query '''
+select 1 order_id
+union all select 2
+union all select 3
+union all select 4
+''';
+
+# a filtered concept (even order ids) selected on its own should return only
+# the rows passing the filter (2, 4) — v4 leaks all 4 rows.
+auto even_order_id <- filter order_id where (order_id % 2) = 0;
+
+SELECT
+    even_order_id
+order by
+    even_order_id asc
+;

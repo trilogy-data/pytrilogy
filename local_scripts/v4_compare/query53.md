@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (3 rows) |
-| reference execution | OK (3 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 3 (3 distinct)
-ref rows: 3 (3 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2602 | 48 | 7.82 ms |
-| reference | 2602 | 48 | 8.20 ms |
-| v4 / ref | 1.00x | 1.00x | 0.95x |
+| v4 | 2561 | 48 | 14.67 ms |
+| reference | 2561 | 48 | 14.10 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -81,7 +81,7 @@ WHERE
 GROUP BY
     1,
     "physical_sales_date_date"."D_QOY"),
-cooperative as (
+questionable as (
 SELECT
     "cheerful"."physical_sales_item_manufacturer_id" as "physical_sales_item_manufacturer_id",
     avg("cheerful"."sum_sales") as "avg_quarterly_sales"
@@ -89,30 +89,30 @@ FROM
     "cheerful"
 GROUP BY
     1),
-questionable as (
+uneven as (
 SELECT
     "cheerful"."physical_sales_item_manufacturer_id" as "physical_sales_item_manufacturer_id",
     "cheerful"."sum_sales" as "sum_sales",
-    "cooperative"."avg_quarterly_sales" as "avg_quarterly_sales"
+    "questionable"."avg_quarterly_sales" as "avg_quarterly_sales"
 FROM
     "cheerful"
-    INNER JOIN "cooperative" on "cheerful"."physical_sales_item_manufacturer_id" = "cooperative"."physical_sales_item_manufacturer_id"
+    INNER JOIN "questionable" on "cheerful"."physical_sales_item_manufacturer_id" = "questionable"."physical_sales_item_manufacturer_id"
 WHERE
     CASE
-	WHEN "cooperative"."avg_quarterly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_quarterly_sales") / "cooperative"."avg_quarterly_sales"
+	WHEN "questionable"."avg_quarterly_sales" > 0 THEN abs("cheerful"."sum_sales" - "questionable"."avg_quarterly_sales") / "questionable"."avg_quarterly_sales"
 	ELSE null
 	END > 0.1
 )
 SELECT
-    "questionable"."physical_sales_item_manufacturer_id" as "physical_sales_item_manufacturer_id",
-    "questionable"."sum_sales" as "sum_sales",
-    "questionable"."avg_quarterly_sales" as "avg_quarterly_sales"
+    "uneven"."physical_sales_item_manufacturer_id" as "physical_sales_item_manufacturer_id",
+    "uneven"."sum_sales" as "sum_sales",
+    "uneven"."avg_quarterly_sales" as "avg_quarterly_sales"
 FROM
-    "questionable"
+    "uneven"
 ORDER BY 
-    "questionable"."avg_quarterly_sales" asc,
-    "questionable"."sum_sales" asc,
-    "questionable"."physical_sales_item_manufacturer_id" asc
+    "uneven"."avg_quarterly_sales" asc,
+    "uneven"."sum_sales" asc,
+    "uneven"."physical_sales_item_manufacturer_id" asc
 LIMIT (100)
 ```
 
@@ -134,7 +134,7 @@ WHERE
 GROUP BY
     1,
     "physical_sales_date_date"."D_QOY"),
-cooperative as (
+questionable as (
 SELECT
     "cheerful"."physical_sales_item_manufacturer_id" as "physical_sales_item_manufacturer_id",
     avg("cheerful"."sum_sales") as "avg_quarterly_sales"
@@ -142,29 +142,29 @@ FROM
     "cheerful"
 GROUP BY
     1),
-questionable as (
+uneven as (
 SELECT
     "cheerful"."physical_sales_item_manufacturer_id" as "physical_sales_item_manufacturer_id",
     "cheerful"."sum_sales" as "sum_sales",
-    "cooperative"."avg_quarterly_sales" as "avg_quarterly_sales"
+    "questionable"."avg_quarterly_sales" as "avg_quarterly_sales"
 FROM
     "cheerful"
-    INNER JOIN "cooperative" on "cheerful"."physical_sales_item_manufacturer_id" = "cooperative"."physical_sales_item_manufacturer_id"
+    INNER JOIN "questionable" on "cheerful"."physical_sales_item_manufacturer_id" = "questionable"."physical_sales_item_manufacturer_id"
 WHERE
     CASE
-	WHEN "cooperative"."avg_quarterly_sales" > 0 THEN abs("cheerful"."sum_sales" - "cooperative"."avg_quarterly_sales") / "cooperative"."avg_quarterly_sales"
+	WHEN "questionable"."avg_quarterly_sales" > 0 THEN abs("cheerful"."sum_sales" - "questionable"."avg_quarterly_sales") / "questionable"."avg_quarterly_sales"
 	ELSE null
 	END > 0.1
 )
 SELECT
-    "questionable"."physical_sales_item_manufacturer_id" as "physical_sales_item_manufacturer_id",
-    "questionable"."sum_sales" as "sum_sales",
-    "questionable"."avg_quarterly_sales" as "avg_quarterly_sales"
+    "uneven"."physical_sales_item_manufacturer_id" as "physical_sales_item_manufacturer_id",
+    "uneven"."sum_sales" as "sum_sales",
+    "uneven"."avg_quarterly_sales" as "avg_quarterly_sales"
 FROM
-    "questionable"
+    "uneven"
 ORDER BY 
-    "questionable"."avg_quarterly_sales" asc,
-    "questionable"."sum_sales" asc,
-    "questionable"."physical_sales_item_manufacturer_id" asc
+    "uneven"."avg_quarterly_sales" asc,
+    "uneven"."sum_sales" asc,
+    "uneven"."physical_sales_item_manufacturer_id" asc
 LIMIT (100)
 ```

@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field
 
-import networkx as nx
-
+from trilogy.core import graph as nx
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BoolExpr
 from trilogy.core.processing.nodes import StrategyNode
+
+from .constants import DepthLabel
+from .edges import EdgeMap, copy_edges
 
 
 @dataclass
@@ -12,21 +15,23 @@ class GroupAttrs:
     (``dict[str, GroupAttrs]``) keyed by group id rather than on the
     nx.DiGraph node attributes — the graph stays as topology + edge metadata
     only, and downstream consumers get attribute access (and mypy coverage)
-    instead of stringly-typed dict lookups."""
+    instead of stringly-typed dict lookups.
 
-    depth_label: str
-    derivation: str
+    ``derivation`` is ``None`` only for the FINAL sink (which has no
+    derivation); every real group carries its bucket's derivation."""
+
+    depth_label: DepthLabel
+    derivation: Derivation | None = None
     grain_components: frozenset[str] = frozenset()
     label: str = ""
     members: tuple[str, ...] = ()
     primary_members: tuple[str, ...] = ()
     secondary_members: tuple[str, ...] = ()
-    member_depths: dict[str, str] = field(default_factory=dict)
-    # For an aggregate group whose count(s) must count distinct entities, the
-    # grain its input is reduced to before aggregating (e.g. {order_number} for
-    # `count(order_number)`). Empty when no reduction is needed. Drives an
-    # intermediate dedup GroupNode in the strategy builder.
-    dedup_grain: frozenset[str] = frozenset()
+    member_depths: dict[str, DepthLabel] = field(default_factory=dict)
+    # For an aggregate group, the row grain its inputs must be normalized to
+    # before aggregation. This is the grouping grain plus the natural grain of
+    # the aggregate arguments.
+    aggregate_input_grain: frozenset[str] = frozenset()
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently — so a single clause may live at
@@ -54,14 +59,15 @@ class ConceptAttrs:
 
     address: str
     label: str
-    derivation: str
-    purpose: str
-    granularity: str
-    depth_label: str
+    derivation: Derivation
+    purpose: Purpose
+    granularity: Granularity
+    depth_label: DepthLabel
     grain_components: frozenset[str] = frozenset()
     grouping_mode: str | None = None
     rowset_name: str | None = None
-    agg_dedup_grain: frozenset[str] = frozenset()
+    aggregate_input_grain: frozenset[str] = frozenset()
+    keys: frozenset[str] = frozenset()
     # Tagged post-build for a concept that appears ONLY as an existence arg
     # (semijoin RHS) and never as a row arg — `partition_roots` places such a
     # node in its own scan bucket (side-channel subselect source).
@@ -75,19 +81,29 @@ class BuildInfo:
     walking the group graph."""
 
     concept_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
+    merged_group_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     group_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     group_attrs: dict[str, GroupAttrs] = field(default_factory=dict)
     concept_attrs: dict[str, ConceptAttrs] = field(default_factory=dict)
+    # Typed edge-metadata side maps, one per graph above (the graphs themselves
+    # carry only topology).
+    concept_edges: EdgeMap = field(default_factory=dict)
+    merged_group_edges: EdgeMap = field(default_factory=dict)
+    group_edges: EdgeMap = field(default_factory=dict)
     strategy_node: StrategyNode | None = None
 
     def copy(self) -> "BuildInfo":
         return BuildInfo(
             concept_graph=self.concept_graph.copy(),
+            merged_group_graph=self.merged_group_graph.copy(),
             group_graph=self.group_graph.copy(),
             group_attrs={k: _copy_attrs(v) for k, v in self.group_attrs.items()},
             concept_attrs={
                 k: _copy_concept_attrs(v) for k, v in self.concept_attrs.items()
             },
+            concept_edges=copy_edges(self.concept_edges),
+            merged_group_edges=copy_edges(self.merged_group_edges),
+            group_edges=copy_edges(self.group_edges),
             strategy_node=self.strategy_node.copy() if self.strategy_node else None,
         )
 
@@ -107,7 +123,7 @@ def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
         output_concepts=a.output_concepts,
         hidden_concepts=a.hidden_concepts,
         input_concepts=a.input_concepts,
-        dedup_grain=a.dedup_grain,
+        aggregate_input_grain=a.aggregate_input_grain,
     )
 
 
@@ -122,7 +138,8 @@ def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
         grain_components=a.grain_components,
         grouping_mode=a.grouping_mode,
         rowset_name=a.rowset_name,
-        agg_dedup_grain=a.agg_dedup_grain,
+        aggregate_input_grain=a.aggregate_input_grain,
+        keys=a.keys,
         existence_only=a.existence_only,
     )
 
@@ -139,8 +156,8 @@ class GroupBucket:
     inner and outer BASICs at compatible grain don't merge into one
     bucket and form a group-level cycle through the rowset boundary."""
 
-    depth_label: str
-    derivation: str
+    depth_label: DepthLabel
+    derivation: Derivation
     grain_components: frozenset[str]
     # primary/secondary members are concept ADDRESSES — what downstream
     # strategy assembly cares about. primary_node_ids holds the matching
@@ -149,13 +166,12 @@ class GroupBucket:
     primary_members: list[str] = field(default_factory=list)
     primary_node_ids: list[str] = field(default_factory=list)
     secondary_members: list[str] = field(default_factory=list)
-    member_depths: dict[str, str] = field(default_factory=dict)
+    member_depths: dict[str, DepthLabel] = field(default_factory=dict)
     label: str = ""
     # Optional disambiguator for rules that produce multiple buckets sharing
     # the (label, derivation, depth, grain) tuple — e.g. BASIC's signature
     # split, which can land two co-grain buckets with disjoint upstream
     # sources. Empty string for rules that don't need it.
     discriminator: str = ""
-    # Grain to reduce this aggregate's input to before aggregating (a count of
-    # distinct entities); empty when no reduction is needed. See GroupAttrs.
-    dedup_grain: frozenset[str] = frozenset()
+    # Grain to normalize this aggregate's inputs to before aggregating.
+    aggregate_input_grain: frozenset[str] = frozenset()

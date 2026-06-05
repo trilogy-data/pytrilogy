@@ -12,8 +12,8 @@ across the query shapes that suite already exercises.
     python local_scripts/discovery_v4.py --query 01
     python local_scripts/discovery_v4.py --query query01.preql
 
-Outputs go to local_scripts/<stem>.png and <stem>_groups.png. Pass --no-sql
-to skip the SQL compile step.
+Outputs go to local_scripts/<stem>.png, <stem>_groups.png, and
+<stem>_groups_reordered.png. Pass --no-sql to skip the SQL compile step.
 """
 
 from __future__ import annotations
@@ -49,11 +49,11 @@ from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     search_concepts,
 )
-from trilogy.core.processing.v4_helper.constants import (
-    EDGE_KIND_CONSTRAINT,
-    EDGE_KIND_EXISTENCE,
-    EDGE_KIND_LINEAGE,
-    EDGE_KIND_MERGE,
+from trilogy.core.processing.v4_helper.constants import EdgeKind, EdgePhase
+from trilogy.core.processing.v4_helper.edges import (
+    EdgeAttrs,
+    EdgeMap,
+    edges_of_kind,
 )
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 
@@ -104,10 +104,10 @@ def _concept_data(concept_attrs: dict, node: str) -> ConceptNodeData:
     if raw is None:
         return ConceptNodeData()
     return ConceptNodeData(
-        depth_label=raw.depth_label,
-        derivation=raw.derivation,
-        purpose=raw.purpose,
-        granularity=raw.granularity,
+        depth_label=raw.depth_label.value,
+        derivation=raw.derivation.value,
+        purpose=raw.purpose.value,
+        granularity=raw.granularity.value,
         grain_components=raw.grain_components,
     )
 
@@ -120,13 +120,13 @@ def _group_data(attrs: dict, node: str) -> GroupNodeData:
     if a is None:
         return GroupNodeData()
     return GroupNodeData(
-        depth_label=a.depth_label,
-        derivation=a.derivation,
+        depth_label=a.depth_label.value,
+        derivation=a.derivation.value if a.derivation is not None else "final",
         grain_components=a.grain_components,
         members=a.members,
         primary_members=a.primary_members,
         secondary_members=a.secondary_members,
-        member_depths=dict(a.member_depths),
+        member_depths={k: v.value for k, v in a.member_depths.items()},
         conditions=list(a.conditions),
     )
 
@@ -314,19 +314,13 @@ def _layered_layout(
     return pos
 
 
-def render_digraph(graph: nx.DiGraph, concept_attrs: dict, output_path: Path) -> None:
+def render_digraph(
+    graph: nx.DiGraph, edges: EdgeMap, concept_attrs: dict, output_path: Path
+) -> None:
     """Concept-dependency digraph: top-down by lineage depth, rectangular
     labels so long concept addresses stay readable."""
-    lineage_edges = [
-        (u, v)
-        for u, v, d in graph.edges(data=True)
-        if d.get("kind") == EDGE_KIND_LINEAGE
-    ]
-    constraint_edges = [
-        (u, v)
-        for u, v, d in graph.edges(data=True)
-        if d.get("kind") == EDGE_KIND_CONSTRAINT
-    ]
+    lineage_edges = edges_of_kind(edges, EdgeKind.LINEAGE)
+    constraint_edges = edges_of_kind(edges, EdgeKind.CONSTRAINT)
 
     # Constraint edges (d1 → d0 "must apply above") are real build-order
     # dependencies, not just visual hints — the d0 derivation can't be
@@ -516,39 +510,26 @@ def _group_label(node: str, data: GroupNodeData) -> str:
 
 def render_group_digraph(
     graph: nx.DiGraph,
+    edges: EdgeMap,
     attrs: dict,
     output_path: Path,
 ) -> None:
     """Group graph: top-down by lineage generation, FINAL pinned to the
     bottom. Conditions show inline so the place where each WHERE atom lands
-    is obvious at a glance."""
+    is obvious at a glance. Edge line style encodes edge kind; edge color
+    encodes condition phase where present."""
 
-    def _edge_color(data: dict) -> str:
-        phase = data.get("phase")
-        if phase == "pre_condition":
+    def _edge_color(data: EdgeAttrs) -> str:
+        if data.phase == EdgePhase.PRE_CONDITION:
             return "#c62828"
-        if phase == "post_condition":
+        if data.phase == EdgePhase.POST_CONDITION:
             return "#2e7d32"
         return "#555555"
 
-    lineage_edges = [
-        (u, v)
-        for u, v, d in graph.edges(data=True)
-        if d.get("kind") == EDGE_KIND_LINEAGE
-    ]
-    merge_edges = [
-        (u, v) for u, v, d in graph.edges(data=True) if d.get("kind") == EDGE_KIND_MERGE
-    ]
-    existence_edges = [
-        (u, v)
-        for u, v, d in graph.edges(data=True)
-        if d.get("kind") == EDGE_KIND_EXISTENCE
-    ]
-    constraint_edges = [
-        (u, v)
-        for u, v, d in graph.edges(data=True)
-        if d.get("kind") == EDGE_KIND_CONSTRAINT
-    ]
+    lineage_edges = edges_of_kind(edges, EdgeKind.LINEAGE)
+    merge_edges = edges_of_kind(edges, EdgeKind.MERGE)
+    existence_edges = edges_of_kind(edges, EdgeKind.EXISTENCE)
+    constraint_edges = edges_of_kind(edges, EdgeKind.CONSTRAINT)
     # All three edge kinds express build-order: a d1 condition filter must
     # be built before the root that subselects from it (existence), a sibling
     # constraint must be ready before its dependent, lineage is the obvious
@@ -604,7 +585,7 @@ def render_group_digraph(
             pos,
             ax=ax,
             edgelist=lineage_edges,
-            edge_color=[_edge_color(graph.edges[u, v]) for u, v in lineage_edges],
+            edge_color=[_edge_color(edges[(u, v)]) for u, v in lineage_edges],
             arrows=True,
             arrowsize=16,
             node_size=3200,
@@ -616,11 +597,10 @@ def render_group_digraph(
             pos,
             ax=ax,
             edgelist=merge_edges,
-            edge_color=[_edge_color(graph.edges[u, v]) for u, v in merge_edges],
+            edge_color=[_edge_color(edges[(u, v)]) for u, v in merge_edges],
             style="dotted",
             arrows=True,
             arrowsize=14,
-            connectionstyle="arc3,rad=0.12",
             node_size=3200,
             width=0.9,
         )
@@ -634,7 +614,6 @@ def render_group_digraph(
             style="dashed",
             arrows=True,
             arrowsize=14,
-            connectionstyle="arc3,rad=0.25",
             node_size=3200,
             width=1.0,
         )
@@ -648,7 +627,6 @@ def render_group_digraph(
             style="dashdot",
             arrows=True,
             arrowsize=14,
-            connectionstyle="arc3,rad=0.18",
             node_size=3200,
             width=1.0,
         )
@@ -699,19 +677,30 @@ def render_group_digraph(
             markersize=12,
             label="FINAL (sink)",
         ),
-        plt.Line2D([0], [0], color="#555555", label="lineage edge"),
-        plt.Line2D([0], [0], color="#c62828", label="pre-condition phase"),
-        plt.Line2D([0], [0], color="#2e7d32", label="post-condition phase"),
+        plt.Line2D([0], [0], color="#555555", label="gray = no condition phase"),
+        plt.Line2D([0], [0], color="#c62828", label="red = pre-condition phase"),
+        plt.Line2D([0], [0], color="#2e7d32", label="green = post-condition phase"),
+        plt.Line2D([0], [0], color="#555555", label="solid = lineage parent"),
+        plt.Line2D(
+            [0],
+            [0],
+            color="#555555",
+            linestyle="dotted",
+            label="dotted = merge to FINAL",
+        ),
         plt.Line2D(
             [0],
             [0],
             color="#6a1b9a",
             linestyle="dashed",
-            label="existence (side-channel)",
+            label="dashed purple = existence subselect source",
         ),
-        plt.Line2D([0], [0], color="#ef6c00", linestyle="dashdot", label="constraint"),
         plt.Line2D(
-            [0], [0], color="#555555", linestyle="dotted", label="merge → FINAL"
+            [0],
+            [0],
+            color="#ef6c00",
+            linestyle="dashdot",
+            label="dash-dot orange = constraint sibling",
         ),
         plt.Line2D(
             [0],
@@ -1005,10 +994,25 @@ def main() -> None:
 
     concept_out = OUT_DIR / f"{stem}.png"
     group_out = OUT_DIR / f"{stem}_groups.png"
-    render_digraph(info.concept_graph, info.concept_attrs, concept_out)
-    render_group_digraph(info.group_graph, info.group_attrs, group_out)
+    reordered_group_out = OUT_DIR / f"{stem}_groups_reordered.png"
+    render_digraph(
+        info.concept_graph, info.concept_edges, info.concept_attrs, concept_out
+    )
+    if info.merged_group_graph.number_of_nodes():
+        merged_group_graph = info.merged_group_graph
+        merged_group_edges = info.merged_group_edges
+    else:
+        merged_group_graph = info.group_graph
+        merged_group_edges = info.group_edges
+    render_group_digraph(
+        merged_group_graph, merged_group_edges, info.group_attrs, group_out
+    )
+    render_group_digraph(
+        info.group_graph, info.group_edges, info.group_attrs, reordered_group_out
+    )
     print(f"wrote {concept_out}")
     print(f"wrote {group_out}")
+    print(f"wrote {reordered_group_out}")
 
     if not args.no_sql:
         sql = compile_sql(info, build_env, build_stmt)

@@ -8,6 +8,7 @@ import tomli_w
 import tomllib
 
 from trilogy import Executor
+from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 
 # Get aggregate info
@@ -102,6 +103,7 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
             tomli_w.dumps(
                 {
                     "query_id": idx,
+                    "generator": "v4" if CONFIG.use_v4_discovery else "v3",
                     "gen_length": len(query),
                     "generated_sql": query,
                 },

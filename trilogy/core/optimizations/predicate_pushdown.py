@@ -133,6 +133,20 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
     return False
 
 
+def _consumer_may_emit_without_parent(cte: CTE, parent_name: str) -> bool:
+    for j in cte.joins or []:
+        if not isinstance(j, Join):
+            continue
+        if j.jointype == JoinType.FULL:
+            return True
+        if j.jointype != JoinType.RIGHT_OUTER:
+            continue
+        if isinstance(j.right_cte, (CTE, UnionCTE)) and j.right_cte.name == parent_name:
+            continue
+        return True
+    return False
+
+
 def _predicate_safe_past_windows(candidate, cte: CTE | UnionCTE) -> bool:
     """True if ``candidate`` can be pushed into/below ``cte`` without changing
     the result of any window function ``cte`` computes.
@@ -475,7 +489,7 @@ class PredicatePushdown(OptimizationRule):
         inverse_map: dict[str, list[CTE | UnionCTE]],
     ) -> bool:
         """Relocate a non-scalar (aggregate-result) predicate into a group
-        parent's HAVING and strip the now-redundant copy from every consumer.
+        parent's HAVING and strip the redundant copy from safe consumers.
 
         Filtering inside the group is identical to filtering its output
         downstream, and pushing it *before* the consumers' joins/aggregations
@@ -487,9 +501,9 @@ class PredicatePushdown(OptimizationRule):
 
         Safe because: the predicate's columns are produced by ``parent_cte``
         (a real GROUP BY); every consumer already AND-carries the atom; and no
-        consumer leaves ``parent_cte`` on the nullable side of an outer join,
-        so each consumer row maps to a surviving HAVING-passed group row and
-        the consumer copy is genuinely redundant.
+        consumer leaves ``parent_cte`` on the nullable side of an outer join.
+        The downstream copy is only redundant when each consumer row must map
+        to a surviving HAVING-passed group row.
         """
         if not isinstance(parent_cte, CTE):
             return False
@@ -539,13 +553,19 @@ class PredicatePushdown(OptimizationRule):
             parent_cte.condition = append_condition(parent_cte.condition, candidate)
         else:
             parent_cte.condition = candidate
+        retained_consumers: list[str] = []
+        stripped_consumers: list[str] = []
         for child in children:
             assert isinstance(child, CTE)
+            if _consumer_may_emit_without_parent(child, parent_cte.name):
+                retained_consumers.append(child.name)
+                continue
             child.condition = strip_condition_atom(child.condition, candidate)
+            stripped_consumers.append(child.name)
         self.log(
             f"Relocated aggregate predicate {candidate} into group parent "
             f"{parent_cte.name} as HAVING; stripped redundant copy from "
-            f"{[c.name for c in children]}"
+            f"{stripped_consumers}; retained copy on {retained_consumers}"
         )
         return True
 

@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
-| reference execution | OK (1 rows) |
+| v4 execution | OK (100 rows) |
+| reference execution | OK (100 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+v4 rows: 100 (100 distinct)
+ref rows: 100 (100 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 995 | 21 | 6.59 ms |
-| reference | 995 | 21 | 6.65 ms |
-| v4 / ref | 1.00x | 1.00x | 0.99x |
+| v4 | 995 | 21 | 13.35 ms |
+| reference | 995 | 21 | 12.89 ms |
+| v4 / ref | 1.00x | 1.00x | 1.04x |
 
 ## Preql
 
@@ -48,10 +48,10 @@ limit 100
 
 ```sql
 SELECT
-    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price",
     "physical_sales_date_date"."D_YEAR" as "physical_sales_date_year",
     "physical_sales_item_items"."I_BRAND_ID" as "physical_sales_item_brand_id",
-    "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name"
+    "physical_sales_item_items"."I_BRAND" as "physical_sales_item_brand_name",
+    sum("physical_sales_store_sales"."SS_EXT_SALES_PRICE") as "ext_price"
 FROM
     "memory"."store_sales" as "physical_sales_store_sales"
     INNER JOIN "memory"."date_dim" as "physical_sales_date_date" on "physical_sales_store_sales"."SS_SOLD_DATE_SK" = "physical_sales_date_date"."D_DATE_SK"
@@ -60,9 +60,9 @@ WHERE
     "physical_sales_item_items"."I_MANAGER_ID" = 1 and "physical_sales_date_date"."D_MOY" = 11 and "physical_sales_date_date"."D_YEAR" = 2000
 
 GROUP BY
+    1,
     2,
-    3,
-    4
+    3
 ORDER BY 
     "physical_sales_date_date"."D_YEAR" asc,
     "ext_price" desc,

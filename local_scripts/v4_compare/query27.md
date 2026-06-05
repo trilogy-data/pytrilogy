@@ -18,9 +18,9 @@ ref rows: 100 (100 distinct)
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 2412 | 34 | 14.18 ms |
-| reference | 2412 | 34 | 14.05 ms |
-| v4 / ref | 1.00x | 1.00x | 1.01x |
+| v4 | 2510 | 42 | 89.72 ms |
+| reference | 2510 | 42 | 83.35 ms |
+| v4 / ref | 1.00x | 1.00x | 1.08x |
 
 ## Preql
 
@@ -72,19 +72,27 @@ FROM
     INNER JOIN "memory"."customer_demographics" as "physical_sales_customer_demographic_customer_demographics" on "physical_sales_store_sales"."SS_CDEMO_SK" = "physical_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
     "physical_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "physical_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "physical_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and "physical_sales_date_date"."D_YEAR" = 2002 and "physical_sales_store_store"."S_STATE" = 'TN'
-)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "physical_sales_store_sales"."SS_STORE_SK")
 SELECT
+    "cooperative"."physical_sales_item_text_id" as "physical_sales_item_text_id",
+    "cooperative"."physical_sales_store_state" as "physical_sales_store_state",
+    grouping("cooperative"."physical_sales_store_state") as "g_state",
     avg(cast("cooperative"."physical_sales_quantity" as numeric(12,2))) as "agg1",
     avg(cast("cooperative"."physical_sales_list_price" as numeric(12,2))) as "agg2",
     avg(cast("cooperative"."physical_sales_coupon_amt" as numeric(12,2))) as "agg3",
-    avg(cast("cooperative"."physical_sales_sales_price" as numeric(12,2))) as "agg4",
-    grouping("cooperative"."physical_sales_store_state") as "g_state",
-    "cooperative"."physical_sales_item_text_id" as "physical_sales_item_text_id",
-    "cooperative"."physical_sales_store_state" as "physical_sales_store_state"
+    avg(cast("cooperative"."physical_sales_sales_price" as numeric(12,2))) as "agg4"
 FROM
     "cooperative"
 GROUP BY
-    ROLLUP (6, 7)
+    ROLLUP (1, 2)
 ORDER BY 
     "cooperative"."physical_sales_item_text_id" asc nulls first,
     "cooperative"."physical_sales_store_state" asc nulls first
@@ -111,7 +119,15 @@ FROM
     INNER JOIN "memory"."customer_demographics" as "physical_sales_customer_demographic_customer_demographics" on "physical_sales_store_sales"."SS_CDEMO_SK" = "physical_sales_customer_demographic_customer_demographics"."CD_DEMO_SK"
 WHERE
     "physical_sales_customer_demographic_customer_demographics"."CD_GENDER" = 'M' and "physical_sales_customer_demographic_customer_demographics"."CD_MARITAL_STATUS" = 'S' and "physical_sales_customer_demographic_customer_demographics"."CD_EDUCATION_STATUS" = 'College' and "physical_sales_date_date"."D_YEAR" = 2002 and "physical_sales_store_store"."S_STATE" = 'TN'
-)
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "physical_sales_store_sales"."SS_STORE_SK")
 SELECT
     "cooperative"."physical_sales_item_text_id" as "physical_sales_item_text_id",
     "cooperative"."physical_sales_store_state" as "physical_sales_store_state",

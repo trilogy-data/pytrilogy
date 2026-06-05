@@ -5,22 +5,22 @@
 | Stage | Result |
 | --- | --- |
 | v4 SQL generation | OK |
-| v4 execution | OK (1 rows) |
-| reference execution | OK (1 rows) |
+| v4 execution | OK (16 rows) |
+| reference execution | OK (16 rows) |
 | results identical | YES |
 
 ## Result comparison
 
-v4 rows: 1 (1 distinct)
-ref rows: 1 (1 distinct)
+v4 rows: 16 (15 distinct)
+ref rows: 16 (15 distinct)
 
 ## SQL size + execution time
 
 | Source | Chars | Lines | Exec (min of 4) |
 | --- | --- | --- | --- |
-| v4 | 1660 | 15 | 4.15 ms |
-| reference | 1772 | 20 | 7.74 ms |
-| v4 / ref | 0.94x | 0.75x | 0.54x |
+| v4 | 1660 | 15 | 9.36 ms |
+| reference | 1660 | 15 | 9.37 ms |
+| v4 / ref | 1.00x | 1.00x | 1.00x |
 
 ## Preql
 
@@ -83,11 +83,6 @@ FROM
 WHERE
     "customer_address_customer_address"."CA_CITY" = 'Edgewood' and coalesce("customer_customers"."C_CURRENT_CDEMO_SK","returns_store_returns"."SR_CDEMO_SK") is not null and coalesce("customer_customers"."C_CURRENT_HDEMO_SK","customer_household_demographic_household_demographics"."HD_DEMO_SK") is not null and "customer_household_demographic_income_band_income_band"."IB_LOWER_BOUND" >= 38128 and "customer_household_demographic_income_band_income_band"."IB_UPPER_BOUND" <= 38128 + 50000
 
-GROUP BY
-    1,
-    2,
-    "returns_store_returns"."SR_ITEM_SK",
-    "returns_store_returns"."SR_TICKET_NUMBER"
 ORDER BY 
     "customer_customers"."C_CUSTOMER_ID" asc nulls first
 LIMIT (100)

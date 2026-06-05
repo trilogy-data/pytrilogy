@@ -1,5 +1,14 @@
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.enums import Derivation
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildFilterItem,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import (
+    combine_condition_atoms,
+    is_scalar_condition,
+)
 from trilogy.core.processing.nodes import FilterNode, StrategyNode
 
 from .common import parent_outputs_needed
@@ -11,6 +20,7 @@ def gen_filter(
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     preexisting_conditions: BuildWhereClause | None = None,
+    intrinsic_filter_pushdown: bool = True,
 ) -> StrategyNode | None:
     """Apply a row filter over already-built parents. Filter doesn't reshape
     rows or remove columns — it just selects a subset of rows. So pass
@@ -26,12 +36,100 @@ def gen_filter(
                 pass_through.append(output)
                 seen.add(output.address)
     full_outputs = list(outputs) + pass_through
+
+    # A filter concept's own predicate (`filter X where COND`) restricts rows
+    # when the concept is fetched as its own group — push it down from the
+    # value-only `CASE WHEN COND THEN X ELSE NULL` projection into this node's
+    # WHERE. (When the filter instead rides alongside a broader dimension whose
+    # rows must survive, the planner folds it into a basic projection and never
+    # routes here.) Push only when ALL of:
+    #   * the group's filter outputs share a SINGLE distinct predicate. Multiple
+    #     distinct predicates mean fused conditional-aggregate columns (e.g.
+    #     `price ? channel=STORE`, `price ? channel=WEB`) that each render as
+    #     their own CASE WHEN over the shared scan — AND-ing the mutually
+    #     exclusive predicates into one WHERE would null out every row.
+    #   * the predicate is a plain scalar with no existence/semijoin arg: a
+    #     subselect needs its existence source wired as a side parent (which
+    #     this generator doesn't do) and an aggregate predicate needs a HAVING.
+    #   * every NON-filter output is a grain key of the filter's CONTENT (the
+    #     concept being filtered) and not the content itself. Surviving rows
+    #     still carry valid grain keys, so a key like `product_id` beside
+    #     `name ? product_id%2=0` is safe. But a sibling that IS the content
+    #     (selecting raw `order_id` beside `filter order_id where ...`, or
+    #     q61's raw `ext_sales_price` beside `price ? promo`) or one finer than
+    #     the content's grain (`order_id` beside `filter store_id where
+    #     order_id%2=0`) must keep all rows — render those as a CASE WHEN by
+    #     not pushing.
+    # Then AND the single predicate with any injected query-level condition.
+    filter_lineages = [
+        o.lineage for o in outputs if isinstance(o.lineage, BuildFilterItem)
+    ]
+    content_args: set[str] = set()
+    content_grain: set[str] = set()
+    for lineage in filter_lineages:
+        for arg in lineage.content_concept_arguments:
+            content_args.add(arg.address)
+            if arg.grain:
+                content_grain |= set(arg.grain.components)
+    pushable_siblings = content_grain - content_args
+    non_filter_addrs = {
+        o.address for o in outputs if not isinstance(o.lineage, BuildFilterItem)
+    }
+    distinct: dict[str, BuildWhereClause] = {}
+    for lineage in filter_lineages:
+        distinct.setdefault(str(lineage.where.conditional), lineage.where)
+    intrinsic_atoms = []
+    if (
+        intrinsic_filter_pushdown
+        and len(distinct) == 1
+        and non_filter_addrs <= pushable_siblings
+    ):
+        where = next(iter(distinct.values()))
+        cond = where.conditional
+        if not where.existence_arguments and is_scalar_condition(cond):
+            intrinsic_atoms = [cond]
+
+    # Aggregate predicate (`filter X where count(...) by X > 1`): can't push as a
+    # row WHERE, but when the parent already groups to the content's grain and
+    # exposes the aggregate as a column, the predicate is a post-group HAVING.
+    # Push it referencing the precomputed column instead of rendering a
+    # `CASE WHEN agg THEN X ELSE NULL` projection, which leaks non-matching
+    # groups as NULL rows. Gated: single predicate, no existence/semijoin arg,
+    # every referenced concept already a parent output (so we never re-aggregate),
+    # every aggregate grouped at the content grain (a true HAVING), and the
+    # non-filter siblings all at that group grain.
+    if not intrinsic_atoms and intrinsic_filter_pushdown and len(distinct) == 1:
+        where = next(iter(distinct.values()))
+        cond = where.conditional
+        parent_outputs = {c.address for p in parents for c in p.output_concepts}
+        agg_args = [
+            r for r in where.row_arguments if r.derivation == Derivation.AGGREGATE
+        ]
+        if (
+            not where.existence_arguments
+            and agg_args
+            and all(r.address in parent_outputs for r in where.row_arguments)
+            and all(
+                a.grain and set(a.grain.components) == content_grain for a in agg_args
+            )
+            and non_filter_addrs <= (content_grain | content_args)
+        ):
+            intrinsic_atoms = [cond]
+
+    combined = conditions.conditional if conditions else None
+    if intrinsic_atoms:
+        intrinsic = combine_condition_atoms(intrinsic_atoms)
+        combined = combine_condition_atoms(
+            [c for c in (combined, intrinsic) if c is not None]
+        )
+
+    combined_clause = BuildWhereClause(conditional=combined) if combined else None
     return FilterNode(
-        input_concepts=parent_outputs_needed(full_outputs, parents, conditions),
+        input_concepts=parent_outputs_needed(full_outputs, parents, combined_clause),
         output_concepts=full_outputs,
         environment=environment,
         parents=parents,
-        conditions=conditions.conditional if conditions else None,
+        conditions=combined,
         preexisting_conditions=(
             preexisting_conditions.conditional if preexisting_conditions else None
         ),

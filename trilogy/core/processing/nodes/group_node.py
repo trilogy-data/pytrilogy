@@ -17,6 +17,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
+    resolve_existence_map,
 )
 from trilogy.core.processing.utility import (
     GroupRequiredResponse,
@@ -185,6 +186,9 @@ class GroupNode(StrategyNode):
             datasources=parent_sources,
             source_type=source_type,
             source_map=source_map,
+            existence_source_map=resolve_existence_map(
+                parent_sources, self.existence_concepts
+            ),
             joins=[],
             grain=target_grain,
             partial_concepts=inherited_partials,
@@ -217,6 +221,9 @@ class GroupNode(StrategyNode):
                 datasources=[base],
                 source_type=SourceType.SELECT,
                 source_map=source_map,
+                existence_source_map=resolve_existence_map(
+                    [base], self.existence_concepts
+                ),
                 joins=[],
                 grain=target_grain,
                 nullable_concepts=base.nullable_concepts,

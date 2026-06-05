@@ -1,0 +1,16 @@
+# Root cause A: a WHERE over a value derived from an unnested const. v3 applies
+# the filter after the unnest barrier and returns 5 rows; v4 raises
+# "conditions cannot be pushed past row-shape changes".
+# Source: tests/engine/test_duckdb.py::test_proper_basic_unnest_handling
+const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
+
+def cube_plus_one(x) -> (x * x * x + 1);
+
+WHERE
+    prime_cubed_plus_one % 7 = 0
+SELECT
+    prime,
+    @cube_plus_one(prime) as prime_cubed_plus_one
+ORDER BY
+    prime asc
+LIMIT 10;
