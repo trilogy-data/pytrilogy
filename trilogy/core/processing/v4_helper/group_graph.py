@@ -24,7 +24,6 @@ import networkx as nx
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
-from trilogy.core.processing.condition_utility import decompose_condition
 
 from .constants import (
     DEPENDENCY_EDGE_KINDS,
@@ -42,10 +41,9 @@ from .edges import (
     edge_kind,
     edges_of_kind,
     lineage_edges,
-    lineage_subgraph,
     remove_edge,
-    subgraph_of_kinds,
 )
+from .condition_placement import plan_condition_placements
 from .group_behaviors import behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import ConceptAttrs, GroupAttrs, GroupBucket
@@ -63,20 +61,10 @@ ROOT_D1_DEPTH = DepthLabel.ROOT_D1
 # these as candidate hosts. Aggregate/group_to self-host via HAVING, and
 # rowset/union/recursive are CTE-like (their output is filterable in a
 # wrapping select that the planner already builds) — none are excluded.
-_CANNOT_HOST_OWN_OUTPUT: set[Derivation] = {
-    Derivation.WINDOW,
-    Derivation.UNNEST,
-}
-
 # Derivations that emit a GROUP BY, so any column referenced in a HAVING there
 # must itself be grouped (a key) or aggregated. A cross-joined aggregate from a
 # *different* producer is neither, so such a group cannot host a HAVING that
 # references it. Window PARTITIONs rather than GROUP BYs, so it is excluded.
-_EMITS_GROUP_BY: set[Derivation] = {
-    Derivation.AGGREGATE,
-    Derivation.GROUP_TO,
-}
-
 _REGRAFTABLE_DERIVATIONS: set[Derivation] = {
     Derivation.BASIC,
     Derivation.WINDOW,

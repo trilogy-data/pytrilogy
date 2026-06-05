@@ -9,6 +9,11 @@ inventoried in `../v4_sweep/triage.md`, not a parity bug).
 
 These complement `../discovery_v4_compare.py` (TPC-DS vs v3 reference logs).
 
+`run_parity.py`'s `cases/*.preql` are guarded in CI by
+`tests/core/processing/test_v4_parity_cases.py` (marker `v4_parity`), which
+parametrizes over the same cases via this harness — so adding a case here adds a
+CI test for free. Run just those: `pytest -m v4_parity`.
+
 ## Harnesses
 
 - **`run_parity.py`** — generic. Each `cases/*.preql` is a self-contained
