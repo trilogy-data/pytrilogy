@@ -112,11 +112,25 @@ def canonicalize_graph(input: list[CTE]) -> None:
                 if pair.cte is not None:
                     pair.cte = resolve(pair.cte)
         if isinstance(cte, UnionCTE):
-            cte.internal_ctes = [
-                resolve(binding.node)
-                for binding in cte.source_bindings(include_branches=True)
-                if binding.branch and binding.node is not None
-            ]
+            new_branches: list[CTE | UnionCTE] = []
+            for binding in cte.source_bindings(include_branches=True):
+                if not (binding.branch and binding.node is not None):
+                    continue
+                branch = binding.node
+                live = resolve(branch)
+                # A union arm renders inline and must project exactly this
+                # union's columns. If the same-named live emitted CTE carries a
+                # different projection — a name collision between this inline arm
+                # and an unrelated standalone CTE over the same source+grain
+                # (QDS identity ignores projection) — collapsing onto it would
+                # force one projection onto both and corrupt the other consumer.
+                # Keep the arm's own instance in that case.
+                if live is not branch and {x.address for x in live.output_columns} != {
+                    x.address for x in branch.output_columns
+                }:
+                    live = branch
+                new_branches.append(live)
+            cte.internal_ctes = new_branches
             # UNION ALL arity invariant: every branch must project exactly the
             # union's columns. If a rule over-pruned one branch's
             # ``output_columns`` (its ``source_map`` still carries the data),
