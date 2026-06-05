@@ -875,6 +875,45 @@ def _coalesce_primary_proves_non_null(
     return concepts_implied_non_null(expr.arguments[0])
 
 
+def comparison_proves_non_null(
+    atom: BuildComparison,
+) -> set[str]:
+    """Concept addresses a single comparison forces non-null in surviving rows.
+
+    Shared leaf logic for both null-proof walkers (this module's
+    ``condition_proves_non_null`` and ``join_upgrade._proves_non_null``); the
+    walkers differ only in their handling of nested conditionals/``BETWEEN``.
+    """
+    left, right, op = atom.left, atom.right, atom.operator
+    if op == ComparisonOperator.IS_NOT:
+        # `<expr> IS NOT NULL` — every concept inside the expression is non-null.
+        if is_null_literal(right):
+            return concepts_implied_non_null(left)
+        if is_null_literal(left):
+            return concepts_implied_non_null(right)
+        return set()
+    if op == ComparisonOperator.IS:
+        # `<expr> IS NULL` wants NULLs and proves nothing; `X IS True`/`IS False`
+        # (any non-null literal) forces the operands non-null, like an equality.
+        if is_null_literal(right) or is_null_literal(left):
+            return set()
+        return concepts_implied_non_null(left) | concepts_implied_non_null(right)
+    if op in NULL_PROPAGATING_OPS:
+        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
+        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
+        # default statically fails the comparison — surviving rows can only
+        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
+        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
+        # the "count-of-empty is 0, not NULL" convention; predicates like
+        # ``> 0`` over the wrapped column otherwise become opaque to us.
+        proofs |= _coalesce_primary_proves_non_null(left, op, right)
+        flipped = _flip_op(op)
+        if flipped is not None:
+            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
+        return proofs
+    return set()
+
+
 def _atom_proves_non_null(
     atom: BoolExpr,
 ) -> set[str]:
@@ -894,31 +933,7 @@ def _atom_proves_non_null(
         return _atom_proves_non_null(atom.left) | _atom_proves_non_null(atom.right)  # type: ignore[arg-type]
     if not isinstance(atom, BuildComparison):
         return set()
-    left, right, op = atom.left, atom.right, atom.operator
-    if op == ComparisonOperator.IS_NOT:
-        # `<expr> IS NOT NULL` — every concept inside the expression is non-null.
-        if is_null_literal(right):
-            return concepts_implied_non_null(left)
-        if is_null_literal(left):
-            return concepts_implied_non_null(right)
-        return set()
-    if op == ComparisonOperator.IS:
-        # `<expr> IS NULL` specifically wants NULLs — never proves non-null.
-        return set()
-    if op in NULL_PROPAGATING_OPS:
-        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
-        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
-        # default statically fails the comparison — surviving rows can only
-        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
-        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
-        # the "count-of-empty is 0, not NULL" convention; predicates like
-        # ``> 0`` over the wrapped column otherwise become opaque to us.
-        proofs |= _coalesce_primary_proves_non_null(left, op, right)
-        flipped = _flip_op(op)
-        if flipped is not None:
-            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
-        return proofs
-    return set()
+    return comparison_proves_non_null(atom)
 
 
 def condition_proves_non_null(

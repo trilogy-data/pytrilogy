@@ -34,7 +34,6 @@ from dataclasses import dataclass, field
 
 from trilogy.core.enums import (
     BooleanOperator,
-    ComparisonOperator,
     JoinType,
     Modifier,
 )
@@ -57,12 +56,9 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
-    NULL_PROPAGATING_OPS,
-    _coalesce_primary_proves_non_null,
-    _flip_op,
+    comparison_proves_non_null,
     concepts_implied_non_null,
     decompose_condition,
-    is_null_literal,
 )
 
 # Joins whose surviving rows can be a strict subset under a null-rejecting
@@ -157,6 +153,37 @@ def _partial_addresses(
     return {c.address for c in (getattr(source, "partial_concepts", None) or [])}
 
 
+def _source_datasources(
+    source: CTE | UnionCTE | BuildDatasource | QueryDatasource,
+) -> set[str]:
+    """Physical datasource identifiers an operand renders from. For a CTE this
+    is every source in its ``source_map``; for a base datasource, itself."""
+    sm = getattr(source, "source_map", None)
+    if sm:
+        return {d for vals in sm.values() for d in vals}
+    ident = getattr(source, "identifier", None) or getattr(source, "name", None)
+    return {ident} if ident else set()
+
+
+def _blocked_partials(
+    cte: CTE | UnionCTE,
+    partial: set[str],
+    operand_ds: set[str],
+) -> set[str]:
+    """Partial concepts that can't force ``operand`` present: a partial value
+    only blocks promotion when it renders from OUTSIDE the operand (a complete
+    copy lives elsewhere, and that's the column the predicate touches — q22's
+    customer key, q95's web_sales order number). A partial concept that renders
+    from the operand itself still forces it (the operand is genuinely where the
+    filtered value comes from)."""
+    blocked: set[str] = set()
+    for addr in partial:
+        binds = set(cte.source_map.get(addr, ()))
+        if binds and not (binds & operand_ds):
+            blocked.add(addr)
+    return blocked
+
+
 def _pair_can_match_nulls(
     pair: CTEConceptPair | ConceptPair,
     join_modifiers: list[Modifier],
@@ -210,38 +237,9 @@ def _proves_non_null(
         )
     if not isinstance(atom, BuildComparison):
         return set()
-
-    left, right, op = atom.left, atom.right, atom.operator
-
-    if op == ComparisonOperator.IS_NOT:
-        # `<expr> IS NOT NULL` — every concept inside the expression must be
-        # non-null, modulo null-opaque functions.
-        if is_null_literal(right):
-            return concepts_implied_non_null(left)
-        if is_null_literal(left):
-            return concepts_implied_non_null(right)
-        return set()
-
-    # `concept IS NULL` specifically wants NULLs — never proves non-null.
-    if op == ComparisonOperator.IS:
-        return set()
-
-    if op in NULL_PROPAGATING_OPS:
-        proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
-        # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
-        # default statically fails the comparison — surviving rows can only
-        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
-        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
-        # the "count-of-empty is 0, not NULL" convention; predicates like
-        # ``> 0`` on the wrapped column otherwise become opaque to us, which
-        # blocks the OUTER → INNER upgrade on the producing join.
-        proofs |= _coalesce_primary_proves_non_null(left, op, right)
-        flipped = _flip_op(op)
-        if flipped is not None:
-            proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
-        return proofs
-
-    return set()
+    # Leaf comparison logic (IS NOT/IS/null-propagating + coalesce peering) is
+    # shared with condition_utility.condition_proves_non_null.
+    return comparison_proves_non_null(atom)
 
 
 def _gather_proofs(
@@ -415,22 +413,28 @@ def _downgrade(
     right_all = _cte_addresses(join.right_cte)
     left_only, right_only = _side_addresses(cte, idx, join)
 
-    # A filter on a concept the right side only PARTIALLY covers can't force
-    # that side present — the missing rows are meaningful and the predicate
-    # renders from the complete side. Drop partials from the forcing checks
-    # (require a side-specific cte_keys proof instead). Mirror for the left.
-    right_partial = _partial_addresses(join.right_cte)
-    left_partial = {a for lc in left_ctes for a in _partial_addresses(lc)}
-    right_only = right_only - right_partial
-    left_only = left_only - left_partial
+    # A filter on a concept the operand only PARTIALLY covers can't force that
+    # operand present *when the predicate renders from a complete copy living
+    # off the operand* — the missing rows are meaningful and the filter touches
+    # the other side. Partials that render from the operand itself still force
+    # it (see _blocked_partials). Blocked partials need a side-specific
+    # cte_keys proof instead.
+    right_ds = _source_datasources(join.right_cte)
+    left_ds = {d for lc in left_ctes for d in _source_datasources(lc)}
+    right_block = _blocked_partials(cte, _partial_addresses(join.right_cte), right_ds)
+    left_block = _blocked_partials(
+        cte, {a for lc in left_ctes for a in _partial_addresses(lc)}, left_ds
+    )
+    right_only = right_only - right_block
+    left_only = left_only - left_block
 
     def proves_left_key(c: CTE | UnionCTE, address: str) -> bool:
-        if address in left_partial:
+        if address in left_block:
             return (c.name, address) in proofs.cte_keys
         return proofs.proves_cte_key(c, address)
 
     def proves_right_key(address: str) -> bool:
-        if address in right_partial:
+        if address in right_block:
             return (join.right_cte.name, address) in proofs.cte_keys
         return proofs.proves_cte_key(join.right_cte, address)
 
@@ -517,15 +521,19 @@ def _downgrade_base_join(
     right_only = right_all - left_all
 
     pairs = base_join.concept_pairs or []
-    # A filter on a concept the right datasource only PARTIALLY covers can't
-    # force it present (see _partial_addresses); require a side-specific proof.
+    # Partials only block promotion when they render from a complete copy off
+    # the right datasource (see _blocked_partials / _downgrade).
     right_partial = _partial_addresses(right_ds)
     if right_base is not None:
         right_partial |= _partial_addresses(right_base)
-    right_only = right_only - right_partial
+    right_operand_ds = _source_datasources(right_ds)
+    if right_base is not None:
+        right_operand_ds |= _source_datasources(right_base)
+    right_block = _blocked_partials(cte, right_partial, right_operand_ds)
+    right_only = right_only - right_block
 
     def proves_key(address: str) -> bool:
-        if address in right_partial:
+        if address in right_block:
             return (right_ds.identifier, address) in proofs.datasource_keys
         return proofs.proves_datasource_key(right_ds, address)
 

@@ -1,65 +1,51 @@
 query_id = "22"
-gen_length = 2282
-preql_size = 720
+gen_length = 1711
+preql_size = 589
 comp_size = 806
 generated_sql = """
 
 WITH 
-quizzical as (
-SELECT
-    \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
-    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) as \"country_code\"
-FROM
-    \"memory\".\"customer\" as \"orders_customer_customers\"),
 highfalutin as (
 SELECT
-    \"quizzical\".\"orders_customer_id\" as \"target_customers\"
-FROM
-    \"quizzical\"
-WHERE
-    \"quizzical\".\"country_code\" in ('13','31','23','29','30','18','17')
-),
-cooperative as (
-SELECT
-    \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\"
+    avg(CASE WHEN \"orders_customer_customers\".\"c_acctbal\" > 0 and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') THEN \"orders_customer_customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
-    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
 WHERE
-    \"orders_customer_customers\".\"c_custkey\" in (select highfalutin.\"target_customers\" from highfalutin where highfalutin.\"target_customers\" is not null)
-
-GROUP BY
-    1
-HAVING
-    coalesce(count(\"orders_orders\".\"o_orderkey\"),0) = 0
+    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')
 ),
-wakeful as (
-SELECT
-    avg(CASE WHEN \"orders_customer_customers\".\"c_acctbal\" > 0 and \"orders_customer_customers\".\"c_custkey\" in (select highfalutin.\"target_customers\" from highfalutin where highfalutin.\"target_customers\" is not null) THEN \"orders_customer_customers\".\"c_acctbal\" ELSE NULL END) as \"avg_bal_in_target\"
-FROM
-    \"memory\".\"customer\" as \"orders_customer_customers\"),
-abundant as (
+thoughtful as (
 SELECT
     \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",
     \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
     \"orders_customer_customers\".\"c_phone\" as \"orders_customer_phone\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
-    INNER JOIN \"cooperative\" on \"orders_customer_customers\".\"c_custkey\" = \"cooperative\".\"orders_customer_id\"
+    LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
 WHERE
-    \"orders_customer_customers\".\"c_custkey\" in (select highfalutin.\"target_customers\" from highfalutin where highfalutin.\"target_customers\" is not null)
-)
+    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17') and \"orders_orders\".\"o_orderkey\" is null
+),
+cooperative as (
 SELECT
-    SUBSTRING(\"abundant\".\"orders_customer_phone\",1,2) as \"country_code\",
-    count(\"abundant\".\"orders_customer_id\") as \"numcust\",
-    sum(\"abundant\".\"orders_customer_account_balance\") as \"totacctbal\"
+    \"thoughtful\".\"orders_customer_account_balance\" as \"orders_customer_account_balance\",
+    \"thoughtful\".\"orders_customer_id\" as \"orders_customer_id\",
+    SUBSTRING(\"thoughtful\".\"orders_customer_phone\",1,2) as \"cntrycode\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"abundant\" on 1=1
+    \"highfalutin\"
+    INNER JOIN \"thoughtful\" on 1=1
 WHERE
-    \"abundant\".\"orders_customer_account_balance\" > \"wakeful\".\"avg_bal_in_target\"
+    \"thoughtful\".\"orders_customer_account_balance\" > \"highfalutin\".\"avg_bal_in_target\"
 
+GROUP BY
+    1,
+    2,
+    3)
+SELECT
+    \"cooperative\".\"cntrycode\" as \"cntrycode\",
+    count(\"cooperative\".\"orders_customer_id\") as \"numcust\",
+    sum(\"cooperative\".\"orders_customer_account_balance\") as \"totacctbal\"
+FROM
+    \"cooperative\"
 GROUP BY
     1
 ORDER BY 
-    \"country_code\" asc"""
+    \"cooperative\".\"cntrycode\" asc"""

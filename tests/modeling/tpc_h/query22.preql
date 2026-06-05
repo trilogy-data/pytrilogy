@@ -1,20 +1,16 @@
 
 import order as orders;
 
-auto country_code <- substring(orders.customer.phone, 1, 2);
 
-auto target_customers <- orders.customer.id ? country_code in ('13', '31', '23', '29', '30', '18', '17');
-
-auto avg_bal_in_target <- avg(orders.customer.account_balance ? orders.customer.account_balance > 0 and orders.customer.id in target_customers);
-auto order_count_per_customer <- count(orders.id) by orders.customer.id;
+auto avg_bal_in_target <- avg(orders.customer.account_balance ? orders.customer.account_balance > 0 and substring(orders.customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')) by *;
 
 where
-    orders.customer.id in target_customers
+    substring(orders.customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')
     and orders.customer.account_balance > avg_bal_in_target
-    and coalesce(order_count_per_customer, 0) = 0
+    and orders.id is null
 select
-    country_code,
+    substring(orders.customer.phone, 1, 2) -> cntrycode,
     count(orders.customer.id) -> numcust,
     sum(orders.customer.account_balance) -> totacctbal
 order by
-    country_code asc;
+    cntrycode asc;
