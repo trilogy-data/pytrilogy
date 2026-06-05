@@ -15,9 +15,9 @@ SELECT RULES:
   * Wrong (SQL-style subselect): `where enrollments.student_id in (select student_id where student.state = 'TN')`
   * Right (dot-path on the related dim): `where enrollments.student.state = 'TN'`
   This pattern generalises: any "filter the fact by some attribute of a related entity" → reach across the import chain (`fact.dim.attr`) and put it in WHERE.
-- Existence / non-existence across two models that are NOT directly connected (no shared dotted path): import both, then test a linking key with `in` / `not in` against the OTHER model's key. This is the anti-join / semi-join — it is column-level (`key not in other.key`), NOT a subquery, and needs no merge. Use it for "rows with (no) matching record in another model":
-  * No matching record (anti-join): `import students as students; import enrollments as enroll; where students.id not in enroll.student_id` → students who never enrolled in a course.
-  * Has a matching record (semi-join): `where students.id in enroll.student_id` → students who have enrolled.
+- Existence / non-existence checks should use nullability; remember that a fact contains the full set of dimensional members, even those not in facts.
+  * No matching record (anti-join): `import students as students; import enrollments as enroll; where students.id not in enroll.student_id` is typically a tautology; enroll.student_id is a reference to the student table and contains all students. Use `where enroll.id is null select enroll.student.id` instead, as an example.
+  * Has a matching record (semi-join): `where students.id in ([some other random student_list])` is an effective way to filter across models that are not explicitily merged but share an ID (say, a list of IDs from an external source) 
 - Membership in a COMPUTED set of values (the "filter X to rows whose value is in a set produced by another query") — is equivalent to a SQL `IN (subquery)`: define the set as a derived concept (filter it with `?`), then test membership with `in` against that concept. The right side is a concept, not a literal list — no `(select ...)`. Both sides may be expressions:
   * Build the set, then filter: `auto big_zip <- student.zip ? (count(student.id ? student.honors = true) by student.zip) > 10;` then `where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)` → schools whose 2-digit zip-prefix matches a high-honors-student zip. The membership compares the LEFT expression against every value of the RIGHT concept (a semi-join over a value set), so mind the grain of each side — `substring(...)` on both sides matches prefixes, not full values.
 - Never write the `distinct` keyword. `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count the distinct values of a non-key property.
@@ -34,9 +34,8 @@ SELECT RULES:
 - Predefined concepts (`auto x <- ...`) are definitions, NOT precomputed values: each reference expands inline (like a macro) and is re-evaluated in the referencing query's scope. So the query's WHERE filters the rows feeding a referenced aggregate in the select.
 - Filtering on aggregates:
   - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
-  * WHERE conditions are pushed before aggregation calculation for aggregates in the select. Where conditions DO NOT
-    apply to other aggregates in the WHERE CLAUSE.
-  * HAVING can ONLY reference fields that appear in the SELECT projection — aggregates OR plain dimensions. Select what you filter on; hide it with a leading `--` when you don't want it in the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering one year AFTER a `lead/lag` over the full series:
+  * WHERE conditions are pushed before aggregation calculation for aggregates in the select. Where conditions are not pushed into aggregates in where. WHERE x =3 and sum(x.y) >10 includes all x, not just x =3. Use where x=3 and sum(x.y ? x =3) >10 OR filter in having; where x = 3 select --sum(x.y) as total_y having total_y > 10.
+  * HAVING can ONLY reference fields that appear in the SELECT projection. Select what you filter on; hide it with a leading `--` when you don't want it in the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering one year AFTER a `lead/lag` over the full series:
       select student.state, --sum(enroll.credits) as total_credits, --enroll.year
       having total_credits > 1000 and enroll.year = 2020
   * HAVING evaluates in the post-aggregation OUTPUT context, so an aggregate referenced there inherits the SELECT's output grain — a bare `sum(x)`/`avg(x)` in HAVING is the CURRENT group's value, NOT a global total. To compare against a total at a DIFFERENT grain, PIN the grain explicitly: `by *` keeps it global (one value over all rows); `by <dims>` fixes a coarser grain. e.g. "a student's credits exceed 0.0001 of the global total":
@@ -76,9 +75,8 @@ SELECT RULES:
 - Date_parts have no quotes; use `date_part(enroll.date, year)` instead of `date_part(enroll.date, 'year')`. Prefer idiomatic function casts (year(enroll.date) instead of date_part(enroll.date, year)) when possible.
 - Comments use `#` only, per line.
 - For complex logic, break down your query into concept declarations that can be reused
-- Two example queries (more patterns — ROLLUP/grouping, ranking-within-rollup, multi-select align — are in `trilogy agent-info syntax`):
 
-Query 1: For names with more than 10 births in vermont ever, find the top 10 names by total births
+Query example: For names with more than 10 births in vermont ever, find the top 10 names by total births
 across the US in the 1940s and 1950s for Idaho, along with their Vermont births and ranks within Idaho
 and nationally.
 ```
@@ -111,7 +109,7 @@ SELECT
     limit 5;
 ```
 
-Query 2: for students with significant enrollments between 2000 and 2002, find the
+Query example: for students with significant enrollments between 2000 and 2002, find the
 students with average daily enrollments >10 between 2002 and january 31 2010
 ```
 where enroll.date between '2002-01-01'::datetime and '2010-01-31'::datetime

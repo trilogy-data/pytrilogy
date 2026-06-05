@@ -32,7 +32,7 @@ Some types may have additional metadata, which will help you understand them. Fo
 A typical trilogy query only needs to import one file (the fact) and will use dot-references to pull in dimensions.
 
 In the rare case of merging two fact domains, use a MERGE statement to merge share dimensions concepts another; ex `merge concept_a into ~concept_b`. This marks concept_a as being identical to a partial subset
-of concept_b, enabling discovery to bridge the two. If a dimenion is accessible through a fact, via abc.def - use that instead of merging".
+of concept_b, enabling discovery to bridge the two. If a dimenion is accessible through a fact, via abc.def - use that instead of merging.".
 
 Additional syntax examples:
 These less-common patterns have complete, copy-pasteable examples. Do NOT guess

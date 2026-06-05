@@ -52,12 +52,12 @@
   {
     "id": 11,
     "grade": "medium",
-    "prompt": "Looking only at partsupp rows whose supplier is in GERMANY, report total value (sum of supplycost * availqty) by part key. Include only parts whose total value exceeds a fraction 0.0001 (i.e. one hundredth of one percent) of the grand total across all GERMANY partsupp rows. Sort by total value descending."
+    "prompt": "Looking only at partsupp rows whose supplier is in GERMANY, report total value (sum of supplycost * availqty) by part key. Include only parts whose total value exceeds a fraction 0.0001 (i.e. one hundredth of one percent) of the grand total across all GERMANY partsupp rows. Sort by total value descending. Include all parts; no limit."
   },
   {
     "id": 12,
     "grade": "medium",
-    "prompt": "For lineitems shipped by MAIL or SHIP, with commit date before receipt date, ship date before commit date, and receipt date between 1994-01-01 (inclusive) and 1995-01-01 (exclusive), report two counts per ship mode: high-line count (orders with priority 1-URGENT or 2-HIGH) and low-line count (orders with any other priority). Sort by ship mode."
+    "prompt": "For order/line_no pairs shipped by MAIL or SHIP, with commit date before receipt date, ship date before commit date, and receipt date between 1994-01-01 (inclusive) and 1995-01-01 (exclusive), report two totals per ship mode: high-line total (line-item pairs with priority 1-URGENT or 2-HIGH) and low-line total (line-item pairs with any other priority). Sort by ship mode."
   },
   {
     "id": 13,

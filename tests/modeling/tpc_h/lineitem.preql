@@ -13,7 +13,7 @@ property <line_no,order.id>.discount float::percent; # percent discount
 property <line_no,order.id>.tax float::percent; # tax, as percentage
 property <line_no,order.id>.return_flag string; # Capital flag, one of A | N | R
 property <line_no,order.id>.line_status string; # Capital flag, one of O | F
-property <line_no,order.id>.ship_date date;
+property <line_no,order.id>.ship_date date; # date the line_item was shipped
 property <line_no,order.id>.commit_date date;
 property <line_no,order.id>.receipt_date date;
 property <line_no,order.id>.ship_instruct string; # one of DELIVER IN PERSON | COLLECT COD | NONE | TAKE BACK RETURN

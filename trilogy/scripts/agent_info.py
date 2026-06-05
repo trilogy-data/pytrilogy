@@ -1301,7 +1301,7 @@ Render: `trilogy render quarterly.md --to png`
 def get_agent_info_output() -> str:
     """Build the complete agent info output with CLI docs and syntax reference."""
     syntax_section = get_trilogy_prompt(
-        intro="## Trilogy Language Syntax\n\nTrilogy is a SQL-inspired language with a built-in semantic layer. Use the following syntax reference when writing .preql files.",
+        intro="## Trilogy Language Reference\nTrilogy is a SQL-inspired language with a built-in semantic layer, written as .preql files.",
     )
     return AGENT_INFO_OUTPUT + "\n" + syntax_section
 
