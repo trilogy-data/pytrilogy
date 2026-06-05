@@ -22,4 +22,5 @@ SPEC = BenchmarkSpec(
     enriched_skip_prefixes=("query", "adhoc", "cache"),
     default_scale_factor=0.01,
     default_num_queries=22,
+    default_enriched_dir=EVAL_DIR.parents[1] / "tests" / "modeling" / "tpc_h",
 )

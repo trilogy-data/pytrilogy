@@ -552,6 +552,10 @@ def gen_filter_node(
                 parents=[row_parent],
                 depth=row_parent.depth,
                 partial_concepts=row_parent.partial_concepts,
+                # Inherit the global query condition row_parent already applied
+                # so it stays visible as preexisting after the filter's where is
+                # appended below; otherwise condition validation can't prove it.
+                preexisting_conditions=row_parent.preexisting_conditions,
                 force_group=False,
             )
         else:

@@ -27,16 +27,10 @@ SELECT RULES:
 - Automatic group by. NEVER include the GROUP BY clause for a select. Grouping is automatic by non-aggregated fields in the SELECT clause.
 - You CAN dynamically group inline to get groups at different grains - ex:  `sum(metric) by dim1, dim2 as sum_by_dim1_dm2` for alternate grouping. If you are grouping a defined aggregate
 - The `by` clause accepts bare identifiers (`by dim1, dim2`) OR arbitrary expressions wrapped in parens (`by (substring(phone, 1, 2), upper(name))`). Use parens whenever a `by` entry is anything other than a simple identifier — function calls, casts, arithmetic, etc. — e.g. `avg(price) by (substring(phone, 1, 2))`. Without the parens the parser will reject the expression form.
-- Histograms / bucket-of-aggregates (counting entities by a per-entity metric): define the per-key metric with `by`, then SELECT it alongside `count(<other_key>)` — the outer select buckets by the metric and counts how many entities fall into each bucket. Wrap with `coalesce(..., 0)` to include entities whose underlying rows are missing (the left-join equivalent — entities with zero matching child rows stay in the histogram). Example: bucket customers by how many of their orders match a predicate, including customers with zero matches:
-      auto orders_per_customer <- count(orders.id ? not orders.comment like '%X%') by customer.id;
-      select
-          coalesce(orders_per_customer, 0) as order_count,
-          count(customer.id) as customer_count
-      order by customer_count desc, order_count desc;
-  Do NOT instead write a per-customer SELECT (one row per customer) — that's the input to the bucketing, not the output.
 - Count must specify a field (no `count(*)`) Counts are automatically deduplicated for keys. A count of a property counts the key. Use count_distinct for unique property members; do not use it on keys as it is identical to count.
-- Since there are no underlying tables, sum/count of a constant should always specify a grain field (e.g. `sum(1) by x as count`). 
-- Use the where clause to filter *before* aggregation, the *having* for after. It is idiomatic to include hidden fields in the output to filter.
+- Since there are no underlying tables, sum/count 1 is only meaningful when grouped by a grain field (e.g. `sum(1) by x as count`). 
+- Use the where clause to filter *before* query computation (aggregates and windows), the *having* for after. Use hidden fields in the select to be able to filter on them in having without showing them in the output. 
+- Predefined concepts (`auto x <- ...`) are definitions, NOT precomputed values: each reference expands inline (like a macro) and is re-evaluated in the referencing query's scope. So the query's WHERE filters the rows feeding a referenced aggregate in the select.
 - Filtering on aggregates:
   - Use `field ? condition` for inline filters (e.g. `sum(x ? x > 0)`).
   * WHERE conditions are pushed before aggregation calculation for aggregates in the select. Where conditions DO NOT
@@ -44,14 +38,8 @@ SELECT RULES:
   * HAVING can ONLY reference fields that appear in the SELECT projection — aggregates OR plain dimensions. Select what you filter on; hide it with a leading `--` when you don't want it in the output. Hide-and-HAVING a dimension (rather than moving it to WHERE) whenever WHERE would change an aggregate's or window's input — e.g. filtering one year AFTER a `lead/lag` over the full series:
       select customer.state, --sum(sales.amount) as total_sales, --store.id
       having total_sales > 1000 and store.id = 5
-  * Nested aggregate — compare a per-entity total to the GROUP AVERAGE of those totals (a common "above 1.2x the group norm" ask). Define each grain with its own `by`, then filter in HAVING. Both derived metrics are selected hidden (`--`) so HAVING can reference them while the output stays just the id:
-      auto cust_store_total <- sum(sales.amount) by sales.customer.id, sales.store.id;
-      auto store_avg <- avg(cust_store_total) by sales.store.id;
-      select sales.customer.id, --cust_store_total, --store_avg
-      having cust_store_total > 1.2 * store_avg
-  * To filter rows by an aggregate condition that is NOT in the output, write the aggregate directly in WHERE using inline grouping `agg(x) by grain`:
-      Remember that other where conditions are not pushed through an aggregate in the where; use an inline condition if you
-      need to filter inside those. 
+  * To filter rows by an aggregate condition based on inputs before filtering, write the aggregate directly in WHERE using inline grouping `agg(x) by grain`:
+      Use an inline condition if you need to filter inside those. 
       where store=1 and item.price > 1.2 * avg(item.price ? explicit_other_condition) by item.category
       select item.name, item.price
 - Operator precedence (highest binds first; use `(...)` to override):
@@ -59,18 +47,18 @@ SELECT RULES:
   2. Inline filter `x ? cond` — `?` takes a primary on the left, so wrap any arithmetic in parens: `(a - b) ? cond`, NOT `a - b ? cond` (the latter binds `?` to `b` alone).
   3. Multiplicative: `*`, `/`, `%`.
   4. Additive / string concat: `+`, `-`, `||`.
-  5. Comparison (one per pair, NOT chainable — write `a < b and b < c`, not `a < b < c`): `=`, `!=`, `<`, `<=`, `>`, `>=`, `like`, `ilike`, `between … and …`, `in (…)`, `not in (…)`, `is null`.
+  5. Comparison`=`, `!=`, `<`, `<=`, `>`, `>=`, `like`, `ilike`, `between … and …`, `in (…)`, `not in (…)`, `is null`.
   6. Logical `and`.
   7. Logical `or`.
-- Always use a reasonable `LIMIT` for final queries unless the request is for a time series or line chart.
+- Always use a reasonable `LIMIT` for final queries if unspecified and the request is not for a time series or line chart.
 - Self-referential queries — relating a row to OTHER rows of the same set (period-over-period, previous/next value, running total, share of a group total, rank): Default to WINDOW function, NOT a re-grained `by (key +/- N)` aggregate. Two aggregates defined at different derived grains will not join back and silently produce NULL; the window carries the related value onto the current row instead (same week PRIOR year = `lag(metric, 53) over (order by week_seq)`; same week NEXT year = `lead(metric, 53) over (order by week_seq)` — `lag` looks back, `lead` looks ahead).
-- Window functions use SQL-style syntax — the canonical form Trilogy parses, renders, and round-trips:
+- Window functions use SQL-style syntax:
   * Ranking: `rank(<key>) over (partition by <group> order by <expr> desc)` — e.g. `rank(name) over (partition by state order by sum(births) desc) as top_name`. `partition by` is OPTIONAL (omit for a single global window). `dense_rank`/`row_number` take the same shape.
   * Multi-key ranking: `rank(a, b) over (...)` — all comma-separated args are equal-status grain keys (used when ranking ROLLUP output where the grain spans multiple columns).
   * `partition by` accepts arbitrary expressions, not just identifiers: `partition by upper(country), case when region = 'EU' then 1 else 0 end`.
   * Aggregates as windows: `sum(x) over (partition by g order by t)` for running totals. Without `order by`, a partitioned aggregate collapses to a plain grouped aggregate — write `sum(x) by g` directly instead of `sum(x) over (partition by g)`.
   * lag/lead: `lag(<field>, <offset>) over (partition by <g> order by <expr>)` fetches the value <offset> rows BACK; `lead(<field>, <offset>) over (...)` fetches it <offset> rows AHEAD. Offset is optional and defaults to 1. Examples: prior row = `lag(amount, 2) over (order by date asc) as prev_amount`; next-year same week = `lead(weekly, 53) over (order by week_seq asc) as next_year`.
-- Functions. All function names have parenthese (e.g. `sum(births)`, `date_part('year', dep_time)`). For no arguments, use empty parentheses (e.g. `current_date()`).
+- All functions have parenthese (e.g. `sum(births)`, `date_part('year', dep_time)`). For no arguments, use empty parentheses (e.g. `current_date()`).
 - Multi-level grouping (ROLLUP / CUBE / GROUPING SETS) attaches to an aggregate with a `by` clause and computes that aggregate at multiple grain levels in one pass:
   * `agg(<expr>) by rollup d1, d2` → grouping sets `(d1, d2)`, `(d1)`, `()`. Standard SQL ROLLUP semantics, useful for subtotals + grand total.
   * `agg(<expr>) by cube d1, d2` → every subset of the grouping keys.
@@ -141,9 +129,9 @@ where store_sales.date.year = 2001
 select
     store_sales.item.category,
     store_sales.item.class,
-    sum(store_sales.net_profit) by rollup store_sales.item.category, store_sales.item.class as profit,
-    grouping(store_sales.item.category) by rollup store_sales.item.category, store_sales.item.class as g_cat,
-    grouping(store_sales.item.class)    by rollup store_sales.item.category, store_sales.item.class as g_class,
+    sum(store_sales.net_profit) by rollup() as profit,
+    grouping(store_sales.item.category) by rollup() as g_cat,
+    grouping(store_sales.item.class)    by rollup() as g_class,
     g_cat + g_class as level  # 0 = leaf, 1 = category subtotal, 2 = grand total
 order by
     level asc,

@@ -29,7 +29,8 @@ _EXAMPLES: list[SyntaxExample] = [
         title="Filtered aggregate — aggregate only the rows matching a condition",
         summary=(
             "`sum(x ? cond)` / `count(x ? cond)` aggregate just the matching rows; "
-            "add `by <grain>` to pin the aggregate's grain"
+            "to COUNT ROWS count the unique grain/row key, not a non-unique sub-key; "
+            "`by <grain>` pins the aggregate's grain"
         ),
         body="""\
 # `?` is a per-aggregate filter (a WHERE that applies to ONE aggregate), so
@@ -43,6 +44,37 @@ select
     avg(iris.petal_length ? iris.petal_width > 1.5) as avg_petal_wide_only,
     count(iris.petal_length ? iris.sepal_length > 6.0) as long_sepal_count,
 order by iris.species asc;
+
+# COUNTING ROWS: `count(k ? cond)` counts DISTINCT values of k — `count` is
+# distinct-by-argument. To count matching ROWS, count the model's unique grain /
+# row key (often named `row_key`), NOT a non-unique sub-key. e.g. counting line
+# items by `count(line_number ? cond)` collapses to the number of distinct line
+# numbers (1..7) and undercounts — use `count(row_key ? cond)`.
+""",
+    ),
+    SyntaxExample(
+        name="nested-aggregate-group-average",
+        title="Compare a per-entity total to the group average of those totals",
+        summary=(
+            'the "above 1.2x the group norm" ask: inner `sum(x) by entity, group`, '
+            "outer `avg(inner) by group`, compared in HAVING with both metrics hidden via `--`"
+        ),
+        body="""\
+# Compare each entity's total to the GROUP AVERAGE of those per-entity totals
+# (the "above 1.2x the group norm" pattern). Give EACH grain its own `by`: the
+# inner total is per (entity, group); the outer average re-aggregates those
+# totals up to the group. Select both derived metrics hidden (`--`) so HAVING
+# can reference them while the output stays just the entity id.
+import enrollments as enroll;
+
+auto student_dept_credits <- sum(enroll.credits) by enroll.student_id, enroll.department;
+auto dept_avg_credits <- avg(student_dept_credits) by enroll.department;
+
+select
+    enroll.student_id,
+    --student_dept_credits,
+    --dept_avg_credits,
+having student_dept_credits > 1.2 * dept_avg_credits;
 """,
     ),
     SyntaxExample(
@@ -305,6 +337,40 @@ select
     enroll.course,
     count(enroll.id) as enrollments,
 order by enrollments desc
+limit 100;
+""",
+    ),
+    SyntaxExample(
+        name="correlated-exists-via-grouped-counts",
+        title="Correlated EXISTS / NOT-EXISTS over rows of the SAME model",
+        summary=(
+            "translate `EXISTS other` / `NOT EXISTS other matching` over the same "
+            "model into two `count(...) by <grain>` compared in `where` "
+            "(`> 1` = another exists, `= 1` = no other matches) — don't filter on a boolean-of-aggregate"
+        ),
+        body="""\
+# A self-referential EXISTS / NOT-EXISTS (e.g. "the ONLY enrollee who completed
+# a course that had more than one enrollee") becomes TWO filtered counts pinned
+# to the correlation grain, compared in `where`:
+#   count(k) by <grain> > 1            -- EXISTS another row in the group
+#   count(k ? cond) by <grain> = 1     -- NOT EXISTS another row matching cond
+#                                         (exactly one matches: the row itself)
+# Do NOT build `auto flag <- count(...) > 0` and filter on `flag` — a boolean
+# derived from an aggregate can't be used in `where`/another aggregate (the
+# planner emits "WHERE clause cannot contain aggregates"). Inline the comparison.
+import enrollments as enroll;
+
+auto enrollees_per_course <- count(enroll.student_id) by enroll.course;
+auto completers_per_course <- count(enroll.student_id ? enroll.completed = true) by enroll.course;
+
+where
+    enroll.completed = true
+    and enrollees_per_course > 1     # the course had at least one OTHER enrollee
+    and completers_per_course = 1    # and no OTHER enrollee completed it
+select
+    enroll.student_id,
+    count(enroll.course) as sole_completions
+order by sole_completions desc
 limit 100;
 """,
     ),

@@ -42,7 +42,7 @@
   {
     "id": 9,
     "grade": "hard",
-    "prompt": "Restricted to parts whose name contains green, report profit by supplier nation and order-date year. Profit is the sum of (extended price * (1 - discount) - partsupp supplycost * quantity) where each lineitem's supplycost comes from the partsupp entry matching that lineitem's (part, supplier). Sort by nation ascending then year descending."
+    "prompt": "Restricted to parts whose name contains green, report profit by supplier nation and order-date year. Profit is the sum of (extended price * (1 - discount) - partsupp supplycost * quantity) where each lineitem's supplycost comes from the partsupp entry matching that lineitem's (part, supplier). Sort by nation ascending then year descending. Return every nation/year combination — do not limit the result set."
   },
   {
     "id": 10,
@@ -52,7 +52,7 @@
   {
     "id": 11,
     "grade": "medium",
-    "prompt": "Looking only at partsupp rows whose supplier is in GERMANY, report total value (sum of supplycost * availqty) by part key. Include only parts whose total value exceeds 0.0001% of the grand total across all GERMANY partsupp rows. Sort by total value descending."
+    "prompt": "Looking only at partsupp rows whose supplier is in GERMANY, report total value (sum of supplycost * availqty) by part key. Include only parts whose total value exceeds a fraction 0.0001 (i.e. one hundredth of one percent) of the grand total across all GERMANY partsupp rows. Sort by total value descending."
   },
   {
     "id": 12,
@@ -77,7 +77,7 @@
   {
     "id": 16,
     "grade": "medium",
-    "prompt": "Looking only at parts whose brand is not Brand#45, whose type does not start with MEDIUM POLISHED, and whose size is one of (49, 14, 23, 45, 19, 3, 36, 9), and excluding any supplier whose comment matches LIKE %Customer%Complaints%, report — for each combination of part brand, type, and size — the count of distinct suppliers offering those parts in partsupp. Sort by supplier count descending, then brand, type, size."
+    "prompt": "Looking only at parts whose brand is not Brand#45, whose type does not start with MEDIUM POLISHED, and whose size is one of (49, 14, 23, 45, 19, 3, 36, 9), and excluding any supplier whose comment matches LIKE %Customer%Complaints%, report — for each combination of part brand, type, and size — the count of distinct suppliers offering those parts in partsupp. Sort by supplier count descending, then brand, type, size. Return every qualifying brand/type/size combination — do not limit the result set."
   },
   {
     "id": 17,
